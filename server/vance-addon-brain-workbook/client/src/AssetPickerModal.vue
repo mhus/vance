@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { brainFetch, documentContentUrl } from '@vance/shared';
+import { useT } from './i18n';
 
 /**
  * Asset picker — three tabs for the three image sources Vance knows
@@ -44,6 +45,8 @@ type TabId = 'app' | 'project' | 'shared';
 const TENANT_PROJECT = '_tenant';
 const SHARED_PREFIX = 'workbook/images/';
 
+const t = useT();
+
 const tab = ref<TabId>('app');
 
 // --- Tab 1: App ---------------------------------------------------
@@ -68,7 +71,7 @@ async function loadAppAssets() {
       (i.mimeType ?? '').startsWith('image/'),
     );
   } catch (e) {
-    appError.value = e instanceof Error ? e.message : 'Could not load assets.';
+    appError.value = e instanceof Error ? e.message : t('workbook.assets.error.loadApp');
     appAssets.value = [];
   } finally {
     appLoading.value = false;
@@ -98,7 +101,7 @@ async function loadProjectAssets(query: string) {
     projectAssets.value = resp.items ?? [];
     projectTotal.value = resp.total ?? projectAssets.value.length;
   } catch (e) {
-    projectError.value = e instanceof Error ? e.message : 'Search failed.';
+    projectError.value = e instanceof Error ? e.message : t('workbook.assets.error.search');
     projectAssets.value = [];
     projectTotal.value = 0;
   } finally {
@@ -144,7 +147,7 @@ async function loadSharedAssets() {
     if (/\b(403|404|forbidden|not found|no permission)/i.test(msg)) {
       sharedAvailable.value = false;
     } else {
-      sharedError.value = msg || 'Could not load shared images.';
+      sharedError.value = msg || t('workbook.assets.error.loadShared');
       sharedAvailable.value = true;
     }
     sharedAssets.value = [];
@@ -220,7 +223,7 @@ onMounted(() => {
   <div class="asset-picker" @click="onBackdrop">
     <div class="asset-picker__panel">
       <header class="asset-picker__header">
-        <span>Insert image</span>
+        <span>{{ t('workbook.assets.title') }}</span>
         <button class="asset-picker__close" type="button" @click="close">×</button>
       </header>
 
@@ -230,20 +233,20 @@ onMounted(() => {
           class="asset-picker__tab"
           :class="{ 'asset-picker__tab--active': tab === 'app' }"
           @click="tab = 'app'"
-        >App</button>
+        >{{ t('workbook.assets.tabApp') }}</button>
         <button
           type="button"
           class="asset-picker__tab"
           :class="{ 'asset-picker__tab--active': tab === 'project' }"
           @click="tab = 'project'"
-        >Project</button>
+        >{{ t('workbook.assets.tabProject') }}</button>
         <button
           v-if="sharedAvailable !== false"
           type="button"
           class="asset-picker__tab"
           :class="{ 'asset-picker__tab--active': tab === 'shared' }"
           @click="tab = 'shared'"
-        >Shared</button>
+        >{{ t('workbook.assets.tabShared') }}</button>
       </nav>
 
       <!-- ── Tab: App ────────────────────────────────────────────── -->
@@ -254,7 +257,7 @@ onMounted(() => {
             class="asset-picker__upload-btn"
             :disabled="uploading"
             @click="openFileBrowser"
-          >{{ uploading ? 'Uploading…' : '⤴ Upload new' }}</button>
+          >{{ uploading ? t('workbook.assets.uploading') : `⤴ ${t('workbook.assets.upload')}` }}</button>
           <input
             ref="fileInputRef"
             type="file"
@@ -264,9 +267,11 @@ onMounted(() => {
           />
         </div>
         <div v-if="appError" class="asset-picker__error">{{ appError }}</div>
-        <div v-if="appLoading" class="asset-picker__loading">Lade Assets…</div>
+        <div v-if="appLoading" class="asset-picker__loading">
+          {{ t('workbook.assets.loadingApp') }}
+        </div>
         <div v-else-if="appAssets.length === 0" class="asset-picker__empty">
-          Noch keine Bilder unter <code>{{ assetsFolder }}</code>.
+          {{ t('workbook.assets.emptyAppPre') }} <code>{{ assetsFolder }}</code>.
         </div>
         <div v-else class="asset-picker__grid">
           <button
@@ -290,14 +295,16 @@ onMounted(() => {
             v-model="projectQuery"
             type="search"
             class="asset-picker__search-input"
-            placeholder="Search images by name or path…"
+            :placeholder="t('workbook.assets.searchPlaceholder')"
             @input="scheduleProjectSearch"
           />
         </div>
         <div v-if="projectError" class="asset-picker__error">{{ projectError }}</div>
-        <div v-if="projectLoading" class="asset-picker__loading">Suche…</div>
+        <div v-if="projectLoading" class="asset-picker__loading">
+          {{ t('workbook.common.searching') }}
+        </div>
         <div v-else-if="projectAssets.length === 0" class="asset-picker__empty">
-          Keine Bilder im Projekt gefunden.
+          {{ t('workbook.assets.emptyProject') }}
         </div>
         <div v-else class="asset-picker__grid">
           <button
@@ -317,17 +324,19 @@ onMounted(() => {
           v-if="projectAssets.length > 0 && projectTotal > projectAssets.length"
           class="asset-picker__truncated"
         >
-          Showing {{ projectAssets.length }} of {{ projectTotal }} — refine the search to narrow.
+          {{ t('workbook.assets.truncated', { shown: projectAssets.length, total: projectTotal }) }}
         </div>
       </template>
 
       <!-- ── Tab: Shared (_tenant) ───────────────────────────────── -->
       <template v-else-if="tab === 'shared'">
         <div v-if="sharedError" class="asset-picker__error">{{ sharedError }}</div>
-        <div v-if="sharedLoading" class="asset-picker__loading">Lade Shared Images…</div>
+        <div v-if="sharedLoading" class="asset-picker__loading">
+          {{ t('workbook.assets.loadingShared') }}
+        </div>
         <div v-else-if="sharedAssets.length === 0" class="asset-picker__empty">
-          Noch keine geteilten Bilder unter <code>{{ SHARED_PREFIX }}</code> im
-          <code>{{ TENANT_PROJECT }}</code>-Projekt.
+          {{ t('workbook.assets.emptySharedPre') }} <code>{{ SHARED_PREFIX }}</code>
+          {{ t('workbook.assets.emptySharedMid') }} <code>{{ TENANT_PROJECT }}</code>.
         </div>
         <div v-else class="asset-picker__grid">
           <button

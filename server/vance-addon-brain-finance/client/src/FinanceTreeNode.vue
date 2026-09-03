@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { FinanceNodeDto } from './generated/finance/FinanceNodeDto';
 import type { NodeAction, NodeSnapshot } from './types';
+import { useT } from './i18n';
+
+const t = useT();
 
 const props = defineProps<{
   node: FinanceNodeDto;
@@ -37,17 +40,17 @@ function figure(): string | null {
         v-if="figure() !== null"
         class="shrink-0 tabular-nums text-xs font-medium"
         :class="(figureValue() ?? 0) < 0 ? 'text-red-500' : 'text-green-600'"
-        :title="'per ' + unitKey.replace('per', '').toLowerCase()"
+        :title="t('finance.tree.perUnit', { unit: unitKey.replace('per', '').toLowerCase() })"
       >
         {{ figure() }}
       </span>
       <span class="shrink-0 flex items-center gap-0.5">
-        <button class="fx-btn" title="Add child" @click.stop="onAction('add-child', node.name)">＋</button>
-        <button class="fx-btn" title="Up" @click.stop="onAction('move-up', node.name)">↑</button>
-        <button class="fx-btn" title="Down" @click.stop="onAction('move-down', node.name)">↓</button>
-        <button class="fx-btn" title="Indent" @click.stop="onAction('indent', node.name)">→</button>
-        <button class="fx-btn" title="Outdent" @click.stop="onAction('outdent', node.name)">←</button>
-        <button class="fx-btn" title="Delete" @click.stop="onAction('remove', node.name)">🗑</button>
+        <button class="fx-btn" :title="t('finance.tree.addChild')" @click.stop="onAction('add-child', node.name)">＋</button>
+        <button class="fx-btn" :title="t('finance.tree.up')" @click.stop="onAction('move-up', node.name)">↑</button>
+        <button class="fx-btn" :title="t('finance.tree.down')" @click.stop="onAction('move-down', node.name)">↓</button>
+        <button class="fx-btn" :title="t('finance.tree.indent')" @click.stop="onAction('indent', node.name)">→</button>
+        <button class="fx-btn" :title="t('finance.tree.outdent')" @click.stop="onAction('outdent', node.name)">←</button>
+        <button class="fx-btn" :title="t('finance.tree.delete')" @click.stop="onAction('remove', node.name)">🗑</button>
       </span>
     </div>
     <FinanceTreeNode

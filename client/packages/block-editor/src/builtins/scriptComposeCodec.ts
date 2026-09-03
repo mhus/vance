@@ -31,6 +31,8 @@ export interface ScriptComposeKind {
   hint: string;
   /** Editor placeholder for the empty script pane. */
   placeholder: string;
+  /** i18n key for {@link placeholder}, where the example is prose. */
+  placeholderKey?: string;
   /** `session:` keys always forced on (re-applied on every edit, win over the
    * user's settings pane) — e.g. `{ enabled: true }` for the agent block, whose
    * task needs a session process. */
@@ -38,6 +40,9 @@ export interface ScriptComposeKind {
   /** `session:` keys filled in only when absent (a user-set value wins) — e.g.
    * `{ recipe: 'arthur' }` for the agent block's default agent. */
   sessionDefaults?: Record<string, unknown>;
+  /** i18n keys for {@link label} / {@link hint} — resolved by the slash menu. */
+  labelKey: string;
+  hintKey: string;
 }
 
 export const SCRIPT_COMPOSE_KINDS: ScriptComposeKind[] = [
@@ -47,7 +52,9 @@ export const SCRIPT_COMPOSE_KINDS: ScriptComposeKind[] = [
     taskType: 'js',
     scriptField: 'code',
     label: 'Compose JS',
-    hint: 'Compose-Block mit einem JS-Task',
+    hint: 'Compose block with one JS task',
+    labelKey: 'blockEditor.slash.composeJs.title',
+    hintKey: 'blockEditor.slash.composeJs.hint',
     placeholder: "vance.files.write('out.txt', 'hello')",
   },
   {
@@ -56,7 +63,9 @@ export const SCRIPT_COMPOSE_KINDS: ScriptComposeKind[] = [
     taskType: 'exec',
     scriptField: 'command',
     label: 'Compose Bash',
-    hint: 'Compose-Block mit einem Shell-Task',
+    hint: 'Compose block with one shell task',
+    labelKey: 'blockEditor.slash.composeBash.title',
+    hintKey: 'blockEditor.slash.composeBash.hint',
     placeholder: 'echo hello > out.txt',
   },
   {
@@ -65,7 +74,9 @@ export const SCRIPT_COMPOSE_KINDS: ScriptComposeKind[] = [
     taskType: 'python',
     scriptField: 'code',
     label: 'Compose Python',
-    hint: 'Compose-Block mit einem Python-Task',
+    hint: 'Compose block with one Python task',
+    labelKey: 'blockEditor.slash.composePython.title',
+    hintKey: 'blockEditor.slash.composePython.hint',
     placeholder: "print('hello')",
   },
   {
@@ -74,7 +85,9 @@ export const SCRIPT_COMPOSE_KINDS: ScriptComposeKind[] = [
     taskType: 'r',
     scriptField: 'code',
     label: 'Compose R',
-    hint: 'Compose-Block mit einem R-Task (Rserve, WORK-only)',
+    hint: 'Compose block with one R task (Rserve, WORK-only)',
+    labelKey: 'blockEditor.slash.composeR.title',
+    hintKey: 'blockEditor.slash.composeR.hint',
     placeholder: 'write.csv(data.frame(x = 1:5), "out.csv", row.names = FALSE)',
   },
   {
@@ -83,8 +96,13 @@ export const SCRIPT_COMPOSE_KINDS: ScriptComposeKind[] = [
     taskType: 'agent',
     scriptField: 'prompt',
     label: 'Compose Agent',
-    hint: 'Compose-Block mit einem Agent-Task',
-    placeholder: 'Analysiere die Dateien im Workspace und fasse zusammen.',
+    hint: 'Compose block with one agent task',
+    labelKey: 'blockEditor.slash.composeAgent.title',
+    hintKey: 'blockEditor.slash.composeAgent.hint',
+    // Prompt example. The reader-facing version comes from
+    // `blockEditor.compose.agentPlaceholder`; this is the no-i18n fallback.
+    placeholder: 'Summarise the files in the workspace.',
+    placeholderKey: 'blockEditor.compose.agentPlaceholder',
     // The prompt runs as a turn on the session process — force it enabled …
     sessionForce: { enabled: true },
     // … and default it to the arthur agent recipe (user can override in settings).

@@ -16,7 +16,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, useLinkPickerHost, VLinkPicker } from '@vance/components';
+import { useDocumentPrefixReaction, useLinkPickerHost, useLocale, VLinkPicker } from '@vance/components';
 import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanJournal,
@@ -31,6 +31,7 @@ import {
 import type { JournalView } from './generated/journal/JournalView';
 import type { JournalEntryView } from './generated/journal/JournalEntryView';
 import type { JournalHitView } from './generated/journal/JournalHitView';
+import { useT } from './i18n';
 
 /**
  * Journal application view — a diary of `kind: journal-entry` pages, one
@@ -52,16 +53,24 @@ const projectId = computed(() => props.document.projectId);
 const folder = computed(() => props.document.path.replace(/\/_app\.yaml$/, ''));
 const title = computed(() => view.value?.title ?? props.document.title ?? folder.value);
 
+const t = useT();
+const locale = useLocale();
+
 const view = ref<JournalView | null>(null);
 const error = ref<string | null>(null);
 const loading = ref(false);
 const rebuilding = ref(false);
 
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+// Weekday strip, Monday first. Derived from Intl rather than a literal list:
+// the grid is Monday-based in every locale we ship, but the abbreviations are
+// not, and a hardcoded English row was the visible half of "no i18n here".
+const WEEKDAYS = computed<string[]>(() => {
+  const fmt = new Intl.DateTimeFormat(locale.value, { weekday: 'short' });
+  // 2024-01-01 was a Monday — any Monday does, this one needs no lookup.
+  const monday = Date.UTC(2024, 0, 1);
+  return Array.from({ length: 7 }, (_, i) =>
+    fmt.format(new Date(monday + i * 86_400_000)));
+});
 
 const todayIso = todayString();
 const calYear = ref(Number(todayIso.slice(0, 4)));
@@ -129,7 +138,10 @@ const calendarCells = computed<Cell[]>(() => {
   }
   return cells;
 });
-const calLabel = computed(() => `${MONTH_NAMES[calMonth.value - 1]} ${calYear.value}`);
+const calLabel = computed(() => new Intl.DateTimeFormat(locale.value, {
+  month: 'long',
+  year: 'numeric',
+}).format(new Date(Date.UTC(calYear.value, calMonth.value - 1, 1))));
 
 async function loadMonth(): Promise<void> {
   try {
@@ -169,7 +181,7 @@ async function loadScan(): Promise<void> {
       await selectDate(todayIso);
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not scan journal.';
+    error.value = e instanceof Error ? e.message : t('journal.error.scan');
     view.value = null;
   } finally {
     loading.value = false;
@@ -263,7 +275,7 @@ function onMetaChange(): void {
 async function deleteEntry(): Promise<void> {
   const date = selectedDate.value;
   if (!date || !entryExists.value) return;
-  if (!window.confirm(`Delete the entry for ${date}?`)) return;
+  if (!window.confirm(t('journal.confirmDelete', { date }))) return;
   try {
     await deleteJournalEntry(projectId.value, folder.value, date);
     entryExists.value = false;
@@ -272,7 +284,7 @@ async function deleteEntry(): Promise<void> {
     tagsDraft.value = '';
     await loadMonth();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Delete failed.';
+    error.value = e instanceof Error ? e.message : t('journal.error.delete');
   }
 }
 
@@ -301,7 +313,7 @@ async function runSearch(): Promise<void> {
     searchResults.value = resp.items ?? [];
     searchOpen.value = true;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Search failed.';
+    error.value = e instanceof Error ? e.message : t('journal.error.search');
   } finally {
     searching.value = false;
   }
@@ -320,7 +332,7 @@ async function rebuild(): Promise<void> {
     await rebuildJournal(projectId.value, folder.value);
     await loadScan();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Rebuild failed.';
+    error.value = e instanceof Error ? e.message : t('journal.error.rebuild');
   } finally {
     rebuilding.value = false;
   }
@@ -429,9 +441,9 @@ onBeforeUnmount(() => { editorRef.value?.flush(); });
 
 const saveStatusLabel = computed<string | null>(() => {
   switch (saveStatus.value) {
-    case 'dirty': return 'Edited';
-    case 'saving': return 'Saving…';
-    case 'saved': return 'Saved';
+    case 'dirty': return t('journal.status.edited');
+    case 'saving': return t('journal.status.saving');
+    case 'saved': return t('journal.status.saved');
     case 'error': return lastSaveError.value ?? 'Save failed';
     default: return null;
   }
@@ -449,7 +461,11 @@ function todayString(): string {
 function humanDate(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
   if (!y || !m || !d) return iso;
-  return `${MONTH_NAMES[m - 1]} ${d}, ${y}`;
+  return new Intl.DateTimeFormat(locale.value, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 </script>
 
@@ -457,14 +473,14 @@ function humanDate(iso: string): string {
   <div class="jr">
     <header class="jr__topbar">
       <div class="jr__brand" :title="folder">{{ title }}</div>
-      <button class="jr__btn" @click="goToday">Today</button>
+      <button class="jr__btn" @click="goToday">{{ t('journal.today') }}</button>
 
       <div class="jr__search">
         <input
           v-model="searchQuery"
           type="search"
           class="jr__search-input"
-          placeholder="Search entries…"
+          :placeholder="t('journal.searchPlaceholder')"
           @keydown.enter.prevent="runSearch"
           @keydown.escape="searchOpen = false"
         />
@@ -477,11 +493,11 @@ function humanDate(iso: string): string {
               class="jr__search-row"
               @click="pickSearchResult(r)"
             >
-              <span class="jr__search-title">{{ r.date }} — {{ r.title || '(untitled)' }}</span>
+              <span class="jr__search-title">{{ r.date }} — {{ r.title || t('journal.untitled') }}</span>
               <span class="jr__search-snippet">{{ r.snippet }}</span>
             </li>
           </ul>
-          <div v-else class="jr__search-empty">No matching entry.</div>
+          <div v-else class="jr__search-empty">{{ t('journal.noMatch') }}</div>
         </div>
       </div>
 
@@ -492,7 +508,7 @@ function humanDate(iso: string): string {
       <button
         class="jr__btn"
         :disabled="rebuilding"
-        :title="rebuilding ? 'Rebuilding…' : 'Rebuild index + stats'"
+        :title="rebuilding ? t('journal.rebuilding') : t('journal.rebuildTip')"
         @click="rebuild"
       >{{ rebuilding ? '…' : '↻' }}</button>
     </header>
@@ -528,30 +544,30 @@ function humanDate(iso: string): string {
         </div>
 
         <div v-if="view" class="jr__stats">
-          <div class="jr__stat"><b>{{ view.stats.totalEntries }}</b><span>entries</span></div>
-          <div class="jr__stat"><b>{{ view.stats.currentStreak }}</b><span>day streak</span></div>
-          <div class="jr__stat"><b>{{ view.stats.longestStreak }}</b><span>longest</span></div>
+          <div class="jr__stat"><b>{{ view.stats.totalEntries }}</b><span>{{ t('journal.statEntries') }}</span></div>
+          <div class="jr__stat"><b>{{ view.stats.currentStreak }}</b><span>{{ t('journal.statDayStreak') }}</span></div>
+          <div class="jr__stat"><b>{{ view.stats.longestStreak }}</b><span>{{ t('journal.statLongest') }}</span></div>
         </div>
       </aside>
 
       <!-- Middle: the day's editor -->
       <main class="jr__main">
-        <div v-if="loading" class="jr__hint">Loading journal…</div>
+        <div v-if="loading" class="jr__hint">{{ t('journal.loading') }}</div>
         <template v-else-if="selectedDate">
           <div class="jr__entryhead">
             <span class="jr__entrytitle">{{ selectedLabel }}</span>
-            <span v-if="!entryExists" class="jr__badge">new</span>
+            <span v-if="!entryExists" class="jr__badge">{{ t('journal.badgeNew') }}</span>
             <span class="jr__spacer" />
             <label class="jr__mood">
               <select v-model="moodDraft" class="jr__mood-select" @change="onMetaChange">
-                <option value="">mood…</option>
+                <option value="">{{ t('journal.moodPlaceholder') }}</option>
                 <option v-for="m in moodPresets" :key="m" :value="m">{{ m }}</option>
               </select>
             </label>
             <button
               v-if="entryExists"
               class="jr__btn jr__btn--danger"
-              title="Delete entry"
+              :title="t('journal.deleteEntry')"
               @click="deleteEntry"
             >🗑</button>
           </div>
@@ -560,11 +576,11 @@ function humanDate(iso: string): string {
               v-model="tagsDraft"
               type="text"
               class="jr__tags-input"
-              placeholder="tags, comma, separated"
+              :placeholder="t('journal.tagsPlaceholder')"
               @change="onMetaChange"
             />
           </div>
-          <div v-if="pageLoading" class="jr__hint">Loading entry…</div>
+          <div v-if="pageLoading" class="jr__hint">{{ t('journal.loadingEntry') }}</div>
           <WorkPageEditor
             v-else
             :key="editorKey"
@@ -597,12 +613,12 @@ function humanDate(iso: string): string {
             @close="closeLinkPicker"
           />
         </template>
-        <div v-else class="jr__hint">Pick a day in the calendar.</div>
+        <div v-else class="jr__hint">{{ t('journal.pickDay') }}</div>
       </main>
 
       <!-- Right: on this day -->
       <aside class="jr__right">
-        <div class="jr__right-head">On this day</div>
+        <div class="jr__right-head">{{ t('journal.onThisDay') }}</div>
         <ul v-if="onThisDay.length" class="jr__otd-list">
           <li
             v-for="e in onThisDay"
@@ -614,7 +630,7 @@ function humanDate(iso: string): string {
             <span class="jr__otd-title">{{ e.title }}</span>
           </li>
         </ul>
-        <div v-else class="jr__right-empty">Nothing from earlier years.</div>
+        <div v-else class="jr__right-empty">{{ t('journal.nothingEarlier') }}</div>
       </aside>
     </div>
   </div>

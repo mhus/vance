@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useT } from './useT';
 import hljs from 'highlight.js/lib/common';
 import 'highlight.js/styles/github.css';
 import type { Component } from 'vue';
@@ -15,6 +16,8 @@ import { registerBuiltInBlocks } from './builtins';
 // render — BlockView is often the first thing to touch a parsed document
 // (e.g. WorkPageKind's parseDocument in a render-time computed).
 registerBuiltInBlocks();
+
+const t = useT();
 
 /** Read-only Vue view for an addon/built-in `custom` block, or null. */
 function customView(fence: string): Component | null {
@@ -170,7 +173,7 @@ const items = computed(() => props.blocks ?? []);
           v-if="headingSlugs.get(i)"
           :href="`#${headingSlugs.get(i)}`"
           class="block-view__anchor"
-          title="Link kopieren"
+          :title="t('blockEditor.blocks.copyLink')"
           @click="copyAnchor(headingSlugs.get(i)!, $event)"
         >🔗</a>
       </h1>
@@ -184,7 +187,7 @@ const items = computed(() => props.blocks ?? []);
           v-if="headingSlugs.get(i)"
           :href="`#${headingSlugs.get(i)}`"
           class="block-view__anchor"
-          title="Link kopieren"
+          :title="t('blockEditor.blocks.copyLink')"
           @click="copyAnchor(headingSlugs.get(i)!, $event)"
         >🔗</a>
       </h2>
@@ -198,7 +201,7 @@ const items = computed(() => props.blocks ?? []);
           v-if="headingSlugs.get(i)"
           :href="`#${headingSlugs.get(i)}`"
           class="block-view__anchor"
-          title="Link kopieren"
+          :title="t('blockEditor.blocks.copyLink')"
           @click="copyAnchor(headingSlugs.get(i)!, $event)"
         >🔗</a>
       </h3>
@@ -286,10 +289,10 @@ const items = computed(() => props.blocks ?? []);
       </a>
 
       <div v-else-if="block.kind === 'dataview'" class="vance-dataview-stub">
-        <div class="vance-dataview-stub__label">Dataview</div>
+        <div class="vance-dataview-stub__label">{{ t('blockEditor.blocks.dataview') }}</div>
         <code class="vance-dataview-stub__source">{{ block.source }}</code>
         <div class="vance-dataview-stub__hint">
-          Dataview rendering not yet implemented.
+          {{ t('blockEditor.blocks.dataviewHint') }}
         </div>
       </div>
 
@@ -308,9 +311,9 @@ const items = computed(() => props.blocks ?? []);
       </div>
 
       <aside v-else-if="block.kind === 'toc'" class="vance-toc">
-        <div class="vance-toc__label">Inhaltsverzeichnis</div>
+        <div class="vance-toc__label">{{ t('blockEditor.blocks.toc') }}</div>
         <div v-if="tocEntries.length === 0" class="vance-toc__empty">
-          Noch keine Überschriften auf dieser Seite.
+          {{ t('blockEditor.blocks.tocEmpty') }}
         </div>
         <ul v-else class="vance-toc__list">
           <li
@@ -333,27 +336,27 @@ const items = computed(() => props.blocks ?? []);
            kind-aware placeholder card so they are visible instead of
            silently dropped in the read-only view. -->
       <div v-else-if="block.kind === 'compose'" class="vance-block-card">
-        <div class="vance-block-card__label">⚙ Compose</div>
+        <div class="vance-block-card__label">{{ t('blockEditor.blocks.compose') }}</div>
         <div class="vance-block-card__hint">Runnable in the editor.</div>
       </div>
 
       <div v-else-if="block.kind === 'embed'" class="vance-block-card">
-        <div class="vance-block-card__label">🔗 Embed</div>
+        <div class="vance-block-card__label">{{ t('blockEditor.blocks.embed') }}</div>
         <div class="vance-block-card__hint">{{ block.uri }}</div>
       </div>
 
       <div v-else-if="block.kind === 'form'" class="vance-block-card">
-        <div class="vance-block-card__label">📝 Form</div>
+        <div class="vance-block-card__label">{{ t('blockEditor.blocks.form') }}</div>
         <div class="vance-block-card__hint">Editable in the editor.</div>
       </div>
 
       <div v-else-if="block.kind === 'input'" class="vance-block-card">
-        <div class="vance-block-card__label">✏ Input</div>
+        <div class="vance-block-card__label">{{ t('blockEditor.blocks.input') }}</div>
         <div class="vance-block-card__hint">Editable in the editor.</div>
       </div>
 
       <div v-else-if="block.kind === 'button'" class="vance-block-card">
-        <div class="vance-block-card__label">▶ {{ block.title || 'Button' }}</div>
+        <div class="vance-block-card__label">▶ {{ block.title || t('blockEditor.blocks.button') }}</div>
         <div class="vance-block-card__hint">Runnable in the editor.</div>
       </div>
 

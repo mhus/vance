@@ -20,6 +20,7 @@ import {
   type SearchHitView,
 } from './generated/search/SearchHitView';
 import type { SearchResultView } from './generated/search/SearchResultView';
+import { useT } from './i18n';
 
 /**
  * Mount for an `app: search` manifest — a search surface for people.
@@ -63,20 +64,7 @@ const MODALITY_ORDER = [
   'rag',
 ] as const;
 
-const MODALITY_LABEL: Record<string, string> = {
-  web: 'Web',
-  news: 'News',
-  image: 'Images',
-  video: 'Videos',
-  pdf: 'PDFs',
-  academic: 'Papers',
-  encyclopedia: 'Encyclopedia',
-  book: 'Books',
-  code: 'Code',
-  internal_doc: 'Documents',
-  map: 'Maps',
-  rag: 'Knowledge base',
-};
+const t = useT();
 
 const providers = ref<ZarniwoopInsightsDto[]>([]);
 const config = ref<SearchConfigView | null>(null);
@@ -565,31 +553,31 @@ function message(e: unknown): string {
       <VInput
         v-model="query"
         class="flex-1"
-        placeholder="What are you looking for?"
+        :placeholder="t('search.queryPlaceholder')"
         @keyup.enter="submit()"
       />
       <VButton variant="primary" :disabled="loading || !query.trim()" @click="submit()">
-        Search
+        {{ t('search.search') }}
       </VButton>
       <VButton
         variant="ghost"
         :disabled="loading || !query.trim()"
-        title="Plans several searches and has a model rank the results — costs tokens as well as quota"
+        :title="t('search.investigateTip')"
         @click="runInvestigate()"
       >
-        Investigate
+        {{ t('search.investigate') }}
       </VButton>
       <VButton
         v-if="!configTab && query.trim()"
         variant="ghost"
         :disabled="loading"
-        title="Keep this query, modality and tier under Settings"
+        :title="t('search.saveSearchTip')"
         @click="saveCurrent()"
       >
-        Save search
+        {{ t('search.saveSearch') }}
       </VButton>
       <VButton variant="ghost" @click="configTab = !configTab">
-        {{ configTab ? 'Back' : 'Settings' }}
+        {{ configTab ? t('search.back') : t('search.settings') }}
       </VButton>
     </div>
 
@@ -604,7 +592,7 @@ function message(e: unknown): string {
         :variant="modality === m ? 'primary' : 'ghost'"
         @click="selectModality(m)"
       >
-        {{ MODALITY_LABEL[m] ?? m }}
+        {{ t(`search.modality.${m}`) }}
       </VButton>
       <div class="flex-1"></div>
       <!--
@@ -627,21 +615,21 @@ function message(e: unknown): string {
       <VToggle
         v-if="offeredFacets.length > 0"
         :model-value="facetsOpen"
-        title="Filters declared by the endpoints serving this modality"
-        label="Filters"
+        :title="t('search.filtersTip')"
+        :label="t('search.filters')"
         @update:model-value="(v: boolean) => (facetsOpen = v)"
       />
       <VToggle
         v-if="expertPossible"
         :model-value="tier === 'expert'"
-        title="Expert tier — pin an endpoint and pass filters"
-        label="Expert"
+        :title="t('search.expertTip')"
+        :label="t('search.expert')"
         @update:model-value="(v: boolean) => (tier = v ? 'expert' : 'normal')"
       />
       <VSelect
         v-if="tier === 'expert' && pinnable.length > 0"
         :model-value="pinned"
-        :options="[{ value: '', label: 'Any endpoint' }, ...pinnable]"
+        :options="[{ value: '', label: t('search.anyEndpoint') }, ...pinnable]"
         @update:model-value="(v: string | null) => (pinned = v ?? '')"
       />
     </div>
@@ -663,7 +651,7 @@ function message(e: unknown): string {
           :label="`${entry.facet.label} · ${entry.instanceName}`"
           :model-value="selectedFacet(entry.facet.key)"
           :options="[
-            { value: '', label: 'Any' },
+            { value: '', label: t('search.any') },
             ...(entry.facet.values ?? []).map((v: FacetValueInsightsDto) => ({
               value: v.id,
               label: v.label,
@@ -679,28 +667,26 @@ function message(e: unknown): string {
         variant="ghost"
         @click="clearFacets()"
       >
-        Clear
+        {{ t('search.clear') }}
       </VButton>
       <span class="pb-2 text-xs opacity-60">
-        Applies to the next search — an endpoint that does not offer a selected
-        filter is skipped.
+        {{ t('search.facetHint') }}
       </span>
     </div>
 
     <VEmptyState
       v-if="!configTab && available.length === 0"
-      headline="No search provider configured"
-      body="Set research.endpoint.&lt;id&gt;.protocol and its key in the settings first.
-            Already done? The inventory is cached for five minutes — reload it under Settings."
+      :headline="t('search.noProviderHeadline')"
+      :body="t('search.noProviderBody')"
     />
 
     <!-- Settings -->
     <div v-if="configTab" class="flex-1 overflow-y-auto">
       <div class="flex flex-col gap-4">
         <VCard>
-          <h3 class="mb-2 font-semibold">Providers</h3>
+          <h3 class="mb-2 font-semibold">{{ t('search.providers') }}</h3>
           <div v-if="providerLines.length === 0" class="text-sm opacity-70">
-            Nothing configured in this project.
+            {{ t('search.noProviders') }}
           </div>
           <div v-else class="flex flex-col gap-1">
             <div
@@ -719,16 +705,16 @@ function message(e: unknown): string {
           </div>
           <VButton class="mt-2" size="sm" variant="ghost" :disabled="loading"
                    @click="reloadProviders()">
-            Reload providers
+            {{ t('search.reloadProviders') }}
           </VButton>
         </VCard>
 
         <VCard v-if="config">
-          <h3 class="mb-2 font-semibold">Defaults</h3>
+          <h3 class="mb-2 font-semibold">{{ t('search.defaults') }}</h3>
           <div class="flex items-center gap-2">
             <VSelect
               :model-value="modality"
-              :options="available.map((m) => ({ value: m, label: MODALITY_LABEL[m] ?? m }))"
+              :options="available.map((m) => ({ value: m, label: t(`search.modality.${m}`) }))"
               @update:model-value="(v: string | null) => (modality = v ?? 'web')"
             />
             <VInput
@@ -738,15 +724,15 @@ function message(e: unknown): string {
               @update:model-value="(v: string) => (num = Number(v) || 10)"
             />
             <VButton size="sm" variant="ghost" :disabled="loading" @click="persist()">
-              Save defaults
+              {{ t('search.saveDefaults') }}
             </VButton>
           </div>
         </VCard>
 
         <VCard v-if="config">
-          <h3 class="mb-2 font-semibold">Saved searches</h3>
+          <h3 class="mb-2 font-semibold">{{ t('search.savedSearches') }}</h3>
           <div v-if="(config.savedSearches ?? []).length === 0" class="text-sm opacity-70">
-            None yet — run a search and press “Save search”.
+            {{ t('search.noSavedSearches') }}
           </div>
           <div v-else class="flex flex-col gap-1">
             <div
@@ -756,9 +742,9 @@ function message(e: unknown): string {
             >
               <span class="flex-1 truncate">{{ saved.name }}</span>
               <span class="text-xs opacity-60">{{ saved.modality }}</span>
-              <VButton size="sm" variant="ghost" @click="runSaved(saved)">Run</VButton>
+              <VButton size="sm" variant="ghost" @click="runSaved(saved)">{{ t('search.run') }}</VButton>
               <VButton size="sm" variant="ghost" @click="removeSaved(saved.name)">
-                Remove
+                {{ t('search.remove') }}
               </VButton>
             </div>
           </div>
@@ -772,7 +758,7 @@ function message(e: unknown): string {
          scanned, and these are results to read. -->
     <div v-else class="min-h-0 flex-1 overflow-y-auto">
       <div class="mx-auto flex w-full max-w-3xl flex-col gap-2">
-        <p v-if="loading" class="p-2 text-sm opacity-70">Searching…</p>
+        <p v-if="loading" class="p-2 text-sm opacity-70">{{ t('search.searching') }}</p>
 
         <!-- A dispatcher-level refusal is about this tab, not the app -->
         <VAlert v-if="result?.error" variant="warning">{{ result.error }}</VAlert>
@@ -780,16 +766,16 @@ function message(e: unknown): string {
 
         <VEmptyState
           v-if="!loading && !result && !curated"
-          headline="Nothing searched yet"
-          body="Type a query and press Search."
+          :headline="t('search.nothingSearchedHeadline')"
+          :body="t('search.nothingSearchedBody')"
         />
         <VEmptyState
           v-else-if="result && result.hits.length === 0 && !result.error"
-          headline="Nothing found"
+          :headline="t('search.nothingFoundHeadline')"
           :body="
             result.droppedCount > 0
-              ? `${result.droppedCount} result(s) were withheld by the source.`
-              : 'The provider returned no results for this query.'
+              ? t('search.withheld', { count: result.droppedCount })
+              : t('search.noResults')
           "
         />
 
@@ -828,7 +814,9 @@ function message(e: unknown): string {
                     {{ hit.title }}
                   </a>
                   <span v-else class="font-semibold">{{ hit.title }}</span>
-                  <span v-if="metaLine(hit)" class="text-xs opacity-60">{{ metaLine(hit) }}</span>
+                  <span v-if="metaLine(hit, t('search.citedPrefix'))" class="text-xs opacity-60">
+                    {{ metaLine(hit, t('search.citedPrefix')) }}
+                  </span>
                   <p
                     v-if="hit.snippet"
                     :class="isOpen(hit, i) ? 'text-sm opacity-80' : 'line-clamp-2 text-sm opacity-80'"
@@ -836,9 +824,9 @@ function message(e: unknown): string {
                     {{ hit.snippet }}
                   </p>
                   <span v-if="!isOpen(hit, i) && hit.contentState === CONTENT_EMBEDDED"
-                        class="text-xs opacity-50">full text included</span>
+                        class="text-xs opacity-50">{{ t('search.fullTextIncluded') }}</span>
                   <span v-else-if="!isOpen(hit, i) && hit.contentState === CONTENT_ON_DEMAND"
-                        class="text-xs opacity-50">full text on request</span>
+                        class="text-xs opacity-50">{{ t('search.fullTextOnRequest') }}</span>
                 </div>
               </div>
 
@@ -861,16 +849,19 @@ function message(e: unknown): string {
                and without the line the reader is looking at an answer to
                something else. -->
           <p v-if="curatedQuery" class="text-sm font-semibold">
-            Curated answer for: {{ curatedQuery }}
+            {{ t('search.curatedFor', { query: curatedQuery }) }}
           </p>
           <VAlert v-if="curated.gaps.length > 0" variant="info">
             <!-- What it could NOT answer is the useful part, and a summary
                  would swallow it. -->
-            <span class="font-semibold">Gaps:</span> {{ curated.gaps.join(' · ') }}
+            <span class="font-semibold">{{ t('search.gaps') }}</span> {{ curated.gaps.join(' · ') }}
           </VAlert>
           <p class="text-xs opacity-60">
-            {{ curated.hits.length }} kept, {{ curated.droppedCount }} rejected · sources:
-            {{ curated.instancesUsed.join(', ') }}
+            {{ t('search.curatedCounts', {
+              kept: curated.hits.length,
+              dropped: curated.droppedCount,
+              sources: curated.instancesUsed.join(', '),
+            }) }}
           </p>
           <VCard v-for="(hit, i) in curated.hits" :key="hit.url + i">
             <div class="flex flex-col gap-1">

@@ -18,8 +18,11 @@ import {
   reconcilePayouts, refundOrder, reissueCreditNote, releasePayout,
 } from './api';
 import type { MoneyView, SaleRow, TaxLine, TaxReport, Unclassified } from './types';
+import { useT } from './i18n';
 
 const props = defineProps<{ projectId: string; sourceId: string }>();
+
+const t = useT();
 
 const view = ref<MoneyView | null>(null);
 const report = ref<TaxReport | null>(null);
@@ -63,7 +66,7 @@ async function load(): Promise<void> {
     if (view.value?.problem) error.value = view.value.problem;
     unclassified.value = await loadUnclassified(props.projectId, props.sourceId);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load the money view.';
+    error.value = e instanceof Error ? e.message : t('store.money.error.load');
   } finally {
     loading.value = false;
   }
@@ -75,23 +78,34 @@ async function pay(vendorName: string): Promise<void> {
     notice.value = payout.status === 'FAILED'
       // A failed payout is not an error of this screen — it is a fact about
       // the rail, and it is on the record now.
-      ? `${payout.payoutName} failed: ${payout.failureReason ?? 'no reason given'}`
-      : `${payout.payoutName}: ${money(payout.amountCents, payout.currency)} ${payout.status.toLowerCase()}.`;
+      ? t('store.money.payoutFailed', {
+        payout: payout.payoutName,
+        reason: payout.failureReason ?? t('store.money.noReasonGiven'),
+      })
+      : t('store.money.payoutStatus', {
+        payout: payout.payoutName,
+        amount: money(payout.amountCents, payout.currency),
+        status: payout.status.toLowerCase(),
+      });
   });
 }
 
 async function release(payoutName: string): Promise<void> {
   await act(async () => {
     await releasePayout(props.projectId, props.sourceId, payoutName);
-    notice.value = `${payoutName} released — its sales are due again.`;
+    notice.value = t('store.money.released', { payout: payoutName });
   });
 }
 
 async function reconcile(): Promise<void> {
   await act(async () => {
     const result = await reconcilePayouts(props.projectId, props.sourceId);
-    notice.value = `Asked about ${result.asked}: ${result.arrived} arrived,`
-      + ` ${result.failed} failed, ${result.stillOpen} still open.`;
+    notice.value = t('store.money.reconciled', {
+      asked: result.asked,
+      arrived: result.arrived,
+      failed: result.failed,
+      open: result.stillOpen,
+    });
   });
 }
 
@@ -101,9 +115,15 @@ async function refund(order: SaleRow): Promise<void> {
       refundReason.value, refundAlreadyReturned.value);
     // Says all three things a refund did, because "refunded" alone leaves
     // the two that matter later unsaid.
-    notice.value = `${result.orderName} refunded — entitlement `
-      + `${result.entitlementRevoked ? 'revoked' : 'was already gone'}, vendor share `
-      + `${result.vendorShare === 'CLAWED_BACK' ? 'held back from their next payout' : 'never paid'}.`;
+    notice.value = t('store.money.refunded', {
+      order: result.orderName,
+      entitlement: result.entitlementRevoked
+        ? t('store.money.entitlementRevoked')
+        : t('store.money.entitlementGone'),
+      share: result.vendorShare === 'CLAWED_BACK'
+        ? t('store.money.shareClawedBack')
+        : t('store.money.shareNeverPaid'),
+    });
     refunding.value = '';
     refundReason.value = '';
     refundAlreadyReturned.value = false;
@@ -115,7 +135,10 @@ async function classify(order: SaleRow): Promise<void> {
   await act(async () => {
     const classified = await classifyOrder(props.projectId, props.sourceId, order.orderId,
       classifyCountry.value.trim().toUpperCase(), classifyVatId.value.trim());
-    notice.value = `${classified.orderId} is now ${classified.vatTreatment}.`;
+    notice.value = t('store.money.classified', {
+      order: classified.orderId,
+      treatment: classified.vatTreatment,
+    });
     classifying.value = '';
     classifyCountry.value = '';
     classifyVatId.value = '';
@@ -126,7 +149,7 @@ async function classify(order: SaleRow): Promise<void> {
 async function reissue(payoutName: string): Promise<void> {
   await act(async () => {
     const note = await reissueCreditNote(props.projectId, props.sourceId, payoutName);
-    notice.value = `${note.number} written — the old one was reversed in full.`;
+    notice.value = t('store.money.reissued', { number: note.number });
   });
 }
 
@@ -137,7 +160,7 @@ async function runReport(): Promise<void> {
     report.value = await loadTaxReport(props.projectId, props.sourceId,
       `${from.value}T00:00:00Z`, `${to.value}T00:00:00Z`);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not build the report.';
+    error.value = e instanceof Error ? e.message : t('store.money.error.report');
   } finally {
     loading.value = false;
   }
@@ -150,7 +173,7 @@ async function downloadReport(): Promise<void> {
     await openTaxReportPdf(props.projectId, props.sourceId,
       `${from.value}T00:00:00Z`, `${to.value}T00:00:00Z`);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not render the report.';
+    error.value = e instanceof Error ? e.message : t('store.money.error.render');
   } finally {
     loading.value = false;
   }
@@ -165,7 +188,7 @@ async function act(run: () => Promise<void>): Promise<void> {
     await run();
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'That did not work.';
+    error.value = e instanceof Error ? e.message : t('store.money.error.generic');
   } finally {
     loading.value = false;
   }
@@ -207,30 +230,34 @@ onMounted(load);
     <VCard>
       <div class="flex items-start justify-between gap-4">
         <div>
-          <div class="font-semibold">Owed to vendors</div>
+          <div class="font-semibold">{{ t('store.money.owed') }}</div>
           <p class="text-sm opacity-70">
-            Money waits out the window in which a buyer can take it back, so a
-            fresh sale is not here yet.
+            {{ t('store.money.owedHint') }}
           </p>
         </div>
         <VButton size="sm" variant="secondary" outline :disabled="loading" @click="load">
-          Refresh
+          {{ t('store.common.refresh') }}
         </VButton>
       </div>
 
-      <VEmptyState v-if="!due.length" headline="Nothing to pay" body="No vendor has earned anything yet." />
+      <VEmptyState
+        v-if="!due.length"
+        :headline="t('store.money.nothingToPayHeadline')"
+        :body="t('store.money.nothingToPayBody')"
+      />
 
       <div v-for="entry in due" :key="entry.vendorName" class="py-2 border-t">
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
             <div class="font-medium">{{ entry.vendorName }}</div>
             <div class="text-sm opacity-70">
-              {{ entry.orderCount }} sale(s) · earned {{ money(entry.earnedCents, entry.currency) }}
+              {{ t('store.money.sales', { count: entry.orderCount }) }}
+              · {{ t('store.money.earned', { amount: money(entry.earnedCents, entry.currency) }) }}
               <span v-if="entry.clawbackCents">
-                · refunds {{ money(entry.clawbackCents, entry.currency) }}
+                · {{ t('store.money.refunds', { amount: money(entry.clawbackCents, entry.currency) }) }}
               </span>
               <span v-if="entry.disputedCents">
-                · disputed {{ money(entry.disputedCents, entry.currency) }}
+                · {{ t('store.money.disputed', { amount: money(entry.disputedCents, entry.currency) }) }}
               </span>
             </div>
             <div v-if="entry.blockedReason" class="text-sm text-warning">
@@ -244,7 +271,7 @@ onMounted(load);
               size="sm"
               :disabled="loading"
               @click="pay(entry.vendorName)"
-            >Pay</VButton>
+            >{{ t('store.money.pay') }}</VButton>
           </div>
         </div>
       </div>
@@ -254,22 +281,20 @@ onMounted(load);
     <VCard>
       <div class="flex items-start justify-between gap-4">
         <div>
-          <div class="font-semibold">Unfinished payouts</div>
+          <div class="font-semibold">{{ t('store.money.openPayouts') }}</div>
           <p class="text-sm opacity-70">
-            Handed to the rail and not yet confirmed — accepted is not
-            arrived — and the ones that failed, which are the ones needing a
-            decision.
+            {{ t('store.money.openPayoutsHint') }}
           </p>
         </div>
         <VButton size="sm" variant="secondary" outline :disabled="loading" @click="reconcile">
-          Ask the rail
+          {{ t('store.money.askRail') }}
         </VButton>
       </div>
 
       <VEmptyState
         v-if="!open.length"
-        headline="Nothing outstanding"
-        body="Every payout has arrived."
+        :headline="t('store.money.nothingOutstandingHeadline')"
+        :body="t('store.money.nothingOutstandingBody')"
       />
 
       <div v-for="payout in open" :key="payout.payoutName" class="py-2 border-t">
@@ -291,21 +316,23 @@ onMounted(load);
             outline
             :disabled="loading"
             @click="release(payout.payoutName)"
-          >Release</VButton>
+          >{{ t('store.money.release') }}</VButton>
         </div>
       </div>
     </VCard>
 
     <!-- ── giving a sale back ── -->
     <VCard>
-      <div class="font-semibold">Refunds</div>
+      <div class="font-semibold">{{ t('store.money.refundsHeading') }}</div>
       <p class="text-sm opacity-70">
-        Three things turn round: the money, the entitlement, and the vendor's
-        share. A chargeback has already moved the money — say so, and only the
-        rest happens.
+        {{ t('store.money.refundsHint') }}
       </p>
 
-      <VEmptyState v-if="!refundable.length" headline="Nothing to refund" body="No settled sale." />
+      <VEmptyState
+        v-if="!refundable.length"
+        :headline="t('store.money.nothingToRefundHeadline')"
+        :body="t('store.money.nothingToRefundBody')"
+      />
 
       <div v-for="order in refundable" :key="order.orderId" class="py-2 border-t">
         <div class="flex items-start justify-between gap-4">
@@ -324,18 +351,22 @@ onMounted(load);
             variant="secondary"
             outline
             @click="refunding = order.orderId"
-          >Refund</VButton>
+          >{{ t('store.money.refund') }}</VButton>
         </div>
 
         <div v-if="refunding === order.orderId" class="mt-2 flex flex-col gap-2">
-          <VInput v-model="refundReason" label="Reason" help="Goes on the record, not to the buyer." />
+          <VInput
+            v-model="refundReason"
+            :label="t('store.common.reason')"
+            :help="t('store.money.refundReasonHelp')"
+          />
           <label class="flex gap-2 items-start text-sm">
             <input v-model="refundAlreadyReturned" type="checkbox" class="mt-1" />
-            <span>The money is already back with the buyer (a chargeback).</span>
+            <span>{{ t('store.money.chargeback') }}</span>
           </label>
           <div class="flex gap-2">
-            <VButton :disabled="loading" @click="refund(order)">Confirm refund</VButton>
-            <VButton variant="secondary" outline @click="refunding = ''">Cancel</VButton>
+            <VButton :disabled="loading" @click="refund(order)">{{ t('store.money.confirmRefund') }}</VButton>
+            <VButton variant="secondary" outline @click="refunding = ''">{{ t('store.common.cancel') }}</VButton>
           </div>
         </div>
       </div>
@@ -343,12 +374,9 @@ onMounted(load);
 
     <!-- ── what nobody could classify ── -->
     <VCard v-if="unclassifiedOrders.length || unclassifiedNotes.length">
-      <div class="font-semibold">Needs classification</div>
+      <div class="font-semibold">{{ t('store.money.classification') }}</div>
       <p class="text-sm opacity-70">
-        Sales and notes the store could not place under a tax rule. They are
-        in the report as a count; here they can be resolved. A sale whose
-        receipt is already written cannot be changed — that needs a
-        correction, which is a document of its own.
+        {{ t('store.money.classificationHint') }}
       </p>
 
       <div v-for="order in unclassifiedOrders" :key="order.orderId" class="py-2 border-t">
@@ -357,7 +385,7 @@ onMounted(load);
             <div class="font-medium truncate">{{ order.vendorName }}/{{ order.kitId }}</div>
             <div class="text-sm opacity-70">
               {{ order.orderId }} · {{ money(order.amountCents, order.currency) }} ·
-              {{ order.billingCountry || 'no country on record' }}
+              {{ order.billingCountry || t('store.money.noCountry') }}
               <span v-if="order.vatTreatment"> · {{ order.vatTreatment }}</span>
             </div>
           </div>
@@ -367,25 +395,28 @@ onMounted(load);
             variant="secondary"
             outline
             @click="classifying = order.orderId; classifyCountry = order.billingCountry ?? ''"
-          >Classify</VButton>
+          >{{ t('store.money.classify') }}</VButton>
         </div>
 
         <div v-if="classifying === order.orderId" class="mt-2 flex flex-col gap-2">
-          <VInput v-model="classifyCountry" label="Buyer's country" help="Two letters, e.g. DE." />
+          <VInput
+            v-model="classifyCountry"
+            :label="t('store.money.buyerCountry')"
+            :help="t('store.money.buyerCountryHelp')"
+          />
           <VInput
             v-model="classifyVatId"
-            label="VAT id"
-            help="Only for a business buyer. Empty means a consumer."
+            :label="t('store.money.vatId')"
+            :help="t('store.money.vatIdHelp')"
           />
           <p class="text-sm opacity-60">
-            The rate is not entered — it follows from the country, by the same
-            rules the sale itself would have used.
+            {{ t('store.money.rateDerived') }}
           </p>
           <div class="flex gap-2">
             <VButton :disabled="loading || !classifyCountry.trim()" @click="classify(order)">
-              Apply
+              {{ t('store.common.apply') }}
             </VButton>
-            <VButton variant="secondary" outline @click="classifying = ''">Cancel</VButton>
+            <VButton variant="secondary" outline @click="classifying = ''">{{ t('store.common.cancel') }}</VButton>
           </div>
         </div>
       </div>
@@ -396,7 +427,7 @@ onMounted(load);
             <div class="font-medium">{{ note.number }} · {{ note.vendorName }}</div>
             <div class="text-sm opacity-70">
               {{ money(note.grossCents, note.currency) }} · {{ note.payoutName }} ·
-              needs the vendor's country and VAT id
+              {{ t('store.money.noteNeedsVendor') }}
             </div>
           </div>
           <VButton
@@ -405,29 +436,28 @@ onMounted(load);
             outline
             :disabled="loading"
             @click="reissue(note.payoutName)"
-          >Write again</VButton>
+          >{{ t('store.money.writeAgain') }}</VButton>
         </div>
       </div>
     </VCard>
 
     <!-- ── what is owed in tax ── -->
     <VCard>
-      <div class="font-semibold">Tax</div>
+      <div class="font-semibold">{{ t('store.money.tax') }}</div>
       <p class="text-sm opacity-70">
-        Counted from what each sale recorded on the day. Three sections
-        because they go in three different returns.
+        {{ t('store.money.taxHint') }}
       </p>
 
       <div class="flex gap-2 items-end mt-2">
         <!-- Each field in its own box: two w-full inputs in one flex row
              fight each other and the buttons beside them. -->
         <div class="w-40">
-          <VInput v-model="from" label="From" help="YYYY-MM-DD" />
+          <VInput v-model="from" :label="t('store.money.from')" :help="t('store.money.dateHelp')" />
         </div>
         <div class="w-40">
-          <VInput v-model="to" label="To (exclusive)" help="YYYY-MM-DD" />
+          <VInput v-model="to" :label="t('store.money.to')" :help="t('store.money.dateHelp')" />
         </div>
-        <VButton size="sm" :disabled="loading" @click="runReport">Build</VButton>
+        <VButton size="sm" :disabled="loading" @click="runReport">{{ t('store.money.build') }}</VButton>
         <!--
           The same period as the screen shows, rendered. Not a second
           computation — a printed report that disagreed with this one is
@@ -440,10 +470,10 @@ onMounted(load);
 
       <div v-if="report" class="mt-3 flex flex-col gap-3">
         <div v-for="section in [
-          { key: 'domestic', label: 'Domestic — ordinary return', rows: lines(report.domestic) },
-          { key: 'oss', label: 'Other member states — OSS return', rows: lines(report.oss) },
-          { key: 'reverse', label: 'Reverse charge — recapitulative statement', rows: lines(report.reverseCharge) },
-          { key: 'refunded', label: 'Refunded in this period', rows: lines(report.refunded) },
+          { key: 'domestic', label: t('store.money.section.domestic'), rows: lines(report.domestic) },
+          { key: 'oss', label: t('store.money.section.oss'), rows: lines(report.oss) },
+          { key: 'reverse', label: t('store.money.section.reverse'), rows: lines(report.reverseCharge) },
+          { key: 'refunded', label: t('store.money.section.refunded'), rows: lines(report.refunded) },
         ]" :key="section.key">
           <div class="text-sm font-semibold">{{ section.label }}</div>
           <div v-if="!section.rows.length" class="text-sm opacity-60">—</div>
@@ -454,16 +484,16 @@ onMounted(load);
           >
             <span class="w-8">{{ line.country || '?' }}</span>
             <span class="w-16 text-right">{{ rate(line.rateBasisPoints) }}</span>
-            <span class="w-28 text-right">net {{ money(line.netCents) }}</span>
-            <span class="w-28 text-right">tax {{ money(line.taxCents) }}</span>
-            <span class="opacity-60">{{ line.orderCount }} sale(s)</span>
+            <span class="w-28 text-right">{{ t('store.money.net', { amount: money(line.netCents) }) }}</span>
+            <span class="w-28 text-right">{{ t('store.money.taxLine', { amount: money(line.taxCents) }) }}</span>
+            <span class="opacity-60">{{ t('store.money.sales', { count: line.orderCount }) }}</span>
           </div>
         </div>
 
         <div class="text-sm border-t pt-2">
-          <span class="font-semibold">Tax total {{ money(report.totalTaxCents) }}</span>
+          <span class="font-semibold">{{ t('store.money.taxTotal', { amount: money(report.totalTaxCents) }) }}</span>
           <span v-if="report.unclear" class="text-warning">
-            · {{ report.unclear }} sale(s) carry no classification
+            · {{ t('store.money.unclear', { count: report.unclear }) }}
           </span>
         </div>
       </div>

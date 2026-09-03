@@ -19,8 +19,11 @@
  * browser without breaking PM's view-level invariants.
  */
 import { computed, onMounted, ref, watch } from 'vue';
+import { useT } from '../useT';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+
+const t = useT();
 
 interface EmbedDocMeta {
   id: string;
@@ -158,7 +161,7 @@ watch(uri, resolve);
         <button
           class="vance-embed__action"
           type="button"
-          title="Refresh — embedded documents don't auto-update"
+          :title="t('blockEditor.embed.refresh')"
           @click.stop="refresh"
         >↻</button>
       </div>
@@ -175,13 +178,13 @@ watch(uri, resolve);
         <button
           class="vance-embed__action"
           type="button"
-          title="Refresh — embedded documents don't auto-update"
+          :title="t('blockEditor.embed.refresh')"
           @click.stop="refresh"
         >↻</button>
         <button
           class="vance-embed__action"
           type="button"
-          title="Open document (or ⌘/Ctrl+click)"
+          :title="t('blockEditor.embed.open')"
           @click="openEmbed"
         >↗</button>
       </div>

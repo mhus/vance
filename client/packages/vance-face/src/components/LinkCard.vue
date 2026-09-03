@@ -193,7 +193,7 @@ function hostnameLabel(): string {
       />
       <div class="link-card__body">
         <div class="link-card__site">{{ preview.siteName ?? hostnameLabel() }}</div>
-        <div class="link-card__title link-card__title--restricted">Open in browser</div>
+        <div class="link-card__title link-card__title--restricted">{{ $t('linkCard.openInBrowser') }}</div>
       </div>
     </a>
     <div
@@ -210,7 +210,7 @@ function hostnameLabel(): string {
       />
       <div class="link-card__body">
         <div class="link-card__site">{{ preview.siteName ?? hostnameLabel() }}</div>
-        <div class="link-card__title link-card__title--muted">Preview unavailable</div>
+        <div class="link-card__title link-card__title--muted">{{ $t('linkCard.previewUnavailable') }}</div>
       </div>
     </div>
     <div
@@ -226,13 +226,13 @@ function hostnameLabel(): string {
       />
       <div class="link-card__body">
         <div class="link-card__site">{{ hostnameLabel() }}</div>
-        <div class="link-card__title link-card__title--muted">Preview unavailable</div>
+        <div class="link-card__title link-card__title--muted">{{ $t('linkCard.previewUnavailable') }}</div>
       </div>
     </div>
     <div v-else-if="loading" class="link-card__inner link-card__inner--loading">
       <div class="link-card__body">
         <div class="link-card__site">{{ hostnameLabel() }}</div>
-        <div class="link-card__title link-card__title--muted">Loading preview…</div>
+        <div class="link-card__title link-card__title--muted">{{ $t('linkCard.loadingPreview') }}</div>
       </div>
     </div>
     <!-- Idle (not yet observed): render a small placeholder so the

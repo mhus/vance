@@ -76,49 +76,55 @@ function fmtScore(score: number): string {
 
     <VEmptyState
       v-if="!projectId"
-      headline="No project selected"
-      body="Pick a project from the sidebar filter to manage its RAG."
+      :headline="$t('insights.rag.noProjectHeadline')"
+      :body="$t('insights.rag.noProjectBody')"
     />
 
     <template v-else>
       <VAlert v-if="embeddingDisabled" variant="info">
         <span>
-          RAG is disabled for this project —
-          <code>ai.embedding.provider = none</code>. Open the
-          <strong>LLM Settings</strong> form and pick <code>embedded</code>,
-          <code>gemini</code> or <code>openai</code> to enable indexing and search.
+          {{ $t('insights.rag.disabledPre') }}
+          <code>ai.embedding.provider = none</code>{{ $t('insights.rag.disabledMid') }}
+          <strong>{{ $t('insights.rag.llmSettings') }}</strong>
+          {{ $t('insights.rag.disabledPost') }} <code>embedded</code>,
+          <code>gemini</code> {{ $t('insights.rag.disabledOr') }} <code>openai</code>
+          {{ $t('insights.rag.disabledEnd') }}
         </span>
       </VAlert>
 
-      <VCard title="Project RAG — _documents">
-        <div v-if="state.loading.value" class="opacity-70">Loading…</div>
+      <VCard :title="$t('insights.rag.cardTitle')">
+        <div v-if="state.loading.value" class="opacity-70">{{ $t('insights.rag.loading') }}</div>
         <template v-else-if="state.status.value">
           <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-            <dt class="opacity-60">Status</dt>
+            <dt class="opacity-60">{{ $t('insights.rag.status') }}</dt>
             <dd>
-              <span v-if="embeddingDisabled" class="badge-empty">disabled</span>
-              <span v-else-if="state.status.value.exists" class="badge-ok">active</span>
-              <span v-else class="badge-empty">not created</span>
+              <span v-if="embeddingDisabled" class="badge-empty">{{ $t('insights.rag.statusDisabled') }}</span>
+              <span v-else-if="state.status.value.exists" class="badge-ok">{{ $t('insights.rag.statusActive') }}</span>
+              <span v-else class="badge-empty">{{ $t('insights.rag.statusNotCreated') }}</span>
             </dd>
-            <dt class="opacity-60">Effective provider</dt>
+            <dt class="opacity-60">{{ $t('insights.rag.effectiveProvider') }}</dt>
             <dd>
               <code>{{ state.status.value.effectiveProvider }}</code>
               <span
                 v-if="providerMismatch"
                 class="ml-2 text-xs opacity-70"
-                :title="'RAG was created with ' + state.status.value.embeddingProvider + ' — tenant now resolves to ' + state.status.value.effectiveProvider + '. Use Rebuild to migrate.'"
+                :title="$t('insights.rag.pinnedTitle', {
+                  created: state.status.value.embeddingProvider,
+                  effective: state.status.value.effectiveProvider,
+                })"
               >
-                (RAG pinned to <code>{{ state.status.value.embeddingProvider }}</code>)
+                {{ $t('insights.rag.pinnedPre') }}
+                <code>{{ state.status.value.embeddingProvider }}</code>{{ $t('insights.rag.pinnedPost') }}
               </span>
             </dd>
             <template v-if="state.status.value.exists">
-              <dt class="opacity-60">RAG id</dt>
+              <dt class="opacity-60">{{ $t('insights.rag.ragId') }}</dt>
               <dd class="font-mono text-xs">{{ state.status.value.ragId }}</dd>
-              <dt class="opacity-60">Embedding model</dt>
+              <dt class="opacity-60">{{ $t('insights.rag.embeddingModel') }}</dt>
               <dd>{{ state.status.value.embeddingModel ?? '—' }}</dd>
-              <dt class="opacity-60">Chunks</dt>
+              <dt class="opacity-60">{{ $t('insights.rag.chunks') }}</dt>
               <dd>{{ state.status.value.chunkCount }}</dd>
-              <dt class="opacity-60">Created</dt>
+              <dt class="opacity-60">{{ $t('insights.rag.created') }}</dt>
               <dd>{{ fmtTime(state.status.value.createdAt) }}</dd>
             </template>
           </dl>
@@ -126,37 +132,37 @@ function fmtScore(score: number): string {
             v-if="!embeddingDisabled && !state.status.value.exists"
             class="text-xs opacity-70 mt-2"
           >
-            The project's default RAG is created automatically the next time the
-            project is brought to RUNNING, or when you press <em>Reindex</em>.
+            {{ $t('insights.rag.autoCreatePre') }}
+            <em>{{ $t('insights.rag.autoCreateReindex') }}</em>.
           </p>
         </template>
       </VCard>
 
       <template v-if="!embeddingDisabled">
-      <VCard title="Actions">
+      <VCard :title="$t('insights.rag.actions')">
         <p class="text-xs opacity-70 mb-3">
-          <strong>Reindex</strong> queues every active document under
-          <code>documents/</code> for re-embedding into the existing RAG —
-          embedding provider and model are kept. <strong>Rebuild</strong>
-          drops the RAG and re-creates it with the current tenant embedding
-          settings; use this after switching providers.
+          <strong>{{ $t('insights.rag.actionsHintPre') }}</strong>
+          {{ $t('insights.rag.actionsHintMid') }} <code>documents/</code>
+          {{ $t('insights.rag.actionsHintKeep') }}
+          <strong>{{ $t('insights.rag.actionsHintRebuild') }}</strong>
+          {{ $t('insights.rag.actionsHintPost') }}
         </p>
         <div class="flex flex-wrap gap-2">
           <VButton
             :disabled="state.busy.value"
             @click="reindex"
           >
-            {{ state.busy.value ? 'Working…' : 'Reindex' }}
+            {{ state.busy.value ? $t('insights.rag.working') : $t('insights.rag.reindex') }}
           </VButton>
           <VButton
             variant="ghost"
             :disabled="state.busy.value"
             @click="rebuildConfirmOpen = true"
           >
-            Rebuild with current embedding model
+            {{ $t('insights.rag.rebuildButton') }}
           </VButton>
           <VButton variant="ghost" :disabled="state.busy.value" @click="refresh">
-            Refresh
+            {{ $t('insights.rag.refresh') }}
           </VButton>
         </div>
 
@@ -165,18 +171,17 @@ function fmtScore(score: number): string {
           class="mt-3 border border-warning/40 bg-warning/10 rounded p-3 text-sm"
         >
           <p class="mb-2">
-            This will <strong>drop</strong> the current <code>_documents</code> RAG
-            (including all chunks) and re-create it with the tenant's current
-            embedding settings. Then every active document will be queued for
-            re-indexing.
+            {{ $t('insights.rag.confirmDropPre') }}
+            <strong>{{ $t('insights.rag.confirmDropWord') }}</strong>
+            {{ $t('insights.rag.confirmDropMid') }} <code>_documents</code>
+            {{ $t('insights.rag.confirmDropPost') }}
           </p>
           <p class="text-xs opacity-70 mb-3">
-            Confirm only if you switched embedding provider/model and want the
-            new model applied retroactively.
+            {{ $t('insights.rag.confirmHint') }}
           </p>
           <div class="flex gap-2">
-            <VButton variant="danger" @click="rebuild">Yes, rebuild</VButton>
-            <VButton variant="ghost" @click="rebuildConfirmOpen = false">Cancel</VButton>
+            <VButton variant="danger" @click="rebuild">{{ $t('insights.rag.confirmYes') }}</VButton>
+            <VButton variant="ghost" @click="rebuildConfirmOpen = false">{{ $t('insights.rag.cancel') }}</VButton>
           </div>
         </div>
 
@@ -184,28 +189,28 @@ function fmtScore(score: number): string {
           v-if="state.lastResult.value"
           class="mt-3 text-xs opacity-70"
         >
-          Last run:
-          <strong>{{ state.lastResult.value.rebuild ? 'rebuild' : 'reindex' }}</strong>
-          — {{ state.lastResult.value.documentsQueued }} document(s) queued.
+          {{ $t('insights.rag.lastRun') }}
+          <strong>{{ state.lastResult.value.rebuild
+            ? $t('insights.rag.lastRunRebuild')
+            : $t('insights.rag.lastRunReindex') }}</strong>
+          {{ $t('insights.rag.lastRunQueued', { count: state.lastResult.value.documentsQueued }) }}
         </div>
       </VCard>
 
-      <VCard title="Search">
+      <VCard :title="$t('insights.rag.searchTitle')">
         <p class="text-xs opacity-70 mb-3">
-          Embed the query with the RAG's embedding model and return the
-          top-20 most similar chunks. Useful to inspect what the model
-          would inject as <code>&lt;rag-context&gt;</code> for a given
-          prompt.
+          {{ $t('insights.rag.searchHintPre') }}
+          <code>&lt;rag-context&gt;</code> {{ $t('insights.rag.searchHintPost') }}
         </p>
         <form class="flex gap-2 items-start" @submit.prevent="runSearch">
           <VInput
             v-model="state.searchQuery.value"
-            placeholder="Search the RAG…"
+            :placeholder="$t('insights.rag.searchPlaceholder')"
             :disabled="!state.status.value?.exists || state.searching.value"
             class="flex-1"
           />
           <VButton type="submit" :disabled="searchDisabled">
-            {{ state.searching.value ? 'Searching…' : 'Search' }}
+            {{ state.searching.value ? $t('insights.rag.searching') : $t('insights.rag.search') }}
           </VButton>
         </form>
 
@@ -213,7 +218,7 @@ function fmtScore(score: number): string {
           v-if="!state.status.value?.exists"
           class="text-xs opacity-60 mt-2"
         >
-          Search becomes available once the RAG has been created.
+          {{ $t('insights.rag.searchUnavailable') }}
         </p>
 
         <VAlert v-if="state.searchError.value" variant="error" class="mt-3">
@@ -225,7 +230,7 @@ function fmtScore(score: number): string {
             v-if="state.searchHits.value.length === 0"
             class="text-sm opacity-60 mt-3"
           >
-            No matches.
+            {{ $t('insights.rag.noMatches') }}
           </p>
           <ol v-else class="mt-3 flex flex-col gap-2">
             <li
@@ -237,7 +242,9 @@ function fmtScore(score: number): string {
                 <span class="font-mono truncate" :title="hit.sourceRef ?? ''">
                   {{ hit.sourceRef ?? '—' }}<span class="opacity-50"> #{{ hit.position }}</span>
                 </span>
-                <span class="font-mono whitespace-nowrap">score {{ fmtScore(hit.score) }}</span>
+                <span class="font-mono whitespace-nowrap">
+                  {{ $t('insights.rag.score', { value: fmtScore(hit.score) }) }}
+                </span>
               </div>
               <pre class="whitespace-pre-wrap break-words text-xs opacity-90 m-0">{{ hit.content }}</pre>
             </li>

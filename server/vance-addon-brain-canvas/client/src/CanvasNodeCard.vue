@@ -12,6 +12,7 @@ import DOMPurify from 'dompurify';
 import type { CanvasNodeDto } from './generated/canvas/CanvasNodeDto';
 import type { CanvasDocItem } from './generated/canvas/CanvasDocItem';
 import { resolveDocument } from './api';
+import { useT } from './i18n';
 
 /**
  * Custom VueFlow node. Text nodes support inline editing (double-click),
@@ -41,6 +42,8 @@ const props = defineProps<{
   };
   selected?: boolean;
 }>();
+
+const t = useT();
 
 const TEXT_COLORS = ['#111827', '#dc2626', '#2563eb', '#16a34a', '#ca8a04'];
 
@@ -375,7 +378,7 @@ function copyLink(): void {
       <div class="cv-toolbar nodrag">
         <button
           class="cv-swatch"
-          title="No colour"
+          :title="t('canvas.node.noColour')"
           style="background: #ffffff"
           :class="{ 'cv-active': !node.color }"
           @click="patch({ color: undefined })"
@@ -404,30 +407,30 @@ function copyLink(): void {
             class="cv-tcolor"
             :style="{ color: tc }"
             :class="{ 'cv-active': node.textColor === tc }"
-            title="Textfarbe"
+            :title="t('canvas.node.textColour')"
             @click="patch({ textColor: tc })"
           >A</button>
         </template>
 
         <template v-if="kind === 'link'">
           <span class="cv-sep"></span>
-          <button class="cv-btn" title="Rename" @click="beginEdit">✎</button>
+          <button class="cv-btn" :title="t('canvas.node.rename')" @click="beginEdit">✎</button>
           <button
             class="cv-btn"
-            title="Change target"
+            :title="t('canvas.node.changeTarget')"
             @click="props.data.onEditLink?.(node.id)"
           >🔗</button>
           <button
             class="cv-btn"
-            :title="copied ? 'Kopiert!' : 'Link kopieren'"
+            :title="copied ? t('canvas.node.copied') : t('canvas.node.copyLink')"
             @click="copyLink"
           >{{ copied ? '✓' : '📋' }}</button>
         </template>
 
         <span class="cv-sep"></span>
-        <button class="cv-btn" title="in den Vordergrund" @click="props.data.onFront?.(node.id)">⬆</button>
-        <button class="cv-btn" title="in den Hintergrund" @click="props.data.onBack?.(node.id)">⬇</button>
-        <button class="cv-btn cv-danger" title="Delete" @click="props.data.onDelete?.(node.id)">🗑</button>
+        <button class="cv-btn" :title="t('canvas.node.bringToFront')" @click="props.data.onFront?.(node.id)">⬆</button>
+        <button class="cv-btn" :title="t('canvas.node.sendToBack')" @click="props.data.onBack?.(node.id)">⬇</button>
+        <button class="cv-btn cv-danger" :title="t('canvas.node.delete')" @click="props.data.onDelete?.(node.id)">🗑</button>
       </div>
     </NodeToolbar>
 
@@ -473,7 +476,7 @@ function copyLink(): void {
         @keydown.esc.prevent="cancel"
       ></textarea>
       <div v-else class="canvas-note-body" :style="textStyle">
-        {{ node.text || '(empty note)' }}
+        {{ node.text || t('canvas.node.emptyNote') }}
       </div>
       <div v-if="node.author && !editing" class="canvas-note-author">✎ {{ node.author }}</div>
     </template>
@@ -482,16 +485,16 @@ function copyLink(): void {
       <button
         v-if="docMeta && !(embedComponent && docMeta.kind)"
         class="canvas-embed-open nodrag"
-        title="Open in Cortex"
+        :title="t('canvas.node.openInCortex')"
         @click.stop="openInCortex"
         @pointerdown.stop
         @dblclick.stop
       >↗</button>
-      <!-- Strukturierte Kinds zuerst: der injizierte Original-Renderer. -->
+      <!-- Structured kinds first: the injected host renderer. -->
       <div v-if="embedComponent && docMeta && docMeta.kind" class="canvas-embed-host nowheel">
         <component :is="embedComponent" :uri="node.ref" />
       </div>
-      <!-- Sonst (kein Kind): Bild/Markdown/Text selbst rendern. -->
+      <!-- Otherwise (no kind): render image / markdown / text ourselves. -->
       <img v-else-if="imgSrc" :src="imgSrc" class="canvas-embed-img" alt="" />
       <div v-else-if="mdHtml" class="canvas-embed-md" v-html="mdHtml"></div>
       <template v-else>
@@ -508,7 +511,7 @@ function copyLink(): void {
           v-if="editing"
           v-model="draft"
           class="canvas-link-title-input nodrag"
-          placeholder="Title"
+          :placeholder="t('canvas.node.titlePlaceholder')"
           @keydown.enter.prevent="commit"
           @keydown.esc.prevent="cancel"
           @blur="commit"
@@ -533,7 +536,7 @@ function copyLink(): void {
         <div v-else class="canvas-card-title">🔗 {{ node.title || linkSubtitle || '—' }}</div>
         <button
           class="canvas-card-copy-btn nodrag"
-          :title="copied ? 'Kopiert!' : 'Link kopieren'"
+          :title="copied ? t('canvas.node.copied') : t('canvas.node.copyLink')"
           @mousedown.stop
           @click.stop="copyLink"
         >{{ copied ? '✓' : '⧉' }}</button>
@@ -543,7 +546,7 @@ function copyLink(): void {
     </template>
 
     <template v-else-if="kind === 'group'">
-      <div class="canvas-group-label">{{ node.label || 'Group' }}</div>
+      <div class="canvas-group-label">{{ node.label || t('canvas.node.group') }}</div>
     </template>
   </div>
 </template>

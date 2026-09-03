@@ -13,8 +13,11 @@
  * node selection / keyboard navigation.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useT } from '../useT';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
+
+const t = useT();
 
 const props = defineProps<{
   node: {
@@ -86,7 +89,7 @@ function onBody(e: Event) {
         <input
           type="text"
           class="vance-callout__title"
-          placeholder="Title (optional)"
+          :placeholder="t('blockEditor.callout.titlePlaceholder')"
           :value="node.attrs.title ?? ''"
           contenteditable="false"
           @input="onTitle"
@@ -96,7 +99,7 @@ function onBody(e: Event) {
       </div>
       <textarea
         class="vance-callout__body"
-        placeholder="Body…"
+        :placeholder="t('blockEditor.callout.bodyPlaceholder')"
         :value="node.attrs.body"
         rows="2"
         contenteditable="false"

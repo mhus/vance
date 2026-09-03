@@ -1,5 +1,7 @@
 import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
+// Side effect: contributes this addon's messages to the host's i18n instance.
+import './i18n';
 
 const BinderAppKind = defineAsyncComponent(() => import('./BinderAppKind.vue'));
 

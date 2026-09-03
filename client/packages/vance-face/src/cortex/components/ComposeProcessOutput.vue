@@ -76,10 +76,10 @@ onMounted(() => { void load(); });
 <template>
   <VCard :title="title">
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
-    <p v-else-if="loading" class="text-sm opacity-60">Lade Antwort…</p>
+    <p v-else-if="loading" class="text-sm opacity-60">{{ $t('cortex.compose.loadingAnswer') }}</p>
     <template v-else>
       <MarkdownView v-if="answer" :source="answer" />
-      <p v-else class="text-sm opacity-60">Der Agent hat keine Antwort erzeugt.</p>
+      <p v-else class="text-sm opacity-60">{{ $t('cortex.compose.noAnswer') }}</p>
       <p v-if="messageId" class="text-xs opacity-40 mt-1 font-mono">{{ messageId }}</p>
     </template>
   </VCard>

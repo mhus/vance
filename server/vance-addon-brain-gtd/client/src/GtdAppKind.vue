@@ -35,6 +35,7 @@ import type { GtdView } from './generated/gtd/GtdView';
 import type { GtdActionView } from './generated/gtd/GtdActionView';
 import type { GtdActionContentView } from './generated/gtd/GtdActionContentView';
 import type { GtdHitView } from './generated/gtd/GtdHitView';
+import { useT } from './i18n';
 
 /**
  * GTD application view (Things-style). Left: buckets (derived) + projects +
@@ -51,6 +52,8 @@ const projectId = computed(() => props.document.projectId);
 const folder = computed(() => props.document.path.replace(/\/_app\.yaml$/, ''));
 const title = computed(() => view.value?.title ?? props.document.title ?? folder.value);
 
+const t = useT();
+
 const view = ref<GtdView | null>(null);
 const error = ref<string | null>(null);
 const loading = ref(false);
@@ -58,11 +61,6 @@ const rebuilding = ref(false);
 
 const BUCKETS = ['inbox', 'today', 'upcoming', 'anytime', 'someday', 'trash'] as const;
 type BucketId = (typeof BUCKETS)[number];
-const BUCKET_LABEL: Record<BucketId, string> = {
-  inbox: 'Inbox', today: 'Today', upcoming: 'Upcoming', anytime: 'Anytime',
-  someday: 'Someday', trash: 'Trash',
-};
-
 const selectedBucket = ref<BucketId>('today');
 const selectedProject = ref<string | null>(null);
 const selectedContext = ref<string | null>(null);
@@ -157,7 +155,7 @@ async function loadScan(): Promise<void> {
   try {
     view.value = await scanGtd(projectId.value, folder.value);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not scan GTD folder.';
+    error.value = e instanceof Error ? e.message : t('gtd.app.error.scan');
     view.value = null;
   } finally {
     loading.value = false;
@@ -188,7 +186,7 @@ async function selectAction(path: string): Promise<void> {
     const c = await getGtdAction(projectId.value, path);
     applyDetail(c);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load action.';
+    error.value = e instanceof Error ? e.message : t('gtd.app.error.loadAction');
     detail.value = null;
   } finally {
     detailLoading.value = false;
@@ -221,7 +219,7 @@ async function patchField(fields: Record<string, unknown>): Promise<void> {
     await loadScan();
   } catch (e) {
     saveStatus.value = 'error';
-    error.value = e instanceof Error ? e.message : 'Save failed.';
+    error.value = e instanceof Error ? e.message : t('gtd.app.error.save');
   }
 }
 
@@ -266,7 +264,7 @@ async function toggleDone(a: GtdActionView): Promise<void> {
 async function moveActionTo(path: string, bucket: BucketId, datePrefill = ''): Promise<void> {
   let date: string | undefined;
   if (bucket === 'upcoming') {
-    const input = window.prompt('Upcoming date (yyyy-MM-dd):', datePrefill);
+    const input = window.prompt(t('gtd.app.promptUpcoming'), datePrefill);
     if (!input) return;
     date = input.trim();
   }
@@ -280,7 +278,7 @@ async function moveActionTo(path: string, bucket: BucketId, datePrefill = ''): P
     await loadScan();
   } catch (e) {
     saveStatus.value = 'error';
-    error.value = e instanceof Error ? e.message : 'Move failed.';
+    error.value = e instanceof Error ? e.message : t('gtd.app.error.move');
   }
 }
 
@@ -312,7 +310,7 @@ async function refileAction(path: string, project: string | null): Promise<void>
     await loadScan();
   } catch (e) {
     saveStatus.value = 'error';
-    error.value = e instanceof Error ? e.message : 'Re-file failed.';
+    error.value = e instanceof Error ? e.message : t('gtd.app.error.refile');
   }
 }
 
@@ -348,7 +346,7 @@ async function onProjectChange(): Promise<void> {
   const current = detail.value?.project ?? '';
   let target = projectDraft.value;
   if (target === NEW_PROJECT) {
-    const name = window.prompt('New project name:', '');
+    const name = window.prompt(t('gtd.app.promptNewProject'), '');
     if (name == null || !name.trim()) { projectDraft.value = current; return; }
     target = name.trim();
   }
@@ -368,7 +366,7 @@ async function removeAction(): Promise<void> {
   const path = selectedPath.value;
   if (!path) return;
   if (selectedIsInTrash.value
-      && !window.confirm('Delete this action for good? This cannot be undone here.')) {
+      && !window.confirm(t('gtd.app.confirmDelete'))) {
     return;
   }
   try {
@@ -377,7 +375,7 @@ async function removeAction(): Promise<void> {
     selectedPath.value = null;
     await loadScan();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Delete failed.';
+    error.value = e instanceof Error ? e.message : t('gtd.app.error.delete');
   }
 }
 
@@ -551,7 +549,7 @@ async function applyRowReorder(
     saveStatus.value = 'saved';
   } catch (e) {
     saveStatus.value = 'error';
-    error.value = e instanceof Error ? e.message : 'Reorder failed.';
+    error.value = e instanceof Error ? e.message : t('gtd.app.error.reorder');
   }
 }
 
@@ -594,16 +592,16 @@ function holdsACaret(el: HTMLElement): boolean {
 }
 
 async function submitCapture(): Promise<void> {
-  const t = captureText.value.trim();
-  if (!t) return;
+  const text = captureText.value.trim();
+  if (!text) return;
   capturing.value = true;
   try {
-    await captureGtd(projectId.value, folder.value, { title: t });
+    await captureGtd(projectId.value, folder.value, { title: text });
     captureText.value = '';
     await loadScan();
     selectBucket('inbox');
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Capture failed.';
+    error.value = e instanceof Error ? e.message : t('gtd.app.error.capture');
   } finally {
     capturing.value = false;
     await nextTick();
@@ -625,7 +623,7 @@ async function runSearch(): Promise<void> {
     searchResults.value = resp.items ?? [];
     searchOpen.value = true;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Search failed.';
+    error.value = e instanceof Error ? e.message : t('gtd.app.error.search');
   } finally {
     searching.value = false;
   }
@@ -643,7 +641,7 @@ async function rebuild(): Promise<void> {
     await rebuildGtd(projectId.value, folder.value);
     await loadScan();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Rebuild failed.';
+    error.value = e instanceof Error ? e.message : t('gtd.app.error.rebuild');
   } finally {
     rebuilding.value = false;
   }
@@ -718,9 +716,9 @@ onBeforeUnmount(() => { editorRef.value?.flush(); });
 
 const saveStatusLabel = computed<string | null>(() => {
   switch (saveStatus.value) {
-    case 'saving': return 'Saving…';
-    case 'saved': return 'Saved';
-    case 'error': return 'Save failed';
+    case 'saving': return t('gtd.common.saving');
+    case 'saved': return t('gtd.common.saved');
+    case 'error': return t('gtd.common.saveFailed');
     default: return null;
   }
 });
@@ -750,7 +748,7 @@ function isCurrentBucket(b: BucketId): boolean {
           v-model="searchQuery"
           type="search"
           class="gtd__input"
-          placeholder="Search actions…"
+          :placeholder="t('gtd.app.searchPlaceholder')"
           @keydown.enter.prevent="runSearch"
           @keydown.escape="searchOpen = false"
         />
@@ -758,11 +756,11 @@ function isCurrentBucket(b: BucketId): boolean {
         <div v-if="searchOpen" class="gtd__search-results">
           <ul v-if="searchResults.length" class="gtd__search-list">
             <li v-for="r in searchResults" :key="r.id" class="gtd__search-row" @click="pickSearchResult(r)">
-              <span class="gtd__search-title">{{ r.title || '(untitled)' }}</span>
+              <span class="gtd__search-title">{{ r.title || t('gtd.app.untitled') }}</span>
               <span class="gtd__search-snippet">{{ r.snippet }}</span>
             </li>
           </ul>
-          <div v-else class="gtd__search-empty">No matching action.</div>
+          <div v-else class="gtd__search-empty">{{ t('gtd.app.noMatch') }}</div>
         </div>
       </div>
       <span class="gtd__spacer" />
@@ -770,7 +768,7 @@ function isCurrentBucket(b: BucketId): boolean {
       <button
         class="gtd__btn"
         :disabled="rebuilding"
-        title="Rebuild views — moves completed actions to Trash"
+        :title="t('gtd.app.rebuildTip')"
         @click="rebuild"
       >
         {{ rebuilding ? '…' : '↻' }}
@@ -797,13 +795,13 @@ function isCurrentBucket(b: BucketId): boolean {
             @dragleave="onTargetDragLeave(bucketTarget(b))"
             @drop="onTargetDrop(bucketTarget(b), $event)"
           >
-            <span>{{ BUCKET_LABEL[b] }}</span>
+            <span>{{ t(`gtd.bucket.${b}`) }}</span>
             <span class="gtd__badge">{{ bucketCount(b) }}</span>
           </button>
         </div>
 
         <div v-if="view && view.projects.length" class="gtd__nav-group">
-          <div class="gtd__nav-head">Projects</div>
+          <div class="gtd__nav-head">{{ t('gtd.app.projects') }}</div>
           <button
             v-for="p in view.projects"
             :key="p.name"
@@ -824,7 +822,7 @@ function isCurrentBucket(b: BucketId): boolean {
         </div>
 
         <div v-if="view && view.contexts.length" class="gtd__nav-group">
-          <div class="gtd__nav-head">Contexts</div>
+          <div class="gtd__nav-head">{{ t('gtd.app.contexts') }}</div>
           <div class="gtd__chips">
             <button
               v-for="c in view.contexts"
@@ -852,11 +850,11 @@ function isCurrentBucket(b: BucketId): boolean {
             v-model="captureText"
             type="text"
             class="gtd__input gtd__capture-input"
-            placeholder="＋ Capture to Inbox…"
+            :placeholder="t('gtd.app.capturePlaceholder')"
             :disabled="capturing"
           />
         </form>
-        <div v-if="loading" class="gtd__hint">Loading…</div>
+        <div v-if="loading" class="gtd__hint">{{ t('gtd.common.loading') }}</div>
         <ul v-else-if="displayedActions.length" class="gtd__actions">
           <li
             v-for="a in displayedActions"
@@ -890,17 +888,17 @@ function isCurrentBucket(b: BucketId): boolean {
             <span v-for="c in a.contexts" :key="c" class="gtd__ctx">{{ c }}</span>
           </li>
         </ul>
-        <div v-else class="gtd__hint">Nothing here.</div>
+        <div v-else class="gtd__hint">{{ t('gtd.app.nothingHere') }}</div>
       </main>
 
       <!-- Right: detail -->
       <aside v-if="detail" class="gtd__detail">
-        <div v-if="detailLoading" class="gtd__hint">Loading…</div>
+        <div v-if="detailLoading" class="gtd__hint">{{ t('gtd.common.loading') }}</div>
         <template v-else>
           <input v-model="titleDraft" class="gtd__detail-title" @change="onTitleChange" />
 
           <div class="gtd__field">
-            <label class="gtd__label">Bucket</label>
+            <label class="gtd__label">{{ t('gtd.app.bucketLabel') }}</label>
             <div class="gtd__when-picker">
               <button
                 v-for="b in BUCKETS"
@@ -908,42 +906,45 @@ function isCurrentBucket(b: BucketId): boolean {
                 class="gtd__when-btn"
                 :class="{ 'gtd__when-btn--active': isCurrentBucket(b) }"
                 @click="moveTo(b)"
-              >{{ BUCKET_LABEL[b] }}</button>
+              >{{ t(`gtd.bucket.${b}`) }}</button>
             </div>
-            <div class="gtd__when-hint">when: <code>{{ currentWhen || '(anytime)' }}</code></div>
+            <div class="gtd__when-hint">
+              {{ t('gtd.app.whenHint') }}
+              <code>{{ currentWhen || t('gtd.app.anytimeValue') }}</code>
+            </div>
           </div>
 
           <div class="gtd__field">
-            <label class="gtd__label">Project</label>
+            <label class="gtd__label">{{ t('gtd.app.project') }}</label>
             <select v-model="projectDraft" class="gtd__input" @change="onProjectChange">
-              <option value="">(no project)</option>
+              <option value="">{{ t('gtd.app.noProject') }}</option>
               <option v-for="p in projectOptions" :key="p" :value="p">{{ p }}</option>
-              <option :value="NEW_PROJECT">＋ New project…</option>
+              <option :value="NEW_PROJECT">{{ t('gtd.app.newProject') }}</option>
             </select>
           </div>
 
           <div class="gtd__field">
-            <label class="gtd__label">Deadline</label>
+            <label class="gtd__label">{{ t('gtd.app.deadline') }}</label>
             <input v-model="deadlineDraft" type="date" class="gtd__input" @change="onDeadlineChange" />
           </div>
 
           <div class="gtd__field">
-            <label class="gtd__label">Contexts</label>
-            <input v-model="contextsDraft" class="gtd__input" placeholder="@calls, @home" @change="onContextsChange" />
+            <label class="gtd__label">{{ t('gtd.app.contexts') }}</label>
+            <input v-model="contextsDraft" class="gtd__input" :placeholder="t('gtd.app.contextsPlaceholder')" @change="onContextsChange" />
           </div>
 
           <div class="gtd__field gtd__field--row">
             <label class="gtd__label">
               <input type="checkbox" :checked="detail.done" @change="patchField({ done: !detail.done })" />
-              Done
+              {{ t('gtd.app.done') }}
             </label>
             <button class="gtd__btn gtd__btn--danger" @click="removeAction">
-              {{ selectedIsInTrash ? '🗑 Delete for good' : '🗑 Move to Trash' }}
+              🗑 {{ selectedIsInTrash ? t('gtd.app.deleteForGood') : t('gtd.app.moveToTrash') }}
             </button>
           </div>
 
           <div class="gtd__field gtd__field--grow">
-            <label class="gtd__label">Note</label>
+            <label class="gtd__label">{{ t('gtd.app.note') }}</label>
             <WorkPageEditor
               :key="editorKey"
               ref="editorRef"

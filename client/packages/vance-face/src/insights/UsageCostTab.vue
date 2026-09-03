@@ -14,6 +14,7 @@ import type { EChartsType } from 'echarts/core';
 import type { UsageBucketDto } from '@vance/generated';
 import { VAlert, VCard, VEmptyState, VSelect } from '@/components';
 import { useUsageReport } from '@/composables/useUsageReport';
+import { useI18n } from 'vue-i18n';
 import UsageBreakdownTable from './UsageBreakdownTable.vue';
 
 // Register ECharts modules. Mirrors ChartView.vue but only loads the
@@ -28,6 +29,8 @@ echarts.use([
   DataZoomComponent,
   CanvasRenderer,
 ]);
+
+const { t } = useI18n();
 
 const groupBy = ref<'day' | 'week' | 'month'>('day');
 const rangeDays = ref<number>(30);
@@ -104,7 +107,7 @@ function renderChart(): void {
   ).sort();
 
   const tokenSeries = {
-    name: 'Tokens (in+out)',
+    name: t('insights.usage.seriesTokens'),
     type: 'bar' as const,
     yAxisIndex: 1,
     itemStyle: { color: '#94a3b8', opacity: 0.6 },
@@ -116,7 +119,7 @@ function renderChart(): void {
     }),
   };
   const costSeries = Array.from(byCurrency.entries()).map(([cur, rows]) => ({
-    name: `Cost (${cur})`,
+    name: t('insights.usage.seriesCost', { currency: cur }),
     type: 'line' as const,
     smooth: true,
     yAxisIndex: 0,
@@ -135,8 +138,13 @@ function renderChart(): void {
       tooltip: { trigger: 'axis' },
       xAxis: { type: 'time' },
       yAxis: [
-        { type: 'value', name: 'Cost', position: 'left' },
-        { type: 'value', name: 'Tokens', position: 'right', splitLine: { show: false } },
+        { type: 'value', name: t('insights.usage.axisCost'), position: 'left' },
+        {
+          type: 'value',
+          name: t('insights.usage.axisTokens'),
+          position: 'right',
+          splitLine: { show: false },
+        },
       ],
       dataZoom: [{ type: 'inside' }, { type: 'slider', height: 20, bottom: 10 }],
       series: [...costSeries, tokenSeries],
@@ -228,21 +236,21 @@ const detailHorizon = computed<string | null>(() => {
       <VSelect
         v-model="groupBy"
         :options="[
-          { value: 'day', label: 'Per day' },
-          { value: 'week', label: 'Per week' },
-          { value: 'month', label: 'Per month' },
+          { value: 'day', label: $t('insights.usage.perDay') },
+          { value: 'week', label: $t('insights.usage.perWeek') },
+          { value: 'month', label: $t('insights.usage.perMonth') },
         ]"
-        label="Bucket"
+        :label="$t('insights.usage.bucket')"
       />
       <VSelect
         v-model="rangeDays"
         :options="[
-          { value: 7, label: 'Last 7 days' },
-          { value: 30, label: 'Last 30 days' },
-          { value: 90, label: 'Last 90 days' },
-          { value: 365, label: 'Last 365 days' },
+          { value: 7, label: $t('insights.usage.last7') },
+          { value: 30, label: $t('insights.usage.last30') },
+          { value: 90, label: $t('insights.usage.last90') },
+          { value: 365, label: $t('insights.usage.last365') },
         ]"
-        label="Range"
+        :label="$t('insights.usage.range')"
       />
     </div>
 
@@ -250,91 +258,92 @@ const detailHorizon = computed<string | null>(() => {
 
     <VEmptyState
       v-if="!loading && !error && !hasData"
-      headline="No usage data yet"
-      body="Once an LLM call records its tokens, this view fills in. Models without a pricing block still show their tokens and calls, but their cost reads n/a — add pricing.inputPerMTok / pricing.outputPerMTok to the model YAML to see costs."
+      :headline="$t('insights.usage.emptyHeadline')"
+      :body="$t('insights.usage.emptyBody')"
     />
 
     <template v-else>
-      <VCard title="Tokens & Cost over time">
+      <VCard :title="$t('insights.usage.chartTitle')">
         <div class="usage-tab__totals">
           <div>
-            <span class="muted">Input</span>
+            <span class="muted">{{ $t('insights.usage.input') }}</span>
             <strong>{{ fmtTokens(totals.tokensIn) }}</strong>
           </div>
           <div>
-            <span class="muted">Output</span>
+            <span class="muted">{{ $t('insights.usage.output') }}</span>
             <strong>{{ fmtTokens(totals.tokensOut) }}</strong>
           </div>
           <div v-for="[cur, sum] in totals.byCurrency" :key="cur">
-            <span class="muted">Cost</span>
+            <span class="muted">{{ $t('insights.usage.cost') }}</span>
             <strong>{{ fmtCost(sum, cur) }}</strong>
           </div>
         </div>
         <p class="muted usage-tab__hint">
           <template v-if="coverage.unpriced > 0">
-            Covers {{ coverage.pricedPct }}% of {{ coverage.calls }} calls —
-            {{ coverage.unpriced }} ran on a model with no price in the catalog and
-            contribute tokens but no amount. Add a <code>pricing:</code> block to those
-            model entries (a genuinely free local model declares an explicit zero).
+            {{ $t('insights.usage.coveragePartial', {
+              pct: coverage.pricedPct,
+              calls: coverage.calls,
+              unpriced: coverage.unpriced,
+            }) }}
+            <code>pricing:</code>
+            {{ $t('insights.usage.coveragePartialPost') }}
           </template>
           <template v-else>
-            Covers all {{ coverage.calls }} calls in this window.
+            {{ $t('insights.usage.coverageAll', { calls: coverage.calls }) }}
           </template>
           <template v-if="coverage.failed > 0">
-            {{ coverage.failed }} attempts failed; they are counted but not added to the
-            amount.
+            {{ $t('insights.usage.coverageFailed', { failed: coverage.failed }) }}
           </template>
         </p>
         <p v-if="detailHorizon" class="muted usage-tab__hint">
-          Totals reach back further than the drill-down: per-call detail exists from
-          {{ detailHorizon }} onwards, before that only daily sums.
+          {{ $t('insights.usage.detailHorizon', { from: detailHorizon }) }}
         </p>
         <div ref="chartHost" class="usage-tab__chart" />
       </VCard>
 
-      <VCard title="Top projects">
+      <VCard :title="$t('insights.usage.topProjects')">
         <UsageBreakdownTable
-          label="Project"
+          :label="$t('insights.usage.project')"
           :rows="byProject?.buckets ?? []"
-          empty-text="No project data in this window."
+          :empty-text="$t('insights.usage.noProjectData')"
           :fmt-tokens="fmtTokens"
           :fmt-cost="fmtCost"
         />
       </VCard>
 
-      <VCard title="Top models">
+      <VCard :title="$t('insights.usage.topModels')">
         <UsageBreakdownTable
-          label="Model"
+          :label="$t('insights.usage.model')"
           :rows="byModel?.buckets ?? []"
-          empty-text="No model data in this window."
+          :empty-text="$t('insights.usage.noModelData')"
           :fmt-tokens="fmtTokens"
           :fmt-cost="fmtCost"
         />
       </VCard>
 
-      <VCard title="By caller">
+      <VCard :title="$t('insights.usage.byCaller')">
         <p class="muted usage-tab__hint">
-          Who is spending. Autonomous work shows up here even when nobody is
-          watching a chat. Think-engines appear under their own name; the rest
-          name themselves — <code>_light</code> for single-shot helper calls
-          (discovery, follow-up, title generation), <code>_triage</code>,
-          <code>_compaction</code> for memory upkeep, <code>_fenchurch</code>
-          for images, <code>_rag</code> for embeddings.
+          {{ $t('insights.usage.callerHint') }}
+          <code>_light</code> {{ $t('insights.usage.callerHintLight') }}
+          <code>_triage</code>, <code>_compaction</code>
+          {{ $t('insights.usage.callerHintCompaction') }}
+          <code>_fenchurch</code> {{ $t('insights.usage.callerHintImages') }}
+          <code>_rag</code> {{ $t('insights.usage.callerHintEmbeddings') }}
         </p>
         <UsageBreakdownTable
-          label="Caller"
+          :label="$t('insights.usage.caller')"
           :rows="byCaller?.buckets ?? []"
-          empty-text="No caller data in this window."
+          :empty-text="$t('insights.usage.noCallerData')"
           :fmt-tokens="fmtTokens"
           :fmt-cost="fmtCost"
         />
       </VCard>
 
-      <VCard title="By recipe">
+      <VCard :title="$t('insights.usage.byRecipe')">
         <UsageBreakdownTable
-          label="Recipe"
+          :label="$t('insights.usage.recipe')"
           :rows="byRecipe?.buckets ?? []"
-          empty-text="No recipe data in this window."
+          :empty-text="$t('insights.usage.noRecipeData')"
           :fmt-tokens="fmtTokens"
           :fmt-cost="fmtCost"
         />

@@ -42,6 +42,9 @@ export * from './useLinkPickerHost';
 export * from './vanceUri';
 export * from './useDocumentPrefixReaction';
 export * from './usePointers';
+// Translation access for bundles without vue-i18n on their dependency list —
+// every addon remote, and this package itself.
+export * from './useT';
 export { default as FormFields } from './FormFields.vue';
 export type { FormValue, FormValueObject } from './FormFields.vue';
 export { default as VAlert } from './VAlert.vue';

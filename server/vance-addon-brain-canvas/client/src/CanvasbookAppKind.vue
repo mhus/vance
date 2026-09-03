@@ -3,6 +3,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { VAlert, VButton, useAppEntry, useDocumentPrefixReaction } from '@vance/components';
 import CanvasEditor from './CanvasEditor.vue';
 import InputDialog from './InputDialog.vue';
+import { useT } from './i18n';
 import { createCanvasPage, getGraph, putGraph, rebuildCanvasbook, scanCanvasbook } from './api';
 import type { CanvasbookView } from './generated/canvas/CanvasbookView';
 import type { CanvasbookPageView } from './generated/canvas/CanvasbookPageView';
@@ -17,6 +18,8 @@ import type { CanvasGraphDto } from './generated/canvas/CanvasGraphDto';
 const props = defineProps<{
   document: { id?: string; path: string; projectId: string; title?: string | null };
 }>();
+
+const t = useT();
 
 const folder = computed(() => {
   const p = props.document.path;
@@ -205,8 +208,8 @@ async function flushPending(): Promise<void> {
 }
 
 async function addPage(): Promise<void> {
-  const v = await dialog.value?.open('New canvas', [
-    { key: 'title', label: 'Title', value: 'New canvas' },
+  const v = await dialog.value?.open(t('canvas.book.newCanvas'), [
+    { key: 'title', label: t('canvas.common.title'), value: t('canvas.book.newCanvas') },
   ]);
   if (!v || !v.title) return;
   try {
@@ -276,12 +279,12 @@ onBeforeUnmount(() => {
             {{ p.title }}
           </button>
           <div v-if="pages.length === 0" class="px-3 py-2 text-sm opacity-60">
-            Noch keine Canvas
+            {{ t('canvas.book.noCanvases') }}
           </div>
         </div>
       </div>
-      <VButton size="sm" variant="ghost" @click="addPage">+ Canvas</VButton>
-      <VButton size="sm" variant="ghost" @click="rebuild">↻ Index</VButton>
+      <VButton size="sm" variant="ghost" @click="addPage">+ {{ t('canvas.book.addCanvas') }}</VButton>
+      <VButton size="sm" variant="ghost" @click="rebuild">↻ {{ t('canvas.book.rebuildIndex') }}</VButton>
       <span class="ml-auto flex items-center gap-1.5 text-xs">
         <span
           class="inline-block h-2 w-2 rounded-full"
@@ -292,7 +295,9 @@ onBeforeUnmount(() => {
           }"
         ></span>
         <span class="opacity-60">
-          {{ saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved' : 'Saved' }}
+          {{ saveState === 'saving'
+            ? t('canvas.book.saving')
+            : saveState === 'dirty' ? t('canvas.book.unsaved') : t('canvas.book.saved') }}
         </span>
       </span>
     </div>
@@ -313,7 +318,7 @@ onBeforeUnmount(() => {
         @selection="onCanvasSelection"
       />
       <div v-else class="p-4 text-sm opacity-60">
-        {{ pages.length === 0 ? 'Empty canvasbook — create one with “+ Canvas”.' : 'Pick a canvas.' }}
+        {{ pages.length === 0 ? t('canvas.book.empty') : t('canvas.book.pick') }}
       </div>
     </div>
 

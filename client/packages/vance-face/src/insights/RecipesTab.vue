@@ -2,8 +2,10 @@
 import { computed, ref, watch } from 'vue';
 import type { EffectiveRecipeDto } from '@vance/generated';
 import { VAlert, VCheckbox, VEmptyState, VInput } from '@/components';
+import { useI18n } from 'vue-i18n';
 import { useEffectiveRecipes } from '@/composables/useProjectInsights';
 
+const { t } = useI18n();
 const props = defineProps<{ projectId: string | null }>();
 
 const state = useEffectiveRecipes();
@@ -33,11 +35,11 @@ function sourceClass(source: string): string {
 function sourceLabel(source: string): string {
   switch (source) {
     case 'PROJECT':
-      return 'project';
+      return t('insights.recipes.sourceProject');
     case 'VANCE':
-      return '_vance';
+      return t('insights.recipes.sourceVance');
     case 'RESOURCE':
-      return 'bundled';
+      return t('insights.recipes.sourceBundled');
     default:
       return source.toLowerCase();
   }
@@ -98,10 +100,10 @@ const filteredRecipes = computed<EffectiveRecipeDto[]>(() => {
 <template>
   <div class="flex flex-col gap-3 p-4">
     <div v-if="!projectId" class="opacity-60 text-sm">
-      Pick a project in the sidebar to see its effective recipes.
+      {{ $t('insights.recipes.pickProject') }}
     </div>
 
-    <div v-else-if="state.loading.value" class="text-sm opacity-60">Loading recipes…</div>
+    <div v-else-if="state.loading.value" class="text-sm opacity-60">{{ $t('insights.recipes.loading') }}</div>
 
     <VAlert v-else-if="state.error.value" variant="error">
       {{ state.error.value }}
@@ -109,8 +111,8 @@ const filteredRecipes = computed<EffectiveRecipeDto[]>(() => {
 
     <template v-else-if="state.recipes.value.length === 0">
       <VEmptyState
-        :headline="'No recipes available'"
-        :body="'No bundled, tenant or project recipes resolve for this project.'"
+        :headline="$t('insights.recipes.emptyHeadline')"
+        :body="$t('insights.recipes.emptyBody')"
       />
     </template>
 
@@ -120,23 +122,23 @@ const filteredRecipes = computed<EffectiveRecipeDto[]>(() => {
         <div class="flex-1 min-w-48">
           <VInput
             v-model="search"
-            label="Search"
-            placeholder="name, description, engine…"
+            :label="$t('insights.recipes.search')"
+            :placeholder="$t('insights.recipes.searchPlaceholder')"
           />
         </div>
 
         <div class="flex flex-col gap-1">
-          <span class="text-xs opacity-70">Sources</span>
+          <span class="text-xs opacity-70">{{ $t('insights.recipes.sources') }}</span>
           <div class="flex gap-2">
-            <VCheckbox v-model="showProject" label="project" />
-            <VCheckbox v-model="showVance" label="_vance" />
-            <VCheckbox v-model="showResource" label="bundled" />
+            <VCheckbox v-model="showProject" :label="$t('insights.recipes.sourceProject')" />
+            <VCheckbox v-model="showVance" :label="$t('insights.recipes.sourceVance')" />
+            <VCheckbox v-model="showResource" :label="$t('insights.recipes.sourceBundled')" />
           </div>
         </div>
 
         <div class="flex flex-col gap-1">
-          <span class="text-xs opacity-70">Filter</span>
-          <VCheckbox v-model="lockedOnly" label="locked only" />
+          <span class="text-xs opacity-70">{{ $t('insights.recipes.filter') }}</span>
+          <VCheckbox v-model="lockedOnly" :label="$t('insights.recipes.lockedOnly')" />
         </div>
 
         <div class="text-xs opacity-60 ml-auto">
@@ -148,25 +150,25 @@ const filteredRecipes = computed<EffectiveRecipeDto[]>(() => {
         <thead>
           <tr>
             <th class="w-40 cursor-pointer select-none" @click="toggleSort('name')">
-              Name{{ arrow('name') }}
+              {{ $t('insights.recipes.colName') }}{{ arrow('name') }}
             </th>
             <th class="w-24 cursor-pointer select-none" @click="toggleSort('source')">
-              Source{{ arrow('source') }}
+              {{ $t('insights.recipes.colSource') }}{{ arrow('source') }}
             </th>
             <th class="w-24 cursor-pointer select-none" @click="toggleSort('engine')">
-              Engine{{ arrow('engine') }}
+              {{ $t('insights.recipes.colEngine') }}{{ arrow('engine') }}
             </th>
-            <th>Description</th>
-            <th class="w-16 text-right">Params</th>
-            <th class="w-32">Allowed-Tools Δ</th>
-            <th class="w-32">Skills</th>
-            <th class="w-24">Profiles</th>
+            <th>{{ $t('insights.recipes.colDescription') }}</th>
+            <th class="w-16 text-right">{{ $t('insights.recipes.colParams') }}</th>
+            <th class="w-32">{{ $t('insights.recipes.colAllowedTools') }}</th>
+            <th class="w-32">{{ $t('insights.recipes.colSkills') }}</th>
+            <th class="w-24">{{ $t('insights.recipes.colProfiles') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="filteredRecipes.length === 0">
             <td colspan="8" class="opacity-60 text-center py-4">
-              No recipes match the current filters.
+              {{ $t('insights.recipes.noMatch') }}
             </td>
           </tr>
           <tr v-for="r in filteredRecipes" :key="r.name">
@@ -197,10 +199,10 @@ const filteredRecipes = computed<EffectiveRecipeDto[]>(() => {
             </td>
             <td class="text-xs">
               <span v-if="r.defaultActiveSkills && r.defaultActiveSkills.length">
-                {{ r.defaultActiveSkills.length }} default
+                {{ $t('insights.recipes.skillsDefault', { count: r.defaultActiveSkills.length }) }}
               </span>
               <span v-if="r.allowedSkills" class="opacity-70 ml-1">
-                · whitelist {{ r.allowedSkills.length }}
+                {{ $t('insights.recipes.skillsWhitelist', { count: r.allowedSkills.length }) }}
               </span>
               <span
                 v-if="

@@ -795,20 +795,20 @@ function fmtDuration(ms: number | null): string {
       <div
         class="flex border border-base-300 rounded overflow-hidden text-xs"
         role="group"
-        aria-label="App / edit toggle"
+        :aria-label="$t('cortex.shell.appEditToggle')"
       >
         <button
           type="button"
           class="px-2 py-0.5 bg-base-300"
-          title="App view"
-        >App</button>
+          :title="$t('cortex.shell.appView')"
+        >{{ $t('cortex.shell.app') }}</button>
         <button
           type="button"
           class="px-2 py-0.5 border-l border-base-300 opacity-60 hover:bg-base-200"
-          title="Raw YAML manifest editor"
+          :title="$t('cortex.shell.rawManifest')"
           @click="viewEditMode = 'edit'"
         >
-          <span class="hidden sm:inline">Edit</span>
+          <span class="hidden sm:inline">{{ $t('cortex.shell.edit') }}</span>
           <span class="sm:hidden">✏️</span>
         </button>
       </div>
@@ -862,17 +862,19 @@ function fmtDuration(ms: number | null): string {
           :title="isAppKindBinding ? 'App view' : 'Rendered view'"
           @click="viewEditMode = 'view'"
         >
-          <span class="hidden sm:inline">{{ isAppKindBinding ? 'App' : 'View' }}</span>
+          <span class="hidden sm:inline">{{ isAppKindBinding
+            ? $t('cortex.shell.app')
+            : $t('cortex.shell.view') }}</span>
           <span class="sm:hidden">{{ isAppKindBinding ? '▶️' : '👁️' }}</span>
         </button>
         <button
           type="button"
           class="px-2 py-0.5 border-l border-base-300"
           :class="viewEditMode === 'edit' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200'"
-          title="Raw source editor"
+          :title="$t('cortex.shell.rawSource')"
           @click="viewEditMode = 'edit'"
         >
-          <span class="hidden sm:inline">Edit</span>
+          <span class="hidden sm:inline">{{ $t('cortex.shell.edit') }}</span>
           <span class="sm:hidden">✏️</span>
         </button>
       </div>
@@ -884,23 +886,23 @@ function fmtDuration(ms: number | null): string {
           v-if="!isRunning"
           type="button"
           class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
-          :title="`${runAdapter.label} — execute the document`"
+          :title="$t('cortex.shell.runTitle', { label: runAdapter.label })"
           @click="onRun"
         >▶ {{ runAdapter.label }}</button>
         <button
           v-else
           type="button"
           class="text-xs px-2 py-0.5 rounded border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
-          title="Cancel the running execution"
+          :title="$t('cortex.shell.cancelRun')"
           @click="onCancel"
-        >■ Cancel</button>
+        >{{ $t('cortex.shell.cancelRunLabel') }}</button>
         <input
           v-model="argsJson"
           type="text"
           spellcheck="false"
           class="text-xs font-mono px-2 py-0.5 rounded border w-32"
           :class="argsError ? 'border-error' : 'border-base-300'"
-          :title="argsError ?? 'JSON args object, default `{}`'"
+          :title="argsError ?? $t('cortex.shell.argsHint')"
           placeholder="{}"
         />
       </template>
@@ -915,39 +917,39 @@ function fmtDuration(ms: number | null): string {
           class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200
                  disabled:opacity-50 disabled:cursor-default"
           :disabled="validation.quickBusy.value"
-          title="Quick validate — parse + header check"
+          :title="$t('cortex.shell.quickValidate')"
           @click="validation.runQuick()"
-        >{{ validation.quickBusy.value ? '⏳' : '✓' }} Validate</button>
+        >{{ validation.quickBusy.value ? '⏳' : '✓' }} {{ $t('cortex.shell.validate') }}</button>
         <button
           type="button"
           class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200
                  disabled:opacity-50 disabled:cursor-default"
           :disabled="validation.deepBusy.value"
-          title="Deep review — LLM static review (slow, cached server-side)"
+          :title="$t('cortex.shell.deepReview')"
           @click="validation.runDeep()"
-        >{{ validation.deepBusy.value ? '⏳' : '🔍' }} Deep Review</button>
+        >{{ validation.deepBusy.value ? '⏳' : '🔍' }} {{ $t('cortex.shell.deepReviewLabel') }}</button>
         <button
           v-if="!editorHasContent"
           type="button"
           class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
-          title="Generate a new script from a free-text description (Slart SCRIPT_JS)"
+          :title="$t('cortex.shell.generateScript')"
           @click="openSlart('CREATE')"
-        >✨ Generate</button>
+        >{{ $t('cortex.shell.generate') }}</button>
         <button
           v-else-if="isServerScript"
           type="button"
           class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
-          title="Update this script — describe the change and Slart rewrites it preserving structure"
+          :title="$t('cortex.shell.updateScript')"
           @click="openSlart('UPDATE')"
-        >✨ Update</button>
+        >{{ $t('cortex.shell.update') }}</button>
       </template>
       <button
         type="button"
         class="opacity-60 enabled:hover:opacity-100 enabled:hover:bg-base-200 disabled:cursor-default
                rounded px-1.5 py-0.5 text-xs"
         :disabled="downloading"
-        :title="`Download ${document.name}`"
-        :aria-label="`Download ${document.name}`"
+        :title="$t('cortex.shell.download', { name: document.name })"
+        :aria-label="$t('cortex.shell.download', { name: document.name })"
         @click="onDownload"
       >
         <span :class="downloading ? 'animate-pulse' : ''">⬇</span>
@@ -956,17 +958,19 @@ function fmtDuration(ms: number | null): string {
         type="button"
         class="opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs"
         :class="{ 'bg-base-300 opacity-100': propertiesOpen }"
-        :title="propertiesOpen ? 'Hide properties' : 'Show properties'"
+        :title="propertiesOpen
+          ? $t('cortex.shell.hideProperties')
+          : $t('cortex.shell.showProperties')"
         @click="propertiesOpen = !propertiesOpen"
       >
-        <span class="hidden sm:inline">Properties</span>
+        <span class="hidden sm:inline">{{ $t('cortex.shell.properties') }}</span>
         <span class="sm:hidden">⚙️</span>
       </button>
       <button
         type="button"
         class="opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs"
         :class="{ 'bg-base-300 opacity-100': notesOpen }"
-        :title="notesOpen ? 'Notizen ausblenden' : 'Notizen einblenden'"
+        :title="notesOpen ? $t('cortex.shell.hideNotes') : $t('cortex.shell.showNotes')"
         @click="notesOpen = !notesOpen"
       >📝 {{ docNotes.notes.value.length }}</button>
       <span
@@ -1055,11 +1059,11 @@ function fmtDuration(ms: number | null): string {
          even when no preview is available. -->
     <template v-else-if="binding.mode === 'preview'">
       <div class="px-4 py-2 bg-base-200/40 border-b border-base-300 text-xs flex flex-wrap gap-x-4 gap-y-1 shrink-0">
-        <span class="opacity-60">Path:</span>
+        <span class="opacity-60">{{ $t('cortex.shell.path') }}</span>
         <span class="font-mono">{{ document.path }}</span>
-        <span class="opacity-60">MIME:</span>
+        <span class="opacity-60">{{ $t('cortex.shell.mime') }}</span>
         <span class="font-mono">{{ document.mimeType ?? '—' }}</span>
-        <span class="opacity-60 italic">read-only</span>
+        <span class="opacity-60 italic">{{ $t('cortex.shell.readOnly') }}</span>
       </div>
       <div class="flex-1 min-h-0 overflow-auto p-4 bg-base-200/40">
         <DocumentPreview
@@ -1158,7 +1162,7 @@ function fmtDuration(ms: number | null): string {
         <button
           type="button"
           class="opacity-60 hover:opacity-100 hover:bg-base-300 rounded px-1"
-          title="Close log panel"
+          :title="$t('cortex.shell.closeLog')"
           @click="onCloseLogPanel"
         >✕</button>
       </div>
@@ -1175,7 +1179,7 @@ function fmtDuration(ms: number | null): string {
           class="whitespace-pre-wrap"
         >{{ line }}</div>
         <div v-if="runHandle.logLines.value.length === 0" class="opacity-50">
-          (no log output yet)
+          {{ $t('cortex.shell.noLogOutput') }}
         </div>
       </div>
 
@@ -1183,7 +1187,7 @@ function fmtDuration(ms: number | null): string {
         v-if="runState === 'finished' && runHandle.result.value !== null"
         class="border-t border-base-300 px-3 py-1.5 bg-base-200/40 font-mono text-xs whitespace-pre-wrap max-h-32 overflow-y-auto"
       >
-        <div class="opacity-60 mb-1">result:</div>
+        <div class="opacity-60 mb-1">{{ $t('cortex.shell.result') }}</div>
         {{ fmtResult(runHandle.result.value) }}
       </div>
       <!-- Generic run actions (e.g. "Open PDF" for TeX) -->

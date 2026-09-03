@@ -14,6 +14,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { brainFetch } from '@vance/shared';
+import { useT } from './i18n';
 
 const props = defineProps<{
   projectId: string;
@@ -57,6 +58,8 @@ function isEmbeddable(d: DocSummary): boolean {
   return true;
 }
 
+const t = useT();
+
 const tab = ref<Tab>('app');
 const docQuery = ref('');
 const docResults = ref<DocSummary[]>([]);
@@ -88,7 +91,7 @@ async function searchDocs(query: string) {
     docResults.value = (resp.items ?? []).filter(isEmbeddable);
     docTotal.value = resp.total ?? docResults.value.length;
   } catch (e) {
-    docError.value = e instanceof Error ? e.message : 'Search failed';
+    docError.value = e instanceof Error ? e.message : t('workbook.embed.searchFailed');
     docResults.value = [];
     docTotal.value = 0;
   } finally {
@@ -134,7 +137,7 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
   <div class="embed-picker" @click="onBackdrop">
     <div class="embed-picker__panel">
       <header class="embed-picker__header">
-        <span>Embed document</span>
+        <span>{{ t('workbook.embed.title') }}</span>
         <button class="embed-picker__close" type="button" @click="close">×</button>
       </header>
 
@@ -143,12 +146,12 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
           type="button"
           :class="['embed-picker__tab', { 'embed-picker__tab--active': tab === 'app' }]"
           @click="setTab('app')"
-        >App</button>
+        >{{ t('workbook.embed.tabApp') }}</button>
         <button
           type="button"
           :class="['embed-picker__tab', { 'embed-picker__tab--active': tab === 'project' }]"
           @click="setTab('project')"
-        >Project</button>
+        >{{ t('workbook.embed.tabProject') }}</button>
       </div>
 
       <div class="embed-picker__actions">
@@ -156,7 +159,7 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
           v-model="docQuery"
           type="search"
           class="embed-picker__search-input"
-          placeholder="Search documents to embed…"
+          :placeholder="t('workbook.embed.searchPlaceholder')"
           autofocus
           @input="scheduleSearch"
           @keydown.escape="close"
@@ -164,13 +167,13 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
       </div>
 
       <div v-if="docError" class="embed-picker__error">{{ docError }}</div>
-      <div v-if="docLoading" class="embed-picker__loading">Suche…</div>
+      <div v-if="docLoading" class="embed-picker__loading">{{ t('workbook.common.searching') }}</div>
       <div v-else-if="docResults.length === 0" class="embed-picker__empty">
         <template v-if="tab === 'app'">
-          Keine einbettbaren Documents in dieser App gefunden.
+          {{ t('workbook.embed.emptyApp') }}
         </template>
         <template v-else>
-          Keine einbettbaren Documents im Projekt gefunden.
+          {{ t('workbook.embed.emptyProject') }}
         </template>
       </div>
       <div v-else class="embed-picker__list">
@@ -192,7 +195,7 @@ watch(() => [props.projectId, props.folder], () => searchDocs(docQuery.value.tri
         v-if="docResults.length > 0 && docTotal > docResults.length"
         class="embed-picker__truncated"
       >
-        Showing {{ docResults.length }} of {{ docTotal }} — refine the search.
+        {{ t('workbook.embed.truncated', { shown: docResults.length, total: docTotal }) }}
       </div>
     </div>
   </div>

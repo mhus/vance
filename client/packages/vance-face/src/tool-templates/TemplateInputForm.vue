@@ -2,11 +2,14 @@
 import { computed } from 'vue';
 import type { ToolTemplateChoiceDto, ToolTemplateInputDto } from '@vance/generated';
 import { VCheckbox, VInput, VSelect } from '@/components';
+import { useI18n } from 'vue-i18n';
 
 interface Props {
   inputs: ToolTemplateInputDto[];
   modelValue: Record<string, string>;
 }
+
+const { t } = useI18n();
 
 const props = defineProps<Props>();
 
@@ -78,7 +81,7 @@ function toggleMultiSelect(name: string, value: string, checked: boolean): void 
 function helpFor(input: ToolTemplateInputDto): string | undefined {
   if (input.help) return input.help;
   if (input.target === 'setting') {
-    return 'Wird verschlüsselt in den Settings gespeichert.';
+    return t('templateInput.settingHelp');
   }
   return undefined;
 }

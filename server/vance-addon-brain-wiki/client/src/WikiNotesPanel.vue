@@ -15,10 +15,13 @@ import type {
   DocumentNoteCreateRequest,
   DocumentNoteUpdateRequest,
 } from '@vance/generated';
+import { useT } from './i18n';
 
 const props = defineProps<{
   documentId: string | null;
 }>();
+
+const t = useT();
 
 const notesMap = ref<Record<string, DocumentNoteDto>>({});
 const loading = ref(false);
@@ -45,7 +48,7 @@ async function load(id: string | null): Promise<void> {
     );
     notesMap.value = dto.notes ?? {};
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load notes.';
+    error.value = e instanceof Error ? e.message : t('wiki.notes.error.load');
     notesMap.value = {};
   } finally {
     loading.value = false;
@@ -66,7 +69,7 @@ async function addNote(): Promise<void> {
     );
     notesMap.value = { ...notesMap.value, [created.id]: created };
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not add note.';
+    error.value = e instanceof Error ? e.message : t('wiki.notes.error.add');
   }
 }
 
@@ -87,7 +90,7 @@ async function patchNote(
     );
     notesMap.value = { ...notesMap.value, [noteId]: updated };
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not update note.';
+    error.value = e instanceof Error ? e.message : t('wiki.notes.error.update');
   }
 }
 
@@ -103,7 +106,7 @@ async function deleteNote(noteId: string): Promise<void> {
     delete next[noteId];
     notesMap.value = next;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not delete note.';
+    error.value = e instanceof Error ? e.message : t('wiki.notes.error.delete');
   }
 }
 
@@ -117,22 +120,22 @@ function onTextInput(note: DocumentNoteDto, e: Event): void {
 <template>
   <div class="wiki-notes">
     <header class="wiki-notes__header">
-      <span class="wiki-notes__title">Notes</span>
+      <span class="wiki-notes__title">{{ t('wiki.notes.title') }}</span>
       <span class="wiki-notes__count">{{ notes.length }}</span>
       <span class="wiki-notes__spacer" />
       <button
         type="button"
         class="wiki-notes__add"
-        title="New note"
+        :title="t('wiki.notes.newNote')"
         :disabled="!documentId"
         @click="addNote"
       >＋</button>
     </header>
 
     <div v-if="error" class="wiki-notes__error">{{ error }}</div>
-    <div v-else-if="loading" class="wiki-notes__hint">Loading…</div>
+    <div v-else-if="loading" class="wiki-notes__hint">{{ t('wiki.common.loading') }}</div>
     <div v-else-if="notes.length === 0" class="wiki-notes__hint">
-      No notes yet. Click ＋ to add one.
+      {{ t('wiki.notes.empty') }}
     </div>
 
     <div v-else class="wiki-notes__list">
@@ -146,7 +149,7 @@ function onTextInput(note: DocumentNoteDto, e: Event): void {
           <input
             type="checkbox"
             :checked="note.done"
-            :title="note.done ? 'Done' : 'Mark done'"
+            :title="note.done ? t('wiki.notes.done') : t('wiki.notes.markDone')"
             @change="patchNote(note.id, { done: !note.done })"
           />
           <span class="wiki-notes__card-user" :title="note.userId">{{ note.userId }}</span>
@@ -154,7 +157,7 @@ function onTextInput(note: DocumentNoteDto, e: Event): void {
           <button
             type="button"
             class="wiki-notes__del"
-            title="Delete"
+            :title="t('wiki.notes.delete')"
             @click="deleteNote(note.id)"
           >×</button>
         </header>

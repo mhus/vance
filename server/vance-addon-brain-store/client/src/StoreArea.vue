@@ -9,6 +9,7 @@ import {
   loadSurfaces, loadWithdrawalNotice, submitReview,
 } from './api';
 import { COUNTRY_OPTIONS } from './countries';
+import { useT } from './i18n';
 import DeveloperPanel from './DeveloperPanel.vue';
 import MoneyPanel from './MoneyPanel.vue';
 import OperatorPanel from './OperatorPanel.vue';
@@ -23,13 +24,14 @@ const props = defineProps<{ projectId?: string }>();
  * owned and installed and updatable would otherwise appear three times.
  * These tabs filter it; they do not fetch separately.
  */
-const tabs: { key: 'ALL' | EntryState; label: string }[] = [
-  { key: 'ALL', label: 'All' },
-  { key: 'OFFERED', label: 'Offered' },
-  { key: 'OWNED', label: 'Purchased' },
-  { key: 'INSTALLED', label: 'Installed' },
-  { key: 'UPDATABLE', label: 'Updatable' },
-];
+const t = useT();
+
+const TAB_KEYS: ('ALL' | EntryState)[] = ['ALL', 'OFFERED', 'OWNED', 'INSTALLED', 'UPDATABLE'];
+
+// Labels looked up per render, so a language switch reaches the strip.
+const tabs = computed(() =>
+  TAB_KEYS.map((key) => ({ key, label: t(`store.tab.${key}`) })),
+);
 
 const projectId = computed(() => props.projectId ?? '_tenant');
 
@@ -78,22 +80,22 @@ function leaveModeIfNotOffered(): void {
 
 const modes = computed(() => {
   const entries: { key: 'STORE' | 'DEVELOPER' | 'OPERATOR' | 'MONEY'; label: string }[] = [
-    { key: 'STORE', label: 'Store' },
+    { key: 'STORE', label: t('store.mode.STORE') },
   ];
   // Both roles come from the store, and neither is shown to somebody who
   // does not hold it: a tab that grants nothing puzzles everyone it does
   // not belong to and invites the rest to try it. Someone with neither
   // sees a shop and nothing else.
   if (developerSources.value.includes(activeSource.value)) {
-    entries.push({ key: 'DEVELOPER', label: 'Developer' });
+    entries.push({ key: 'DEVELOPER', label: t('store.mode.DEVELOPER') });
   }
   if (operatorSources.value.includes(activeSource.value)) {
-    entries.push({ key: 'OPERATOR', label: 'Operator' });
+    entries.push({ key: 'OPERATOR', label: t('store.mode.OPERATOR') });
     // Its own tab rather than a section under Operator: moderation and money
     // are done by different people on different days, and a screen mixing a
     // release queue with a payout button would be used for both by whoever
     // happened to have it open.
-    entries.push({ key: 'MONEY', label: 'Money' });
+    entries.push({ key: 'MONEY', label: t('store.mode.MONEY') });
   }
   return entries;
 });
@@ -184,7 +186,7 @@ function settled(entry: StoreEntry): void {
   stopWatchingForPayment();
   awaitingPayment.value = false;
   awaitingEntry.value = null;
-  notice.value = `Done — ${entry.displayName} is yours.`;
+  notice.value = t('store.area.done', { name: entry.displayName });
 }
 
 function stopWatchingForPayment(): void {
@@ -268,7 +270,7 @@ async function load(): Promise<void> {
     // reload on a store where this account holds neither.
     leaveModeIfNotOffered();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load the store.';
+    error.value = e instanceof Error ? e.message : t('store.area.error.load');
   } finally {
     loading.value = false;
   }
@@ -321,7 +323,7 @@ async function installEntry(entry: StoreEntry): Promise<void> {
     if (result.warnings?.length) notice.value += ` ${result.warnings.join(' ')}`;
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not install this kit.';
+    error.value = e instanceof Error ? e.message : t('store.area.error.install');
   } finally {
     busyPath.value = '';
   }
@@ -343,7 +345,7 @@ async function openReviews(entry: StoreEntry): Promise<void> {
       projectId.value, entry.sourceId, entry.vendor, entry.kitId,
     );
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load the reviews.';
+    error.value = e instanceof Error ? e.message : t('store.area.error.reviews');
   }
 }
 
@@ -358,12 +360,12 @@ async function sendReview(entry: StoreEntry): Promise<void> {
     // The star counts at once; the text waits to be read. Saying so beats
     // a screen that looks like the words were dropped.
     notice.value = reviewText.value
-      ? 'Thanks — your rating counts now, your text is waiting to be reviewed.'
-      : 'Thanks — your rating counts now.';
+      ? t('store.area.thanksRatingText')
+      : t('store.area.thanksRating');
     reviewText.value = '';
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not send the review.';
+    error.value = e instanceof Error ? e.message : t('store.area.error.sendReview');
   }
 }
 
@@ -379,7 +381,7 @@ async function openBuy(entry: StoreEntry): Promise<void> {
     // sells, and the version confirmed has to be the one in force.
     withdrawalNotice.value = await loadWithdrawalNotice(projectId.value, entry.sourceId);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load the store terms.';
+    error.value = e instanceof Error ? e.message : t('store.area.error.terms');
     buyingPath.value = '';
   }
 }
@@ -409,22 +411,21 @@ async function confirmBuy(entry: StoreEntry): Promise<void> {
       // thing keeping the token server-side is meant to prevent.
       const target = safeUrl(order.redirectUrl);
       if (!target) {
-        error.value = 'The store answered with a payment link this browser will not open.';
+        error.value = t('store.area.error.paymentLink');
         return;
       }
       // A priced kit with a real provider. Nothing is owned yet.
-      notice.value = 'Continue the payment in the window that just opened.'
-        + ' This page updates by itself once it goes through.';
+      notice.value = t('store.area.paymentContinue');
       watchForPayment(entry);
       window.open(target, '_blank', 'noopener');
     } else {
-      notice.value = `Done — ${entry.displayName} is yours.`;
+      notice.value = t('store.area.done', { name: entry.displayName });
     }
     buyingPath.value = '';
     buyPassword.value = '';
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not complete the order.';
+    error.value = e instanceof Error ? e.message : t('store.area.error.order');
   } finally {
     busyPath.value = '';
   }
@@ -432,7 +433,7 @@ async function confirmBuy(entry: StoreEntry): Promise<void> {
 
 /** `19.90 EUR`, or `Free`. */
 function priceOf(entry: StoreEntry): string {
-  if (entry.priceCents <= 0) return 'Free';
+  if (entry.priceCents <= 0) return t('store.common.free');
   return `${(entry.priceCents / 100).toFixed(2)} ${entry.currency ?? ''}`.trim();
 }
 
@@ -444,10 +445,12 @@ function starsOf(count: number): string {
 
 /** What the button on a row does, if anything. */
 function actionOf(entry: StoreEntry): string | null {
-  if (entry.state === 'OWNED') return 'Install';
-  if (entry.state === 'UPDATABLE') return 'Update';
+  if (entry.state === 'OWNED') return t('store.area.actionInstall');
+  if (entry.state === 'UPDATABLE') return t('store.area.actionUpdate');
   // An offered kit is acquired first; free or not, it becomes a purchase.
-  if (entry.state === 'OFFERED') return entry.priceCents > 0 ? 'Buy' : 'Get';
+  if (entry.state === 'OFFERED') {
+    return entry.priceCents > 0 ? t('store.area.actionBuy') : t('store.area.actionGet');
+  }
   return null;
 }
 
@@ -456,8 +459,8 @@ function expiryOf(entry: StoreEntry): string | null {
   const when = new Date(entry.licenseExpiresAt);
   const lapsed = when.getTime() < Date.now();
   return lapsed
-    ? `Licence lapsed on ${when.toLocaleDateString()} — installed kits keep working`
-    : `Updates until ${when.toLocaleDateString()}`;
+    ? t('store.area.expiryLapsed', { date: when.toLocaleDateString() })
+    : t('store.area.expiryUntil', { date: when.toLocaleDateString() });
 }
 
 onMounted(() => {
@@ -533,8 +536,8 @@ onUnmounted(() => {
 
     <VEmptyState
       v-if="!loading && views.length === 0"
-      headline="No library configured"
-      body="Add a library source in _vance/config/kit-sources.yaml of the _tenant project."
+      :headline="t('store.area.noLibraryHeadline')"
+      :body="t('store.area.noLibraryBody')"
     />
 
     <VCard v-if="activeView" :key="activeView.sourceId">
@@ -552,10 +555,10 @@ onUnmounted(() => {
         is in the profile, where somebody can do something about it.
       -->
       <div v-if="!activeView.reachable" class="text-sm opacity-70 mt-1">
-        Not available right now — see the Store tab of your profile.
+        {{ t('store.area.notReachable') }}
       </div>
       <div v-else-if="!activeView.accountId" class="text-sm opacity-70 mt-1">
-        Sign in to this store in your profile to see what you own.
+        {{ t('store.area.signInToSee') }}
       </div>
       <!--
         "Not known to be owned" is not "not owned". When the delivery
@@ -565,8 +568,7 @@ onUnmounted(() => {
         loud and the buy buttons stay down until it can be answered.
       -->
       <div v-else-if="!activeView.ownershipKnown" class="text-sm opacity-70 mt-1">
-        Could not check what you already own — buying is off until this store
-        answers again. Everything else still works.
+        {{ t('store.area.ownershipUnknown') }}
       </div>
 
       <div v-if="activeView.reachable" class="mt-4">
@@ -585,17 +587,19 @@ onUnmounted(() => {
                replacing it: "installed, and something about widgets" is a
                question people actually have. -->
           <div class="ml-auto w-56">
-            <VInput v-model="search" size="sm" placeholder="Search kits" />
+            <VInput v-model="search" size="sm" :placeholder="t('store.area.searchPlaceholder')" />
           </div>
         </div>
 
         <!-- A filtered-empty list must not read as an empty store. -->
         <VEmptyState
           v-if="entriesOf(activeView).length === 0"
-          :headline="search.trim() ? 'Nothing matches' : 'Nothing here'"
+          :headline="search.trim()
+            ? t('store.area.nothingMatchesHeadline')
+            : t('store.area.nothingHereHeadline')"
           :body="search.trim()
-            ? `No kit in this list matches “${search.trim()}”.`
-            : 'Nothing in this list yet.'"
+            ? t('store.area.nothingMatchesBody', { query: search.trim() })
+            : t('store.area.nothingHereBody')"
         />
 
         <div
@@ -616,11 +620,11 @@ onUnmounted(() => {
               <span
                 v-if="entry.vendorDomain"
                 class="text-success"
-                :title="`The vendor proved they control ${entry.vendorDomain}`"
+                :title="t('store.area.vendorProved', { domain: entry.vendorDomain })"
               >· ✓ {{ entry.vendorDomain }}</span>
               <span v-if="entry.availableVersion"> · {{ entry.availableVersion }}</span>
               <span v-if="entry.installedVersion && entry.state === 'UPDATABLE'">
-                (installed {{ entry.installedVersion }})
+                {{ t('store.area.installedVersion', { version: entry.installedVersion }) }}
               </span>
             </div>
             <div v-if="entry.description" class="text-sm mt-1">{{ entry.description }}</div>
@@ -650,7 +654,7 @@ onUnmounted(() => {
                 :class="search.trim().toLowerCase() === tag
                   ? 'border-primary text-primary'
                   : 'border-base-300 opacity-60'"
-                :title="`Contains ${tag}`"
+                :title="t('store.area.containsTag', { tag })"
                 @click="filterBy(tag)"
               >{{ tag }}</button>
             </div>
@@ -662,9 +666,9 @@ onUnmounted(() => {
                 {{ starsOf(entry.averageStars) }}
                 {{ entry.averageStars.toFixed(1) }} ({{ entry.ratingCount }})
               </span>
-              <span v-else>Not rated yet</span>
+              <span v-else>{{ t('store.area.notRated') }}</span>
               <button class="ml-2 underline" @click="openReviews(entry)">
-                {{ reviewingPath === entry.path ? 'Hide reviews' : 'Reviews' }}
+                {{ reviewingPath === entry.path ? t('store.area.hideReviews') : t('store.area.reviews') }}
               </button>
             </div>
 
@@ -674,15 +678,15 @@ onUnmounted(() => {
               spends money.
             -->
             <div v-if="buyingPath === entry.path" class="mt-3 flex flex-col gap-2">
-              <VInput v-model="buyerEmail" label="Store email" type="email" />
+              <VInput v-model="buyerEmail" :label="t('store.area.storeEmail')" type="email" />
               <VInput
                 v-model="buyPassword"
-                label="Store password"
+                :label="t('store.area.storePassword')"
                 type="password"
                 autocomplete="current-password"
                 :help="entry.licenseTermDays
-                  ? `Updates for ${entry.licenseTermDays} days. What you install keeps working after that.`
-                  : 'Updates without a time limit.'"
+                  ? t('store.area.licenceDays', { days: entry.licenseTermDays })
+                  : t('store.area.licenceNoLimit')"
               />
               <!--
                 Where the buyer is. Asked rather than derived: a kit is
@@ -692,13 +696,13 @@ onUnmounted(() => {
               <VSelect
                 v-model="billingCountry"
                 :options="countryOptions"
-                label="Country"
-                help="This store sells in the EU. Elsewhere means registering for tax there first."
+                :label="t('store.area.country')"
+                :help="t('store.area.countryHelp')"
               />
               <VInput
                 v-model="buyVatId"
-                label="VAT id (optional)"
-                help="For a business buyer. Recorded as given."
+                :label="t('store.area.vatId')"
+                :help="t('store.area.vatIdHelp')"
               />
               <!--
                 The consent that ends the fourteen-day right of withdrawal.
@@ -708,10 +712,7 @@ onUnmounted(() => {
               -->
               <label v-if="withdrawalNotice?.required" class="flex gap-2 items-start text-sm">
                 <input v-model="withdrawalAccepted" type="checkbox" class="mt-1" />
-                <span>
-                  I ask for the download to start immediately and I understand
-                  that I thereby lose my right of withdrawal.
-                </span>
+                <span>{{ t('store.area.withdrawalConsent') }}</span>
               </label>
 
               <div class="flex gap-2">
@@ -720,10 +721,12 @@ onUnmounted(() => {
                   :disabled="busyPath === entry.path || !buyReady(entry)"
                   @click="confirmBuy(entry)"
                 >
-                  {{ busyPath === entry.path ? '…' : `Confirm — ${priceOf(entry)}` }}
+                  {{ busyPath === entry.path
+                    ? '…'
+                    : t('store.area.confirmPrice', { price: priceOf(entry) }) }}
                 </VButton>
                 <VButton size="sm" variant="secondary" outline @click="buyingPath = ''">
-                  Cancel
+                  {{ t('store.common.cancel') }}
                 </VButton>
               </div>
             </div>
@@ -735,7 +738,7 @@ onUnmounted(() => {
                   class="text-xs px-2 py-0.5 rounded-full border"
                   :class="reviewMajor === null ? 'border-primary text-primary' : 'opacity-70'"
                   @click="reviewMajor = null"
-                >all versions</button>
+                >{{ t('store.area.allVersions') }}</button>
                 <button
                   v-for="major in reviewMajors"
                   :key="`major-${major}`"
@@ -755,7 +758,9 @@ onUnmounted(() => {
                 <div v-if="review.text" class="text-sm">{{ review.text }}</div>
               </div>
               <div v-if="shownReviews.length === 0" class="text-sm opacity-70 mb-2">
-                {{ reviewMajor === null ? 'No reviews yet.' : `No reviews for ${reviewMajor}.x.` }}
+                {{ reviewMajor === null
+                  ? t('store.area.noReviews')
+                  : t('store.area.noReviewsForMajor', { major: reviewMajor }) }}
               </div>
 
               <!--
@@ -769,31 +774,29 @@ onUnmounted(() => {
                     v-for="star in 5"
                     :key="star"
                     class="text-lg"
-                    :aria-label="`${star} stars`"
+                    :aria-label="t('store.area.starsAria', { count: star })"
                     @click="reviewStars = star"
                   >{{ star <= reviewStars ? '★' : '☆' }}</button>
                 </div>
-                <VTextarea v-model="reviewText" placeholder="Optional — a text waits for review." />
+                <VTextarea v-model="reviewText" :placeholder="t('store.area.reviewPlaceholder')" />
                 <div>
-                  <VButton size="sm" @click="sendReview(entry)">Send review</VButton>
+                  <VButton size="sm" @click="sendReview(entry)">{{ t('store.area.sendReview') }}</VButton>
                 </div>
               </div>
               <div v-else class="text-sm opacity-70 mt-2">
-                Sign in to this store to leave a review.
+                {{ t('store.area.signInToReview') }}
               </div>
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
-            <span class="text-xs opacity-60">{{ entry.state }}</span>
+            <span class="text-xs opacity-60">{{ t(`store.state.${entry.state}`) }}</span>
             <span class="text-xs">{{ priceOf(entry) }}</span>
             <VButton
               v-if="entry.state === 'OFFERED'"
               size="sm"
               :disabled="busyPath === entry.path || !activeView.accountId
                 || !activeView.ownershipKnown"
-              :title="!activeView.ownershipKnown
-                ? 'The store could not say what you already own — buying now could pay twice.'
-                : undefined"
+              :title="!activeView.ownershipKnown ? t('store.area.buyBlocked') : undefined"
               @click="openBuy(entry)"
             >
               {{ actionOf(entry) }}

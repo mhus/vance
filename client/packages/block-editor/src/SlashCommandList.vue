@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useT } from './useT';
 
 /**
  * Renderer for the inline slash-command popup. Wired up via
@@ -15,6 +16,8 @@ export interface SlashCommandItem {
   // the extension owns the Tiptap chain. The list just exposes which
   // item was picked.
 }
+
+const t = useT();
 
 const props = defineProps<{
   items: SlashCommandItem[];
@@ -60,7 +63,7 @@ defineExpose({ onKeyDown });
 
 <template>
   <div class="slash-list">
-    <div v-if="!hasItems" class="slash-list__empty">No matching block</div>
+    <div v-if="!hasItems" class="slash-list__empty">{{ t('blockEditor.slash.noMatch') }}</div>
     <button
       v-for="(item, i) in items"
       :key="item.id"

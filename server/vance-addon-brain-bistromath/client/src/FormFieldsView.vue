@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { pickLocalized } from '@vance/shared';
-import { VEmptyState } from '@vance/components';
+import { useLocale, VEmptyState } from '@vance/components';
+import { useT } from './i18n';
 import type { FormFieldDto } from '@vance/generated';
 
 /**
@@ -25,28 +26,34 @@ const props = defineProps<{
   record: Record<string, unknown> | null;
 }>();
 
+const t = useT();
+
 /**
- * The reader's language, read off the browser rather than from `vue-i18n`.
+ * The reader's UI language — the one the rest of the interface is in, not the
+ * browser's. Reached through the host's app context (see {@code useLocale}),
+ * so it follows a language switch in the profile.
  *
- * <p>`useI18n()` needs the host's i18n instance, and an addon bundle does not
- * share it. `pickLocalized` already falls back to English and then to any
- * present value, so the worst case of guessing wrong is a label in the one
- * language the document does have.
+ * <p>`pickLocalized` still falls back to English and then to any present
+ * value: a form authored in one language must render for a reader in another.
  */
-const lang = (navigator.language || 'en').split('-')[0];
+const locale = useLocale();
 
 function label(field: FormFieldDto): string {
-  return pickLocalized(field.label, lang) || field.name;
+  return pickLocalized(field.label, locale.value) || field.name;
 }
 
 function help(field: FormFieldDto): string | null {
-  return pickLocalized(field.help, lang) || null;
+  return pickLocalized(field.help, locale.value) || null;
 }
 
 function value(field: FormFieldDto): string {
   const raw = props.record?.[field.name];
-  if (raw === undefined || raw === null || raw === '') return '—';
-  if (field.type === 'boolean') return raw === true || raw === 'true' ? 'yes' : 'no';
+  if (raw === undefined || raw === null || raw === '') return t('bistromath.details.empty');
+  if (field.type === 'boolean') {
+    return raw === true || raw === 'true'
+      ? t('bistromath.details.yes')
+      : t('bistromath.details.no');
+  }
   if (typeof raw === 'object') return JSON.stringify(raw);
   return String(raw);
 }
@@ -59,8 +66,8 @@ function multiline(field: FormFieldDto): boolean {
 <template>
   <VEmptyState
     v-if="!record"
-    headline="Nothing selected"
-    body="Click a row in the table to see it here."
+    :headline="t('bistromath.details.emptyHeadline')"
+    :body="t('bistromath.details.emptyBody')"
   />
   <dl v-else class="flex flex-col gap-2">
     <div v-for="field in fields" :key="field.name" class="flex flex-col gap-0.5">

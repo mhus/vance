@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import type { ComposeOutputView, ComposeRunResult } from '../extensions/VanceCompose';
+import { useT } from '../useT';
 import {
   readComposeOutputs,
   readFixedOutputs,
@@ -36,6 +37,8 @@ export interface UseComposeRunOptions {
  * a single block's run.
  */
 export function useComposeRun(opts: UseComposeRunOptions) {
+  // Called from a NodeView's setup(), so the host translator is reachable.
+  const t = useT();
   const running = ref(false);
   const error = ref<string | null>(null);
   const result = ref<ComposeRunResult | null>(null);
@@ -93,7 +96,7 @@ export function useComposeRun(opts: UseComposeRunOptions) {
         stopTimer();
         running.value = false;
         progress.value = null;
-        error.value = 'Lauf nicht mehr verfügbar (Pod-Neustart?) — bitte neu ausführen.';
+        error.value = t('blockEditor.compose.runGone');
         opts.setYaml(clearComposeManaged(opts.yaml()));
       }
     };
@@ -119,7 +122,7 @@ export function useComposeRun(opts: UseComposeRunOptions) {
       }
     } catch (e) {
       running.value = false;
-      error.value = e instanceof Error ? e.message : 'Compose run failed';
+      error.value = e instanceof Error ? e.message : t('blockEditor.compose.runFailed');
     }
   }
 

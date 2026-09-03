@@ -89,25 +89,24 @@ watch(() => url.value, () => { void loadDocx(); });
 
 <template>
   <div :class="['docx-view', `docx-view--${mode}`]">
-    <div v-if="loading" class="docx-state">Lädt DOCX…</div>
+    <div v-if="loading" class="docx-state">{{ $t('kindViews.docx.loading') }}</div>
     <div v-else-if="loadError" class="docx-state docx-state--err">
-      <strong>Konnte DOCX nicht lesen:</strong> {{ loadError }}
+      <strong>{{ $t('kindViews.docx.failed') }}</strong> {{ loadError }}
     </div>
     <template v-else>
       <div class="docx-toolbar">
         <button
           type="button"
           class="docx-reload"
-          :title="'Vorschau aktualisieren — zeigt Änderungen nach einem Office-Edit-Save.'"
+          :title="$t('kindViews.docx.refreshTitle')"
           @click="loadDocx"
-        >🔄 Aktualisieren</button>
+        >{{ $t('kindViews.docx.refresh') }}</button>
         <div
           v-if="warnings.length"
           class="docx-warnings"
           :title="warnings.join('\n')"
         >
-          {{ warnings.length }} Konvertierungs-Hinweis(e) — Layout
-          kann von Word abweichen.
+          {{ $t('kindViews.docx.warnings', { count: warnings.length }) }}
         </div>
       </div>
       <!-- mammoth's HTML is already DOMPurify-sanitised; v-html

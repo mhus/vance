@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { NodeViewWrapper } from '@tiptap/vue-3';
+import { useT } from '../useT';
 import { ref } from 'vue';
+
+const t = useT();
 
 const props = defineProps<{
   node: {
@@ -41,7 +44,7 @@ function onBody(e: Event) {
       <input
         type="text"
         class="vance-toggle__summary"
-        placeholder="Summary…"
+        :placeholder="t('blockEditor.toggleBlock.summaryPlaceholder')"
         :value="node.attrs.summary"
         contenteditable="false"
         @input="onSummary"
@@ -52,7 +55,7 @@ function onBody(e: Event) {
     <textarea
       v-show="open"
       class="vance-toggle__body"
-      placeholder="Body (Markdown)…"
+      :placeholder="t('blockEditor.toggleBlock.bodyPlaceholder')"
       :value="node.attrs.body"
       rows="3"
       contenteditable="false"

@@ -5,6 +5,7 @@ import { ToolHealthScope } from '@vance/generated';
 import type { ToolHealthCooldownDto, ToolHealthEntryDto } from '@vance/generated';
 import { VAlert, VButton, VCheckbox, VEmptyState, VInput, VSelect } from '@/components';
 import { useToolHealth } from '@/composables/useProjectInsights';
+import { useI18n } from 'vue-i18n';
 
 /**
  * Health-first view on the tool-health records of one scope.
@@ -24,10 +25,13 @@ const health = useToolHealth();
 // PROJECT is what the provider gates write; TENANT is where Agrajag
 // escalates a tool it considers broken beyond one project.
 const scope = ref<ToolHealthScope>(ToolHealthScope.PROJECT);
-const SCOPE_OPTIONS = [
-  { value: ToolHealthScope.PROJECT, label: 'Project' },
-  { value: ToolHealthScope.TENANT, label: 'Tenant' },
-];
+const { t } = useI18n();
+
+// Labels resolved per render so a language switch reaches the picker.
+const SCOPE_OPTIONS = computed(() => [
+  { value: ToolHealthScope.PROJECT, label: t('insights.toolHealth.scopeProject') },
+  { value: ToolHealthScope.TENANT, label: t('insights.toolHealth.scopeTenant') },
+]);
 
 /** The `scopeId` the current scope needs — project name or tenant id. */
 const scopeId = computed<string | null>(() =>
@@ -66,24 +70,32 @@ function formatCountdown(iso: string | null | undefined): string {
   const target = Date.parse(iso);
   if (Number.isNaN(target)) return iso;
   const diffMs = target - nowMs.value;
-  if (diffMs <= 0) return 'expired';
+  if (diffMs <= 0) return t('insights.projectTools.countdown.expired');
   const sec = Math.floor(diffMs / 1000);
-  if (sec < 60) return `${sec}s`;
+  if (sec < 60) return t('insights.projectTools.countdown.seconds', { n: sec });
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m`;
+  if (min < 60) return t('insights.projectTools.countdown.minutes', { n: min });
   const hr = Math.floor(min / 60);
   const remMin = min % 60;
-  if (hr < 24) return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`;
+  if (hr < 24) {
+    return remMin > 0
+      ? t('insights.projectTools.countdown.hoursMinutes', { h: hr, m: remMin })
+      : t('insights.projectTools.countdown.hours', { n: hr });
+  }
   const days = Math.floor(hr / 24);
   const remHr = hr % 24;
-  return remHr > 0 ? `${days}d ${remHr}h` : `${days}d`;
+  return remHr > 0
+    ? t('insights.projectTools.countdown.daysHours', { d: days, h: remHr })
+    : t('insights.projectTools.countdown.days', { n: days });
 }
 
 function formatTimestamp(iso: string | null | undefined): string {
   if (!iso) return '—';
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
-  return new Date(t).toLocaleString();
+  // `ms`, not `t`: the translator is called `t` in this file now, and a local
+  // shadow here would silently take it out of scope.
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  return new Date(ms).toLocaleString();
 }
 
 // ─── Subject kind ──────────────────────────────────────────────────────
@@ -101,11 +113,11 @@ function subjectKind(toolName: string): SubjectKind {
 function subjectKindLabel(kind: SubjectKind): string {
   switch (kind) {
     case 'feed':
-      return 'feed source';
+      return t('insights.toolHealth.kind.feed');
     case 'search':
-      return 'search provider';
+      return t('insights.toolHealth.kind.search');
     default:
-      return 'tool';
+      return t('insights.toolHealth.kind.tool');
   }
 }
 
@@ -225,20 +237,20 @@ async function onClearCooldown(
     <!-- ─── Toolbar ─── -->
     <div class="flex flex-wrap items-end gap-3 text-sm">
       <div class="w-40">
-        <VSelect v-model="scope" :options="SCOPE_OPTIONS" label="Scope" />
+        <VSelect v-model="scope" :options="SCOPE_OPTIONS" :label="$t('insights.toolHealth.scope')" />
       </div>
 
       <div class="flex-1 min-w-48">
         <VInput
           v-model="search"
-          label="Search"
-          placeholder="subject, signature, note…"
+          :label="$t('insights.toolHealth.search')"
+          :placeholder="$t('insights.toolHealth.searchPlaceholder')"
         />
       </div>
 
       <div class="flex flex-col gap-1">
-        <span class="text-xs opacity-70">Filter</span>
-        <VCheckbox v-model="cooldownOnly" label="active cooldown only" />
+        <span class="text-xs opacity-70">{{ $t('insights.toolHealth.filter') }}</span>
+        <VCheckbox v-model="cooldownOnly" :label="$t('insights.toolHealth.cooldownOnly')" />
       </div>
 
       <VButton
@@ -248,21 +260,24 @@ async function onClearCooldown(
         :disabled="!scopeId || health.loading.value"
         @click="reload"
       >
-        Reload
+        {{ $t('insights.toolHealth.reload') }}
       </VButton>
 
       <div class="text-xs opacity-60 ml-auto">
-        {{ filtered.length }} / {{ health.entries.value.length }} records ·
-        {{ totalCooldowns }} active cooldown{{ totalCooldowns === 1 ? '' : 's' }}
+        {{ $t('insights.toolHealth.recordCount', {
+          shown: filtered.length,
+          total: health.entries.value.length,
+        }) }} ·
+        {{ $t('insights.toolHealth.cooldownCount', { n: totalCooldowns }, totalCooldowns) }}
       </div>
     </div>
 
     <div v-if="!scopeId" class="opacity-60 text-sm">
-      Pick a project in the sidebar to see its tool health.
+      {{ $t('insights.toolHealth.pickProject') }}
     </div>
 
     <div v-else-if="health.loading.value" class="text-sm opacity-60">
-      Loading tool health…
+      {{ $t('insights.toolHealth.loading') }}
     </div>
 
     <VAlert v-else-if="health.error.value" variant="error">
@@ -271,11 +286,11 @@ async function onClearCooldown(
 
     <VEmptyState
       v-else-if="health.entries.value.length === 0"
-      :headline="'No health records'"
+      :headline="$t('insights.toolHealth.emptyHeadline')"
       :body="
         scope === 'TENANT'
-          ? 'Nothing has been recorded as degraded or cooling down for this tenant.'
-          : 'Nothing has been recorded as degraded or cooling down for this project.'
+          ? $t('insights.toolHealth.emptyBodyTenant')
+          : $t('insights.toolHealth.emptyBodyProject')
       "
     />
 
@@ -288,25 +303,25 @@ async function onClearCooldown(
             class="font-normal px-3 py-1 cursor-pointer select-none"
             @click="toggleSort('toolName')"
           >
-            Subject{{ arrow('toolName') }}
+            {{ $t('insights.toolHealth.colSubject') }}{{ arrow('toolName') }}
           </th>
-          <th class="font-normal px-3 py-1 w-28">Kind</th>
+          <th class="font-normal px-3 py-1 w-28">{{ $t('insights.toolHealth.colKind') }}</th>
           <th
             class="font-normal px-3 py-1 w-28 cursor-pointer select-none"
             @click="toggleSort('status')"
           >
-            Status{{ arrow('status') }}
+            {{ $t('insights.toolHealth.colStatus') }}{{ arrow('status') }}
           </th>
-          <th class="font-normal px-3 py-1 w-40">Classification</th>
-          <th class="font-normal px-3 py-1 w-24">Cooldowns</th>
-          <th class="font-normal px-3 py-1 w-44">Since</th>
-          <th class="font-normal px-3 py-1">Note</th>
+          <th class="font-normal px-3 py-1 w-40">{{ $t('insights.toolHealth.colClassification') }}</th>
+          <th class="font-normal px-3 py-1 w-24">{{ $t('insights.toolHealth.colCooldowns') }}</th>
+          <th class="font-normal px-3 py-1 w-44">{{ $t('insights.toolHealth.colSince') }}</th>
+          <th class="font-normal px-3 py-1">{{ $t('insights.toolHealth.colNote') }}</th>
         </tr>
       </thead>
       <tbody>
         <tr v-if="filtered.length === 0">
           <td colspan="7" class="opacity-60 text-center py-4">
-            No records match the current filters.
+            {{ $t('insights.toolHealth.noMatch') }}
           </td>
         </tr>
         <template v-for="e in filtered" :key="e.scope + '|' + e.toolName">
@@ -343,24 +358,26 @@ async function onClearCooldown(
             <td colspan="7" class="p-3">
               <div class="bg-base-200 rounded p-3 space-y-2 text-xs">
                 <div v-if="e.expectedRecoveryAt" class="opacity-80">
-                  <span class="opacity-60">recovery:</span>
+                  <span class="opacity-60">{{ $t('insights.toolHealth.recovery') }}</span>
                   {{ formatTimestamp(e.expectedRecoveryAt) }}
-                  (in {{ formatCountdown(e.expectedRecoveryAt) }})
+                  {{ $t('insights.toolHealth.recoveryIn', {
+                    countdown: formatCountdown(e.expectedRecoveryAt),
+                  }) }}
                 </div>
 
                 <div v-if="cooldownCount(e) === 0" class="opacity-60">
-                  No active cooldowns — nothing is gating this subject right now.
+                  {{ $t('insights.toolHealth.noCooldowns') }}
                 </div>
 
                 <table v-else class="w-full text-xs">
                   <thead class="opacity-60">
                     <tr class="text-left">
-                      <th class="font-normal px-2 py-1">Signature</th>
-                      <th class="font-normal px-2 py-1">Classification</th>
-                      <th class="font-normal px-2 py-1">Hits</th>
-                      <th class="font-normal px-2 py-1">User</th>
-                      <th class="font-normal px-2 py-1">Note</th>
-                      <th class="font-normal px-2 py-1">Expires</th>
+                      <th class="font-normal px-2 py-1">{{ $t('insights.toolHealth.colSignature') }}</th>
+                      <th class="font-normal px-2 py-1">{{ $t('insights.toolHealth.colClassification') }}</th>
+                      <th class="font-normal px-2 py-1">{{ $t('insights.toolHealth.colHits') }}</th>
+                      <th class="font-normal px-2 py-1">{{ $t('insights.toolHealth.colUser') }}</th>
+                      <th class="font-normal px-2 py-1">{{ $t('insights.toolHealth.colNote') }}</th>
+                      <th class="font-normal px-2 py-1">{{ $t('insights.toolHealth.colExpires') }}</th>
                       <th class="font-normal px-2 py-1"></th>
                     </tr>
                   </thead>
@@ -386,10 +403,10 @@ async function onClearCooldown(
                           variant="neutral"
                           size="xs"
                           :outline="true"
-                          title="Clear this cooldown — the subject can fire again immediately"
+                          :title="$t('insights.toolHealth.clearTitle')"
                           @click="onClearCooldown(e.toolName, cd)"
                         >
-                          Clear
+                          {{ $t('insights.toolHealth.clear') }}
                         </VButton>
                       </td>
                     </tr>

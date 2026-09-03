@@ -1148,12 +1148,12 @@ function confirmNewFolder(): void {
                 />
               </th>
               <th class="text-left px-2 py-2 w-8"></th>
-              <th class="text-left px-2 py-2">Name</th>
-              <th class="text-left px-2 py-2 w-24">Kind</th>
-              <th class="text-left px-2 py-2 w-32">Tags</th>
-              <th class="text-right px-2 py-2 w-20">Size</th>
-              <th class="text-left px-2 py-2 w-28">Created</th>
-              <th class="text-left px-2 py-2 w-32">By</th>
+              <th class="text-left px-2 py-2">{{ $t('explorer.colName') }}</th>
+              <th class="text-left px-2 py-2 w-24">{{ $t('explorer.colKind') }}</th>
+              <th class="text-left px-2 py-2 w-32">{{ $t('explorer.colTags') }}</th>
+              <th class="text-right px-2 py-2 w-20">{{ $t('explorer.colSize') }}</th>
+              <th class="text-left px-2 py-2 w-28">{{ $t('explorer.colCreated') }}</th>
+              <th class="text-left px-2 py-2 w-32">{{ $t('explorer.colBy') }}</th>
               <th class="w-10 pr-3 py-2"></th>
             </tr>
           </thead>
@@ -1173,7 +1173,7 @@ function confirmNewFolder(): void {
               </td>
               <td class="px-2 py-1.5">📁</td>
               <td class="px-2 py-1.5 font-medium">{{ folder }}</td>
-              <td class="px-2 py-1.5 opacity-50">folder</td>
+              <td class="px-2 py-1.5 opacity-50">{{ $t('explorer.folder') }}</td>
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>

@@ -22,6 +22,7 @@ import {
 import { forgetPreview, previewFor, requestPreview, teaserIsOwn, teaserOf } from './linkPreview';
 import type { LinksView } from './generated/links/LinksView';
 import type { LinkEntryView } from './generated/links/LinkEntryView';
+import { useT } from './i18n';
 
 /**
  * Mount for an `app: links` folder — one column of preview cards under group
@@ -42,6 +43,8 @@ const folder = computed(() => {
   const i = p.lastIndexOf('/');
   return i < 0 ? '' : p.slice(0, i);
 });
+
+const t = useT();
 
 const view = ref<LinksView | null>(null);
 const entries = computed<LinkEntryView[]>(() => view.value?.entries ?? []);
@@ -223,14 +226,13 @@ const unseenCount = computed(() => entries.value.filter((e) => !viewed(e)).lengt
 const stackEmpty = computed(() => {
   if (showSeen.value || filter.value.trim()) {
     return {
-      headline: 'Nothing matches',
-      body: 'No link in this list matches the filter.',
+      headline: t('links.app.nothingMatchesHeadline'),
+      body: t('links.app.nothingMatchesBody'),
     };
   }
   return {
-    headline: 'Nothing left to read',
-    body: 'Every link here is marked seen. Turn on “Show seen” to look back through them, '
-      + 'or switch to the list to curate.',
+    headline: t('links.app.pileDoneHeadline'),
+    body: t('links.app.pileDoneBody'),
   };
 });
 
@@ -343,7 +345,7 @@ async function addFromDraft(): Promise<void> {
 
 async function onRemove(entry: LinkEntryView): Promise<void> {
   const label = entry.title ?? entry.host;
-  if (!window.confirm(`Remove “${label}” from this list?`)) return;
+  if (!window.confirm(t('links.app.confirmRemove', { label }))) return;
   await run(() => removeLink(props.document.projectId, folder.value, entry.url));
 }
 
@@ -389,7 +391,7 @@ async function onCopy(entry: LinkEntryView): Promise<void> {
   if (typeof navigator === 'undefined' || !navigator.clipboard) {
     // Says why instead of doing nothing: the clipboard is unavailable on
     // insecure origins, and a button that silently fails reads as a bug.
-    error.value = 'The clipboard is not available in this browser context.';
+    error.value = t('links.app.clipboardUnavailable');
     return;
   }
   try {
@@ -411,14 +413,14 @@ function onRefreshPreview(entry: LinkEntryView): void {
 }
 
 async function onNewGroup(): Promise<void> {
-  const name = window.prompt('New group:');
+  const name = window.prompt(t('links.app.promptNewGroup'));
   if (name === null || !name.trim()) return;
   const next = [...groups.value, name.trim()];
   await run(() => setGroups(props.document.projectId, folder.value, next));
 }
 
 async function onRenameGroup(group: string): Promise<void> {
-  const next = window.prompt(`Rename “${group}” (empty dissolves the group):`, group);
+  const next = window.prompt(t('links.app.promptRenameGroup', { group }), group);
   if (next === null) return;
   await run(() => renameGroup(props.document.projectId, folder.value, group, next.trim()));
   if (activeGroup.value === group) activeGroup.value = next.trim() || null;
@@ -533,7 +535,7 @@ function metaLine(entry: LinkEntryView): string {
   const site = previewFor(entry.url)?.siteName;
   if (site && site.toLowerCase() !== entry.host.toLowerCase()) bits.push(site);
   if (entry.addedAt) bits.push(entry.addedAt.slice(0, 10));
-  if (entry.viewedAt) bits.push(`seen ${entry.viewedAt.slice(0, 10)}`);
+  if (entry.viewedAt) bits.push(t('links.app.seenOn', { date: entry.viewedAt.slice(0, 10) }));
   return bits.join(' · ');
 }
 
@@ -555,7 +557,7 @@ function message(e: unknown): string {
       <div class="min-w-0 flex-1">
         <VInput
           v-model="draft"
-          placeholder="Paste a link — or several, one per line"
+          :placeholder="t('links.app.pastePlaceholder')"
           :disabled="busy"
           @keyup.enter="addFromDraft()"
         />
@@ -563,21 +565,21 @@ function message(e: unknown): string {
       <div class="w-48 flex-none">
         <VInput
           v-model="draftGroup"
-          placeholder="Group (optional)"
+          :placeholder="t('links.app.groupPlaceholder')"
           :suggestions="groups"
           :disabled="busy"
         />
       </div>
       <VButton variant="primary" :disabled="busy || !draft.trim()" @click="addFromDraft()">
-        Add
+        {{ t('links.app.add') }}
       </VButton>
-      <VButton variant="ghost" :disabled="busy" title="New group" @click="onNewGroup()">
-        + Group
+      <VButton variant="ghost" :disabled="busy" :title="t('links.app.newGroup')" @click="onNewGroup()">
+        {{ t('links.app.newGroupButton') }}
       </VButton>
       <VButton
         variant="ghost"
         :disabled="busy"
-        title="Regenerate the _index.md link list"
+        :title="t('links.app.rebuildTip')"
         @click="onRebuild()"
       >
         ↻
@@ -586,7 +588,7 @@ function message(e: unknown): string {
            menu: it is about the list as a whole, not about any one link. -->
       <VButton
         variant="ghost"
-        title="Capture access — tokens for browser extensions and scripts"
+        :title="t('links.app.captureTip')"
         @click="settingsOpen = true"
       >
         ⚙
@@ -602,39 +604,39 @@ function message(e: unknown): string {
       <VButton
         size="sm"
         :variant="stackMode ? 'primary' : 'ghost'"
-        :title="stackMode ? 'Back to the curated list' : 'Read through what is left, by date'"
+        :title="stackMode ? t('links.app.backToList') : t('links.app.readPile')"
         @click="mode = stackMode ? 'list' : 'stack'"
       >
-        {{ stackMode ? '☰ List' : `▤ Stack ${unseenCount}` }}
+        {{ stackMode ? t('links.app.list') : t('links.app.stack', { count: unseenCount }) }}
       </VButton>
 
       <template v-if="stackMode">
         <VButton
           size="sm"
           variant="ghost"
-          :title="stackOrder === 'newest' ? 'Newest first' : 'Oldest first'"
+          :title="stackOrder === 'newest' ? t('links.app.newestFirst') : t('links.app.oldestFirst')"
           @click="stackOrder = stackOrder === 'newest' ? 'oldest' : 'newest'"
         >
-          {{ stackOrder === 'newest' ? '↓ Newest' : '↑ Oldest' }}
+          {{ stackOrder === 'newest' ? t('links.app.newest') : t('links.app.oldest') }}
         </VButton>
         <VButton
           size="sm"
           :variant="showSeen ? 'primary' : 'ghost'"
           @click="showSeen = !showSeen"
         >
-          Show seen
+          {{ t('links.app.showSeen') }}
         </VButton>
       </template>
 
       <div class="w-64 flex-none">
-        <VInput v-model="filter" size="sm" placeholder="Filter…" />
+        <VInput v-model="filter" size="sm" :placeholder="t('links.app.filterPlaceholder')" />
       </div>
       <VButton
         size="sm"
         :variant="activeGroup === null ? 'primary' : 'ghost'"
         @click="activeGroup = null"
       >
-        All {{ entries.length }}
+        {{ t('links.app.all', { count: entries.length }) }}
       </VButton>
       <VButton
         v-if="counts[''] > 0"
@@ -642,7 +644,7 @@ function message(e: unknown): string {
         :variant="activeGroup === '' ? 'primary' : 'ghost'"
         @click="activeGroup = ''"
       >
-        Ungrouped {{ counts[''] }}
+        {{ t('links.app.ungrouped', { count: counts[''] }) }}
       </VButton>
       <VButton
         v-for="g in groups"
@@ -660,9 +662,8 @@ function message(e: unknown): string {
       <div class="mx-auto flex w-full max-w-3xl flex-col gap-2">
         <VEmptyState
           v-if="entries.length === 0"
-          headline="No links yet"
-          body="Paste a URL above. The title comes from the page; the teaser and the picture
-                are read from it live, so a link is complete the moment you add it."
+          :headline="t('links.app.emptyHeadline')"
+          :body="t('links.app.emptyBody')"
         />
         <VEmptyState
           v-else-if="stackMode && stackItems.length === 0"
@@ -671,8 +672,8 @@ function message(e: unknown): string {
         />
         <VEmptyState
           v-else-if="!stackMode && filtered.length === 0"
-          headline="Nothing matches"
-          body="No link in this list matches the filter."
+          :headline="t('links.app.nothingMatchesHeadline')"
+          :body="t('links.app.nothingMatchesBody')"
         />
 
         <template v-for="section in sections" :key="section.group || '__lead__'">
@@ -690,7 +691,7 @@ function message(e: unknown): string {
               size="xs"
               variant="ghost"
               class="opacity-0 group-hover/heading:opacity-100"
-              title="Rename or dissolve this group"
+              :title="t('links.app.renameGroupTip')"
               @click="onRenameGroup(section.group)"
             >
               ✎
@@ -705,7 +706,7 @@ function message(e: unknown): string {
             <!-- The lead group has no heading — it is the absence of one. The
                  strip stays as a drop target so a link can be pulled out of
                  every group. -->
-            <span class="text-xs opacity-30">no group</span>
+            <span class="text-xs opacity-30">{{ t('links.app.noGroup') }}</span>
           </div>
 
           <!-- Clicking the card selects it, clicking again lets it go. The
@@ -773,7 +774,9 @@ function message(e: unknown): string {
                     v-for="tag in entry.tags"
                     :key="tag"
                     class="hover:opacity-80"
-                    :title="filter === tag ? 'Clear the filter' : `Filter by ${tag}`"
+                    :title="filter === tag
+                      ? t('links.app.clearFilter')
+                      : t('links.app.filterByTag', { tag })"
                     @click.stop="filter = filter === tag ? '' : tag"
                   >
                     <VBadge size="sm" variant="info" :soft="filter !== tag">{{ tag }}</VBadge>
@@ -789,7 +792,7 @@ function message(e: unknown): string {
                   size="xs"
                   :variant="viewed(entry) ? 'primary' : 'ghost'"
                   :disabled="busy"
-                  :title="viewed(entry) ? 'Put back on the pile' : 'Mark as seen'"
+                  :title="viewed(entry) ? t('links.app.putBack') : t('links.app.markSeen')"
                   @click.stop="onToggleViewed(entry)"
                 >
                   ✓
@@ -802,7 +805,7 @@ function message(e: unknown): string {
                   size="xs"
                   :variant="copiedUrl === entry.url ? 'primary' : 'ghost'"
                   :class="isSelected(entry) ? '' : 'opacity-0 group-hover/card:opacity-100'"
-                  :title="copiedUrl === entry.url ? 'Copied' : 'Copy the link'"
+                  :title="copiedUrl === entry.url ? t('links.app.copied') : t('links.app.copyLink')"
                   @click.stop="onCopy(entry)"
                 >
                   ⧉
@@ -811,7 +814,7 @@ function message(e: unknown): string {
                   size="xs"
                   variant="ghost"
                   class="opacity-0 group-hover/card:opacity-100"
-                  title="Actions"
+                  :title="t('links.app.actions')"
                   @click.stop="openMenu = openMenu === entry.url ? null : entry.url"
                 >
                   ⋯
@@ -822,18 +825,18 @@ function message(e: unknown): string {
                   <VShareButton
                     :subject="shareSubject(entry)"
                     size="xs"
-                    label="Share…"
+                    :label="t('links.app.share')"
                     show-label
                     @click.stop="openMenu = null"
                   />
                   <VButton size="xs" variant="ghost" @click.stop="editing = entry; openMenu = null">
-                    Edit…
+                    {{ t('links.app.edit') }}
                   </VButton>
                   <VButton size="xs" variant="ghost" @click.stop="onRefreshPreview(entry)">
-                    Refresh preview
+                    {{ t('links.app.refreshPreview') }}
                   </VButton>
                   <VButton size="xs" variant="ghost" @click.stop="onRemove(entry)">
-                    Remove
+                    {{ t('links.app.remove') }}
                   </VButton>
                 </div>
               </div>

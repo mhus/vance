@@ -5,12 +5,15 @@ import { documentContentUrl } from '@vance/shared';
 import { getSlideshow, rebuildSlideshow } from './api';
 import type { SlideView } from './generated/slideshow/SlideView';
 import type { SlideshowView } from './generated/slideshow/SlideshowView';
+import { useT } from './i18n';
 
 const props = defineProps<{
   projectId: string;
   folder: string;
   title?: string;
 }>();
+
+const t = useT();
 
 const show = ref<SlideshowView | null>(null);
 const loading = ref(true);
@@ -50,7 +53,7 @@ async function load(): Promise<void> {
       currentIndex.value = Math.max(0, show.value.slides.length - 1);
     }
   } catch (e) {
-    error.value = `Could not load slideshow: ${(e as Error).message}`;
+    error.value = t('slideshow.error.load', { message: (e as Error).message });
   } finally {
     loading.value = false;
   }
@@ -61,7 +64,7 @@ async function rebuild(): Promise<void> {
     await rebuildSlideshow(props.projectId, props.folder);
     await load();
   } catch (e) {
-    error.value = `Rebuild failed: ${(e as Error).message}`;
+    error.value = t('slideshow.error.rebuild', { message: (e as Error).message });
   }
 }
 
@@ -181,7 +184,7 @@ defineExpose({ reload: load });
         <div class="text-sm text-base-content/60 mt-0.5">
           {{ folder }}
           <template v-if="show && show.slides.length > 0">
-            · Slide {{ currentIndex + 1 }} / {{ show.slides.length }}
+            · {{ t('slideshow.position', { index: currentIndex + 1, total: show.slides.length }) }}
           </template>
         </div>
       </div>
@@ -192,25 +195,27 @@ defineExpose({ reload: load });
           :variant="autoplaying ? 'primary' : 'ghost'"
           @click="toggleAutoplay"
         >
-          {{ autoplaying ? '⏸ Pause' : `▶ Play (${show.autoplaySeconds}s)` }}
+          {{ autoplaying
+            ? `⏸ ${t('slideshow.pause')}`
+            : `▶ ${t('slideshow.play', { seconds: show.autoplaySeconds })}` }}
         </VButton>
         <VButton size="sm" variant="ghost" @click="toggleFullscreen">
-          {{ fullscreen ? 'Exit fullscreen' : 'Fullscreen (F)' }}
+          {{ fullscreen ? t('slideshow.exitFullscreen') : t('slideshow.fullscreen') }}
         </VButton>
-        <VButton size="sm" variant="ghost" @click="load">Reload</VButton>
-        <VButton size="sm" variant="ghost" @click="rebuild">Rebuild index</VButton>
+        <VButton size="sm" variant="ghost" @click="load">{{ t('slideshow.reload') }}</VButton>
+        <VButton size="sm" variant="ghost" @click="rebuild">{{ t('slideshow.rebuild') }}</VButton>
       </div>
     </div>
 
     <VAlert v-if="error" variant="error" class="m-4">{{ error }}</VAlert>
 
-    <div v-if="loading" class="p-8 text-base-content/70">Loading slideshow…</div>
+    <div v-if="loading" class="p-8 text-base-content/70">{{ t('slideshow.loading') }}</div>
 
     <VEmptyState
       v-else-if="show && show.slides.length === 0"
       class="m-4"
-      headline="No slides"
-      body="Upload images into this folder, then click 'Rebuild index' to refresh the slideshow."
+      :headline="t('slideshow.emptyHeadline')"
+      :body="t('slideshow.emptyBody')"
     />
 
     <div
@@ -241,13 +246,13 @@ defineExpose({ reload: load });
       <button
         v-if="show && show.slides.length > 1"
         class="absolute left-4 top-1/2 -translate-y-1/2 bg-base-100/20 hover:bg-base-100/40 text-base-content rounded-full w-12 h-12 flex items-center justify-center text-2xl"
-        title="Previous slide (←)"
+        :title="t('slideshow.prevSlide')"
         @click.stop="prev"
       >‹</button>
       <button
         v-if="show && show.slides.length > 1"
         class="absolute right-4 top-1/2 -translate-y-1/2 bg-base-100/20 hover:bg-base-100/40 text-base-content rounded-full w-12 h-12 flex items-center justify-center text-2xl"
-        title="Next slide (→)"
+        :title="t('slideshow.nextSlide')"
         @click.stop="next"
       >›</button>
 
@@ -261,7 +266,7 @@ defineExpose({ reload: load });
           :key="idx"
           class="w-2 h-2 rounded-full transition-all"
           :class="idx === currentIndex ? 'bg-primary w-6' : 'bg-base-content/30 hover:bg-base-content/60'"
-          :title="`Slide ${idx + 1}`"
+          :title="t('slideshow.slideNumber', { index: idx + 1 })"
           @click.stop="jump(idx)"
         />
       </div>

@@ -17,6 +17,7 @@ import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import { updateKanbanCard } from './api';
 import type { KanbanCardUpdateRequest } from './generated/kanban/KanbanCardUpdateRequest';
 import type { KanbanCardView } from './generated/kanban/KanbanCardView';
+import { useT } from './i18n';
 
 /**
  * Card detail panel — two content levels, both auto-saved:
@@ -57,6 +58,8 @@ const emit = defineEmits<{
 const AUTOSAVE_MS = 800;
 
 // ── Attribute edit state ──────────────────────────────────────────
+const t = useT();
+
 const title = ref(props.card.title);
 const priority = ref(props.card.priority ?? '');
 const assignee = ref(props.card.assignee ?? '');
@@ -141,9 +144,9 @@ const saveError = ref<string | null>(null);
 
 const saveStatusLabel = computed<string | null>(() => {
   switch (saveStatus.value) {
-    case 'dirty': return 'Edited';
-    case 'saving': return 'Saving…';
-    case 'saved': return 'Saved';
+    case 'dirty': return t('kanban.detail.status.edited');
+    case 'saving': return t('kanban.detail.status.saving');
+    case 'saved': return t('kanban.detail.status.saved');
     case 'error': return saveError.value ?? 'Save failed';
     default: return null;
   }
@@ -298,7 +301,7 @@ function arraysEqual(a: string[], b: string[]): boolean {
 }
 
 function confirmDelete(): void {
-  if (window.confirm(`Delete card "${props.card.title}"?`)) emit('delete');
+  if (window.confirm(t('kanban.detail.confirmDelete', { title: props.card.title }))) emit('delete');
 }
 
 // Called by the board before switching to another card, so pending edits
@@ -322,7 +325,7 @@ onBeforeUnmount(() => {
   <div class="flex flex-col h-full">
     <div class="flex items-center justify-between p-4 border-b border-base-300">
       <div class="flex items-center gap-3 min-w-0">
-        <h2 class="text-lg font-semibold">Card detail</h2>
+        <h2 class="text-lg font-semibold">{{ t('kanban.detail.title') }}</h2>
         <span
           v-if="saveStatusLabel"
           class="text-xs whitespace-nowrap"
@@ -340,53 +343,57 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-      <VInput v-model="title" label="Title" />
+      <VInput v-model="title" :label="t('kanban.detail.fieldTitle')" />
 
       <div class="grid grid-cols-2 gap-2">
         <VSelect
           :model-value="priority"
-          label="Priority"
+          :label="t('kanban.detail.priority')"
           :options="[
-            { value: '', label: 'No priority' },
-            { value: 'low', label: 'Low' },
-            { value: 'med', label: 'Medium' },
-            { value: 'high', label: 'High' },
-            { value: 'critical', label: 'Critical' },
+            { value: '', label: t('kanban.priority.none') },
+            { value: 'low', label: t('kanban.priority.low') },
+            { value: 'med', label: t('kanban.priority.med') },
+            { value: 'high', label: t('kanban.priority.high') },
+            { value: 'critical', label: t('kanban.priority.critical') },
           ]"
           @update:model-value="(v) => priority = (v as string | null) ?? ''"
         />
-        <VInput v-model="assignee" label="Assignee" />
+        <VInput v-model="assignee" :label="t('kanban.detail.assignee')" />
       </div>
 
       <div class="grid grid-cols-2 gap-2">
-        <VInput v-model="dueDate" label="Due date" placeholder="YYYY-MM-DD" />
+        <VInput
+          v-model="dueDate"
+          :label="t('kanban.detail.dueDate')"
+          :placeholder="t('kanban.detail.dueDatePlaceholder')"
+        />
         <VInput
           :model-value="estimate === null ? '' : String(estimate)"
-          label="Estimate"
+          :label="t('kanban.detail.estimate')"
           @update:model-value="(v: string) => estimate = v === '' ? null : Number(v)"
         />
       </div>
 
-      <VTagEditor v-model="labels" label="Labels" />
+      <VTagEditor v-model="labels" :label="t('kanban.detail.labels')" />
 
-      <VCheckbox v-model="blocked" label="Blocked" />
+      <VCheckbox v-model="blocked" :label="t('kanban.detail.blocked')" />
 
       <VColorPicker
         :model-value="color"
-        label="Color"
+        :label="t('kanban.detail.color')"
         @update:model-value="(v) => color = v"
       />
 
       <div class="flex flex-col gap-1">
         <VButton variant="ghost" class="justify-start" @click="onContentModal(true)">
-          ✎ Edit content…
+          ✎ {{ t('kanban.detail.editContent') }}
         </VButton>
       </div>
     </div>
 
     <VModal
       :model-value="contentOpen"
-      title="Card content"
+      :title="t('kanban.detail.contentTitle')"
       size="xl"
       :close-on-backdrop="true"
       @update:model-value="onContentModal"
@@ -424,12 +431,12 @@ onBeforeUnmount(() => {
         <span class="text-xs text-base-content/50 mr-auto self-center">
           {{ saveStatusLabel }}
         </span>
-        <VButton variant="primary" @click="onContentModal(false)">Done</VButton>
+        <VButton variant="primary" @click="onContentModal(false)">{{ t('kanban.common.done') }}</VButton>
       </template>
     </VModal>
 
     <div class="flex items-center justify-end p-4 border-t border-base-300">
-      <VButton variant="ghost" class="text-error" @click="confirmDelete">Delete</VButton>
+      <VButton variant="ghost" class="text-error" @click="confirmDelete">{{ t('kanban.common.delete') }}</VButton>
     </div>
   </div>
 </template>

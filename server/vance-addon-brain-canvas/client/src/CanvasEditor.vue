@@ -17,6 +17,7 @@ import '@vue-flow/core/dist/theme-default.css';
 import { getUsername } from '@vance/shared/auth';
 import { brainFetch } from '@vance/shared';
 import { VButton, VLinkPicker, usePointers, vanceRef } from '@vance/components';
+import { useT } from './i18n';
 import CanvasNodeCard from './CanvasNodeCard.vue';
 import InputDialog from './InputDialog.vue';
 import DocPicker, { type AppTargets } from './DocPicker.vue';
@@ -52,6 +53,8 @@ const emit = defineEmits<{
   (e: 'change', graph: CanvasGraphDto): void;
   (e: 'selection', nodeIds: string[]): void;
 }>();
+
+const t = useT();
 
 const nodes = ref<CanvasNodeDto[]>([]);
 const edges = ref<CanvasEdgeDto[]>([]);
@@ -585,7 +588,7 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
   const me = getUsername() ?? undefined;
   let node: CanvasNodeDto;
   if (type === 'text') {
-    node = { id, type, x: p.x, y: p.y, w: 200, h: 120, text: 'New note', author: me };
+    node = { id, type, x: p.x, y: p.y, w: 200, h: 120, text: t('canvas.board.newNote'), author: me };
   } else if (type === 'doc') {
     const picked = await docPicker.value?.open(props.projectId, props.appTargets);
     if (!picked || !picked.path) return;
@@ -598,11 +601,12 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
     if (!pick) return;
     node = { id, type, x: p.x, y: p.y, w: 240, h: 72, href: pick.href, newTab: pick.newTab };
   } else {
-    const v = await dialog.value?.open('Group', [
-      { key: 'label', label: 'Title', value: 'Group' },
+    const fallback = t('canvas.board.newGroupLabel');
+    const v = await dialog.value?.open(t('canvas.board.groupDialogTitle'), [
+      { key: 'label', label: t('canvas.common.title'), value: fallback },
     ]);
     if (!v) return;
-    node = { id, type, x: p.x, y: p.y, w: 420, h: 300, label: v.label || 'Group' };
+    node = { id, type, x: p.x, y: p.y, w: 420, h: 300, label: v.label || fallback };
   }
   nodes.value = [...nodes.value, node];
   emitChange();
@@ -640,17 +644,17 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
     >
       <Panel v-if="isEditable" position="top-left">
         <div class="cv-panel">
-          <VButton size="sm" @click="addNode('text')">📝 Note</VButton>
-          <VButton size="sm" @click="addNode('doc')">📄 Doc</VButton>
-          <VButton size="sm" @click="addNode('link')">🔗 Link</VButton>
-          <VButton size="sm" @click="addNode('group')">▢ Group</VButton>
+          <VButton size="sm" @click="addNode('text')">📝 {{ t('canvas.board.note') }}</VButton>
+          <VButton size="sm" @click="addNode('doc')">📄 {{ t('canvas.board.doc') }}</VButton>
+          <VButton size="sm" @click="addNode('link')">🔗 {{ t('canvas.board.link') }}</VButton>
+          <VButton size="sm" @click="addNode('group')">▢ {{ t('canvas.board.group') }}</VButton>
           <span class="cv-panel-sep"></span>
           <VButton
             size="sm"
             :variant="selectMode ? 'primary' : 'ghost'"
-            title="Select several by dragging a box (or hold Shift and drag)"
+            :title="t('canvas.board.selectHint')"
             @click="selectMode = !selectMode"
-          >⬚ Select</VButton>
+          >⬚ {{ t('canvas.board.select') }}</VButton>
         </div>
       </Panel>
 

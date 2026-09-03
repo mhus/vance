@@ -15,8 +15,11 @@
  * which would block input focus inside the hosted form.
  */
 import { computed } from 'vue';
+import { useT } from '../useT';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+
+const t = useT();
 
 interface ExtensionOptions {
   formComponent?: (() => import('vue').Component | null) | null;
@@ -63,7 +66,7 @@ function updateSession(next: boolean) {
     <div v-else class="vance-form__fallback" contenteditable="true">
       <span class="vance-form__icon">▦</span>
       <div class="vance-form__body">
-        <div class="vance-form__title">Form</div>
+        <div class="vance-form__title">{{ t('blockEditor.form.title') }}</div>
         <div class="vance-form__path">{{ data }}</div>
       </div>
     </div>

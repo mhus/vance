@@ -52,11 +52,12 @@ watch(activeTab, (v) => {
     sessionStorage.setItem(PROP_TAB_KEY, v);
   } catch { /* sessionStorage unavailable */ }
 });
-const tabs: Array<{ id: PropTab; label: string }> = [
-  { id: 'general', label: 'Eigenschaften' },
-  { id: 'details', label: 'Details' },
-  { id: 'versions', label: 'Versionen' },
-];
+// Labels resolved per render so a language switch reaches the tab strip.
+const tabs = computed<Array<{ id: PropTab; label: string }>>(() => [
+  { id: 'general', label: t('cortex.properties.tabGeneral') },
+  { id: 'details', label: t('cortex.properties.tabDetails') },
+  { id: 'versions', label: t('cortex.properties.tabVersions') },
+]);
 
 const editName = ref('');
 const editTitle = ref('');
@@ -312,32 +313,32 @@ async function onCreated(created: DocumentDto): Promise<void> {
       <div class="grid grid-cols-2 gap-x-2 gap-y-1">
         <VInput
           v-model="editName"
-          label="Name"
-          placeholder="filename"
+          :label="$t('cortex.properties.name')"
+          :placeholder="$t('cortex.properties.namePlaceholder')"
           :disabled="saving"
         />
         <VInput
           v-model="editTitle"
-          label="Title"
-          placeholder="(no title)"
+          :label="$t('cortex.properties.title')"
+          :placeholder="$t('cortex.properties.titlePlaceholder')"
           :disabled="saving"
         />
         <VInput
           v-model="editTags"
-          label="Tags"
-          placeholder="comma, separated"
+          :label="$t('cortex.properties.tags')"
+          :placeholder="$t('cortex.properties.tagsPlaceholder')"
           :disabled="saving"
         />
         <VSelect
           v-model="editMime"
           :options="mimeOptions"
-          label="MIME"
+          :label="$t('cortex.properties.mime')"
           :disabled="saving"
         />
         <div class="col-span-2">
           <VColorPicker
             v-model="editColor"
-            label="Color"
+            :label="$t('cortex.properties.color')"
             allow-clear
             :disabled="saving"
           />
@@ -345,16 +346,24 @@ async function onCreated(created: DocumentDto): Promise<void> {
       </div>
 
       <div class="mt-2 border-t border-base-300 pt-2">
-        <div class="opacity-60 mb-1">Lock (soft edit-protection)</div>
+        <div class="opacity-60 mb-1">{{ $t('cortex.properties.lock') }}</div>
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span title="Block LLM / tool writes">
-            <VCheckbox v-model="lockAi" label="AI" :disabled="saving" />
+          <span :title="$t('cortex.properties.lockAiTitle')">
+            <VCheckbox v-model="lockAi" :label="$t('cortex.properties.lockAi')" :disabled="saving" />
           </span>
-          <span title="Block manual user writes">
-            <VCheckbox v-model="lockUser" label="USER" :disabled="saving" />
+          <span :title="$t('cortex.properties.lockUserTitle')">
+            <VCheckbox
+              v-model="lockUser"
+              :label="$t('cortex.properties.lockUser')"
+              :disabled="saving"
+            />
           </span>
-          <span title="Freeze against Kit-Apply updates">
-            <VCheckbox v-model="lockKit" label="KIT" :disabled="saving" />
+          <span :title="$t('cortex.properties.lockKitTitle')">
+            <VCheckbox
+              v-model="lockKit"
+              :label="$t('cortex.properties.lockKit')"
+              :disabled="saving"
+            />
           </span>
         </div>
       </div>
@@ -368,27 +377,27 @@ async function onCreated(created: DocumentDto): Promise<void> {
           :disabled="!isDirty"
           :loading="saving"
           @click="onSave"
-        >Save properties</VButton>
+        >{{ $t('cortex.properties.save') }}</VButton>
       </div>
     </div>
 
     <!-- Tab 2 — Details: read-only meta, front-matter headers, summary. -->
     <div v-show="activeTab === 'details'">
       <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5">
-        <dt class="opacity-60">Path</dt>
+        <dt class="opacity-60">{{ $t('cortex.properties.path') }}</dt>
         <dd class="font-mono break-all">{{ document.path }}</dd>
-        <dt class="opacity-60">Kind</dt>
+        <dt class="opacity-60">{{ $t('cortex.properties.kind') }}</dt>
         <dd class="font-mono">{{ document.kind ?? '—' }}</dd>
-        <dt class="opacity-60">Size</dt>
+        <dt class="opacity-60">{{ $t('cortex.properties.size') }}</dt>
         <dd>{{ formatSize(document.size) }}</dd>
-        <dt class="opacity-60">Created</dt>
+        <dt class="opacity-60">{{ $t('cortex.properties.created') }}</dt>
         <dd>{{ formatDate(document.createdAtMs) }}</dd>
-        <dt class="opacity-60">By</dt>
+        <dt class="opacity-60">{{ $t('cortex.properties.by') }}</dt>
         <dd>{{ document.createdBy ?? '—' }}</dd>
       </dl>
 
       <div v-if="headerEntries.length > 0" class="mt-2">
-        <div class="opacity-60 mb-0.5">Headers</div>
+        <div class="opacity-60 mb-0.5">{{ $t('cortex.properties.headers') }}</div>
         <dl class="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 bg-base-200 rounded px-2 py-1">
           <template v-for="[k, v] in headerEntries" :key="k">
             <dt class="font-mono opacity-70">{{ k }}</dt>
@@ -398,7 +407,7 @@ async function onCreated(created: DocumentDto): Promise<void> {
       </div>
 
       <div v-if="document.summary" class="mt-2">
-        <div class="opacity-60 mb-0.5">Summary</div>
+        <div class="opacity-60 mb-0.5">{{ $t('cortex.properties.summary') }}</div>
         <div class="bg-base-200 rounded px-2 py-1 whitespace-pre-wrap">
           {{ document.summary }}
         </div>

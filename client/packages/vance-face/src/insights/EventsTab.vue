@@ -168,8 +168,8 @@ function sortedEvents(): EventSummary[] {
               <span class="opacity-80">→</span>
               {{ ev.workflow ?? '—' }}
               <span class="ml-2">{{ methodsLabel(ev.methods) }}</span>
-              <span v-if="ev.authConfigured" class="ml-2">· 🔒 bearer</span>
-              <span v-if="!ev.enabled" class="ml-2 opacity-80">· disabled</span>
+              <span v-if="ev.authConfigured" class="ml-2">{{ $t('insights.events.bearerBadge') }}</span>
+              <span v-if="!ev.enabled" class="ml-2 opacity-80">{{ $t('insights.events.disabledBadge') }}</span>
             </div>
             <div
               v-if="ev.description"

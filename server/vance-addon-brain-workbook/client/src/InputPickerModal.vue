@@ -9,6 +9,7 @@
  */
 import { onMounted, ref, watch } from 'vue';
 import { brainFetch } from '@vance/shared';
+import { useT } from './i18n';
 
 const props = defineProps<{
   projectId: string;
@@ -36,6 +37,8 @@ function isTextDoc(d: DocSummary): boolean {
   return mime.startsWith('text/');
 }
 
+const t = useT();
+
 const query = ref('');
 const results = ref<DocSummary[]>([]);
 const loading = ref(false);
@@ -57,7 +60,7 @@ async function search(q: string) {
     );
     results.value = (resp.items ?? []).filter(isTextDoc);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Search failed';
+    error.value = e instanceof Error ? e.message : t('workbook.input.searchFailed');
     results.value = [];
   } finally {
     loading.value = false;
@@ -101,7 +104,7 @@ async function createInput() {
     );
     emit('pick', `vance:/${encodeURI(resp.path)}?kind=text`);
   } catch (e) {
-    createError.value = e instanceof Error ? e.message : 'Create failed';
+    createError.value = e instanceof Error ? e.message : t('workbook.input.createFailed');
   } finally {
     creating.value = false;
   }
@@ -115,7 +118,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
   <div class="input-picker" @click="onBackdrop">
     <div class="input-picker__panel">
       <header class="input-picker__header">
-        <span>Insert text input</span>
+        <span>{{ t('workbook.input.title') }}</span>
         <button class="input-picker__close" type="button" @click="close">×</button>
       </header>
 
@@ -124,7 +127,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
           v-model="query"
           type="search"
           class="input-picker__search-input"
-          placeholder="Search text documents in this app…"
+          :placeholder="t('workbook.input.searchPlaceholder')"
           autofocus
           @input="scheduleSearch"
           @keydown.escape="close"
@@ -132,9 +135,9 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
       </div>
 
       <div v-if="error" class="input-picker__error">{{ error }}</div>
-      <div v-if="loading" class="input-picker__loading">Suche…</div>
+      <div v-if="loading" class="input-picker__loading">{{ t('workbook.common.searching') }}</div>
       <div v-else-if="results.length === 0" class="input-picker__empty">
-        Keine Textdokumente in dieser App gefunden — lege unten ein neues an.
+        {{ t('workbook.input.empty') }}
       </div>
       <div v-else class="input-picker__list">
         <button
@@ -156,7 +159,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
             v-model="newName"
             type="text"
             class="input-picker__search-input"
-            placeholder="New text name (optional)…"
+            :placeholder="t('workbook.input.newNamePlaceholder')"
             :disabled="creating"
             @keydown.enter.prevent="createInput"
             @keydown.escape="close"
@@ -166,7 +169,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
             class="input-picker__create-btn"
             :disabled="creating"
             @click="createInput"
-          >{{ creating ? '…' : 'Create' }}</button>
+          >{{ creating ? '…' : t('workbook.common.create') }}</button>
         </div>
       </div>
     </div>

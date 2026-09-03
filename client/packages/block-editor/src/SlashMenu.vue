@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useT } from './useT';
+
+const t = useT();
 
 defineEmits<{
   (e: 'pick', kind: string): void;
@@ -43,7 +46,7 @@ const groups = ref([
   <div class="slash-menu" @click.self="$emit('close')">
     <div class="slash-menu__panel">
       <header>
-        <span>Insert block</span>
+        <span>{{ t('blockEditor.slash.menuTitle') }}</span>
         <button class="slash-menu__close" @click="$emit('close')">×</button>
       </header>
       <div v-for="group in groups" :key="group.label" class="slash-menu__group">

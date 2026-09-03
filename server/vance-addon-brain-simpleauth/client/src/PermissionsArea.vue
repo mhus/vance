@@ -1,22 +1,27 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { VAlert, VButton, VInput, VSelect } from '@vance/components';
 import { listGrants, removeGrant, setGrant } from './api';
 import type { GrantDto, GrantRole, GrantScopeType, GrantSubjectType } from './types';
+import { useT } from './i18n';
 
-const scopeTypeOptions: { value: GrantScopeType; label: string }[] = [
-  { value: 'TENANT', label: 'Tenant' },
-  { value: 'PROJECT', label: 'Project' },
-];
-const subjectTypeOptions: { value: GrantSubjectType; label: string }[] = [
-  { value: 'USER', label: 'User' },
-  { value: 'TEAM', label: 'Team' },
-];
-const roleOptions: { value: GrantRole; label: string }[] = [
-  { value: 'READER', label: 'Reader' },
-  { value: 'WRITER', label: 'Writer' },
-  { value: 'ADMIN', label: 'Admin' },
-];
+const t = useT();
+
+// Ids in code, labels looked up per render — a module-level literal list could
+// not follow a language switch.
+const SCOPE_TYPES: GrantScopeType[] = ['TENANT', 'PROJECT'];
+const SUBJECT_TYPES: GrantSubjectType[] = ['USER', 'TEAM'];
+const ROLES: GrantRole[] = ['READER', 'WRITER', 'ADMIN'];
+
+const scopeTypeOptions = computed(() =>
+  SCOPE_TYPES.map((value) => ({ value, label: t(`simpleauth.scopeType.${value}`) })),
+);
+const subjectTypeOptions = computed(() =>
+  SUBJECT_TYPES.map((value) => ({ value, label: t(`simpleauth.subject.${value}`) })),
+);
+const roleOptions = computed(() =>
+  ROLES.map((value) => ({ value, label: t(`simpleauth.roles.${value}`) })),
+);
 
 // Scope being viewed/edited.
 const scopeType = ref<GrantScopeType>('PROJECT');
@@ -58,7 +63,7 @@ async function add(): Promise<void> {
   error.value = '';
   notice.value = '';
   if (!scopeReady() || subjectId.value.trim().length === 0) {
-    error.value = 'Scope and subject are required.';
+    error.value = t('simpleauth.required');
     return;
   }
   loading.value = true;
@@ -70,7 +75,11 @@ async function add(): Promise<void> {
       subjectId: subjectId.value.trim(),
       role: role.value,
     });
-    notice.value = `Granted ${role.value} to ${subjectType.value.toLowerCase()} '${subjectId.value.trim()}'.`;
+    notice.value = t('simpleauth.granted', {
+      role: t(`simpleauth.roles.${role.value}`),
+      subject: t(`simpleauth.subject.${subjectType.value}`),
+      name: subjectId.value.trim(),
+    });
     subjectId.value = '';
     await load();
   } catch (e) {
@@ -112,19 +121,19 @@ onMounted(() => {
 <template>
   <div class="mx-auto max-w-3xl p-6 flex flex-col gap-6">
     <div>
-      <h1 class="text-xl font-semibold">Permissions</h1>
-      <p class="text-sm opacity-70">Grant and revoke roles for users and teams.</p>
+      <h1 class="text-xl font-semibold">{{ t('simpleauth.title') }}</h1>
+      <p class="text-sm opacity-70">{{ t('simpleauth.subtitle') }}</p>
     </div>
 
     <!-- Scope selector -->
     <div class="flex flex-wrap items-end gap-3">
       <div class="w-40">
-        <VSelect v-model="scopeType" :options="scopeTypeOptions" label="Scope" @update:modelValue="load" />
+        <VSelect v-model="scopeType" :options="scopeTypeOptions" :label="t('simpleauth.scope')" @update:modelValue="load" />
       </div>
       <div v-if="scopeType === 'PROJECT'" class="flex-1 min-w-48">
-        <VInput v-model="scopeId" label="Project" @update:modelValue="notice = ''" />
+        <VInput v-model="scopeId" :label="t('simpleauth.project')" @update:modelValue="notice = ''" />
       </div>
-      <VButton variant="secondary" :loading="loading" @click="load">Load</VButton>
+      <VButton variant="secondary" :loading="loading" @click="load">{{ t('simpleauth.load') }}</VButton>
     </div>
 
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
@@ -132,8 +141,8 @@ onMounted(() => {
 
     <!-- Existing grants -->
     <div class="flex flex-col gap-2">
-      <div class="text-sm font-medium opacity-70">Current grants</div>
-      <p v-if="grants.length === 0" class="text-sm opacity-60">No grants on this scope.</p>
+      <div class="text-sm font-medium opacity-70">{{ t('simpleauth.currentGrants') }}</div>
+      <p v-if="grants.length === 0" class="text-sm opacity-60">{{ t('simpleauth.noGrants') }}</p>
       <ul v-else class="flex flex-col gap-2">
         <li
           v-for="g in grants"
@@ -143,27 +152,27 @@ onMounted(() => {
           <span class="text-sm">
             <span class="font-mono">{{ g.subjectType.toLowerCase() }}:{{ g.subjectId }}</span>
             <span class="mx-2 opacity-50">→</span>
-            <span class="font-semibold">{{ g.role }}</span>
+            <span class="font-semibold">{{ t(`simpleauth.roles.${g.role}`) }}</span>
           </span>
-          <VButton variant="danger" size="sm" :disabled="loading" @click="revoke(g)">Revoke</VButton>
+          <VButton variant="danger" size="sm" :disabled="loading" @click="revoke(g)">{{ t('simpleauth.revoke') }}</VButton>
         </li>
       </ul>
     </div>
 
     <!-- Add grant -->
     <div class="flex flex-col gap-3 rounded border border-base-300 p-4">
-      <div class="text-sm font-medium opacity-70">Grant a role</div>
+      <div class="text-sm font-medium opacity-70">{{ t('simpleauth.grantHeading') }}</div>
       <div class="flex flex-wrap items-end gap-3">
         <div class="w-36">
-          <VSelect v-model="subjectType" :options="subjectTypeOptions" label="Subject type" />
+          <VSelect v-model="subjectType" :options="subjectTypeOptions" :label="t('simpleauth.subjectType')" />
         </div>
         <div class="flex-1 min-w-48">
-          <VInput v-model="subjectId" label="User / team name" />
+          <VInput v-model="subjectId" :label="t('simpleauth.subjectId')" />
         </div>
         <div class="w-36">
-          <VSelect v-model="role" :options="roleOptions" label="Role" />
+          <VSelect v-model="role" :options="roleOptions" :label="t('simpleauth.role')" />
         </div>
-        <VButton variant="primary" :loading="loading" @click="add">Grant</VButton>
+        <VButton variant="primary" :loading="loading" @click="add">{{ t('simpleauth.grant') }}</VButton>
       </div>
     </div>
   </div>

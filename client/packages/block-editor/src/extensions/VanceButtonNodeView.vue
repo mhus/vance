@@ -8,9 +8,12 @@
  *   only), written back to the block attributes.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useT } from '../useT';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+
+const t = useT();
 
 interface ExtensionOptions {
   runScript?: ((scriptRef: string) => Promise<void>) | null;
@@ -72,12 +75,12 @@ function onScript(e: Event) {
     <div v-if="editable" class="vance-button__design" contenteditable="false">
       <div class="vance-button__row">
         <select class="vance-button__inp" :value="type" disabled @mousedown.stop>
-          <option value="script">script</option>
+          <option value="script">{{ t('blockEditor.button.typeScript') }}</option>
         </select>
         <input
           class="vance-button__inp"
           style="flex: 1"
-          placeholder="Button title…"
+          :placeholder="t('blockEditor.button.titlePlaceholder')"
           :value="title"
           @input="onTitle"
           @mousedown.stop
@@ -86,7 +89,7 @@ function onScript(e: Event) {
       </div>
       <input
         class="vance-button__inp"
-        placeholder="script (e.g. myscript.js or vance:/apps/x/run.js)"
+        :placeholder="t('blockEditor.button.scriptPlaceholder')"
         :value="script"
         @input="onScript"
         @mousedown.stop

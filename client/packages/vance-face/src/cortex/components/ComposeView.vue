@@ -11,6 +11,7 @@
  */
 import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 import yaml from 'js-yaml';
+import { useI18n } from 'vue-i18n';
 import {
   postComposeRun,
   pollComposeRun,
@@ -34,6 +35,8 @@ interface Props {
   /** The compose YAML (the kind-registry parsed model = identity(text)). */
   doc: string;
 }
+const { t } = useI18n();
+
 const props = defineProps<Props>();
 /** Write the manifest back (`$run:` / `$output:` block) → shell auto-saves. */
 const emit = defineEmits<{ (e: 'update:doc', doc: string): void }>();
@@ -85,7 +88,8 @@ const cancelling = ref(false);
  * (phase 2, polling) → server-side cancel.
  */
 const canStop = computed(() => running.value && runId.value != null);
-const runGlyph = computed(() => (!running.value ? '▶ Run compose' : runId.value ? '■ Stop' : '…'));
+const runGlyph = computed(() =>
+  !running.value ? t('compose.runCompose') : runId.value ? t('compose.stop') : '…');
 
 let polling = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -154,7 +158,7 @@ function startPolling(runId: string, external = false): void {
       stopTimer();
       running.value = false;
       progress.value = null;
-      fetchError.value = 'Lauf nicht mehr verfügbar (Pod-Neustart?) — bitte neu ausführen.';
+      fetchError.value = t('compose.runGone');
       if (!external) emit('update:doc', clearComposeManaged(props.doc));
     }
   };
@@ -287,14 +291,22 @@ onUnmounted(() => {
         @click="onRunButton"
       >{{ runGlyph }}</VButton>
       <VButton variant="ghost" size="sm" :disabled="running" @click="clearOutput">
-        Clear Output
+        {{ t('compose.clearOutput') }}
       </VButton>
-      <span v-if="cancelling" class="text-sm opacity-70">stoppe…</span>
+      <span v-if="cancelling" class="text-sm opacity-70">{{ $t('cortex.compose.stopping') }}</span>
       <span v-else-if="result" class="text-sm opacity-70">
-        Workspace: {{ result.workspace }} · {{ result.success ? 'success' : 'failed' }}
+        {{ t('compose.workspaceLine', {
+          workspace: result.workspace,
+          outcome: result.success ? t('compose.success') : t('compose.failed'),
+        }) }}
       </span>
       <span v-else-if="progress" class="text-sm opacity-70">
-        Läuft… Task {{ (progress.currentTaskIndex ?? 0) + 1 }}{{ progress.currentTaskType ? ` (${progress.currentTaskType})` : '' }}
+        {{ progress.currentTaskType
+          ? t('compose.progressWithType', {
+            index: (progress.currentTaskIndex ?? 0) + 1,
+            type: progress.currentTaskType,
+          })
+          : t('compose.progress', { index: (progress.currentTaskIndex ?? 0) + 1 }) }}
       </span>
     </div>
 

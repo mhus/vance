@@ -15,6 +15,7 @@
  * </ul>
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { VAlert, VButton, VModal, VTextarea } from '@/components';
 import { brainFetch } from '@vance/shared';
 import type {
@@ -38,6 +39,8 @@ interface Props {
    *  the Cortex Run panel. Surfaces as a description hint. */
   failureReason?: string | null;
 }
+
+const { t } = useI18n();
 
 const props = defineProps<Props>();
 
@@ -79,7 +82,7 @@ function initialPrompt(): string {
 
 async function start(): Promise<void> {
   if (!prompt.value.trim()) {
-    error.value = 'Description required';
+    error.value = t('cortex.descriptionRequired');
     return;
   }
   busy.value = true;
@@ -202,13 +205,13 @@ onBeforeUnmount(() => {
           Slart sees the current script body and preserves its
           structure where possible. The new version lands in a
           fresh Slart bucket — the original document only changes
-          if you click <em>Apply to editor</em>.
+          if you click <em>{{ $t('cortex.hactar.applyToEditor') }}</em>.
         </div>
         <div class="flex items-center gap-2 mt-3">
           <VButton variant="primary" :loading="busy" @click="start">
             {{ cta }}
           </VButton>
-          <span v-if="polling" class="text-sm opacity-70">Slart is thinking…</span>
+          <span v-if="polling" class="text-sm opacity-70">{{ $t('cortex.hactar.thinking') }}</span>
           <span v-if="result?.status" class="text-sm font-mono opacity-70">
             {{ result.status }}<span v-if="result.reason"> / {{ result.reason }}</span>
           </span>
@@ -218,23 +221,23 @@ onBeforeUnmount(() => {
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
 
       <div v-if="result?.code">
-        <div class="font-semibold mb-1">Generated script:</div>
+        <div class="font-semibold mb-1">{{ $t('cortex.hactar.generatedScript') }}</div>
         <pre
           class="bg-base-200 p-2 rounded text-xs max-h-72 overflow-y-auto whitespace-pre-wrap font-mono"
         >{{ result.code }}</pre>
         <div class="flex gap-2 mt-3">
-          <VButton variant="primary" @click="applyResult">Apply to editor</VButton>
-          <VButton variant="ghost" @click="result = null">Re-generate</VButton>
+          <VButton variant="primary" @click="applyResult">{{ $t('cortex.hactar.applyToEditor') }}</VButton>
+          <VButton variant="ghost" @click="result = null">{{ $t('cortex.hactar.regenerate') }}</VButton>
         </div>
       </div>
 
       <div v-if="result?.failureReason" class="text-sm text-error">
-        <span class="font-semibold">FAILED:</span> {{ result.failureReason }}
+        <span class="font-semibold">{{ $t('cortex.hactar.failed') }}</span> {{ result.failureReason }}
       </div>
     </div>
 
     <template #actions>
-      <VButton variant="ghost" @click="close">Close</VButton>
+      <VButton variant="ghost" @click="close">{{ $t('cortex.hactar.close') }}</VButton>
     </template>
   </VModal>
 </template>

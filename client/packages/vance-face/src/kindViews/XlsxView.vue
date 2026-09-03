@@ -95,18 +95,18 @@ watch(() => url.value, () => { void loadXlsx(); });
 
 <template>
   <div :class="['xlsx-view', `xlsx-view--${mode}`]">
-    <div v-if="loading" class="xlsx-state">Lädt XLSX…</div>
+    <div v-if="loading" class="xlsx-state">{{ $t('kindViews.xlsx.loading') }}</div>
     <div v-else-if="loadError" class="xlsx-state xlsx-state--err">
-      <strong>Konnte XLSX nicht lesen:</strong> {{ loadError }}
+      <strong>{{ $t('kindViews.xlsx.failed') }}</strong> {{ loadError }}
     </div>
     <template v-else>
       <div class="xlsx-toolbar">
         <button
           type="button"
           class="xlsx-reload"
-          title="Vorschau aktualisieren — zeigt Änderungen nach einem Office-Edit-Save."
+          :title="$t('kindViews.xlsx.refreshTitle')"
           @click="loadXlsx"
-        >🔄 Aktualisieren</button>
+        >{{ $t('kindViews.xlsx.refresh') }}</button>
         <div v-if="sheetNames.length > 1" class="xlsx-tabs">
           <button
             v-for="name in sheetNames"

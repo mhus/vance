@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import * as echarts from 'echarts/core';
 import {
   BarChart,
@@ -59,6 +60,8 @@ echarts.use([
  * escape-hatch.
  */
 defineOptions({ name: 'ChartView' });
+
+const { t } = useI18n();
 
 const props = withDefaults(defineProps<{
   mode?: 'editor' | 'inline' | 'embedded';
@@ -195,7 +198,7 @@ function emitDoc(): void {
         override = parsed as Record<string, unknown>;
         overrideError.value = null;
       } else {
-        overrideError.value = 'Override must be a JSON object';
+        overrideError.value = t('cortex.overrideNotObject');
       }
     } catch (e) {
       overrideError.value = e instanceof Error ? e.message : String(e);
@@ -567,7 +570,7 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
       />
       <VInput
         :model-value="localHeader.title ?? ''"
-        placeholder="Title"
+        :placeholder="$t('kindViews.chart.title')"
         class="flex-1"
         @update:model-value="(v: string) => updateHeader('title', v || undefined)"
       />
@@ -577,7 +580,9 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
          to go on, so surface the reason instead. Kept on one line: the
          style is `white-space: pre-wrap`, which would also preserve the
          template's own indentation. -->
-    <p v-if="parseError" class="chart-parse-error">{{ `Chart could not be parsed: ${parseError}` }}</p>
+    <p v-if="parseError" class="chart-parse-error">
+      {{ $t('kindViews.chart.parseError', { message: parseError }) }}
+    </p>
 
     <!-- Main: chart canvas (always) + side panel (editor only) -->
     <div class="chart-main">
@@ -591,53 +596,53 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
 
       <aside v-if="isEditor" class="chart-sidebar">
         <section>
-          <h3 class="chart-sidebar-h">Chart</h3>
+          <h3 class="chart-sidebar-h">{{ $t('kindViews.chart.chart') }}</h3>
           <VInput
             :model-value="localHeader.subtitle ?? ''"
-            placeholder="Subtitle"
-            label="Subtitle"
+            :placeholder="$t('kindViews.chart.subtitle')"
+            :label="$t('kindViews.chart.subtitle')"
             @update:model-value="(v: string) => updateHeader('subtitle', v || undefined)"
           />
           <VCheckbox
             :model-value="localHeader.legend"
-            label="Legend"
+            :label="$t('kindViews.chart.legend')"
             @update:model-value="(v: boolean) => updateHeader('legend', v)"
           />
           <VCheckbox
             v-if="['bar','area','line'].includes(localHeader.chartType)"
             :model-value="localHeader.stacked"
-            label="Stacked"
+            :label="$t('kindViews.chart.stacked')"
             @update:model-value="(v: boolean) => updateHeader('stacked', v)"
           />
           <VCheckbox
             v-if="['line','area'].includes(localHeader.chartType)"
             :model-value="localHeader.smooth"
-            label="Smooth"
+            :label="$t('kindViews.chart.smooth')"
             @update:model-value="(v: boolean) => updateHeader('smooth', v)"
           />
         </section>
 
         <section v-if="showsAxes && localXAxis">
-          <h3 class="chart-sidebar-h">X-Axis</h3>
+          <h3 class="chart-sidebar-h">{{ $t('kindViews.chart.xAxis') }}</h3>
           <VSelect
             :model-value="localXAxis.type"
             :options="AXIS_TYPE_OPTIONS"
-            label="Type"
+            :label="$t('kindViews.chart.type')"
             @update:model-value="(v: AxisType | null) => { if (v) updateXAxisType(v); }"
           />
         </section>
         <section v-if="showsAxes && localYAxis">
-          <h3 class="chart-sidebar-h">Y-Axis</h3>
+          <h3 class="chart-sidebar-h">{{ $t('kindViews.chart.yAxis') }}</h3>
           <VSelect
             :model-value="localYAxis.type"
             :options="AXIS_TYPE_OPTIONS"
-            label="Type"
+            :label="$t('kindViews.chart.type')"
             @update:model-value="(v: AxisType | null) => { if (v) updateYAxisType(v); }"
           />
         </section>
 
         <section v-if="localSeries.length > 0">
-          <h3 class="chart-sidebar-h">Series</h3>
+          <h3 class="chart-sidebar-h">{{ $t('kindViews.chart.series') }}</h3>
           <div v-for="(s, idx) in localSeries" :key="s.name + idx" class="chart-series-row">
             <span class="chart-series-name">{{ s.name }}</span>
             <input
@@ -650,9 +655,9 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
         </section>
 
         <section>
-          <h3 class="chart-sidebar-h">ECharts override</h3>
+          <h3 class="chart-sidebar-h">{{ $t('kindViews.chart.echartsOverride') }}</h3>
           <p class="chart-sidebar-hint">
-            JSON merged on top of the generated ECharts option. Use sparingly.
+            {{ $t('kindViews.chart.overrideHint') }}
           </p>
           <VTextarea
             :model-value="localOverride"
@@ -671,7 +676,9 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
          shown in editor mode; the inline/embedded chat-stream uses
          charts as read-only artifacts. -->
     <p v-if="isEditor" class="chart-data-hint">
-      Edit data points in the <strong>Raw</strong> tab.
+      {{ $t('kindViews.chart.dataHintPre') }}
+      <strong>{{ $t('kindViews.chart.raw') }}</strong>
+      {{ $t('kindViews.chart.dataHintPost') }}
     </p>
   </div>
 </template>

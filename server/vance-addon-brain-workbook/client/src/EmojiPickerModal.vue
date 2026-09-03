@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useT } from './i18n';
 // Side-effect import: registers the <emoji-picker> custom element.
 // The element lazy-loads its emoji database on first render.
 import 'emoji-picker-element';
@@ -11,6 +12,8 @@ const emit = defineEmits<{
 }>();
 
 defineProps<{ hasCurrent?: boolean }>();
+
+const t = useT();
 
 const pickerRef = ref<HTMLElement | null>(null);
 
@@ -36,12 +39,12 @@ function onBackdropClick(e: MouseEvent) {
   <div class="emoji-modal-backdrop" @click="onBackdropClick">
     <div class="emoji-modal" @click.stop>
       <div class="emoji-modal__header">
-        <span class="emoji-modal__title">Pick an icon</span>
+        <span class="emoji-modal__title">{{ t('workbook.emoji.title') }}</span>
         <button class="emoji-modal__close" @click="emit('close')">×</button>
       </div>
       <emoji-picker ref="pickerRef" class="emoji-modal__picker" />
       <div v-if="hasCurrent" class="emoji-modal__footer">
-        <button class="emoji-modal__remove" @click="emit('remove')">Remove icon</button>
+        <button class="emoji-modal__remove" @click="emit('remove')">{{ t('workbook.emoji.remove') }}</button>
       </div>
     </div>
   </div>

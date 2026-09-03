@@ -42,6 +42,7 @@ import {
 import type { AppScan } from './generated/bistromath/AppScan';
 import type { RenderedView } from './generated/bistromath/RenderedView';
 import type { ViewAction } from './generated/bistromath/ViewAction';
+import { useT } from './i18n';
 
 /**
  * Mount for an `app: custom` folder — the Bistromath runtime.
@@ -64,6 +65,8 @@ const folder = computed(() => {
   const i = p.lastIndexOf('/');
   return i < 0 ? '' : p.slice(0, i);
 });
+
+const t = useT();
 
 const scan = ref<AppScan | null>(null);
 const view = ref<RenderedView | null>(null);
@@ -777,7 +780,7 @@ function message(e: unknown): string {
 <template>
   <div class="flex h-full min-h-0 flex-col gap-3 p-3">
     <div class="flex flex-wrap items-center gap-2">
-      <span class="font-semibold">{{ scan?.title ?? document.title ?? 'App' }}</span>
+      <span class="font-semibold">{{ scan?.title ?? document.title ?? t('bistromath.app.fallbackTitle') }}</span>
 
       <template v-if="scan && scan.views.length > 1">
         <VButton
@@ -797,20 +800,20 @@ function message(e: unknown): string {
         v-if="scan"
         variant="ghost"
         size="sm"
-        :title="`${scan.requires.scripts.length} document(s) load for this app`"
+        :title="t('bistromath.app.loadsTip', { count: scan.requires.scripts.length })"
         @click="showLoads = !showLoads"
       >
-        Loads ({{ scan.requires.scripts.length }})
+        {{ t('bistromath.app.loads', { count: scan.requires.scripts.length }) }}
       </VButton>
 
       <VButton
         variant="ghost"
         size="sm"
         :disabled="busy"
-        title="Re-read the views, restart the program"
+        :title="t('bistromath.app.rebuildTip')"
         @click="onRebuild()"
       >
-        Rebuild
+        {{ t('bistromath.app.rebuild') }}
       </VButton>
     </div>
 
@@ -821,11 +824,11 @@ function message(e: unknown): string {
          decides" are different sentences, and the second one is actionable. -->
     <VAlert v-if="release && release.mode !== 'ALLOWED'" variant="info">
       <div class="flex flex-col gap-2">
-        <div>{{ release.reason ?? 'A tenant admin decides which applications may run here.' }}</div>
+        <div>{{ release.reason ?? t('bistromath.app.releaseDefault') }}</div>
         <div v-if="releaseSent" class="opacity-80">{{ releaseSent }}</div>
         <div v-if="release.canRequest && !releaseSent">
           <VButton size="sm" :disabled="releaseBusy" @click="askForRelease">
-            {{ releaseBusy ? 'Sending…' : 'Request release' }}
+            {{ releaseBusy ? t('bistromath.app.sending') : t('bistromath.app.requestRelease') }}
           </VButton>
         </div>
       </div>
@@ -836,7 +839,7 @@ function message(e: unknown): string {
       v-if="showLoads && scan"
       class="rounded border border-base-300 p-3 text-sm"
     >
-      <div class="mb-2 font-semibold">Loads, in this order</div>
+      <div class="mb-2 font-semibold">{{ t('bistromath.app.loadOrder') }}</div>
       <ol v-if="scan.requires.scripts.length > 0" class="flex list-decimal flex-col gap-1 pl-6">
         <li v-for="entry in scan.requires.scripts" :key="entry.path">
           <code class="font-mono">{{ entry.path }}</code>
@@ -846,7 +849,7 @@ function message(e: unknown): string {
           <span v-if="entry.askedBy" class="opacity-50"> ← {{ entry.askedBy }}</span>
         </li>
       </ol>
-      <p v-else class="opacity-70">Nothing — this app has no program.</p>
+      <p v-else class="opacity-70">{{ t('bistromath.app.noProgram') }}</p>
       <p v-if="scan.requires.missing.length > 0" class="mt-2 text-error whitespace-pre-line">{{
         scan.requires.missing.join('\n')
       }}</p>
@@ -856,8 +859,8 @@ function message(e: unknown): string {
     <!-- Said rather than silently dropped: an author staring at a missing area
          would otherwise look for the bug in their own view. -->
     <VAlert v-if="surfaceWithheld" variant="info">
-      This view asks for a drawing surface (<code>region:</code>), which this
-      tenant does not permit for this app. A tenant admin decides that in
+      {{ t('bistromath.app.surfaceWithheldPre') }}<code>region:</code>{{
+        t('bistromath.app.surfaceWithheldMid') }}
       <code>_vance/config/applications.yaml</code>.
     </VAlert>
 
@@ -876,8 +879,8 @@ function message(e: unknown): string {
     <div class="min-h-0 flex-1 overflow-y-auto">
       <VEmptyState
         v-if="!view && !error && !busy"
-        headline="No view yet"
-        :body="`This app is defined by its documents. A view is a document with \`$meta.kind: app-view\` — ask the chat beside this panel for one, or add it under ${folder}.`"
+        :headline="t('bistromath.app.noViewHeadline')"
+        :body="t('bistromath.app.noViewBody', { folder })"
       />
       <WidgetNode
         v-else-if="view"

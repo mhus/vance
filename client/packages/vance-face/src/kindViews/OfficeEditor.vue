@@ -21,6 +21,7 @@
  * Spec: planning/web-office-suite.md §4
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { brainFetch } from '@vance/shared';
 
 interface Props {
@@ -29,6 +30,8 @@ interface Props {
    *  parameter the editor uses to pick the right view. */
   mimeType?: string | null;
 }
+
+const { t } = useI18n();
 
 const props = defineProps<Props>();
 
@@ -95,7 +98,7 @@ async function loadEditor(): Promise<void> {
   try {
     await loadSdk(session.officeUrl);
   } catch (e) {
-    loadError.value = `Konnte SDK von ${session.officeUrl} nicht laden: `
+    loadError.value = t('kindViews.office.sdkFailed', { url: session.officeUrl })
       + (e instanceof Error ? e.message : String(e));
     loading.value = false;
     return;
@@ -199,18 +202,18 @@ onBeforeUnmount(() => { destroyEditor(); });
 <template>
   <div class="office-editor">
     <div v-if="loading" class="office-state">
-      Office-Editor wird geladen…
+      {{ $t('kindViews.office.loading') }}
     </div>
     <div v-else-if="officeNotConfigured" class="office-state office-state--info">
-      <strong>Office-Editor ist für dieses Projekt nicht konfiguriert.</strong>
+      <strong>{{ $t('kindViews.office.notConfigured') }}</strong>
       <p>
-        Ein Administrator kann unter <em>Einstellungen → Integrations →
-        Office-Editor (ONLYOFFICE / Collabora)</em> die Anbindung zu
-        einer self-hosted Document-Server-Instanz einrichten.
+        {{ $t('kindViews.office.notConfiguredHint', {
+          path: $t('kindViews.office.notConfiguredPath'),
+        }) }}
       </p>
     </div>
     <div v-else-if="loadError" class="office-state office-state--err">
-      <strong>Editor konnte nicht geladen werden:</strong>
+      <strong>{{ $t('kindViews.office.loadFailed') }}</strong>
       <pre class="office-error-msg">{{ loadError }}</pre>
     </div>
     <div

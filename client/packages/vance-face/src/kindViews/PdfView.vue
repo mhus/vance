@@ -76,7 +76,7 @@ function closeLightbox(): void {
     <iframe
       v-if="url"
       :src="url"
-      title="PDF"
+      :title="$t('kindViews.pdf.label')"
       class="pdf-view__frame"
     />
     <p v-if="embedRef?.caption" class="pdf-view__caption">{{ embedRef.caption }}</p>
@@ -98,14 +98,14 @@ function closeLightbox(): void {
       <button
         type="button"
         class="pdf-view__lightbox-close"
-        aria-label="Close"
+        :aria-label="$t('kindViews.pdf.close')"
         @click="closeLightbox"
       >×</button>
       <div class="pdf-view__lightbox-inner" @click.stop>
         <iframe
           v-if="url"
           :src="url"
-          title="PDF"
+          :title="$t('kindViews.pdf.label')"
           class="pdf-view__frame pdf-view__frame--lightbox"
         />
         <p v-if="embedRef?.caption" class="pdf-view__caption">{{ embedRef.caption }}</p>

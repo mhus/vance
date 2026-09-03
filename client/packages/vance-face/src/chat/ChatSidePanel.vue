@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { WebSocketRequestError, type BrainWsApi } from '@vance/shared';
 import type {
   ActiveAppContext,
@@ -89,6 +90,8 @@ interface Props {
    */
   backLabel?: string;
 }
+
+const { t } = useI18n();
 
 const props = defineProps<Props>();
 
@@ -201,7 +204,7 @@ const status = computed<Status>(() => {
 
 const errorMessage = computed<string | null>(() => {
   if (occupied.value) {
-    return 'Another connection holds this session — close that tab and retry.';
+    return t('cortex.occupied');
   }
   return bindError.value;
 });
@@ -256,9 +259,9 @@ async function bindToSession(): Promise<void> {
     } else if (e instanceof WebSocketRequestError && e.errorCode === 409) {
       occupied.value = true;
     } else if (e instanceof WebSocketRequestError && e.errorCode === 404) {
-      bindError.value = `Session ${props.sessionId} not found.`;
+      bindError.value = t('cortex.sessionNotFound', { id: props.sessionId });
     } else if (e instanceof WebSocketRequestError && e.errorCode === 403) {
-      bindError.value = 'Access to this session was denied.';
+      bindError.value = t('cortex.accessDenied');
     } else {
       bindError.value = e instanceof Error
         ? e.message
@@ -350,22 +353,21 @@ function onRollbackEcho(messageId: string): void {
         class="shrink-0 -ml-2"
         @click="emit('back')"
       />
-      <span v-else class="uppercase tracking-wide opacity-70">Session</span>
-      <span class="font-mono truncate" title="Session ID">{{ sessionId }}</span>
+      <span v-else class="uppercase tracking-wide opacity-70">{{ $t('chatPanel.session') }}</span>
+      <span class="font-mono truncate" :title="$t('chatPanel.sessionId')">{{ sessionId }}</span>
     </div>
 
     <div v-if="status === 'connecting'" class="flex-1 flex items-center justify-center text-sm opacity-60">
-      Connecting…
+      {{ $t('chatPanel.connecting') }}
     </div>
 
     <div v-else-if="status === 'elsewhere'" class="p-3 space-y-2">
       <VAlert variant="warning">
-        This session is open in another window or on another device — it is
-        not connected here.
+        {{ $t('chatPanel.elsewhere') }}
       </VAlert>
       <div class="flex flex-col gap-2">
-        <VButton size="sm" variant="secondary" @click="retry">Reconnect</VButton>
-        <VButton size="sm" variant="primary" @click="takeOverHere">Take over here</VButton>
+        <VButton size="sm" variant="secondary" @click="retry">{{ $t('chatPanel.reconnect') }}</VButton>
+        <VButton size="sm" variant="primary" @click="takeOverHere">{{ $t('chatPanel.takeOver') }}</VButton>
       </div>
     </div>
 
@@ -373,7 +375,7 @@ function onRollbackEcho(messageId: string): void {
       <VAlert :variant="status === 'occupied' ? 'warning' : 'error'">
         {{ errorMessage }}
         <div class="mt-2">
-          <VButton size="sm" variant="secondary" @click="retry">Retry</VButton>
+          <VButton size="sm" variant="secondary" @click="retry">{{ $t('chatPanel.retry') }}</VButton>
         </div>
       </VAlert>
     </div>

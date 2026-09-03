@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { VButton, VInput, VModal } from '@vance/components';
+import { useT } from './i18n';
 
 /**
  * Reusable Vue input dialog (replaces window.prompt). Imperative API:
@@ -20,6 +21,8 @@ interface FieldState {
   placeholder?: string;
   value: string;
 }
+
+const t = useT();
 
 const open = ref(false);
 const title = ref('');
@@ -78,8 +81,8 @@ defineExpose({ open: openDialog });
         @keyup.enter="submit"
       />
       <div class="mt-1 flex justify-end gap-2">
-        <VButton size="sm" variant="ghost" @click="finish(null)">Cancel</VButton>
-        <VButton size="sm" variant="primary" @click="submit">OK</VButton>
+        <VButton size="sm" variant="ghost" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
+        <VButton size="sm" variant="primary" @click="submit">{{ t('canvas.common.ok') }}</VButton>
       </div>
     </div>
   </VModal>

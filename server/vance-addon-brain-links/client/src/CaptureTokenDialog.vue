@@ -10,6 +10,7 @@ import {
   revokeIntegrationToken,
 } from '@vance/shared';
 import type { IntegrationScopeProfileDto, IntegrationTokenDto } from '@vance/generated';
+import { useT } from './i18n';
 
 /**
  * Manage the capture credentials for this link list.
@@ -51,6 +52,8 @@ const PROFILE = 'links-capture';
  */
 const profiles = ref<IntegrationScopeProfileDto[]>([]);
 const chosen = ref<string[]>([PROFILE]);
+
+const t = useT();
 
 const open = ref(true);
 const busy = ref(false);
@@ -108,12 +111,12 @@ async function load(): Promise<void> {
 async function onCreate(): Promise<void> {
   const parsed = Number.parseInt(days.value, 10);
   if (!Number.isFinite(parsed) || parsed < 1) {
-    error.value = 'Lifetime must be a number of days.';
+    error.value = t('links.capture.error.days');
     return;
   }
   if (chosen.value.length === 0) {
     // A token that opens nothing would authenticate and then fail every call.
-    error.value = 'Pick at least one capability.';
+    error.value = t('links.capture.error.capability');
     return;
   }
   busy.value = true;
@@ -122,7 +125,7 @@ async function onCreate(): Promise<void> {
     const minted = await createIntegrationToken({
       scopeProfiles: chosen.value,
       projectId: props.projectId,
-      label: label.value.trim() || 'Browser extension',
+      label: label.value.trim() || t('links.capture.defaultLabel'),
       expiresInDays: parsed,
     });
     // The one moment the value exists. Everything below hangs off this.
@@ -147,9 +150,7 @@ async function onCreate(): Promise<void> {
 }
 
 async function onRevoke(token: IntegrationTokenDto): Promise<void> {
-  if (!window.confirm(
-    `Revoke “${token.label}”? Anything still using it stops working within seconds.`,
-  )) return;
+  if (!window.confirm(t('links.capture.confirmRevoke', { label: token.label }))) return;
   busy.value = true;
   error.value = null;
   try {
@@ -177,7 +178,7 @@ async function onCopy(silent = false): Promise<void> {
     // browser that wants a user gesture. The block below is selectable, so the
     // manual route always exists; saying so beats a button that does nothing.
     if (!silent) {
-      error.value = 'Could not reach the clipboard — select the text and copy it manually.';
+      error.value = t('links.capture.error.clipboard');
     }
   }
 }
@@ -213,26 +214,22 @@ function message(e: unknown): string {
        owns what closing means. -->
   <VModal
     :model-value="open"
-    title="Capture access"
+    :title="t('links.capture.title')"
     size="lg"
     :close-on-backdrop="false"
     @update:model-value="onClose()"
   >
     <div class="flex flex-col gap-4">
       <p class="text-sm opacity-70">
-        A capture token lets an outside tool — a browser extension, a shell alias —
-        work without a login. Pick what it may do; each capability opens exactly the
-        routes shown beside it and nothing else. Link capture, for instance, can look
-        up one URL, read the group names and save — it cannot read this list, change
-        an entry, or delete one.
+        {{ t('links.capture.intro') }}
       </p>
 
       <!-- The honest scope. Stated up front, not in a footnote: somebody
            handing this to a tool has to know what it reaches. -->
       <VAlert variant="info">
-        The token is pinned to project <b>{{ projectId }}</b>. The folder
-        <code>{{ folder }}</code> travels with it as the destination, not as a limit —
-        a tool that changes it reaches another link list in the same project.
+        {{ t('links.capture.scopePre') }} <b>{{ projectId }}</b>.
+        {{ t('links.capture.scopeFolder') }} <code>{{ folder }}</code>
+        {{ t('links.capture.scopePost') }}
       </VAlert>
 
       <VAlert v-if="error" variant="error" class="whitespace-pre-line">{{ error }}</VAlert>
@@ -240,45 +237,52 @@ function message(e: unknown): string {
       <!-- Existing tokens -->
       <div class="flex flex-col gap-2">
         <span class="text-xs font-semibold uppercase tracking-wide opacity-50">
-          Tokens for this project
+          {{ t('links.capture.existing') }}
         </span>
         <p v-if="mine.length === 0 && !busy" class="text-sm opacity-60">
-          None yet.
+          {{ t('links.capture.none') }}
         </p>
         <div
-          v-for="t in mine"
-          :key="t.tokenId"
+          v-for="row in mine"
+          :key="row.tokenId"
           class="flex items-center gap-3 rounded border border-base-300 px-3 py-2"
         >
           <div class="flex min-w-0 flex-1 flex-col">
-            <span class="truncate font-medium" :class="integrationTokenIsLive(t) ? '' : 'line-through opacity-50'">
-              {{ t.label }}
+            <span
+              class="truncate font-medium"
+              :class="integrationTokenIsLive(row) ? '' : 'line-through opacity-50'"
+            >
+              {{ row.label }}
             </span>
             <!-- What it carries. The list is every token of the project, not
                  just this addon's, so the capability is the only thing that
                  tells two rows apart — and the reason to revoke one. -->
             <span class="truncate text-xs opacity-70">
-              {{ (t.scopeProfileLabels ?? []).join(' · ') || 'no capability' }}
+              {{ (row.scopeProfileLabels ?? []).join(' · ') || t('links.capture.noCapability') }}
             </span>
             <!-- Last used is the only thing that ever reveals a token nobody
                  remembers handing out. -->
             <span class="text-xs opacity-60">
-              created {{ stamp(t.createdAtTimestamp) }} ·
-              expires {{ stamp(t.expiresAtTimestamp) }} ·
-              last used {{ t.lastUsedAtTimestamp ? stamp(t.lastUsedAtTimestamp) : 'never' }}
-              <template v-if="t.revokedAtTimestamp">
-                · revoked {{ stamp(t.revokedAtTimestamp) }}
+              {{ t('links.capture.created', { date: stamp(row.createdAtTimestamp) }) }} ·
+              {{ t('links.capture.expires', { date: stamp(row.expiresAtTimestamp) }) }} ·
+              {{ t('links.capture.lastUsed', {
+                date: row.lastUsedAtTimestamp
+                  ? stamp(row.lastUsedAtTimestamp)
+                  : t('links.capture.never'),
+              }) }}
+              <template v-if="row.revokedAtTimestamp">
+                · {{ t('links.capture.revoked', { date: stamp(row.revokedAtTimestamp) }) }}
               </template>
             </span>
           </div>
           <VButton
-            v-if="integrationTokenIsLive(t)"
+            v-if="integrationTokenIsLive(row)"
             size="xs"
             variant="ghost"
             :disabled="busy"
-            @click="onRevoke(t)"
+            @click="onRevoke(row)"
           >
-            Revoke
+            {{ t('links.capture.revoke') }}
           </VButton>
         </div>
       </div>
@@ -286,7 +290,7 @@ function message(e: unknown): string {
       <!-- Mint -->
       <div class="flex flex-col gap-2 border-t border-base-300 pt-4">
         <span class="text-xs font-semibold uppercase tracking-wide opacity-50">
-          New token
+          {{ t('links.capture.newToken') }}
         </span>
         <!-- What the token will be able to do. Each line is a profile the
              server offers, with the routes it opens spelled out — somebody
@@ -308,18 +312,22 @@ function message(e: unknown): string {
 
         <div class="flex items-end gap-2">
           <div class="min-w-0 flex-1">
-            <VInput v-model="label" label="Label" placeholder="Browser extension" :disabled="busy" />
+            <VInput
+              v-model="label"
+              :label="t('links.capture.label')"
+              :placeholder="t('links.capture.labelPlaceholder')"
+              :disabled="busy"
+            />
           </div>
           <div class="w-32 flex-none">
-            <VInput v-model="days" label="Days" :disabled="busy" />
+            <VInput v-model="days" :label="t('links.capture.days')" :disabled="busy" />
           </div>
           <VButton variant="primary" :disabled="busy" @click="onCreate()">
-            Create
+            {{ t('links.common.create') }}
           </VButton>
         </div>
         <p v-if="live.length > 0" class="text-xs opacity-60">
-          {{ live.length }} live token{{ live.length === 1 ? '' : 's' }} already —
-          a new one does not replace them.
+          {{ t('links.capture.liveTokens', { n: live.length }, live.length) }}
         </p>
       </div>
 
@@ -327,20 +335,18 @@ function message(e: unknown): string {
       <div v-if="freshBlob" class="flex flex-col gap-2 border-t border-base-300 pt-4">
         <div class="flex items-center gap-2">
           <span class="text-xs font-semibold uppercase tracking-wide opacity-50">
-            Connection string
+            {{ t('links.capture.connectionString') }}
           </span>
           <VButton size="xs" :variant="copied ? 'primary' : 'ghost'" @click="onCopy()">
-            {{ copied ? '✓ Copied' : '⧉ Copy' }}
+            {{ copied ? t('links.capture.copiedButton') : t('links.capture.copyButton') }}
           </VButton>
         </div>
         <VAlert :variant="copied ? 'success' : 'warning'">
           <template v-if="copied">
-            Copied to your clipboard. It is shown once and not stored — paste it before
-            you copy anything else.
+            {{ t('links.capture.copiedHint') }}
           </template>
           <template v-else>
-            Shown once. The server keeps no copy — if you lose it, revoke this token and
-            create another.
+            {{ t('links.capture.onceHint') }}
           </template>
         </VAlert>
         <!-- A `pre` rather than a textarea: this is a value to take away, not
@@ -351,14 +357,13 @@ function message(e: unknown): string {
                  border border-base-300 p-2 text-xs"
         >{{ freshBlob }}</pre>
         <p class="text-xs opacity-60">
-          Holds the brain URL, tenant, project, folder, the token and a checksum.
-          Paste it into the extension as one value.
+          {{ t('links.capture.blobHint') }}
         </p>
       </div>
     </div>
 
     <template #actions>
-      <VButton variant="ghost" @click="onClose()">Close</VButton>
+      <VButton variant="ghost" @click="onClose()">{{ t('links.common.close') }}</VButton>
     </template>
   </VModal>
 </template>

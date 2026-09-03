@@ -14,6 +14,7 @@
 
 import { createI18n, type I18n } from 'vue-i18n';
 import type { App } from 'vue';
+import { onI18nMessages } from '@vance/shared/i18n';
 import { getActiveLanguage } from '@/platform';
 import en from './en';
 import de from './de';
@@ -55,6 +56,29 @@ const i18n: I18n<
   silentFallbackWarn: true,
   missingWarn: false,
   fallbackWarn: false,
+});
+
+// Addon translations. A federation remote bundles its own copy of every
+// workspace package and therefore cannot reach `i18n` here, so it drops its
+// bundle into the globalThis registry in `@vance/shared/i18n` and this merges
+// it in. Subscribing at module scope covers both directions of the race: the
+// registry replays what a remote registered before this ran, and later
+// registrations (a lazily loaded addon) arrive through the same sink.
+//
+// Merged, not assigned: `mergeLocaleMessage` deep-copies, so an addon may
+// extend a host namespace — its `documents.detail.tab*` key lands next to the
+// built-in ones instead of replacing the branch.
+onI18nMessages((id, bundle) => {
+  for (const [locale, messages] of Object.entries(bundle)) {
+    if (!isSupported(locale)) continue;
+    try {
+      i18n.global.mergeLocaleMessage(locale, messages);
+    } catch (e) {
+      // A malformed bundle must not take the page down — the addon then shows
+      // its keys, which is a visible but survivable defect.
+      console.warn(`[i18n] bundle '${id}' (${locale}) could not be merged`, e);
+    }
+  }
 });
 
 /** Install on the given Vue app. Call before {@code app.mount()}. */

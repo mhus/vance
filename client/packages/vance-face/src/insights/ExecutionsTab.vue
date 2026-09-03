@@ -89,7 +89,7 @@ function shortId(id: string): string {
 <template>
   <div class="flex flex-col gap-3 p-4">
     <div v-if="!projectId" class="opacity-60 text-sm">
-      Pick a project in the sidebar to see its executions.
+      {{ $t('insights.executions.pickProject') }}
     </div>
 
     <template v-else>
@@ -98,24 +98,24 @@ function shortId(id: string): string {
         <div class="flex-1 min-w-48">
           <VInput
             v-model="search"
-            label="Search"
-            placeholder="command, id, owner, session…"
+            :label="$t('insights.executions.search')"
+            :placeholder="$t('insights.executions.searchPlaceholder')"
           />
         </div>
 
         <div class="flex flex-col gap-1">
-          <span class="text-xs opacity-70">Filter</span>
+          <span class="text-xs opacity-70">{{ $t('insights.executions.filter') }}</span>
           <div class="flex gap-2 items-center">
             <VCheckbox
               :model-value="state.filters.onlyRunning"
-              label="running only"
+              :label="$t('insights.executions.onlyRunning')"
               @update:model-value="(v: boolean) => { state.filters.onlyRunning = v; refresh(); }"
             />
           </div>
         </div>
 
         <VButton variant="ghost" size="sm" @click="refresh">
-          Refresh
+          {{ $t('insights.executions.refresh') }}
         </VButton>
 
         <div class="text-xs opacity-60 ml-auto">
@@ -123,7 +123,7 @@ function shortId(id: string): string {
         </div>
       </div>
 
-      <div v-if="state.loading.value" class="text-sm opacity-60">Loading executions…</div>
+      <div v-if="state.loading.value" class="text-sm opacity-60">{{ $t('insights.executions.loading') }}</div>
 
       <VAlert v-else-if="state.error.value" variant="error">
         {{ state.error.value }}
@@ -131,27 +131,27 @@ function shortId(id: string): string {
 
       <VEmptyState
         v-else-if="state.list.value.length === 0"
-        :headline="'No executions'"
-        :body="'No shell jobs are tracked for this project yet. Start one via exec_run / client_exec_run.'"
+        :headline="$t('insights.executions.emptyHeadline')"
+        :body="$t('insights.executions.emptyBody')"
       />
 
       <table v-else class="table table-sm">
         <thead>
           <tr>
-            <th class="w-32">Id</th>
-            <th class="w-24">Owner</th>
-            <th class="w-24">Status</th>
-            <th>Command</th>
-            <th class="w-44">Started</th>
-            <th class="w-44">Last output</th>
-            <th class="w-16">Exit</th>
+            <th class="w-32">{{ $t('insights.executions.colId') }}</th>
+            <th class="w-24">{{ $t('insights.executions.colOwner') }}</th>
+            <th class="w-24">{{ $t('insights.executions.colStatus') }}</th>
+            <th>{{ $t('insights.executions.colCommand') }}</th>
+            <th class="w-44">{{ $t('insights.executions.colStarted') }}</th>
+            <th class="w-44">{{ $t('insights.executions.colLastOutput') }}</th>
+            <th class="w-16">{{ $t('insights.executions.colExit') }}</th>
             <th class="w-12"></th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="filteredRows.length === 0">
             <td colspan="8" class="opacity-60 text-center py-4">
-              No executions match the current search.
+              {{ $t('insights.executions.noMatch') }}
             </td>
           </tr>
           <template v-for="row in filteredRows" :key="row.id">
@@ -178,21 +178,21 @@ function shortId(id: string): string {
               <td colspan="8" class="bg-base-200/20 py-3">
                 <div class="flex flex-col gap-2">
                   <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                    <div><span class="opacity-60">id:</span> <span class="font-mono">{{ row.id }}</span></div>
+                    <div><span class="opacity-60">{{ $t('insights.executions.fieldId') }}</span> <span class="font-mono">{{ row.id }}</span></div>
                     <div v-if="row.sessionId">
-                      <span class="opacity-60">session:</span>
+                      <span class="opacity-60">{{ $t('insights.executions.fieldSession') }}</span>
                       <span class="font-mono">{{ row.sessionId }}</span>
                     </div>
                     <div v-if="row.processId">
-                      <span class="opacity-60">process:</span>
+                      <span class="opacity-60">{{ $t('insights.executions.fieldProcess') }}</span>
                       <span class="font-mono">{{ row.processId }}</span>
                     </div>
                     <div v-if="row.dirName">
-                      <span class="opacity-60">rootDir:</span>
+                      <span class="opacity-60">{{ $t('insights.executions.fieldRootDir') }}</span>
                       <span class="font-mono">{{ row.dirName }}</span>
                     </div>
                     <div v-if="row.endedAt">
-                      <span class="opacity-60">ended:</span>
+                      <span class="opacity-60">{{ $t('insights.executions.fieldEnded') }}</span>
                       {{ fmtTime(row.endedAt) }}
                     </div>
                   </div>
@@ -213,7 +213,7 @@ function shortId(id: string): string {
                       >stderr</button>
                     </div>
                     <label class="flex items-center gap-1">
-                      <span class="opacity-70">last</span>
+                      <span class="opacity-70">{{ $t('insights.executions.last') }}</span>
                       <input
                         v-model.number="tailLines"
                         type="number"
@@ -222,10 +222,10 @@ function shortId(id: string): string {
                         class="w-16 px-1 py-0.5 rounded border border-base-300 bg-base-100 text-xs"
                         @change="loadTail(row.id)"
                       />
-                      <span class="opacity-70">lines</span>
+                      <span class="opacity-70">{{ $t('insights.executions.lines') }}</span>
                     </label>
                     <VButton variant="ghost" size="sm" @click="loadTail(row.id)">
-                      Refresh tail
+                      {{ $t('insights.executions.refreshTail') }}
                     </VButton>
                   </div>
 
@@ -236,12 +236,14 @@ function shortId(id: string): string {
                   <div
                     v-else-if="tailState.loading.value"
                     class="text-xs opacity-60"
-                  >Loading {{ expandedStream }}…</div>
+                  >{{ $t('insights.executions.loadingStream', { stream: expandedStream }) }}</div>
 
                   <pre
                     v-else-if="tailState.tail.value"
                     class="output-pane"
-                  >{{ tailState.tail.value.lines.length === 0 ? '(empty)' : tailState.tail.value.lines.join('\n') }}</pre>
+                  >{{ tailState.tail.value.lines.length === 0
+                    ? $t('insights.executions.emptyStream')
+                    : tailState.tail.value.lines.join('\n') }}</pre>
                 </div>
               </td>
             </tr>

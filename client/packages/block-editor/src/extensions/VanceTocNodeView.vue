@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
+import { useT } from '../useT';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
 
@@ -12,6 +13,8 @@ import type { Editor } from '@tiptap/core';
 const props = defineProps<{
   editor: Editor;
 }>();
+
+const t = useT();
 
 interface TocEntry {
   level: number;
@@ -85,9 +88,9 @@ onBeforeUnmount(() => {
 
 <template>
   <NodeViewWrapper as="aside" class="vance-toc" contenteditable="false">
-    <div class="vance-toc__label">Inhaltsverzeichnis</div>
+    <div class="vance-toc__label">{{ t('blockEditor.blocks.toc') }}</div>
     <div v-if="!hasEntries" class="vance-toc__empty">
-      Noch keine Überschriften auf dieser Seite.
+      {{ t('blockEditor.blocks.tocEmpty') }}
     </div>
     <ul v-else class="vance-toc__list">
       <li

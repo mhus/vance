@@ -37,6 +37,7 @@ import type { WikiView } from './generated/wiki/WikiView';
 import type { WikiPageView } from './generated/wiki/WikiPageView';
 import type { WikiSpaceView } from './generated/wiki/WikiSpaceView';
 import type { WikiDocumentItem } from './generated/wiki/WikiDocumentItem';
+import { useT } from './i18n';
 
 /**
  * Wiki application view — a name-addressed link graph over `kind: workpage`
@@ -67,6 +68,8 @@ const folder = computed(() => props.document.path.replace(/\/_app\.yaml$/, ''));
 const title = computed(
   () => view.value?.title ?? props.document.title ?? folder.value,
 );
+
+const t = useT();
 
 const view = ref<WikiView | null>(null);
 const error = ref<string | null>(null);
@@ -117,8 +120,8 @@ const lastSavedBodies = ref<Map<string, string>>(new Map());
 const SELF_WRITE_QUIET_MS = 3000;
 const lastSelfWriteAt = ref<Map<string, number>>(new Map());
 function withinSelfWriteWindow(id: string): boolean {
-  const t = lastSelfWriteAt.value.get(id);
-  return t != null && Date.now() - t < SELF_WRITE_QUIET_MS;
+  const at = lastSelfWriteAt.value.get(id);
+  return at != null && Date.now() - at < SELF_WRITE_QUIET_MS;
 }
 
 // ── Derived indexes ────────────────────────────────────────────────
@@ -174,7 +177,7 @@ async function loadWiki(): Promise<void> {
         ?? null;
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not scan wiki.';
+    error.value = e instanceof Error ? e.message : t('wiki.app.error.scan');
     view.value = null;
   } finally {
     loading.value = false;
@@ -227,7 +230,7 @@ function indexView(id: string, path: string, space: string): WikiPageView {
   const rel = path.startsWith(folder.value + '/')
     ? path.substring(folder.value.length + 1)
     : path;
-  return { id, path, relativePath: rel, space, slug: '_index', title: 'Index', main: false };
+  return { id, path, relativePath: rel, space, slug: '_index', title: t('wiki.app.indexTitle'), main: false };
 }
 
 // ── Page selection + URL sync ──────────────────────────────────────
@@ -260,7 +263,7 @@ const linkPickerAppTargets = computed(() => {
   if (!v) return null;
   return {
     appPath: props.document.path,
-    appLabel: v.title || folder.value || 'Wiki',
+    appLabel: v.title || folder.value || t('wiki.app.fallbackTitle'),
     targets: v.pages
       .filter((p) => p.id !== activePageId.value)
       .map((p) => ({
@@ -331,7 +334,7 @@ async function loadActivePageContent(options: { force?: boolean } = {}): Promise
     if (!options.force && ours != null && fresh === ours) return;
     activeMarkdown.value = fresh;
   } catch (e) {
-    pageError.value = e instanceof Error ? e.message : 'Could not load page.';
+    pageError.value = e instanceof Error ? e.message : t('wiki.app.error.loadPage');
     activeMarkdown.value = null;
   } finally {
     pageLoading.value = false;
@@ -359,7 +362,7 @@ async function onEditorSave(body: string): Promise<void> {
   } catch (e) {
     if (id === activePageId.value) {
       saveStatus.value = 'error';
-      lastSaveError.value = e instanceof Error ? e.message : 'Save failed.';
+      lastSaveError.value = e instanceof Error ? e.message : t('wiki.app.error.save');
     }
   }
 }
@@ -498,8 +501,10 @@ async function openWikiLink(target: string): Promise<void> {
       return;
     }
     const name = targetName(target).trim() || target;
-    const where = resp.createSpace ? ` in space "${resp.createSpace}"` : '';
-    if (!window.confirm(`Page "${name}" does not exist. Create it${where}?`)) return;
+    const question = resp.createSpace
+      ? t('wiki.app.confirmCreateInSpace', { name, space: resp.createSpace })
+      : t('wiki.app.confirmCreate', { name });
+    if (!window.confirm(question)) return;
     const created = await createWikiPage(projectId.value, folder.value, {
       title: name,
       ...(resp.createSpace ? { space: resp.createSpace } : {}),
@@ -507,7 +512,7 @@ async function openWikiLink(target: string): Promise<void> {
     await loadWiki();
     await selectPage(created.id, created);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not open wiki link.';
+    error.value = e instanceof Error ? e.message : t('wiki.app.error.openLink');
   }
 }
 
@@ -564,7 +569,7 @@ async function createMain(): Promise<void> {
     await loadWiki();
     await selectPage(page.id, page);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not create the main page.';
+    error.value = e instanceof Error ? e.message : t('wiki.app.error.createMain');
   } finally {
     creating.value = false;
   }
@@ -583,7 +588,7 @@ async function rebuild(): Promise<void> {
     await loadWiki();
     await loadActivePageContent({ force: true });
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Rebuild failed.';
+    error.value = e instanceof Error ? e.message : t('wiki.app.error.rebuild');
   } finally {
     rebuilding.value = false;
   }
@@ -609,20 +614,20 @@ function closeNewPage(): void {
   creating.value = false;
 }
 async function submitNewPage(): Promise<void> {
-  const t = newPageTitle.value.trim();
-  if (!t) { newPageError.value = 'Title required'; return; }
+  const wanted = newPageTitle.value.trim();
+  if (!wanted) { newPageError.value = t('wiki.app.error.titleRequired'); return; }
   creating.value = true;
   newPageError.value = null;
   try {
     const page = await createWikiPage(projectId.value, folder.value, {
-      title: t,
+      title: wanted,
       ...(currentSpace.value ? { space: currentSpace.value } : {}),
     });
     closeNewPage();
     await loadWiki();
     await selectPage(page.id, page);
   } catch (e) {
-    newPageError.value = e instanceof Error ? e.message : 'Could not create page.';
+    newPageError.value = e instanceof Error ? e.message : t('wiki.app.error.createPage');
     creating.value = false;
   }
 }
@@ -630,7 +635,7 @@ async function submitNewPage(): Promise<void> {
 async function deleteActivePage(): Promise<void> {
   const p = activePageView.value;
   if (!p || activeIsIndex.value) return;
-  if (!window.confirm(`Delete page "${p.title}"?`)) return;
+  if (!window.confirm(t('wiki.app.confirmDelete', { title: p.title }))) return;
   try {
     await deleteWikiPage(projectId.value, folder.value, p.id);
     activePageId.value = null;
@@ -638,7 +643,7 @@ async function deleteActivePage(): Promise<void> {
     activeMarkdown.value = null;
     await loadWiki();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Delete failed.';
+    error.value = e instanceof Error ? e.message : t('wiki.app.error.delete');
   }
 }
 
@@ -657,7 +662,7 @@ async function runSearch(): Promise<void> {
     searchResults.value = resp.items ?? [];
     searchOpen.value = true;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Search failed.';
+    error.value = e instanceof Error ? e.message : t('wiki.app.error.search');
   } finally {
     searching.value = false;
   }
@@ -682,12 +687,12 @@ const searchCanCreate = computed(
 );
 
 async function createFromSearch(): Promise<void> {
-  const t = searchCreateName.value;
-  if (!t) return;
+  const wanted = searchCreateName.value;
+  if (!wanted) return;
   creating.value = true;
   try {
     const page = await createWikiPage(projectId.value, folder.value, {
-      title: t,
+      title: wanted,
       ...(currentSpace.value ? { space: currentSpace.value } : {}),
     });
     searchOpen.value = false;
@@ -696,7 +701,7 @@ async function createFromSearch(): Promise<void> {
     await loadWiki();
     await selectPage(page.id, page);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not create page.';
+    error.value = e instanceof Error ? e.message : t('wiki.app.error.createPage');
   } finally {
     creating.value = false;
   }
@@ -740,10 +745,10 @@ onMounted(() => {
 
 const saveStatusLabel = computed<string | null>(() => {
   switch (saveStatus.value) {
-    case 'dirty': return 'Edited';
-    case 'saving': return 'Saving…';
-    case 'saved': return 'Saved';
-    case 'error': return lastSaveError.value ?? 'Save failed';
+    case 'dirty': return t('wiki.app.status.edited');
+    case 'saving': return t('wiki.common.saving');
+    case 'saved': return t('wiki.common.saved');
+    case 'error': return lastSaveError.value ?? t('wiki.app.status.saveFailed');
     default: return null;
   }
 });
@@ -779,7 +784,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           v-model="searchQuery"
           type="search"
           class="wiki-app__search-input"
-          placeholder="Search pages…"
+          :placeholder="t('wiki.app.searchPlaceholder')"
           @keydown.enter.prevent="runSearch"
           @keydown.escape="searchOpen = false"
         />
@@ -796,7 +801,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
               <span class="wiki-app__search-path">{{ r.path }}</span>
             </li>
           </ul>
-          <div v-else class="wiki-app__search-empty">No matching page.</div>
+          <div v-else class="wiki-app__search-empty">{{ t('wiki.app.noMatch') }}</div>
           <button
             v-if="searchCanCreate"
             type="button"
@@ -804,7 +809,9 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
             :disabled="creating"
             @click="createFromSearch"
           >
-            ＋ Create page “{{ searchCreateName }}”{{ currentSpace ? ` in ${currentSpace}` : '' }}
+            ＋ {{ currentSpace
+              ? t('wiki.app.createNamedInSpace', { name: searchCreateName, space: currentSpace })
+              : t('wiki.app.createNamed', { name: searchCreateName }) }}
           </button>
         </div>
       </div>
@@ -815,31 +822,36 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
         {{ saveStatusLabel }}
       </span>
 
-      <button class="wiki-app__btn" title="New page" :disabled="creating" @click="openNewPage">＋ New</button>
-      <button class="wiki-app__btn" title="Home — main page" @click="openHome">🏠</button>
-      <button class="wiki-app__btn" title="Index — generated page list" @click="openCurrentIndex">📄</button>
+      <button
+        class="wiki-app__btn"
+        :title="t('wiki.app.newPage')"
+        :disabled="creating"
+        @click="openNewPage"
+      >＋ {{ t('wiki.app.newShort') }}</button>
+      <button class="wiki-app__btn" :title="t('wiki.app.home')" @click="openHome">🏠</button>
+      <button class="wiki-app__btn" :title="t('wiki.app.indexTip')" @click="openCurrentIndex">📄</button>
       <button
         class="wiki-app__btn"
         :disabled="rebuilding"
-        :title="rebuilding ? 'Rebuilding…' : 'Rebuild indexes + backlinks'"
+        :title="rebuilding ? t('wiki.app.rebuilding') : t('wiki.app.rebuild')"
         @click="rebuild"
       >{{ rebuilding ? '…' : '↻' }}</button>
       <button
         class="wiki-app__btn"
         :class="{ 'wiki-app__btn--active': rightOpen && rightTab === 'backlinks' }"
-        title="What links here"
+        :title="t('wiki.backlinks.title')"
         @click="toggleRight('backlinks')"
       >🔗</button>
       <button
         class="wiki-app__btn"
         :class="{ 'wiki-app__btn--active': rightOpen && rightTab === 'notes' }"
-        title="Notes"
+        :title="t('wiki.notes.title')"
         @click="toggleRight('notes')"
       >📝</button>
       <button
         class="wiki-app__btn"
         :class="{ 'wiki-app__btn--active': rightOpen && rightTab === 'versions' }"
-        title="Versions"
+        :title="t('wiki.versions.title')"
         @click="toggleRight('versions')"
       >🕐</button>
     </header>
@@ -851,14 +863,16 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
         v-model="newPageTitle"
         type="text"
         class="wiki-app__newpage-input"
-        :placeholder="currentSpace ? `New page in ${currentSpace}…` : 'New page title…'"
+        :placeholder="currentSpace
+          ? t('wiki.app.newPageInSpacePlaceholder', { space: currentSpace })
+          : t('wiki.app.newPagePlaceholder')"
         :disabled="creating"
         @keydown.escape="closeNewPage"
       />
       <button type="submit" class="wiki-app__btn wiki-app__btn--primary" :disabled="creating || !newPageTitle.trim()">
-        {{ creating ? 'Creating…' : 'Create' }}
+        {{ creating ? t('wiki.common.creating') : t('wiki.common.create') }}
       </button>
-      <button type="button" class="wiki-app__btn" :disabled="creating" @click="closeNewPage">Cancel</button>
+      <button type="button" class="wiki-app__btn" :disabled="creating" @click="closeNewPage">{{ t('wiki.common.cancel') }}</button>
       <span v-if="newPageError" class="wiki-app__error-inline">{{ newPageError }}</span>
     </form>
 
@@ -867,37 +881,37 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
     <!-- Body -->
     <div class="wiki-app__body">
       <main class="wiki-app__main">
-        <div v-if="loading" class="wiki-app__hint">Loading wiki…</div>
+        <div v-if="loading" class="wiki-app__hint">{{ t('wiki.app.loadingWiki') }}</div>
         <div v-else-if="!activePageId && view && !view.mainPageId" class="wiki-app__missing">
-          <div class="wiki-app__missing-title">The home page “main” doesn’t exist yet.</div>
+          <div class="wiki-app__missing-title">{{ t('wiki.app.missingTitle') }}</div>
           <p class="wiki-app__missing-text">
-            A wiki opens on its <code>main</code> page. Create it now — or open the
-            <button type="button" class="wiki-app__linkbtn" @click="openCurrentIndex">index</button>.
+            {{ t('wiki.app.missingPre') }} <code>main</code> {{ t('wiki.app.missingMid') }}
+            <button type="button" class="wiki-app__linkbtn" @click="openCurrentIndex">{{ t('wiki.app.indexLink') }}</button>.
           </p>
           <button
             type="button"
             class="wiki-app__btn wiki-app__btn--primary"
             :disabled="creating"
             @click="createMain"
-          >{{ creating ? 'Creating…' : '＋ Create “main” page' }}</button>
+          >{{ creating ? t('wiki.common.creating') : t('wiki.app.createMain') }}</button>
         </div>
         <div v-else-if="!activePageId" class="wiki-app__hint">
-          No page selected. Create one with ＋ New.
+          {{ t('wiki.app.noPageSelected') }}
         </div>
         <template v-else>
           <div class="wiki-app__pagehead">
             <span class="wiki-app__pagetitle">{{ pageDisplayTitle }}</span>
-            <span v-if="activeIsIndex" class="wiki-app__badge">generated · read-only</span>
+            <span v-if="activeIsIndex" class="wiki-app__badge">{{ t('wiki.app.generatedBadge') }}</span>
             <span class="wiki-app__spacer" />
             <button
               v-if="!activeIsIndex && !(activePageView && activePageView.main)"
               class="wiki-app__btn wiki-app__btn--danger"
-              title="Delete page"
+              :title="t('wiki.app.deletePage')"
               @click="deleteActivePage"
             >🗑</button>
           </div>
           <div v-if="pageError" class="wiki-app__error">{{ pageError }}</div>
-          <div v-else-if="pageLoading" class="wiki-app__hint">Loading page…</div>
+          <div v-else-if="pageLoading" class="wiki-app__hint">{{ t('wiki.app.loadingPage') }}</div>
           <WorkPageEditor
             v-else-if="activeMarkdown != null && activePageView"
             :key="editorKey"

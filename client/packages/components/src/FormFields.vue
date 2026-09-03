@@ -15,11 +15,13 @@ import type { FormChoiceDto, FormFieldDto } from '@vance/generated';
  * Templates and the Bistromath runtime — which is why it lives here and not in
  * {@code vance-face}: an addon bundle cannot import the host's components.
  *
- * <p><b>No i18n.</b> Like every component in this package, the strings it shows
- * are props with English defaults and the label language is a prop too. A host
- * that has {@code vue-i18n} passes its {@code locale} and its translations in;
- * an addon that has none gets readable English. Putting {@code useI18n()} here
- * would make the package unusable in exactly the bundles that need it most.
+ * <p><b>Strings come in as props.</b> The ones it shows are props with English
+ * defaults and the label language is a prop too, so a caller stays in control
+ * of the wording of its own form. What this package must not do is import
+ * vue-i18n — that would make it unusable in exactly the bundles that need it
+ * most. Where a component of this package needs a translation of its own, it
+ * goes through {@link useT}, which reaches the host's {@code $t} through the
+ * app context without a vue-i18n dependency.
  *
  * <p>Field types: {@code string}, {@code textarea}, {@code password},
  * {@code integer}, {@code boolean}, {@code select}, {@code multi_select},

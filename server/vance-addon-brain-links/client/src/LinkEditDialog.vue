@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { VButton, VInput, VModal, VTagEditor, VTextarea } from '@vance/components';
 import type { LinkEntryView } from './generated/links/LinkEntryView';
 import type { LinkFields } from './api';
+import { useT } from './i18n';
 
 /**
  * Editing one link.
@@ -30,6 +31,8 @@ const emit = defineEmits<{
   (e: 'save', fields: LinkFields): void;
   (e: 'cancel'): void;
 }>();
+
+const t = useT();
 
 const open = ref(true);
 
@@ -64,7 +67,7 @@ function close(): void {
 <template>
   <VModal
     v-model="open"
-    title="Edit link"
+    :title="t('links.edit.title')"
     :close-on-backdrop="false"
     @update:model-value="(v: boolean) => { if (!v) emit('cancel'); }"
   >
@@ -73,52 +76,56 @@ function close(): void {
 
       <VInput
         v-model="title"
-        label="Title"
-        placeholder="the page's own title"
-        help="Empty re-fetches the title from the page."
+        :label="t('links.edit.fieldTitle')"
+        :placeholder="t('links.edit.titlePlaceholder')"
+        :help="t('links.edit.titleHelp')"
       />
 
       <VTextarea
         v-model="teaser"
-        label="Teaser"
+        :label="t('links.edit.teaser')"
         :rows="3"
         :mono="false"
-        :placeholder="pageTeaser ?? 'the page has no description'"
+        :placeholder="pageTeaser ?? t('links.edit.teaserPlaceholder')"
         :help="pageTeaser
-          ? 'Empty shows the page\'s own description (the grey text above) and keeps it current.'
-          : 'The page offers no description — write one to give the card a subtitle.'"
+          ? t('links.edit.teaserHelpLive')
+          : t('links.edit.teaserHelpNone')"
       />
 
       <VInput
         v-model="group"
-        label="Group"
-        placeholder="(no group)"
+        :label="t('links.edit.group')"
+        :placeholder="t('links.edit.groupPlaceholder')"
         :suggestions="groups"
-        help="A name that does not exist yet becomes a new group."
+        :help="t('links.edit.groupHelp')"
       />
 
-      <VTagEditor v-model="tags" label="Tags" placeholder="add a tag…" />
+      <VTagEditor
+        v-model="tags"
+        :label="t('links.edit.tags')"
+        :placeholder="t('links.edit.tagsPlaceholder')"
+      />
 
       <VTextarea
         v-model="note"
-        label="Note"
+        :label="t('links.edit.note')"
         :rows="2"
         :mono="false"
-        placeholder="why this list has the link"
-        help="Your remark. The teaser describes the page; this describes why you kept it."
+        :placeholder="t('links.edit.notePlaceholder')"
+        :help="t('links.edit.noteHelp')"
       />
 
       <VInput
         v-model="image"
-        label="Picture URL"
-        :placeholder="pageImage ?? 'the page offers no picture'"
-        help="Empty uses the page's own preview picture."
+        :label="t('links.edit.image')"
+        :placeholder="pageImage ?? t('links.edit.imagePlaceholder')"
+        :help="t('links.edit.imageHelp')"
       />
     </div>
 
     <template #actions>
-      <VButton variant="ghost" :disabled="busy" @click="close">Cancel</VButton>
-      <VButton variant="primary" :disabled="busy" @click="save">Save</VButton>
+      <VButton variant="ghost" :disabled="busy" @click="close">{{ t('links.common.cancel') }}</VButton>
+      <VButton variant="primary" :disabled="busy" @click="save">{{ t('links.common.save') }}</VButton>
     </template>
   </VModal>
 </template>

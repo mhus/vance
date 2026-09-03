@@ -63,7 +63,7 @@ const structuredRenderer = computed(() => {
   <ComposeProcessOutput v-if="isProcess" :project-id="projectId" :output="output" />
   <VCard v-else :title="title">
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
-    <p v-else-if="loading" class="text-sm opacity-60">Loading…</p>
+    <p v-else-if="loading" class="text-sm opacity-60">{{ $t('cortex.compose.loading') }}</p>
     <template v-else-if="result">
       <component
         :is="structuredRenderer"

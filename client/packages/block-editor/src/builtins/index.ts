@@ -16,6 +16,7 @@ import { calloutToAttrs, calloutToBody } from './calloutCodec';
 import { ScriptComposeNodes } from '../extensions/VanceComposeScript';
 import ScriptComposeBlockView from './ScriptComposeBlockView.vue';
 import { SCRIPT_COMPOSE_KINDS, initialManifest } from './scriptComposeCodec';
+import { translatorFor } from '../useT';
 
 const calloutBlock: BlockExtension = {
   fence: 'vance-callout',
@@ -24,8 +25,12 @@ const calloutBlock: BlockExtension = {
   toAttrs: calloutToAttrs,
   toBody: calloutToBody,
   slash: {
+    // Literals stay as the no-i18n fallback; the keys are what the slash menu
+    // actually renders (see BlockExtensionSlashItem).
     title: 'Callout',
     hint: 'Info / Warn / Note',
+    titleKey: 'blockEditor.slash.callout.title',
+    hintKey: 'blockEditor.slash.callout.hint',
     insert: ({ editor, range }) =>
       editor
         .chain()
@@ -33,7 +38,13 @@ const calloutBlock: BlockExtension = {
         .deleteRange(range)
         .insertContent({
           type: 'vanceCallout',
-          attrs: { severity: 'info', title: 'Hinweis', body: '' },
+          attrs: {
+            severity: 'info',
+            // The inserted title is content, so it is written in the reader's
+            // language — the editor's app context carries the translator.
+            title: translatorFor(appContextOf(editor))('blockEditor.callout.defaultTitle'),
+            body: '',
+          },
         })
         .run(),
   },
@@ -54,6 +65,8 @@ const scriptComposeBlocks: BlockExtension[] = SCRIPT_COMPOSE_KINDS.map((kind) =>
   slash: {
     title: kind.label,
     hint: kind.hint,
+    titleKey: kind.labelKey,
+    hintKey: kind.hintKey,
     insert: ({ editor, range }) =>
       editor
         .chain()
@@ -72,4 +85,16 @@ export function registerBuiltInBlocks(): void {
   done = true;
   registerBlock(calloutBlock);
   for (const block of scriptComposeBlocks) registerBlock(block);
+}
+
+/**
+ * The app context Tiptap copied onto the editor when the host mounted it.
+ * Cast because the property is set by {@code @tiptap/vue-3} at runtime and is
+ * not part of the Editor type.
+ */
+function appContextOf(editor: unknown): {
+  config?: { globalProperties?: Record<string, unknown> };
+} | undefined {
+  return (editor as { appContext?: { config?: { globalProperties?: Record<string, unknown> } } })
+    .appContext;
 }

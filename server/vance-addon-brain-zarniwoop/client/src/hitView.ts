@@ -42,8 +42,14 @@ export function extraText(hit: SearchHitView, key: string): string | null {
   return raw === undefined || raw === null ? null : String(raw);
 }
 
-/** Metadata worth a line under the title, per modality. */
-export function metaLine(hit: SearchHitView): string {
+/**
+ * Metadata worth a line under the title, per modality.
+ *
+ * @param citedPrefix label in front of the citation count. Passed in rather
+ *        than written here: this module is plain TS with no component instance,
+ *        so it cannot reach the host's translator itself.
+ */
+export function metaLine(hit: SearchHitView, citedPrefix = 'cited '): string {
   const bits: string[] = [];
   const push = (key: string, prefix = '') => {
     const v = extraText(hit, key);
@@ -53,7 +59,7 @@ export function metaLine(hit: SearchHitView): string {
   push('author');
   push('venue');
   push('publicationYear');
-  push('citedByCount', 'cited ');
+  push('citedByCount', citedPrefix);
   push('channel');
   push('duration');
   push('points', '▲ ');

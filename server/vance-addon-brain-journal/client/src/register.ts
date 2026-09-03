@@ -8,6 +8,8 @@
  * (resolveKind('application:journal')) by the docTypeRegistry —
  * matches() returns false on purpose.
  */
+// Side effect: contributes this addon's messages to the host's i18n instance.
+import './i18n';
 import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
 

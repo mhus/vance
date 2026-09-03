@@ -9,11 +9,14 @@ import {
   openCreditNotePdf, publish, renewPublishing, setPayoutAccount, verifyDomain,
 } from './api';
 import { COUNTRY_OPTIONS } from './countries';
+import { useT } from './i18n';
 import type {
   CreditNote, DeveloperView, Publishing, ReleaseRequest, Vendor, VendorMoneyView,
 } from './types';
 
 const props = defineProps<{ projectId: string; sourceId: string }>();
+
+const t = useT();
 
 const view = ref<DeveloperView | null>(null);
 const loading = ref(false);
@@ -87,11 +90,15 @@ function publishingLabel(entry: Publishing): string {
   // The date alone makes somebody count. The count is the thing they came
   // for, and it is the difference between "noted" and "acted on".
   const left = entry.paidUntil ? daysUntil(entry.paidUntil) : 0;
-  if (entry.standing === 'VALID') return `may publish until ${until} — ${left} day(s) left`;
-  if (entry.standing === 'GRACE') {
-    return `ran out on ${until} — grace period, ${-left} day(s) ago`;
+  if (entry.standing === 'VALID') {
+    return t('store.developer.standing.valid', { until, days: left });
   }
-  return until ? `ran out on ${until}` : 'never renewed';
+  if (entry.standing === 'GRACE') {
+    return t('store.developer.standing.grace', { until, days: -left });
+  }
+  return until
+    ? t('store.developer.standing.expired', { until })
+    : t('store.developer.standing.never');
 }
 
 /** Near the end, but not past it — worth a colour before it is a problem. */
@@ -111,7 +118,7 @@ async function openNote(note: CreditNote): Promise<void> {
   try {
     await openCreditNotePdf(props.projectId, props.sourceId, moneyVendor.value, note.number);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not render the credit note.';
+    error.value = e instanceof Error ? e.message : t('store.developer.error.note');
   }
 }
 
@@ -124,7 +131,7 @@ async function act(run: () => Promise<void>): Promise<void> {
     await run();
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'That did not work.';
+    error.value = e instanceof Error ? e.message : t('store.developer.error.generic');
   } finally {
     loading.value = false;
   }
@@ -144,15 +151,15 @@ async function claim(vendor: Vendor): Promise<void> {
     const updated = await claimDomain(
       props.projectId, props.sourceId, vendor.name, domainInput.value.trim());
     notice.value = updated.domainVerifiedAt
-      ? `${updated.domain} is verified.`
-      : `Publish the record shown, then check.`;
+      ? t('store.developer.domainVerified', { domain: updated.domain })
+      : t('store.developer.domainPending');
   });
 }
 
 async function verify(vendor: Vendor): Promise<void> {
   await act(async () => {
     const updated = await verifyDomain(props.projectId, props.sourceId, vendor.name);
-    notice.value = `${updated.domain} is verified.`;
+    notice.value = t('store.developer.domainVerified', { domain: updated.domain });
   });
 }
 
@@ -171,7 +178,7 @@ async function loadMoneyFor(vendorName: string): Promise<void> {
     money.value = await loadVendorMoney(props.projectId, props.sourceId, vendorName);
     if (money.value?.problem) error.value = money.value.problem;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load your payouts.';
+    error.value = e instanceof Error ? e.message : t('store.developer.error.money');
   }
 }
 
@@ -187,11 +194,11 @@ async function saveAccount(): Promise<void> {
     );
     // The country and VAT id are not decoration: they decide how the store's
     // own invoice for your work is taxed.
-    notice.value = 'Payout account saved.';
+    notice.value = t('store.developer.accountSaved');
     editingAccount.value = false;
     await loadMoneyFor(moneyVendor.value);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not save the payout account.';
+    error.value = e instanceof Error ? e.message : t('store.developer.error.account');
   } finally {
     loading.value = false;
   }
@@ -226,19 +233,19 @@ async function submitRenewal(vendorName: string): Promise<void> {
       // StoreArea: a `javascript:` URL would run on the brain's origin.
       const target = safeUrl(order.redirectUrl);
       if (!target) {
-        error.value = 'The store answered with a payment link this browser will not open.';
+        error.value = t('store.developer.error.paymentLink');
         return;
       }
-      notice.value = 'Continue the payment in the window that just opened.';
+      notice.value = t('store.developer.paymentContinue');
       window.open(target, '_blank', 'noopener');
     } else {
-      notice.value = `${vendorName} may publish again.`;
+      notice.value = t('store.developer.mayPublishAgain', { vendor: vendorName });
     }
     renewing.value = '';
     renewPassword.value = '';
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not renew publishing.';
+    error.value = e instanceof Error ? e.message : t('store.developer.error.renew');
   } finally {
     loading.value = false;
   }
@@ -267,7 +274,7 @@ async function load(): Promise<void> {
       await loadMoneyFor(approvedVendors.value[0].name);
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load the developer view.';
+    error.value = e instanceof Error ? e.message : t('store.developer.error.load');
   } finally {
     loading.value = false;
   }
@@ -285,12 +292,12 @@ async function submitApplication(): Promise<void> {
       vendorName.value, vendorDisplayName.value, terms.version,
       homepage.value || undefined,
     );
-    notice.value = 'Applied. You can prepare kits now; publishing waits for the store.';
+    notice.value = t('store.developer.appliedNotice');
     applying.value = false;
     password.value = '';
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not apply.';
+    error.value = e instanceof Error ? e.message : t('store.developer.error.apply');
   } finally {
     loading.value = false;
   }
@@ -309,7 +316,7 @@ async function submitKit(): Promise<void> {
       cents > 0 ? 'EUR' : undefined,
       kitTopics.value.split(',').map((tag) => tag.trim()).filter(Boolean),
     );
-    notice.value = `${kitDisplayName.value} is in the catalogue. Publish a version next.`;
+    notice.value = t('store.developer.kitCreated', { name: kitDisplayName.value });
     creatingKit.value = false;
     kitId.value = '';
     kitDisplayName.value = '';
@@ -317,7 +324,7 @@ async function submitKit(): Promise<void> {
     kitTopics.value = '';
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not create the kit.';
+    error.value = e instanceof Error ? e.message : t('store.developer.error.createKit');
   } finally {
     loading.value = false;
   }
@@ -332,7 +339,7 @@ async function submitRelease(vendor: string, kit: string): Promise<void> {
       sourceProject.value, props.sourceId, vendor, kit, version.value,
       vaultPassword.value || undefined,
     );
-    notice.value = `${kit} ${version.value} submitted — it waits for the store to look at it.`;
+    notice.value = t('store.developer.releaseSubmitted', { kit, version: version.value });
     publishing.value = '';
     version.value = '';
     vaultPassword.value = '';
@@ -345,9 +352,11 @@ async function submitRelease(vendor: string, kit: string): Promise<void> {
 }
 
 function statusLabel(vendor: Vendor): string {
-  if (vendor.status === 'PENDING') return 'waiting for the store';
-  if (vendor.status === 'REJECTED') return `refused: ${vendor.rejectionReason ?? ''}`;
-  return 'approved';
+  if (vendor.status === 'PENDING') return t('store.developer.status.pending');
+  if (vendor.status === 'REJECTED') {
+    return t('store.developer.status.rejected', { reason: vendor.rejectionReason ?? '' });
+  }
+  return t('store.developer.status.approved');
 }
 
 /** The last thing that happened, which is what somebody wants to read first. */
@@ -359,7 +368,7 @@ function lastRoundOf(request: ReleaseRequest): string {
 }
 
 function priceOf(cents: number, currency?: string | null): string {
-  if (cents <= 0) return 'Free';
+  if (cents <= 0) return t('store.common.free');
   return `${(cents / 100).toFixed(2)} ${currency ?? ''}`.trim();
 }
 
@@ -373,21 +382,23 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
 
     <!-- What it costs to sell here, before anybody signs anything. -->
     <VCard v-if="view?.fees">
-      <div class="font-semibold mb-1">What this store keeps</div>
+      <div class="font-semibold mb-1">{{ t('store.developer.feesHeading') }}</div>
       <div class="text-sm">
-        {{ view.fees.percent }} % of each sale, at least
-        {{ (view.fees.minimumFeeCents / 100).toFixed(2) }} —
-        nothing at all on a free kit.
-        Smallest price that can be charged:
-        {{ (view.fees.minimumPriceCents / 100).toFixed(2) }}.
+        {{ t('store.developer.fees', {
+          percent: view.fees.percent,
+          minimum: (view.fees.minimumFeeCents / 100).toFixed(2),
+          floor: (view.fees.minimumPriceCents / 100).toFixed(2),
+        }) }}
       </div>
     </VCard>
 
     <!-- ── vendor profiles ── -->
     <VCard>
       <div class="flex items-start justify-between gap-4">
-        <div class="font-semibold">Vendor</div>
-        <VButton v-if="!applying" size="sm" @click="applying = true">Apply</VButton>
+        <div class="font-semibold">{{ t('store.developer.vendor') }}</div>
+        <VButton v-if="!applying" size="sm" @click="applying = true">
+          {{ t('store.developer.applyButton') }}
+        </VButton>
       </div>
 
       <div v-for="vendor in view?.vendors ?? []" :key="vendor.name" class="mt-2 text-sm">
@@ -412,18 +423,19 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             variant="secondary"
             outline
             @click="openDomain(vendor)"
-          >{{ vendor.domainVerifiedAt ? 'Change domain' : 'Prove a domain' }}</VButton>
+          >{{ vendor.domainVerifiedAt
+            ? t('store.developer.changeDomain')
+            : t('store.developer.proveDomain') }}</VButton>
 
           <div v-else class="flex flex-col gap-2 mt-1">
             <VInput
               v-model="domainInput"
-              label="Domain"
-              help="Just the name, e.g. example.com — the badge next to your display
-                    name. Your handle does not change."
+              :label="t('store.developer.domain')"
+              :help="t('store.developer.domainHelp')"
             />
             <div class="flex gap-2">
               <VButton :disabled="loading || !domainInput.trim()" @click="claim(vendor)">
-                Claim
+                {{ t('store.developer.claim') }}
               </VButton>
               <VButton
                 v-if="vendor.domain"
@@ -431,12 +443,14 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
                 outline
                 :disabled="loading"
                 @click="verify(vendor)"
-              >Check now</VButton>
-              <VButton variant="secondary" outline @click="claimingDomain = ''">Cancel</VButton>
+              >{{ t('store.developer.checkNow') }}</VButton>
+              <VButton variant="secondary" outline @click="claimingDomain = ''">
+                {{ t('store.common.cancel') }}
+              </VButton>
             </div>
             <div v-if="vendor.domainRecord" class="text-xs">
               <div class="opacity-70">
-                Publish this as a TXT record at {{ vendor.domain }}, then check:
+                {{ t('store.developer.txtHint', { domain: vendor.domain }) }}
               </div>
               <code class="font-mono break-all">{{ vendor.domainRecord }}</code>
             </div>
@@ -445,32 +459,35 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
       </div>
       <VEmptyState
         v-if="!applying && (view?.vendors ?? []).length === 0"
-        headline="Not a vendor yet"
-        body="Apply to publish kits here. Applying grants nothing on its own — you can
-              prepare kits straight away, and publishing waits for the store."
+        :headline="t('store.developer.notVendorHeadline')"
+        :body="t('store.developer.notVendorBody')"
       />
 
       <div v-if="applying" class="mt-3 flex flex-col gap-2">
-        <VInput v-model="email" label="Store email" type="email" autocomplete="username" />
+        <VInput
+          v-model="email"
+          :label="t('store.developer.storeEmail')"
+          type="email"
+          autocomplete="username"
+        />
         <VInput
           v-model="password"
-          label="Store password"
+          :label="t('store.developer.storePassword')"
           type="password"
           autocomplete="current-password"
-          help="Used once and discarded, exactly as when signing in."
+          :help="t('store.developer.passwordHelp')"
         />
         <VInput
           v-model="vendorName"
-          label="Vendor handle"
-          help="Lowercase, and part of every kit coordinate. It must not claim an
-                affiliation you do not have — that is the one thing a person checks."
+          :label="t('store.developer.vendorHandle')"
+          :help="t('store.developer.vendorHandleHelp')"
         />
-        <VInput v-model="vendorDisplayName" label="Display name" />
-        <VInput v-model="homepage" label="Homepage (optional)" />
+        <VInput v-model="vendorDisplayName" :label="t('store.developer.displayName')" />
+        <VInput v-model="homepage" :label="t('store.developer.homepage')" />
 
         <div v-if="view?.terms" class="mt-2">
           <div class="text-sm font-semibold mb-1">
-            Vendor terms (version {{ view.terms.version }})
+            {{ t('store.developer.terms', { version: view.terms.version }) }}
           </div>
           <pre class="text-xs whitespace-pre-wrap opacity-80 max-h-48 overflow-y-auto">{{
             view.terms.text
@@ -481,25 +498,24 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
           -->
           <label class="flex gap-2 items-start text-sm mt-2">
             <input v-model="termsAccepted" type="checkbox" class="mt-1" />
-            <span>I accept these vendor terms.</span>
+            <span>{{ t('store.developer.acceptTerms') }}</span>
           </label>
         </div>
 
         <div class="flex gap-2">
           <VButton :disabled="loading || !termsAccepted" @click="submitApplication">
-            Apply
+            {{ t('store.developer.applyButton') }}
           </VButton>
-          <VButton variant="secondary" outline @click="applying = false">Cancel</VButton>
+          <VButton variant="secondary" outline @click="applying = false">{{ t('store.common.cancel') }}</VButton>
         </div>
       </div>
     </VCard>
 
     <!-- ── publishing right ── -->
     <VCard v-if="publishingRights.length">
-      <div class="font-semibold">Publishing</div>
+      <div class="font-semibold">{{ t('store.developer.publishing') }}</div>
       <p class="text-sm opacity-70">
-        Renewed once a year, per handle. Without it: no new kits and nothing
-        paid — free kits stay in the catalogue and may still receive versions.
+        {{ t('store.developer.publishingHint') }}
       </p>
 
       <div v-for="right in publishingRights" :key="right.vendorName" class="py-2 border-t">
@@ -517,17 +533,24 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             v-if="renewing !== right.vendorName"
             size="sm"
             @click="renewing = right.vendorName"
-          >Renew — {{ (right.renewalPriceCents / 100).toFixed(2) }} {{ right.currency }}</VButton>
+          >{{ t('store.developer.renew', {
+            price: `${(right.renewalPriceCents / 100).toFixed(2)} ${right.currency}`,
+          }) }}</VButton>
         </div>
 
         <div v-if="renewing === right.vendorName" class="mt-2 flex flex-col gap-2">
-          <VInput v-model="renewEmail" label="Store email" type="email" autocomplete="username" />
+          <VInput
+            v-model="renewEmail"
+            :label="t('store.developer.storeEmail')"
+            type="email"
+            autocomplete="username"
+          />
           <VInput
             v-model="renewPassword"
-            label="Store password"
+            :label="t('store.developer.storePassword')"
             type="password"
             autocomplete="current-password"
-            help="Used once and discarded, exactly as when buying a kit."
+            :help="t('store.developer.renewPasswordHelp')"
           />
           <!--
             The renewal is a sale the store has to tax and invoice, so it
@@ -537,19 +560,19 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
           <VSelect
             v-model="renewCountry"
             :options="countryOptions"
-            label="Country"
-            help="Where your business is. It decides the tax on the receipt."
+            :label="t('store.developer.renewCountry')"
+            :help="t('store.developer.renewCountryHelp')"
           />
           <VInput
             v-model="renewVatId"
-            label="VAT id (optional)"
-            help="A id from your own country shifts the VAT to you (reverse charge)."
+            :label="t('store.developer.renewVatId')"
+            :help="t('store.developer.renewVatIdHelp')"
           />
           <div class="flex gap-2">
             <VButton :disabled="loading" @click="submitRenewal(right.vendorName)">
-              Confirm
+              {{ t('store.common.confirm') }}
             </VButton>
-            <VButton variant="secondary" outline @click="renewing = ''">Cancel</VButton>
+            <VButton variant="secondary" outline @click="renewing = ''">{{ t('store.common.cancel') }}</VButton>
           </div>
         </div>
       </div>
@@ -559,10 +582,9 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
     <VCard v-if="approvedVendors.length && money">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <div class="font-semibold">Your money</div>
+          <div class="font-semibold">{{ t('store.developer.yourMoney') }}</div>
           <p class="text-sm opacity-70">
-            Paid out per handle. A sale waits out the buyer's window before
-            its share can leave.
+            {{ t('store.developer.yourMoneyHint') }}
           </p>
         </div>
         <VSelect
@@ -576,13 +598,13 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
       <div v-if="money.due" class="py-2 border-t">
         <div class="flex items-baseline justify-between gap-4">
           <div class="text-sm opacity-70">
-            {{ money.due.orderCount }} sale(s) · earned
-            {{ euro(money.due.earnedCents, money.due.currency) }}
+            {{ t('store.money.sales', { count: money.due.orderCount }) }}
+            · {{ t('store.money.earned', { amount: euro(money.due.earnedCents, money.due.currency) }) }}
             <span v-if="money.due.clawbackCents">
-              · refunds {{ euro(money.due.clawbackCents, money.due.currency) }}
+              · {{ t('store.money.refunds', { amount: euro(money.due.clawbackCents, money.due.currency) }) }}
             </span>
             <span v-if="money.due.disputedCents">
-              · disputed {{ euro(money.due.disputedCents, money.due.currency) }}
+              · {{ t('store.money.disputed', { amount: euro(money.due.disputedCents, money.due.currency) }) }}
             </span>
           </div>
           <div class="font-medium">{{ euro(money.due.amountCents, money.due.currency) }}</div>
@@ -595,31 +617,33 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
       <!-- where it goes -->
       <div class="py-2 border-t">
         <div class="flex items-center justify-between gap-4">
-          <div class="text-sm font-semibold">Payout account</div>
+          <div class="text-sm font-semibold">{{ t('store.developer.payoutAccount') }}</div>
           <VButton
             v-if="!editingAccount"
             size="sm"
             variant="secondary"
             outline
             @click="editingAccount = true"
-          >Change</VButton>
+          >{{ t('store.developer.change') }}</VButton>
         </div>
         <div v-if="editingAccount" class="mt-2 flex flex-col gap-2">
           <VInput
             v-model="payoutHandle"
-            label="PayPal address"
-            help="This store pays out via PayPal."
+            :label="t('store.developer.paypalAddress')"
+            :help="t('store.developer.paypalHelp')"
           />
-          <VInput v-model="payoutHolder" label="Account holder (optional)" />
+          <VInput v-model="payoutHolder" :label="t('store.developer.accountHolder')" />
           <VInput
             v-model="payoutCountry"
-            label="Country"
-            help="Decides how the store's own invoice for your work is taxed."
+            :label="t('store.developer.payoutCountry')"
+            :help="t('store.developer.payoutCountryHelp')"
           />
-          <VInput v-model="payoutVatId" label="VAT id (optional)" />
+          <VInput v-model="payoutVatId" :label="t('store.developer.payoutVatId')" />
           <div class="flex gap-2">
-            <VButton :disabled="loading || !payoutHandle" @click="saveAccount">Save</VButton>
-            <VButton variant="secondary" outline @click="editingAccount = false">Cancel</VButton>
+            <VButton :disabled="loading || !payoutHandle" @click="saveAccount">
+              {{ t('store.common.save') }}
+            </VButton>
+            <VButton variant="secondary" outline @click="editingAccount = false">{{ t('store.common.cancel') }}</VButton>
           </div>
         </div>
       </div>
@@ -627,7 +651,9 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
       <!-- what was sent -->
       <div v-for="payout in money.payouts" :key="payout.payoutName" class="py-2 border-t text-sm">
         <div class="flex justify-between gap-4">
-          <span>{{ payout.payoutName }} · {{ payout.orderCount }} sale(s)</span>
+          <span>
+            {{ payout.payoutName }} · {{ t('store.money.sales', { count: payout.orderCount }) }}
+          </span>
           <span>{{ euro(payout.amountCents, payout.currency) }} · {{ payout.status }}</span>
         </div>
         <div v-if="payout.failureReason" class="text-error">{{ payout.failureReason }}</div>
@@ -635,15 +661,17 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
 
       <!-- what to book against -->
       <div v-if="money.creditNotes.length" class="py-2 border-t">
-        <div class="text-sm font-semibold mb-1">Credit notes</div>
+        <div class="text-sm font-semibold mb-1">{{ t('store.developer.creditNotes') }}</div>
         <div v-for="note in money.creditNotes" :key="note.number" class="text-sm flex gap-3">
           <span class="w-40">{{ note.number }}</span>
           <span class="w-24 text-right">{{ euro(note.grossCents, note.currency) }}</span>
           <span class="opacity-70">
-            {{ note.kind === 'CORRECTION' ? `corrects ${note.correctsNumber}` : note.treatment }}
+            {{ note.kind === 'CORRECTION'
+              ? t('store.developer.corrects', { number: note.correctsNumber })
+              : note.treatment }}
           </span>
           <!-- A vendor books this document; booking needs the document. -->
-          <button class="underline opacity-70" @click="openNote(note)">PDF</button>
+          <button class="underline opacity-70" @click="openNote(note)">{{ t('store.common.pdf') }}</button>
         </div>
       </div>
     </VCard>
@@ -651,8 +679,10 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
     <!-- ── catalogue entries ── -->
     <VCard v-if="approvedVendors.length">
       <div class="flex items-start justify-between gap-4">
-        <div class="font-semibold">My kits</div>
-        <VButton v-if="!creatingKit" size="sm" @click="creatingKit = true">New kit</VButton>
+        <div class="font-semibold">{{ t('store.developer.myKits') }}</div>
+        <VButton v-if="!creatingKit" size="sm" @click="creatingKit = true">
+          {{ t('store.developer.newKit') }}
+        </VButton>
       </div>
 
       <div
@@ -665,7 +695,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             <div class="font-medium truncate">{{ kit.displayName }}</div>
             <div class="text-sm opacity-70">
               {{ kit.vendorName }}/{{ kit.kitId }} · {{ priceOf(kit.priceCents, kit.currency) }}
-              <span v-if="kit.version"> · published {{ kit.version }}</span>
+              <span v-if="kit.version"> · {{ t('store.developer.published', { version: kit.version }) }}</span>
             </div>
           </div>
           <VButton
@@ -673,7 +703,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             size="sm"
             @click="publishing = `${kit.vendorName}/${kit.kitId}`"
           >
-            Publish this project
+            {{ t('store.developer.publishProject') }}
           </VButton>
         </div>
 
@@ -682,7 +712,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
           class="mt-2 flex flex-col gap-2"
         >
           <label class="text-sm">
-            Project to export
+            {{ t('store.developer.projectToExport') }}
             <select v-model="sourceProject" class="ml-2">
               <option v-for="project in projects" :key="project.name" :value="project.name">
                 {{ project.title || project.name }}
@@ -691,18 +721,16 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
           </label>
           <VInput
             v-model="version"
-            label="Version"
-            help="A published version is never overwritten. Corrections before approval
-                  reuse it; anything already live needs a new one."
+            :label="t('store.developer.version')"
+            :help="t('store.developer.versionHelp')"
           />
           <VInput
             v-model="vaultPassword"
-            label="Vault password (only with encrypted settings)"
+            :label="t('store.developer.vaultPassword')"
             type="password"
           />
           <div class="text-xs opacity-70">
-            This exports the chosen project as a kit and uploads it. The project has
-            to be a kit source — that is, carry an authoring manifest.
+            {{ t('store.developer.exportHint') }}
           </div>
           <div class="flex gap-2">
             <VButton
@@ -710,10 +738,10 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
               :disabled="loading || !version"
               @click="submitRelease(kit.vendorName, kit.kitId)"
             >
-              {{ loading ? '…' : 'Export and submit' }}
+              {{ loading ? '…' : t('store.developer.exportSubmit') }}
             </VButton>
             <VButton size="sm" variant="secondary" outline @click="publishing = ''">
-              Cancel
+              {{ t('store.common.cancel') }}
             </VButton>
           </div>
         </div>
@@ -724,36 +752,39 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
           v-if="vendorOptions.length > 1"
           v-model="kitVendor"
           :options="vendorOptions"
-          label="Vendor"
+          :label="t('store.developer.vendor')"
         />
         <div v-else class="text-sm">
-          <span class="opacity-70">Vendor</span>
+          <span class="opacity-70">{{ t('store.developer.vendor') }}</span>
           <div class="font-medium">{{ kitVendor }}</div>
         </div>
-        <VInput v-model="kitId" label="Kit id" help="Part of the address. It cannot change later." />
-        <VInput v-model="kitDisplayName" label="Display name" />
-        <VTextarea v-model="kitDescription" placeholder="What this kit is for." />
+        <VInput
+          v-model="kitId"
+          :label="t('store.developer.kitId')"
+          :help="t('store.developer.kitIdHelp')"
+        />
+        <VInput v-model="kitDisplayName" :label="t('store.developer.displayName')" />
+        <VTextarea v-model="kitDescription" :placeholder="t('store.developer.kitDescription')" />
         <VInput
           v-model="kitTopics"
-          label="Topics"
-          help="What this kit is for — comma separated, e.g. security, onboarding.
-                What it contains is read off the release; you do not tag that."
+          :label="t('store.developer.topics')"
+          :help="t('store.developer.topicsHelp')"
         />
         <VInput
           v-model="kitPrice"
-          label="Price"
-          help="0 is free. A store with no payment provider takes free kits only."
+          :label="t('store.developer.price')"
+          :help="t('store.developer.priceHelp')"
         />
         <div class="flex gap-2">
-          <VButton :disabled="loading" @click="submitKit">Create</VButton>
-          <VButton variant="secondary" outline @click="creatingKit = false">Cancel</VButton>
+          <VButton :disabled="loading" @click="submitKit">{{ t('store.common.create') }}</VButton>
+          <VButton variant="secondary" outline @click="creatingKit = false">{{ t('store.common.cancel') }}</VButton>
         </div>
       </div>
     </VCard>
 
     <!-- ── release requests ── -->
     <VCard v-if="(view?.requests ?? []).length">
-      <div class="font-semibold mb-2">Submissions</div>
+      <div class="font-semibold mb-2">{{ t('store.developer.submissions') }}</div>
       <div v-for="request in view?.requests ?? []" :key="request.requestId" class="py-2 border-t">
         <div class="flex items-baseline justify-between gap-4">
           <div class="font-medium">
@@ -768,7 +799,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
         -->
         <details v-if="request.rounds.length > 1" class="mt-1">
           <summary class="text-xs cursor-pointer opacity-70">
-            {{ request.rounds.length }} rounds
+            {{ t('store.developer.rounds', { count: request.rounds.length }) }}
           </summary>
           <div v-for="round in request.rounds" :key="round.no" class="text-xs mt-1 opacity-80">
             {{ round.no }}. {{ round.verdict }} ({{ round.source.toLowerCase() }})
@@ -780,9 +811,8 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
 
     <VEmptyState
       v-if="view && !view.connected"
-      headline="Not signed in"
-      body="Sign in to this store on the Store tab first. The terms and the fees above
-            are readable without it."
+      :headline="t('store.developer.notSignedInHeadline')"
+      :body="t('store.developer.notSignedInBody')"
     />
   </div>
 </template>

@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { markRaw, onMounted, shallowRef } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { Component } from 'vue';
 import { loadRemote, registerRemotes } from '@module-federation/runtime';
 import { EditorShell, VAlert } from '@/components';
 import { addonRemoteEntry, addonRemoteName, loadAddonManifest } from '@/platform/addonManifest';
+
+const { t } = useI18n();
 
 const title = shallowRef<string>('Addon');
 const area = shallowRef<Component | null>(null);
@@ -20,7 +23,7 @@ onMounted(async () => {
   try {
     const id = new URLSearchParams(window.location.search).get('addon');
     if (!id) {
-      error.value = 'No addon specified (?addon=<id> required).';
+      error.value = t('cortex.noAddon');
       return;
     }
 
@@ -58,7 +61,7 @@ onMounted(async () => {
   <EditorShell :title="title">
     <div class="p-4">
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
-      <p v-else-if="loading" class="text-sm opacity-60 p-4">Loading…</p>
+      <p v-else-if="loading" class="text-sm opacity-60 p-4">{{ $t('shell.loading') }}</p>
       <component :is="area" v-else-if="area" />
     </div>
   </EditorShell>

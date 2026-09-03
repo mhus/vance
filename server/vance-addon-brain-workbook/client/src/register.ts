@@ -10,6 +10,8 @@
  * them was premature.
  */
 import { defineAsyncComponent } from 'vue';
+// Side effect: contributes this addon's messages to the host's i18n instance.
+import './i18n';
 import { registerKind } from '@vance/kind-registry';
 import { registerBlock } from '@vance/block-editor/blockRegistry';
 import { WorkbookIndexBlock } from './WorkbookIndexBlock';
@@ -49,8 +51,13 @@ export function register(): void {
     node: WorkbookIndexBlock,
     view: WorkbookIndexReadonlyView,
     slash: {
+      // Literals as the no-i18n fallback; the keys are what the slash menu
+      // renders — `registerBlock` runs at module scope with no component, so
+      // the menu resolves them per keystroke.
       title: 'Workbook Index',
       hint: 'Link block that jumps to the workbook index',
+      titleKey: 'workbook.indexBlock.slashTitle',
+      hintKey: 'workbook.indexBlock.slashHint',
       insert: ({ editor, range }) =>
         editor
           .chain()

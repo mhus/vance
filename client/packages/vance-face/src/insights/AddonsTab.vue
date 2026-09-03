@@ -4,7 +4,9 @@ import type { AddonInsightDto } from '@vance/generated';
 import { ChecksumStatus } from '@vance/generated';
 import { VAlert, VButton, VEmptyState } from '@/components';
 import { useAddonInsights } from '@/composables/useAddons';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const state = useAddonInsights();
 
 onMounted(() => {
@@ -36,36 +38,44 @@ interface StatusBadge {
  */
 function deploymentStatus(addon: AddonInsightDto): StatusBadge {
   if (!addon.enabled) {
-    return { label: 'disabled', cssClass: 'badge-status badge-status--stopped',
-      title: 'enabled=false in db.addons' };
+    return { label: t('insights.addons.status.disabled'),
+      cssClass: 'badge-status badge-status--stopped',
+      title: t('insights.addons.status.disabledTitle') };
   }
   if (addon.beanRegistered && addon.unpacked) {
-    return { label: 'loaded', cssClass: 'badge-status badge-status--running',
-      title: 'unpacked + Spring bean active' };
+    return { label: t('insights.addons.status.loaded'),
+      cssClass: 'badge-status badge-status--running',
+      title: t('insights.addons.status.loadedTitle') };
   }
   if (addon.unpacked && !addon.beanRegistered) {
-    return { label: 'broken', cssClass: 'badge-status badge-status--stale',
-      title: 'unpacked but Spring did not register the VanceAddon bean' };
+    return { label: t('insights.addons.status.broken'),
+      cssClass: 'badge-status badge-status--stale',
+      title: t('insights.addons.status.brokenTitle') };
   }
   if (addon.beanRegistered && !addon.unpacked) {
-    return { label: 'built-in', cssClass: 'badge-status badge-status--running',
-      title: 'addon ships inside the brain image (no separate .vab bundle)' };
+    return { label: t('insights.addons.status.builtin'),
+      cssClass: 'badge-status badge-status--running',
+      title: t('insights.addons.status.builtinTitle') };
   }
-  return { label: 'missing', cssClass: 'badge-status badge-status--stale',
-    title: 'no on-disk bundle and no Spring bean' };
+  return { label: t('insights.addons.status.missing'),
+    cssClass: 'badge-status badge-status--stale',
+    title: t('insights.addons.status.missingTitle') };
 }
 
 function checksumBadge(addon: AddonInsightDto): StatusBadge | null {
   switch (addon.checksumStatus) {
     case ChecksumStatus.VERIFIED:
-      return { label: 'verified', cssClass: 'badge-status badge-status--running',
-        title: 'on-disk .vab hash matches the configured checksum' };
+      return { label: t('insights.addons.checksum.verified'),
+        cssClass: 'badge-status badge-status--running',
+        title: t('insights.addons.checksum.verifiedTitle') };
     case ChecksumStatus.MISMATCH:
-      return { label: 'mismatch', cssClass: 'badge-status badge-status--stale',
-        title: 'on-disk .vab hash does NOT match — entrypoint should have refused this addon' };
+      return { label: t('insights.addons.checksum.mismatch'),
+        cssClass: 'badge-status badge-status--stale',
+        title: t('insights.addons.checksum.mismatchTitle') };
     case ChecksumStatus.UNVERIFIED:
-      return { label: 'unverified', cssClass: 'badge-status badge-status--starting',
-        title: 'checksum set but no source .vab cached to verify against' };
+      return { label: t('insights.addons.checksum.unverified'),
+        cssClass: 'badge-status badge-status--starting',
+        title: t('insights.addons.checksum.unverifiedTitle') };
     case ChecksumStatus.NONE:
     default:
       return null;
@@ -74,9 +84,9 @@ function checksumBadge(addon: AddonInsightDto): StatusBadge | null {
 
 /** "bundled:xyz" → "bundled", "builtin:xyz" → "built-in", URLs → "url". */
 function sourceLabel(addon: AddonInsightDto): string {
-  if (addon.path.startsWith('bundled:')) return 'bundled';
-  if (addon.path.startsWith('builtin:')) return 'built-in';
-  return 'url';
+  if (addon.path.startsWith('bundled:')) return t('insights.addons.source.bundled');
+  if (addon.path.startsWith('builtin:')) return t('insights.addons.source.builtin');
+  return t('insights.addons.source.url');
 }
 
 function sourceDetail(addon: AddonInsightDto): string {
@@ -105,16 +115,18 @@ const brokenCount = computed(() =>
   <div class="flex flex-col gap-3 p-4">
     <!-- ─── Toolbar ─── -->
     <div class="flex flex-wrap items-end gap-3 text-sm">
-      <VButton variant="ghost" size="sm" @click="refresh">Refresh</VButton>
+      <VButton variant="ghost" size="sm" @click="refresh">{{ $t('insights.addons.refresh') }}</VButton>
       <div class="text-xs opacity-60 ml-auto">
-        {{ state.addons.value.length }} addon{{ state.addons.value.length === 1 ? '' : 's' }}
-        · {{ loadedCount }} loaded
-        <span v-if="disabledCount > 0">· {{ disabledCount }} disabled</span>
-        <span v-if="brokenCount > 0" class="text-red-600">· {{ brokenCount }} broken</span>
+        {{ $t('insights.addons.count', { n: state.addons.value.length }, state.addons.value.length) }}
+        · {{ $t('insights.addons.loaded', { n: loadedCount }) }}
+        <span v-if="disabledCount > 0">· {{ $t('insights.addons.disabled', { n: disabledCount }) }}</span>
+        <span v-if="brokenCount > 0" class="text-red-600">
+          · {{ $t('insights.addons.broken', { n: brokenCount }) }}
+        </span>
       </div>
     </div>
 
-    <div v-if="state.loading.value" class="text-sm opacity-60">Loading addons…</div>
+    <div v-if="state.loading.value" class="text-sm opacity-60">{{ $t('insights.addons.loading') }}</div>
 
     <VAlert v-else-if="state.error.value" variant="error">
       {{ state.error.value }}
@@ -122,20 +134,20 @@ const brokenCount = computed(() =>
 
     <VEmptyState
       v-else-if="state.addons.value.length === 0"
-      :headline="'No addons'"
-      :body="'The addons collection is empty — no first-party addons bundled, none installed via vance-anus.'"
+      :headline="$t('insights.addons.emptyHeadline')"
+      :body="$t('insights.addons.emptyBody')"
     />
 
     <table v-else class="table table-sm">
       <thead>
         <tr>
-          <th class="w-44">Addon</th>
-          <th class="w-28">Status</th>
-          <th class="w-28">Source</th>
-          <th class="w-28">Version</th>
-          <th>Notes</th>
-          <th class="w-32">Unpacked</th>
-          <th class="w-24">Checksum</th>
+          <th class="w-44">{{ $t('insights.addons.colAddon') }}</th>
+          <th class="w-28">{{ $t('insights.addons.colStatus') }}</th>
+          <th class="w-28">{{ $t('insights.addons.colSource') }}</th>
+          <th class="w-28">{{ $t('insights.addons.colVersion') }}</th>
+          <th>{{ $t('insights.addons.colNotes') }}</th>
+          <th class="w-32">{{ $t('insights.addons.colUnpacked') }}</th>
+          <th class="w-24">{{ $t('insights.addons.colChecksum') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -177,7 +189,8 @@ const brokenCount = computed(() =>
     </table>
 
     <div class="text-[11px] opacity-60">
-      Read-only view. Use <span class="font-mono">vance-anus addon …</span> for changes.
+      {{ $t('insights.addons.footnotePre') }}
+      <span class="font-mono">vance-anus addon …</span>{{ $t('insights.addons.footnotePost') }}
     </div>
   </div>
 </template>

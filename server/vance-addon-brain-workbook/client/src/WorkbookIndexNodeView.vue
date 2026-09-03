@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { NodeViewWrapper } from '@tiptap/vue-3';
+import { useT } from './i18n';
 
 /**
  * Editor NodeView for the `vance-workbook-index` block (workbook addon's
@@ -9,6 +10,8 @@ import { NodeViewWrapper } from '@tiptap/vue-3';
  * (`vance:open-embed`). Addon nodes get no host props via configure(), so
  * a decoupled DOM event is the clean bridge.
  */
+const t = useT();
+
 function goToIndex(e: MouseEvent) {
   e.preventDefault();
   e.stopPropagation();
@@ -21,7 +24,7 @@ function goToIndex(e: MouseEvent) {
 <template>
   <NodeViewWrapper as="div" class="wb-index-block" contenteditable="false">
     <button type="button" class="wb-index-block__btn" @click="goToIndex">
-      🏠 Zum Workbook-Index
+      🏠 {{ t('workbook.indexBlock.goto') }}
     </button>
   </NodeViewWrapper>
 </template>

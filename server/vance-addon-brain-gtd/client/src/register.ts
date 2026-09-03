@@ -3,6 +3,8 @@
  * Contributes the folder-level {@code application:gtd} kind. Resolved via
  * explicit id lookup (resolveKind('application:gtd')); matches() is false.
  */
+// Side effect: contributes this addon's messages to the host's i18n instance.
+import './i18n';
 import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
 

@@ -20,12 +20,15 @@ import {
 import type { KanbanBoardView } from './generated/kanban/KanbanBoardView';
 import type { KanbanCardCreateRequest } from './generated/kanban/KanbanCardCreateRequest';
 import type { KanbanCardView } from './generated/kanban/KanbanCardView';
+import { useT } from './i18n';
 
 const props = defineProps<{
   projectId: string;
   folder: string;
   title?: string;
 }>();
+
+const t = useT();
 
 const board = ref<KanbanBoardView | null>(null);
 const loading = ref(true);
@@ -111,7 +114,7 @@ async function load(): Promise<void> {
   try {
     board.value = await getKanbanBoard(props.projectId, props.folder);
   } catch (e) {
-    error.value = `Could not load board: ${(e as Error).message}`;
+    error.value = t('kanban.board.error.load', { message: (e as Error).message });
   } finally {
     if (first) loading.value = false;
   }
@@ -123,7 +126,7 @@ async function refresh(): Promise<void> {
     await rebuildKanbanBoard(props.projectId, props.folder);
     await load();
   } catch (e) {
-    error.value = `Rebuild failed: ${(e as Error).message}`;
+    error.value = t('kanban.board.error.rebuild', { message: (e as Error).message });
   }
 }
 
@@ -145,7 +148,7 @@ async function onCardDropped(toColumn: string, card: KanbanCardView): Promise<vo
   } catch (e) {
     // Rollback on error.
     card.column = previousColumn;
-    error.value = `Move failed: ${(e as Error).message}`;
+    error.value = t('kanban.board.error.move', { message: (e as Error).message });
   }
 }
 
@@ -191,7 +194,7 @@ async function onCardDelete(path: string): Promise<void> {
     }
     selectedCardPath.value = null;
   } catch (e) {
-    error.value = `Delete failed: ${(e as Error).message}`;
+    error.value = t('kanban.board.error.delete', { message: (e as Error).message });
   }
 }
 
@@ -217,7 +220,7 @@ async function submitCreate(): Promise<void> {
     showCreateModal.value = false;
     selectedCardPath.value = created.path;
   } catch (e) {
-    error.value = `Create failed: ${(e as Error).message}`;
+    error.value = t('kanban.board.error.create', { message: (e as Error).message });
   }
 }
 
@@ -291,10 +294,11 @@ defineExpose({ reload });
       </div>
       <div class="flex gap-2 items-center">
         <span v-if="board" class="text-sm text-base-content/60">
-          {{ board.cards.length }} cards · {{ board.columns.length }} columns
+          {{ t('kanban.board.cardCount', { n: board.cards.length }, board.cards.length) }}
+          · {{ t('kanban.board.columnCount', { n: board.columns.length }, board.columns.length) }}
         </span>
-        <VButton size="sm" variant="ghost" @click="reload()">Reload</VButton>
-        <VButton size="sm" variant="ghost" @click="refresh">Rebuild artefacts</VButton>
+        <VButton size="sm" variant="ghost" @click="reload()">{{ t('kanban.board.reload') }}</VButton>
+        <VButton size="sm" variant="ghost" @click="refresh">{{ t('kanban.board.rebuild') }}</VButton>
       </div>
     </div>
 
@@ -305,13 +309,13 @@ defineExpose({ reload });
       </ul>
     </VAlert>
 
-    <div v-if="loading" class="p-8 text-base-content/70">Loading board…</div>
+    <div v-if="loading" class="p-8 text-base-content/70">{{ t('kanban.board.loading') }}</div>
 
     <VEmptyState
       v-else-if="board && board.columns.length === 0"
       class="m-4"
-      headline="No columns yet"
-      body="Add columns to _app.yaml to start using this board."
+      :headline="t('kanban.board.emptyHeadline')"
+      :body="t('kanban.board.emptyBody')"
     />
 
     <div v-else class="flex-1 flex overflow-hidden">
@@ -331,11 +335,11 @@ defineExpose({ reload });
               >
                 {{ col.cardCount }}<template v-if="col.wipLimit">/{{ col.wipLimit }}</template>
               </span>
-              <span v-if="!col.declared" class="text-xs text-warning">⚠ undeclared</span>
+              <span v-if="!col.declared" class="text-xs text-warning">⚠ {{ t('kanban.board.undeclared') }}</span>
             </div>
             <button
               class="text-base-content/60 hover:text-base-content text-lg leading-none"
-              title="Add card"
+              :title="t('kanban.board.addCard')"
               @click="openCreateModal(col.name)"
             >+</button>
           </div>
@@ -373,7 +377,7 @@ defineExpose({ reload });
                   {{ card.estimate }}p
                 </span>
                 <span v-if="card.blocked" class="bg-error/20 text-error rounded px-1.5 py-0.5">
-                  blocked
+                  {{ t('kanban.board.blocked') }}
                 </span>
                 <span
                   v-if="card.subtaskTotal > 0"
@@ -413,9 +417,9 @@ defineExpose({ reload });
     </div>
 
     <!-- New-card modal -->
-    <VModal v-model="showCreateModal" title="New card">
+    <VModal v-model="showCreateModal" :title="t('kanban.board.newCard')">
       <div class="flex flex-col gap-3">
-        <VInput v-model="newCardForm.title" placeholder="Card title" />
+        <VInput v-model="newCardForm.title" :placeholder="t('kanban.board.cardTitlePlaceholder')" />
         <div class="flex gap-2">
           <VSelect
             :model-value="newCardForm.column ?? ''"
@@ -426,11 +430,11 @@ defineExpose({ reload });
           <VSelect
             :model-value="newCardForm.priority ?? ''"
             :options="[
-              { value: '', label: 'No priority' },
-              { value: 'low', label: 'Low' },
-              { value: 'med', label: 'Medium' },
-              { value: 'high', label: 'High' },
-              { value: 'critical', label: 'Critical' },
+              { value: '', label: t('kanban.priority.none') },
+              { value: 'low', label: t('kanban.priority.low') },
+              { value: 'med', label: t('kanban.priority.med') },
+              { value: 'high', label: t('kanban.priority.high') },
+              { value: 'critical', label: t('kanban.priority.critical') },
             ]"
             class="flex-1"
             @update:model-value="(v) => newCardForm.priority = (v as string | null) ?? ''"
@@ -438,18 +442,18 @@ defineExpose({ reload });
         </div>
         <VInput
           :model-value="newCardForm.assignee ?? ''"
-          placeholder="Assignee (optional)"
+          :placeholder="t('kanban.board.assigneePlaceholder')"
           @update:model-value="(v) => newCardForm.assignee = v"
         />
         <VInput
           :model-value="newCardForm.dueDate ?? ''"
-          placeholder="Due date YYYY-MM-DD (optional)"
+          :placeholder="t('kanban.board.dueDatePlaceholder')"
           @update:model-value="(v) => newCardForm.dueDate = v"
         />
         <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="ghost" @click="showCreateModal = false">Cancel</VButton>
+          <VButton variant="ghost" @click="showCreateModal = false">{{ t('kanban.common.cancel') }}</VButton>
           <VButton variant="primary" :disabled="!newCardForm.title.trim()" @click="submitCreate">
-            Create
+            {{ t('kanban.common.create') }}
           </VButton>
         </div>
       </div>

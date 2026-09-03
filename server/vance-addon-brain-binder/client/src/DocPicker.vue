@@ -3,12 +3,15 @@ import { ref } from 'vue';
 import { VButton, VInput, VModal } from '@vance/components';
 import { searchDocuments } from './api';
 import type { BinderDocItem } from './generated/binder/BinderDocItem';
+import { useT } from './i18n';
 
 /**
  * Project-document picker for anchoring binder entries. Imperative API:
  * `const picked = await pickerRef.value.open(projectId)` →
  * `{ path, kind }` on select, or `null` on cancel.
  */
+const t = useT();
+
 const open = ref(false);
 const query = ref('');
 const results = ref<BinderDocItem[]>([]);
@@ -66,18 +69,18 @@ defineExpose({ open: openPicker });
 <template>
   <VModal
     :model-value="open"
-    title="Dokument anheften"
+    :title="t('binder.picker.title')"
     :close-on-backdrop="false"
     @update:model-value="onToggle"
   >
     <div class="flex flex-col gap-2">
       <VInput
         v-model="query"
-        placeholder="Suche nach Pfad oder Titel …"
+        :placeholder="t('binder.picker.searchPlaceholder')"
         @update:model-value="onQuery"
       />
       <div class="max-h-80 overflow-auto rounded border border-base-300">
-        <div v-if="loading" class="p-3 text-sm opacity-60">Suche…</div>
+        <div v-if="loading" class="p-3 text-sm opacity-60">{{ t('binder.common.searching') }}</div>
         <button
           v-for="it in results"
           :key="it.id"
@@ -88,11 +91,11 @@ defineExpose({ open: openPicker });
           <span class="text-xs opacity-60">{{ it.kind ? it.kind + ' · ' : '' }}{{ it.path }}</span>
         </button>
         <div v-if="!loading && results.length === 0" class="p-3 text-sm opacity-60">
-          Keine Treffer.
+          {{ t('binder.common.noHits') }}
         </div>
       </div>
       <div class="flex justify-end">
-        <VButton size="sm" variant="ghost" @click="finish(null)">Abbrechen</VButton>
+        <VButton size="sm" variant="ghost" @click="finish(null)">{{ t('binder.common.cancel') }}</VButton>
       </div>
     </div>
   </VModal>

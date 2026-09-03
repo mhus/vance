@@ -130,7 +130,7 @@ onBeforeUnmount(() => {
         <Transition name="panic-answer">
           <div v-if="showAnswer" class="panic-answer">42</div>
         </Transition>
-        <div class="panic-hint">press any key</div>
+        <div class="panic-hint">{{ $t('panic.pressAnyKey') }}</div>
       </div>
     </div>
   </Transition>

@@ -272,20 +272,20 @@ onMounted(load);
 
 <template>
   <div class="vance-form-view">
-    <div v-if="loading" class="vance-form-view__status">Lade Formular…</div>
+    <div v-if="loading" class="vance-form-view__status">{{ $t('formView.loading') }}</div>
     <template v-else>
       <div v-if="error" class="vance-form-view__error">{{ error }}</div>
 
       <!-- DESIGN MODE: field builder (edits the fence form) -->
       <template v-if="pageMode === 'design'">
         <div class="vance-form-view__design-hint">
-          Design-Modus — Formular-Felder (im Block gespeichert). Daten:
+          {{ $t('formView.designHint') }}
           <code>{{ data }}</code>
         </div>
         <div class="vance-form-view__mode-row">
           <label class="vance-form-view__req">
             <input v-model="designSingle" type="checkbox" />
-            Single record (eine Form statt Karten-Liste)
+            {{ $t('formView.singleRecord') }}
           </label>
           <label class="vance-form-view__req">
             <input
@@ -293,7 +293,7 @@ onMounted(load);
               :checked="!!session"
               @change="updateSession?.(($event.target as HTMLInputElement).checked)"
             />
-            Session für das Script (nur für LLM / session-gebundene Tools)
+            {{ $t('formView.scriptSession') }}
           </label>
         </div>
         <div
@@ -302,30 +302,30 @@ onMounted(load);
           class="vance-form-view__field-row"
         >
           <div class="vance-form-view__field-main">
-            <input v-model="f.name" class="vance-form-view__inp" placeholder="name" style="width: 9rem" />
+            <input v-model="f.name" class="vance-form-view__inp" :placeholder="$t('formView.namePlaceholder')" style="width: 9rem" />
             <select v-model="f.type" class="vance-form-view__inp">
               <option v-for="t in FIELD_TYPES" :key="t" :value="t">{{ t }}</option>
             </select>
-            <input v-model="f.labelText" class="vance-form-view__inp" placeholder="Label" style="flex: 1" />
-            <label class="vance-form-view__req"><input v-model="f.required" type="checkbox" /> req</label>
-            <button class="vance-form-view__mini" title="Move up" @click="moveField(i, -1)">↑</button>
-            <button class="vance-form-view__mini" title="Move down" @click="moveField(i, 1)">↓</button>
-            <button class="vance-form-view__mini" title="Remove" @click="removeField(i)">✕</button>
+            <input v-model="f.labelText" class="vance-form-view__inp" :placeholder="$t('formView.label')" style="flex: 1" />
+            <label class="vance-form-view__req"><input v-model="f.required" type="checkbox" /> {{ $t('formView.required') }}</label>
+            <button class="vance-form-view__mini" :title="$t('formView.moveUp')" @click="moveField(i, -1)">↑</button>
+            <button class="vance-form-view__mini" :title="$t('formView.moveDown')" @click="moveField(i, 1)">↓</button>
+            <button class="vance-form-view__mini" :title="$t('formView.remove')" @click="removeField(i)">✕</button>
           </div>
           <textarea
             v-if="f.type === 'select' || f.type === 'multi_select'"
             v-model="f.choicesText"
             class="vance-form-view__choices"
-            placeholder="One choice per line — value or value|Label"
+            :placeholder="$t('formView.choicesHint')"
             rows="2"
           />
         </div>
         <div class="vance-form-view__footer">
-          <button class="vance-form-view__btn" @click="addField">+ Add field</button>
+          <button class="vance-form-view__btn" @click="addField">{{ $t('formView.addField') }}</button>
           <span class="vance-form-view__spacer" />
-          <span v-if="appliedAt" class="vance-form-view__saved">Übernommen ✓</span>
+          <span v-if="appliedAt" class="vance-form-view__saved">{{ $t('formView.applied') }}</span>
           <button class="vance-form-view__btn vance-form-view__btn--primary" @click="applyForm">
-            Apply fields
+            {{ $t('formView.applyFields') }}
           </button>
         </div>
       </template>
@@ -342,7 +342,7 @@ onMounted(load);
               <button
                 type="button"
                 class="vance-form-view__mini"
-                title="Remove record"
+                :title="$t('formView.removeRecord')"
                 :disabled="saving"
                 @click="removeRecord(i)"
               >✕</button>
@@ -355,22 +355,22 @@ onMounted(load);
             />
           </div>
           <button type="button" class="vance-form-view__btn" :disabled="saving" @click="addRecord">
-            + Add record
+            {{ $t('formView.addRecord') }}
           </button>
         </template>
         <div class="vance-form-view__footer">
-          <span v-if="savedAt && !dirty" class="vance-form-view__saved">Gespeichert ✓</span>
-          <span v-else-if="dirty" class="vance-form-view__dirty">Ungespeicherte Änderungen</span>
+          <span v-if="savedAt && !dirty" class="vance-form-view__saved">{{ $t('formView.saved') }}</span>
+          <span v-else-if="dirty" class="vance-form-view__dirty">{{ $t('formView.unsaved') }}</span>
           <span class="vance-form-view__spacer" />
           <button type="button" class="vance-form-view__btn" :disabled="saving || !dirty" @click="cancel">
-            Cancel
+            {{ $t('formView.cancel') }}
           </button>
           <button
             type="button"
             class="vance-form-view__btn vance-form-view__btn--primary"
             :disabled="saving || !dirty"
             @click="save"
-          >{{ saving ? 'Speichere…' : 'Save' }}</button>
+          >{{ saving ? $t('formView.saving') : $t('formView.save') }}</button>
         </div>
       </template>
     </template>

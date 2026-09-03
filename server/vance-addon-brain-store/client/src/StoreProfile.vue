@@ -19,9 +19,12 @@ import {
   openInvoicePdf,
 } from './api';
 import type { Connection, Receipt, VendorTerms } from './types';
+import { useT } from './i18n';
 
 /** The profile is per person, so its store connections hang on `_tenant`. */
 const PROJECT = '_tenant';
+
+const t = useT();
 
 const connections = ref<Connection[]>([]);
 const loading = ref(false);
@@ -50,7 +53,7 @@ async function load(): Promise<void> {
   try {
     connections.value = await loadConnections(PROJECT);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not read the store connections.';
+    error.value = e instanceof Error ? e.message : t('store.profile.error.connections');
   } finally {
     loading.value = false;
   }
@@ -71,12 +74,12 @@ async function submitSignIn(entry: Connection): Promise<void> {
     const result = await connect(
       PROJECT, entry.sourceId, email.value, password.value, label.value || undefined,
     );
-    notice.value = `Signed in to ${entry.title} as ${result.accountId}.`;
+    notice.value = t('store.profile.signedInNotice', { store: entry.title, account: result.accountId });
     signingIn.value = '';
     password.value = '';
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not sign in.';
+    error.value = e instanceof Error ? e.message : t('store.profile.error.signIn');
   } finally {
     loading.value = false;
   }
@@ -87,11 +90,10 @@ async function signOut(entry: Connection): Promise<void> {
   notice.value = '';
   try {
     await disconnect(PROJECT, entry.sourceId);
-    notice.value = 'Signed out here. The link at the store is still listed among its devices — '
-      + 'remove it there if you meant to deauthorise this brain.';
+    notice.value = t('store.profile.signedOutNotice');
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not sign out.';
+    error.value = e instanceof Error ? e.message : t('store.profile.error.signOut');
   }
 }
 
@@ -110,7 +112,7 @@ async function openApply(entry: Connection): Promise<void> {
   try {
     terms.value = (await loadDeveloper(PROJECT, entry.sourceId)).terms ?? null;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not read the vendor terms.';
+    error.value = e instanceof Error ? e.message : t('store.profile.error.terms');
     applying.value = '';
   }
 }
@@ -118,7 +120,7 @@ async function openApply(entry: Connection): Promise<void> {
 async function submitApply(entry: Connection): Promise<void> {
   if (!terms.value) return;
   if (!email.value.trim() || !password.value) {
-    error.value = 'Store email and password are needed — applying signs in again.';
+    error.value = t('store.profile.credentialsNeeded');
     return;
   }
   error.value = '';
@@ -129,12 +131,12 @@ async function submitApply(entry: Connection): Promise<void> {
       PROJECT, entry.sourceId, email.value, password.value,
       vendorName.value, vendorDisplayName.value, terms.value.version,
     );
-    notice.value = 'Applied. You can prepare kits now; publishing waits for the store.';
+    notice.value = t('store.profile.appliedNotice');
     applying.value = '';
     password.value = '';
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not apply.';
+    error.value = e instanceof Error ? e.message : t('store.profile.error.apply');
   } finally {
     loading.value = false;
   }
@@ -152,7 +154,7 @@ async function showReceipts(entry: Connection): Promise<void> {
     receipts.value = await loadReceipts(PROJECT, entry.sourceId);
     receiptsFor.value = entry.sourceId;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not read the receipts.';
+    error.value = e instanceof Error ? e.message : t('store.profile.error.receipts');
   } finally {
     loading.value = false;
   }
@@ -163,15 +165,15 @@ async function openReceipt(entry: Connection, receipt: Receipt): Promise<void> {
   try {
     await openInvoicePdf(PROJECT, entry.sourceId, receipt.orderName);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not render the receipt.';
+    error.value = e instanceof Error ? e.message : t('store.profile.error.receipt');
   }
 }
 
 function rolesOf(entry: Connection): string {
   const roles: string[] = [];
-  if (entry.developer) roles.push('developer');
-  if (entry.operator) roles.push('operator');
-  return roles.length ? roles.join(' · ') : 'buyer';
+  if (entry.developer) roles.push(t('store.profile.role.developer'));
+  if (entry.operator) roles.push(t('store.profile.role.operator'));
+  return roles.length ? roles.join(' · ') : t('store.profile.role.buyer');
 }
 
 onMounted(load);
@@ -184,8 +186,8 @@ onMounted(load);
 
     <VEmptyState
       v-if="!loading && !anyConfigured"
-      headline="No store configured"
-      body="Add a library source in _vance/config/kit-sources.yaml of the _tenant project."
+      :headline="t('store.profile.noStoreHeadline')"
+      :body="t('store.profile.noStoreBody')"
     />
 
     <VCard v-for="entry in connections" :key="entry.sourceId">
@@ -196,19 +198,20 @@ onMounted(load);
                screen where somebody can do something about it. -->
           <div class="text-sm opacity-60 font-mono truncate">{{ entry.url }}</div>
           <div v-if="entry.accountId" class="text-sm mt-1">
-            Signed in as <span class="font-mono">{{ entry.accountId }}</span>
+            {{ t('store.profile.signedInAs') }}
+            <span class="font-mono">{{ entry.accountId }}</span>
             <span class="opacity-70"> · {{ rolesOf(entry) }}</span>
           </div>
-          <div v-else class="text-sm mt-1 opacity-70">Not signed in</div>
+          <div v-else class="text-sm mt-1 opacity-70">{{ t('store.profile.notSignedIn') }}</div>
         </div>
         <div class="flex gap-2 shrink-0">
-          <VButton v-if="entry.accountId" size="sm" @click="signOut(entry)">Sign out</VButton>
+          <VButton v-if="entry.accountId" size="sm" @click="signOut(entry)">{{ t('store.profile.signOut') }}</VButton>
           <VButton
             v-else-if="signingIn !== entry.sourceId"
             size="sm"
             @click="openSignIn(entry)"
           >
-            Sign in
+            {{ t('store.profile.signIn') }}
           </VButton>
           <VButton
             v-if="entry.accountId && !entry.developer && applying !== entry.sourceId"
@@ -217,13 +220,13 @@ onMounted(load);
             outline
             @click="openApply(entry)"
           >
-            Become a developer
+            {{ t('store.profile.becomeDeveloper') }}
           </VButton>
         </div>
       </div>
 
       <VAlert v-if="!entry.reachable" variant="warning" class="mt-3">
-        This store could not be reached: {{ entry.problem }}
+        {{ t('store.profile.unreachable', { problem: entry.problem }) }}
       </VAlert>
 
       <!--
@@ -239,12 +242,12 @@ onMounted(load);
           outline
           :disabled="loading"
           @click="showReceipts(entry)"
-        >Receipts</VButton>
+        >{{ t('store.profile.receipts') }}</VButton>
 
         <div v-else class="flex flex-col gap-1">
-          <div class="text-sm font-semibold">Receipts</div>
+          <div class="text-sm font-semibold">{{ t('store.profile.receipts') }}</div>
           <div v-if="!receipts.length" class="text-sm opacity-70">
-            Nothing bought here yet.
+            {{ t('store.profile.nothingBought') }}
           </div>
           <div v-for="receipt in receipts" :key="receipt.number" class="text-sm flex gap-3">
             <span class="w-40 font-mono">{{ receipt.number }}</span>
@@ -254,11 +257,11 @@ onMounted(load);
             <span class="opacity-70 truncate">
               {{ receipt.kitDisplayName ?? `${receipt.vendorName}/${receipt.kitId}` }}
             </span>
-            <button class="underline opacity-70" @click="openReceipt(entry, receipt)">PDF</button>
+            <button class="underline opacity-70" @click="openReceipt(entry, receipt)">{{ t('store.common.pdf') }}</button>
           </div>
           <div>
             <VButton size="sm" variant="secondary" outline @click="receiptsFor = ''">
-              Hide
+              {{ t('store.common.hide') }}
             </VButton>
           </div>
         </div>
@@ -266,21 +269,21 @@ onMounted(load);
 
       <!-- ── sign in ── -->
       <div v-if="signingIn === entry.sourceId" class="mt-3 flex flex-col gap-2">
-        <VInput v-model="email" label="Email" type="email" autocomplete="username" />
+        <VInput v-model="email" :label="t('store.profile.email')" type="email" autocomplete="username" />
         <VInput
           v-model="password"
-          label="Password"
+          :label="t('store.profile.password')"
           type="password"
           autocomplete="current-password"
         />
         <VInput
           v-model="label"
-          label="Name for this brain"
-          help="Shown in your device list at the store, so you can tell your machines apart."
+          :label="t('store.profile.brainName')"
+          :help="t('store.profile.brainNameHelp')"
         />
         <div class="flex gap-2">
-          <VButton :disabled="loading" @click="submitSignIn(entry)">Sign in</VButton>
-          <VButton variant="secondary" outline @click="signingIn = ''">Cancel</VButton>
+          <VButton :disabled="loading" @click="submitSignIn(entry)">{{ t('store.profile.signIn') }}</VButton>
+          <VButton variant="secondary" outline @click="signingIn = ''">{{ t('store.common.cancel') }}</VButton>
         </div>
       </div>
 
@@ -288,27 +291,26 @@ onMounted(load);
       <div v-if="applying === entry.sourceId && terms" class="mt-3 flex flex-col gap-2">
         <VInput
           v-model="email"
-          label="Store email"
+          :label="t('store.area.storeEmail')"
           type="email"
           autocomplete="username"
-          help="Applying signs in again, and the brain holds no password."
+          :help="t('store.profile.applyEmailHelp')"
         />
         <VInput
           v-model="vendorName"
-          label="Vendor handle"
-          help="Lowercase, and part of every kit coordinate. It must not claim an
-                affiliation you do not have — that is the one thing a person checks."
+          :label="t('store.profile.vendorHandle')"
+          :help="t('store.profile.vendorHandleHelp')"
         />
-        <VInput v-model="vendorDisplayName" label="Display name" />
+        <VInput v-model="vendorDisplayName" :label="t('store.profile.displayName')" />
         <VInput
           v-model="password"
-          label="Store password"
+          :label="t('store.area.storePassword')"
           type="password"
           autocomplete="current-password"
-          help="Accepting terms is a decision by a person, so this asks again."
+          :help="t('store.profile.passwordAgainHelp')"
         />
         <div class="text-sm font-semibold mt-1">
-          Vendor terms (version {{ terms.version }})
+          {{ t('store.profile.terms', { version: terms.version }) }}
         </div>
         <pre class="text-xs whitespace-pre-wrap opacity-80 max-h-48 overflow-y-auto">{{
           terms.text
@@ -317,16 +319,16 @@ onMounted(load);
              agreement that is not one proves nothing later. -->
         <label class="flex gap-2 items-start text-sm">
           <input v-model="termsAccepted" type="checkbox" class="mt-1" />
-          <span>I accept these vendor terms.</span>
+          <span>{{ t('store.profile.acceptTerms') }}</span>
         </label>
         <div class="flex gap-2">
           <VButton
             :disabled="loading || !termsAccepted || !vendorName || !password || !email"
             @click="submitApply(entry)"
           >
-            Apply
+            {{ t('store.common.apply') }}
           </VButton>
-          <VButton variant="secondary" outline @click="applying = ''">Cancel</VButton>
+          <VButton variant="secondary" outline @click="applying = ''">{{ t('store.common.cancel') }}</VButton>
         </div>
       </div>
     </VCard>

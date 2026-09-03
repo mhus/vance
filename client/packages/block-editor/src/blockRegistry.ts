@@ -22,10 +22,18 @@ import type { Component } from 'vue';
 
 /** Slash-menu contribution for a registered block. */
 export interface BlockExtensionSlashItem {
-  /** Menu label. */
+  /** Menu label. Ignored when {@link titleKey} is set. */
   title: string;
-  /** One-line hint under the label. */
+  /** One-line hint under the label. Ignored when {@link hintKey} is set. */
   hint: string;
+  /**
+   * i18n keys for label and hint. Preferred over the literals: `registerBlock`
+   * runs at module scope with no component instance, so an addon cannot
+   * translate its own strings there — the slash menu resolves these keys per
+   * keystroke instead, against the messages the addon contributed to the host.
+   */
+  titleKey?: string;
+  hintKey?: string;
   /** Insert the block; called after the `/` trigger range is known. */
   insert: (ctx: { editor: Editor; range: Range }) => void;
 }

@@ -9,17 +9,18 @@ import {
 } from '@vance/components';
 import { searchDocuments } from './api';
 import type { CanvasDocItem } from './generated/canvas/CanvasDocItem';
+import { useT } from './i18n';
 
 /**
  * Reference picker for canvas doc-nodes. Four tabs:
  *
- *   1. **Dokument** — server-side search across the project.
- *   2. **Diese App** — the boards of the canvasbook this editor is running in,
+ *   1. **Document** — server-side search across the project.
+ *   2. **This app** — the boards of the canvasbook this editor is running in,
  *      so a board can point at a sibling board. Only present when a host
  *      supplied them (standalone `kind: canvas` has no app around it).
- *   3. **Favoriten** / 4. **Apps** — a foreign application, then optionally a
- *      place inside it. Two steps, shared with the block editor's picker via
- *      {@link useApplicationPicker}.
+ *   3. **Starred** / 4. **Applications** — a foreign application, then
+ *      optionally a place inside it. Two steps, shared with the block editor's
+ *      picker via {@link useApplicationPicker}.
  *
  * Imperative API: `await pickerRef.value.open(projectId, appTargets)` →
  * `{ path, project?, kind, entry? }` on select, or `null` on cancel. `entry`
@@ -30,6 +31,8 @@ import type { CanvasDocItem } from './generated/canvas/CanvasDocItem';
  * Every tab returns the same shape on purpose: a link into an app is an ordinary
  * `vance:` reference with one more param, not a second kind of pick.
  */
+const t = useT();
+
 const open = ref(false);
 const query = ref('');
 const results = ref<CanvasDocItem[]>([]);
@@ -164,7 +167,7 @@ defineExpose({ open: openPicker });
 <template>
   <VModal
     :model-value="open"
-    title="Insert reference"
+    :title="t('canvas.picker.title')"
     :close-on-backdrop="false"
     @update:model-value="onToggle"
   >
@@ -175,7 +178,7 @@ defineExpose({ open: openPicker });
           :variant="tab === 'doc' ? 'primary' : 'ghost'"
           @click="tab = 'doc'"
         >
-          Dokument
+          {{ t('canvas.picker.tabDocument') }}
         </VButton>
         <VButton
           v-if="appTargets"
@@ -183,32 +186,32 @@ defineExpose({ open: openPicker });
           :variant="tab === 'app' ? 'primary' : 'ghost'"
           @click="tab = 'app'"
         >
-          Diese App
+          {{ t('canvas.picker.tabThisApp') }}
         </VButton>
         <VButton
           size="sm"
           :variant="tab === 'starred' ? 'primary' : 'ghost'"
           @click="tab = 'starred'"
         >
-          Favoriten
+          {{ t('canvas.picker.tabStarred') }}
         </VButton>
         <VButton
           size="sm"
           :variant="tab === 'apps' ? 'primary' : 'ghost'"
           @click="tab = 'apps'"
         >
-          Apps
+          {{ t('canvas.picker.tabApps') }}
         </VButton>
       </div>
 
       <template v-if="tab === 'doc'">
         <VInput
           v-model="query"
-          placeholder="Search by path or title …"
+          :placeholder="t('canvas.picker.searchPlaceholder')"
           @update:model-value="onQuery"
         />
         <div class="max-h-80 overflow-auto rounded border border-base-300">
-          <div v-if="loading" class="p-3 text-sm opacity-60">Suche…</div>
+          <div v-if="loading" class="p-3 text-sm opacity-60">{{ t('canvas.common.searching') }}</div>
           <button
             v-for="it in results"
             :key="it.id"
@@ -219,7 +222,7 @@ defineExpose({ open: openPicker });
             <span class="text-xs opacity-60">{{ it.kind ? it.kind + ' · ' : '' }}{{ it.path }}</span>
           </button>
           <div v-if="!loading && results.length === 0" class="p-3 text-sm opacity-60">
-            Keine Treffer.
+            {{ t('canvas.picker.noHits') }}
           </div>
         </div>
       </template>
@@ -227,7 +230,7 @@ defineExpose({ open: openPicker });
       <template v-else-if="tab === 'app' && appTargets">
         <VInput
           v-model="appQuery"
-          placeholder="Canvas in dieser App filtern …"
+          :placeholder="t('canvas.picker.filterPlaceholder')"
         />
         <div class="max-h-80 overflow-auto rounded border border-base-300">
           <button
@@ -235,7 +238,7 @@ defineExpose({ open: openPicker });
             @click="pickApp()"
           >
             <span class="text-sm font-medium">{{ appTargets.appLabel }}</span>
-            <span class="text-xs opacity-60">Die App selbst, ohne bestimmte Canvas</span>
+            <span class="text-xs opacity-60">{{ t('canvas.picker.appItself') }}</span>
           </button>
           <button
             v-for="t in filteredTargets"
@@ -246,7 +249,7 @@ defineExpose({ open: openPicker });
             <span class="text-sm font-medium">{{ t.label }}</span>
           </button>
           <div v-if="filteredTargets.length === 0" class="p-3 text-sm opacity-60">
-            Keine Canvas passt zum Filter.
+            {{ t('canvas.picker.noCanvasMatch') }}
           </div>
         </div>
       </template>
@@ -254,7 +257,9 @@ defineExpose({ open: openPicker });
       <!-- Favourites / apps: pick an app, then optionally a place inside it. -->
       <template v-else-if="tab === 'starred' || tab === 'apps'">
         <div v-if="apps.error.value" class="p-3 text-sm text-error">{{ apps.error.value }}</div>
-        <div v-else-if="apps.loading.value" class="p-3 text-sm opacity-60">Lade…</div>
+        <div v-else-if="apps.loading.value" class="p-3 text-sm opacity-60">
+          {{ t('canvas.common.loading') }}
+        </div>
 
         <template v-else-if="!apps.openApp.value">
           <div class="max-h-80 overflow-auto rounded border border-base-300">
@@ -275,14 +280,16 @@ defineExpose({ open: openPicker });
               v-if="(tab === 'starred' ? apps.starred.value : apps.project.value).length === 0"
               class="p-3 text-sm opacity-60"
             >
-              {{ tab === 'starred' ? 'Keine App in den Favoriten.' : 'Keine App in diesem Projekt.' }}
+              {{ tab === 'starred'
+                ? t('canvas.picker.noStarredApps')
+                : t('canvas.picker.noProjectApps') }}
             </div>
           </div>
         </template>
 
         <template v-else>
           <div class="flex items-center gap-2">
-            <VButton size="sm" variant="ghost" @click="apps.back()">← Back</VButton>
+            <VButton size="sm" variant="ghost" @click="apps.back()">← {{ t('canvas.common.back') }}</VButton>
             <span class="truncate text-sm opacity-70">
               {{ apps.openApp.value.title || apps.openApp.value.path }}
             </span>
@@ -290,7 +297,9 @@ defineExpose({ open: openPicker });
           <div v-if="apps.targetsError.value" class="p-3 text-sm text-error">
             {{ apps.targetsError.value }}
           </div>
-          <div v-else-if="apps.targetsLoading.value" class="p-3 text-sm opacity-60">Lade…</div>
+          <div v-else-if="apps.targetsLoading.value" class="p-3 text-sm opacity-60">
+            {{ t('canvas.common.loading') }}
+          </div>
           <div v-else class="max-h-80 overflow-auto rounded border border-base-300">
             <button
               class="flex w-full flex-col items-start gap-0.5 border-b border-base-200 px-3 py-2 text-left hover:bg-base-200"
@@ -299,7 +308,7 @@ defineExpose({ open: openPicker });
               <span class="text-sm font-medium">
                 {{ apps.openApp.value.title || apps.openApp.value.path }}
               </span>
-              <span class="text-xs opacity-60">Die App selbst, ohne bestimmten Ort</span>
+              <span class="text-xs opacity-60">{{ t('canvas.picker.appItselfNoPlace') }}</span>
             </button>
             <template v-for="g in groupTargets(apps.targets.value)" :key="g.name ?? ''">
               <div v-if="g.name" class="px-3 pt-2 text-xs uppercase tracking-wide opacity-50">
@@ -319,7 +328,7 @@ defineExpose({ open: openPicker });
       </template>
 
       <div class="flex justify-end">
-        <VButton size="sm" variant="ghost" @click="finish(null)">Cancel</VButton>
+        <VButton size="sm" variant="ghost" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
       </div>
     </div>
   </VModal>

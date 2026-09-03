@@ -158,7 +158,7 @@ const errorCount = computed(
       <span v-if="errorCount" class="text-error">
         {{ errorCount }} error{{ errorCount === 1 ? '' : 's' }}
       </span>
-      <span class="italic">KaTeX preview — for full layout use "Generate PDF"</span>
+      <span class="italic">{{ $t('cortex.tex.previewHint') }}</span>
     </div>
 
     <!-- Rendered segments -->

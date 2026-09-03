@@ -136,7 +136,7 @@ function extractVideoId(raw: string): string | null {
 <template>
   <div class="yt-view">
     <div v-if="!videoId" class="yt-view__error">
-      Keine gültige YouTube-Video-ID aus dem Body extrahierbar.
+      {{ $t('kindViews.youtube.noId') }}
     </div>
     <template v-else>
       <div class="yt-view__frame-wrap">
@@ -147,7 +147,7 @@ function extractVideoId(raw: string): string | null {
           referrerpolicy="strict-origin-when-cross-origin"
           allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowfullscreen
-          title="YouTube video"
+          :title="$t('kindViews.youtube.videoLabel')"
         />
       </div>
       <p class="yt-view__meta">

@@ -3,6 +3,7 @@ export * from './damogran';
 export * from './documentHeaderCodec';
 export * from './kindCodecs/index';
 export * from './facelift/index';
+export * from './i18n/index';
 export * from './localized';
 export * from './nav/index';
 export * from './rest/index';

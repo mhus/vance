@@ -12,6 +12,7 @@ import type {
   DocumentArchiveListResponse,
   DocumentArchiveSummary,
 } from '@vance/generated';
+import { useT } from './i18n';
 
 const props = defineProps<{
   documentId: string | null;
@@ -20,6 +21,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'restored'): void;
 }>();
+
+const t = useT();
 
 const items = ref<DocumentArchiveSummary[]>([]);
 const loading = ref(false);
@@ -40,7 +43,7 @@ async function load(id: string | null): Promise<void> {
     );
     items.value = data.items ?? [];
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load versions.';
+    error.value = e instanceof Error ? e.message : t('wiki.versions.error.load');
     items.value = [];
   } finally {
     loading.value = false;
@@ -52,7 +55,7 @@ watch(() => props.documentId, (id) => void load(id), { immediate: true });
 async function restore(archiveId: string): Promise<void> {
   const id = props.documentId;
   if (!id) return;
-  if (!window.confirm('Restore this version? The current content is archived first.')) return;
+  if (!window.confirm(t('wiki.versions.confirmRestore'))) return;
   busyId.value = archiveId;
   error.value = null;
   try {
@@ -63,7 +66,7 @@ async function restore(archiveId: string): Promise<void> {
     await load(id);
     emit('restored');
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Restore failed.';
+    error.value = e instanceof Error ? e.message : t('wiki.versions.error.restore');
   } finally {
     busyId.value = null;
   }
@@ -78,14 +81,14 @@ function when(ms: number): string {
 <template>
   <div class="wiki-versions">
     <header class="wiki-versions__header">
-      <span class="wiki-versions__title">Versions</span>
+      <span class="wiki-versions__title">{{ t('wiki.versions.title') }}</span>
       <span class="wiki-versions__count">{{ items.length }}</span>
     </header>
 
     <div v-if="error" class="wiki-versions__error">{{ error }}</div>
-    <div v-else-if="loading" class="wiki-versions__hint">Loading…</div>
+    <div v-else-if="loading" class="wiki-versions__hint">{{ t('wiki.common.loading') }}</div>
     <div v-else-if="items.length === 0" class="wiki-versions__hint">
-      No archived versions yet — they appear after the next edit.
+      {{ t('wiki.versions.empty') }}
     </div>
 
     <ul v-else class="wiki-versions__list">
@@ -99,7 +102,7 @@ function when(ms: number): string {
           class="wiki-versions__restore"
           :disabled="busyId === a.id"
           @click="restore(a.id)"
-        >{{ busyId === a.id ? '…' : 'Restore' }}</button>
+        >{{ busyId === a.id ? '…' : t('wiki.versions.restore') }}</button>
       </li>
     </ul>
   </div>

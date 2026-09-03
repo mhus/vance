@@ -15,6 +15,7 @@ import { VueRenderer } from '@tiptap/vue-3';
 import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import SlashCommandList, { type SlashCommandItem } from './SlashCommandList.vue';
 import { registeredBlocks } from './blockRegistry';
+import { translatorFor, type Translate } from './useT';
 
 interface CommandContext {
   editor: Editor;
@@ -25,81 +26,97 @@ interface SlashItemDef extends SlashCommandItem {
   run: (ctx: CommandContext) => void;
 }
 
-const ITEMS: SlashItemDef[] = [
+/**
+ * A core item as it is written down: label and hint as i18n keys, because this
+ * list is a module-level constant and a literal could not follow a language
+ * switch. {@link resolve} turns one into a {@link SlashItemDef}.
+ */
+interface SlashItemSpec {
+  id: string;
+  titleKey: string;
+  hintKey: string;
+  run: (ctx: CommandContext) => void;
+}
+
+function resolve(spec: SlashItemSpec, t: Translate): SlashItemDef {
+  return { id: spec.id, title: t(spec.titleKey), hint: t(spec.hintKey), run: spec.run };
+}
+
+const ITEMS: SlashItemSpec[] = [
   {
     id: 'paragraph',
-    title: 'Text',
-    hint: 'Plain paragraph',
+    titleKey: 'blockEditor.slash.paragraph.title',
+    hintKey: 'blockEditor.slash.paragraph.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).setParagraph().run(),
   },
   {
     id: 'heading-1',
-    title: 'Heading 1',
-    hint: 'Large section heading',
+    titleKey: 'blockEditor.slash.heading-1.title',
+    hintKey: 'blockEditor.slash.heading-1.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run(),
   },
   {
     id: 'heading-2',
-    title: 'Heading 2',
-    hint: 'Medium heading',
+    titleKey: 'blockEditor.slash.heading-2.title',
+    hintKey: 'blockEditor.slash.heading-2.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run(),
   },
   {
     id: 'heading-3',
-    title: 'Heading 3',
-    hint: 'Small heading',
+    titleKey: 'blockEditor.slash.heading-3.title',
+    hintKey: 'blockEditor.slash.heading-3.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run(),
   },
   {
     id: 'bullet',
-    title: 'Bullet list',
-    hint: '- item',
+    titleKey: 'blockEditor.slash.bullet.title',
+    hintKey: 'blockEditor.slash.bullet.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).toggleBulletList().run(),
   },
   {
     id: 'numbered',
-    title: 'Numbered list',
-    hint: '1. item',
+    titleKey: 'blockEditor.slash.numbered.title',
+    hintKey: 'blockEditor.slash.numbered.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).toggleOrderedList().run(),
   },
   {
     id: 'todo',
-    title: 'To-do',
-    hint: '- [ ] task',
+    titleKey: 'blockEditor.slash.todo.title',
+    hintKey: 'blockEditor.slash.todo.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).toggleTaskList().run(),
   },
   {
     id: 'quote',
-    title: 'Quote',
-    hint: 'Set-off citation',
+    titleKey: 'blockEditor.slash.quote.title',
+    hintKey: 'blockEditor.slash.quote.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
   },
   {
     id: 'code',
-    title: 'Code block',
-    hint: 'Fenced code',
+    titleKey: 'blockEditor.slash.code.title',
+    hintKey: 'blockEditor.slash.code.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
   },
   {
     id: 'divider',
-    title: 'Divider',
-    hint: '---',
+    titleKey: 'blockEditor.slash.divider.title',
+    hintKey: 'blockEditor.slash.divider.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
   },
   {
     id: 'toggle',
-    title: 'Toggle',
-    hint: 'Collapsible section',
+    titleKey: 'blockEditor.slash.toggle.title',
+    hintKey: 'blockEditor.slash.toggle.hint',
     run: ({ editor, range }) =>
       editor
         .chain()
@@ -113,8 +130,8 @@ const ITEMS: SlashItemDef[] = [
   },
   {
     id: 'link-card',
-    title: 'Link card',
-    hint: 'Rich URL preview',
+    titleKey: 'blockEditor.slash.link-card.title',
+    hintKey: 'blockEditor.slash.link-card.hint',
     run: ({ editor, range }) =>
       editor
         .chain()
@@ -128,8 +145,8 @@ const ITEMS: SlashItemDef[] = [
   },
   {
     id: 'dataview',
-    title: 'Dataview',
-    hint: 'Embed aggregation (stub)',
+    titleKey: 'blockEditor.slash.dataview.title',
+    hintKey: 'blockEditor.slash.dataview.hint',
     run: ({ editor, range }) =>
       editor
         .chain()
@@ -140,8 +157,8 @@ const ITEMS: SlashItemDef[] = [
   },
   {
     id: 'image',
-    title: 'Image',
-    hint: 'Pick from assets or upload',
+    titleKey: 'blockEditor.slash.image.title',
+    hintKey: 'blockEditor.slash.image.hint',
     run: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run();
       editor.view.dom.dispatchEvent(
@@ -151,15 +168,15 @@ const ITEMS: SlashItemDef[] = [
   },
   {
     id: 'toc',
-    title: 'Table of contents',
-    hint: 'Auto-generated from page headings',
+    titleKey: 'blockEditor.slash.toc.title',
+    hintKey: 'blockEditor.slash.toc.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).insertContent({ type: 'vanceToc' }).run(),
   },
   {
     id: 'embed',
-    title: 'Embed document',
-    hint: 'Inline another Vance document — kind-aware card',
+    titleKey: 'blockEditor.slash.embed.title',
+    hintKey: 'blockEditor.slash.embed.hint',
     run: ({ editor, range }) => {
       // Remove the slash trigger, then bubble a DOM event so the host
       // (workspace addon, etc.) can open its embed picker. Same
@@ -172,8 +189,8 @@ const ITEMS: SlashItemDef[] = [
   },
   {
     id: 'form',
-    title: 'Form',
-    hint: 'Editable data-entry form (bound to an edit-config)',
+    titleKey: 'blockEditor.slash.form.title',
+    hintKey: 'blockEditor.slash.form.hint',
     run: ({ editor, range }) => {
       // Same pattern as the embed picker: drop the slash trigger and
       // bubble a DOM event so the host opens its form (edit-config)
@@ -186,8 +203,8 @@ const ITEMS: SlashItemDef[] = [
   },
   {
     id: 'input',
-    title: 'Input',
-    hint: 'Editable text bound to a file (single or multi-line)',
+    titleKey: 'blockEditor.slash.input.title',
+    hintKey: 'blockEditor.slash.input.hint',
     run: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run();
       editor.view.dom.dispatchEvent(
@@ -197,8 +214,8 @@ const ITEMS: SlashItemDef[] = [
   },
   {
     id: 'button',
-    title: 'Button',
-    hint: 'Clickable button that runs a script',
+    titleKey: 'blockEditor.slash.button.title',
+    hintKey: 'blockEditor.slash.button.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range)
         .insertContent({ type: 'vanceButton', attrs: { type: 'script', script: '', title: '' } })
@@ -206,8 +223,8 @@ const ITEMS: SlashItemDef[] = [
   },
   {
     id: 'compose',
-    title: 'Compose',
-    hint: 'Run a Damogran compose task inline',
+    titleKey: 'blockEditor.slash.compose.title',
+    hintKey: 'blockEditor.slash.compose.hint',
     run: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range)
         .insertContent({
@@ -225,8 +242,8 @@ const ITEMS: SlashItemDef[] = [
   },
   {
     id: 'columns2',
-    title: '2 columns',
-    hint: 'Side-by-side layout',
+    titleKey: 'blockEditor.slash.columns2.title',
+    hintKey: 'blockEditor.slash.columns2.hint',
     run: ({ editor, range }) => {
       editor
         .chain()
@@ -244,8 +261,8 @@ const ITEMS: SlashItemDef[] = [
   },
   {
     id: 'columns3',
-    title: '3 columns',
-    hint: 'Three-pane layout',
+    titleKey: 'blockEditor.slash.columns3.title',
+    hintKey: 'blockEditor.slash.columns3.hint',
     run: ({ editor, range }) => {
       editor
         .chain()
@@ -279,7 +296,16 @@ export const SlashCommands = Extension.create({
         }) => {
           props.run({ editor, range });
         },
-        items: ({ query }: { query: string }): SlashItemDef[] => {
+        items: ({ editor, query }: { editor: Editor; query: string }): SlashItemDef[] => {
+          // Labels are resolved here, not at module load: the menu is rebuilt
+          // on every keystroke, so this is also where a language switch takes
+          // effect. The translator comes off the editor's app context, which
+          // Tiptap copied from the component that mounted the editor.
+          const t = translatorFor(
+            (editor as unknown as {
+              appContext?: { config?: { globalProperties?: Record<string, unknown> } };
+            }).appContext,
+          );
           // Core items + addon-contributed slash items (block-extension-
           // registry). Registry entries are read per-keystroke so an
           // addon that registers after this module loaded still shows up.
@@ -287,11 +313,11 @@ export const SlashCommands = Extension.create({
             .filter((b) => b.slash)
             .map((b) => ({
               id: `ext:${b.fence}`,
-              title: b.slash!.title,
-              hint: b.slash!.hint,
+              title: b.slash!.titleKey ? t(b.slash!.titleKey) : b.slash!.title,
+              hint: b.slash!.hintKey ? t(b.slash!.hintKey) : b.slash!.hint,
               run: (ctx) => b.slash!.insert(ctx),
             }));
-          const all = [...ITEMS, ...registryItems];
+          const all = [...ITEMS.map((spec) => resolve(spec, t)), ...registryItems];
           const q = query.toLowerCase();
           if (!q) return all;
           return all.filter(

@@ -31,7 +31,7 @@ timeout: 5s
 recipe: notes-triage
 params:
   parentProcessId: "\${event.process.id}"
-initialMessage: "Bitte triage die Notes des Parent-Process."
+initialMessage: "Triage the notes of the parent process."
 `;
 
 const props = defineProps<{ projectId: string | null }>();

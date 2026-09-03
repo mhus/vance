@@ -90,10 +90,12 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
 <template>
   <div class="flex flex-col gap-4">
     <div v-if="!projectId" class="opacity-60 text-sm">
-      Pick a project in the sidebar to see its measured tool demand.
+      {{ $t('insights.toolUsage.pickProject') }}
     </div>
 
-    <div v-else-if="state.loading.value" class="text-sm opacity-60">Loading tool usage…</div>
+    <div v-else-if="state.loading.value" class="text-sm opacity-60">
+      {{ $t('insights.toolUsage.loading') }}
+    </div>
 
     <VAlert v-else-if="state.error.value" variant="error">
       {{ state.error.value }}
@@ -101,12 +103,12 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
 
     <VEmptyState
       v-else-if="state.roles.value.length === 0"
-      headline="No tool usage recorded yet"
-      body="Counters fill up as agents call tools in this project. They are also empty right after a reset."
+      :headline="$t('insights.toolUsage.emptyHeadline')"
+      :body="$t('insights.toolUsage.emptyBody')"
     >
       <template #action>
         <VButton variant="secondary" size="sm" :disabled="state.loading.value" @click="reload">
-          Reload
+          {{ $t('insights.toolUsage.reload') }}
         </VButton>
       </template>
     </VEmptyState>
@@ -114,10 +116,10 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
     <template v-else>
       <div class="flex flex-wrap items-center gap-4 text-sm">
         <div class="opacity-70">
-          {{ totals.roles }} role{{ totals.roles === 1 ? '' : 's' }} ·
-          {{ totals.tools }} tool{{ totals.tools === 1 ? '' : 's' }} ·
-          {{ totals.calls }} call{{ totals.calls === 1 ? '' : 's' }} ·
-          {{ totals.discovery }} discovery lookup{{ totals.discovery === 1 ? '' : 's' }}
+          {{ $t('insights.toolUsage.roleCount', { n: totals.roles }, totals.roles) }} ·
+          {{ $t('insights.toolUsage.toolCount', { n: totals.tools }, totals.tools) }} ·
+          {{ $t('insights.toolUsage.callCount', { n: totals.calls }, totals.calls) }} ·
+          {{ $t('insights.toolUsage.discoveryCount', { n: totals.discovery }, totals.discovery) }}
         </div>
         <!-- Width goes on a wrapper: VInput carries `w-full` itself, and a
              merged `w-56` loses to it at equal specificity. -->
@@ -125,7 +127,7 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
           <VInput
             v-model="filter"
             size="sm"
-            placeholder="Filter tool or family…"
+            :placeholder="$t('insights.toolUsage.filterPlaceholder')"
           />
         </div>
         <VButton
@@ -135,19 +137,18 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
           :disabled="state.loading.value"
           @click="reload"
         >
-          Reload
+          {{ $t('insights.toolUsage.reload') }}
         </VButton>
       </div>
 
       <p class="text-xs opacity-60 max-w-3xl">
-        Demand = calls + discovery lookups, counted per role. The tool-surface budget uses these
-        numbers to order tools <em>inside</em> a priority class when an endpoint's tool limit
-        forces a cut — it never promotes a tool across classes. Discovery lookups are counted
-        separately because they measure demand before the deferral hurdle.
+        {{ $t('insights.toolUsage.explainPre') }}
+        <em>{{ $t('insights.toolUsage.explainInside') }}</em>
+        {{ $t('insights.toolUsage.explainPost') }}
       </p>
 
       <div v-if="roles.length === 0" class="text-sm opacity-60">
-        No tool matches “{{ filter }}”.
+        {{ $t('insights.toolUsage.noMatch', { filter }) }}
       </div>
 
       <section
@@ -161,14 +162,16 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
         >
           <span class="font-mono text-sm">{{ role.role }}</span>
           <span class="text-xs opacity-70">
-            {{ role.toolCount }} tool{{ role.toolCount === 1 ? '' : 's' }} ·
-            {{ role.calls }} call{{ role.calls === 1 ? '' : 's' }}
+            {{ $t('insights.toolUsage.toolCount', { n: role.toolCount }, role.toolCount) }} ·
+            {{ $t('insights.toolUsage.callCount', { n: role.calls }, role.calls) }}
             <template v-if="role.discoveryHits > 0">
-              · {{ role.discoveryHits }} discovery
+              · {{ $t('insights.toolUsage.discovery', { n: role.discoveryHits }) }}
             </template>
           </span>
           <span class="text-xs opacity-50 ml-auto">
-            last activity {{ formatTimestamp(role.lastActivityAt) }}
+            {{ $t('insights.toolUsage.lastActivity', {
+              when: formatTimestamp(role.lastActivityAt),
+            }) }}
           </span>
           <span class="text-xs opacity-50 w-4 text-right">
             {{ collapsed.has(role.role) ? '▸' : '▾' }}
@@ -178,12 +181,12 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
         <table v-if="!collapsed.has(role.role)" class="w-full text-sm">
           <thead class="text-xs opacity-60">
             <tr class="text-left">
-              <th class="font-normal px-3 py-1">Tool</th>
-              <th class="font-normal px-3 py-1 w-32">Family</th>
-              <th class="font-normal px-3 py-1 w-20 text-right">Calls</th>
-              <th class="font-normal px-3 py-1 w-24 text-right">Discovery</th>
-              <th class="font-normal px-3 py-1 w-40">Demand</th>
-              <th class="font-normal px-3 py-1 w-44">Last used</th>
+              <th class="font-normal px-3 py-1">{{ $t('insights.toolUsage.colTool') }}</th>
+              <th class="font-normal px-3 py-1 w-32">{{ $t('insights.toolUsage.colFamily') }}</th>
+              <th class="font-normal px-3 py-1 w-20 text-right">{{ $t('insights.toolUsage.colCalls') }}</th>
+              <th class="font-normal px-3 py-1 w-24 text-right">{{ $t('insights.toolUsage.colDiscovery') }}</th>
+              <th class="font-normal px-3 py-1 w-40">{{ $t('insights.toolUsage.colDemand') }}</th>
+              <th class="font-normal px-3 py-1 w-44">{{ $t('insights.toolUsage.colLastUsed') }}</th>
             </tr>
           </thead>
           <tbody>

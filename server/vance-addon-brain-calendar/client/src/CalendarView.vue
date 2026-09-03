@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useI18n } from 'vue-i18n';
+import { useLocale, useT } from '@vance/components';
 import { parseCalendar, type CalendarDocument, type CalendarEvent, emptyCalendar } from './calendarCodec';
 
 // `meta` and `embedRef` come from the host's chat-fence rendering
@@ -45,7 +45,8 @@ const props = withDefaults(defineProps<{
   meta: () => ({}),
 });
 
-const { t, locale } = useI18n();
+const t = useT();
+const locale = useLocale();
 
 // ── Document resolution ─────────────────────────────────────────────
 
@@ -388,7 +389,7 @@ function dayLabel(d: Date): string {
 
 function timeLabel(d: Date | null, allDay: boolean): string {
   if (!d) return '';
-  if (allDay) return t('documents.calendar.allDay');
+  if (allDay) return t('calendar.view.allDay');
   return new Intl.DateTimeFormat(locale.value, {
     hour: '2-digit', minute: '2-digit',
   }).format(d);
@@ -398,9 +399,9 @@ function rangeLabel(row: OccurrenceRow): string {
   if (row.event.allDay) {
     if (row.end && !sameDay(row.start, row.end)) {
       const fmt = new Intl.DateTimeFormat(locale.value, { day: 'numeric', month: 'short' });
-      return `${fmt.format(row.start)} – ${fmt.format(row.end)} (${t('documents.calendar.allDay')})`;
+      return `${fmt.format(row.start)} – ${fmt.format(row.end)} (${t('calendar.view.allDay')})`;
     }
-    return t('documents.calendar.allDay');
+    return t('calendar.view.allDay');
   }
   const startT = timeLabel(row.start, false);
   if (row.end && !sameDay(row.start, row.end)) {
@@ -615,17 +616,17 @@ function colorFor(ev: CalendarEvent): string {
           type="button"
           :class="['cal-view-btn', { 'cal-view-btn--active': view === 'month' }]"
           @click="view = 'month'"
-        >{{ t('documents.calendar.viewMonth') }}</button>
+        >{{ t('calendar.view.viewMonth') }}</button>
         <button
           type="button"
           :class="['cal-view-btn', { 'cal-view-btn--active': view === 'agenda' }]"
           @click="view = 'agenda'"
-        >{{ t('documents.calendar.viewAgenda') }}</button>
+        >{{ t('calendar.view.viewAgenda') }}</button>
       </div>
       <div v-if="view === 'month'" class="cal-nav">
         <button type="button" class="cal-nav-btn" @click="prevMonth">‹</button>
         <button type="button" class="cal-nav-btn cal-today-btn" @click="gotoToday">
-          {{ t('documents.calendar.today') }}
+          {{ t('calendar.view.today') }}
         </button>
         <button type="button" class="cal-nav-btn" @click="nextMonth">›</button>
         <span class="cal-month-label">{{ monthHeaderLabel(monthAnchor) }}</span>
@@ -671,7 +672,7 @@ function colorFor(ev: CalendarEvent): string {
     <!-- Agenda view -->
     <div v-else class="cal-agenda">
       <div v-if="agendaGrouped.length === 0" class="cal-empty">
-        {{ t('documents.calendar.empty') }}
+        {{ t('calendar.view.empty') }}
       </div>
       <div v-for="(g, gi) in agendaGrouped" :key="gi" class="cal-agenda-day">
         <div class="cal-agenda-day-header">{{ dayLabel(g.day) }}</div>
@@ -690,7 +691,7 @@ function colorFor(ev: CalendarEvent): string {
                   <button
                     type="button"
                     class="cal-add-btn"
-                    :title="t('documents.calendar.addToCalendar')"
+                    :title="t('calendar.view.addToCalendar')"
                     @click.stop="toggleLinks(occ)"
                   >📅</button>
                   <div
@@ -719,7 +720,7 @@ function colorFor(ev: CalendarEvent): string {
               </div>
               <div v-if="occ.event.notes" class="cal-agenda-notes">{{ occ.event.notes }}</div>
               <div v-if="occ.event.tags.length > 0" class="cal-agenda-tags">
-                <span v-for="t in occ.event.tags" :key="t" class="cal-tag">{{ t }}</span>
+                <span v-for="tag in occ.event.tags" :key="tag" class="cal-tag">{{ tag }}</span>
               </div>
             </div>
           </li>

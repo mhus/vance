@@ -12,8 +12,11 @@
  * Plain HTTPS or relative URLs pass through unchanged.
  */
 import { computed, onMounted, ref, watch } from 'vue';
+import { useT } from '../useT';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+
+const t = useT();
 
 interface ImageExtensionOptions {
   resolveImageSrc?: (vanceUri: string) => Promise<string | null>;
@@ -86,11 +89,11 @@ const imgClass = computed(() =>
       :data-vance-src="src"
       :data-width="width"
     />
-    <span v-else-if="loading" class="canvas-image-placeholder">Loading image…</span>
+    <span v-else-if="loading" class="canvas-image-placeholder">{{ t('blockEditor.image.loading') }}</span>
     <span v-else-if="error" class="canvas-image-placeholder canvas-image-placeholder--error">
       {{ error }} — {{ src }}
     </span>
-    <span v-else class="canvas-image-placeholder">No image source</span>
+    <span v-else class="canvas-image-placeholder">{{ t('blockEditor.image.noSource') }}</span>
   </NodeViewWrapper>
 </template>
 

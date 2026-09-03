@@ -492,7 +492,7 @@ onBeforeUnmount(() => {
           type="button"
           class="reclaim-handle reclaim-handle-sidebar"
           :class="{ 'reclaim-handle--hidden': focusZone === 'sidebar' }"
-          aria-label="Expand sidebar"
+          :aria-label="$t('shell.expandSidebar')"
           @click="focusZone = 'sidebar'"
         >›</button>
         <button
@@ -500,7 +500,7 @@ onBeforeUnmount(() => {
           type="button"
           class="reclaim-handle reclaim-handle-right"
           :class="{ 'reclaim-handle--hidden': focusZone === 'right' }"
-          aria-label="Expand right panel"
+          :aria-label="$t('shell.expandRightPanel')"
           @click="focusZone = 'right'"
         >‹</button>
       </template>

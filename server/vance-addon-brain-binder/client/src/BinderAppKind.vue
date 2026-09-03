@@ -13,6 +13,7 @@ import {
 } from './api';
 import type { BinderView } from './generated/binder/BinderView';
 import type { BinderEntryView } from './generated/binder/BinderEntryView';
+import { useT } from './i18n';
 
 /**
  * Mount for an `app: binder` folder. Left: a section-grouped, drag-and-drop
@@ -23,6 +24,8 @@ import type { BinderEntryView } from './generated/binder/BinderEntryView';
 const props = defineProps<{
   document: { id?: string; path: string; projectId: string; title?: string | null };
 }>();
+
+const t = useT();
 
 const folder = computed(() => {
   const p = props.document.path;
@@ -140,7 +143,7 @@ async function onAdd(): Promise<void> {
 }
 
 async function onRemove(e: BinderEntryView): Promise<void> {
-  if (!window.confirm(`„${e.title}“ aus dem Binder entfernen?`)) return;
+  if (!window.confirm(t('binder.app.confirmRemove', { title: e.title }))) return;
   await run(() => removeEntry(props.document.projectId, folder.value, e.ref));
 }
 
@@ -150,7 +153,7 @@ async function onSetLanding(e: BinderEntryView): Promise<void> {
 }
 
 async function onRename(e: BinderEntryView): Promise<void> {
-  const next = window.prompt('Anzeige-Titel (leer = Doc-Titel):', e.title);
+  const next = window.prompt(t('binder.app.promptTitle'), e.title);
   if (next === null) return;
   await run(() =>
     setEntrySection(props.document.projectId, folder.value, e.ref, e.section ?? null, next),
@@ -158,7 +161,7 @@ async function onRename(e: BinderEntryView): Promise<void> {
 }
 
 async function onMoveSection(e: BinderEntryView): Promise<void> {
-  const next = window.prompt('Sektion (leer = ohne Sektion):', e.section ?? '');
+  const next = window.prompt(t('binder.app.promptSection'), e.section ?? '');
   if (next === null) return;
   await run(() => setEntrySection(props.document.projectId, folder.value, e.ref, next, null));
 }
@@ -252,20 +255,28 @@ function kindIcon(kind?: string | null): string {
     <aside class="flex w-72 shrink-0 flex-col border-r border-base-300">
       <div class="flex items-center justify-between gap-2 border-b border-base-300 p-2">
         <div class="truncate font-semibold" :title="view?.title ?? ''">
-          {{ view?.title || 'Binder' }}
+          {{ view?.title || t('binder.app.fallbackTitle') }}
         </div>
         <div class="flex gap-1">
-          <VButton size="sm" variant="ghost" :disabled="busy" title="Index neu bauen" @click="onRebuild">↻</VButton>
-          <VButton size="sm" variant="primary" :disabled="busy" @click="onAdd">+ Anheften</VButton>
+          <VButton
+            size="sm"
+            variant="ghost"
+            :disabled="busy"
+            :title="t('binder.app.rebuildIndex')"
+            @click="onRebuild"
+          >↻</VButton>
+          <VButton size="sm" variant="primary" :disabled="busy" @click="onAdd">
+            + {{ t('binder.app.pin') }}
+          </VButton>
         </div>
       </div>
       <div class="p-2">
-        <VInput v-model="filter" placeholder="Filter …" />
+        <VInput v-model="filter" :placeholder="t('binder.app.filterPlaceholder')" />
       </div>
 
       <div class="min-h-0 flex-1 overflow-auto">
         <div v-if="entries.length === 0" class="p-4 text-sm opacity-60">
-          Noch keine Dokumente. Klicke „+ Anheften“, um ein Dokument zu verankern.
+          {{ t('binder.app.empty') }}
         </div>
 
         <template v-for="g in groups" :key="g.section || '__none__'">
@@ -291,11 +302,15 @@ function kindIcon(kind?: string | null): string {
             >
               <span class="w-4 shrink-0 text-center">{{ e.exists ? kindIcon(e.kind) : '⚠' }}</span>
               <span class="truncate" :title="e.path">{{ e.title }}</span>
-              <span v-if="view?.landingRef === e.ref" class="ml-auto shrink-0" title="Landing">📌</span>
+              <span
+                v-if="view?.landingRef === e.ref"
+                class="ml-auto shrink-0"
+                :title="t('binder.app.landing')"
+              >📌</span>
               <button
                 class="ml-auto hidden shrink-0 px-1 opacity-60 hover:opacity-100 group-hover:block"
                 :class="{ '!ml-1': view?.landingRef === e.ref }"
-                title="Aktionen"
+                :title="t('binder.app.actions')"
                 @click.stop="openMenuRef = openMenuRef === e.ref ? null : e.ref"
               >⋯</button>
 
@@ -304,12 +319,23 @@ function kindIcon(kind?: string | null): string {
                 class="absolute right-2 top-8 z-10 w-44 rounded border border-base-300 bg-base-100 py-1 shadow-lg"
                 @click.stop
               >
-                <button class="block w-full px-3 py-1.5 text-left text-sm hover:bg-base-200" @click="onMoveSection(e)">Change section…</button>
-                <button class="block w-full px-3 py-1.5 text-left text-sm hover:bg-base-200" @click="onRename(e)">Rename…</button>
+                <button
+                  class="block w-full px-3 py-1.5 text-left text-sm hover:bg-base-200"
+                  @click="onMoveSection(e)"
+                >{{ t('binder.app.changeSection') }}</button>
+                <button
+                  class="block w-full px-3 py-1.5 text-left text-sm hover:bg-base-200"
+                  @click="onRename(e)"
+                >{{ t('binder.app.rename') }}</button>
                 <button class="block w-full px-3 py-1.5 text-left text-sm hover:bg-base-200" @click="onSetLanding(e)">
-                  {{ view?.landingRef === e.ref ? 'Remove landing' : 'Set as landing' }}
+                  {{ view?.landingRef === e.ref
+                    ? t('binder.app.removeLanding')
+                    : t('binder.app.setLanding') }}
                 </button>
-                <button class="block w-full px-3 py-1.5 text-left text-sm text-error hover:bg-base-200" @click="onRemove(e)">Entfernen</button>
+                <button
+                  class="block w-full px-3 py-1.5 text-left text-sm text-error hover:bg-base-200"
+                  @click="onRemove(e)"
+                >{{ t('binder.app.remove') }}</button>
               </div>
             </li>
           </ul>
@@ -326,19 +352,19 @@ function kindIcon(kind?: string | null): string {
           <span class="truncate text-sm font-medium" :title="activeEntry.path">{{ activeEntry.title }}</span>
           <span class="truncate text-xs opacity-50">{{ activeEntry.path }}</span>
           <div class="ml-auto flex gap-1">
-            <VButton size="sm" variant="ghost" title="Neu laden" @click="load">↻</VButton>
+            <VButton size="sm" variant="ghost" :title="t('binder.app.reload')" @click="load">↻</VButton>
             <VButton
               size="sm"
               variant="primary"
               :disabled="!activeEntry.exists || !activeEntry.id"
               @click="openInCortex(activeEntry)"
-            >In Cortex bearbeiten ↗</VButton>
+            >{{ t('binder.app.editInCortex') }} ↗</VButton>
           </div>
         </div>
         <div class="min-h-0 flex-1 overflow-auto p-3">
           <div v-if="!activeEntry.exists" class="text-sm opacity-70">
-            This document no longer exists (<code>{{ activeEntry.path }}</code>).
-            Remove the entry from the ⋯ menu.
+            {{ t('binder.app.goneTitle') }} (<code>{{ activeEntry.path }}</code>).
+            {{ t('binder.app.goneHint') }}
           </div>
           <component
             :is="embedComponent"
@@ -346,12 +372,12 @@ function kindIcon(kind?: string | null): string {
             :key="activeEntry.ref"
             :uri="activeEntry.ref"
           />
-          <div v-else class="text-sm opacity-60">No embed renderer available.</div>
+          <div v-else class="text-sm opacity-60">{{ t('binder.app.noRenderer') }}</div>
         </div>
       </template>
 
       <div v-else class="flex flex-1 items-center justify-center p-8 text-center text-sm opacity-60">
-        Pick a document on the left, or pin one with “+ Pin”.
+        {{ t('binder.app.pickOne') }}
       </div>
     </section>
 

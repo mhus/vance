@@ -4,11 +4,15 @@
  * (BlockView, e.g. a standalone read-only workpage). Static card — the
  * jump-to-index interaction only makes sense inside the workbook host.
  */
+import { useT } from './i18n';
+
 defineProps<{ attrs: Record<string, unknown> }>();
+
+const t = useT();
 </script>
 
 <template>
-  <div class="wb-index-ro">🏠 Workbook-Index</div>
+  <div class="wb-index-ro">🏠 {{ t('workbook.indexBlock.label') }}</div>
 </template>
 
 <style scoped>

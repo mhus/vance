@@ -38,7 +38,7 @@ function basename(path: string): string {
       <button
         type="button"
         class="opacity-40 group-hover:opacity-100 hover:text-error px-1"
-        title="close"
+        :title="$t('cortex.tabs.close')"
         @click.stop="emit('close', tab.id)"
       >✕</button>
     </div>

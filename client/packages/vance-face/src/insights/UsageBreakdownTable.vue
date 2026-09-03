@@ -26,10 +26,10 @@ defineProps<{
     <thead>
       <tr>
         <th>{{ label }}</th>
-        <th class="num">Calls</th>
-        <th class="num">Tokens in</th>
-        <th class="num">Tokens out</th>
-        <th class="num">Cost</th>
+        <th class="num">{{ $t('insights.usageTable.calls') }}</th>
+        <th class="num">{{ $t('insights.usageTable.tokensIn') }}</th>
+        <th class="num">{{ $t('insights.usageTable.tokensOut') }}</th>
+        <th class="num">{{ $t('insights.usageTable.cost') }}</th>
       </tr>
     </thead>
     <tbody>

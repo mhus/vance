@@ -205,36 +205,39 @@ function logRow(op: MegadodoOperation): MegadodoEventDto | null {
         <VInput
           v-model="state.filters.value.text"
           size="sm"
-          placeholder="Search message…"
+          :placeholder="$t('insights.megadodo.searchPlaceholder')"
           @keyup.enter="reload"
         />
       </div>
 
-      <VButton size="sm" variant="ghost" @click="reload">Refresh</VButton>
+      <VButton size="sm" variant="ghost" @click="reload">{{ $t('insights.megadodo.refresh') }}</VButton>
 
       <span class="text-xs opacity-60 ml-auto">
         <template v-if="failureCount > 0">
-          <span class="text-error font-medium">{{ failureCount }} failed</span> ·
+          <span class="text-error font-medium">
+            {{ $t('insights.megadodo.failed', { n: failureCount }) }}
+          </span> ·
         </template>
-        <template v-if="openCount > 0">{{ openCount }} running · </template>
-        {{ state.operations.value.length }} operation{{
-          state.operations.value.length === 1 ? '' : 's'
-        }}
+        <template v-if="openCount > 0">
+          {{ $t('insights.megadodo.running', { n: openCount }) }} ·
+        </template>
+        {{ $t('insights.megadodo.operations',
+          { n: state.operations.value.length }, state.operations.value.length) }}
       </span>
     </header>
 
     <VAlert v-if="state.error.value" variant="error">{{ state.error.value }}</VAlert>
 
-    <VEmptyState v-if="!props.projectId" headline="Pick a project to see its activity." />
+    <VEmptyState v-if="!props.projectId" :headline="$t('insights.megadodo.pickProject')" />
 
-    <div v-else-if="state.loading.value" class="text-sm opacity-60">Loading…</div>
+    <div v-else-if="state.loading.value" class="text-sm opacity-60">{{ $t('insights.megadodo.loading') }}</div>
 
     <VEmptyState
       v-else-if="state.operations.value.length === 0"
       :headline="
         state.filters.value.onlyErrors
-          ? 'Nothing failed in the retained window.'
-          : 'No activity recorded yet.'
+          ? $t('insights.megadodo.emptyFailed')
+          : $t('insights.megadodo.emptyAll')
       "
     />
 

@@ -18,6 +18,7 @@ import { computed, ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type { DocumentCreateRequest, DocumentDto } from '@vance/generated';
 import KindBox from './KindBox.vue';
+import { useI18n } from 'vue-i18n';
 import { kindIcon, kindLabel, resolveRenderer } from '@/kindRenderers/registry';
 import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
 import { useDocumentRefStore } from '@/kindViews/documentRefStore';
@@ -29,6 +30,8 @@ interface Props {
   /** Parsed fence meta (key=value pairs). */
   meta?: FenceMeta;
 }
+
+const { t } = useI18n();
 
 const props = withDefaults(defineProps<Props>(), { meta: () => ({}) });
 
@@ -79,14 +82,14 @@ async function onSaveAsDocument(): Promise<void> {
   if (saving.value) return;
   const projectId = documentRefStore.currentProject;
   if (!projectId) {
-    flashStatus('err', 'Kein aktuelles Project — bind erst eine Chat-Session.');
+    flashStatus('err', t('inlineKind.noProject'));
     return;
   }
   const defaultPath = `documents/${props.kind}-${timestampSlug()}.${extForKind(props.kind)}`;
   // window.prompt is intentionally minimal v1 — a proper Modal can
   // come later. The user can rename the document afterwards in the
   // document editor anyway.
-  const userPath = window.prompt('Pfad für das neue Document:', defaultPath);
+  const userPath = window.prompt(t('inlineKind.pathPrompt'), defaultPath);
   if (userPath === null) return; // cancelled
   const path = userPath.trim() || defaultPath;
 
@@ -108,10 +111,10 @@ async function onSaveAsDocument(): Promise<void> {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       void navigator.clipboard.writeText(link);
     }
-    flashStatus('ok', `Gespeichert: ${created.path ?? path} — Link kopiert`);
+    flashStatus('ok', t('inlineKind.saved', { path: created.path ?? path }));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    flashStatus('err', `Speichern fehlgeschlagen: ${msg}`);
+    flashStatus('err', t('inlineKind.saveFailed', { message: msg }));
   } finally {
     saving.value = false;
   }

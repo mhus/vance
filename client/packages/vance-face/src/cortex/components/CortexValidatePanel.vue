@@ -48,14 +48,14 @@ function severityClass(severity: string | null | undefined): string {
     style="max-height: 45%; min-height: 6rem;"
   >
     <div class="flex items-center gap-2 px-3 py-1 bg-base-200 text-xs font-mono border-b border-base-300">
-      <span class="uppercase tracking-wide opacity-70">validate</span>
-      <span v-if="validation.quickBusy.value" class="text-info">quick running…</span>
-      <span v-if="validation.deepBusy.value" class="text-info">deep review running…</span>
+      <span class="uppercase tracking-wide opacity-70">{{ $t('cortex.validate.title') }}</span>
+      <span v-if="validation.quickBusy.value" class="text-info">{{ $t('cortex.validate.quickRunning') }}</span>
+      <span v-if="validation.deepBusy.value" class="text-info">{{ $t('cortex.validate.deepRunning') }}</span>
       <span class="flex-1" />
       <button
         type="button"
         class="opacity-60 hover:opacity-100 hover:bg-base-300 rounded px-1"
-        title="Close validate panel"
+        :title="$t('cortex.validate.close')"
         @click="validation.close()"
       >✕</button>
     </div>
@@ -67,8 +67,10 @@ function severityClass(severity: string | null | undefined): string {
       >{{ validation.error.value }}</div>
 
       <div v-if="validation.quickResult.value">
-        <div class="font-semibold mb-1">Quick:</div>
-        <div v-if="validation.quickResult.value.ok" class="text-success">✓ no parse errors</div>
+        <div class="font-semibold mb-1">{{ $t('cortex.validate.quick') }}</div>
+        <div v-if="validation.quickResult.value.ok" class="text-success">
+          {{ $t('cortex.validate.noParseErrors') }}
+        </div>
         <ul v-else class="list-disc pl-4 text-error">
           <li v-for="(e, i) in (validation.quickResult.value.errors ?? [])" :key="i">
             <span class="font-mono">[{{ e.line }}:{{ e.column }}]</span> {{ e.message }}
@@ -77,12 +79,12 @@ function severityClass(severity: string | null | undefined): string {
       </div>
 
       <div v-if="validation.deepResult.value">
-        <div class="font-semibold mb-1">Deep Review:</div>
+        <div class="font-semibold mb-1">{{ $t('cortex.validate.deep') }}</div>
         <div v-if="validation.deepResult.value.summary" class="italic opacity-70 mb-1">
           {{ validation.deepResult.value.summary }}
         </div>
         <div v-if="(validation.deepResult.value.warnings ?? []).length === 0" class="text-success">
-          ✓ no issues found
+          {{ $t('cortex.validate.noIssuesFound') }}
         </div>
         <ul v-else class="space-y-1">
           <li
@@ -99,9 +101,9 @@ function severityClass(severity: string | null | undefined): string {
 
       <div v-if="!validation.deepResult.value && cachedDeepWarnings" class="opacity-80">
         <div class="font-semibold mb-1">
-          Cached Deep Review
-          <span v-if="reviewedHashMatches" class="text-success text-xs">(matches current)</span>
-          <span v-else class="text-warning text-xs">(content has changed since)</span>
+          {{ $t('cortex.validate.cachedDeep') }}
+          <span v-if="reviewedHashMatches" class="text-success text-xs">{{ $t('cortex.validate.matchesCurrent') }}</span>
+          <span v-else class="text-warning text-xs">{{ $t('cortex.validate.contentChanged') }}</span>
         </div>
         <ul v-if="cachedDeepWarnings.length > 0" class="space-y-1">
           <li
@@ -114,7 +116,7 @@ function severityClass(severity: string | null | undefined): string {
             <div>{{ w.message }}</div>
           </li>
         </ul>
-        <div v-else class="text-success text-sm">✓ no issues flagged</div>
+        <div v-else class="text-success text-sm">{{ $t('cortex.validate.noIssues') }}</div>
       </div>
 
       <div
@@ -123,7 +125,7 @@ function severityClass(severity: string | null | undefined): string {
           && !validation.deepResult.value
           && !cachedDeepWarnings"
         class="opacity-50 text-xs"
-      >(no validation result yet)</div>
+      >{{ $t('cortex.validate.noResult') }}</div>
     </div>
   </div>
 </template>

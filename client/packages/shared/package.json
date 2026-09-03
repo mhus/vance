@@ -20,6 +20,10 @@
       "types": "./dist/auth/index.d.ts",
       "import": "./dist/auth/index.js"
     },
+    "./i18n": {
+      "types": "./dist/i18n/index.d.ts",
+      "import": "./dist/i18n/index.js"
+    },
     "./rest": {
       "types": "./dist/rest/index.d.ts",
       "import": "./dist/rest/index.js"

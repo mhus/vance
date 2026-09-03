@@ -28,6 +28,7 @@ import FormPickerModal from './FormPickerModal.vue';
 import InputPickerModal from './InputPickerModal.vue';
 import type { WorkbookView } from './generated/workbook/WorkbookView';
 import type { WorkbookPageView } from './generated/workbook/WorkbookPageView';
+import { useT } from './i18n';
 
 /**
  * Workbook view — Master-Detail with inplace editing (Notion-style).
@@ -57,6 +58,8 @@ const props = defineProps<{
 }>();
 
 const projectId = computed(() => props.document.projectId);
+const t = useT();
+
 const folder = computed(() => props.document.path.replace(/\/_app\.yaml$/, ''));
 // Sidebar header — prefer the manifest title from `_app.yaml`
 // (returned by /scan as view.title) over the container document's
@@ -546,7 +549,7 @@ function closeNewPage() {
 async function submitNewPage() {
   const title = newPageTitle.value.trim();
   if (!title) {
-    newPageError.value = 'Title required';
+    newPageError.value = t('workbook.app.error.titleRequired');
     return;
   }
   creating.value = true;
@@ -561,7 +564,7 @@ async function submitNewPage() {
     await loadWorkbook();
     await selectPage(page.id, page);
   } catch (e) {
-    newPageError.value = e instanceof Error ? e.message : 'Could not create page.';
+    newPageError.value = e instanceof Error ? e.message : t('workbook.app.error.createPage');
     creating.value = false;
   }
 }
@@ -585,7 +588,7 @@ async function loadWorkbook() {
       activePageView.value = matched;
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not scan workbook.';
+    error.value = e instanceof Error ? e.message : t('workbook.app.error.scan');
     view.value = null;
   } finally {
     loading.value = false;
@@ -674,7 +677,7 @@ const linkPickerAppTargets = computed(() => {
   if (!v) return null;
   return {
     appPath: props.document.path,
-    appLabel: v.title || folder.value || 'Workbook',
+    appLabel: v.title || folder.value || t('workbook.app.fallbackTitle'),
     targets: v.pages
       .filter((p) => p.id !== activePageId.value)
       .map((p) => ({
@@ -718,7 +721,7 @@ function syntheticIndexView(id: string): WorkbookPageView | null {
     path: v.indexPagePath,
     relativePath,
     section: '',
-    title: leaf.replace(/\.workpage\.md$|\.canvas\.md$|\.md$/, '') || 'Index',
+    title: leaf.replace(/\.workpage\.md$|\.canvas\.md$|\.md$/, '') || t('workbook.app.index'),
     description: undefined,
     icon: '⌂',
     sortIndex: undefined,
@@ -746,7 +749,7 @@ async function loadActivePageContent(options: { force?: boolean } = {}) {
     }
     activeMarkdown.value = fresh;
   } catch (e) {
-    pageError.value = e instanceof Error ? e.message : 'Could not load page.';
+    pageError.value = e instanceof Error ? e.message : t('workbook.app.error.loadPage');
     activeMarkdown.value = null;
   } finally {
     pageLoading.value = false;
@@ -791,7 +794,7 @@ async function onEditorSave(body: string) {
   } catch (e) {
     if (id === activePageId.value) {
       saveStatus.value = 'error';
-      lastSaveError.value = e instanceof Error ? e.message : 'Save failed.';
+      lastSaveError.value = e instanceof Error ? e.message : t('workbook.app.error.save');
     }
   }
 }
@@ -963,7 +966,7 @@ async function rebuild() {
     // even if it byte-matches our last write.
     await loadActivePageContent({ force: true });
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Rebuild failed.';
+    error.value = e instanceof Error ? e.message : t('workbook.app.error.rebuild');
   } finally {
     rebuilding.value = false;
   }
@@ -1021,7 +1024,7 @@ async function submitRename() {
   if (!page) return;
   const newTitle = renameValue.value.trim();
   if (!newTitle) {
-    renameError.value = 'Title required';
+    renameError.value = t('workbook.app.error.titleRequired');
     return;
   }
   const newSection = renameSection.value.trim();
@@ -1044,7 +1047,7 @@ async function submitRename() {
     closeRename();
     await loadWorkbook();
   } catch (e) {
-    renameError.value = e instanceof Error ? e.message : 'Rename failed.';
+    renameError.value = e instanceof Error ? e.message : t('workbook.app.error.rename');
     renameBusy.value = false;
   }
 }
@@ -1057,7 +1060,7 @@ async function duplicatePage(page: WorkbookPageView) {
     // ("I wanted to start from this page, then edit").
     await selectPage(copy.id, copy);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Duplicate failed.';
+    error.value = e instanceof Error ? e.message : t('workbook.app.error.duplicate');
   }
 }
 
@@ -1071,13 +1074,13 @@ async function togglePinLanding(page: WorkbookPageView) {
       pageId: isLanding ? undefined : page.id,
     });
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not update landing page.';
+    error.value = e instanceof Error ? e.message : t('workbook.app.error.landing');
   }
 }
 
 async function confirmDelete(page: WorkbookPageView) {
   closeCtxMenu();
-  if (!window.confirm(`Delete page "${page.title}"?`)) return;
+  if (!window.confirm(t('workbook.app.confirmDelete', { title: page.title }))) return;
   try {
     await deleteWorkbookPage(projectId.value, folder.value, page.id);
     if (page.id === activePageId.value) {
@@ -1088,7 +1091,7 @@ async function confirmDelete(page: WorkbookPageView) {
     }
     await loadWorkbook();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Delete failed.';
+    error.value = e instanceof Error ? e.message : t('workbook.app.error.delete');
   }
 }
 
@@ -1134,7 +1137,7 @@ async function commitSectionRename() {
     await renameWorkbookSection(projectId.value, folder.value, { from, to });
     await loadWorkbook();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Section rename failed.';
+    error.value = e instanceof Error ? e.message : t('workbook.app.error.sectionRename');
   }
 }
 
@@ -1219,7 +1222,7 @@ async function applyReorder(
         section: targetSection,
       });
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Move failed.';
+      error.value = e instanceof Error ? e.message : t('workbook.app.error.move');
       return;
     }
   }
@@ -1241,7 +1244,7 @@ async function applyReorder(
     });
     await loadWorkbook();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Reorder failed.';
+    error.value = e instanceof Error ? e.message : t('workbook.app.error.reorder');
   }
 }
 
@@ -1313,10 +1316,10 @@ onMounted(() => loadWorkbook());
 
 const saveStatusLabel = computed<string | null>(() => {
   switch (saveStatus.value) {
-    case 'dirty': return 'Edited';
-    case 'saving': return 'Saving…';
-    case 'saved': return 'Saved';
-    case 'error': return lastSaveError.value ?? 'Save failed';
+    case 'dirty': return t('workbook.app.status.edited');
+    case 'saving': return t('workbook.common.saving');
+    case 'saved': return t('workbook.common.saved');
+    case 'error': return lastSaveError.value ?? t('workbook.app.status.saveFailed');
     default: return null;
   }
 });
@@ -1461,20 +1464,20 @@ onBeforeUnmount(() => {
             class="workbook-app__icon-btn"
             :class="{ 'workbook-app__icon-btn--active': pageMode === 'design' }"
             :title="pageMode === 'design'
-              ? 'Design mode — editing form fields. Click for Work mode.'
-              : 'Work mode — entering data. Click for Design mode.'"
+              ? t('workbook.app.designMode')
+              : t('workbook.app.workMode')"
             @click="togglePageMode"
           >{{ pageMode === 'design' ? '🛠' : '✎' }}</button>
           <button
             class="workbook-app__icon-btn"
             :disabled="creating"
-            title="New page"
+            :title="t('workbook.app.newPage')"
             @click="openNewPage"
           >+</button>
           <button
             class="workbook-app__icon-btn"
             :disabled="rebuilding"
-            :title="rebuilding ? 'Rebuilding…' : 'Rebuild _index.md'"
+            :title="rebuilding ? t('workbook.app.rebuilding') : t('workbook.app.rebuildIndex')"
             @click="rebuild"
           >
             {{ rebuilding ? '…' : '↻' }}
@@ -1487,7 +1490,7 @@ onBeforeUnmount(() => {
           v-model="filterText"
           type="search"
           class="workbook-app__search-input"
-          placeholder="Filter pages…"
+          :placeholder="t('workbook.app.filterPlaceholder')"
           @keydown.escape="filterText = ''"
         />
       </div>
@@ -1502,7 +1505,7 @@ onBeforeUnmount(() => {
           v-model="newPageTitle"
           type="text"
           class="workbook-app__new-page-input"
-          placeholder="Page title"
+          :placeholder="t('workbook.app.pageTitlePlaceholder')"
           :disabled="creating"
           @keydown.escape="closeNewPage"
         />
@@ -1510,7 +1513,7 @@ onBeforeUnmount(() => {
           v-model="newPageSection"
           type="text"
           class="workbook-app__new-page-input"
-          placeholder="Section (optional)"
+          :placeholder="t('workbook.app.newSectionPlaceholder')"
           list="workbook-sections"
           :disabled="creating"
         />
@@ -1524,14 +1527,14 @@ onBeforeUnmount(() => {
             class="workbook-app__new-page-btn workbook-app__new-page-btn--primary"
             :disabled="creating || !newPageTitle.trim()"
           >
-            {{ creating ? 'Creating…' : 'Create' }}
+            {{ creating ? t('workbook.common.creating') : t('workbook.common.create') }}
           </button>
           <button
             type="button"
             class="workbook-app__new-page-btn"
             :disabled="creating"
             @click="closeNewPage"
-          >Cancel</button>
+          >{{ t('workbook.common.cancel') }}</button>
         </div>
       </form>
 
@@ -1539,7 +1542,7 @@ onBeforeUnmount(() => {
 
       <div v-if="view" class="workbook-app__tree">
         <template v-if="view.indexPageId && (!filterText.trim() || 'index workbook'.includes(filterText.trim().toLowerCase()))">
-          <div class="workbook-app__section-label">Workbook</div>
+          <div class="workbook-app__section-label">{{ t('workbook.app.sectionWorkbook') }}</div>
           <button
             class="workbook-app__page-link"
             :class="{
@@ -1548,7 +1551,7 @@ onBeforeUnmount(() => {
             @click="selectPage(view.indexPageId!, null)"
           >
             <span class="workbook-app__page-link-icon">⌂</span>
-            Index
+            {{ t('workbook.app.index') }}
           </button>
         </template>
 
@@ -1572,11 +1575,11 @@ onBeforeUnmount(() => {
               @click.stop
             />
             <template v-else>
-              <span class="workbook-app__section-label-text">{{ section || 'Pages' }}</span>
+              <span class="workbook-app__section-label-text">{{ section || t('workbook.app.sectionDefault') }}</span>
               <button
                 v-if="section"
                 class="workbook-app__section-menu"
-                title="More actions"
+                :title="t('workbook.app.moreActions')"
                 @click.stop="openSectionCtxMenu(section, $event)"
               >⋯</button>
             </template>
@@ -1610,11 +1613,15 @@ onBeforeUnmount(() => {
             >
               <span class="workbook-app__page-link-icon" :class="{ 'workbook-app__page-link-icon--emoji': !!effectiveIcon(p) }">{{ effectiveIcon(p) ?? '·' }}</span>
               <span class="workbook-app__page-link-title">{{ effectiveTitle(p) }}</span>
-              <span v-if="view && view.landingPageId === p.id" class="workbook-app__landing-pin" title="Landing page">📌</span>
+              <span
+                v-if="view && view.landingPageId === p.id"
+                class="workbook-app__landing-pin"
+                :title="t('workbook.app.landingPage')"
+              >📌</span>
             </button>
             <button
               class="workbook-app__page-row-menu"
-              title="More actions"
+              :title="t('workbook.app.moreActions')"
               @click.stop="openCtxMenu(p, $event)"
             >⋯</button>
           </div>
@@ -1625,7 +1632,7 @@ onBeforeUnmount(() => {
         v-if="view && view.pages.length === 0 && !view.indexPageId"
         class="workbook-app__empty"
       >
-        Noch keine Pages.
+        {{ t('workbook.app.emptyPages') }}
       </div>
     </aside>
 
@@ -1666,7 +1673,7 @@ onBeforeUnmount(() => {
         </template>
       </div>
 
-      <div v-if="loading" class="workbook-app__main-empty">Lade Workbook…</div>
+      <div v-if="loading" class="workbook-app__main-empty">{{ t('workbook.app.loadingWorkbook') }}</div>
 
       <template v-else-if="activePageId">
         <div v-if="pageCover" class="workbook-app__page-cover-wrap">
@@ -1683,11 +1690,11 @@ onBeforeUnmount(() => {
             <button
               class="workbook-app__page-cover-btn"
               @click="openCoverPicker"
-            >Change cover</button>
+            >{{ t('workbook.app.changeCover') }}</button>
             <button
               class="workbook-app__page-cover-btn"
               @click="removeCover"
-            >Remove</button>
+            >{{ t('workbook.app.removeCover') }}</button>
           </div>
         </div>
         <header v-if="activePageView" class="workbook-app__page-header">
@@ -1699,19 +1706,19 @@ onBeforeUnmount(() => {
               v-if="!pageIcon"
               class="workbook-app__page-add-btn"
               @click="openIconPicker"
-            >😀 Add icon</button>
+            >😀 {{ t('workbook.app.addIcon') }}</button>
             <button
               v-if="!pageCover"
               class="workbook-app__page-add-btn"
               @click="openCoverPicker"
-            >🖼 Add cover</button>
+            >🖼 {{ t('workbook.app.addCover') }}</button>
           </div>
           <div class="workbook-app__page-header-row">
             <h1 class="workbook-app__page-title">
               <button
                 v-if="pageIcon && pageMode === 'design'"
                 class="workbook-app__page-icon"
-                title="Change icon"
+                :title="t('workbook.app.changeIcon')"
                 @click="openIconPicker"
               >{{ pageIcon }}</button>
               <span
@@ -1736,7 +1743,7 @@ onBeforeUnmount(() => {
           </p>
         </header>
 
-        <div v-if="pageLoading" class="workbook-app__main-empty">Lade Page…</div>
+        <div v-if="pageLoading" class="workbook-app__main-empty">{{ t('workbook.app.loadingPage') }}</div>
         <div v-else-if="pageError" class="workbook-app__error">{{ pageError }}</div>
         <WorkPageEditor
           v-else-if="activeMarkdown != null && activePageView"
@@ -1824,7 +1831,7 @@ onBeforeUnmount(() => {
       </template>
 
       <div v-else class="workbook-app__main-empty">
-        Pick a page from the sidebar.
+        {{ t('workbook.app.pickPage') }}
       </div>
     </main>
 
@@ -1839,12 +1846,14 @@ onBeforeUnmount(() => {
         :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
         @click.stop
       >
-        <button class="workbook-app__ctx-item" @click="openRename(ctxMenu.page)">Rename / Move…</button>
-        <button class="workbook-app__ctx-item" @click="duplicatePage(ctxMenu.page)">Duplicate</button>
+        <button class="workbook-app__ctx-item" @click="openRename(ctxMenu.page)">{{ t('workbook.app.ctx.renameMove') }}</button>
+        <button class="workbook-app__ctx-item" @click="duplicatePage(ctxMenu.page)">{{ t('workbook.app.ctx.duplicate') }}</button>
         <button class="workbook-app__ctx-item" @click="togglePinLanding(ctxMenu.page)">
-          {{ view && view.landingPageId === ctxMenu.page.id ? 'Unpin landing page' : 'Pin as landing page' }}
+          {{ view && view.landingPageId === ctxMenu.page.id
+            ? t('workbook.app.ctx.unpinLanding')
+            : t('workbook.app.ctx.pinLanding') }}
         </button>
-        <button class="workbook-app__ctx-item workbook-app__ctx-item--danger" @click="confirmDelete(ctxMenu.page)">Delete</button>
+        <button class="workbook-app__ctx-item workbook-app__ctx-item--danger" @click="confirmDelete(ctxMenu.page)">{{ t('workbook.app.ctx.delete') }}</button>
       </div>
     </div>
 
@@ -1859,7 +1868,7 @@ onBeforeUnmount(() => {
         :style="{ left: sectionCtxMenu.x + 'px', top: sectionCtxMenu.y + 'px' }"
         @click.stop
       >
-        <button class="workbook-app__ctx-item" @click="startSectionRename(sectionCtxMenu.section)">Rename section…</button>
+        <button class="workbook-app__ctx-item" @click="startSectionRename(sectionCtxMenu.section)">{{ t('workbook.app.ctx.renameSection') }}</button>
       </div>
     </div>
 
@@ -1869,9 +1878,9 @@ onBeforeUnmount(() => {
       @click.self="closeRename"
     >
       <form class="workbook-app__modal" @submit.prevent="submitRename">
-        <div class="workbook-app__modal-header">Rename / Move</div>
+        <div class="workbook-app__modal-header">{{ t('workbook.app.rename.header') }}</div>
         <label class="workbook-app__modal-label">
-          Title
+          {{ t('workbook.app.rename.title') }}
           <input
             ref="renameInputRef"
             v-model="renameValue"
@@ -1882,13 +1891,13 @@ onBeforeUnmount(() => {
           />
         </label>
         <label class="workbook-app__modal-label">
-          Section
+          {{ t('workbook.app.rename.section') }}
           <input
             v-model="renameSection"
             type="text"
             class="workbook-app__modal-input"
             list="workbook-sections-rename"
-            placeholder="(top-level)"
+            :placeholder="t('workbook.app.rename.sectionPlaceholder')"
             :disabled="renameBusy"
           />
         </label>
@@ -1901,13 +1910,13 @@ onBeforeUnmount(() => {
             type="submit"
             class="workbook-app__new-page-btn workbook-app__new-page-btn--primary"
             :disabled="renameBusy || !renameValue.trim()"
-          >{{ renameBusy ? 'Saving…' : 'Save' }}</button>
+          >{{ renameBusy ? t('workbook.common.saving') : t('workbook.common.save') }}</button>
           <button
             type="button"
             class="workbook-app__new-page-btn"
             :disabled="renameBusy"
             @click="closeRename"
-          >Cancel</button>
+          >{{ t('workbook.common.cancel') }}</button>
         </div>
       </form>
     </div>

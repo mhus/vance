@@ -5,12 +5,15 @@ import { cortexDeepLink, VAlert, VButton, VCard, VEmptyState } from '@vance/comp
 import { getDesktopStatus } from './api';
 import type { DesktopView } from './generated/common-desktop/DesktopView';
 import type { DesktopCard } from './generated/common-desktop/DesktopCard';
+import { useT } from './i18n';
 
 const props = defineProps<{
   projectId: string;
   folder: string;
   title?: string;
 }>();
+
+const t = useT();
 
 const view = ref<DesktopView | null>(null);
 const loading = ref(false);
@@ -66,7 +69,7 @@ defineExpose({ reload: load });
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-semibold">{{ title ?? folder }}</h1>
       <VButton variant="ghost" size="sm" :loading="loading" @click="load">
-        Refresh
+        {{ t('desktop.refresh') }}
       </VButton>
     </div>
 
@@ -74,8 +77,8 @@ defineExpose({ reload: load });
 
     <VEmptyState
       v-else-if="!loading && cards.length === 0"
-      headline="No apps here"
-      body="Add an app under this folder, then refresh."
+      :headline="t('desktop.emptyHeadline')"
+      :body="t('desktop.emptyBody')"
     />
 
     <div
@@ -142,13 +145,13 @@ defineExpose({ reload: load });
 
         <template #actions>
           <VButton size="sm" variant="neutral" @click="openCard(card)">
-            Open
+            {{ t('desktop.open') }}
           </VButton>
           <VButton
             size="sm"
             variant="ghost"
             class="px-2"
-            title="In neuem Fenster öffnen"
+            :title="t('desktop.openInNewWindow')"
             @click="openCardNewWindow(card)"
           >
             <svg

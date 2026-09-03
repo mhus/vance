@@ -133,18 +133,18 @@ watch(
 <template>
   <div ref="sidebarEl" class="p-2 text-sm">
     <div class="mb-2 px-1 flex items-center gap-1">
-      <span class="font-semibold opacity-80 flex-1">Documents</span>
+      <span class="font-semibold opacity-80 flex-1">{{ $t('cortex.tree.documents') }}</span>
       <button
         type="button"
         class="text-xs px-1.5 py-0.5 rounded opacity-60 enabled:hover:opacity-100 enabled:hover:bg-base-200 disabled:cursor-default"
         :disabled="!activeFileId"
-        title="Reveal active file in tree"
+        :title="$t('cortex.tree.reveal')"
         @click="revealActiveFile"
       >🎯</button>
       <button
         type="button"
         class="text-xs px-1.5 py-0.5 rounded opacity-60 hover:opacity-100 hover:bg-base-200"
-        title="Reload document tree"
+        :title="$t('cortex.tree.reload')"
         @click="emit('reload')"
       >🔄</button>
     </div>

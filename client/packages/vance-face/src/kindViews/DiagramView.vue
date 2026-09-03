@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
         class="diagram-tool-btn diagram-tool-btn--text"
         :title="t('documents.diagramView.downloadSvg')"
         @click="downloadSvg"
-      >↓ SVG</button>
+      >{{ $t('kindViews.diagram.downloadSvg') }}</button>
     </div>
   </div>
 </template>

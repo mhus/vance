@@ -8,6 +8,8 @@
  * via {@code resolveKind('calendar')} from {@code @vance/kind-registry}
  * — the lookup is the only coupling between host and addon.
  */
+// Side effect: contributes this addon's messages to the host's i18n instance.
+import './i18n';
 import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
 import {
@@ -70,9 +72,11 @@ export function register(): void {
     view: TimelineView,
     parse: (body, mime) => parseTimeline(body, mime),
     isParseError: isTimelineParseError,
-    // No tabLabelKey / parseErrorKey: a federated remote does not share
-    // the host's i18n instance, so a key here would render as its own
-    // path. The host falls back to the kind id, which reads correctly.
+    // Keys resolve against the host instance: this addon contributes its
+    // messages through the globalThis registry (see ./i18n), and the import
+    // above ran before register() did.
+    tabLabelKey: 'documents.detail.tabTimeline',
+    parseErrorKey: 'documents.detail.timelineParseError',
   });
   // Application-kind entry: kind: application + app: calendar inside
   // an _app.yaml manifest dispatches to the folder-level Planner. The

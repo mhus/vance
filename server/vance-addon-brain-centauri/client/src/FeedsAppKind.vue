@@ -2,7 +2,7 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VShareButton,
-  VTextarea, VToggle, useAppEntry, vanceRef,
+  VTextarea, VToggle, useAppEntry, useLocale, vanceRef,
 } from '@vance/components';
 import { RestError, safeUrl } from '@vance/shared';
 import {
@@ -14,6 +14,7 @@ import type { FeedFacetView } from './generated/centauri/FeedFacetView';
 import type { FeedItemView } from './generated/centauri/FeedItemView';
 import type { FeedNoteView } from './generated/centauri/FeedNoteView';
 import type { FeedSourceView } from './generated/centauri/FeedSourceView';
+import { useT } from './i18n';
 
 /**
  * Mount for an `app: feeds` manifest. Two views over one configuration:
@@ -36,6 +37,9 @@ type Tab = 'stream' | 'config';
 const tab = ref<Tab>('stream');
 
 const config = ref<FeedConfigView | null>(null);
+const t = useT();
+const locale = useLocale();
+
 const sources = ref<FeedSourceView[]>([]);
 const items = ref<FeedItemView[]>([]);
 const notes = ref<FeedNoteView[]>([]);
@@ -310,13 +314,19 @@ function link(raw: string | null | undefined): string | null {
   return safeUrl(raw);
 }
 
-const REPORT_REASONS = [
-  { value: 'WRONG_CATEGORY', label: 'Wrong category' },
-  { value: 'WRONG_LANGUAGE', label: 'Wrong language' },
-  { value: 'BROKEN_LINK', label: 'Broken link' },
-  { value: 'DUPLICATE', label: 'Duplicate' },
-  { value: 'SPAM', label: 'Spam' },
-];
+// Ids only; the labels are looked up per render so a language switch reaches
+// them. A module-level array of literals could not follow one.
+const REPORT_REASON_IDS = [
+  'WRONG_CATEGORY',
+  'WRONG_LANGUAGE',
+  'BROKEN_LINK',
+  'DUPLICATE',
+  'SPAM',
+] as const;
+
+const reportReasons = computed(() =>
+  REPORT_REASON_IDS.map((id) => ({ value: id, label: t(`feeds.reason.${id}`) })),
+);
 
 const report = ref<{ item: FeedItemView; reason: string; note: string } | null>(null);
 const reportOpen = ref(false);
@@ -552,7 +562,7 @@ function clearFacet(key: string): void {
 /** What the closed control shows: the chosen labels, or „Any". */
 function facetSummary(key: string): string {
   const chosen = selectedFacetValues(key);
-  return chosen.length === 0 ? 'Any' : chosen.map(labelOf).join(', ');
+  return chosen.length === 0 ? t('feeds.any') : chosen.map(labelOf).join(', ');
 }
 
 
@@ -862,7 +872,7 @@ function signalsFor(sourceId: string): string[] {
 }
 
 function openReport(item: FeedItemView): void {
-  report.value = { item, reason: REPORT_REASONS[0].value, note: '' };
+  report.value = { item, reason: REPORT_REASON_IDS[0], note: '' };
   reportOpen.value = true;
 }
 
@@ -907,11 +917,11 @@ async function requestKind(item: FeedItemView, kind: string): Promise<void> {
 function outcomeText(outcome: string): string {
   switch (outcome) {
     case 'ACCEPTED':
-      return 'reported';
+      return t('feeds.outcome.accepted');
     case 'UNSUPPORTED':
-      return 'source does not accept this';
+      return t('feeds.outcome.unsupported');
     default:
-      return 'source declined';
+      return t('feeds.outcome.declined');
   }
 }
 
@@ -982,42 +992,43 @@ function isFreeform(sourceId: string): boolean {
 
 function noteText(note: FeedNoteView): string {
   const what = `${note.sourceId}${note.selector ? ` · ${note.selector}` : ''}`;
+  /** Appends the source's own words, when it supplied any. */
+  const withDetail = (message: string) =>
+    note.detail ? t('feeds.note.withDetail', { message, detail: note.detail }) : message;
   switch (note.kind) {
     case 'UNKNOWN_SOURCE':
-      return `${what}: not configured in this project`;
+      return t('feeds.note.unknownSource', { what });
     case 'DISABLED':
-      return `${what}: switched off`;
+      return t('feeds.note.disabled', { what });
     case 'COOLING_DOWN':
-      return `${what}: paused after an earlier failure`;
+      return t('feeds.note.coolingDown', { what });
     case 'TIMED_OUT':
-      return `${what}: did not answer in time`;
+      return t('feeds.note.timedOut', { what });
     case 'INVALID_SELECTOR':
       // The source itself said why, in words meant for a person — showing that
       // beats "failed", which is what this used to look like when a mistyped
       // hashtag came back empty.
-      return `${what}: not a stream this source can read${
-        note.detail ? ` — ${note.detail}` : ''
-      }`;
+      return withDetail(t('feeds.note.invalidSelector', { what }));
     case 'MISSING_FACET':
       // Not a failure: the source was never asked, because it does not offer
       // the dimension that was selected. Saying so beats a quietly shorter
       // timeline.
-      return `${what}: not part of this selection${
-        note.detail ? ` — offers no ${note.detail}` : ''
-      }`;
+      return note.detail
+        ? t('feeds.note.missingFacetDetail', { what, detail: note.detail })
+        : t('feeds.note.missingFacet', { what });
     default:
-      return `${what}: failed${note.detail ? ` — ${note.detail}` : ''}`;
+      return withDetail(t('feeds.note.failed', { what }));
   }
 }
 
 function when(iso: string): string {
   const then = new Date(iso).getTime();
   const minutes = Math.round((Date.now() - then) / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t('feeds.when.justNow');
+  if (minutes < 60) return t('feeds.when.minutes', { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return new Date(iso).toLocaleDateString();
+  if (hours < 24) return t('feeds.when.hours', { n: hours });
+  return new Date(iso).toLocaleDateString(locale.value);
 }
 
 function slug(title: string): string {
@@ -1035,10 +1046,10 @@ function slug(title: string): string {
   <div class="flex h-full flex-col gap-3 p-3">
     <div class="flex items-center gap-2">
       <VButton :variant="tab === 'stream' ? 'primary' : 'ghost'" @click="tab = 'stream'">
-        Stream
+        {{ t('feeds.tabStream') }}
       </VButton>
       <VButton :variant="tab === 'config' ? 'primary' : 'ghost'" @click="tab = 'config'">
-        Configuration
+        {{ t('feeds.tabConfig') }}
       </VButton>
       <div class="flex-1"></div>
       <!-- Only on the stream: an interval that reloads a form nobody is
@@ -1046,11 +1057,11 @@ function slug(title: string): string {
       <VToggle
         v-if="tab === 'stream'"
         :model-value="autoRefresh"
-        :title="`Auto-refresh every ${AUTO_REFRESH_INTERVAL_MS / 1000}s`"
+        :title="t('feeds.autoRefresh', { seconds: AUTO_REFRESH_INTERVAL_MS / 1000 })"
         @update:model-value="(v: boolean) => (autoRefresh = v)"
       />
       <VButton variant="ghost" :disabled="loading || refreshing" @click="refreshNow()">
-        Refresh
+        {{ t('feeds.refresh') }}
       </VButton>
     </div>
 
@@ -1082,23 +1093,23 @@ function slug(title: string): string {
             class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current
                    border-t-transparent"
           ></span>
-          Refreshing…
+          {{ t('feeds.refreshing') }}
         </span>
-        <span v-else-if="pullDistance >= PULL_THRESHOLD_PX">Release to refresh</span>
+        <span v-else-if="pullDistance >= PULL_THRESHOLD_PX">{{ t('feeds.releaseToRefresh') }}</span>
         <!-- Only once there is room for a line of text. Below that the label
              is clipped by the very box that is supposed to be growing, which
              reads as a rendering fault rather than as a gesture. -->
-        <span v-else-if="pullDistance >= 24">Pull to refresh</span>
+        <span v-else-if="pullDistance >= 24">{{ t('feeds.pullToRefresh') }}</span>
       </div>
       <VEmptyState
         v-if="configuredStreams.length === 0"
-        headline="No streams yet"
-        body="Add a stream in the configuration tab."
+        :headline="t('feeds.noStreamsHeadline')"
+        :body="t('feeds.noStreamsBody')"
       />
       <VEmptyState
         v-else-if="items.length === 0 && !loading && !hasMore"
-        headline="Nothing to read"
-        body="The configured streams returned no entries for this filter."
+        :headline="t('feeds.nothingToReadHeadline')"
+        :body="t('feeds.nothingToReadBody')"
       />
 
       <!-- Same bound as the configuration: at full window width a summary runs
@@ -1167,7 +1178,7 @@ function slug(title: string): string {
                    cannot afford. -->
               <template v-if="isMarked(item)">
                 <p v-if="detailLoading === entryKey(item)" class="text-xs opacity-60">
-                  Loading the full entry…
+                  {{ t('feeds.loadingEntry') }}
                 </p>
 
                 <dl
@@ -1203,8 +1214,7 @@ function slug(title: string): string {
                   v-else-if="detailLoading !== entryKey(item) && details[entryKey(item)]"
                   class="mt-1 text-xs opacity-60"
                 >
-                  No full text for this entry yet — the source fetches bodies on its
-                  own schedule.
+                  {{ t('feeds.noFullText') }}
                 </p>
               </template>
               <!-- The card itself toggles the mark; the controls must not. -->
@@ -1216,7 +1226,7 @@ function slug(title: string): string {
                   :disabled="!!clipped[entryKey(item)]"
                   @click="clip(item)"
                 >
-                  {{ clipped[entryKey(item)] ? 'Clipped' : 'Clip' }}
+                  {{ clipped[entryKey(item)] ? t('feeds.clipped') : t('feeds.clip') }}
                 </VButton>
                 <VButton
                   v-if="signalsFor(item.sourceId).includes('REPORT') && !signalled[entryKey(item)]"
@@ -1224,7 +1234,7 @@ function slug(title: string): string {
                   variant="ghost"
                   @click="openReport(item)"
                 >
-                  Report
+                  {{ t('feeds.report') }}
                 </VButton>
                 <VButton
                   v-if="signalsFor(item.sourceId).includes('REQUEST') && !signalled[entryKey(item)]"
@@ -1232,7 +1242,7 @@ function slug(title: string): string {
                   variant="ghost"
                   @click="requestKind(item, 'TRANSLATION')"
                 >
-                  Ask for translation
+                  {{ t('feeds.askTranslation') }}
                 </VButton>
                 <span v-if="signalled[entryKey(item)]" class="text-xs opacity-70">
                   {{ signalled[entryKey(item)] }}
@@ -1244,7 +1254,7 @@ function slug(title: string): string {
                   rel="noopener noreferrer"
                   class="text-xs hover:underline"
                 >
-                  Open in source ↗
+                  {{ t('feeds.openInSource') }}
                 </a>
                 <span v-if="clipped[entryKey(item)]" class="text-xs opacity-70">
                   → {{ clipped[entryKey(item)] }}
@@ -1255,18 +1265,18 @@ function slug(title: string): string {
         </VCard>
 
         <div ref="sentinel" class="h-8"></div>
-        <p v-if="loading" class="p-2 text-center text-sm opacity-70">Loading…</p>
+        <p v-if="loading" class="p-2 text-center text-sm opacity-70">{{ t('feeds.loading') }}</p>
         <!-- The observer only fires when the sentinel's visibility changes, and
              a round that appends nothing changes nothing. This is the way
              forward that does not depend on that. -->
         <div v-else-if="hasMore && items.length > 0" class="p-2 text-center">
-          <VButton size="sm" variant="ghost" @click="nextPage()">Load more</VButton>
+          <VButton size="sm" variant="ghost" @click="nextPage()">{{ t('feeds.loadMore') }}</VButton>
         </div>
         <p
           v-else-if="!hasMore && items.length > 0"
           class="p-2 text-center text-sm opacity-50"
         >
-          End of the stream
+          {{ t('feeds.endOfStream') }}
         </p>
       </div>
     </div>
@@ -1277,17 +1287,16 @@ function slug(title: string): string {
            control at the other, and nothing reads as belonging together. -->
       <div v-if="config" class="mx-auto flex w-full max-w-3xl flex-col gap-4">
         <VCard>
-          <h3 class="mb-1 border-b border-base-300 pb-1 text-base font-bold">Streams</h3>
+          <h3 class="mb-1 border-b border-base-300 pb-1 text-base font-bold">{{ t('feeds.streams') }}</h3>
           <p class="mb-3 text-xs opacity-60">
-            Which source, and which of its streams. One row per stream.
+            {{ t('feeds.streamsHint') }}
           </p>
           <div v-if="sources.length === 0" class="flex flex-col items-center gap-2">
             <VEmptyState
-              headline="No sources configured"
-              body="Set centauri.endpoint.&lt;id&gt;.protocol and .baseUrl in the settings first.
-                    Already done? Sources are cached for five minutes — reload them."
+              :headline="t('feeds.noSourcesHeadline')"
+              :body="t('feeds.noSourcesBody')"
             />
-            <VButton variant="ghost" @click="reloadSources(true)">Reload sources</VButton>
+            <VButton variant="ghost" @click="reloadSources(true)">{{ t('feeds.reloadSources') }}</VButton>
           </div>
           <div v-else class="flex flex-col gap-2">
             <!-- A source that could not be described is reported, not hidden:
@@ -1295,9 +1304,10 @@ function slug(title: string): string {
                  why it is unusable. Without this the reader sees a selectable
                  option with an empty selector dropdown and an empty feed. -->
             <VAlert v-for="s in unusableSources" :key="s.id" variant="warning">
-              <b>{{ s.displayName }}</b> cannot be asked right now
-              — {{ s.error ?? 'it declared nothing this version understands' }}.
-              Check <code>centauri.endpoint.{{ s.id }}.*</code>, then reload sources.
+              <b>{{ s.displayName }}</b> {{ t('feeds.unusablePre') }}
+              {{ s.error ?? t('feeds.unusableFallback') }}.
+              {{ t('feeds.unusableCheckPre') }}
+              <code>centauri.endpoint.{{ s.id }}.*</code>{{ t('feeds.unusableCheck') }}
             </VAlert>
             <div
               v-for="(stream, index) in config.streams"
@@ -1312,7 +1322,7 @@ function slug(title: string): string {
               <VInput
                 v-if="isFreeform(stream.source)"
                 :model-value="stream.selector ?? ''"
-                placeholder="hashtag:opensource"
+                :placeholder="t('feeds.selectorPlaceholder')"
                 @update:model-value="(v: string) => (stream.selector = v)"
               />
               <VSelect
@@ -1321,28 +1331,28 @@ function slug(title: string): string {
                 :options="selectorsFor(stream.source)"
                 @update:model-value="(v: string | null) => (stream.selector = v ?? '')"
               />
-              <VButton size="sm" variant="ghost" @click="removeStream(index)">Remove</VButton>
+              <VButton size="sm" variant="ghost" @click="removeStream(index)">{{ t('feeds.remove') }}</VButton>
             </div>
-            <VButton size="sm" variant="ghost" @click="addStream()">Add stream</VButton>
+            <VButton size="sm" variant="ghost" @click="addStream()">{{ t('feeds.addStream') }}</VButton>
           </div>
         </VCard>
 
         <VCard>
-          <h3 class="mb-1 border-b border-base-300 pb-1 text-base font-bold">Filter</h3>
+          <h3 class="mb-1 border-b border-base-300 pb-1 text-base font-bold">{{ t('feeds.filter') }}</h3>
           <p class="mb-3 text-xs opacity-60">
-            Applies to every stream above, and is stored with the feed.
+            {{ t('feeds.filterHint') }}
           </p>
           <div class="flex flex-col gap-2">
             <VInput
               :model-value="config.filter.text ?? ''"
-              label="Text"
-              placeholder="optional"
+              :label="t('feeds.text')"
+              :placeholder="t('feeds.textPlaceholder')"
               @update:model-value="(v: string) => (config!.filter.text = v)"
             />
             <VInput
               :model-value="config.filter.languages.join(', ')"
-              label="Languages"
-              placeholder="de, en"
+              :label="t('feeds.languages')"
+              :placeholder="t('feeds.languagesPlaceholder')"
               @update:model-value="
                 (v: string) =>
                   (config!.filter.languages = v
@@ -1353,7 +1363,7 @@ function slug(title: string): string {
             />
             <VInput
               :model-value="config.filter.exclude.join(', ')"
-              label="Exclude keywords"
+              :label="t('feeds.exclude')"
               @update:model-value="
                 (v: string) =>
                   (config!.filter.exclude = v
@@ -1364,8 +1374,8 @@ function slug(title: string): string {
             />
             <VInput
               :model-value="config.filter.since ?? ''"
-              label="Since"
-              placeholder="-7d"
+              :label="t('feeds.since')"
+              :placeholder="t('feeds.sincePlaceholder')"
               @update:model-value="(v: string) => (config!.filter.since = v)"
             />
             <!--
@@ -1390,14 +1400,14 @@ function slug(title: string): string {
                 <span class="max-w-md truncate text-sm opacity-80">
                   {{ facetSummary(entry.facet.key) }}
                 </span>
-                <VButton size="sm" variant="ghost" @click="openPicker(entry)">Choose…</VButton>
+                <VButton size="sm" variant="ghost" @click="openPicker(entry)">{{ t('feeds.choose') }}</VButton>
                 <VButton
                   v-if="selectedFacetValues(entry.facet.key).length > 0"
                   size="sm"
                   variant="ghost"
                   @click="clearFacet(entry.facet.key)"
                 >
-                  Clear
+                  {{ t('feeds.clear') }}
                 </VButton>
               </div>
             </div>
@@ -1405,8 +1415,8 @@ function slug(title: string): string {
         </VCard>
 
         <div class="flex gap-2">
-          <VButton variant="primary" @click="persist()">Save</VButton>
-          <VButton variant="ghost" @click="reload()">Discard</VButton>
+          <VButton variant="primary" @click="persist()">{{ t('feeds.save') }}</VButton>
+          <VButton variant="ghost" @click="reload()">{{ t('feeds.discard') }}</VButton>
         </div>
       </div>
     </div>
@@ -1421,7 +1431,7 @@ function slug(title: string): string {
         <!-- Breadcrumb. Present even at the root, so the control looks the
              same wherever you are in the tree. -->
         <div v-if="picker.facet.hierarchical" class="flex flex-wrap items-center gap-1 text-sm">
-          <button class="hover:underline" @click="breadcrumbTo(-1)">All</button>
+          <button class="hover:underline" @click="breadcrumbTo(-1)">{{ t('feeds.all') }}</button>
           <template v-for="(node, i) in picker.path" :key="node.id">
             <span class="opacity-50">›</span>
             <button class="hover:underline" @click="breadcrumbTo(i)">{{ node.label }}</button>
@@ -1441,11 +1451,11 @@ function slug(title: string): string {
           </button>
         </div>
 
-        <p v-if="picker.loading" class="text-sm opacity-60">Loading…</p>
+        <p v-if="picker.loading" class="text-sm opacity-60">{{ t('feeds.loading') }}</p>
         <VEmptyState
           v-else-if="picker.level.length === 0"
-          headline="Nothing below this"
-          body="This branch has no further values. Pick it above, or go back."
+          :headline="t('feeds.nothingBelowHeadline')"
+          :body="t('feeds.nothingBelowBody')"
         />
 
         <div v-else class="max-h-96 overflow-y-auto">
@@ -1475,37 +1485,37 @@ function slug(title: string): string {
       </div>
 
       <template #actions>
-        <VButton variant="ghost" @click="clearFacet(picker.facet.key)">Clear all</VButton>
-        <VButton variant="primary" @click="pickerOpen = false">Done</VButton>
+        <VButton variant="ghost" @click="clearFacet(picker.facet.key)">{{ t('feeds.clearAll') }}</VButton>
+        <VButton variant="primary" @click="pickerOpen = false">{{ t('feeds.done') }}</VButton>
       </template>
     </VModal>
 
-    <VModal v-model="reportOpen" title="Report this entry">
+    <VModal v-model="reportOpen" :title="t('feeds.reportTitle')">
       <div v-if="report" class="flex flex-col gap-3">
         <p class="text-sm opacity-70">{{ report.item.title }}</p>
         <VSelect
           :model-value="report.reason"
-          :options="REPORT_REASONS"
-          label="What is wrong"
+          :options="reportReasons"
+          :label="t('feeds.reportReason')"
           @update:model-value="(v: string | null) => (report!.reason = v ?? 'SPAM')"
         />
         <VTextarea
           :model-value="report.note"
           :rows="3"
-          label="Note (optional)"
+          :label="t('feeds.reportNote')"
           @update:model-value="(v: string) => (report!.note = v)"
         />
         <!-- The reader is looking at a form in their own workspace and has no
              reason to suspect the text leaves the house. So it says so. -->
         <p class="text-xs opacity-60">
-          This text is sent to <strong>{{ sourceName(report.item.sourceId) }}</strong>.
-          The source decides what happens with a report — we can only tell you it
-          was delivered.
+          {{ t('feeds.reportDisclaimerPre') }}
+          <strong>{{ sourceName(report.item.sourceId) }}</strong>.
+          {{ t('feeds.reportDisclaimerPost') }}
         </p>
       </div>
       <template #actions>
-        <VButton variant="ghost" @click="reportOpen = false">Cancel</VButton>
-        <VButton variant="primary" @click="submitReport()">Send</VButton>
+        <VButton variant="ghost" @click="reportOpen = false">{{ t('feeds.cancel') }}</VButton>
+        <VButton variant="primary" @click="submitReport()">{{ t('feeds.send') }}</VButton>
       </template>
     </VModal>
   </div>

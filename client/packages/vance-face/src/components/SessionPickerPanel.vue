@@ -291,7 +291,7 @@ watch(showArchived, () => {
 <template>
   <div class="h-full flex flex-col min-h-0 text-sm">
     <div class="flex items-center gap-1 px-2 py-1.5 border-b border-base-300 shrink-0">
-      <span class="font-semibold flex-1">Sessions</span>
+      <span class="font-semibold flex-1">{{ $t('shell.sessions') }}</span>
       <span class="opacity-50 text-xs">{{ filtered.length }}</span>
       <VButton
         size="sm"

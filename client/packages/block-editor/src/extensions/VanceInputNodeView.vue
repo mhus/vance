@@ -14,9 +14,12 @@
  * options so the block-editor stays decoupled from REST.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useT } from '../useT';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+
+const t = useT();
 
 interface ExtensionOptions {
   loadInput?: ((uri: string) => Promise<string>) | null;
@@ -165,7 +168,7 @@ onMounted(load);
           :value="saveScript"
           type="text"
           class="vance-input__settings-input"
-          placeholder="z.B. update.js (relativ zum Ordner, optional)"
+          :placeholder="t('blockEditor.input.saveScriptPlaceholder')"
           @input="setSaveScript(($event.target as HTMLInputElement).value)"
           @mousedown.stop
           @keydown.stop
@@ -178,7 +181,7 @@ onMounted(load);
           @change="setSession(($event.target as HTMLInputElement).checked)"
           @mousedown.stop
         />
-        Session für das Script (nur für LLM / session-gebundene Tools)
+        {{ t('blockEditor.input.sessionForScript') }}
       </label>
     </template>
 
@@ -206,7 +209,7 @@ onMounted(load);
         @keydown.stop
       />
       <div class="vance-input__actions" contenteditable="false">
-        <span v-if="savedAt && !dirty" class="vance-input__saved">Gespeichert ✓</span>
+        <span v-if="savedAt && !dirty" class="vance-input__saved">{{ t('blockEditor.input.saved') }}</span>
         <span class="vance-input__spacer" />
         <button
           v-if="dirty"
@@ -214,7 +217,7 @@ onMounted(load);
           class="vance-input__btn"
           :disabled="saving"
           @click="cancel"
-        >Cancel</button>
+        >{{ t('blockEditor.input.cancel') }}</button>
         <button
           type="button"
           class="vance-input__btn vance-input__btn--primary"

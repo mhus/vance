@@ -44,7 +44,7 @@ function onConnect(): void {
 <template>
   <div class="flex flex-col gap-4">
     <VAlert variant="success">
-      <span>Template <code class="font-mono">{{ result.templateName }}</code> applied.</span>
+      <span>{{ $t('templateResult.applied', { name: result.templateName }) }}</span>
     </VAlert>
 
     <section v-if="rows.length > 0" class="flex flex-col gap-2 text-sm">

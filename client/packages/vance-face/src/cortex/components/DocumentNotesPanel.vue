@@ -160,20 +160,20 @@ const isEmpty = computed(() => props.notes.length === 0);
 <template>
   <aside class="notes-panel">
     <header class="notes-panel-header">
-      <span class="text-sm font-semibold">Notes</span>
+      <span class="text-sm font-semibold">{{ $t('cortex.notes.title') }}</span>
       <span class="text-xs opacity-60">{{ notes.length }}</span>
       <span class="flex-1" />
       <button
         type="button"
         class="text-xs px-2 py-0.5 rounded border border-base-300
                hover:bg-base-200"
-        title="Neue Notiz"
+        :title="$t('cortex.notes.newNote')"
         @click="emit('add')"
       >＋</button>
     </header>
 
     <div v-if="isEmpty" class="notes-panel-empty">
-      Keine Notizen. Klick neben eine Zeilennummer oder den ＋-Button.
+      {{ $t('cortex.notes.empty') }}
     </div>
 
     <VueDraggable
@@ -197,7 +197,7 @@ const isEmpty = computed(() => props.notes.length === 0);
           'note-card--pulse': highlightedNoteId === note.id,
         }"
       >
-        <header class="note-card-header note-drag-handle" title="Zum Verschieben ziehen">
+        <header class="note-card-header note-drag-handle" :title="$t('cortex.notes.dragToMove')">
           <input
             type="checkbox"
             :checked="note.done"
@@ -213,7 +213,7 @@ const isEmpty = computed(() => props.notes.length === 0);
             type="button"
             class="text-xs px-1 rounded bg-base-100/60 border border-base-300/60
                    hover:bg-base-100"
-            :title="`Sprung zu Zeile ${note.line}`"
+            :title="$t('cortex.notes.jumpToLine', { line: note.line })"
             @click.stop="emit('jump-to-line', note.line!)"
             @mousedown.stop
           >📍 Z. {{ note.line }}</button>
@@ -224,7 +224,7 @@ const isEmpty = computed(() => props.notes.length === 0);
           <button
             type="button"
             class="opacity-50 hover:opacity-100 hover:text-error"
-            title="Löschen"
+            :title="$t('cortex.notes.delete')"
             @click.stop="emit('delete', note.id)"
             @mousedown.stop
           >×</button>

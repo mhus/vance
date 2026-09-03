@@ -11,6 +11,7 @@
  */
 import { onMounted, ref, watch } from 'vue';
 import { brainFetch } from '@vance/shared';
+import { useT } from './i18n';
 
 const props = defineProps<{
   projectId: string;
@@ -32,6 +33,8 @@ interface DocSummary {
 
 // Data-holding kinds a typed form can edit (one-file model, §13).
 const FORM_KINDS = new Set(['records', 'list', 'data']);
+
+const t = useT();
 
 const query = ref('');
 const results = ref<DocSummary[]>([]);
@@ -58,7 +61,7 @@ async function search(q: string) {
       (d) => FORM_KINDS.has((d.kind ?? '').toLowerCase()),
     );
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Search failed';
+    error.value = e instanceof Error ? e.message : t('workbook.form.searchFailed');
     results.value = [];
   } finally {
     loading.value = false;
@@ -100,7 +103,7 @@ async function createForm() {
     );
     emit('pick', `vance:/${encodeURI(resp.configPath)}?kind=records`);
   } catch (e) {
-    createError.value = e instanceof Error ? e.message : 'Create failed';
+    createError.value = e instanceof Error ? e.message : t('workbook.form.createFailed');
   } finally {
     creating.value = false;
   }
@@ -119,7 +122,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
   <div class="form-picker" @click="onBackdrop">
     <div class="form-picker__panel">
       <header class="form-picker__header">
-        <span>Insert form</span>
+        <span>{{ t('workbook.form.title') }}</span>
         <button class="form-picker__close" type="button" @click="close">×</button>
       </header>
 
@@ -128,7 +131,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
           v-model="query"
           type="search"
           class="form-picker__search-input"
-          placeholder="Search data documents in this app…"
+          :placeholder="t('workbook.form.searchPlaceholder')"
           autofocus
           @input="scheduleSearch"
           @keydown.escape="close"
@@ -136,12 +139,12 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
       </div>
 
       <div v-if="error" class="form-picker__error">{{ error }}</div>
-      <div v-if="loading" class="form-picker__loading">Suche…</div>
+      <div v-if="loading" class="form-picker__loading">{{ t('workbook.common.searching') }}</div>
       <div v-else-if="results.length === 0" class="form-picker__empty">
-        Keine Daten-Dokumente in dieser App gefunden.
+        {{ t('workbook.form.empty') }}
         <div class="form-picker__hint">
-          Lege unten ein neues an — es entsteht ein <code>kind: records</code>
-          Dokument mit Schema unter <code>$meta.form.fields</code>.
+          {{ t('workbook.form.hintPre') }} <code>kind: records</code>
+          {{ t('workbook.form.hintMid') }} <code>$meta.form.fields</code>.
         </div>
       </div>
       <div v-else class="form-picker__list">
@@ -164,7 +167,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
             v-model="newName"
             type="text"
             class="form-picker__search-input"
-            placeholder="New form name…"
+            :placeholder="t('workbook.form.newNamePlaceholder')"
             :disabled="creating"
             @keydown.enter.prevent="createForm"
             @keydown.escape="close"
@@ -174,7 +177,7 @@ watch(() => [props.projectId, props.folder], () => search(query.value.trim()));
             class="form-picker__create-btn"
             :disabled="creating || !newName.trim()"
             @click="createForm"
-          >{{ creating ? '…' : 'Create' }}</button>
+          >{{ creating ? '…' : t('workbook.common.create') }}</button>
         </div>
       </div>
     </div>

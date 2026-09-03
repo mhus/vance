@@ -14,6 +14,7 @@
  * globally-registered node and cannot take per-instance extension options.
  */
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useT } from '../useT';
 import jsyaml from 'js-yaml';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
@@ -22,6 +23,8 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { useComposeRun, type ComposeHost } from '../composables/useComposeRun';
 import { useComposeBatch } from '../composables/useComposeBatch';
 import { kindByNodeName, extractScript, applyScript, normalizeManifest } from '../builtins/scriptComposeCodec';
+
+const t = useT();
 
 const props = defineProps<{
   node: ProseMirrorNode;
@@ -161,14 +164,14 @@ onBeforeUnmount(() => {
             :value="script"
             rows="1"
             spellcheck="false"
-            :placeholder="kind?.placeholder"
+            :placeholder="kind?.placeholderKey ? t(kind.placeholderKey) : kind?.placeholder"
             @input="onScript"
             @mousedown.stop
             @keydown.stop
           ></textarea>
         </label>
         <label class="vance-compose__pane vance-compose__pane--yaml">
-          <span class="vance-compose__pane-label">Einstellungen (YAML)</span>
+          <span class="vance-compose__pane-label">{{ t('blockEditor.compose.settingsYaml') }}</span>
           <textarea
             ref="yamlEl"
             class="vance-compose__src"
@@ -192,7 +195,9 @@ onBeforeUnmount(() => {
           class="vance-compose__run"
           :class="{ 'vance-compose__run--stop': displayCanStop }"
           :disabled="runDisabled"
-          :title="!busy ? 'Run' : (displayCanStop ? 'Stop' : 'Läuft…')"
+          :title="!busy
+            ? t('blockEditor.compose.run')
+            : (displayCanStop ? t('blockEditor.compose.stop') : t('blockEditor.compose.running'))"
           @click.stop="onRun()"
         >{{ displayGlyph }}</button>
 
@@ -200,18 +205,18 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="vance-compose__menu-btn"
-            title="Weitere Aktionen"
+            :title="t('blockEditor.compose.moreActions')"
             @click.stop="toggleMenu"
           >…</button>
           <div v-if="menuOpen" class="vance-compose__menu" @click.stop>
-            <button type="button" class="vance-compose__menu-item" :disabled="batch.state.active" @click="runAllUntil">Run All Until</button>
-            <button type="button" class="vance-compose__menu-item" @click="doClearOutput">Clear Output</button>
-            <button type="button" class="vance-compose__menu-item" :disabled="batch.state.active" @click="clearAllOutput">Clear All Output</button>
+            <button type="button" class="vance-compose__menu-item" :disabled="batch.state.active" @click="runAllUntil">{{ t('blockEditor.compose.runAllUntil') }}</button>
+            <button type="button" class="vance-compose__menu-item" @click="doClearOutput">{{ t('blockEditor.compose.clearOutput') }}</button>
+            <button type="button" class="vance-compose__menu-item" :disabled="batch.state.active" @click="clearAllOutput">{{ t('blockEditor.compose.clearAllOutput') }}</button>
           </div>
         </div>
 
         <span v-if="batchHere && batch.state.label" class="vance-compose__status">{{ batch.state.label }}</span>
-        <span v-else-if="rc.cancelling.value" class="vance-compose__status">stoppe…</span>
+        <span v-else-if="rc.cancelling.value" class="vance-compose__status">{{ t('blockEditor.compose.stopping') }}</span>
         <span v-else-if="rc.result.value" class="vance-compose__status">
           {{ rc.result.value.workspace ? rc.result.value.workspace + ' · ' : '' }}{{ rc.result.value.success ? 'success' : 'failed' }}
         </span>

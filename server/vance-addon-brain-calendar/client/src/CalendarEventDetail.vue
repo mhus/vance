@@ -12,6 +12,7 @@ import {
 import type { CalendarEventUpdateRequest } from './generated/calendar/CalendarEventUpdateRequest';
 import type { CalendarEventView } from './generated/calendar/CalendarEventView';
 import type { CalendarLaneView } from './generated/calendar/CalendarLaneView';
+import { useT } from './i18n';
 
 const props = defineProps<{
   event: CalendarEventView;
@@ -22,6 +23,8 @@ const emit = defineEmits<{
   (e: 'update', patch: CalendarEventUpdateRequest): void;
   (e: 'delete'): void;
 }>();
+
+const t = useT();
 
 const title = ref(props.event.title);
 const start = ref(props.event.start);
@@ -85,14 +88,14 @@ function save(): void {
 }
 
 function confirmDelete(): void {
-  if (window.confirm(`Delete event "${props.event.title}"?`)) emit('delete');
+  if (window.confirm(t('calendar.detail.confirmDelete', { title: props.event.title }))) emit('delete');
 }
 </script>
 
 <template>
   <div class="flex flex-col h-full">
     <div class="flex items-center justify-between p-4 border-b border-base-300">
-      <h2 class="text-lg font-semibold">Event detail</h2>
+      <h2 class="text-lg font-semibold">{{ t('calendar.detail.title') }}</h2>
       <button
         class="text-base-content/60 hover:text-base-content text-xl leading-none"
         @click="emit('close')"
@@ -100,34 +103,42 @@ function confirmDelete(): void {
     </div>
 
     <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-      <VInput v-model="title" label="Title" />
+      <VInput v-model="title" :label="t('calendar.detail.fieldTitle')" />
 
       <div class="grid grid-cols-2 gap-2">
-        <VInput v-model="start" label="Start" placeholder="YYYY-MM-DD[THH:mm]" />
-        <VInput v-model="end" label="End" placeholder="(optional)" />
+        <VInput
+          v-model="start"
+          :label="t('calendar.detail.start')"
+          :placeholder="t('calendar.detail.startPlaceholder')"
+        />
+        <VInput
+          v-model="end"
+          :label="t('calendar.detail.end')"
+          :placeholder="t('calendar.detail.endPlaceholder')"
+        />
       </div>
 
-      <VCheckbox v-model="allDay" label="All-day event" />
+      <VCheckbox v-model="allDay" :label="t('calendar.detail.allDay')" />
 
       <VSelect
         :model-value="targetLane"
-        label="Lane"
+        :label="t('calendar.detail.lane')"
         :options="lanes.map((l) => ({ value: l.name, label: l.title ?? l.name }))"
         @update:model-value="(v) => targetLane = (v as string | null) ?? props.event.lane"
       />
 
-      <VInput v-model="location" label="Location" />
-      <VTagEditor v-model="attendees" label="Attendees" />
+      <VInput v-model="location" :label="t('calendar.detail.location')" />
+      <VTagEditor v-model="attendees" :label="t('calendar.detail.attendees')" />
 
       <VInput
         v-model="recurrence"
-        label="Recurrence (RRULE)"
-        placeholder="FREQ=WEEKLY;BYDAY=MO,…"
+        :label="t('calendar.detail.recurrence')"
+        :placeholder="t('calendar.detail.recurrencePlaceholder')"
       />
 
-      <VTagEditor v-model="tags" label="Tags" />
+      <VTagEditor v-model="tags" :label="t('calendar.detail.tags')" />
 
-      <VTextarea v-model="notes" label="Notes" :rows="4" />
+      <VTextarea v-model="notes" :label="t('calendar.detail.notes')" :rows="4" />
 
       <div class="flex gap-2 mt-2">
         <a
@@ -136,26 +147,26 @@ function confirmDelete(): void {
           target="_blank"
           rel="noopener"
           class="flex-1 text-center text-sm bg-base-200 hover:bg-base-300 rounded px-3 py-2"
-        >Add to Google</a>
+        >{{ t('calendar.detail.addToGoogle') }}</a>
         <a
           v-if="event.outlookUrl"
           :href="event.outlookUrl"
           target="_blank"
           rel="noopener"
           class="flex-1 text-center text-sm bg-base-200 hover:bg-base-300 rounded px-3 py-2"
-        >Add to Outlook</a>
+        >{{ t('calendar.detail.addToOutlook') }}</a>
       </div>
 
       <VAlert variant="info" class="text-xs">
-        Source: {{ event.sourcePath }}
+        {{ t('calendar.detail.source', { path: event.sourcePath }) }}
       </VAlert>
     </div>
 
     <div class="flex items-center justify-between p-4 border-t border-base-300">
-      <VButton variant="ghost" class="text-error" @click="confirmDelete">Delete</VButton>
+      <VButton variant="ghost" class="text-error" @click="confirmDelete">{{ t('calendar.common.delete') }}</VButton>
       <div class="flex gap-2">
-        <VButton variant="ghost" :disabled="!dirty" @click="emit('close')">Discard</VButton>
-        <VButton variant="primary" :disabled="!dirty" @click="save">Save</VButton>
+        <VButton variant="ghost" :disabled="!dirty" @click="emit('close')">{{ t('calendar.detail.discard') }}</VButton>
+        <VButton variant="primary" :disabled="!dirty" @click="save">{{ t('calendar.common.save') }}</VButton>
       </div>
     </div>
   </div>

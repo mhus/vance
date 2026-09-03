@@ -6,7 +6,9 @@ import type {
 } from '@vance/generated';
 import { VAlert, VButton, VEmptyState } from '@/components';
 import { useClusterPods } from '@/composables/useCluster';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const state = useClusterPods();
 
 type SortKey =
@@ -123,9 +125,12 @@ function loadPercent(pod: BrainPodInsightsDto): number | null {
 function loadTitle(pod: BrainPodInsightsDto): string {
   const pct = loadPercent(pod);
   return [
-    `score ${pod.resourcesCurrentScore ?? 0} / ${pod.resourcesMaxScore ?? 0}`,
-    pct == null ? 'no cap published' : `${pct}% of cap`,
-    'Sum over all tenants — the number placement actually compares against.',
+    t('insights.cluster.loadScore', {
+      current: pod.resourcesCurrentScore ?? 0,
+      max: pod.resourcesMaxScore ?? 0,
+    }),
+    pct == null ? t('insights.cluster.noCap') : t('insights.cluster.pctOfCap', { pct }),
+    t('insights.cluster.loadHint'),
   ].join(' · ');
 }
 
@@ -150,10 +155,10 @@ function fmtAge(value: string | Date | undefined | null): string {
   const ts = value instanceof Date ? value.getTime() : Date.parse(String(value));
   if (Number.isNaN(ts)) return '—';
   const deltaSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (deltaSec < 60) return `${deltaSec}s ago`;
-  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}m ago`;
-  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}h ago`;
-  return `${Math.floor(deltaSec / 86400)}d ago`;
+  if (deltaSec < 60) return t('insights.cluster.age.seconds', { n: deltaSec });
+  if (deltaSec < 3600) return t('insights.cluster.age.minutes', { n: Math.floor(deltaSec / 60) });
+  if (deltaSec < 86400) return t('insights.cluster.age.hours', { n: Math.floor(deltaSec / 3600) });
+  return t('insights.cluster.age.days', { n: Math.floor(deltaSec / 86400) });
 }
 
 /** Relative remaining lifetime "in 12s" / "in 3m" / "expired". */
@@ -162,11 +167,15 @@ function fmtRemaining(value: string | Date | undefined | null): string {
   const ts = value instanceof Date ? value.getTime() : Date.parse(String(value));
   if (Number.isNaN(ts)) return '—';
   const deltaSec = Math.floor((ts - Date.now()) / 1000);
-  if (deltaSec <= 0) return 'expired';
-  if (deltaSec < 60) return `in ${deltaSec}s`;
-  if (deltaSec < 3600) return `in ${Math.floor(deltaSec / 60)}m`;
-  if (deltaSec < 86400) return `in ${Math.floor(deltaSec / 3600)}h`;
-  return `in ${Math.floor(deltaSec / 86400)}d`;
+  if (deltaSec <= 0) return t('insights.cluster.remaining.expired');
+  if (deltaSec < 60) return t('insights.cluster.remaining.seconds', { n: deltaSec });
+  if (deltaSec < 3600) {
+    return t('insights.cluster.remaining.minutes', { n: Math.floor(deltaSec / 60) });
+  }
+  if (deltaSec < 86400) {
+    return t('insights.cluster.remaining.hours', { n: Math.floor(deltaSec / 3600) });
+  }
+  return t('insights.cluster.remaining.days', { n: Math.floor(deltaSec / 86400) });
 }
 
 const totalProjects = computed(() =>
@@ -229,30 +238,32 @@ const sortedPods = computed<BrainPodInsightsDto[]>(() => {
     <!-- ─── Toolbar ─── -->
     <div class="flex flex-wrap items-end gap-3 text-sm">
       <VButton variant="ghost" size="sm" @click="refresh">
-        Refresh
+        {{ $t('insights.cluster.refresh') }}
       </VButton>
       <div class="text-xs opacity-60 ml-auto">
-        {{ state.pods.value.length }} pod{{ state.pods.value.length === 1 ? '' : 's' }}
-        · {{ totalProjects }} project{{ totalProjects === 1 ? '' : 's' }} (this tenant)
+        {{ $t('insights.cluster.podCount', { n: state.pods.value.length }, state.pods.value.length) }}
+        · {{ $t('insights.cluster.projectCount', { n: totalProjects }, totalProjects) }}
       </div>
     </div>
 
     <!-- ─── Master lease summary ─── -->
     <div v-if="state.cluster.value" class="master-banner">
-      <div class="master-banner__label">Cluster master</div>
+      <div class="master-banner__label">{{ $t('insights.cluster.master') }}</div>
       <template v-if="masterPresent">
         <span class="master-banner__node font-mono">{{ state.cluster.value.masterNodeName ?? '—' }}</span>
         <span class="master-banner__endpoint font-mono">{{ state.cluster.value.masterEndpoint ?? '' }}</span>
         <span class="master-banner__lease" :title="fmtTime(state.cluster.value.masterLeaseUntil)">
-          lease {{ fmtRemaining(state.cluster.value.masterLeaseUntil) }}
+          {{ $t('insights.cluster.lease', {
+            remaining: fmtRemaining(state.cluster.value.masterLeaseUntil),
+          }) }}
         </span>
       </template>
       <template v-else>
-        <span class="master-banner__none">no master elected</span>
+        <span class="master-banner__none">{{ $t('insights.cluster.noMaster') }}</span>
       </template>
     </div>
 
-    <div v-if="state.loading.value" class="text-sm opacity-60">Loading cluster…</div>
+    <div v-if="state.loading.value" class="text-sm opacity-60">{{ $t('insights.cluster.loading') }}</div>
 
     <VAlert v-else-if="state.error.value" variant="error">
       {{ state.error.value }}
@@ -260,36 +271,36 @@ const sortedPods = computed<BrainPodInsightsDto[]>(() => {
 
     <VEmptyState
       v-else-if="state.pods.value.length === 0"
-      :headline="'No pods'"
-      :body="'No brain pods are registered in this cluster.'"
+      :headline="$t('insights.cluster.emptyHeadline')"
+      :body="$t('insights.cluster.emptyBody')"
     />
 
     <table v-else class="table table-sm">
       <thead>
         <tr>
           <th class="w-44 th-sort" @click="toggleSort('node')">
-            Node <span class="th-sort__arrow">{{ sortIndicator('node') }}</span>
+            {{ $t('insights.cluster.colNode') }} <span class="th-sort__arrow">{{ sortIndicator('node') }}</span>
           </th>
           <th class="w-24 th-sort" @click="toggleSort('status')">
-            Status <span class="th-sort__arrow">{{ sortIndicator('status') }}</span>
+            {{ $t('insights.cluster.colStatus') }} <span class="th-sort__arrow">{{ sortIndicator('status') }}</span>
           </th>
           <th class="th-sort" @click="toggleSort('endpoint')">
-            Endpoint <span class="th-sort__arrow">{{ sortIndicator('endpoint') }}</span>
+            {{ $t('insights.cluster.colEndpoint') }} <span class="th-sort__arrow">{{ sortIndicator('endpoint') }}</span>
           </th>
           <th class="w-32 th-sort" @click="toggleSort('heartbeat')">
-            Heartbeat <span class="th-sort__arrow">{{ sortIndicator('heartbeat') }}</span>
+            {{ $t('insights.cluster.colHeartbeat') }} <span class="th-sort__arrow">{{ sortIndicator('heartbeat') }}</span>
           </th>
           <th class="w-32 th-sort" @click="toggleSort('booted')">
-            Booted <span class="th-sort__arrow">{{ sortIndicator('booted') }}</span>
+            {{ $t('insights.cluster.colBooted') }} <span class="th-sort__arrow">{{ sortIndicator('booted') }}</span>
           </th>
           <th class="w-24 th-sort" @click="toggleSort('version')">
-            Version <span class="th-sort__arrow">{{ sortIndicator('version') }}</span>
+            {{ $t('insights.cluster.colVersion') }} <span class="th-sort__arrow">{{ sortIndicator('version') }}</span>
           </th>
-          <th class="w-48" title="What a project's placementSelector is matched against">
-            Placement
+          <th class="w-48" :title="$t('insights.cluster.colPlacementTitle')">
+            {{ $t('insights.cluster.colPlacement') }}
           </th>
           <th class="th-sort" @click="toggleSort('projects')">
-            Projects (this tenant)
+            {{ $t('insights.cluster.colProjects') }}
             <span class="th-sort__arrow">{{ sortIndicator('projects') }}</span>
           </th>
         </tr>
@@ -305,13 +316,13 @@ const sortedPods = computed<BrainPodInsightsDto[]>(() => {
             <span
               v-if="pod.master"
               class="ml-1 badge-role badge-role--master"
-              title="Currently holds the cluster-master lease"
-            >master</span>
+              :title="$t('insights.cluster.masterBadgeTitle')"
+            >{{ $t('insights.cluster.masterBadge') }}</span>
             <span
               v-if="pod.selfPod"
               class="ml-1 text-[10px] uppercase tracking-wider opacity-70"
-              title="This is the brain currently serving the request"
-            >self</span>
+              :title="$t('insights.cluster.selfBadgeTitle')"
+            >{{ $t('insights.cluster.selfBadge') }}</span>
             <div class="text-[10px] opacity-50 font-mono truncate" :title="pod.podId">
               {{ pod.podId }}
             </div>
@@ -330,13 +341,13 @@ const sortedPods = computed<BrainPodInsightsDto[]>(() => {
               <span
                 v-if="isCordoned(pod)"
                 class="label-chip label-chip--cordoned"
-                title="Exclusive with no labels — nothing matches this pod at all."
-              >cordoned</span>
+                :title="$t('insights.cluster.cordonedTitle')"
+              >{{ $t('insights.cluster.cordoned') }}</span>
               <span
                 v-else-if="pod.exclusive"
                 class="label-chip label-chip--exclusive"
-                title="A project without a placement selector is not eligible here."
-              >exclusive</span>
+                :title="$t('insights.cluster.exclusiveTitle')"
+              >{{ $t('insights.cluster.exclusive') }}</span>
               <span
                 v-for="pair in labelPairs(pod)"
                 :key="pair"
@@ -345,8 +356,8 @@ const sortedPods = computed<BrainPodInsightsDto[]>(() => {
               <span
                 v-if="!pod.exclusive && labelPairs(pod).length === 0"
                 class="opacity-50"
-                title="No labels and not exclusive — accepts any project."
-              >any</span>
+                :title="$t('insights.cluster.anyTitle')"
+              >{{ $t('insights.cluster.any') }}</span>
             </div>
             <div class="mt-0.5 opacity-70 font-mono text-[10px]" :title="loadTitle(pod)">
               {{ pod.resourcesCurrentScore ?? 0 }}/{{ pod.resourcesMaxScore ?? 0 }}<template

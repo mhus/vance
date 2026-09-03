@@ -8,6 +8,8 @@
  * docTypeRegistry resolves this entry by explicit id lookup, not the
  * generic kind+mime scan, so `matches` returns false on purpose.
  */
+// Side effect: contributes this addon's messages to the host's i18n instance.
+import './i18n';
 import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
 

@@ -35,6 +35,7 @@ import type { IssuesView } from './generated/issues/IssuesView';
 import type { IssueView } from './generated/issues/IssueView';
 import type { IssueContentView } from './generated/issues/IssueContentView';
 import type { IssueHitView } from './generated/issues/IssueHitView';
+import { useT } from './i18n';
 
 /**
  * Issues application view (GitHub-Issues-style). Open / Closed / Archived tabs
@@ -49,6 +50,8 @@ const props = defineProps<{
 const projectId = computed(() => props.document.projectId);
 const folder = computed(() => props.document.path.replace(/\/_app\.yaml$/, ''));
 const title = computed(() => view.value?.title ?? props.document.title ?? folder.value);
+
+const t = useT();
 
 const view = ref<IssuesView | null>(null);
 const error = ref<string | null>(null);
@@ -129,7 +132,7 @@ async function loadScan(): Promise<void> {
       ? await scanIssues(projectId.value, folder.value, undefined, true)
       : await scanIssues(projectId.value, folder.value, tab.value, false);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not scan issues.';
+    error.value = e instanceof Error ? e.message : t('issues.error.scan');
     view.value = null;
   } finally {
     loading.value = false;
@@ -149,7 +152,7 @@ async function selectIssue(path: string): Promise<void> {
   try {
     applyDetail(await getIssue(projectId.value, path));
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load issue.';
+    error.value = e instanceof Error ? e.message : t('issues.error.loadIssue');
     detail.value = null;
   } finally {
     detailLoading.value = false;
@@ -181,7 +184,7 @@ async function patchField(fields: Record<string, unknown>): Promise<void> {
     await loadScan();
   } catch (e) {
     saveStatus.value = 'error';
-    error.value = e instanceof Error ? e.message : 'Save failed.';
+    error.value = e instanceof Error ? e.message : t('issues.error.save');
   }
 }
 
@@ -213,21 +216,21 @@ async function toggleArchive(): Promise<void> {
     await loadScan();
   } catch (e) {
     saveStatus.value = 'error';
-    error.value = e instanceof Error ? e.message : 'Archive failed.';
+    error.value = e instanceof Error ? e.message : t('issues.error.archive');
   }
 }
 
 async function removeIssue(): Promise<void> {
   const path = selectedPath.value;
   if (!path) return;
-  if (!window.confirm('Delete this issue?')) return;
+  if (!window.confirm(t('issues.confirmDelete'))) return;
   try {
     await deleteIssue(projectId.value, path);
     detail.value = null;
     selectedPath.value = null;
     await loadScan();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Delete failed.';
+    error.value = e instanceof Error ? e.message : t('issues.error.delete');
   }
 }
 
@@ -241,7 +244,7 @@ async function submitComment(): Promise<void> {
     applyDetail(await addComment(projectId.value, path, { text }));
     commentDraft.value = '';
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Comment failed.';
+    error.value = e instanceof Error ? e.message : t('issues.error.comment');
   }
 }
 async function removeComment(commentId: string): Promise<void> {
@@ -251,7 +254,7 @@ async function removeComment(commentId: string): Promise<void> {
   try {
     applyDetail(await deleteComment(projectId.value, path, commentId));
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Delete comment failed.';
+    error.value = e instanceof Error ? e.message : t('issues.error.deleteComment');
   }
 }
 
@@ -259,17 +262,17 @@ async function removeComment(commentId: string): Promise<void> {
 const newTitle = ref('');
 const creating = ref(false);
 async function submitNew(): Promise<void> {
-  const t = newTitle.value.trim();
-  if (!t) return;
+  const wanted = newTitle.value.trim();
+  if (!wanted) return;
   creating.value = true;
   try {
-    const c = await createIssue(projectId.value, folder.value, { title: t });
+    const c = await createIssue(projectId.value, folder.value, { title: wanted });
     newTitle.value = '';
     tab.value = 'open';
     await loadScan();
     applyDetail(c);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Create failed.';
+    error.value = e instanceof Error ? e.message : t('issues.error.create');
   } finally {
     creating.value = false;
   }
@@ -289,7 +292,7 @@ async function runSearch(): Promise<void> {
     searchResults.value = resp.items ?? [];
     searchOpen.value = true;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Search failed.';
+    error.value = e instanceof Error ? e.message : t('issues.error.search');
   } finally {
     searching.value = false;
   }
@@ -307,7 +310,7 @@ async function rebuild(): Promise<void> {
     await rebuildIssues(projectId.value, folder.value);
     await loadScan();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Rebuild failed.';
+    error.value = e instanceof Error ? e.message : t('issues.error.rebuild');
   } finally {
     rebuilding.value = false;
   }
@@ -375,9 +378,9 @@ onBeforeUnmount(() => { editorRef.value?.flush(); });
 
 const saveStatusLabel = computed<string | null>(() => {
   switch (saveStatus.value) {
-    case 'saving': return 'Saving…';
-    case 'saved': return 'Saved';
-    case 'error': return 'Save failed';
+    case 'saving': return t('issues.status.saving');
+    case 'saved': return t('issues.status.saved');
+    case 'error': return t('issues.status.saveFailed');
     default: return null;
   }
 });
@@ -396,13 +399,13 @@ function commentDate(c: { createdAt?: string | null }): string {
       <div class="iss__brand" :title="folder">{{ title }}</div>
       <div class="iss__tabs">
         <button class="iss__tab" :class="{ 'iss__tab--active': tab === 'open' }" @click="selectTab('open')">
-          Open <span class="iss__badge">{{ bucketCount('open') }}</span>
+          {{ t('issues.tabOpen') }} <span class="iss__badge">{{ bucketCount('open') }}</span>
         </button>
         <button class="iss__tab" :class="{ 'iss__tab--active': tab === 'closed' }" @click="selectTab('closed')">
-          Closed <span class="iss__badge">{{ bucketCount('closed') }}</span>
+          {{ t('issues.tabClosed') }} <span class="iss__badge">{{ bucketCount('closed') }}</span>
         </button>
         <button class="iss__tab" :class="{ 'iss__tab--active': tab === 'archived' }" @click="selectTab('archived')">
-          Archived
+          {{ t('issues.tabArchived') }}
         </button>
       </div>
       <div class="iss__search">
@@ -410,7 +413,7 @@ function commentDate(c: { createdAt?: string | null }): string {
           v-model="searchQuery"
           type="search"
           class="iss__input"
-          placeholder="Search issues…"
+          :placeholder="t('issues.searchPlaceholder')"
           @keydown.enter.prevent="runSearch"
           @keydown.escape="searchOpen = false"
         />
@@ -418,16 +421,16 @@ function commentDate(c: { createdAt?: string | null }): string {
         <div v-if="searchOpen" class="iss__search-results">
           <ul v-if="searchResults.length" class="iss__search-list">
             <li v-for="r in searchResults" :key="r.id" class="iss__search-row" @click="pickSearchResult(r)">
-              <span class="iss__search-title">{{ r.title || '(untitled)' }}</span>
+              <span class="iss__search-title">{{ r.title || t('issues.untitled') }}</span>
               <span class="iss__search-snippet">{{ r.snippet }}</span>
             </li>
           </ul>
-          <div v-else class="iss__search-empty">No matching issue.</div>
+          <div v-else class="iss__search-empty">{{ t('issues.noMatch') }}</div>
         </div>
       </div>
       <span class="iss__spacer" />
       <span v-if="saveStatusLabel" class="iss__save" :class="`iss__save--${saveStatus}`">{{ saveStatusLabel }}</span>
-      <button class="iss__btn" :disabled="rebuilding" title="Rebuild index + stats" @click="rebuild">
+      <button class="iss__btn" :disabled="rebuilding" :title="t('issues.rebuildTip')" @click="rebuild">
         {{ rebuilding ? '…' : '↻' }}
       </button>
     </header>
@@ -442,7 +445,7 @@ function commentDate(c: { createdAt?: string | null }): string {
             v-model="newTitle"
             type="text"
             class="iss__input iss__new-input"
-            placeholder="＋ New issue title…"
+            :placeholder="t('issues.newIssuePlaceholder')"
             :disabled="creating"
           />
         </form>
@@ -451,7 +454,7 @@ function commentDate(c: { createdAt?: string | null }): string {
             class="iss__chip"
             :class="{ 'iss__chip--active': labelFilter === null }"
             @click="labelFilter = null"
-          >all</button>
+          >{{ t('issues.allLabels') }}</button>
           <button
             v-for="l in view.labels"
             :key="l"
@@ -460,7 +463,7 @@ function commentDate(c: { createdAt?: string | null }): string {
             @click="labelFilter = labelFilter === l ? null : l"
           >{{ l }}</button>
         </div>
-        <div v-if="loading" class="iss__hint">Loading…</div>
+        <div v-if="loading" class="iss__hint">{{ t('issues.loading') }}</div>
         <ul v-else-if="displayedIssues.length" class="iss__items">
           <li
             v-for="i in displayedIssues"
@@ -476,47 +479,47 @@ function commentDate(c: { createdAt?: string | null }): string {
             <span v-for="l in i.labels" :key="l" class="iss__lab">{{ l }}</span>
           </li>
         </ul>
-        <div v-else class="iss__hint">Nothing here.</div>
+        <div v-else class="iss__hint">{{ t('issues.nothingHere') }}</div>
       </main>
 
       <!-- Detail -->
       <aside v-if="detail" class="iss__detail">
-        <div v-if="detailLoading" class="iss__hint">Loading…</div>
+        <div v-if="detailLoading" class="iss__hint">{{ t('issues.loading') }}</div>
         <template v-else>
           <div class="iss__detail-head">
             <span class="iss__num">#{{ detail.number }}</span>
-            <span class="iss__state" :class="`iss__state--${detail.state}`">{{ detail.state }}</span>
-            <span v-if="detail.archived" class="iss__archived">archived</span>
+            <span class="iss__state" :class="`iss__state--${detail.state}`">{{ t(`issues.state.${detail.state}`) }}</span>
+            <span v-if="detail.archived" class="iss__archived">{{ t('issues.archived') }}</span>
           </div>
           <input v-model="titleDraft" class="iss__detail-title" @change="onTitleChange" />
 
           <div class="iss__actions">
             <button class="iss__btn" @click="toggleState">
-              {{ detail.state === 'open' ? 'Close' : 'Reopen' }}
+              {{ detail.state === 'open' ? t('issues.close') : t('issues.reopen') }}
             </button>
             <button class="iss__btn" @click="toggleArchive">
-              {{ detail.archived ? 'Unarchive' : 'Archive' }}
+              {{ detail.archived ? t('issues.unarchive') : t('issues.archive') }}
             </button>
             <button class="iss__btn iss__btn--danger" @click="removeIssue">🗑</button>
           </div>
 
           <div class="iss__field">
-            <label class="iss__label">Labels</label>
-            <input v-model="labelsDraft" class="iss__input" placeholder="bug, auth" @change="onLabelsChange" />
+            <label class="iss__label">{{ t('issues.labels') }}</label>
+            <input v-model="labelsDraft" class="iss__input" :placeholder="t('issues.labelsPlaceholder')" @change="onLabelsChange" />
           </div>
           <div class="iss__field iss__field--row">
             <div class="iss__field">
-              <label class="iss__label">Assignee</label>
+              <label class="iss__label">{{ t('issues.assignee') }}</label>
               <input v-model="assigneeDraft" class="iss__input" @change="onAssigneeChange" />
             </div>
             <div class="iss__field">
-              <label class="iss__label">Priority</label>
+              <label class="iss__label">{{ t('issues.priority') }}</label>
               <input v-model="priorityDraft" class="iss__input" @change="onPriorityChange" />
             </div>
           </div>
 
           <div class="iss__field">
-            <label class="iss__label">Description</label>
+            <label class="iss__label">{{ t('issues.description') }}</label>
             <WorkPageEditor
               :key="editorKey"
               ref="editorRef"
@@ -549,12 +552,12 @@ function commentDate(c: { createdAt?: string | null }): string {
           </div>
 
           <div class="iss__comments">
-            <label class="iss__label">Discussion ({{ detail.comments.length }})</label>
+            <label class="iss__label">{{ t('issues.discussion', { count: detail.comments.length }) }}</label>
             <div v-for="c in detail.comments" :key="c.id" class="iss__comment">
               <div class="iss__comment-head">
                 <span class="iss__comment-user">{{ c.userId }}</span>
                 <span class="iss__comment-date">{{ commentDate(c) }}</span>
-                <button class="iss__comment-del" title="Delete" @click="removeComment(c.id)">×</button>
+                <button class="iss__comment-del" :title="t('issues.deleteComment')" @click="removeComment(c.id)">×</button>
               </div>
               <div class="iss__comment-text">{{ c.text }}</div>
             </div>
@@ -563,9 +566,9 @@ function commentDate(c: { createdAt?: string | null }): string {
                 v-model="commentDraft"
                 class="iss__input iss__comment-input"
                 rows="2"
-                placeholder="Add a comment…"
+                :placeholder="t('issues.commentPlaceholder')"
               />
-              <button type="submit" class="iss__btn iss__btn--primary" :disabled="!commentDraft.trim()">Comment</button>
+              <button type="submit" class="iss__btn iss__btn--primary" :disabled="!commentDraft.trim()">{{ t('issues.comment') }}</button>
             </form>
           </div>
         </template>

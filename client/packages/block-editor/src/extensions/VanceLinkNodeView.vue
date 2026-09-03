@@ -10,9 +10,12 @@
  *   (vance: → host navigation, external → new tab).
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { useT } from '../useT';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import { safeHref } from '../safeHref';
 import type { Editor } from '@tiptap/core';
+
+const t = useT();
 
 const props = defineProps<{
   node: {
@@ -60,7 +63,7 @@ function onHref(e: Event) {
       <input
         type="text"
         class="vance-link-card__title-input"
-        placeholder="Link title…"
+        :placeholder="t('blockEditor.link.titlePlaceholder')"
         :value="node.attrs.title ?? ''"
         contenteditable="false"
         @input="onTitle"
@@ -70,7 +73,7 @@ function onHref(e: Event) {
       <input
         type="text"
         class="vance-link-card__description-input"
-        placeholder="Description (optional)…"
+        :placeholder="t('blockEditor.link.descriptionPlaceholder')"
         :value="node.attrs.description ?? ''"
         contenteditable="false"
         @input="onDescription"
@@ -80,7 +83,7 @@ function onHref(e: Event) {
       <input
         type="url"
         class="vance-link-card__href-input"
-        placeholder="https://…"
+        :placeholder="t('blockEditor.link.hrefPlaceholder')"
         :value="node.attrs.href"
         contenteditable="false"
         @input="onHref"

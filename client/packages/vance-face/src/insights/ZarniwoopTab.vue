@@ -3,6 +3,7 @@ import { computed, watch } from 'vue';
 import type { ZarniwoopInsightsDto } from '@vance/generated';
 import { VAlert, VButton, VEmptyState } from '@/components';
 import { useToolHealth, useZarniwoopInsights } from '@/composables/useProjectInsights';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps<{ projectId: string | null }>();
 
@@ -76,10 +77,10 @@ function availabilityClass(availability: string): string {
 
 function formatTimestamp(iso: string | undefined): string {
   if (!iso) return '—';
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
-  const d = new Date(t);
-  return d.toLocaleString();
+  // `ms`, not `t`: the translator is called `t` in this file now.
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  return new Date(ms).toLocaleString();
 }
 
 function formatDuration(now: number, iso: string | undefined): string {
@@ -87,12 +88,12 @@ function formatDuration(now: number, iso: string | undefined): string {
   const target = Date.parse(iso);
   if (Number.isNaN(target)) return '';
   const ms = target - now;
-  if (ms <= 0) return ' (elapsed)';
+  if (ms <= 0) return t('insights.zarniwoop.duration.elapsed');
   const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) return ` (in ${minutes}m)`;
+  if (minutes < 60) return t('insights.zarniwoop.duration.minutes', { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return ` (in ${hours}h)`;
-  return ` (in ${Math.round(hours / 24)}d)`;
+  if (hours < 24) return t('insights.zarniwoop.duration.hours', { n: hours });
+  return t('insights.zarniwoop.duration.days', { n: Math.round(hours / 24) });
 }
 
 const sorted = computed<ZarniwoopInsightsDto[]>(() => {
@@ -113,6 +114,8 @@ const totals = computed(() => {
   return { calls, ok, errors };
 });
 
+const { t } = useI18n();
+
 const now = Date.now();
 </script>
 
@@ -125,11 +128,11 @@ const now = Date.now();
     </VAlert>
 
     <div v-if="!projectId" class="opacity-60 text-sm">
-      Pick a project in the sidebar to see its search providers.
+      {{ $t('insights.zarniwoop.pickProject') }}
     </div>
 
     <div v-else-if="state.loading.value" class="text-sm opacity-60">
-      Loading search providers…
+      {{ $t('insights.zarniwoop.loading') }}
     </div>
 
     <VAlert v-else-if="state.error.value" variant="error">
@@ -138,12 +141,12 @@ const now = Date.now();
 
     <template v-else-if="state.instances.value.length === 0">
       <VEmptyState
-        headline="No search providers configured"
-        body="This project has no research.endpoint.* entries. Add one in the settings editor — e.g. research.endpoint.serper-main.protocol = serper. Just added one? Providers are cached for five minutes; Reload reads them again."
+        :headline="$t('insights.zarniwoop.emptyHeadline')"
+        :body="$t('insights.zarniwoop.emptyBody')"
       >
         <template #action>
           <VButton variant="secondary" size="sm" @click="reload" :disabled="state.loading.value">
-            Reload
+            {{ $t('insights.zarniwoop.reload') }}
           </VButton>
         </template>
       </VEmptyState>
@@ -152,11 +155,11 @@ const now = Date.now();
     <template v-else>
       <div class="flex items-end gap-4 text-sm">
         <div class="opacity-70">
-          {{ sorted.length }} instance(s)
+          {{ $t('insights.zarniwoop.instances', { count: sorted.length }) }}
         </div>
         <div class="opacity-70">
-          · {{ totals.calls }} call{{ totals.calls === 1 ? '' : 's' }}
-          ({{ totals.ok }} ok / {{ totals.errors }} error)
+          · {{ $t('insights.zarniwoop.calls', { n: totals.calls }, totals.calls) }}
+          {{ $t('insights.zarniwoop.callsBreakdown', { ok: totals.ok, errors: totals.errors }) }}
         </div>
         <VButton
           variant="neutral"
@@ -165,21 +168,21 @@ const now = Date.now();
           @click="reload"
           :disabled="state.loading.value"
         >
-          Reload
+          {{ $t('insights.zarniwoop.reload') }}
         </VButton>
       </div>
 
       <table class="table table-sm">
         <thead>
           <tr>
-            <th class="w-32">Enabled</th>
-            <th class="w-40">Instance</th>
-            <th class="w-24">Protocol</th>
-            <th>Modalities</th>
-            <th class="w-32">Availability</th>
-            <th>Status</th>
-            <th class="w-32 text-right">Calls (ok / err)</th>
-            <th class="w-40">Last used</th>
+            <th class="w-32">{{ $t('insights.zarniwoop.colEnabled') }}</th>
+            <th class="w-40">{{ $t('insights.zarniwoop.colInstance') }}</th>
+            <th class="w-24">{{ $t('insights.zarniwoop.colProtocol') }}</th>
+            <th>{{ $t('insights.zarniwoop.colModalities') }}</th>
+            <th class="w-32">{{ $t('insights.zarniwoop.colAvailability') }}</th>
+            <th>{{ $t('insights.zarniwoop.colStatus') }}</th>
+            <th class="w-32 text-right">{{ $t('insights.zarniwoop.colCalls') }}</th>
+            <th class="w-40">{{ $t('insights.zarniwoop.colLastUsed') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -196,13 +199,18 @@ const now = Date.now();
                 <span
                   v-if="inst.manualOverride"
                   class="badge badge--tag"
-                  :title="`Manual override: ${inst.manualOverride}. Settings default: ${inst.defaultEnabled ? 'enabled' : 'disabled'}.`"
-                >override</span>
+                  :title="$t('insights.zarniwoop.overrideTitle', {
+                    mode: inst.manualOverride,
+                    fallback: inst.defaultEnabled
+                      ? $t('insights.zarniwoop.enabled')
+                      : $t('insights.zarniwoop.disabled'),
+                  })"
+                >{{ $t('insights.zarniwoop.override') }}</span>
                 <span
                   v-else-if="!inst.defaultEnabled"
                   class="opacity-60 text-xs"
-                  title="Settings have research.endpoint.<id>.enabled=false"
-                >off by default</span>
+                  :title="$t('insights.zarniwoop.offByDefaultTitle')"
+                >{{ $t('insights.zarniwoop.offByDefault') }}</span>
               </label>
               <VButton
                 v-if="inst.manualOverride"
@@ -211,7 +219,7 @@ const now = Date.now();
                 class="mt-1"
                 @click="resetOverride(inst)"
                 :disabled="state.loading.value"
-              >reset</VButton>
+              >{{ $t('insights.zarniwoop.reset') }}</VButton>
             </td>
             <td class="font-mono">
               {{ inst.id }}
@@ -234,7 +242,9 @@ const now = Date.now();
                 class="text-xs opacity-60 mt-1"
                 :title="inst.activeCooldownSignature ?? ''"
               >
-                cooldown until {{ formatTimestamp(inst.activeCooldownUntil) }}
+                {{ $t('insights.zarniwoop.cooldownUntil', {
+                  when: formatTimestamp(inst.activeCooldownUntil),
+                }) }}
                 {{ formatDuration(now, inst.activeCooldownUntil) }}
                 <div v-if="inst.activeCooldownSubject" class="font-mono opacity-70">
                   {{ inst.activeCooldownSubject }} · {{ inst.activeCooldownSignature }}
@@ -246,10 +256,10 @@ const now = Date.now();
                   :outline="true"
                   class="mt-1"
                   :disabled="state.loading.value"
-                  title="Clear this cooldown — the provider can be queried again immediately"
+                  :title="$t('insights.zarniwoop.clearCooldownTitle')"
                   @click="clearCooldown(inst)"
                 >
-                  clear cooldown
+                  {{ $t('insights.zarniwoop.clearCooldown') }}
                 </VButton>
               </div>
             </td>
@@ -261,7 +271,7 @@ const now = Date.now();
                 class="text-xs text-error mt-1"
                 :title="inst.lastErrorAt ?? ''"
               >
-                last error: {{ inst.lastErrorMessage }}
+                {{ $t('insights.zarniwoop.lastError', { message: inst.lastErrorMessage }) }}
               </div>
             </td>
             <td class="text-right text-xs">
@@ -276,10 +286,9 @@ const now = Date.now();
       </table>
 
       <div class="text-xs opacity-50">
-        Counters and manual overrides are pod-local — both reset when
-        the project is suspended. The settings default lives at
-        <span class="font-mono">research.endpoint.&lt;id&gt;.enabled</span>;
-        the persistent audit log at
+        {{ $t('insights.zarniwoop.footnotePre') }}
+        <span class="font-mono">research.endpoint.&lt;id&gt;.enabled</span>{{
+          $t('insights.zarniwoop.footnoteMid') }}
         <span class="font-mono">_vance/logs/research/</span>.
       </div>
     </template>

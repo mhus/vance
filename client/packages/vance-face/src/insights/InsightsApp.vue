@@ -810,7 +810,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
             class="tab tab-more__btn"
             :class="{ 'tab--active': overflowTopTabs.some((t) => t.key === topTab) }"
             @click.stop="toggleMoreMenu"
-          >More ▾</button>
+          >{{ $t('insights.tabs2.more') }}</button>
         </div>
       </div>
 
@@ -857,7 +857,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
           class="tab tab-more__btn"
           tabindex="-1"
           data-more-phantom
-        >More ▾</button>
+        >{{ $t('insights.tabs2.more') }}</button>
       </div>
 
       <div
@@ -966,7 +966,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               class="tab"
               :class="{ 'tab--active': activeTab === 'live-tools' }"
               @click="activeTab = 'live-tools'"
-            >Live Tools</button>
+            >{{ $t('insights.tabs2.liveTools') }}</button>
           </div>
 
           <VCard v-if="activeTab === 'overview'" :title="$t('insights.session.detailsTitle')">
@@ -1251,12 +1251,15 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   <template v-for="(v, k) in [extractPrakMeta(m.metadata)]" :key="k">
                     <span v-if="v.type" class="badge badge--secondary font-mono">{{ v.type }}</span>
                     <span v-if="v.importance != null">
-                      importance: <strong>{{ v.importance }}</strong>/5
+                      {{ $t('insights.prakMeta.importance') }} <strong>{{ v.importance }}</strong>/5
                     </span>
                     <span v-if="v.confidence != null">
-                      confidence: <strong>{{ Math.round(v.confidence * 100) }}%</strong>
+                      {{ $t('insights.prakMeta.confidence') }}
+                      <strong>{{ Math.round(v.confidence * 100) }}%</strong>
                     </span>
-                    <span v-if="v.decay">decay: <strong>{{ v.decay }}</strong></span>
+                    <span v-if="v.decay">
+                      {{ $t('insights.prakMeta.decay') }} <strong>{{ v.decay }}</strong>
+                    </span>
                     <span
                       v-for="label in (v.labels || [])"
                       :key="`lbl-${label}`"

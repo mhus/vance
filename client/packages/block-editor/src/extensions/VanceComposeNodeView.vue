@@ -14,6 +14,7 @@
  * host resolves output content URLs, so this view needs no tenant/REST access.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useT } from '../useT';
 import jsyaml from 'js-yaml';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
@@ -29,6 +30,8 @@ import {
   clearComposeManaged,
 } from './composeOutputs';
 import { useComposeBatch, type ComposeBatchHost } from '../composables/useComposeBatch';
+
+const t = useT();
 
 const POLL_MS = 3000;
 
@@ -176,7 +179,7 @@ function startPolling(runId: string) {
       stopTimer();
       running.value = false;
       progress.value = null;
-      error.value = 'Lauf nicht mehr verfügbar (Pod-Neustart?) — bitte neu ausführen.';
+      error.value = t('blockEditor.compose.runGone');
       props.updateAttributes({ yaml: clearComposeManaged(yaml.value) });
     }
   };
@@ -341,7 +344,9 @@ onBeforeUnmount(() => {
           class="vance-compose__run"
           :class="{ 'vance-compose__run--stop': displayCanStop }"
           :disabled="runDisabled"
-          :title="!busy ? 'Run compose' : (displayCanStop ? 'Stop' : 'Läuft…')"
+          :title="!busy
+            ? t('blockEditor.compose.runCompose')
+            : (displayCanStop ? t('blockEditor.compose.stop') : t('blockEditor.compose.running'))"
           @click.stop="onRunButton"
         >{{ runGlyph }}</button>
 
@@ -349,7 +354,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="vance-compose__menu-btn"
-            title="Weitere Aktionen"
+            :title="t('blockEditor.compose.moreActions')"
             @click.stop="toggleMenu"
           >…</button>
           <div v-if="menuOpen" class="vance-compose__menu" @click.stop>
@@ -358,23 +363,23 @@ onBeforeUnmount(() => {
               class="vance-compose__menu-item"
               :disabled="batch.state.active"
               @click="runAllUntil"
-            >Run All Until</button>
+            >{{ t('blockEditor.compose.runAllUntil') }}</button>
             <button
               type="button"
               class="vance-compose__menu-item"
               @click="clearOutput"
-            >Clear Output</button>
+            >{{ t('blockEditor.compose.clearOutput') }}</button>
             <button
               type="button"
               class="vance-compose__menu-item"
               :disabled="batch.state.active"
               @click="clearAllOutput"
-            >Clear All Output</button>
+            >{{ t('blockEditor.compose.clearAllOutput') }}</button>
           </div>
         </div>
 
         <span v-if="batchHere && batch.state.label" class="vance-compose__status">{{ batch.state.label }}</span>
-        <span v-else-if="cancelling" class="vance-compose__status">stoppe…</span>
+        <span v-else-if="cancelling" class="vance-compose__status">{{ t('blockEditor.compose.stopping') }}</span>
         <span v-else-if="result" class="vance-compose__status">
           {{ result.workspace ? result.workspace + ' · ' : '' }}{{ result.success ? 'success' : 'failed' }}
         </span>

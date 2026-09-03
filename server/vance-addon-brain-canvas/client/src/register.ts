@@ -1,5 +1,10 @@
 import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
+// Side effect: contributes this addon's messages to the host's i18n instance.
+// Imported here and not only from the components, so keys the HOST resolves
+// (the `tabLabelKey` below) are available as soon as the addon registers —
+// before any of its components mount.
+import './i18n';
 
 const CanvasKind = defineAsyncComponent(() => import('./CanvasKind.vue'));
 const CanvasbookAppKind = defineAsyncComponent(() => import('./CanvasbookAppKind.vue'));

@@ -806,14 +806,14 @@ async function submit(): Promise<void> {
           variant="ghost"
           :disabled="creating"
           @click="close"
-        >Cancel</VButton>
+        >{{ $t('cortex.create.cancel') }}</VButton>
         <VButton
           v-if="createMode !== 'template' || selectedTemplate"
           type="submit"
           variant="primary"
           :loading="creating"
           :disabled="!projectId"
-        >Create</VButton>
+        >{{ $t('cortex.create.create') }}</VButton>
       </div>
     </form>
   </VModal>

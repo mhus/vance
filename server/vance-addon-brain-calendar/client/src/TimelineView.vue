@@ -8,6 +8,7 @@ import {
   type TimelineDocument,
   type TimelineEntry,
 } from './timelineCodec';
+import { useT } from './i18n';
 
 // `meta` and `embedRef` come from the host's chat-fence rendering
 // pipeline. Declared for shape-compatibility when the host loads this
@@ -562,16 +563,22 @@ function rangeLabel(p: Placed): string {
 function uncertaintyLabel(entry: TimelineEntry): string | null {
   const parts: string[] = [];
   const bound = (what: string, earliest?: string, latest?: string) => {
-    if (earliest && latest) parts.push(`${what} between ${earliest} and ${latest}`);
-    else if (earliest) parts.push(`${what} no earlier than ${earliest}`);
-    else if (latest) parts.push(`${what} no later than ${latest}`);
+    if (earliest && latest) {
+      parts.push(t('calendar.timeline.bound.between', { what, earliest, latest }));
+    } else if (earliest) {
+      parts.push(t('calendar.timeline.bound.noEarlier', { what, earliest }));
+    } else if (latest) {
+      parts.push(t('calendar.timeline.bound.noLater', { what, latest }));
+    }
   };
-  bound('start', entry.fromEarliest, entry.fromLatest);
-  bound('end', entry.toEarliest, entry.toLatest);
+  bound(t('calendar.timeline.bound.start'), entry.fromEarliest, entry.fromLatest);
+  bound(t('calendar.timeline.bound.end'), entry.toEarliest, entry.toLatest);
   return parts.length > 0 ? parts.join(', ') : null;
 }
 
 // ── Selection ───────────────────────────────────────────────────────
+
+const t = useT();
 
 const selectedId = ref<string | null>(null);
 const selected = computed<Placed | null>(
@@ -592,35 +599,33 @@ const rootClass = computed(() => ['tl', `tl--${props.mode}`]);
       <div class="tl-heading">
         <span v-if="resolvedDoc.title" class="tl-title">{{ resolvedDoc.title }}</span>
         <span class="tl-count">
-          {{ placed.length }} {{ placed.length === 1 ? 'entry' : 'entries' }}
+          {{ t('calendar.timeline.entryCount', { n: placed.length }, placed.length) }}
         </span>
       </div>
       <div class="tl-controls">
-        <button type="button" class="tl-btn" title="Zoom out" @click="zoomBy(1.5)">−</button>
-        <button type="button" class="tl-btn" title="Zoom in" @click="zoomBy(1 / 1.5)">+</button>
+        <button type="button" class="tl-btn" :title="t('calendar.timeline.zoomOut')" @click="zoomBy(1.5)">−</button>
+        <button type="button" class="tl-btn" :title="t('calendar.timeline.zoomIn')" @click="zoomBy(1 / 1.5)">+</button>
         <button
           type="button"
           class="tl-btn tl-btn--wide"
           :disabled="!isZoomed"
-          title="Fit all entries"
+          :title="t('calendar.timeline.fitTip')"
           @click="resetView"
-        >Fit</button>
+        >{{ t('calendar.timeline.fit') }}</button>
       </div>
     </div>
 
     <div v-if="unreadable.length > 0" class="tl-notice">
-      {{ unreadable.length }}
-      {{ unreadable.length === 1 ? 'entry has' : 'entries have' }}
-      a position this
-      {{ axis.mode }} axis cannot read and
-      {{ unreadable.length === 1 ? 'is' : 'are' }}
-      not drawn:
-      {{ unreadable.slice(0, 3).map(e => `${e.title} (${e.from})`).join(', ')
-      }}{{ unreadable.length > 3 ? ', …' : '' }}
+      {{ t('calendar.timeline.unreadable', {
+        n: unreadable.length,
+        axis: axis.mode,
+        list: unreadable.slice(0, 3).map(e => `${e.title} (${e.from})`).join(', ')
+          + (unreadable.length > 3 ? ', …' : ''),
+      }, unreadable.length) }}
     </div>
 
     <div v-if="placed.length === 0" class="tl-empty">
-      This timeline has no entries that can be placed on its axis.
+      {{ t('calendar.timeline.empty') }}
     </div>
 
     <template v-else>
@@ -663,7 +668,7 @@ const rootClass = computed(() => ['tl', `tl--${props.mode}`]);
               v-if="nowPct !== null"
               class="tl-now"
               :style="{ left: nowPct + '%' }"
-              title="now"
+              :title="t('calendar.timeline.now')"
             ></div>
 
             <div v-if="lane.rows.length === 0" class="tl-row tl-row--empty"></div>
@@ -734,10 +739,10 @@ const rootClass = computed(() => ['tl', `tl--${props.mode}`]);
           {{ uncertaintyLabel(selected.entry) }}
         </div>
         <div v-if="selected.entry.lane" class="tl-detail-meta">
-          lane: {{ selected.entry.lane }}
+          {{ t('calendar.timeline.lane', { name: selected.entry.lane }) }}
         </div>
         <div v-if="selected.entry.parent" class="tl-detail-meta">
-          inside: {{ selected.entry.parent }}
+          {{ t('calendar.timeline.inside', { name: selected.entry.parent }) }}
         </div>
         <div v-if="selected.entry.notes" class="tl-detail-notes">
           {{ selected.entry.notes }}

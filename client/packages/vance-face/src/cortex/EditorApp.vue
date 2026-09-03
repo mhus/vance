@@ -1225,26 +1225,26 @@ const chatBoundDocumentPathDisplay = computed<string | null>(() => {
 // Short, mode-aware label for the topbar bind chip. Switching happens
 // through the "Chat" menu; the chip is a status readout only.
 const bindStatusLabel = computed<string>(() => {
-  if (chatBindMode.value === 'off') return 'unbound';
+  if (chatBindMode.value === 'off') return msg('cortex.bindUnbound');
   const p = chatBoundDocumentPathDisplay.value;
   if (chatBindMode.value === 'auto') {
-    return p ? `auto · ${p}` : 'auto';
+    return p ? msg('cortex.bindAutoWithPath', { path: p }) : msg('cortex.bindAuto');
   }
-  return p ?? 'pinned (closed)';
+  return p ?? msg('cortex.bindPinnedClosed');
 });
 
 const bindIconTooltip = computed<string>(() => {
   switch (chatBindMode.value) {
     case 'off':
-      return 'Chat is not bound to any document. Switch via the Chat menu.';
+      return msg('cortex.bindOffTooltip');
     case 'auto':
       return chatBoundDocumentPath.value
-        ? `Auto: chat follows the current tab (${chatBoundDocumentPath.value}); your text selection is sent too. Switch via the Chat menu.`
-        : 'Auto: chat follows the current tab. Open a document to bind it.';
+        ? msg('cortex.bindAutoTooltip', { path: chatBoundDocumentPath.value })
+        : msg('cortex.bindAutoTooltipEmpty');
     default:
       return chatBoundDocumentPath.value
-        ? `Pinned: chat is bound to ${chatBoundDocumentPath.value}. Switch via the Chat menu.`
-        : 'Pinned document is closed — reopen it or switch mode via the Chat menu.';
+        ? msg('cortex.bindPinnedTooltip', { path: chatBoundDocumentPath.value })
+        : msg('cortex.bindPinnedTooltipClosed');
   }
 });
 
@@ -1382,7 +1382,7 @@ function onNewFolderConfirm(path: string): void {
 }
 
 async function onDelete(id: string): Promise<void> {
-  if (!confirm('Delete this document?')) return;
+  if (!confirm(msg('cortex.confirmDelete'))) return;
   await store.deleteFile(id);
 }
 
@@ -1533,7 +1533,7 @@ async function requestCloseTab(id: string): Promise<void> {
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
       const label = tab.title || tab.path;
-      if (!window.confirm(`„${label}" konnte nicht gespeichert werden (${reason}).\n\nTrotzdem schließen und die Änderungen verwerfen?`)) {
+      if (!window.confirm(msg('cortex.confirmDiscardUnsaved', { label, reason }))) {
         return;
       }
     }
@@ -1687,7 +1687,7 @@ function toggleRightPanel(): void {
 }
 
 const toggleTooltip = computed<string>(() => {
-  if (hasSession.value) return 'Leave chat';
+  if (hasSession.value) return msg('cortex.leaveChat');
   return rightPanelOpen.value ? 'Hide sessions' : 'Show sessions';
 });
 
@@ -1921,38 +1921,38 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         class="flex items-center gap-1 px-2 py-1 border-b border-base-300 bg-base-200 text-sm shrink-0"
       >
         <VDropdown menu-class="mt-1 w-56">
-          <template #trigger>File</template>
+          <template #trigger>{{ $t('cortex.menu.file') }}</template>
             <li>
               <a @click="closeMenus(); onNew()">
-                <span class="flex-1">New file…</span>
+                <span class="flex-1">{{ $t('cortex.menu.newFile') }}</span>
               </a>
             </li>
             <li>
               <a @click="closeMenus(); onNewFolder()">
-                <span class="flex-1">New folder…</span>
+                <span class="flex-1">{{ $t('cortex.menu.newFolder') }}</span>
               </a>
             </li>
             <li :class="{ disabled: !activeTab || !activeTab.dirty }">
               <a @click="closeMenus(); onSave()">
-                <span class="flex-1">Save</span>
+                <span class="flex-1">{{ $t('cortex.menu.save') }}</span>
                 <kbd class="kbd kbd-xs">⌘S</kbd>
               </a>
             </li>
             <li :class="{ disabled: !hasDirtyTabs }">
               <a @click="closeMenus(); onSaveAll()">
-                <span class="flex-1">Save all</span>
+                <span class="flex-1">{{ $t('cortex.menu.saveAll') }}</span>
               </a>
             </li>
             <li :class="{ disabled: !canExportPdf || exportingPdf }">
               <a @click="closeMenus(); onExportPdf()">
-                <span class="flex-1">Export PDF…</span>
+                <span class="flex-1">{{ $t('cortex.menu.exportPdf') }}</span>
                 <span v-if="exportingPdf" class="loading loading-spinner loading-xs" />
               </a>
             </li>
             <li><div class="divider my-0" /></li>
             <li :class="{ disabled: !activeTab }">
               <a @click="closeMenus(); onCloseActiveTab()">
-                <span class="flex-1">Close tab</span>
+                <span class="flex-1">{{ $t('cortex.menu.closeTab') }}</span>
                 <kbd class="kbd kbd-xs">⌘W</kbd>
               </a>
             </li>
@@ -1970,17 +1970,17 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         </VDropdown>
 
         <VDropdown menu-class="mt-1 w-64">
-          <template #trigger>View</template>
+          <template #trigger>{{ $t('cortex.menu.view') }}</template>
             <li>
               <a @click="closeMenus(); autoTarget = !autoTarget">
                 <span class="w-4 text-center">{{ autoTarget ? '✓' : '' }}</span>
-                <span class="flex-1">Auto — reveal active file in tree</span>
+                <span class="flex-1">{{ $t('cortex.menu.autoReveal') }}</span>
               </a>
             </li>
             <li>
               <a @click="closeMenus(); suggestionsEnabled = !suggestionsEnabled">
                 <span class="w-4 text-center">{{ suggestionsEnabled ? '✓' : '' }}</span>
-                <span class="flex-1">Auto — suggest completions on idle</span>
+                <span class="flex-1">{{ $t('cortex.menu.autoComplete') }}</span>
               </a>
             </li>
             <!-- Contribution slot. Below a separator and below the host's own
@@ -2000,7 +2000,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         </VDropdown>
 
         <VDropdown v-if="projectId" menu-class="mt-1 w-64">
-          <template #trigger>Actions</template>
+          <template #trigger>{{ $t('cortex.menu.actions') }}</template>
             <li :class="{ disabled: !activeTab }">
               <a @click="closeMenus(); activeTab && openShare({ documentPath: activeTab.path })">
                 <span class="flex-1">{{ $t('share.menuLabel') }}</span>
@@ -2040,7 +2040,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
              and is not rendered when nothing contributes any, because an empty
              menu is a promise the bar cannot keep. -->
         <VDropdown v-if="extrasMenuItems.length" menu-class="mt-1 w-64">
-          <template #trigger>Extras</template>
+          <template #trigger>{{ $t('cortex.menu.extras') }}</template>
             <li
               v-for="item in extrasMenuItems"
               :key="item.id"
@@ -2053,23 +2053,23 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         </VDropdown>
 
         <VDropdown v-if="hasSession" menu-class="mt-1 w-72">
-          <template #trigger>Chat</template>
+          <template #trigger>{{ $t('cortex.menu.chat') }}</template>
             <li>
               <a @click="closeMenus(); onBindModeAuto()">
                 <span class="w-4 text-center">{{ chatBindMode === 'auto' ? '✓' : '' }}</span>
-                <span class="flex-1">Auto — follow current tab</span>
+                <span class="flex-1">{{ $t('cortex.menu.autoFollow') }}</span>
               </a>
             </li>
             <li :class="{ disabled: !activeTab }">
               <a @click="closeMenus(); onPinActiveTab()">
                 <span class="w-4 text-center">{{ chatBindMode === 'pinned' ? '✓' : '' }}</span>
-                <span class="flex-1">Pin to current tab</span>
+                <span class="flex-1">{{ $t('cortex.menu.pinToTab') }}</span>
               </a>
             </li>
             <li :class="{ disabled: chatBindMode === 'off' }">
               <a @click="closeMenus(); onUnbindChat()">
                 <span class="w-4 text-center">{{ chatBindMode === 'off' ? '✓' : '' }}</span>
-                <span class="flex-1">Unbind chat</span>
+                <span class="flex-1">{{ $t('cortex.menu.unbindChat') }}</span>
               </a>
             </li>
         </VDropdown>
@@ -2080,8 +2080,8 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
           <span
             v-if="clientToolService?.isExecuting.value"
             class="text-xs px-2 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 animate-pulse"
-            title="An agent tool is currently editing the chat-bound document"
-          >agent editing…</span>
+            :title="$t('cortex.menu.agentEditingTitle')"
+          >{{ $t('cortex.menu.agentEditing') }}</span>
           <span
             v-else
             class="text-xs px-2 py-0.5 rounded font-mono flex items-center gap-1 select-none"
@@ -2126,8 +2126,8 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
 
       <div v-if="!activeTab" class="flex-1 flex items-center justify-center">
         <VEmptyState
-          headline="No document open"
-          body="Pick one from the tree on the left, or create a new file."
+          :headline="$t('cortex.menu.noDocumentHeadline')"
+          :body="$t('cortex.menu.noDocumentBody')"
         />
       </div>
 

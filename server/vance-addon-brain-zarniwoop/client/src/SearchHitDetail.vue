@@ -5,6 +5,7 @@ import { VButton, VShareButton } from '@vance/components';
 import { CONTENT_ON_DEMAND, type SearchHitView } from './generated/search/SearchHitView';
 import HitPicture from './HitPicture.vue';
 import { extraLink, imageFile, link } from './hitView';
+import { useT } from './i18n';
 
 /**
  * What an opened hit shows beyond its headline.
@@ -17,6 +18,8 @@ import { extraLink, imageFile, link } from './hitView';
  * reader following a link or pressing "Load full text" is not asking to close
  * what they just opened.
  */
+const t = useT();
+
 defineProps<{
   hit: SearchHitView;
   fullText: string | null;
@@ -55,7 +58,7 @@ function shareSubject(hit: SearchHitView) {
           :disabled="loadingBody"
           @click="$emit('load')"
         >
-          {{ loadingBody ? 'Loading…' : 'Load full text' }}
+          {{ loadingBody ? t('search.detail.loading') : t('search.detail.loadFullText') }}
           <span v-if="hit.sizeBytes" class="opacity-60">
             ({{ Math.round(hit.sizeBytes / 1024) }} kB)
           </span>
@@ -74,7 +77,7 @@ function shareSubject(hit: SearchHitView) {
       ></iframe>
     </template>
     <p v-else class="text-xs opacity-60">
-      This provider ships no full text — the page behind the link is the answer.
+      {{ t('search.detail.noFullText') }}
     </p>
 
     <div class="mt-1 flex flex-wrap gap-3 text-sm">
@@ -86,7 +89,7 @@ function shareSubject(hit: SearchHitView) {
         rel="noopener noreferrer"
         class="hover:underline"
       >
-        Open source page ↗
+        {{ t('search.detail.openSource') }}
       </a>
       <!-- Two links for an image on purpose: the page carries the context and
            the attribution, the file is just pixels. -->
@@ -97,7 +100,7 @@ function shareSubject(hit: SearchHitView) {
         rel="noopener noreferrer"
         class="hover:underline"
       >
-        Open image file ↗
+        {{ t('search.detail.openImage') }}
       </a>
       <a
         v-if="extraLink(hit, 'videoUrl')"
@@ -106,7 +109,7 @@ function shareSubject(hit: SearchHitView) {
         rel="noopener noreferrer"
         class="hover:underline"
       >
-        Watch video ↗
+        {{ t('search.detail.watchVideo') }}
       </a>
       <a
         v-if="extraLink(hit, 'pdfUrl')"
@@ -115,7 +118,7 @@ function shareSubject(hit: SearchHitView) {
         rel="noopener noreferrer"
         class="hover:underline"
       >
-        Open PDF ↗
+        {{ t('search.detail.openPdf') }}
       </a>
       <a
         v-if="extraLink(hit, 'hnDiscussion')"
@@ -124,7 +127,7 @@ function shareSubject(hit: SearchHitView) {
         rel="noopener noreferrer"
         class="hover:underline"
       >
-        Open discussion ↗
+        {{ t('search.detail.openDiscussion') }}
       </a>
     </div>
   </div>

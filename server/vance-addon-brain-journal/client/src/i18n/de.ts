@@ -1,0 +1,35 @@
+/** German messages of the journal addon surface. Keys mirror {@code ./en}. */
+export default {
+  journal: {
+    today: 'Heute',
+    searchPlaceholder: 'Einträge suchen…',
+    untitled: '(ohne Titel)',
+    noMatch: 'Kein passender Eintrag.',
+    rebuilding: 'Baut neu…',
+    rebuildTip: 'Index + Statistik neu bauen',
+    statEntries: 'Einträge',
+    statDayStreak: 'Tage in Folge',
+    statLongest: 'längste Serie',
+    loading: 'Lädt Journal…',
+    loadingEntry: 'Lädt Eintrag…',
+    badgeNew: 'neu',
+    moodPlaceholder: 'Stimmung…',
+    deleteEntry: 'Eintrag löschen',
+    tagsPlaceholder: 'Tags, mit, Komma',
+    pickDay: 'Einen Tag im Kalender auswählen.',
+    onThisDay: 'An diesem Tag',
+    nothingEarlier: 'Nichts aus früheren Jahren.',
+    status: {
+      edited: 'Bearbeitet',
+      saving: 'Speichert…',
+      saved: 'Gespeichert',
+    },
+    confirmDelete: 'Eintrag für {date} löschen?',
+    error: {
+      scan: 'Journal konnte nicht gelesen werden.',
+      delete: 'Löschen fehlgeschlagen.',
+      search: 'Suche fehlgeschlagen.',
+      rebuild: 'Neu bauen fehlgeschlagen.',
+    },
+  },
+};

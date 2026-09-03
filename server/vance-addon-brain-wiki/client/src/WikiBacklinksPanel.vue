@@ -11,6 +11,7 @@
 import { ref, watch } from 'vue';
 import { wikiBacklinks } from './api';
 import type { WikiPageView } from './generated/wiki/WikiPageView';
+import { useT } from './i18n';
 
 const props = defineProps<{
   projectId: string;
@@ -22,6 +23,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'navigate', page: WikiPageView): void;
 }>();
+
+const t = useT();
 
 const inbound = ref<WikiPageView[]>([]);
 const loading = ref(false);
@@ -38,7 +41,7 @@ async function load(path: string | null): Promise<void> {
     const data = await wikiBacklinks(props.projectId, props.folder, path);
     inbound.value = data.inbound ?? [];
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Could not load backlinks.';
+    error.value = e instanceof Error ? e.message : t('wiki.backlinks.error');
     inbound.value = [];
   } finally {
     loading.value = false;
@@ -55,14 +58,14 @@ function open(page: WikiPageView): void {
 <template>
   <div class="wiki-backlinks">
     <header class="wiki-backlinks__header">
-      <span class="wiki-backlinks__title">What links here</span>
+      <span class="wiki-backlinks__title">{{ t('wiki.backlinks.title') }}</span>
       <span class="wiki-backlinks__count">{{ inbound.length }}</span>
     </header>
 
     <div v-if="error" class="wiki-backlinks__error">{{ error }}</div>
-    <div v-else-if="loading" class="wiki-backlinks__hint">Loading…</div>
+    <div v-else-if="loading" class="wiki-backlinks__hint">{{ t('wiki.common.loading') }}</div>
     <div v-else-if="inbound.length === 0" class="wiki-backlinks__hint">
-      No pages link here yet. Link with <code>[[{{ '…' }}]]</code>, then rebuild.
+      {{ t('wiki.backlinks.emptyPre') }} <code>[[{{ '…' }}]]</code>{{ t('wiki.backlinks.emptyPost') }}
     </div>
 
     <ul v-else class="wiki-backlinks__list">

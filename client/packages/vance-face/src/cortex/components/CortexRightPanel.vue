@@ -69,7 +69,7 @@ const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocum
     <div
       class="flex items-stretch border-b border-base-300 bg-base-200 text-sm shrink-0"
       role="tablist"
-      aria-label="Right panel"
+      :aria-label="$t('cortex.rightPanel.title')"
     >
       <button
         type="button"
@@ -78,7 +78,7 @@ const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocum
         class="px-4 py-1.5 border-r border-base-300"
         :class="activeTab === 'chat' ? 'bg-base-100 font-semibold' : 'opacity-70 hover:bg-base-100/40'"
         @click="activeTab = 'chat'"
-      >Chat</button>
+      >{{ $t('cortex.rightPanel.chat') }}</button>
       <button
         type="button"
         role="tab"
@@ -94,7 +94,7 @@ const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocum
         class="px-4 py-1.5"
         :class="activeTab === 'help' ? 'bg-base-100 font-semibold' : 'opacity-70 hover:bg-base-100/40'"
         @click="activeTab = 'help'"
-      >Help</button>
+      >{{ $t('cortex.rightPanel.help') }}</button>
     </div>
     <div class="flex-1 min-h-0">
       <!-- v-show keeps the chat panel mounted while the user is on the

@@ -152,7 +152,7 @@ const segments = computed<MathSegment[]>(() => {
       <span v-else v-html="seg.html" />
     </template>
     <div v-if="segments.length === 0" class="formula-empty">
-      <span class="opacity-40 italic">Empty formula.</span>
+      <span class="opacity-40 italic">{{ $t('kindViews.formula.empty') }}</span>
     </div>
   </div>
 </template>

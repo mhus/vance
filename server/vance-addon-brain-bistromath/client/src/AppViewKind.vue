@@ -4,6 +4,7 @@ import { VAlert, VButton } from '@vance/components';
 import WidgetNode from './WidgetNode.vue';
 import { loadViewByPath } from './api';
 import type { RenderedView } from './generated/bistromath/RenderedView';
+import { useT } from './i18n';
 
 /**
  * A view document opened on its own — the author's side of Bistromath.
@@ -24,6 +25,8 @@ import type { RenderedView } from './generated/bistromath/RenderedView';
 const props = defineProps<{
   document: { id?: string; path: string; projectId: string; title?: string | null };
 }>();
+
+const t = useT();
 
 const view = ref<RenderedView | null>(null);
 const error = ref<string | null>(null);
@@ -67,20 +70,20 @@ function openApp(): void {
 <template>
   <div class="flex h-full min-h-0 flex-col gap-3 p-3">
     <div class="flex flex-wrap items-center gap-2">
-      <span class="font-semibold">{{ view?.title ?? document.title ?? 'View' }}</span>
+      <span class="font-semibold">{{ view?.title ?? document.title ?? t('bistromath.view.fallbackTitle') }}</span>
       <span class="flex-1" />
-      <VButton variant="ghost" size="sm" :disabled="busy" @click="load()">Re-check</VButton>
-      <VButton variant="ghost" size="sm" title="Open the app this view belongs to" @click="openApp()">
-        Open the app ↗
+      <VButton variant="ghost" size="sm" :disabled="busy" @click="load()">{{ t('bistromath.view.recheck') }}</VButton>
+      <VButton variant="ghost" size="sm" :title="t('bistromath.view.openAppTip')" @click="openApp()">
+        {{ t('bistromath.view.openApp') }}
       </VButton>
     </div>
 
     <VAlert v-if="error" variant="error" class="whitespace-pre-line">{{ error }}</VAlert>
 
     <VAlert v-if="view" variant="info">
-      Preview — no program is running, so anything bound to <code class="font-mono">from:</code> is
-      empty and <code class="font-mono">show:</code> hides what it gates. Open the app to see it
-      with data.
+      {{ t('bistromath.view.previewPre') }} <code class="font-mono">from:</code>
+      {{ t('bistromath.view.previewMid') }} <code class="font-mono">show:</code>
+      {{ t('bistromath.view.previewPost') }}
     </VAlert>
 
     <div v-if="view" class="min-h-0 flex-1 overflow-y-auto rounded border border-base-300 p-3">

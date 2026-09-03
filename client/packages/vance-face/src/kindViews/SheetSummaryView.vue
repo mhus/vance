@@ -79,9 +79,9 @@ async function onEdit(next: SheetDocument): Promise<void> {
   <div class="text-sm">
     <div v-if="model" class="flex flex-col gap-2 p-2">
       <div class="flex items-center gap-2">
-        <span class="font-semibold flex-1 truncate">{{ document?.title || 'Sheet' }}</span>
+        <span class="font-semibold flex-1 truncate">{{ document?.title || $t('kindViews.sheet.label') }}</span>
         <span class="opacity-50 text-xs tabular-nums">{{ dims.rows }}×{{ dims.cols }}</span>
-        <VButton variant="ghost" @click="editOpen = true">Bearbeiten</VButton>
+        <VButton variant="ghost" @click="editOpen = true">{{ $t('kindViews.sheet.edit') }}</VButton>
       </div>
       <div class="preview-wrap">
         <table class="sheet-preview">
@@ -100,9 +100,9 @@ async function onEdit(next: SheetDocument): Promise<void> {
         </table>
       </div>
     </div>
-    <div v-else class="opacity-50 p-2">Leeres Sheet</div>
+    <div v-else class="opacity-50 p-2">{{ $t('kindViews.sheet.empty') }}</div>
 
-    <VModal v-model="editOpen" title="Sheet">
+    <VModal v-model="editOpen" :title="$t('kindViews.sheet.label')">
       <div class="edit-host">
         <SheetView
           v-if="editOpen && model"

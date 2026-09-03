@@ -142,7 +142,7 @@ function onFolderDrop(ev: DragEvent): void {
       <span class="opacity-50 w-3 inline-block text-xs">{{ isOpen(node.path) ? '▾' : '▸' }}</span>
       <span>📁</span>
       <span class="truncate">{{ node.name }}</span>
-      <span v-if="node.loading" class="opacity-50 text-xs" title="loading">⏳</span>
+      <span v-if="node.loading" class="opacity-50 text-xs" :title="$t('cortex.tree.loading')">⏳</span>
       <span
         v-else-if="node.error"
         class="opacity-70 text-xs text-error"
@@ -194,7 +194,7 @@ function onFolderDrop(ev: DragEvent): void {
         <button
           type="button"
           class="opacity-0 group-hover:opacity-60 hover:opacity-100 px-1 text-xs"
-          title="delete"
+          :title="$t('cortex.tree.delete')"
           @click.stop="emit('delete-file', file.id)"
         >✕</button>
       </div>
@@ -221,7 +221,7 @@ function onFolderDrop(ev: DragEvent): void {
         v-else-if="node.loading"
         class="px-2 py-1 text-xs opacity-50 italic"
         :style="{ paddingLeft: `${(depth + 1) * 12 + 4}px` }"
-      >loading…</div>
+      >{{ $t('cortex.tree.loadingText') }}</div>
       <div
         v-else-if="node.error"
         class="px-2 py-1 text-xs text-error"
@@ -231,7 +231,7 @@ function onFolderDrop(ev: DragEvent): void {
         v-else-if="node.loaded && node.children.length === 0 && node.files.length === 0"
         class="px-2 py-1 text-xs opacity-40 italic"
         :style="{ paddingLeft: `${(depth + 1) * 12 + 4}px` }"
-      >empty</div>
+      >{{ $t('cortex.tree.empty') }}</div>
     </template>
   </div>
 </template>

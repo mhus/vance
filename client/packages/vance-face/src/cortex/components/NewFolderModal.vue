@@ -6,12 +6,15 @@
  * the store's {@code addVirtualFolder} to display it in the tree.
  */
 import { ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { VAlert, VButton, VInput, VModal } from '@/components';
 
 interface Props {
   open: boolean;
   initialPath?: string;
 }
+
+const { t } = useI18n();
 
 const props = withDefaults(defineProps<Props>(), {
   initialPath: '',
@@ -42,7 +45,7 @@ function close(): void {
 function submit(): void {
   const normalised = path.value.trim().replace(/^\/+|\/+$/g, '');
   if (!normalised) {
-    error.value = 'Path required';
+    error.value = t('cortex.pathRequired');
     return;
   }
   emit('confirm', normalised);
@@ -52,14 +55,14 @@ function submit(): void {
 <template>
   <VModal
     :model-value="open"
-    title="New folder"
+    :title="$t('cortex.newFolder.title')"
     @update:model-value="(v: boolean) => emit('update:open', v)"
   >
     <form class="space-y-3 p-2" @submit.prevent="submit">
       <VInput
         v-model="path"
-        label="Folder path"
-        placeholder="documents/notes"
+        :label="$t('cortex.newFolder.pathLabel')"
+        :placeholder="$t('cortex.newFolder.pathPlaceholder')"
       />
       <p class="text-xs opacity-60">
         Folders are virtual until a file lives in them — this entry is
@@ -68,8 +71,8 @@ function submit(): void {
       </p>
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
       <div class="flex justify-end gap-2 pt-2">
-        <VButton type="button" variant="ghost" @click="close">Cancel</VButton>
-        <VButton type="submit" variant="primary">Create</VButton>
+        <VButton type="button" variant="ghost" @click="close">{{ $t('cortex.newFolder.cancel') }}</VButton>
+        <VButton type="submit" variant="primary">{{ $t('cortex.newFolder.create') }}</VButton>
       </div>
     </form>
   </VModal>

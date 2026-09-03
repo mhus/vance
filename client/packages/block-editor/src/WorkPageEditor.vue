@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount, onMounted, provide } from 'vue';
+import { useT } from './useT';
 import { blockClipboard, setBlockClipboard } from './blockClipboard';
 import { useEditor, EditorContent } from '@tiptap/vue-3';
 import { BubbleMenu } from '@tiptap/vue-3/menus';
@@ -13,6 +14,8 @@ import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { createLowlight, common } from 'lowlight';
 import 'highlight.js/styles/github.css';
+
+const t = useT();
 
 const lowlight = createLowlight(common);
 
@@ -1274,35 +1277,35 @@ defineExpose({
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('bold') }"
-        :title="'Bold (Ctrl+B)'"
+        :title="t('blockEditor.bubble.bold')"
         @mousedown.prevent
         @click="toggleBold"
       ><strong>B</strong></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('italic') }"
-        :title="'Italic (Ctrl+I)'"
+        :title="t('blockEditor.bubble.italic')"
         @mousedown.prevent
         @click="toggleItalic"
       ><em>i</em></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('strike') }"
-        :title="'Strike'"
+        :title="t('blockEditor.bubble.strike')"
         @mousedown.prevent
         @click="toggleStrike"
       ><s>S</s></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('code') }"
-        :title="'Inline code'"
+        :title="t('blockEditor.bubble.inlineCode')"
         @mousedown.prevent
         @click="toggleCode"
       ><code>&lt;&gt;</code></button>
       <button
         class="canvas-editor__bubble-btn"
         :class="{ 'canvas-editor__bubble-btn--active': editor.isActive('link') }"
-        :title="'Link (Ctrl+K)'"
+        :title="t('blockEditor.bubble.link')"
         @mousedown.prevent
         @click="setLink"
       >🔗</button>
@@ -1323,7 +1326,7 @@ defineExpose({
           'canvas-editor__bubble-btn--active':
             (currentImageWidth() ?? 'full') === opt,
         }"
-        :title="`Width: ${opt}`"
+        :title="t('blockEditor.bubble.width', { size: opt })"
         @mousedown.prevent
         @click="setImageWidth(opt)"
       >{{ opt === 'full' ? 'F' : opt[0].toUpperCase() }}</button>
@@ -1338,13 +1341,13 @@ defineExpose({
         :style="{ left: blockMenu.x + 'px', top: blockMenu.y + 'px' }"
       >
         <button type="button" class="block-handle-menu__item" @click="menuInsert('above')">
-          ↑ Oben einfügen
+          {{ t('blockEditor.handle.insertAbove') }}
         </button>
         <button type="button" class="block-handle-menu__item" @click="menuInsert('below')">
-          ↓ Unten einfügen
+          {{ t('blockEditor.handle.insertBelow') }}
         </button>
         <button type="button" class="block-handle-menu__item" @click="menuCopy">
-          ⧉ Kopieren
+          {{ t('blockEditor.handle.copy') }}
         </button>
         <button
           type="button"
@@ -1352,14 +1355,14 @@ defineExpose({
           :disabled="!blockClipboard"
           @click="menuPaste"
         >
-          📋 Einfügen (darunter)
+          {{ t('blockEditor.handle.paste') }}
         </button>
         <button
           type="button"
           class="block-handle-menu__item block-handle-menu__item--danger"
           @click="menuRemove"
         >
-          🗑 Löschen
+          {{ t('blockEditor.handle.delete') }}
         </button>
       </div>
     </Teleport>
@@ -1373,7 +1376,7 @@ defineExpose({
       v-show="isDragging"
       class="canvas-editor__trash"
       :class="{ 'canvas-editor__trash--over': trashOver }"
-      :title="trashOver ? 'Release to delete' : 'Drop here to delete'"
+      :title="trashOver ? t('blockEditor.trash.over') : t('blockEditor.trash.idle')"
       @dragover="onTrashDragOver"
       @dragleave="onTrashDragLeave"
       @drop="onTrashDrop"

@@ -25,6 +25,7 @@ import { PATCHES, patchHides, patched, type PatchMap } from './patches';
 import { isVisible } from './visibility';
 import type { ViewNode } from './generated/bistromath/ViewNode';
 import type { ViewAction } from './generated/bistromath/ViewAction';
+import { useT } from './i18n';
 
 /**
  * Renders one widget and, recursively, its children.
@@ -43,6 +44,8 @@ import type { ViewAction } from './generated/bistromath/ViewAction';
  * program reads the key and decides. A `details` is the read-only twin, so an
  * author never has to reason about a `readOnly` default.
  */
+const t = useT();
+
 const props = defineProps<{
   node: ViewNode;
   /** The host state the program writes. */
@@ -727,7 +730,7 @@ const headingClass = computed(() =>
     :model-value="inputText || null"
     :label="node.label ?? undefined"
     :options="selectOptions"
-    placeholder="—"
+    :placeholder="t('bistromath.widget.selectPlaceholder')"
     @update:model-value="(v: string | null) => writeBound(v ?? '')"
   />
 
@@ -739,7 +742,7 @@ const headingClass = computed(() =>
     <VInput
       v-if="showFilter"
       :model-value="tableFilter"
-      placeholder="Filter…"
+      :placeholder="t('bistromath.widget.filterPlaceholder')"
       @update:model-value="(v: string) => (tableFilter = v)"
     />
 
@@ -750,20 +753,20 @@ const headingClass = computed(() =>
          correctly showing "no records" accused itself of being broken. -->
     <VEmptyState
       v-if="rows.length === 0 && tableStateMissing"
-      headline="Nothing to show"
-      :body="`Nothing has written \`${node.from}\` yet — the program fills it with vance.state.set('${node.from}', rows). Check the key if this is unexpected.`"
+      :headline="t('bistromath.widget.tableMissingHeadline')"
+      :body="t('bistromath.widget.tableMissingBody', { key: node.from })"
     />
 
     <VEmptyState
       v-else-if="rows.length === 0"
-      headline="No entries"
-      :body="`\`${node.from}\` is empty.`"
+      :headline="t('bistromath.widget.tableEmptyHeadline')"
+      :body="t('bistromath.widget.tableEmptyBody', { key: node.from })"
     />
 
     <VEmptyState
       v-else-if="tableRows.length === 0"
-      headline="Nothing matches the filter"
-      :body="`${rows.length} row(s) are hidden by »${tableFilter}«.`"
+      :headline="t('bistromath.widget.filterEmptyHeadline')"
+      :body="t('bistromath.widget.filterEmptyBody', { count: rows.length, filter: tableFilter })"
     />
 
     <div v-else class="overflow-x-auto">
@@ -776,7 +779,7 @@ const headingClass = computed(() =>
               v-for="col in columns"
               :key="col"
               class="cursor-pointer px-2 py-1 font-semibold opacity-60 select-none hover:opacity-100"
-              :title="`Sort by ${col}`"
+              :title="t('bistromath.widget.sortBy', { column: col })"
               @click="toggleSort(col)"
             >
               {{ col }}{{ sortMarker(col) }}
@@ -809,8 +812,8 @@ const headingClass = computed(() =>
          there is nothing to edit, and an empty form would look like a bug. -->
     <VEmptyState
       v-if="!record && Array.isArray(bound)"
-      headline="Nothing selected"
-      body="Click a row in the table to edit it here."
+      :headline="t('bistromath.widget.formEmptyHeadline')"
+      :body="t('bistromath.widget.formEmptyBody')"
     />
     <FormFields
       v-else
@@ -834,7 +837,7 @@ const headingClass = computed(() =>
         :variant="activeTab === i ? 'primary' : 'ghost'"
         @click="activeTab = i"
       >
-        {{ child.label ?? `Tab ${i + 1}` }}
+        {{ child.label ?? t('bistromath.widget.tab', { number: i + 1 }) }}
       </VButton>
     </div>
     <WidgetNode
@@ -857,8 +860,8 @@ const headingClass = computed(() =>
     <h3 v-if="node.label" class="text-base font-semibold">{{ node.label }}</h3>
     <VEmptyState
       v-if="items.length === 0"
-      headline="Nothing here yet"
-      :body="`The program has not put a list into \`${node.from}\`.`"
+      :headline="t('bistromath.widget.repeatEmptyHeadline')"
+      :body="t('bistromath.widget.repeatEmptyBody', { key: node.from })"
     />
     <template v-for="(item, i) in items" v-else :key="i">
       <WidgetNode
@@ -879,14 +882,15 @@ const headingClass = computed(() =>
   <div v-else-if="node.type === 'embed'" class="flex flex-col gap-2">
     <h3 v-if="node.label" class="text-base font-semibold">{{ node.label }}</h3>
     <VAlert v-if="!embedUri" variant="info">
-      Nothing to embed — <code class="font-mono">{{ node.from ?? '(no path)' }}</code> holds no
-      document path.
+      {{ t('bistromath.widget.embedMissingPre') }}
+      <code class="font-mono">{{ node.from ?? t('bistromath.widget.embedNoPath') }}</code>
+      {{ t('bistromath.widget.embedMissingPost') }}
     </VAlert>
     <component :is="embedComponent" v-else-if="embedComponent" :uri="embedUri" />
     <!-- No host renderer: say which document was meant rather than nothing.
          Standalone renders of an app view have no Cortex around them. -->
     <VAlert v-else variant="info">
-      This surface cannot render embedded documents. Meant:
+      {{ t('bistromath.widget.embedNoRendererPre') }}
       <code class="font-mono">{{ embedUri }}</code>
     </VAlert>
   </div>
@@ -920,6 +924,7 @@ const headingClass = computed(() =>
        rather than an empty div, because an empty div in a generic renderer is
        the hardest thing there is to debug. -->
   <VAlert v-else variant="warning">
-    This build cannot render a <code class="font-mono">{{ node.type }}</code> widget.
+    {{ t('bistromath.widget.unknownPre') }}
+    <code class="font-mono">{{ node.type }}</code>{{ t('bistromath.widget.unknownPost') }}
   </VAlert>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { VButton, VCheckbox, VInput, VModal } from '@vance/components';
+import { useT } from './i18n';
 
 /**
  * Edit an edge: label + style (arrow ends, dashed, thick, colour).
@@ -16,16 +17,24 @@ interface EdgeStyle {
   thick: boolean;
 }
 
-const COLOR_OPTIONS = [
-  { value: '', label: 'Default' },
-  { value: '#ef4444', label: 'Red' },
-  { value: '#f97316', label: 'Orange' },
-  { value: '#eab308', label: 'Yellow' },
-  { value: '#22c55e', label: 'Green' },
-  { value: '#3b82f6', label: 'Blue' },
-  { value: '#8b5cf6', label: 'Purple' },
-  { value: '#64748b', label: 'Grey' },
+const t = useT();
+
+// Value → key, translated in a computed: the swatch titles have to follow a
+// language switch, and a module-level array of literals cannot.
+const COLOR_OPTIONS: { value: string; key: string }[] = [
+  { value: '', key: 'default' },
+  { value: '#ef4444', key: 'red' },
+  { value: '#f97316', key: 'orange' },
+  { value: '#eab308', key: 'yellow' },
+  { value: '#22c55e', key: 'green' },
+  { value: '#3b82f6', key: 'blue' },
+  { value: '#8b5cf6', key: 'purple' },
+  { value: '#64748b', key: 'grey' },
 ];
+
+const colorOptions = computed(() =>
+  COLOR_OPTIONS.map((c) => ({ value: c.value, label: t(`canvas.edge.colours.${c.key}`) })),
+);
 
 const open = ref(false);
 const label = ref('');
@@ -77,17 +86,17 @@ defineExpose({ open: openDialog });
 <template>
   <VModal
     :model-value="open"
-    title="Kante bearbeiten"
+    :title="t('canvas.edge.title')"
     :close-on-backdrop="false"
     @update:model-value="onToggle"
   >
     <div class="flex flex-col gap-3">
-      <VInput v-model="label" label="Label" @keyup.enter="submit" />
+      <VInput v-model="label" :label="t('canvas.edge.label')" @keyup.enter="submit" />
       <div>
-        <div class="mb-1 text-xs opacity-60">Colour</div>
+        <div class="mb-1 text-xs opacity-60">{{ t('canvas.edge.colour') }}</div>
         <div class="flex flex-wrap gap-1.5">
           <button
-            v-for="c in COLOR_OPTIONS"
+            v-for="c in colorOptions"
             :key="c.value"
             type="button"
             class="edge-swatch"
@@ -99,14 +108,14 @@ defineExpose({ open: openDialog });
         </div>
       </div>
       <div class="flex flex-wrap gap-4">
-        <VCheckbox v-model="fromArrow" label="Pfeil am Start" />
-        <VCheckbox v-model="toArrow" label="Pfeil am Ziel" />
-        <VCheckbox v-model="dashed" label="Gestrichelt" />
-        <VCheckbox v-model="thick" label="Fett" />
+        <VCheckbox v-model="fromArrow" :label="t('canvas.edge.arrowStart')" />
+        <VCheckbox v-model="toArrow" :label="t('canvas.edge.arrowEnd')" />
+        <VCheckbox v-model="dashed" :label="t('canvas.edge.dashed')" />
+        <VCheckbox v-model="thick" :label="t('canvas.edge.thick')" />
       </div>
       <div class="mt-1 flex justify-end gap-2">
-        <VButton size="sm" variant="ghost" @click="finish(null)">Cancel</VButton>
-        <VButton size="sm" variant="primary" @click="submit">OK</VButton>
+        <VButton size="sm" variant="ghost" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
+        <VButton size="sm" variant="primary" @click="submit">{{ t('canvas.common.ok') }}</VButton>
       </div>
     </div>
   </VModal>

@@ -75,8 +75,8 @@ public final class DockerComposeSetupWizard {
         Path composePath = dir.resolve("docker-compose.yml");
 
         out.println();
-        out.println("Vance — Docker Compose Setup");
-        out.println("============================");
+        out.println("Vancetope — Docker Compose Setup");
+        out.println("================================");
         out.printf("%s%n", BuildInfo.line());
         out.println();
         out.printf("Output directory: %s%n", dir.toAbsolutePath());

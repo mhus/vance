@@ -102,7 +102,10 @@ public class HomeBootstrapService {
                     ProjectDocument created = projectService.create(
                             tenantId,
                             projectName,
-                            "Vance — " + userLogin,
+                            // Display title, so it carries the product name.
+                            // "Vance" is the internal code name and must not
+                            // surface in a project list the user reads.
+                            "Vancetope — " + userLogin,
                             group.getName(),
                             null,
                             ProjectKind.SYSTEM);

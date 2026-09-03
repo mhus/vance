@@ -102,7 +102,7 @@ public class SupportCommand implements SlashCommand {
     private @Nullable String collectViaForm() throws IOException {
         AtomicReference<@Nullable String> result = new AtomicReference<>();
         ui.runFullscreen(session -> {
-            BasicWindow window = new BasicWindow("Vance — support request");
+            BasicWindow window = new BasicWindow("Vancetope — support request");
             window.setHints(Set.of(Window.Hint.CENTERED));
             window.setCloseWindowWithEscape(true);
 

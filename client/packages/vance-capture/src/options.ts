@@ -123,7 +123,14 @@ async function renderRow(
  * hides which token it was. Both, and only when the answer is interesting.
  */
 function expiryText(record: StoredConnection): string {
-  if (!record.blob.expiresAt) return 'never';
+  // Absent is "unknown", not "never" — the same rule the connection codec
+  // states for `profiles`, and here it costs more than a wrong word. The
+  // field exists so a tool can warn before the token stops working; a blob
+  // minted without it would otherwise promise the opposite of that, and the
+  // person finds out when a capture returns 401. Seen on a hand-built blob
+  // that omitted the field: the settings page said "never" for a token with
+  // 90 days on it.
+  if (!record.blob.expiresAt) return 'unknown';
   const date = new Date(record.blob.expiresAt).toISOString().slice(0, 10);
   const left = daysLeft(record.blob);
   if (left === null || left > 14) return date;

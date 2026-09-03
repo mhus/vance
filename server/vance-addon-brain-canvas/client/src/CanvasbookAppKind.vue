@@ -205,8 +205,8 @@ async function flushPending(): Promise<void> {
 }
 
 async function addPage(): Promise<void> {
-  const v = await dialog.value?.open('Neue Canvas', [
-    { key: 'title', label: 'Titel', value: 'Neue Canvas' },
+  const v = await dialog.value?.open('New canvas', [
+    { key: 'title', label: 'Title', value: 'New canvas' },
   ]);
   if (!v || !v.title) return;
   try {
@@ -292,7 +292,7 @@ onBeforeUnmount(() => {
           }"
         ></span>
         <span class="opacity-60">
-          {{ saveState === 'saving' ? 'Speichert…' : saveState === 'dirty' ? 'Nicht gespeichert' : 'Gespeichert' }}
+          {{ saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved' : 'Saved' }}
         </span>
       </span>
     </div>
@@ -313,7 +313,7 @@ onBeforeUnmount(() => {
         @selection="onCanvasSelection"
       />
       <div v-else class="p-4 text-sm opacity-60">
-        {{ pages.length === 0 ? 'Leeres Canvasbook — „+ Canvas" anlegen.' : 'Wähle eine Canvas.' }}
+        {{ pages.length === 0 ? 'Empty canvasbook — create one with “+ Canvas”.' : 'Pick a canvas.' }}
       </div>
     </div>
 

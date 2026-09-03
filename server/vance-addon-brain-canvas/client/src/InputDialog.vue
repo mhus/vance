@@ -78,7 +78,7 @@ defineExpose({ open: openDialog });
         @keyup.enter="submit"
       />
       <div class="mt-1 flex justify-end gap-2">
-        <VButton size="sm" variant="ghost" @click="finish(null)">Abbrechen</VButton>
+        <VButton size="sm" variant="ghost" @click="finish(null)">Cancel</VButton>
         <VButton size="sm" variant="primary" @click="submit">OK</VButton>
       </div>
     </div>

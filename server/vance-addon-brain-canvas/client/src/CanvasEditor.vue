@@ -585,7 +585,7 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
   const me = getUsername() ?? undefined;
   let node: CanvasNodeDto;
   if (type === 'text') {
-    node = { id, type, x: p.x, y: p.y, w: 200, h: 120, text: 'Neue Notiz', author: me };
+    node = { id, type, x: p.x, y: p.y, w: 200, h: 120, text: 'New note', author: me };
   } else if (type === 'doc') {
     const picked = await docPicker.value?.open(props.projectId, props.appTargets);
     if (!picked || !picked.path) return;
@@ -598,11 +598,11 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
     if (!pick) return;
     node = { id, type, x: p.x, y: p.y, w: 240, h: 72, href: pick.href, newTab: pick.newTab };
   } else {
-    const v = await dialog.value?.open('Gruppe', [
-      { key: 'label', label: 'Titel', value: 'Gruppe' },
+    const v = await dialog.value?.open('Group', [
+      { key: 'label', label: 'Title', value: 'Group' },
     ]);
     if (!v) return;
-    node = { id, type, x: p.x, y: p.y, w: 420, h: 300, label: v.label || 'Gruppe' };
+    node = { id, type, x: p.x, y: p.y, w: 420, h: 300, label: v.label || 'Group' };
   }
   nodes.value = [...nodes.value, node];
   emitChange();
@@ -640,17 +640,17 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
     >
       <Panel v-if="isEditable" position="top-left">
         <div class="cv-panel">
-          <VButton size="sm" @click="addNode('text')">📝 Notiz</VButton>
-          <VButton size="sm" @click="addNode('doc')">📄 Dok</VButton>
+          <VButton size="sm" @click="addNode('text')">📝 Note</VButton>
+          <VButton size="sm" @click="addNode('doc')">📄 Doc</VButton>
           <VButton size="sm" @click="addNode('link')">🔗 Link</VButton>
-          <VButton size="sm" @click="addNode('group')">▢ Gruppe</VButton>
+          <VButton size="sm" @click="addNode('group')">▢ Group</VButton>
           <span class="cv-panel-sep"></span>
           <VButton
             size="sm"
             :variant="selectMode ? 'primary' : 'ghost'"
-            title="Mehrfachauswahl per Aufziehen (sonst Shift+Ziehen)"
+            title="Select several by dragging a box (or hold Shift and drag)"
             @click="selectMode = !selectMode"
-          >⬚ Auswahl</VButton>
+          >⬚ Select</VButton>
         </div>
       </Panel>
 

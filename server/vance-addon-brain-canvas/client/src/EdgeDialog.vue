@@ -17,14 +17,14 @@ interface EdgeStyle {
 }
 
 const COLOR_OPTIONS = [
-  { value: '', label: 'Standard' },
-  { value: '#ef4444', label: 'Rot' },
+  { value: '', label: 'Default' },
+  { value: '#ef4444', label: 'Red' },
   { value: '#f97316', label: 'Orange' },
-  { value: '#eab308', label: 'Gelb' },
-  { value: '#22c55e', label: 'Grün' },
-  { value: '#3b82f6', label: 'Blau' },
-  { value: '#8b5cf6', label: 'Lila' },
-  { value: '#64748b', label: 'Grau' },
+  { value: '#eab308', label: 'Yellow' },
+  { value: '#22c55e', label: 'Green' },
+  { value: '#3b82f6', label: 'Blue' },
+  { value: '#8b5cf6', label: 'Purple' },
+  { value: '#64748b', label: 'Grey' },
 ];
 
 const open = ref(false);
@@ -84,7 +84,7 @@ defineExpose({ open: openDialog });
     <div class="flex flex-col gap-3">
       <VInput v-model="label" label="Label" @keyup.enter="submit" />
       <div>
-        <div class="mb-1 text-xs opacity-60">Farbe</div>
+        <div class="mb-1 text-xs opacity-60">Colour</div>
         <div class="flex flex-wrap gap-1.5">
           <button
             v-for="c in COLOR_OPTIONS"
@@ -105,7 +105,7 @@ defineExpose({ open: openDialog });
         <VCheckbox v-model="thick" label="Fett" />
       </div>
       <div class="mt-1 flex justify-end gap-2">
-        <VButton size="sm" variant="ghost" @click="finish(null)">Abbrechen</VButton>
+        <VButton size="sm" variant="ghost" @click="finish(null)">Cancel</VButton>
         <VButton size="sm" variant="primary" @click="submit">OK</VButton>
       </div>
     </div>

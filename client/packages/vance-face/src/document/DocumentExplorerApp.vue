@@ -1027,7 +1027,7 @@ function confirmNewFolder(): void {
           size="sm"
           :title="$t('documents.newDocument')"
           @click="openCreateInNotepad"
-        >+ Neu</VButton>
+        >{{ $t('documents.addNew') }}</VButton>
       </div>
 
       <!-- Installed kits — only at the project root, where "this project"

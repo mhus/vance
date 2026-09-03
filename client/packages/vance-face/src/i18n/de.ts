@@ -704,6 +704,7 @@ export default {
       'Treffer aus der externen Quelle „{mount}" — sie umspannen den ganzen Mount, nicht nur '
       + 'diesen Ordner.',
     newDocument: '+ Neues Dokument',
+    addNew: '+ Neu',
     dropHint: 'Dateien hier ablegen zum Hochladen',
     newFolder: 'Neuer Ordner',
     newFolderDialog: {

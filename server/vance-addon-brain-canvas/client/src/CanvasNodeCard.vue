@@ -375,7 +375,7 @@ function copyLink(): void {
       <div class="cv-toolbar nodrag">
         <button
           class="cv-swatch"
-          title="keine Farbe"
+          title="No colour"
           style="background: #ffffff"
           :class="{ 'cv-active': !node.color }"
           @click="patch({ color: undefined })"
@@ -411,10 +411,10 @@ function copyLink(): void {
 
         <template v-if="kind === 'link'">
           <span class="cv-sep"></span>
-          <button class="cv-btn" title="Titel ändern" @click="beginEdit">✎</button>
+          <button class="cv-btn" title="Rename" @click="beginEdit">✎</button>
           <button
             class="cv-btn"
-            title="Ziel ändern"
+            title="Change target"
             @click="props.data.onEditLink?.(node.id)"
           >🔗</button>
           <button
@@ -427,7 +427,7 @@ function copyLink(): void {
         <span class="cv-sep"></span>
         <button class="cv-btn" title="in den Vordergrund" @click="props.data.onFront?.(node.id)">⬆</button>
         <button class="cv-btn" title="in den Hintergrund" @click="props.data.onBack?.(node.id)">⬇</button>
-        <button class="cv-btn cv-danger" title="Löschen" @click="props.data.onDelete?.(node.id)">🗑</button>
+        <button class="cv-btn cv-danger" title="Delete" @click="props.data.onDelete?.(node.id)">🗑</button>
       </div>
     </NodeToolbar>
 
@@ -473,7 +473,7 @@ function copyLink(): void {
         @keydown.esc.prevent="cancel"
       ></textarea>
       <div v-else class="canvas-note-body" :style="textStyle">
-        {{ node.text || '(leere Notiz)' }}
+        {{ node.text || '(empty note)' }}
       </div>
       <div v-if="node.author && !editing" class="canvas-note-author">✎ {{ node.author }}</div>
     </template>
@@ -482,7 +482,7 @@ function copyLink(): void {
       <button
         v-if="docMeta && !(embedComponent && docMeta.kind)"
         class="canvas-embed-open nodrag"
-        title="Im Cortex öffnen"
+        title="Open in Cortex"
         @click.stop="openInCortex"
         @pointerdown.stop
         @dblclick.stop
@@ -508,7 +508,7 @@ function copyLink(): void {
           v-if="editing"
           v-model="draft"
           class="canvas-link-title-input nodrag"
-          placeholder="Titel"
+          placeholder="Title"
           @keydown.enter.prevent="commit"
           @keydown.esc.prevent="cancel"
           @blur="commit"
@@ -543,7 +543,7 @@ function copyLink(): void {
     </template>
 
     <template v-else-if="kind === 'group'">
-      <div class="canvas-group-label">{{ node.label || 'Gruppe' }}</div>
+      <div class="canvas-group-label">{{ node.label || 'Group' }}</div>
     </template>
   </div>
 </template>

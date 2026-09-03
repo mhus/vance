@@ -164,7 +164,7 @@ defineExpose({ open: openPicker });
 <template>
   <VModal
     :model-value="open"
-    title="Referenz einfügen"
+    title="Insert reference"
     :close-on-backdrop="false"
     @update:model-value="onToggle"
   >
@@ -204,7 +204,7 @@ defineExpose({ open: openPicker });
       <template v-if="tab === 'doc'">
         <VInput
           v-model="query"
-          placeholder="Suche nach Pfad oder Titel …"
+          placeholder="Search by path or title …"
           @update:model-value="onQuery"
         />
         <div class="max-h-80 overflow-auto rounded border border-base-300">
@@ -251,7 +251,7 @@ defineExpose({ open: openPicker });
         </div>
       </template>
 
-      <!-- Favoriten / Apps: App wählen, dann optional einen Ort darin. -->
+      <!-- Favourites / apps: pick an app, then optionally a place inside it. -->
       <template v-else-if="tab === 'starred' || tab === 'apps'">
         <div v-if="apps.error.value" class="p-3 text-sm text-error">{{ apps.error.value }}</div>
         <div v-else-if="apps.loading.value" class="p-3 text-sm opacity-60">Lade…</div>
@@ -282,7 +282,7 @@ defineExpose({ open: openPicker });
 
         <template v-else>
           <div class="flex items-center gap-2">
-            <VButton size="sm" variant="ghost" @click="apps.back()">← Zurück</VButton>
+            <VButton size="sm" variant="ghost" @click="apps.back()">← Back</VButton>
             <span class="truncate text-sm opacity-70">
               {{ apps.openApp.value.title || apps.openApp.value.path }}
             </span>
@@ -319,7 +319,7 @@ defineExpose({ open: openPicker });
       </template>
 
       <div class="flex justify-end">
-        <VButton size="sm" variant="ghost" @click="finish(null)">Abbrechen</VButton>
+        <VButton size="sm" variant="ghost" @click="finish(null)">Cancel</VButton>
       </div>
     </div>
   </VModal>

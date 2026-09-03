@@ -48,7 +48,7 @@
   },
   "dependencies": {
     "@vance/generated": "workspace:*",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^5.4.1"
   },
   "devDependencies": {
     "typescript": "7.0.2",

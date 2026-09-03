@@ -56,7 +56,47 @@ const PATCHES: Record<Target, Record<string, unknown>> = {
         // Picking the true minimum would mean asserting exactly when
         // `optional_host_permissions` became reliable; a version that is
         // plainly recent enough fails loudly and early instead of subtly.
-        strict_min_version: '128.0',
+        //
+        // 140 rather than the previous ESR: `data_collection_permissions`
+        // below arrived in 140, and an older Firefox would install the
+        // extension and then silently skip the consent dialog — the one
+        // place a user is told that page content leaves the browser. A floor
+        // that keeps the disclosure attached is worth more than reaching
+        // an ESR line that ended in 2025.
+        strict_min_version: '140.0',
+        // Mandatory at AMO since the Firefox 140 consent experience; an upload
+        // without it fails validation outright.
+        //
+        // <p><b>Not `none`, and that is not a formality.</b> Mozilla defines
+        // transmission as any data handled "outside the add-on or the local
+        // browser", with no carve-out for a destination the user chose — so
+        // the fact that the server is the user's own does not make this
+        // collection-free. What actually leaves the browser is exactly two
+        // things:
+        //
+        // <ul>
+        //   <li><b>websiteContent</b> — the rendered DOM, or the file bytes
+        //       for a PDF (see page.ts). That is the whole point of a grab.</li>
+        //   <li><b>browsingActivity</b> — the URL and title of the page being
+        //       saved. Sent on capture, and on the lookup that runs when the
+        //       popup opens to say whether the page is already in the list.</li>
+        // </ul>
+        //
+        // <p>`required`, not `optional`: an extension that may not send these
+        // cannot save a page, which is the only thing it does. Nothing else is
+        // declared — we collect no interaction telemetry, and the page content
+        // is not mined for anything, so listing further categories would
+        // overstate it in the consent dialog just as `none` would understate
+        // it.
+        data_collection_permissions: {
+          required: ['websiteContent', 'browsingActivity'],
+        },
+      },
+      // Firefox for Android got the key two releases later than desktop.
+      // Without its own floor it inherits the desktop one, and the linter
+      // rightly points out that 140 does not exist on Android.
+      gecko_android: {
+        strict_min_version: '142.0',
       },
     },
   },

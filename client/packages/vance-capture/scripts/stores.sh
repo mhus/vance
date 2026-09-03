@@ -38,6 +38,25 @@ if [ -n "$(git -C "$repo" status --porcelain)" ]; then
   exit 1
 fi
 
+# AMO runs this exact linter on upload, and it rejects rather than warns —
+# `data_collection_permissions` missing cost one upload round-trip before this
+# check existed. Not a devDependency on purpose: it would pull ~300 packages
+# into a workspace lockfile shared with every other package here, for a tool
+# that runs by hand a few times a year. A machine without network skips the
+# check with a warning instead of blocking the packaging.
+if pnpm dlx web-ext lint --source-dir "$here/dist/firefox" --no-config-discovery; then
+  :
+else
+  status=$?
+  # web-ext exits non-zero both for "your add-on is broken" and for "I could
+  # not run" — but only the first has produced a validation summary above.
+  echo >&2
+  echo "web-ext lint exited $status. If it reported errors, fix them before" >&2
+  echo "uploading — AMO runs the same check and will refuse the package." >&2
+  read -r -p "Package anyway? [y/N] " answer
+  [ "$answer" = "y" ] || exit 1
+fi
+
 rm -rf "$out"
 mkdir -p "$out"
 

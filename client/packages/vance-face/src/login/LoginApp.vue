@@ -268,11 +268,18 @@ function readNextParam(): string | null {
           <VAlert v-if="error" variant="error">
             <span>{{ error }}</span>
           </VAlert>
+          <!-- autocapitalize="none" on both: the server compares tenant and
+               username byte-for-byte, and iOS capitalises the first letter of
+               a text field unless told otherwise. Without this the keyboard
+               turns "apple"/"review" into "Apple"/"Review" and the login
+               answers 401 — which reads as wrong credentials, not as a
+               keyboard doing its job. -->
           <VInput
             v-model="tenant"
             :label="$t('login.tenant')"
             required
             autocomplete="organization"
+            autocapitalize="none"
             :disabled="submitting"
           />
           <VInput
@@ -280,6 +287,7 @@ function readNextParam(): string | null {
             :label="$t('login.username')"
             required
             autocomplete="username"
+            autocapitalize="none"
             :disabled="submitting"
           />
           <VInput

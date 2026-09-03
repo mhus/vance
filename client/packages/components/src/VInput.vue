@@ -11,6 +11,20 @@ interface Props {
   required?: boolean;
   disabled?: boolean;
   autocomplete?: string;
+  /**
+   * Whether the on-screen keyboard capitalises for this field.
+   *
+   * <p>Needed because iOS capitalises the first letter of a text field by
+   * default, and `autocomplete="username"` does not switch that off. For a
+   * value the server compares byte-for-byte — a login name, a tenant, a
+   * host — the keyboard silently turns the right input into a wrong one,
+   * and the person sees a rejected credential rather than a typo.
+   *
+   * <p>Not passed through `$attrs`: those land on the wrapping `<label>`,
+   * and relying on the attribute's spec-inherited behaviour there is a
+   * quieter contract than binding it where it belongs.
+   */
+  autocapitalize?: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters';
   size?: 'xs' | 'sm' | 'md';
   /** Optional autocomplete suggestions rendered via a native <datalist>. */
   suggestions?: string[];
@@ -51,6 +65,7 @@ const datalistId = useId();
       :required="required"
       :disabled="disabled"
       :autocomplete="autocomplete"
+      :autocapitalize="autocapitalize"
       :list="suggestions.length ? datalistId : undefined"
       :class="['input', 'w-full', sizeClass, { 'input-error': !!error }]"
       @input="(e) => $emit('update:modelValue', (e.target as HTMLInputElement).value)"

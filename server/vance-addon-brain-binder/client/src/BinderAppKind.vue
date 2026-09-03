@@ -304,10 +304,10 @@ function kindIcon(kind?: string | null): string {
                 class="absolute right-2 top-8 z-10 w-44 rounded border border-base-300 bg-base-100 py-1 shadow-lg"
                 @click.stop
               >
-                <button class="block w-full px-3 py-1.5 text-left text-sm hover:bg-base-200" @click="onMoveSection(e)">Sektion ändern…</button>
-                <button class="block w-full px-3 py-1.5 text-left text-sm hover:bg-base-200" @click="onRename(e)">Umbenennen…</button>
+                <button class="block w-full px-3 py-1.5 text-left text-sm hover:bg-base-200" @click="onMoveSection(e)">Change section…</button>
+                <button class="block w-full px-3 py-1.5 text-left text-sm hover:bg-base-200" @click="onRename(e)">Rename…</button>
                 <button class="block w-full px-3 py-1.5 text-left text-sm hover:bg-base-200" @click="onSetLanding(e)">
-                  {{ view?.landingRef === e.ref ? 'Landing entfernen' : 'Als Landing' }}
+                  {{ view?.landingRef === e.ref ? 'Remove landing' : 'Set as landing' }}
                 </button>
                 <button class="block w-full px-3 py-1.5 text-left text-sm text-error hover:bg-base-200" @click="onRemove(e)">Entfernen</button>
               </div>
@@ -337,8 +337,8 @@ function kindIcon(kind?: string | null): string {
         </div>
         <div class="min-h-0 flex-1 overflow-auto p-3">
           <div v-if="!activeEntry.exists" class="text-sm opacity-70">
-            Dieses Dokument existiert nicht mehr (<code>{{ activeEntry.path }}</code>).
-            Entferne den Eintrag über das ⋯-Menü.
+            This document no longer exists (<code>{{ activeEntry.path }}</code>).
+            Remove the entry from the ⋯ menu.
           </div>
           <component
             :is="embedComponent"
@@ -346,12 +346,12 @@ function kindIcon(kind?: string | null): string {
             :key="activeEntry.ref"
             :uri="activeEntry.ref"
           />
-          <div v-else class="text-sm opacity-60">Kein Embed-Renderer verfügbar.</div>
+          <div v-else class="text-sm opacity-60">No embed renderer available.</div>
         </div>
       </template>
 
       <div v-else class="flex flex-1 items-center justify-center p-8 text-center text-sm opacity-60">
-        Wähle links ein Dokument oder hefte über „+ Anheften“ eines an.
+        Pick a document on the left, or pin one with “+ Pin”.
       </div>
     </section>
 

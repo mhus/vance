@@ -1824,7 +1824,7 @@ onBeforeUnmount(() => {
       </template>
 
       <div v-else class="workbook-app__main-empty">
-        Wähle eine Page aus der Sidebar.
+        Pick a page from the sidebar.
       </div>
     </main>
 

@@ -158,6 +158,22 @@ export default {
  * because the theme <style> is rendered after MarkdownView's scoped
  * styles in document order. */
 .markdown-document-preview {
+  /* Cap the rendered document at a readable line length and centre it
+   * inside the Cortex view pane, which can be far wider than prose
+   * wants to be. With max-width + auto margins the content still fills
+   * the pane on narrow viewports and only narrows + centres once the
+   * pane grows past the cap — no media query needed. The cap sits in
+   * the common 60–80 characters-per-line readability band while
+   * leaving room for code blocks and tables (the latter scroll
+   * sideways inside MarkdownView's scoped pre/table styles).
+   *
+   * The theme CSS is server-side prefix-scoped to this class, but it
+   * targets child elements (h1, p, code, …) — it never sets properties
+   * on the root itself, so the cap and centring are safe from theme
+   * overrides. Print is a separate layer (style/print.css, @media
+   * print) and unaffected. */
+  max-width: 50rem;
+  margin-inline: auto;
   font-size: 0.95rem;
   line-height: 1.55;
   word-break: break-word;

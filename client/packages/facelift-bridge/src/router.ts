@@ -1,6 +1,6 @@
 import { createRouter, createWebHashHistory, type Router } from 'vue-router';
 import { isDesktop } from './platform';
-import { isPinConfigured, isUnlocked } from './lock/lockStore';
+import { evaluateLockGate } from './lock/lockStore';
 import ShellView from './views/ShellView.vue';
 import ManageAccountsView from './views/ManageAccountsView.vue';
 import AddAccountView from './views/AddAccountView.vue';
@@ -42,21 +42,29 @@ export function createAppRouter(): Router {
   });
 
   // App-lock gate. The lock screen sits in front of every route — on
-  // first launch the user lands on `/lock/setup` (must set a PIN),
-  // on every cold start thereafter on `/lock/unlock`. Once unlocked
-  // the flag is in-memory only, so background → foreground stays
-  // unlocked but a hard kill re-locks. The lock routes themselves
-  // are exempt (meta.skipLockGuard) to avoid redirect loops.
+  // first launch the user lands on `/lock/setup` (where the PIN can
+  // also be declined), on every cold start thereafter on
+  // `/lock/unlock`. Once unlocked the flag is in-memory only, so
+  // background → foreground stays unlocked but a hard kill re-locks.
+  // The lock routes themselves are exempt (meta.skipLockGuard) to
+  // avoid redirect loops.
+  //
+  // Whether "no PIN configured" means setup or an open gate is
+  // lockStore's call, not the router's — see evaluateLockGate().
   router.beforeEach(async (to) => {
     // Desktop is a windowed app on a personal machine, not a pocketable
     // device — there is no app-lock, so the PIN/biometric gate is skipped
     // entirely (the lock stays a mobile-only feature).
     if (isDesktop()) return true;
     if (to.meta.skipLockGuard === true) return true;
-    if (isUnlocked()) return true;
-    const configured = await isPinConfigured();
-    const target = configured ? 'lock-unlock' : 'lock-setup';
-    return { name: target, query: { next: to.fullPath } };
+    switch (await evaluateLockGate()) {
+      case 'unlocked':
+        return true;
+      case 'needs-unlock':
+        return { name: 'lock-unlock', query: { next: to.fullPath } };
+      case 'needs-setup':
+        return { name: 'lock-setup', query: { next: to.fullPath } };
+    }
   });
 
   return router;

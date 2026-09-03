@@ -10,6 +10,7 @@ import {
 } from '@/accounts/accountStore';
 import {
   isBiometricEnabled,
+  isPinConfigured,
   setBiometricEnabled,
 } from '@/lock/lockStore';
 import { isBiometricSupported, tryBiometricUnlock } from '@/lock/biometric';
@@ -44,10 +45,16 @@ function onEdit(id: string): void {
 
 const biometricSupported = ref(false);
 const biometricEnabled = ref(false);
+// The PIN is optional (see lockStore) — the Security section reads
+// differently with and without one: "Set" vs "Change", and Face ID
+// stays hidden until there is a PIN behind it, because the unlock
+// screen has no other credential to fall back on.
+const pinConfigured = ref(false);
 
 async function refreshSecurity(): Promise<void> {
   biometricSupported.value = await isBiometricSupported();
   biometricEnabled.value = await isBiometricEnabled();
+  pinConfigured.value = await isPinConfigured();
 }
 
 async function onToggleBiometric(): Promise<void> {
@@ -69,6 +76,9 @@ function onChangePin(): void {
   // stored hash. v2 should add a "verify current PIN" step before
   // accepting the new one. The app being unlocked is the current
   // implicit authority for the change.
+  //
+  // Same route for "set" and "change" — the setup screen reads the
+  // configured state itself to decide whether it may be declined.
   void router.push({ name: 'lock-setup', query: { next: '/manage' } });
 }
 
@@ -151,11 +161,14 @@ const hasAccounts = computed(() => accounts.value.length > 0);
         class="flex w-full items-center justify-between rounded border border-gray-800 bg-gray-900 px-3 py-2 text-left text-sm"
         @click="onChangePin"
       >
-        <span>Change PIN</span>
+        <span>{{ pinConfigured ? 'Change PIN' : 'Set PIN' }}</span>
         <span class="text-gray-500">›</span>
       </button>
+      <p v-if="!pinConfigured" class="mt-2 text-xs text-gray-500">
+        No PIN set — the app opens without asking.
+      </p>
       <label
-        v-if="biometricSupported"
+        v-if="biometricSupported && pinConfigured"
         class="mt-2 flex w-full items-center justify-between rounded border border-gray-800 bg-gray-900 px-3 py-2 text-sm"
       >
         <span>Use Face ID / Touch ID</span>

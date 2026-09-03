@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { MIN_PIN_LENGTH, setPin } from '@/lock/lockStore';
+import {
+  MIN_PIN_LENGTH,
+  declinePinSetup,
+  isPinConfigured,
+  setPin,
+} from '@/lock/lockStore';
 import PinPad from '@/components/PinPad.vue';
 
 type Step = 'enter' | 'confirm';
@@ -13,6 +18,31 @@ const enteredPin = ref('');
 const confirmPin = ref('');
 const error = ref<string | null>(null);
 const submitting = ref(false);
+// "Not now" is offered only when there is nothing to keep — coming
+// here from Accounts → Change PIN means a PIN already exists, and
+// skipping would then read as "remove it", which this screen does
+// not do.
+const canDecline = ref(false);
+
+onMounted(async () => {
+  canDecline.value = !(await isPinConfigured());
+});
+
+async function onDecline(): Promise<void> {
+  if (submitting.value) return;
+  submitting.value = true;
+  try {
+    await declinePinSetup();
+    void router.replace(nextRoute());
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not continue';
+    submitting.value = false;
+  }
+}
+
+function nextRoute(): string {
+  return typeof route.query.next === 'string' ? route.query.next : '/';
+}
 
 async function onEnterSubmit(): Promise<void> {
   if (enteredPin.value.length < MIN_PIN_LENGTH) {
@@ -35,8 +65,7 @@ async function onConfirmSubmit(): Promise<void> {
   submitting.value = true;
   try {
     await setPin(enteredPin.value);
-    const next = typeof route.query.next === 'string' ? route.query.next : '/';
-    void router.replace(next);
+    void router.replace(nextRoute());
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Could not save PIN';
     submitting.value = false;
@@ -80,9 +109,25 @@ function onBack(): void {
       Back
     </button>
 
+    <button
+      v-if="canDecline && step === 'enter'"
+      type="button"
+      :disabled="submitting"
+      class="mt-6 text-sm text-blue-400 disabled:opacity-50"
+      @click="onDecline"
+    >
+      Not now
+    </button>
+
     <p class="mt-10 max-w-xs text-center text-xs text-gray-500">
       The PIN is stored only on this device. Removing the app deletes
       it; you will choose a new PIN on the next install.
+    </p>
+    <p
+      v-if="canDecline"
+      class="mt-2 max-w-xs text-center text-xs text-gray-500"
+    >
+      You can set one later under Accounts → Security.
     </p>
   </div>
 </template>

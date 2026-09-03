@@ -293,7 +293,8 @@ async function goAdd(): Promise<void> {
       >
         <p class="text-lg font-medium">No account yet</p>
         <p class="text-sm text-gray-400">
-          Add a Brain server URL to start using Vancetope on this device.
+          Vancetope connects to a Vancetope server you or your
+          organisation runs. Add its web address to get started.
         </p>
         <button
           type="button"

@@ -2,16 +2,26 @@ import { Preferences } from '@capacitor/preferences';
 
 /**
  * App-lock state. The lock gate sits in front of every authenticated
- * route — the wrapper boots into `/lock/setup` on first launch
- * (after install) and `/lock/unlock` on every cold start thereafter.
+ * route — the wrapper offers `/lock/setup` on first launch (after
+ * install) and `/lock/unlock` on every cold start thereafter.
  * Biometric (Face-ID / Touch-ID) can bypass the PIN step but is
- * optional; the PIN itself is the must-have credential.
+ * optional.
+ *
+ * **The PIN is optional too, deliberately.** An app that demands a
+ * self-invented credential before it has shown the user anything is
+ * a wall, not a lock — and App Review meets exactly that wall, with
+ * no way past it. So setup can be declined; the decision is
+ * remembered and the gate stays open until a PIN is set from
+ * Accounts → Security. What the lock protects is a device someone
+ * else may pick up, which is a choice its owner gets to make.
  *
  * **Persistence**:
  * - The PIN-hash + salt live in {@code @capacitor/preferences} →
  *   iOS `UserDefaults`. UserDefaults is wiped when the user removes
  *   the app, so a re-install starts at the "setup PIN" screen
  *   without manual reset.
+ * - The "declined" flag lives beside them, for the same reason a
+ *   re-install re-asks: the question is about this install.
  * - The "currently unlocked" flag is **in-memory only**. Backgrounded
  *   apps stay unlocked (matches typical mobile-banking UX); a hard
  *   kill from the multitasker re-locks on next launch.
@@ -24,6 +34,7 @@ import { Preferences } from '@capacitor/preferences';
 
 const KEY_PIN_HASH = 'vance.lock.pinHash';
 const KEY_PIN_SALT = 'vance.lock.pinSalt';
+const KEY_PIN_DECLINED = 'vance.lock.pinDeclined';
 const KEY_BIOMETRIC_ENABLED = 'vance.lock.biometricEnabled';
 
 /** PIN length constraints — picked here, used by the UI to enable
@@ -50,6 +61,42 @@ export async function isPinConfigured(): Promise<boolean> {
   return value !== null && value.length > 0;
 }
 
+/** Whether the user has answered "not now" to the setup screen. Only
+ *  meaningful while no PIN is configured — {@link setPin} clears it. */
+export async function isPinSetupDeclined(): Promise<boolean> {
+  const { value } = await Preferences.get({ key: KEY_PIN_DECLINED });
+  return value === 'true';
+}
+
+/** Record that the user skipped PIN setup, and open the gate for this
+ *  process. Later cold starts read the flag back via
+ *  {@link evaluateLockGate}. */
+export async function declinePinSetup(): Promise<void> {
+  await Preferences.set({ key: KEY_PIN_DECLINED, value: 'true' });
+  unlockedInMemory = true;
+}
+
+/** What the router's lock guard should do right now. */
+export type LockGate = 'unlocked' | 'needs-unlock' | 'needs-setup';
+
+/**
+ * Resolve the gate for the current navigation, and open it when the
+ * answer is "no lock on this install" so subsequent navigations skip
+ * the Preferences round-trip.
+ *
+ * The three-way answer lives here rather than in the guard because
+ * "declined counts as unlocked" is lock policy, not routing.
+ */
+export async function evaluateLockGate(): Promise<LockGate> {
+  if (unlockedInMemory) return 'unlocked';
+  if (await isPinConfigured()) return 'needs-unlock';
+  if (await isPinSetupDeclined()) {
+    unlockedInMemory = true;
+    return 'unlocked';
+  }
+  return 'needs-setup';
+}
+
 export async function setPin(pin: string): Promise<void> {
   if (pin.length < MIN_PIN_LENGTH || pin.length > MAX_PIN_LENGTH) {
     throw new Error(`PIN must be ${MIN_PIN_LENGTH}–${MAX_PIN_LENGTH} digits`);
@@ -61,6 +108,10 @@ export async function setPin(pin: string): Promise<void> {
   const hash = await hashPin(pin, salt);
   await Preferences.set({ key: KEY_PIN_SALT, value: salt });
   await Preferences.set({ key: KEY_PIN_HASH, value: hash });
+  // A configured PIN outranks an earlier "not now" — drop the flag so
+  // removing the PIN again (v2) re-asks instead of silently staying
+  // open on the strength of a decision made installs ago.
+  await Preferences.remove({ key: KEY_PIN_DECLINED });
   unlockedInMemory = true;
 }
 

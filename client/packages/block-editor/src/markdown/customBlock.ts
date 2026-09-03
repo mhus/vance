@@ -4,7 +4,7 @@
 // registerBlock) does NOT pull js-yaml into its bundle — only the
 // editor's codec paths (parser / proseMirror) use these.
 
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import type { BlockExtension } from '../blockRegistry';
 
 /**
@@ -34,8 +34,7 @@ export function bodyFromAttrs(ext: BlockExtension, attrs: Record<string, unknown
   if (!attrs || Object.keys(attrs).length === 0) return '';
   return yaml.dump(attrs, {
     lineWidth: -1,
-    noCompatMode: true,
-    quotingType: '"',
+    quoteStyle: 'double',
     forceQuotes: false,
   });
 }

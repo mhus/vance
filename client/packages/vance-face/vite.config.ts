@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import { federation } from '@module-federation/vite';
 import { resolve, extname } from 'node:path';
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 // Vite 8's native config loader no longer injects the CommonJS dir global —
 // use the ESM equivalent (Node 20.11+, satisfied by Vite 8's Node 20.19+ floor).

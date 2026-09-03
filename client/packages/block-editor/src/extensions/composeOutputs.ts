@@ -10,7 +10,7 @@
  * resume polling. The Damogran runner ignores `$`-prefixed keys, so neither
  * affects execution.
  */
-import jsyaml from 'js-yaml';
+import * as jsyaml from 'js-yaml';
 import type { ComposeOutputView } from './VanceCompose';
 
 /** Parked in-flight run marker (`$run:`). */

@@ -18,7 +18,7 @@
 // by both `diagramCodec.parity.test.ts` (TS) and
 // `DiagramCodecParityTest.java` (Java). Edit the codec + corpus together.
 
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import {
   dumpYamlBody,
   parseYamlBody,

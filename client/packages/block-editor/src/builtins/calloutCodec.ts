@@ -4,7 +4,7 @@
 // Mirrors exactly what WorkPageParser/Serializer did before callout moved
 // onto the block-extension-registry.
 
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 function str(obj: Record<string, unknown>, key: string): string | null {
   const v = obj[key];
@@ -33,7 +33,10 @@ export function calloutToAttrs(body: string): Record<string, unknown> {
 /**
  * Callout node attrs → fence body. Reproduces the old serializer exactly:
  * always emit `severity`; omit empty `title`/`body`; same YAML dump options
- * as the former `renderFence`, so existing documents round-trip byte-for-byte.
+ * as the former `renderFence`, so existing documents round-trip unchanged.
+ * The one exception is a value that YAML 1.1 would read as a boolean (`yes`,
+ * `on`, `y`, …) or as a sexagesimal (`1:30`): js-yaml quotes those, which the
+ * Java serializer (SnakeYAML, YAML 1.1) has always done too.
  */
 export function calloutToBody(attrs: Record<string, unknown>): string {
   const body: Record<string, unknown> = { severity: (attrs.severity as string) || 'info' };
@@ -41,8 +44,7 @@ export function calloutToBody(attrs: Record<string, unknown>): string {
   if (attrs.body) body.body = attrs.body;
   return yaml.dump(body, {
     lineWidth: -1,
-    noCompatMode: true,
-    quotingType: '"',
+    quoteStyle: 'double',
     forceQuotes: false,
   });
 }

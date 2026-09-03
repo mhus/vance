@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import jsyaml from 'js-yaml';
+import * as jsyaml from 'js-yaml';
 import {
   SCRIPT_COMPOSE_KINDS,
   kindByNodeName,

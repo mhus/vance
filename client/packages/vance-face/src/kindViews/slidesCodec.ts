@@ -11,7 +11,7 @@
 //
 // See `specification/doc-kind-slides.md` for the schema.
 
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import {
   dumpYamlBody,
   parseYamlBody,

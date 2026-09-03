@@ -2,7 +2,7 @@
 // Kept line-based and grammar-precise rather than full-CommonMark — we
 // only need to recognise the subset we serialise back out.
 
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import type { Block, WorkPageDocument, ImageWidth, TodoItem } from './blocks';
 import { IMAGE_WIDTHS } from './blocks';
 import { findBlockByFence } from '../blockRegistry';

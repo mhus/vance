@@ -1,6 +1,6 @@
 // Block list → Markdown (TS counterpart of WorkPageSerializer.java).
 
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import type { Block, WorkPageDocument } from './blocks';
 import { findBlockByFence } from '../blockRegistry';
 import { bodyFromAttrs } from './customBlock';
@@ -25,8 +25,7 @@ export function documentHeader(doc: WorkPageDocument): string {
   if (doc.cover && doc.cover.trim().length > 0) header.cover = doc.cover;
   const dumped = yaml.dump(header, {
     lineWidth: -1,
-    noCompatMode: true,
-    quotingType: '"',
+    quoteStyle: 'double',
     forceQuotes: false,
   });
   return '---\n' + dumped + '---\n';
@@ -228,8 +227,7 @@ function maxFenceLength(text: string): number {
 function renderFence(info: string, body: Record<string, unknown>): string {
   const dumped = yaml.dump(body, {
     lineWidth: -1,
-    noCompatMode: true,
-    quotingType: '"',
+    quoteStyle: 'double',
     forceQuotes: false,
   });
   const f = fenceFor(dumped);

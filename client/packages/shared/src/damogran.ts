@@ -12,7 +12,7 @@
  * keys, so neither block affects execution. Content is loaded on demand from the
  * (transient) workspace via each artifact's `vance-workspace:` URI.
  */
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { brainFetch } from './rest/index';
 
 /** A resolved compose output artifact, as consumed by the ComposeOutput view. */

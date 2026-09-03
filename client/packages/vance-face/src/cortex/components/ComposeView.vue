@@ -10,7 +10,7 @@
  * {@link ComposeOutput}), persistent results come from the compose's `export`.
  */
 import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import { useI18n } from 'vue-i18n';
 import {
   postComposeRun,

@@ -7,7 +7,7 @@
  * `attrs`), so no fence prop is needed.
  */
 import { computed } from 'vue';
-import jsyaml from 'js-yaml';
+import * as jsyaml from 'js-yaml';
 import { extractScript } from './scriptComposeCodec';
 
 const props = defineProps<{ attrs: Record<string, unknown> }>();

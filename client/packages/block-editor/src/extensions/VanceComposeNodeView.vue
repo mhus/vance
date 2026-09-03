@@ -15,7 +15,7 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useT } from '../useT';
-import jsyaml from 'js-yaml';
+import * as jsyaml from 'js-yaml';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
 import type { Component } from 'vue';

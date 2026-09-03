@@ -8,7 +8,7 @@
 // forced to the fixed type; other top-level keys (title/description/unknown)
 // keep their values (comments/formatting are not preserved on a script edit).
 
-import jsyaml from 'js-yaml';
+import * as jsyaml from 'js-yaml';
 import { clearComposeManaged } from '../extensions/composeOutputs';
 
 /** Task fields that carry the editable script — stripped before re-adding the

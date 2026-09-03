@@ -10,7 +10,7 @@
 // mapping with `kind` (plus optional scalar extras) at the head of
 // the body keys.
 
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 const META_KEY = '$meta';
 

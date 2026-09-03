@@ -3,7 +3,7 @@
 // batch operations (Run All Until / Clear All Output) act over ALL of them, so
 // the node-name set lives here rather than being hard-coded per NodeView.
 
-import jsyaml from 'js-yaml';
+import * as jsyaml from 'js-yaml';
 import { SCRIPT_COMPOSE_KINDS } from '../builtins/scriptComposeCodec';
 
 /** Every compose-family Tiptap node name. */

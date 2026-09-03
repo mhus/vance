@@ -9,6 +9,8 @@ import {
 } from './snapshots';
 import type {
   AccountWebViewBounds,
+  HttpGetOptions,
+  HttpGetResult,
   NavigateHomeOptions,
   PresentOptions,
   RemoveOptions,
@@ -63,4 +65,60 @@ export function registerIpc(getManager: () => AccountViewManager | null): void {
     (_e, o: { accountId: string; projectsJson: string }) =>
       setProjectSnapshot(o.accountId, o.projectsJson),
   );
+
+  ipcMain.handle('facelift:httpGet', (_e, o: HttpGetOptions) => httpGet(o));
+}
+
+/**
+ * CORS-free HTTP GET via the Electron main process (Node `fetch`).
+ *
+ * The renderer-side `verifyVanceUrl` would otherwise go through
+ * CapacitorHttp's web fallback (browser `fetch`), which enforces a CORS
+ * preflight that a Vance deployment is not expected to answer — the
+ * native iOS/Android path uses URLSession and never hits CORS. Routing
+ * the Add-Account verification through the main process mirrors that
+ * native path on the desktop.
+ *
+ * Returns a shape compatible with Capacitor's `HttpResponse` so the
+ * shared verification logic consumes it unchanged.
+ */
+async function httpGet(options: HttpGetOptions): Promise<HttpGetResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    options.readTimeout ?? 5000,
+  );
+  try {
+    const res = await fetch(options.url, {
+      headers: options.headers,
+      signal: controller.signal,
+      redirect: 'follow',
+    });
+    const headers: Record<string, string> = {};
+    res.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+    const text = await res.text();
+    const contentType = res.headers.get('content-type') ?? '';
+    let data: unknown = text;
+    if (contentType.toLowerCase().includes('json') && text.length > 0) {
+      try {
+        data = JSON.parse(text) as unknown;
+      } catch {
+        // Leave `data` as the raw text — verifyVanceUrl reports a
+        // parse error with an excerpt, same as the Capacitor path.
+      }
+    }
+    return { status: res.status, headers, data, url: res.url };
+  } catch (e) {
+    // Node's `fetch` throws a bare `TypeError: fetch failed`; surface
+    // the cause (ENOTFOUND, ECONNREFUSED, TLS, …) so the user sees the
+    // real reason in the "Not a Vancetope instance (...)" message.
+    const cause = (e as { cause?: { message?: string } }).cause;
+    const detail =
+      cause?.message ?? (e instanceof Error ? e.message : 'network error');
+    throw new Error(detail);
+  } finally {
+    clearTimeout(timer);
+  }
 }

@@ -1,5 +1,7 @@
 import { CapacitorHttp } from '@capacitor/core';
 
+import type { HttpGetOptions, HttpGetResult } from '@vance/facelift-account-webview';
+
 /**
  * Add-Account validation — checks that a user-supplied URL
  * actually points at a Vance deployment before persisting it.
@@ -10,12 +12,15 @@ import { CapacitorHttp } from '@capacitor/core';
  * builds). We accept the URL when the file parses as JSON and has
  * `product === "vance"`.
  *
- * Uses `CapacitorHttp` rather than browser `fetch` so the request
- * goes through iOS `URLSession` natively — no CORS preflight,
- * works for any remote origin the user types in. Falls back to a
- * browser `fetch` when running outside a native context (so the
- * wrapper's Vite dev server still gets meaningful behaviour,
- * subject to CORS).
+ * Transport: on native iOS/Android `CapacitorHttp` uses `URLSession`
+ * — no CORS preflight, works for any remote origin. In the Electron
+ * desktop shell CapacitorHttp would fall back to a browser `fetch`
+ * (CORS-bound, and a Vance deployment is not expected to send CORS
+ * headers on `/config.json`), so the request is routed through the
+ * Electron main process (`window.faceliftDesktop.httpGet`) instead —
+ * same no-CORS property as the native path. A plain browser (the
+ * wrapper's Vite dev server) still goes through CapacitorHttp's web
+ * fetch, subject to CORS.
  *
  * Does NOT protect against intentional fraud (a malicious server
  * can serve a matching `config.json`). It does protect against
@@ -62,16 +67,7 @@ export async function verifyVanceUrl(url: string): Promise<VerifyResult> {
   const fullUrl = `${base}/config.json?_=${Date.now()}`;
   let response;
   try {
-    response = await CapacitorHttp.get({
-      url: fullUrl,
-      connectTimeout: 5000,
-      readTimeout: 5000,
-      headers: {
-        Accept: 'application/json',
-        'Cache-Control': 'no-cache, no-store',
-        Pragma: 'no-cache',
-      },
-    });
+    response = await fetchConfigJson(fullUrl);
   } catch (e) {
     return {
       ok: false,
@@ -119,6 +115,33 @@ export async function verifyVanceUrl(url: string): Promise<VerifyResult> {
     };
   }
   return { ok: true, config: parsed };
+}
+
+/**
+ * Fetch `<url>/config.json` via the transport that matches the host —
+ * the Electron main process on the desktop shell (no CORS),
+ * `CapacitorHttp` everywhere else (native URLSession on iOS/Android).
+ * Returns the Capacitor `HttpResponse` shape either way; the
+ * main-process variant is structurally compatible.
+ */
+async function fetchConfigJson(fullUrl: string): Promise<HttpGetResult> {
+  const options: HttpGetOptions = {
+    url: fullUrl,
+    connectTimeout: 5000,
+    readTimeout: 5000,
+    headers: {
+      Accept: 'application/json',
+      'Cache-Control': 'no-cache, no-store',
+      Pragma: 'no-cache',
+    },
+  };
+  // `window.faceliftDesktop` is injected by the facelift-desktop
+  // Electron preload; absent on native mobile and in a plain browser.
+  const desktop = window.faceliftDesktop;
+  if (desktop) {
+    return desktop.httpGet(options);
+  }
+  return CapacitorHttp.get(options);
 }
 
 /** Case-insensitive header lookup — CapacitorHttp normalises header

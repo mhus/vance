@@ -40,6 +40,25 @@ export interface BiometricResult {
   errorMessage?: string;
 }
 
+/** Options for the desktop-bridged HTTP GET (mirror of the
+ *  `FaceliftDesktopBridge` contract in facelift-account-webview). */
+export interface HttpGetOptions {
+  url: string;
+  connectTimeout?: number;
+  readTimeout?: number;
+  headers?: Record<string, string>;
+}
+
+/** Result of the desktop-bridged HTTP GET (mirror of the
+ *  `FaceliftDesktopBridge` contract). `data` is a parsed object when the
+ *  response content-type is JSON, otherwise the raw text body. */
+export interface HttpGetResult {
+  status: number;
+  headers: Record<string, string>;
+  data: unknown;
+  url: string;
+}
+
 /** UA suffix appended to every account view's User-Agent, matching the
  *  iOS/Android plugins so the website's isFacelift() detection works. */
 export const USER_AGENT_SUFFIX = 'VanceFacelift/0.1.0';

@@ -4,6 +4,8 @@ import type {
   AccountWebViewBounds,
   BiometricAvailability,
   BiometricResult,
+  HttpGetOptions,
+  HttpGetResult,
   NavigateHomeOptions,
   PresentOptions,
   RemoveOptions,
@@ -11,8 +13,8 @@ import type {
 } from './types';
 
 // The renderer-facing bridge. Shape must match the FaceliftDesktopBridge
-// interface the plugin's web implementation expects
-// (facelift-account-webview/src/web.ts).
+// interface in facelift-account-webview/src/definitions.ts (formerly in
+// web.ts — moved so the `declare global` is visible to consumers).
 const bridge = {
   present: (o: PresentOptions): Promise<void> =>
     ipcRenderer.invoke('facelift:present', o),
@@ -38,6 +40,8 @@ const bridge = {
     ipcRenderer.invoke('facelift:isBiometricAvailable'),
   authenticateBiometric: (o: { reason?: string }): Promise<BiometricResult> =>
     ipcRenderer.invoke('facelift:authenticateBiometric', o),
+  httpGet: (o: HttpGetOptions): Promise<HttpGetResult> =>
+    ipcRenderer.invoke('facelift:httpGet', o),
   onUrlOpen: (callback: (event: UrlOpenEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, event: UrlOpenEvent): void =>
       callback(event);

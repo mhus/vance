@@ -141,3 +141,78 @@ export interface VanceAccountWebViewPlugin {
    *  beneath the Face-ID / Touch-ID dialog title. */
   authenticateBiometric(options: { reason?: string }): Promise<BiometricResult>;
 }
+
+/**
+ * Options for a desktop-bridged HTTP GET — the relevant slice of
+ * CapacitorHttp's request shape. Used by the Add-Account verification
+ * (`verifyVanceUrl`) when running inside the Electron desktop shell.
+ */
+export interface HttpGetOptions {
+  url: string;
+  connectTimeout?: number;
+  readTimeout?: number;
+  headers?: Record<string, string>;
+}
+
+/**
+ * Result of a desktop-bridged HTTP GET, structurally compatible with
+ * Capacitor's `HttpResponse` so `verifyVanceUrl` can consume either
+ * transport unchanged. `data` is a parsed object when the response
+ * content-type is JSON, otherwise the raw text body.
+ */
+export interface HttpGetResult {
+  status: number;
+  headers: Record<string, string>;
+  data: unknown;
+  url: string;
+}
+
+/**
+ * Contract for the object the facelift-desktop Electron preload injects
+ * via `contextBridge` (see planning/vance-facelift-desktop.md §4). Kept
+ * in lock-step with that preload. Absent in a plain browser — the web
+ * plugin implementation then reports the plugin as unavailable.
+ *
+ * Declared here (rather than in `web.ts`) so the `declare global`
+ * augmentation below is visible to consumers that statically import the
+ * package — `window.faceliftDesktop` is then typed in `facelift-bridge`
+ * without the lazy-loaded `web` module having to be pulled in.
+ */
+export interface FaceliftDesktopBridge {
+  present(options: PresentOptions): Promise<void>;
+  dismiss(): Promise<void>;
+  setBounds(options: AccountWebViewBounds): Promise<void>;
+  reload(): Promise<void>;
+  navigateHome(options: { accountId: string; url: string }): Promise<void>;
+  remove(options: RemoveOptions): Promise<void>;
+  setAccountSnapshot(options: { accountsJson: string }): Promise<void>;
+  setShareCredentials(options: {
+    accountId: string;
+    credentialsJson: string;
+  }): Promise<void>;
+  setProjectSnapshot(options: {
+    accountId: string;
+    projectsJson: string;
+  }): Promise<void>;
+  isBiometricAvailable(): Promise<BiometricAvailability>;
+  authenticateBiometric(options: { reason?: string }): Promise<BiometricResult>;
+  /** Subscribe to vance-facelift:// url events; returns an unsubscribe fn. */
+  onUrlOpen(callback: (event: UrlOpenEvent) => void): () => void;
+  /**
+   * Perform a CORS-free HTTP GET via the Electron main process.
+   *
+   * `verifyVanceUrl` calls this instead of `CapacitorHttp` on the desktop
+   * shell: there CapacitorHttp falls back to a browser `fetch`, which
+   * enforces a CORS preflight that a Vance deployment is not expected to
+   * answer (the design relies on native HTTP — see `verifyVanceUrl`).
+   * Routing through the main process mirrors the native iOS/Android
+   * (URLSession) path.
+   */
+  httpGet(options: HttpGetOptions): Promise<HttpGetResult>;
+}
+
+declare global {
+  interface Window {
+    faceliftDesktop?: FaceliftDesktopBridge;
+  }
+}

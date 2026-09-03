@@ -4,45 +4,11 @@ import type {
   AccountWebViewBounds,
   BiometricAvailability,
   BiometricResult,
+  FaceliftDesktopBridge,
   PresentOptions,
   RemoveOptions,
-  UrlOpenEvent,
   VanceAccountWebViewPlugin,
 } from './definitions';
-
-/**
- * Contract for the object the facelift-desktop Electron preload injects
- * via `contextBridge` (see planning/vance-facelift-desktop.md §4). Kept
- * in lock-step with that preload. Absent in a plain browser — the web
- * implementation then reports the plugin as unavailable.
- */
-interface FaceliftDesktopBridge {
-  present(options: PresentOptions): Promise<void>;
-  dismiss(): Promise<void>;
-  setBounds(options: AccountWebViewBounds): Promise<void>;
-  reload(): Promise<void>;
-  navigateHome(options: { accountId: string; url: string }): Promise<void>;
-  remove(options: RemoveOptions): Promise<void>;
-  setAccountSnapshot(options: { accountsJson: string }): Promise<void>;
-  setShareCredentials(options: {
-    accountId: string;
-    credentialsJson: string;
-  }): Promise<void>;
-  setProjectSnapshot(options: {
-    accountId: string;
-    projectsJson: string;
-  }): Promise<void>;
-  isBiometricAvailable(): Promise<BiometricAvailability>;
-  authenticateBiometric(options: { reason?: string }): Promise<BiometricResult>;
-  /** Subscribe to vance-facelift:// url events; returns an unsubscribe fn. */
-  onUrlOpen(callback: (event: UrlOpenEvent) => void): () => void;
-}
-
-declare global {
-  interface Window {
-    faceliftDesktop?: FaceliftDesktopBridge;
-  }
-}
 
 /**
  * Web/Electron implementation. Every call forwards to the Electron main

@@ -12,6 +12,7 @@ vi.mock('@/kindViews/SheetView.vue', () => ({ default: {} }));
 vi.mock('@/kindViews/MindmapView.vue', () => ({ default: {} }));
 
 import { registerKind } from '@vance/kind-registry';
+import { registerBuiltInKinds } from '@/document/builtInKinds';
 import { resolveBinding } from './docTypeRegistry';
 import type { CortexDocument } from './types';
 
@@ -65,5 +66,29 @@ describe('resolveBinding — cortex document → renderer dispatch', () => {
     registerKind({ id: 'y', matches: (k) => k === 'ykind', codePreview: CMP });
     const b = resolveBinding(doc({ kind: 'ykind', mimeType: 'text/plain' }));
     expect(b.mode).not.toBe('kind-registry');
+  });
+
+  it('a locked age document dispatches to the built-in age view (read-only)', () => {
+    registerBuiltInKinds();
+    const b = resolveBinding(doc({ kind: 'age', mimeType: 'application/age+armored' }));
+    expect(b.id).toBe('kind-registry:age');
+    expect(b.mode).toBe('kind-registry');
+    // No serialize — the body is ciphertext, nothing here is editable.
+    expect(b.editLocation).toBe('server-side');
+  });
+
+  it('an age document recognised by mime alone (kind never stamped) also dispatches to age', () => {
+    registerBuiltInKinds();
+    const b = resolveBinding(doc({ kind: null, mimeType: 'application/age+armored' }));
+    expect(b.id).toBe('kind-registry:age');
+  });
+
+  it('an unlocked age tab carries inner kind/mime — normal dispatch, not the age view', () => {
+    registerBuiltInKinds();
+    const b = resolveBinding(doc({ kind: null, mimeType: 'text/markdown' }));
+    // The inner markdown resolves to the catch-all code binding with the
+    // codePreview toggle — the age markers are gone from the view model.
+    expect(b.id).toBe('code');
+    expect(b.mode).toBe('code');
   });
 });

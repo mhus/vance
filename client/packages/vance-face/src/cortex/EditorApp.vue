@@ -48,6 +48,7 @@ import ComposeOutput from '@/cortex/components/ComposeOutput.vue';
 import { useDocumentRefStore } from '@/kindViews/documentRefStore';
 import { useStarredStore } from '@/starred/starredStore';
 import { isBinaryDoc, isBinaryMime } from './stores/cortexStore';
+import { isAgeDocument } from '@vance/age';
 import { useCortexStore } from './stores/cortexStore';
 import {
   readCortexView,
@@ -70,6 +71,7 @@ import CreateDocumentModal, {
 } from './components/CreateDocumentModal.vue';
 import NewFolderModal from './components/NewFolderModal.vue';
 import TranslateDialog from './components/TranslateDialog.vue';
+import AgeTransformDialog from './components/AgeTransformDialog.vue';
 import {
   cortexMenuItemLabel,
   cortexMenuItemsFor,
@@ -891,6 +893,33 @@ function openTranslate(mode: 'document' | 'selection'): void {
   showTranslate.value = true;
 }
 
+// ──────────────── Age Encrypt / Decrypt ────────────────
+const showAgeTransform = ref(false);
+const ageTransformMode = ref<'encrypt' | 'decrypt'>('encrypt');
+
+/**
+ * Actions → Encrypt is offered for ordinary text documents only: age
+ * documents, binaries (no text buffer to encrypt) and parameterised views
+ * (a computed answer, not the document) are out.
+ */
+const canEncryptActive = computed<boolean>(() => {
+  const t = activeTab.value;
+  if (!t || t.age || t.viewQuery) return false;
+  if (isAgeDocument(t.kind, t.mimeType)) return false;
+  return !isBinaryDoc(t);
+});
+
+/** Actions → Decrypt — only age documents (locked or unlocked alike). */
+const canDecryptActive = computed<boolean>(() => !!activeTab.value?.age);
+
+function openAgeTransform(mode: 'encrypt' | 'decrypt'): void {
+  if (!activeTab.value) return;
+  if (mode === 'encrypt' && !canEncryptActive.value) return;
+  if (mode === 'decrypt' && !canDecryptActive.value) return;
+  ageTransformMode.value = mode;
+  showAgeTransform.value = true;
+}
+
 /**
  * Write the finished translation next to its source and open it.
  *
@@ -1033,6 +1062,12 @@ async function runTryApply(
     return false;
   }
   if (!isBinaryMime(mime) && tab.dirty) {
+    // No 3-way merge for age documents: the remote body is ciphertext,
+    // so "merging" the decrypted buffer against it is meaningless noise.
+    // The pending-change banner carries the decision instead — keep local
+    // (next manual save wins) or accept remote (reload re-decrypts).
+    // See planning/age-encryption.md §5.3.
+    if (tab.age) return false;
     const remoteText = await brainFetchText(
       `documents/${encodeURIComponent(tab.id)}/content`,
     );
@@ -1290,7 +1325,7 @@ async function onSave(): Promise<void> {
   saving.value = true;
   saveError.value = null;
   try {
-    await store.saveActive();
+    await store.saveActive(true);
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : 'Save failed';
   } finally {
@@ -1469,7 +1504,7 @@ async function onSaveAll(): Promise<void> {
   saving.value = true;
   saveError.value = null;
   try {
-    await store.saveAllDirty();
+    await store.saveAllDirty(true);
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : 'Save failed';
   } finally {
@@ -1617,7 +1652,7 @@ function onKeyDown(e: KeyboardEvent): void {
   const key = e.key.toLowerCase();
   if (key === 's') {
     e.preventDefault();
-    void store.saveAllDirty();
+    void store.saveAllDirty(true);
     return;
   }
   if (key === 'w' && activeTab.value) {
@@ -2022,6 +2057,22 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                 <span class="flex-1">{{ $t('starred.menuOnStartPage') }}</span>
               </a>
             </li>
+            <!-- Age Encrypt / Decrypt — durable transformation into a NEW
+                 document; the original stays untouched. Encrypt works on
+                 the active tab's buffer, Decrypt on the stored armored
+                 body (planning/age-encryption.md §5.4). -->
+            <li :class="{ disabled: !canEncryptActive }">
+              <a @click="closeMenus(); openAgeTransform('encrypt')">
+                <span class="w-4 text-center" aria-hidden="true">🔐</span>
+                <span class="flex-1">{{ $t('cortex.menu.ageEncrypt') }}</span>
+              </a>
+            </li>
+            <li :class="{ disabled: !canDecryptActive }">
+              <a @click="closeMenus(); openAgeTransform('decrypt')">
+                <span class="w-4 text-center" aria-hidden="true">🔓</span>
+                <span class="flex-1">{{ $t('cortex.menu.ageDecrypt') }}</span>
+              </a>
+            </li>
             <template v-if="actionsMenuItems.length">
               <li><div class="divider my-0" /></li>
               <li
@@ -2192,6 +2243,13 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
     :source-name="activeTab.name"
     :source-text="translateSource"
     @translated="onTranslated"
+  />
+
+  <AgeTransformDialog
+    v-if="projectId && activeTab"
+    v-model="showAgeTransform"
+    :mode="ageTransformMode"
+    :document="activeTab"
   />
 </template>
 

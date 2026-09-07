@@ -100,6 +100,34 @@ export interface CortexDocument {
    * {@code cortexStore.updateLock}. Empty when no lock is set.
    */
   lockedFor?: import('@vance/generated').WriterRole[];
+
+  /**
+   * Age-encryption state of the tab. Set by the store's load path for
+   * every age-encrypted document (see {@code cortex/ageDocument.ts});
+   * absent for ordinary documents. While unlocked, {@code kind} /
+   * {@code mimeType} carry the *inner* (decrypted) values so binding
+   * resolution dispatches to the inner editor — the server-visible age
+   * markers live here instead.
+   */
+  age?: AgeTabState;
+}
+
+/**
+ * State of an open age-encrypted document (planning/age-encryption.md
+ * §5.1–5.3).
+ */
+export interface AgeTabState {
+  /** The armored body as last loaded from the server — decrypt source for unlock retries. */
+  readonly armored: string;
+  /** No available secret fit — the tab renders the locked view instead of an editor. */
+  locked: boolean;
+  /** Why the last unlock failed: {@code 'notArmored'} for corrupt bodies, {@code 'noKey'} when no secret fit. */
+  error: 'noKey' | 'notArmored' | null;
+  /** The document's server-side kind / mime (the age markers). */
+  readonly originalKind: string | null;
+  readonly originalMimeType: string | null;
+  /** Index into the key store's passphrase list, when a passphrase unlocked — the save path re-encrypts with it. */
+  unlockedPassphraseIndex?: number | null;
 }
 
 /**

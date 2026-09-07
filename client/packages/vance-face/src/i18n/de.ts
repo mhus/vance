@@ -177,6 +177,8 @@ export default {
       autoReveal: 'Auto — aktive Datei im Baum zeigen',
       autoComplete: 'Auto — Vervollständigungen im Leerlauf vorschlagen',
       actions: 'Aktionen',
+      ageEncrypt: 'Verschlüsseln…',
+      ageDecrypt: 'Entschlüsseln…',
       extras: 'Extras',
       chat: 'Chat',
       autoFollow: 'Auto — dem aktuellen Tab folgen',
@@ -295,6 +297,64 @@ export default {
       readOnly: 'nur lesen',
       closeLog: 'Log-Panel schließen',
       result: 'Ergebnis:',
+    },
+    age: {
+      save: 'Speichern',
+      saveTitle: 'Mit dem Sitzungsschlüssel verschlüsseln und speichern (age)',
+      lockedTitle: 'Dieses Dokument ist age-verschlüsselt',
+      lockedBody:
+        'Der Server speichert nur Chiffretext — der Klartext existiert ausschließlich in deinem '
+        + 'Client. Importiere den Schlüssel, mit dem verschlüsselt wurde, um das Dokument zu '
+        + 'lesen und zu bearbeiten.',
+      unlockTitle: 'Mit Schlüssel entsperren',
+      identityLabel: 'Identität',
+      identityFileLabel: 'Identitätsdatei importieren…',
+      passphraseLabel: 'Passphrase',
+      unlock: 'Entsperren',
+      tryAgain: 'Erneut versuchen',
+      forget: 'Schlüssel vergessen',
+      forgetDirtyWarning:
+        'Ein verschlüsseltes Dokument mit ungespeicherten Änderungen ist offen — ohne Schlüssel '
+        + 'kann es erst wieder gespeichert werden, wenn du einen neuen importierst. Trotzdem '
+        + 'vergessen?',
+      keyCount: '{identities} Identitäten, {passphrases} Passphrasen in dieser Sitzung',
+      memoryHint:
+        'Schlüssel bleiben nur im Speicher dieses Browser-Tabs — nie auf dem Server, nie auf '
+        + 'der Festplatte. Ein Neuladen fragt erneut.',
+      emptyForm: 'Füge zuerst eine Identität (AGE-SECRET-KEY-1…) ein oder gib eine Passphrase ein.',
+      wrongKey: 'Keiner der hinterlegten Schlüssel passt zu diesem Dokument.',
+      notArmored:
+        'Der gespeicherte Body ist kein gepanzerter age-Chiffretext — das Dokument ist '
+        + 'beschädigt oder wurde falsch gespeichert.',
+      cipherPreview: 'Chiffretext-Vorschau',
+      embedded: 'Dieses Dokument ist age-verschlüsselt — zum Entschlüsseln im Cortex öffnen.',
+      transform: {
+        encryptTitle: 'Dokument verschlüsseln',
+        decryptTitle: 'Dokument entschlüsseln',
+        intro: 'Am Zielpfad wird ein neues Dokument angelegt — das Original bleibt unangetastet. '
+          + 'Räume selbst auf, wenn das Ergebnis passt.',
+        targetLabel: 'Pfad des neuen Dokuments',
+        targetHelp: 'Standardmäßig im selben Ordner wie die Quelle.',
+        dirtyHint:
+          'Der offene Tab hat ungespeicherte Änderungen — sie gehören nicht zum gespeicherten '
+          + 'Dokument und damit nicht zum Ergebnis. Erst speichern, wenn du sie drin haben '
+          + 'willst.',
+        keySection: 'Schlüssel',
+        keyIdentities: 'Meine Sitzungs-Identitäten ({n})',
+        keyPassphrase: 'Eine Passphrase',
+        identitiesInfo: 'Verschlüsselt für deine {n} Sitzungs-Identitäten — jede davon kann entschlüsseln.',
+        addIdentity: 'Identität hinzufügen',
+        generate: 'Neuen Schlüssel erzeugen',
+        generatedWarning:
+          'Neuer Schlüssel erzeugt — er lebt nur im Speicher dieses Browser-Tabs. Lade ihn jetzt '
+          + 'herunter: Ohne die Datei ist das Dokument später nicht mehr zu entschlüsseln.',
+        downloadKey: 'Schlüsseldatei herunterladen',
+        passphraseCostHint:
+          'Die Passphrase wird out-of-band geteilt; jedes Speichern des verschlüsselten Dokuments '
+          + 'führt die Schlüsselableitung erneut aus (wenige Sekunden).',
+        confirmEncrypt: 'Verschlüsseln',
+        confirmDecrypt: 'Entschlüsseln',
+      },
     },
     tabs: {
       close: 'schließen',

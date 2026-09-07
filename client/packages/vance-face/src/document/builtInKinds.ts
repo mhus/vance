@@ -17,6 +17,7 @@
 
 import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
+import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
   // ── Markdown: code-preview toggle ──────────────────────────────
@@ -95,6 +96,10 @@ export function registerBuiltInKinds(): void {
   // Same identity-codec shape as compose — the Edit tab stays a raw
   // YAML CodeEditor (the definition is the artefact, and it is what
   // the server parses), the View tab renders the state graph.
+  // ── Magrathea workflow: state machine drawn as a flow ──────────
+  // Same identity-codec shape as compose — the Edit tab stays a raw
+  // YAML CodeEditor (the definition is the artefact, and it is what
+  // the server parses), the View tab renders the state graph.
   // Matched by kind alone: a workflow document is one wherever it
   // lives, not only under `_vance/workflows/` (spec §2.5).
   registerKind<string>({
@@ -105,6 +110,22 @@ export function registerBuiltInKinds(): void {
     tabLabelKey: 'documents.workflowView.tabLabel',
     view: defineAsyncComponent(
       () => import('@/kindViews/WorkflowFlowView.vue'),
+    ),
+  });
+
+  // ── Age: locked-state view for encrypted documents ────────────
+  // An age-encrypted document renders here while no imported key fits
+  // (AgeDocumentView = explanation + unlock form + cipher preview). Once
+  // the cortex store's transform decrypts (cortex/ageDocument.ts), the
+  // tab's kind/mime flip to the *inner* document and the normal inner
+  // binding takes over — this entry only ever sees the locked shape.
+  // Read-only by design: no parse/serialize, the body is ciphertext.
+  // Embeds (chat, canvas nodes) get the same view in its card mode.
+  registerKind({
+    id: 'age',
+    matches: (kind, mime) => isAgeDocument(kind, mime),
+    view: defineAsyncComponent(
+      () => import('@/kindViews/AgeDocumentView.vue'),
     ),
   });
 }

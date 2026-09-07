@@ -7,7 +7,10 @@ import {
   type FolderState,
 } from '../folderTree';
 import { brainFetch, brainFetchText, brainSendRaw, readKindFromBody } from '@vance/shared';
+import { AGE_MIME_TYPE } from '@vance/age';
 import { ensureKindsForDocument } from '@/platform/addonRegistry';
+import { encryptTabBody, transformAgeTab } from '../ageDocument';
+import { useAgeKeyStore } from './ageKeyStore';
 import type {
   AccentColor,
   DocumentDto,
@@ -152,6 +155,9 @@ export const useCortexStore = defineStore('cortex', () => {
   const loading = ref(false);
   const error = ref<string | null>(null);
   const currentSelection = ref<CortexSelection | null>(null);
+  // Session-held age keys — the unlock/encrypt counterpart of the age
+  // document transform (see ageDocument.ts).
+  const ageKeys = useAgeKeyStore();
 
   // Client-only virtual folders. The server has no folder entity —
   // folders exist implicitly via document path prefixes. To let the
@@ -506,6 +512,14 @@ export const useCortexStore = defineStore('cortex', () => {
       // reaction can compute "dirty" correctly from the first edit.
       file.baselineInlineText = file.inlineText;
     }
+    // Age-encrypted documents decrypt before the tab is handed to the
+    // shell: the binding then resolves against the *inner* kind/mime, so a
+    // decrypted workpage opens in the block editor and a decrypted
+    // markdown gets its preview toggle — the age markers move to
+    // file.age. Must run before the addon load so the inner kind drives
+    // it. Without a fitting key the tab stays locked and renders the
+    // unlock view.
+    await transformAgeTab(file, file.inlineText, ageKeys.secrets());
     await ensureKindAddonLoaded(file);
     openTabs.value = [...openTabs.value, file];
     activeTabId.value = id;
@@ -622,6 +636,9 @@ export const useCortexStore = defineStore('cortex', () => {
       fresh.inlineText = text ?? '';
       fresh.baselineInlineText = fresh.inlineText;
     }
+    // Same transform as openFile — a reload of an unlocked age tab must
+    // decrypt again (the server answers with ciphertext, always).
+    await transformAgeTab(fresh, fresh.inlineText, ageKeys.secrets());
     // A reload can change the kind — a `$meta.kind:` edit, or a parameterised
     // view that renders as something else — so the addon lookup runs again.
     await ensureKindAddonLoaded(fresh);
@@ -656,13 +673,22 @@ export const useCortexStore = defineStore('cortex', () => {
     // computed for a set of read parameters, while a save would replace
     // the *document* — a different thing that happens to share the row.
     if (tab.viewQuery) return;
+    // A locked age tab shows ciphertext only — there is nothing editable
+    // here, and pushing plaintext back would destroy the document.
+    if (tab.age?.locked) return;
     tab.inlineText = text;
     tab.dirty = true;
   }
 
-  async function saveTab(id: string): Promise<void> {
+  async function saveTab(id: string, opts?: { manual?: boolean }): Promise<void> {
     const tab = openTabs.value.find((t) => t.id === id);
     if (!tab || !tab.dirty) return;
+    // Age-encrypted documents save manually (planning/age-encryption.md
+    // §5.3): every save re-encrypts the whole body and a 3-way merge over
+    // ciphertext is meaningless — so the debounced auto-save, the
+    // tab-switch flush and the unmount flush all stay away, and the
+    // toolbar save button / Ctrl+S / File→Save carry the explicit flag.
+    if (tab.age && !opts?.manual) return;
     // Defense in depth, same shape as the binary guard below: whatever
     // marked a view tab dirty, the save must not go out.
     if (tab.viewQuery) {
@@ -674,6 +700,10 @@ export const useCortexStore = defineStore('cortex', () => {
     // not get its bytes replaced with our blank inlineText.
     if (isBinaryDoc(tab)) {
       tab.dirty = false;
+      return;
+    }
+    if (tab.age) {
+      await saveAgeTab(tab);
       return;
     }
     // Content lives at /documents/{id}/content after the inline→storage
@@ -711,20 +741,76 @@ export const useCortexStore = defineStore('cortex', () => {
     }
   }
 
-  async function saveActive(): Promise<void> {
+  /**
+   * The age branch of {@link saveTab}: encrypt the plaintext buffer, PUT the
+   * armored body, then restore the *inner* view-model fields — the server
+   * DTO answers with the age markers and a plain Object.assign would flip
+   * the tab back to the locked binding mid-edit.
+   */
+  async function saveAgeTab(tab: CortexDocument): Promise<void> {
+    const plaintext = tab.inlineText;
+    const armored = await encryptTabBody(
+      plaintext,
+      ageKeys.secrets(),
+      tab.age?.unlockedPassphraseIndex ?? null,
+    );
+    const mime = (tab.age?.originalMimeType ?? '').trim() || AGE_MIME_TYPE;
+    const dto = await brainSendRaw<DocumentDto>(
+      'PUT',
+      `documents/${encodeURIComponent(tab.id)}/content`,
+      armored,
+      `${mime}; charset=utf-8`,
+    );
+    const innerKind = tab.kind;
+    const innerMime = tab.mimeType;
+    const fresh = dtoToDocument(dto);
+    Object.assign(tab, fresh);
+    // Object.assign answered with kind=age / age-mime — undo that and keep
+    // the decrypted editor view standing.
+    tab.kind = innerKind;
+    tab.mimeType = innerMime;
+    tab.inlineText = plaintext;
+    tab.baselineInlineText = plaintext;
+    tab.dirty = false;
+    const li = files.value.findIndex((f) => f.id === tab.id);
+    if (li >= 0) {
+      files.value[li] = {
+        ...files.value[li],
+        path: dto.path,
+        name: dto.name,
+        title: dto.title ?? null,
+        mimeType: dto.mimeType ?? files.value[li].mimeType,
+      };
+    }
+  }
+
+  /**
+   * Retry the age decrypt with the current key store — the unlock view's
+   * action. Re-runs the transform from the armored body already loaded,
+   * without a server round trip; on success the kind flip re-resolves the
+   * binding and the inner editor replaces this view.
+   */
+  async function unlockAgeTab(id: string): Promise<void> {
+    const tab = openTabs.value.find((t) => t.id === id);
+    if (!tab?.age) return;
+    await transformAgeTab(tab, tab.age.armored, ageKeys.secrets());
+  }
+
+  async function saveActive(manual = false): Promise<void> {
     if (!activeTabId.value) return;
-    await saveTab(activeTabId.value);
+    await saveTab(activeTabId.value, { manual });
   }
 
   /**
    * Flush every tab with pending edits. Sequential to keep server-side
    * order predictable — tabs are few, so we don't need parallelism.
+   * Age tabs only flush when {@code manual} (see {@link saveTab}).
    */
-  async function saveAllDirty(): Promise<void> {
+  async function saveAllDirty(manual = false): Promise<void> {
     const dirtyTabs = openTabs.value.filter((t) => t.dirty);
     for (const t of dirtyTabs) {
       try {
-        await saveTab(t.id);
+        await saveTab(t.id, { manual });
       } catch (e) {
         console.warn(`Auto-save failed for ${t.path}`, e);
       }
@@ -834,6 +920,7 @@ export const useCortexStore = defineStore('cortex', () => {
     saveActive,
     saveTab,
     saveAllDirty,
+    unlockAgeTab,
     createFile,
     deleteFile,
     updateMeta,

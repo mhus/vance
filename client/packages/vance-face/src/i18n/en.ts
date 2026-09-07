@@ -182,6 +182,8 @@ export default {
       autoReveal: 'Auto — reveal active file in tree',
       autoComplete: 'Auto — suggest completions on idle',
       actions: 'Actions',
+      ageEncrypt: 'Encrypt…',
+      ageDecrypt: 'Decrypt…',
       extras: 'Extras',
       chat: 'Chat',
       autoFollow: 'Auto — follow current tab',
@@ -300,6 +302,60 @@ export default {
       readOnly: 'read-only',
       closeLog: 'Close log panel',
       result: 'result:',
+    },
+    age: {
+      save: 'Save',
+      saveTitle: 'Encrypt with the session key and save (age)',
+      lockedTitle: 'This document is age-encrypted',
+      lockedBody:
+        'The server stores ciphertext only — the plaintext exists solely in your client. '
+        + 'Import the key it was encrypted with to read and edit the document.',
+      unlockTitle: 'Unlock with a key',
+      identityLabel: 'Identity',
+      identityFileLabel: 'Import identity file…',
+      passphraseLabel: 'Passphrase',
+      unlock: 'Unlock',
+      tryAgain: 'Try again',
+      forget: 'Forget keys',
+      forgetDirtyWarning:
+        'An encrypted document with unsaved edits is open — without a key it cannot be saved '
+        + 'until you re-import one. Forget anyway?',
+      keyCount: '{identities} identities, {passphrases} passphrases held this session',
+      memoryHint:
+        'Keys stay in this browser tab’s memory only — never on the server, never on disk. '
+        + 'A reload asks again.',
+      emptyForm: 'Paste an identity (AGE-SECRET-KEY-1…) or enter a passphrase first.',
+      wrongKey: 'None of the held keys fit this document.',
+      notArmored:
+        'The stored body is not armored age ciphertext — the document is corrupt or was '
+        + 'stored wrongly.',
+      cipherPreview: 'Ciphertext preview',
+      embedded: 'This document is age-encrypted — open it in Cortex to unlock.',
+      transform: {
+        encryptTitle: 'Encrypt document',
+        decryptTitle: 'Decrypt document',
+        intro: 'A new document is created at the target path — the original stays untouched. Tidy up yourself when the result looks right.',
+        targetLabel: 'New document path',
+        targetHelp: 'Same folder as the source by default.',
+        dirtyHint:
+          'The open tab has unsaved edits — they are not part of the stored document and '
+          + 'therefore not part of the result. Save first if you want them included.',
+        keySection: 'Key',
+        keyIdentities: 'My session identities ({n})',
+        keyPassphrase: 'A passphrase',
+        identitiesInfo: 'Encrypting to your {n} session identities — every one of them can decrypt.',
+        addIdentity: 'Add identity',
+        generate: 'Generate a new key',
+        generatedWarning:
+          'New key generated — it lives in this browser tab’s memory only. Download it now: '
+          + 'without the file, the document cannot be decrypted later.',
+        downloadKey: 'Download key file',
+        passphraseCostHint:
+          'Share the passphrase out-of-band; every save of the encrypted document re-runs '
+          + 'the key derivation (a few seconds).',
+        confirmEncrypt: 'Encrypt',
+        confirmDecrypt: 'Decrypt',
+      },
     },
     tabs: {
       close: 'close',

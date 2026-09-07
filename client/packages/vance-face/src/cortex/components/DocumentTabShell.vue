@@ -172,6 +172,11 @@ async function onDownload(): Promise<void> {
   }
 }
 
+/** Age tabs save manually — the toolbar's explicit encrypt-and-save (planning §5.3). */
+async function onManualSave(): Promise<void> {
+  await store.saveTab(props.document.id, { manual: true });
+}
+
 async function onReload(): Promise<void> {
   if (reloading.value) return;
   if (props.document.dirty) {
@@ -547,7 +552,11 @@ const codePreviewKind = computed(() => {
 });
 
 const showToggle = computed<boolean>(
-  () => isViewMode.value || codePreviewKind.value !== undefined,
+  // A locked age document must not offer the raw-source editor — its
+  // "source" is ciphertext, and editing it would corrupt the document
+  // (the store's update guard refuses the writes anyway).
+  () => (isViewMode.value && binding.value.id !== 'kind-registry:age')
+    || codePreviewKind.value !== undefined,
 );
 
 // ─── View / Edit toggle ──────────────────────────────────────────
@@ -880,8 +889,10 @@ function fmtDuration(ms: number | null): string {
       </div>
       <!-- Run controls — only when an adapter matches this doc. The
            args input stays inline; an empty / '{}' string is the
-           implicit default so the user can just hit Run. -->
-      <template v-if="runAdapter">
+           implicit default so the user can just hit Run. Age documents
+           never run: the backend reads the body server-side and would
+           execute ciphertext. -->
+      <template v-if="runAdapter && !document.age">
         <button
           v-if="!isRunning"
           type="button"
@@ -910,8 +921,10 @@ function fmtDuration(ms: number | null): string {
            (LLM review) and applies to any JS. Slart writes server-side
            SCRIPT_JS, so Update only shows for a document that declares
            `@server`; Generate stays on an empty file — that is the
-           bootstrap path, and the script it writes carries the tag. -->
-      <template v-if="isJsLanguage">
+           bootstrap path, and the script it writes carries the tag.
+           Hidden for age documents: the script pipeline reads the body
+           server-side, which for them is ciphertext. -->
+      <template v-if="isJsLanguage && !document.age">
         <button
           type="button"
           class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200
@@ -973,6 +986,18 @@ function fmtDuration(ms: number | null): string {
         :title="notesOpen ? $t('cortex.shell.hideNotes') : $t('cortex.shell.showNotes')"
         @click="notesOpen = !notesOpen"
       >📝 {{ docNotes.notes.value.length }}</button>
+      <!-- Age tabs save manually (planning/age-encryption.md §5.3) — every
+           save re-encrypts, so this is the one explicit encrypt-and-save
+           button; Ctrl+S / File→Save route to the same store call. -->
+      <button
+        v-if="document.age"
+        type="button"
+        class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200
+               disabled:opacity-40 disabled:cursor-default"
+        :disabled="!document.dirty"
+        :title="$t('cortex.age.saveTitle')"
+        @click="onManualSave"
+      >🔐 {{ $t('cortex.age.save') }}</button>
       <span
         v-if="document.dirty && binding.editLocation === 'client-memory'"
         class="opacity-60"

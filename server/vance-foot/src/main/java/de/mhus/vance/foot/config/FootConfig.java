@@ -31,6 +31,7 @@ public class FootConfig {
     private SleepGuard sleepGuard = new SleepGuard();
     private ConversationCapture conversationCapture = new ConversationCapture();
     private ToolPacks toolPacks = new ToolPacks();
+    private Age age = new Age();
 
     @Data
     public static class Brain {
@@ -632,6 +633,16 @@ public class FootConfig {
          * {@code conversations} (i.e. {@code .vancetope/conversations/}).
          */
         private @Nullable String dir;
+    }
+
+    /**
+     * Age-encrypted documents ({@code planning/age-encryption.md} §6): the
+     * path offered by default when a view needs an identity file. Pure
+     * convenience — the prompt is editable every time.
+     */
+    @Data
+    public static class Age {
+        private @Nullable String identityFile;
     }
 }
 

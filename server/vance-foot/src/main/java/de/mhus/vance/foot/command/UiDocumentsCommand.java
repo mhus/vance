@@ -15,10 +15,17 @@ import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import com.googlecode.lanterna.gui2.dialogs.MessageDialog;
 import com.googlecode.lanterna.gui2.dialogs.MessageDialogButton;
 import com.googlecode.lanterna.gui2.dialogs.TextInputDialog;
+import com.googlecode.lanterna.gui2.dialogs.TextInputDialogBuilder;
+import de.mhus.vance.age.AgeCipher;
+import de.mhus.vance.age.AgeKeys;
+import de.mhus.vance.age.AgeNoKeyMatchException;
+import de.mhus.vance.age.AgeSecrets;
+import de.mhus.vance.api.documents.AgeDocumentKind;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentFolderListResponse;
 import de.mhus.vance.api.documents.DocumentSummary;
 import de.mhus.vance.api.documents.DocumentUpdateRequest;
+import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -45,7 +52,9 @@ import org.springframework.stereotype.Component;
  * <p>Actions on the selected file row:
  * <ul>
  *   <li><b>View</b> — open the inline text in a scrollable read-only
- *       text box. Non-inline (binary) docs report their size and
+ *       text box. Age-encrypted documents prompt for a passphrase or an
+ *       identity file and decrypt first (read-only — foot never writes
+ *       encrypted content). Non-inline (binary) docs report their size and
  *       suggest the Download action instead.</li>
  *   <li><b>Download</b> — write the document content to a local file
  *       (default path = document's file name in the current working
@@ -75,15 +84,18 @@ public class UiDocumentsCommand implements SlashCommand {
     private final SessionService sessions;
     private final ChatTerminal terminal;
     private final InterfaceService ui;
+    private final FootConfig config;
 
     public UiDocumentsCommand(BrainRestClientService rest,
                               SessionService sessions,
                               ChatTerminal terminal,
-                              InterfaceService ui) {
+                              InterfaceService ui,
+                              FootConfig config) {
         this.rest = rest;
         this.sessions = sessions;
         this.terminal = terminal;
         this.ui = ui;
+        this.config = config;
     }
 
     @Override
@@ -231,23 +243,101 @@ public class UiDocumentsCommand implements SlashCommand {
             try {
                 DocumentDto full = rest.getDocument(sel.getId());
                 String content;
-                String mime = full.getMimeType() == null ? "" : full.getMimeType().toLowerCase();
-                boolean textual = mime.startsWith("text/") || mime.contains("json")
-                        || mime.contains("yaml") || mime.contains("xml");
-                if (textual) {
-                    // Body lives in storage since the inline→storage migration;
-                    // stream it through the /content endpoint instead of reading
-                    // a now-always-null DocumentDto.inlineText.
-                    byte[] bytes = rest.downloadDocument(sel.getId());
-                    content = new String(bytes, StandardCharsets.UTF_8);
+                if (AgeDocumentKind.isAgeEncrypted(full.getKind(), full.getMimeType())) {
+                    // Age documents are the one "textual" case the mime check
+                    // below cannot classify — and the only one whose bytes need
+                    // a key before they are worth showing. The prompt loop
+                    // returns null on cancel; a wrong key stays in the loop.
+                    content = decryptForView(displayName(full), full);
+                    if (content == null) return;
                 } else {
-                    content = "(binary document — " + full.getMimeType()
-                            + ", " + full.getSize() + " bytes — use Download to fetch)";
+                    String mime = full.getMimeType() == null ? "" : full.getMimeType().toLowerCase();
+                    boolean textual = mime.startsWith("text/") || mime.contains("json")
+                            || mime.contains("yaml") || mime.contains("xml");
+                    if (textual) {
+                        // Body lives in storage since the inline→storage migration;
+                        // stream it through the /content endpoint instead of reading
+                        // a now-always-null DocumentDto.inlineText.
+                        byte[] bytes = rest.downloadDocument(sel.getId());
+                        content = new String(bytes, StandardCharsets.UTF_8);
+                    } else {
+                        content = "(binary document — " + full.getMimeType()
+                                + ", " + full.getSize() + " bytes — use Download to fetch)";
+                    }
                 }
                 showContentWindow(displayName(full), content);
             } catch (Exception e) {
                 error("View failed: " + e.getMessage());
             }
+        }
+
+        /**
+         * Prompt for the secret an age-encrypted document needs, decrypt,
+         * return the plaintext — {@code null} when the user cancelled. A
+         * wrong key reports and loops (retry or cancel); the identity-file
+         * prompt is prefilled from {@code vance.age.identity-file}. Foot
+         * never writes encrypted content — read-only by design
+         * (planning/age-encryption.md §6).
+         */
+        private @Nullable String decryptForView(String name, DocumentDto full) throws Exception {
+            byte[] bytes = rest.downloadDocument(full.getId());
+            String armored = new String(bytes, StandardCharsets.UTF_8);
+
+            while (true) {
+                String passphrase = new TextInputDialogBuilder()
+                        .setTitle("Age-encrypted — " + name)
+                        .setDescription("Passphrase (leave empty to pick an identity file):")
+                        .setPasswordInput(true)
+                        .build()
+                        .showDialog(gui);
+                if (passphrase == null) return null;
+
+                AgeSecrets secrets;
+                if (!passphrase.isEmpty()) {
+                    secrets = new AgeSecrets(List.of(), List.of(passphrase));
+                } else {
+                    String configured = config.getAge().getIdentityFile();
+                    String path = new TextInputDialogBuilder()
+                            .setTitle("Age identity file")
+                            .setDescription("Path to a file with AGE-SECRET-KEY-1… line(s):")
+                            .setInitialContent(configured == null ? "" : configured)
+                            .build()
+                            .showDialog(gui);
+                    if (path == null || path.isBlank()) return null;
+                    List<String> identities = readIdentities(Path.of(path.trim()));
+                    if (identities == null) continue;
+                    secrets = new AgeSecrets(identities, List.of());
+                }
+
+                try {
+                    return AgeCipher.decryptArmored(armored, secrets);
+                } catch (AgeNoKeyMatchException e) {
+                    MessageDialog.showMessageDialog(gui, "Wrong key",
+                            "None of the provided secrets could decrypt '" + name + "'.\n"
+                                    + "Try again or cancel — the document is not modified.",
+                            MessageDialogButton.OK);
+                } catch (RuntimeException e) {
+                    error("Decrypt failed: " + e.getMessage());
+                    return null;
+                }
+            }
+        }
+
+        /** Every identity in the file, or {@code null} (with a dialog) when it cannot be read or holds no key. */
+        private @Nullable List<String> readIdentities(Path path) {
+            String text;
+            try {
+                text = Files.readString(path);
+            } catch (Exception e) {
+                error("Cannot read identity file '" + path + "': " + e.getMessage());
+                return null;
+            }
+            List<String> identities = AgeKeys.extractIdentities(text);
+            if (identities.isEmpty()) {
+                error("No AGE-SECRET-KEY-1 line found in '" + path + "'.");
+                return null;
+            }
+            return identities;
         }
 
         private void downloadSelected() {

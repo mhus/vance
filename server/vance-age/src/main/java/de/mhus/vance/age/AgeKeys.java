@@ -2,6 +2,8 @@ package de.mhus.vance.age;
 
 import com.exceptionfactory.jagged.x25519.X25519KeyPairGenerator;
 import java.security.KeyPair;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,6 +35,9 @@ public final class AgeKeys {
     private static final Pattern RECIPIENT_IN_TEXT = Pattern.compile(
             "age1[" + BECH32_LOWER + "]{58}");
 
+    private static final Pattern ALL_IDENTITIES_IN_TEXT = Pattern.compile(
+            "AGE-SECRET-KEY-1[" + BECH32_UPPER + "]{58}");
+
     private AgeKeys() {
     }
 
@@ -58,6 +63,21 @@ public final class AgeKeys {
     /** The first {@code age1…} recipient in pasted or imported text (keygen public-key line, recipients file, bare key). */
     public static String extractRecipient(String text) {
         return find(RECIPIENT_IN_TEXT, text);
+    }
+
+    /**
+     * Every {@code AGE-SECRET-KEY-1} key in pasted or imported text — an
+     * identity file may carry several keys ({@code age -i} reads them all).
+     */
+    public static List<String> extractIdentities(String text) {
+        List<String> identities = new ArrayList<>();
+        if (text != null) {
+            Matcher matcher = ALL_IDENTITIES_IN_TEXT.matcher(text);
+            while (matcher.find() && !identities.contains(matcher.group())) {
+                identities.add(matcher.group());
+            }
+        }
+        return List.copyOf(identities);
     }
 
     /** A freshly generated X25519 identity pair. */

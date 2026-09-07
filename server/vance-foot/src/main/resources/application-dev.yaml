@@ -9,3 +9,8 @@
 vance:
   brain:
     allowInsecureTransport: true
+  # Age-encrypted documents (kind 'age') — the default path offered by
+  # /ui-documents View when it prompts for an identity file. Optional and
+  # pure convenience: the prompt stays editable every time.
+  # age:
+  #   identity-file: ~/.config/vance/age-identity.txt

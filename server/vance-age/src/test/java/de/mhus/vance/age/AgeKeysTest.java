@@ -54,6 +54,19 @@ class AgeKeysTest {
     }
 
     @Test
+    void extractsEveryIdentityFromMultiKeyFiles() {
+        // age -i reads every AGE-SECRET-KEY-1 line — so does foot's
+        // identity-file prompt.
+        String first = AgeKeys.extractIdentity(keygenFile);
+        String second = AgeKeys.generateKeyPair().identity();
+        String file = "# comment\n" + first + "\n" + second + "\n" + first + "\n";
+
+        assertThat(AgeKeys.extractIdentities(file)).containsExactly(first, second);
+        assertThat(AgeKeys.extractIdentities("# nothing")).isEmpty();
+        assertThat(AgeKeys.extractIdentities(null)).isEmpty();
+    }
+
+    @Test
     void generatesWorkingPairs() {
         AgeKeys.AgeKeyPair pair = AgeKeys.generateKeyPair();
 

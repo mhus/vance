@@ -20,6 +20,7 @@
         <module>plugins</module>
         <module>vance-api</module>
         <module>vance-toolpack</module>
+        <module>vance-age</module>
         <module>vance-shared</module>
         <module>vance-brain</module>
         <module>vance-foot</module>
@@ -70,6 +71,7 @@
         <!-- swagger-parser 2.x supports both OpenAPI 3.x and Swagger 2.x. Used by
              RestApiToolPackFactory to materialise REST-API packs into Vance Tools. -->
         <swagger.parser.version>2.1.47</swagger.parser.version>
+        <jagged.version>1.0.0</jagged.version>
         <!-- HTML → text extraction for WebFetchTool's 'text' flag. Robust against
              broken markup, drops script/style content, decodes entities. -->
         <jsoup.version>1.23.2</jsoup.version>
@@ -117,6 +119,17 @@
                 <groupId>org.bsc.langgraph4j</groupId>
                 <artifactId>langgraph4j-bom</artifactId>
                 <version>${langgraph4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <!-- jagged — the Java implementation of the age v1 file
+                     encryption format. Consumed by vance-age (the shared
+                     facade module for brain and foot); pure JCA, no
+                     transitive dependencies. -->
+                <groupId>com.exceptionfactory.jagged</groupId>
+                <artifactId>jagged-bom</artifactId>
+                <version>${jagged.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

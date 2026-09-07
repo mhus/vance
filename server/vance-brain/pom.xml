@@ -24,6 +24,14 @@
             <artifactId>vance-toolpack</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Central age facade (jagged) — foundation for the agent-facing
+             encrypt tool (created at the end of the age track); the brain
+             itself never decrypts user documents. -->
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-age</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-shared</artifactId>

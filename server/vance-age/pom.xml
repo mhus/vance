@@ -1,0 +1,50 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.mhus.vance</groupId>
+        <artifactId>vance</artifactId>
+        <version>0.4.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>vance-age</artifactId>
+    <name>vance-age</name>
+    <description>Vance age Encryption — the Java twin of @vance/age: a thin facade around jagged (the age v1 implementation, pure JCA) for X25519 identities, passphrases and ASCII armor. Consumed by vance-brain (server-side document tools) and vance-foot (client-side view decryption). No Spring, no MongoDB. The server never sees plaintext — this module only ever handles ciphertext on its way in or out of a client.</description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- jagged — age v1 encryption. api: stanza/recipient interfaces;
+             framework: streaming channels + ASCII armor; x25519: standard
+             recipients/identities; scrypt: passphrases. jagged-ssh is
+             deliberately absent — v1 scope is X25519 + passphrase only. -->
+        <dependency>
+            <groupId>com.exceptionfactory.jagged</groupId>
+            <artifactId>jagged-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.exceptionfactory.jagged</groupId>
+            <artifactId>jagged-framework</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.exceptionfactory.jagged</groupId>
+            <artifactId>jagged-x25519</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.exceptionfactory.jagged</groupId>
+            <artifactId>jagged-scrypt</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

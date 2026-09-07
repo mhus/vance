@@ -24,6 +24,14 @@
             <artifactId>vance-toolpack</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Central age facade (jagged) — view-time decryption of
+             age-encrypted documents. The agent-facing encrypt tool on the
+             brain side shares this module. -->
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-age</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

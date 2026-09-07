@@ -178,6 +178,18 @@ function closeItem(): void {
 }
 
 /**
+ * Back to the list the item came from, re-rendered. A settled message —
+ * answered, dismissed, delegated or archived — has left the desk, and staying
+ * would render the detail of something already gone; the reload lands the
+ * row where its new state puts it (out of the PENDING views, badged in the
+ * team view).
+ */
+async function backToList(): Promise<void> {
+  closeItem();
+  await inbox.loadList(selectionToFilter(selection.value));
+}
+
+/**
  * Human label for the current list view — drives the sub-header.
  * Mirrors what {@link breadcrumbs} renders in the topbar, just
  * without the leading project name.
@@ -233,10 +245,23 @@ async function submitApproval(approved: boolean): Promise<void> {
   if (!sel?.id) return;
   submitting.value = true;
   try {
-    await inbox.answer(sel.id, AnswerOutcome.DECIDED, { approved });
+    const ok = await inbox.answer(sel.id, AnswerOutcome.DECIDED, { approved });
+    if (ok) await settleAnsweredItem(sel.id);
   } finally {
     submitting.value = false;
   }
+}
+
+/**
+ * An answered ask is done in one gesture: off the desk (the archive), then
+ * back to the list — the answer is what the buttons were for, and an
+ * answered item left open is a zombie detail. Archiving does not touch a
+ * pending effect: it runs on the server either way, and its result can
+ * still be read from the archive view.
+ */
+async function settleAnsweredItem(id: string): Promise<void> {
+  await inbox.archive(id);
+  await backToList();
 }
 
 async function submitDecision(chosen: unknown): Promise<void> {
@@ -244,7 +269,8 @@ async function submitDecision(chosen: unknown): Promise<void> {
   if (!sel?.id) return;
   submitting.value = true;
   try {
-    await inbox.answer(sel.id, AnswerOutcome.DECIDED, { chosen });
+    const ok = await inbox.answer(sel.id, AnswerOutcome.DECIDED, { chosen });
+    if (ok) await settleAnsweredItem(sel.id);
   } finally {
     submitting.value = false;
   }
@@ -256,7 +282,8 @@ async function submitFeedback(): Promise<void> {
   if (!feedbackText.value.trim()) return;
   submitting.value = true;
   try {
-    await inbox.answer(sel.id, AnswerOutcome.DECIDED, { text: feedbackText.value.trim() });
+    const ok = await inbox.answer(sel.id, AnswerOutcome.DECIDED, { text: feedbackText.value.trim() });
+    if (ok) await settleAnsweredItem(sel.id);
   } finally {
     submitting.value = false;
   }
@@ -267,7 +294,8 @@ async function submitInsufficientInfo(): Promise<void> {
   if (!sel?.id) return;
   submitting.value = true;
   try {
-    await inbox.answer(sel.id, AnswerOutcome.INSUFFICIENT_INFO, null, reasonText.value.trim() || null);
+    const ok = await inbox.answer(sel.id, AnswerOutcome.INSUFFICIENT_INFO, null, reasonText.value.trim() || null);
+    if (ok) await settleAnsweredItem(sel.id);
   } finally {
     submitting.value = false;
   }
@@ -278,7 +306,8 @@ async function submitUndecidable(): Promise<void> {
   if (!sel?.id) return;
   submitting.value = true;
   try {
-    await inbox.answer(sel.id, AnswerOutcome.UNDECIDABLE, null, reasonText.value.trim() || null);
+    const ok = await inbox.answer(sel.id, AnswerOutcome.UNDECIDABLE, null, reasonText.value.trim() || null);
+    if (ok) await settleAnsweredItem(sel.id);
   } finally {
     submitting.value = false;
   }
@@ -289,7 +318,8 @@ async function archiveItem(): Promise<void> {
   if (!sel?.id) return;
   submitting.value = true;
   try {
-    await inbox.archive(sel.id);
+    const ok = await inbox.archive(sel.id);
+    if (ok) await backToList();
   } finally {
     submitting.value = false;
   }
@@ -417,7 +447,8 @@ async function dismissItem(): Promise<void> {
   if (!sel?.id) return;
   submitting.value = true;
   try {
-    await inbox.dismiss(sel.id);
+    const ok = await inbox.dismiss(sel.id);
+    if (ok) await backToList();
   } finally {
     submitting.value = false;
   }
@@ -453,7 +484,12 @@ async function confirmDelegate(): Promise<void> {
   delegating.value = true;
   try {
     const ok = await inbox.delegate(sel.id, delegateTarget.value, delegateNote.value || null);
-    if (ok) delegateOpen.value = false;
+    if (ok) {
+      delegateOpen.value = false;
+      // Delegated away is settled for this desk: the item now lives in
+      // somebody else's inbox, and this list is not it.
+      await backToList();
+    }
   } finally {
     delegating.value = false;
   }

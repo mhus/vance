@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.inbox.InboxComposeRequest;
 import de.mhus.vance.api.inbox.InboxDelegateRequest;
 import de.mhus.vance.api.inbox.InboxInviteRequest;
 import de.mhus.vance.api.inbox.MaximegalonStatus;
@@ -24,6 +25,9 @@ import de.mhus.vance.shared.permission.PermissionDeniedException;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.team.TeamService;
+import de.mhus.vance.shared.user.UserDocument;
+import de.mhus.vance.shared.user.UserStatus;
+import de.mhus.vance.shared.user.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Optional;
@@ -48,6 +52,7 @@ class InboxControllerDeliveryAuthzTest {
     private MaximegalonService service;
     private RequestAuthority authority;
     private TeamService teamService;
+    private UserService userService;
     private InboxController controller;
     private HttpServletRequest request;
 
@@ -56,11 +61,13 @@ class InboxControllerDeliveryAuthzTest {
         service = mock(MaximegalonService.class);
         authority = mock(RequestAuthority.class);
         teamService = mock(TeamService.class);
+        userService = mock(UserService.class);
         when(teamService.byMember(any(), any())).thenReturn(List.of());
         controller = new InboxController(
                 service, new InboxEffectRegistry(List.of()), teamService,
                 mock(ProjectService.class), authority, new InboxAuthz(teamService),
-                mock(de.mhus.vance.shared.document.DocumentService.class));
+                mock(de.mhus.vance.shared.document.DocumentService.class),
+                userService);
 
         request = mock(HttpServletRequest.class);
         when(request.getAttribute(AccessFilterBase.ATTR_USERNAME)).thenReturn(ME);
@@ -73,6 +80,19 @@ class InboxControllerDeliveryAuthzTest {
                 .requiresAction(true)
                 .build();
         when(service.findById(TENANT, "t1")).thenReturn(Optional.of(mine));
+
+        // The compose path resolves its recipient before authorizing the
+        // delivery; every test that composes can override this stub.
+        when(userService.findByTenantAndName(TENANT, TARGET))
+                .thenReturn(Optional.of(human(TARGET)));
+    }
+
+    /** An active human user, as the compose path requires its recipient to be. */
+    private static UserDocument human(String name) {
+        return UserDocument.builder()
+                .name(name)
+                .status(UserStatus.ACTIVE)
+                .build();
     }
 
     /** The resource that names "somebody else's inbox", as both call sites build it. */
@@ -125,5 +145,37 @@ class InboxControllerDeliveryAuthzTest {
         controller.invite(TENANT, "t1", body, request);
 
         verify(authority).enforce(eq(request), eq(targetInbox()), eq(Action.WRITE));
+    }
+
+    @Test
+    void compose_authorizesTheTargetInboxOnTheWayThrough() {
+        when(service.create(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        InboxComposeRequest body = InboxComposeRequest.builder()
+                .assignedToUserId(TARGET)
+                .title("Lunch?")
+                .build();
+        controller.compose(TENANT, body, request);
+
+        verify(authority).enforce(eq(request), eq(targetInbox()), eq(Action.WRITE));
+    }
+
+    @Test
+    void compose_isRefusedWhenTheCallerMayNotWriteToTheTargetInbox() {
+        doThrow(new PermissionDeniedException(
+                        de.mhus.vance.shared.permission.SecurityContext.user(ME, TENANT, List.of()),
+                        targetInbox(), Action.WRITE))
+                .when(authority).enforce(eq(request), eq(targetInbox()), eq(Action.WRITE));
+
+        InboxComposeRequest body = InboxComposeRequest.builder()
+                .assignedToUserId(TARGET)
+                .title("Lunch?")
+                .build();
+
+        assertThatThrownBy(() -> controller.compose(TENANT, body, request))
+                .isInstanceOf(PermissionDeniedException.class);
+
+        // The refusal has to land before the write, not after it.
+        verify(service, never()).create(any());
     }
 }

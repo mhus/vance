@@ -29,8 +29,10 @@ import { navigateTo, pushUrl, replaceUrl } from '@/platform/navigate';
 import {
   AnswerOutcome,
   Criticality,
+  InboxRecipientKind,
   MaximegalonStatus,
   MaximegalonType,
+  type InboxRecipientDto,
   type MaximegalonDocumentRef,
   type MaximegalonDto,
 } from '@vance/generated';
@@ -156,6 +158,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('popstate', onPopstate);
+  clearTimeout(composeSentTimer);
+  clearTimeout(composeSearchTimer);
 });
 
 watch(selection, async (next) => {
@@ -452,6 +456,122 @@ async function confirmDelegate(): Promise<void> {
     if (ok) delegateOpen.value = false;
   } finally {
     delegating.value = false;
+  }
+}
+
+// ─── Compose modal ─────────────────────────────────────────────────────
+//
+// The free "put a message in somebody's inbox" the Web-UI was missing: the
+// share path needs an object to deliver, a discussion needs a document, and
+// a chat is a different surface. Never an ask — nothing waits on a hand-
+// written message; a wanted reply happens in the thread's clarification.
+
+/** A picked search result: what the send addresses, plus the label to show. */
+type ComposeSelection = { kind: 'user' | 'team'; name: string; label: string };
+
+const composeOpen = ref(false);
+const composeTarget = ref<ComposeSelection | null>(null);
+const composeQuery = ref('');
+const composeTitle = ref('');
+const composeBody = ref('');
+const composing = ref(false);
+
+/** "Message sent to X" — shown above the list for a few seconds. */
+const composeFeedback = ref<
+  { kind: 'user'; name: string } | { kind: 'team'; team: string; count: number } | null
+>(null);
+let composeSentTimer: ReturnType<typeof setTimeout> | undefined;
+let composeSearchTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * The server answers a refused send with a stable code — the same contract
+ * as the thread endpoints. Turning it into a sentence is this client's job:
+ * the raw code says nothing to a reader. Unknown text passes through
+ * unswallowed.
+ */
+const COMPOSE_REASONS = new Set(['no_deliverable_members']);
+
+const composeErrorText = computed<string | null>(() => {
+  const raw = inbox.error.value;
+  if (!raw) return null;
+  return COMPOSE_REASONS.has(raw)
+    ? t('inbox.compose.reason.no_deliverable_members')
+    : raw;
+});
+
+/** 300 ms of quiet before a keystroke becomes a query — search-as-you-type without a request per letter. */
+watch(composeQuery, (q) => {
+  clearTimeout(composeSearchTimer);
+  composeSearchTimer = setTimeout(() => { void inbox.searchRecipients(q); }, 300);
+});
+
+function pickRecipient(r: InboxRecipientDto): void {
+  composeTarget.value = {
+    kind: r.kind === InboxRecipientKind.TEAM ? 'team' : 'user',
+    name: r.name,
+    label: r.displayName || r.name,
+  };
+}
+
+/** The exposed inner input of the search field — see {@link focusComposeSearch}. */
+const composeSearchInput = ref<{ input: HTMLInputElement | null } | null>(null);
+
+/**
+ * Puts the caret in the "To" search. After a tick, because the field only
+ * exists once the modal's search branch is rendered — the modal itself
+ * mounts through {@code showModal()}, and a focus on a not-yet-existing (or
+ * not-yet-visible) input is silently dropped.
+ */
+async function focusComposeSearch(): Promise<void> {
+  await nextTick();
+  composeSearchInput.value?.input?.focus();
+}
+
+/** Back to the search — the "Change" path, with the same focus the open has. */
+function clearComposeTarget(): void {
+  composeTarget.value = null;
+  void focusComposeSearch();
+}
+
+function openCompose(): void {
+  // Open straight onto the search, caret in the field: picking the address is
+  // the first thing a compose does, and a preselected one is one keystroke of
+  // friction. Send stays disabled until an address is picked.
+  composeTarget.value = null;
+  composeQuery.value = '';
+  composeTitle.value = '';
+  composeBody.value = '';
+  // The initial page: teams plus the first users, no query needed.
+  void inbox.searchRecipients('');
+  composeOpen.value = true;
+  void focusComposeSearch();
+}
+
+async function confirmCompose(): Promise<void> {
+  const target = composeTarget.value;
+  if (!target || !composeTitle.value.trim()) return;
+  composing.value = true;
+  try {
+    const delivered = await inbox.compose(
+      composeTitle.value.trim(),
+      composeBody.value.trim() || null,
+      { kind: target.kind, name: target.name },
+    );
+    if (!delivered) return;
+    composeOpen.value = false;
+    composeFeedback.value = target.kind === 'team'
+      ? { kind: 'team', team: target.label, count: delivered.length }
+      : { kind: 'user', name: target.label };
+    clearTimeout(composeSentTimer);
+    composeSentTimer = setTimeout(() => { composeFeedback.value = null; }, 5000);
+    // The list, the tag sidebar and the badge can all have moved (a self-
+    // delivered item, the origin tag) — one reload reconciles them.
+    await Promise.all([
+      inbox.loadList(selectionToFilter(selection.value)),
+      inbox.loadTags(),
+    ]);
+  } finally {
+    composing.value = false;
   }
 }
 
@@ -815,6 +935,11 @@ const breadcrumbs = computed<string[]>(() => {
       >
         <div class="flex-1 min-w-0 font-semibold truncate">{{ viewLabel }}</div>
         <VButton
+          variant="primary"
+          size="sm"
+          @click="openCompose"
+        >{{ $t('inbox.compose.button') }}</VButton>
+        <VButton
           v-if="selection.kind !== 'archive' && inbox.items.value.length > 0"
           variant="ghost"
           size="sm"
@@ -855,6 +980,19 @@ const breadcrumbs = computed<string[]>(() => {
     <section v-if="!inbox.selected.value" class="inbox-list p-2">
       <VAlert v-if="inbox.error.value" variant="error" class="mb-3">
         <span>{{ inbox.error.value }}</span>
+      </VAlert>
+      <!-- Transient by design: the proof of delivery is the empty composer,
+           and a success that stays would become furniture. -->
+      <VAlert v-if="composeFeedback" variant="success" class="mb-3">
+        <span v-if="composeFeedback.kind === 'user'">
+          {{ $t('inbox.compose.sent', { user: composeFeedback.name }) }}
+        </span>
+        <span v-else-if="composeFeedback.count === 1">
+          {{ $t('inbox.compose.sentTeamOne', { team: composeFeedback.team }) }}
+        </span>
+        <span v-else>
+          {{ $t('inbox.compose.sentTeam', { team: composeFeedback.team, n: composeFeedback.count }) }}
+        </span>
       </VAlert>
       <VEmptyState
         v-if="!inbox.loading.value && inbox.items.value.length === 0"
@@ -1260,6 +1398,104 @@ const breadcrumbs = computed<string[]>(() => {
           :disabled="!delegateTarget || delegateOptions.length === 0"
           @click="confirmDelegate"
         >{{ $t('inbox.delegate.confirm') }}</VButton>
+      </template>
+    </VModal>
+
+    <!-- ─── Compose modal: write a message into somebody's inbox ─── -->
+    <VModal
+      v-model="composeOpen"
+      :title="$t('inbox.compose.title')"
+      :close-on-backdrop="!composing"
+    >
+      <p class="text-sm opacity-80 mb-3">{{ $t('inbox.compose.body') }}</p>
+      <div class="flex flex-col gap-3">
+        <!-- The address: either a picked target, or the search that picks one.
+             Pickers are not directories — the list is bounded, and refining
+             the query is the way forward. -->
+        <div
+          v-if="composeTarget"
+          class="flex items-center gap-2 p-2 rounded border border-base-300"
+        >
+          <VBadge :variant="composeTarget.kind === 'team' ? 'primary' : 'ghost'" size="sm">
+            {{ composeTarget.kind === 'team'
+              ? $t('inbox.compose.teamLabel') : $t('inbox.compose.userLabel') }}
+          </VBadge>
+          <span class="flex-1 min-w-0 truncate font-medium">{{ composeTarget.label }}</span>
+          <VBadge
+            v-if="composeTarget.kind === 'user' && composeTarget.name === currentUser"
+            variant="info"
+            size="sm"
+            soft
+          >{{ $t('inbox.compose.selfLabel') }}</VBadge>
+          <VButton
+            variant="ghost"
+            size="sm"
+            :disabled="composing"
+            @click="clearComposeTarget"
+          >{{ $t('inbox.compose.change') }}</VButton>
+        </div>
+        <template v-else>
+          <VInput
+            ref="composeSearchInput"
+            v-model="composeQuery"
+            :label="$t('inbox.compose.recipient')"
+            :placeholder="$t('inbox.compose.searchPlaceholder')"
+            :disabled="composing"
+          />
+          <div
+            v-if="inbox.recipientResults.value.length > 0"
+            class="flex flex-col gap-1 max-h-64 overflow-y-auto"
+          >
+            <button
+              v-for="r in inbox.recipientResults.value"
+              :key="r.kind + ':' + r.name"
+              type="button"
+              class="flex items-center gap-2 px-2 py-1.5 rounded text-left"
+              :disabled="composing"
+              @click="pickRecipient(r)"
+            >
+              <VBadge variant="ghost" size="sm">
+                {{ r.kind === InboxRecipientKind.TEAM
+                  ? $t('inbox.compose.teamLabel') : $t('inbox.compose.userLabel') }}
+              </VBadge>
+              <span class="truncate">{{ r.displayName }}</span>
+              <VBadge v-if="r.name === currentUser" variant="info" size="sm" soft>
+                {{ $t('inbox.compose.selfLabel') }}
+              </VBadge>
+            </button>
+          </div>
+          <div v-else class="text-xs opacity-60">{{ $t('inbox.compose.noMatches') }}</div>
+          <div v-if="inbox.recipientsTruncated.value" class="text-xs opacity-60">
+            {{ $t('inbox.compose.truncated', { n: inbox.recipientResults.value.length }) }}
+          </div>
+        </template>
+        <VInput
+          v-model="composeTitle"
+          :label="$t('inbox.compose.subject')"
+          :disabled="composing"
+        />
+        <VTextarea
+          v-model="composeBody"
+          :label="$t('inbox.compose.message')"
+          :rows="6"
+          :disabled="composing"
+        />
+      </div>
+      <!-- Inline, not behind the modal: the user is mid-interaction with the
+           search — an error they cannot see helps nobody. -->
+      <VAlert v-if="composeErrorText" variant="error" class="mt-3">
+        <span>{{ composeErrorText }}</span>
+      </VAlert>
+      <template #actions>
+        <VButton variant="ghost" :disabled="composing" @click="composeOpen = false">
+          {{ $t('inbox.compose.cancel') }}
+        </VButton>
+        <VButton
+          variant="primary"
+          :loading="composing"
+          :disabled="!composeTarget || !composeTitle.trim()"
+          @click="confirmCompose"
+        >{{ $t('inbox.compose.send') }}</VButton>
       </template>
     </VModal>
 

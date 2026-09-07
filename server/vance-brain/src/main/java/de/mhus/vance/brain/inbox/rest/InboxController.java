@@ -2,10 +2,15 @@ package de.mhus.vance.brain.inbox.rest;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.EffectDescription;
+import de.mhus.vance.api.inbox.InboxComposeRequest;
+import de.mhus.vance.api.inbox.InboxComposeResponse;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.InboxAnswerRequest;
 import de.mhus.vance.api.inbox.InboxCountResponse;
 import de.mhus.vance.api.inbox.InboxMessagePostRequest;
+import de.mhus.vance.api.inbox.InboxRecipientDto;
+import de.mhus.vance.api.inbox.InboxRecipientKind;
+import de.mhus.vance.api.inbox.InboxRecipientsResponse;
 import de.mhus.vance.api.inbox.InboxReadRequest;
 import de.mhus.vance.api.inbox.InboxInviteRequest;
 import de.mhus.vance.api.inbox.InboxParticipantRemoveRequest;
@@ -37,9 +42,13 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
+import de.mhus.vance.shared.user.UserDocument;
+import de.mhus.vance.shared.user.UserService;
+import de.mhus.vance.shared.user.UserStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -92,6 +101,13 @@ public class InboxController {
      */
     private static final int BY_DOCUMENT_LIMIT = 40;
 
+    /**
+     * Default and hard ceiling for the recipient search. A picker is not a
+     * directory: beyond this, narrowing the query is the way forward, and the
+     * {@code truncated} flag says so instead of silently hiding the rest.
+     */
+    private static final int RECIPIENT_LIMIT = 100;
+
     private final MaximegalonService inboxItemService;
     private final InboxEffectRegistry effectRegistry;
     private final TeamService teamService;
@@ -99,6 +115,7 @@ public class InboxController {
     private final RequestAuthority authority;
     private final de.mhus.vance.brain.inbox.InboxAuthz inboxAuthz;
     private final DocumentService documentService;
+    private final UserService userService;
 
     // ──────────────────── Read ────────────────────
 
@@ -327,6 +344,220 @@ public class InboxController {
         List<String> tags = inboxItemService.distinctTags(tenant, new ArrayList<>(userScope));
         tags.sort(String::compareToIgnoreCase);
         return InboxTagsResponse.builder().tags(tags).build();
+    }
+
+    // ──────────────────── Compose ────────────────────
+
+    /**
+     * Who the compose dialog may offer, as a search: users the caller may
+     * deliver an inbox item to, plus the caller's teams — both matching
+     * {@code q} against name or title, case-insensitively.
+     *
+     * <p>For users, the list is provider-filtered by the same {@code InboxItem
+     * WRITE} check the delivery itself passes, so the picker cannot offer a
+     * recipient the send would then refuse. Self is in the list: a note to
+     * oneself is a legitimate delivery, and unlike the Milliways share path
+     * nothing here requires a subject to deliver — the share handler excludes
+     * the sharer because sharing is a human-to-human act, composing is not only
+     * that.
+     *
+     * <p>Teams come first, and only the caller's own: the team-inbox view
+     * draws the same line, membership is what makes the fan-out meaningful
+     * (see {@link #compose}), and a team result is the "many desks" pick —
+     * burying it under a hundred users would hide the bulk option.
+     *
+     * <p>Bounded at {@link #RECIPIENT_LIMIT}; {@code truncated} means the
+     * page is full, not that these are all of them.
+     */
+    @GetMapping("/brain/{tenant}/inbox/recipients")
+    public InboxRecipientsResponse recipients(
+            @PathVariable("tenant") String tenant,
+            @RequestParam(value = "q", required = false) @Nullable String q,
+            @RequestParam(value = "limit", required = false) @Nullable Integer limit,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
+        String currentUser = currentUser(httpRequest);
+        String query = q == null ? "" : q.trim().toLowerCase();
+        int max = limit == null
+                ? RECIPIENT_LIMIT
+                : Math.min(Math.max(limit, 1), RECIPIENT_LIMIT);
+
+        List<InboxRecipientDto> teams = new ArrayList<>();
+        for (TeamDocument team : teamService.byMember(tenant, currentUser)) {
+            if (!matches(query, team.getName(), team.getTitle())) continue;
+            teams.add(InboxRecipientDto.builder()
+                    .kind(InboxRecipientKind.TEAM)
+                    .name(team.getName())
+                    .displayName(displayName(team.getTitle(), team.getName()))
+                    .build());
+        }
+        teams.sort(Comparator.comparing(
+                InboxRecipientDto::getDisplayName, String.CASE_INSENSITIVE_ORDER));
+
+        List<InboxRecipientDto> users = new ArrayList<>();
+        // Teams alone can fill the page; in that case the user walk — whose
+        // per-iteration cost is the permission check — is skipped entirely.
+        boolean truncated = teams.size() > max;
+        if (!truncated) {
+            for (UserDocument user : userService.all(tenant)) {
+                // Service accounts are not addressees: composing is a
+                // human-to-human act, and an automated identity's inbox is not
+                // a desk anybody reads.
+                if (user.isServiceAccount()) continue;
+                if (user.getStatus() != UserStatus.ACTIVE) continue;
+                if (!matches(query, user.getName(), user.getTitle())) continue;
+                // The WRITE check is the expensive step; once the page is full
+                // the outcome is decided and the walk stops.
+                if (teams.size() + users.size() >= max) {
+                    truncated = true;
+                    break;
+                }
+                if (!authority.check(httpRequest,
+                        new Resource.InboxItem(tenant, "", user.getName()), Action.WRITE)) {
+                    continue;
+                }
+                users.add(InboxRecipientDto.builder()
+                        .kind(InboxRecipientKind.USER)
+                        .name(user.getName())
+                        .displayName(displayName(user.getTitle(), user.getName()))
+                        .build());
+            }
+        }
+        users.sort(Comparator.comparing(
+                InboxRecipientDto::getDisplayName, String.CASE_INSENSITIVE_ORDER));
+
+        List<InboxRecipientDto> merged = new ArrayList<>(teams.size() + users.size());
+        merged.addAll(teams);
+        merged.addAll(users);
+        if (merged.size() > max) {
+            merged = new ArrayList<>(merged.subList(0, max));
+            truncated = true;
+        }
+        return InboxRecipientsResponse.builder()
+                .recipients(merged).truncated(truncated).build();
+    }
+
+    /**
+     * Compose a message into an inbox — title and body, no object attached.
+     * The free case between the two siblings that both need one: a Milliways
+     * share delivers a pointer at a document, a discussion opens a thread
+     * <em>about</em> a document, and this delivers whatever the sender wrote.
+     *
+     * <p>One address or the other, never both: {@code assignedToUserId} lands
+     * on one desk, {@code teamName} fans out to one thread per member of a
+     * team the caller belongs to. Fan-out, not one shared thread, because
+     * read state is a person's fact, a clarification belongs to one matter,
+     * and the inbox model has no collective assignee — the same shape the
+     * Milliways multi-recipient share produces. The sender is not fanned out
+     * to (they wrote it), and each member still passes the delivery gate
+     * individually; who actually got it is the answer, not an assumption.
+     *
+     * <p>Checks, each answering a different question. Tenant READ: may this
+     * person be here at all. Recipient exists (or team + membership): an item
+     * for a name that is nobody is undeliverable mail — it would sit unseen
+     * forever and keep a badge nobody owns. Inbox WRITE on the recipient:
+     * delivering spends their attention — the same rule {@code invite},
+     * {@code delegate} and {@code inbox_post} apply.
+     *
+     * <p>{@code requiresAction=false} always, for the reason
+     * {@link InboxComposeRequest} documents: nothing waits on a hand-written
+     * message, so making it an ask would create a permanently-open badge item
+     * with no process behind it to resolve. A wanted reply happens in the
+     * thread's clarification. Herkunft is distinguishable by tag: {@code share}
+     * against {@code discussion} against {@code message}.
+     */
+    @PostMapping("/brain/{tenant}/inbox/messages")
+    public ResponseEntity<InboxComposeResponse> compose(
+            @PathVariable("tenant") String tenant,
+            @Valid @RequestBody InboxComposeRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
+        String currentUser = currentUser(httpRequest);
+        if (request.getTeamName() != null && request.getAssignedToUserId() != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Pick one address: a user or a team, not both");
+        }
+        InboxComposeResponse response = request.getTeamName() != null
+                ? composeToTeam(tenant, currentUser, request, httpRequest)
+                : composeToUser(tenant, currentUser, request, httpRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    private InboxComposeResponse composeToUser(
+            String tenant, String currentUser,
+            InboxComposeRequest request, HttpServletRequest httpRequest) {
+        String assignee = StringUtils.isBlank(request.getAssignedToUserId())
+                ? currentUser : request.getAssignedToUserId().trim();
+        UserDocument recipient = userService.findByTenantAndName(tenant, assignee)
+                .filter(u -> !u.isServiceAccount())
+                .filter(u -> u.getStatus() == UserStatus.ACTIVE)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Unknown recipient"));
+        authority.enforce(httpRequest,
+                new Resource.InboxItem(tenant, "", recipient.getName()), Action.WRITE);
+        createMessage(tenant, currentUser, recipient.getName(), request);
+        return InboxComposeResponse.builder()
+                .deliveredTo(new ArrayList<>(List.of(recipient.getName())))
+                .build();
+    }
+
+    /**
+     * The fan-out. Membership is the entry gate — the same 404 the
+     * team-inbox view answers for a team the caller is not in, hiding
+     * existence rather than explaining it. Skips the sender (they wrote it)
+     * and anyone the delivery gate refuses, and refuses the whole send when
+     * nobody was reachable: a team whose only member is the sender has no
+     * other desk to land on, and 201 with an empty list would read as
+     * "done" to a client that just told its user the send succeeded.
+     */
+    private InboxComposeResponse composeToTeam(
+            String tenant, String currentUser,
+            InboxComposeRequest request, HttpServletRequest httpRequest) {
+        String teamName = request.getTeamName().trim();
+        TeamDocument team = teamService.findByTenantAndName(tenant, teamName)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Unknown team '" + teamName + "'"));
+        List<String> members = team.getMembers() == null ? List.of() : team.getMembers();
+        if (!members.contains(currentUser)) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Unknown team '" + teamName + "'");
+        }
+        List<String> delivered = new ArrayList<>();
+        for (String member : members) {
+            if (member.equals(currentUser)) continue;
+            UserDocument recipient = userService.findByTenantAndName(tenant, member)
+                    .filter(u -> !u.isServiceAccount())
+                    .filter(u -> u.getStatus() == UserStatus.ACTIVE)
+                    .orElse(null);
+            if (recipient == null) continue;
+            if (!authority.check(httpRequest,
+                    new Resource.InboxItem(tenant, "", member), Action.WRITE)) {
+                continue;
+            }
+            createMessage(tenant, currentUser, member, request);
+            delivered.add(member);
+        }
+        if (delivered.isEmpty()) {
+            throw new MaximegalonRuleException(MaximegalonRuleException.NO_DELIVERABLE_MEMBERS,
+                    "No member of team '" + teamName + "' could be reached");
+        }
+        return InboxComposeResponse.builder().deliveredTo(delivered).build();
+    }
+
+    private MaximegalonDocument createMessage(
+            String tenant, String originator, String assignee, InboxComposeRequest request) {
+        return inboxItemService.create(MaximegalonDocument.builder()
+                .tenantId(tenant)
+                .originatorUserId(originator)
+                .assignedToUserId(assignee)
+                .type(MaximegalonType.OUTPUT_TEXT)
+                .criticality(Criticality.NORMAL)
+                .status(MaximegalonStatus.PENDING)
+                .requiresAction(false)
+                .title(request.getTitle().trim())
+                .body(request.getBody())
+                .tags(new ArrayList<>(List.of("message")))
+                .build());
     }
 
     // ──────────────────── Mutations ────────────────────
@@ -689,6 +920,25 @@ public class InboxController {
                 doc.getTenantId() == null ? "" : doc.getTenantId(),
                 doc.getId() == null ? "" : doc.getId(),
                 doc.getAssignedToUserId() == null ? "" : doc.getAssignedToUserId());
+    }
+
+    /**
+     * Title with the name in parentheses — for a picker, where two colleagues
+     * called "Mara" have to be told apart. Same formatting the Milliways inbox
+     * share handler uses for its form choices, so both pickers read alike.
+     * Just the name when no title is set.
+     */
+    private static String displayName(@Nullable String title, String name) {
+        return title == null || title.isBlank()
+                ? name
+                : title + " (" + name + ")";
+    }
+
+    /** Case-insensitive substring match on name or title; an empty query matches everything. */
+    private static boolean matches(String query, String name, @Nullable String title) {
+        if (query.isEmpty()) return true;
+        if (name != null && name.toLowerCase().contains(query)) return true;
+        return title != null && title.toLowerCase().contains(query);
     }
 
     /**

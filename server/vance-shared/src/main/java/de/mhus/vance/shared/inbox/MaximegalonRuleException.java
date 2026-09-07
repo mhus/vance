@@ -54,6 +54,14 @@ public class MaximegalonRuleException extends RuntimeException {
      */
     public static final String REACTION_LIMIT_REACHED = "reaction_limit_reached";
 
+    /**
+     * A team compose reached nobody — usually a team whose only member is the
+     * sender, sometimes a permission provider that refuses every other
+     * member. Answering 201 with an empty delivery would read as "done" to a
+     * client that just told its user the send succeeded.
+     */
+    public static final String NO_DELIVERABLE_MEMBERS = "no_deliverable_members";
+
     private final String reason;
 
     public MaximegalonRuleException(String reason, String message) {

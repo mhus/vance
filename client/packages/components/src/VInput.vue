@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, useId } from 'vue';
+import { computed, ref, useId } from 'vue';
 
 interface Props {
   modelValue: string;
@@ -49,6 +49,15 @@ const sizeClass = computed<string>(() => {
 });
 
 const datalistId = useId();
+
+/**
+ * The wrapped input, exposed so a host can focus it — e.g. a dialog that
+ * opens onto a search. Component template-refs can reach nothing else:
+ * {@code $attrs} land on the wrapping {@code <label>}, and a plain
+ * {@code autofocus} attribute does not survive {@code showModal()}.
+ */
+const input = ref<HTMLInputElement | null>(null);
+defineExpose({ input });
 </script>
 
 <template>
@@ -59,6 +68,7 @@ const datalistId = useId();
   <label class="v-field flex flex-col gap-1 w-full">
     <span v-if="label" class="v-field-label text-sm">{{ label }}</span>
     <input
+      ref="input"
       :type="type"
       :value="modelValue"
       :placeholder="placeholder"

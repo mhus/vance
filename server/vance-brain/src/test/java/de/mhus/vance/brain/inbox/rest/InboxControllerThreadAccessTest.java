@@ -51,7 +51,8 @@ class InboxControllerThreadAccessTest {
         controller = new InboxController(
                 service, new InboxEffectRegistry(List.of()), teamService,
                 mock(ProjectService.class), authority, new InboxAuthz(teamService),
-                mock(de.mhus.vance.shared.document.DocumentService.class));
+                mock(de.mhus.vance.shared.document.DocumentService.class),
+                mock(de.mhus.vance.shared.user.UserService.class));
     }
 
     /**

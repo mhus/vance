@@ -2804,6 +2804,33 @@ export default {
       cancel: 'Abbrechen',
       confirm: 'Delegieren',
     },
+    compose: {
+      button: 'Neue Nachricht',
+      title: 'Neue Inbox-Nachricht',
+      body:
+        'Eine Nachricht in die Inbox eines Kollegen, eines Teams — oder die eigene — legen. '
+          + 'Daraus wird ein Thread: eine Antwort erfolgt in der Diskussion, nie als Anfrage.',
+      recipient: 'An',
+      searchPlaceholder: 'Person oder Team suchen…',
+      userLabel: 'Benutzer',
+      teamLabel: 'Team',
+      selfLabel: 'Ich',
+      noMatches: 'Keine Treffer.',
+      truncated: 'Die ersten {n} Treffer werden angezeigt — grenze die Suche ein, um mehr zu sehen.',
+      change: 'Ändern',
+      subject: 'Betreff',
+      message: 'Nachricht',
+      cancel: 'Abbrechen',
+      send: 'Senden',
+      sent: 'Nachricht an {user} gesendet.',
+      sentTeamOne: 'Nachricht an Team {team} gesendet (1 Mitglied).',
+      sentTeam: 'Nachricht an Team {team} gesendet ({n} Mitglieder).',
+      reason: {
+        no_deliverable_members: 'In diesem Team konnte niemand erreicht werden — ein Team, '
+          + 'in dem du das einzige Mitglied bist, hat keinen anderen Schreibtisch, auf dem die '
+          + 'Nachricht landen könnte.',
+      },
+    },
   },
 
   profile: {

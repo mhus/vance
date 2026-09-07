@@ -3,6 +3,9 @@ import {
   AnswerOutcome,
   MaximegalonStatus,
   type EffectDescription,
+  type InboxComposeResponse,
+  type InboxRecipientDto,
+  type InboxRecipientsResponse,
   type MaximegalonDto,
   type InboxListResponse,
   type InboxTagsResponse,
@@ -34,6 +37,9 @@ function encodeAssignedTo(a: AssignedToFilter): string | null {
   }
 }
 
+/** What a compose send addresses: one user, or a team it fans out to. */
+export type ComposeTarget = { kind: 'user' | 'team'; name: string };
+
 /**
  * Reactive wrapper around the inbox REST endpoints. One instance
  * per editor instance — exposes the active list, the selected
@@ -51,6 +57,10 @@ export function useInbox(): {
   /** Server-rendered facts for the selected item's effect, if it has one. */
   effect: Ref<EffectDescription | null>;
   tags: Ref<string[]>;
+  /** One page of the recipient search — users plus the caller's teams, matching the query. */
+  recipientResults: Ref<InboxRecipientDto[]>;
+  /** The search matched more than the page shows. */
+  recipientsTruncated: Ref<boolean>;
   loading: Ref<boolean>;
   error: Ref<string | null>;
   filter: Ref<InboxFilter>;
@@ -62,6 +72,15 @@ export function useInbox(): {
     documentId: string, title: string, body?: string | null,
     assignedToUserId?: string | null,
   ) => Promise<MaximegalonDto | null>;
+  /**
+   * Compose a free-form message into an inbox — one user, or a team it fans
+   * out to. Returns who it landed with, or null on error.
+   */
+  compose: (
+    title: string, body?: string | null, target?: ComposeTarget | null,
+  ) => Promise<string[] | null>;
+  /** Run the recipient search. Safe to re-run on every keystroke (debounce is the caller's job). */
+  searchRecipients: (query: string) => Promise<void>;
   loadOne: (id: string) => Promise<void>;
   loadTags: () => Promise<void>;
   clearSelection: () => void;
@@ -84,6 +103,8 @@ export function useInbox(): {
   const selected = ref<MaximegalonDto | null>(null);
   const effect = ref<EffectDescription | null>(null);
   const tags = ref<string[]>([]);
+  const recipientResults = ref<InboxRecipientDto[]>([]);
+  const recipientsTruncated = ref(false);
   const loading = ref(false);
   const error = ref<string | null>(null);
   const filter = ref<InboxFilter>({
@@ -221,6 +242,65 @@ export function useInbox(): {
       // Tags are a UX nicety — non-fatal. Log and clear.
       tags.value = [];
       console.warn('Failed to load inbox tags', e);
+    }
+  }
+
+  /**
+   * Who the compose dialog may offer: users the caller may deliver to, plus
+   * the caller's teams — both matching the query, bounded by the server.
+   *
+   * <p>Debouncing is the caller's job; guarding against a stale answer is
+   * this one's: two searches in flight can settle in either order, and the
+   * picker must not show the results of the query the user is no longer
+   * typing.
+   */
+  let recipientsSeq = 0;
+
+  async function searchRecipients(query: string): Promise<void> {
+    const seq = ++recipientsSeq;
+    try {
+      const params = new URLSearchParams();
+      if (query.trim()) params.set('q', query.trim());
+      const qs = params.toString();
+      const data = await brainFetch<InboxRecipientsResponse>(
+        'GET', qs ? `inbox/recipients?${qs}` : 'inbox/recipients');
+      if (seq !== recipientsSeq) return;
+      recipientResults.value = data.recipients ?? [];
+      recipientsTruncated.value = data.truncated === true;
+    } catch (e) {
+      if (seq !== recipientsSeq) return;
+      recipientResults.value = [];
+      recipientsTruncated.value = false;
+      error.value = e instanceof Error ? e.message : 'Failed to search recipients.';
+    }
+  }
+
+  /**
+   * Compose a message into an inbox — the free case next to the two siblings
+   * that both need an object: a Milliways share delivers a pointer, a
+   * discussion needs a document. Never an ask; a wanted reply happens in the
+   * thread's clarification. A team target fans out to one thread per member.
+   */
+  async function compose(
+    title: string, body?: string | null, target?: ComposeTarget | null,
+  ): Promise<string[] | null> {
+    error.value = null;
+    try {
+      const created = await brainFetch<InboxComposeResponse>('POST', 'inbox/messages', {
+        body: {
+          title,
+          body: body ?? undefined,
+          assignedToUserId: target?.kind === 'user' ? target.name : undefined,
+          teamName: target?.kind === 'team' ? target.name : undefined,
+        },
+      });
+      // A fresh item can move the badge (self-delivery) — the same stale-on-
+      // return reasoning as {@link applyMutation}.
+      void refreshInboxCount();
+      return created.deliveredTo ?? [];
+    } catch (e) {
+      error.value = threadError(e, 'Failed to send the message.');
+      return null;
     }
   }
 
@@ -458,12 +538,16 @@ export function useInbox(): {
     selected,
     effect,
     tags,
+    recipientResults,
+    recipientsTruncated,
     loading,
     error,
     filter,
     loadList,
     loadForDocument,
     openDiscussion,
+    compose,
+    searchRecipients,
     loadOne,
     loadTags,
     clearSelection,

@@ -2788,6 +2788,32 @@ export default {
       cancel: 'Cancel',
       confirm: 'Delegate',
     },
+    compose: {
+      button: 'New message',
+      title: 'New inbox message',
+      body:
+        'Write a message into somebody\u2019s inbox — a colleague\u2019s, a team\u2019s, or your own. '
+          + 'It opens a thread: a reply happens in its discussion, never as a request.',
+      recipient: 'To',
+      searchPlaceholder: 'Search a person or team…',
+      userLabel: 'User',
+      teamLabel: 'Team',
+      selfLabel: 'Me',
+      noMatches: 'No matches.',
+      truncated: 'Showing the first {n} matches — refine the search to see more.',
+      change: 'Change',
+      subject: 'Subject',
+      message: 'Message',
+      cancel: 'Cancel',
+      send: 'Send',
+      sent: 'Message sent to {user}.',
+      sentTeamOne: 'Message sent to team {team} (1 member).',
+      sentTeam: 'Message sent to team {team} ({n} members).',
+      reason: {
+        no_deliverable_members: 'Nobody in this team could be reached — a team you are the '
+          + 'only member of has no other desk for the message to land on.',
+      },
+    },
   },
 
   profile: {

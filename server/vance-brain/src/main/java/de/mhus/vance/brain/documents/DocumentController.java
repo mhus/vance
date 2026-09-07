@@ -656,6 +656,12 @@ public class DocumentController {
         try (InputStream body = httpRequest.getInputStream()) {
             updated = documentService.replaceContent(id, body, mime,
                     writerIdentity(httpRequest, editorId), actor(httpRequest));
+        } catch (DocumentService.AgeContentException e) {
+            // The one named write-guard an editor can hit from here: storing
+            // plaintext on an age-encrypted document would destroy the
+            // ciphertext. 400, not 500 — the caller sent a body the document
+            // refuses by contract (planning/age-encryption.md §4).
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
         // The new version travels back with the response: a caller doing
         // read-modify-write in a loop would otherwise have to re-read the

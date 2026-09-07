@@ -181,10 +181,17 @@ public class DocInfoTool implements Tool {
         if (doc.getRagEnabled() != null) out.put("ragEnabled", doc.getRagEnabled());
 
         if (withStats) {
-            String content = loadAsText(doc);
-            out.put("charCount", content.length());
-            out.put("wordCount", countWords(content));
-            out.put("lineCount", countLines(content));
+            // Counting words over ciphertext would report confident-looking
+            // numbers about content nobody can read — say so instead.
+            if (de.mhus.vance.api.documents.AgeDocumentKind.isAgeEncrypted(
+                    doc.getKind(), doc.getMimeType())) {
+                out.put("statsUnavailable", "age-encrypted — the body is ciphertext");
+            } else {
+                String content = loadAsText(doc);
+                out.put("charCount", content.length());
+                out.put("wordCount", countWords(content));
+                out.put("lineCount", countLines(content));
+            }
         }
 
         return out;

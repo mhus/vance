@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.api.documents.AgeDocumentKind;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -72,7 +73,8 @@ public class DocGrepPathTool implements Tool {
         return "Search every inline document under a path prefix for lines matching a regex. "
                 + "Returns either matching lines (with documentId, path, line number, optionally "
                 + "context lines before/after) or just the list of files containing at least one "
-                + "match. Capped at " + MAX_LIMIT + " matches.";
+                + "match. Age-encrypted documents are skipped — their bodies are ciphertext. "
+                + "Capped at " + MAX_LIMIT + " matches.";
     }
     @Override public boolean primary() { return true; }
     @Override public Set<String> labels() { return Set.of("text-search", "eddie", "read-only"); }
@@ -114,6 +116,7 @@ public class DocGrepPathTool implements Tool {
             int scanned = 0;
             for (DocumentDocument d : all) {
                 if (!pathPrefix.isEmpty() && !d.getPath().startsWith(pathPrefix)) continue;
+                if (AgeDocumentKind.isAgeEncrypted(d.getKind(), d.getMimeType())) continue;
                 if (support.readBody(d, ctx) == null) continue;
                 scanned++;
                 if (containsMatch(support.readBody(d, ctx), pattern, deadline)) {
@@ -140,6 +143,7 @@ public class DocGrepPathTool implements Tool {
         outer:
         for (DocumentDocument d : all) {
             if (pathPrefix != null && !d.getPath().startsWith(pathPrefix)) continue;
+            if (AgeDocumentKind.isAgeEncrypted(d.getKind(), d.getMimeType())) continue;
             if (support.readBody(d, ctx) == null) continue;
             scanned++;
             String[] lines = support.readBody(d, ctx).split("\\R", -1);

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.kinds;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -65,6 +66,7 @@ public class DocGrepTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireInline(support.loadDocument(params, ctx));
+        AgeDocumentGuard.requireReadable(doc);
         String patternStr = KindToolSupport.requireString(params, "pattern");
         boolean ci = Boolean.TRUE.equals(KindToolSupport.paramBoolean(params, "caseInsensitive"));
         Integer beforeParam = KindToolSupport.paramInt(params, "contextBefore");

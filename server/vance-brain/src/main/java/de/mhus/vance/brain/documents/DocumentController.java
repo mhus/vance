@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.documents;
 
+import de.mhus.vance.api.documents.AgeDocumentKind;
 import de.mhus.vance.api.documents.DocumentArchiveCreateResponse;
 import de.mhus.vance.api.documents.DocumentArchiveDto;
 import de.mhus.vance.api.documents.DocumentArchiveListResponse;
@@ -378,6 +379,15 @@ public class DocumentController {
                     "Cannot infer document path — neither `path` nor an upload filename was provided.");
         }
         String resolvedMime = mimeType == null || mimeType.isBlank() ? file.getContentType() : mimeType;
+        // Browsers label unknown extensions application/octet-stream — an
+        // uploaded .age file would carry no marker otherwise. Map it to the
+        // armored-age mime so the row is typed from its start (an explicit
+        // mimeType param still wins above).
+        if ((resolvedMime == null || resolvedMime.isBlank()
+                || "application/octet-stream".equalsIgnoreCase(resolvedMime))
+                && AgeDocumentKind.hasAgeExtension(resolvedPath)) {
+            resolvedMime = AgeDocumentKind.MIME_TYPE;
+        }
         List<String> tags = parseTagsCsv(tagsCsv);
 
         DocumentDocument created;

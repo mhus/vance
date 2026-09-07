@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.foreign;
 
+import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.brain.tools.kinds.KindToolSupport;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.permission.Action;
@@ -86,6 +87,7 @@ public class ForeignDocReadTool implements Tool {
             throw new ToolException("Document '" + doc.getPath()
                     + "' is in a reserved namespace; foreign_doc_read cannot reach it");
         }
+        AgeDocumentGuard.requireReadable(doc);
 
         String content = foreign.readText(doc);
         int fullLength = content.length();

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.kinds;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,6 +63,7 @@ public class DocReadLinesTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireInline(support.loadDocument(params, ctx));
+        AgeDocumentGuard.requireReadable(doc);
         // startLine/maxLines is what file_read calls the same window; this
         // tool shipped with offset/limit, where `limit` also collided with the
         // result-cap meaning it has in doc_find / doc_grep / file_find.

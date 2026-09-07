@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.api.documents.AgeDocumentKind;
 import de.mhus.vance.brain.rag.RagService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -46,7 +47,8 @@ public class RagAddPathTool implements Tool {
     @Override public String description() {
         return "Bulk-index every inline document under `pathPrefix` into the named RAG. Each "
                 + "document is indexed with its id as sourceRef, so a later re-run replaces just "
-                + "those chunks (idempotent). Trash documents are skipped. Caps at "
+                + "those chunks (idempotent). Trash and age-encrypted documents are skipped "
+                + "(ciphertext is not indexable). Caps at "
                 + MAX_DOCUMENTS + " documents per call.";
     }
     @Override public boolean primary() { return false; }
@@ -75,6 +77,13 @@ public class RagAddPathTool implements Tool {
 
         for (DocumentDocument d : all) {
             if (DocumentService.isTrash(d.getPath())) { skipped++; continue; }
+            // Ciphertext would fill the vector store with noise — the
+            // single-doc tool refuses loudly, the bulk path skips silently
+            // because a path prefix legitimately mixes both kinds of rows.
+            if (AgeDocumentKind.isAgeEncrypted(d.getKind(), d.getMimeType())) {
+                skipped++;
+                continue;
+            }
             if (pathPrefix != null && !d.getPath().startsWith(pathPrefix)) continue;
             if (support.readBody(d, ctx) == null) { skipped++; continue; }
             if (indexed.size() >= MAX_DOCUMENTS) { truncated = true; break; }

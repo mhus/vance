@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.document;
 
+import de.mhus.vance.shared.document.kind.AgeKindHandler;
 import de.mhus.vance.shared.document.kind.KindHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,6 +27,11 @@ public class BuiltInKindHandlers {
     @Bean public KindHandler applicationKindHandler() { return () -> "application"; }
     @Bean public KindHandler composeKindHandler() { return () -> "compose"; }
     @Bean public KindHandler formulaKindHandler() { return () -> "formula"; }
+
+    // Own class rather than a name-only lambda: carries the armor-marker
+    // detection so an armored body written without an explicit kind is
+    // typed as `age` instead of falling through to `text`.
+    @Bean public KindHandler ageKindHandler() { return new AgeKindHandler(); }
 
     // Codec-backed kinds (sheet, chart, graph, diagram, tree, list, checklist,
     // mindmap, data) now register in CodecKindHandlers with a parse-validate().

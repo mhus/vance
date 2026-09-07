@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.kinds;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,6 +64,7 @@ public class DocEditTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireInline(support.loadDocument(params, ctx));
+        AgeDocumentGuard.requireWritable(doc);
         // camelCase like file_edit and the rest of the tool surface; this one
         // shipped in snake_case, so the same operation had two spellings.
         String oldString = KindToolSupport.requireRawStringAliased(params, "oldText", "old_string");

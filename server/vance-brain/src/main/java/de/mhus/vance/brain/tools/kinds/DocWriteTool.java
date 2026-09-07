@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.api.documents.AgeDocumentKind;
+import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -220,8 +222,16 @@ public class DocWriteTool implements Tool {
 
         Optional<DocumentDocument> existing =
                 docService.findByPath(ctx.tenantId(), project.getName(), path);
+        // An age-encrypted document is the one existing doc a write would
+        // destroy outright — the model cannot re-encrypt, so refuse before
+        // anything else looks at the body.
+        existing.ifPresent(AgeDocumentGuard::requireWritable);
         String existingKind = existing.map(DocumentDocument::getKind).orElse(null);
         String resolvedKind = kindResolver.resolve(requestedKind, existingKind, content);
+        // kind=age with a model-produced body is the creation-side twin of
+        // the same rule — ciphertext can only arrive as a copy, never as
+        // generated content.
+        AgeDocumentGuard.requireCreatable(resolvedKind, content);
         if (mimeType == null) {
             mimeType = defaultMimeFor(resolvedKind);
         }
@@ -298,6 +308,9 @@ public class DocWriteTool implements Tool {
             case "list", "checklist", "tree", "mindmap", "records",
                     "slides", "text", "diagram" -> "text/markdown";
             case "sheet", "graph", "chart", "data", "schema" -> "application/json";
+            // Detected armor bodies get the marker mime so the row is typed
+            // age from its first moment.
+            case "age" -> AgeDocumentKind.MIME_TYPE;
             default -> "text/markdown";
         };
     }

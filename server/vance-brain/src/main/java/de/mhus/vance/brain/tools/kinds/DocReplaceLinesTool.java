@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.kinds;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -80,6 +81,7 @@ public class DocReplaceLinesTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.requireInline(support.loadDocument(params, ctx));
+        AgeDocumentGuard.requireWritable(doc);
         int fromLine = KindToolSupport.requireInt(params, "fromLine");
         int toLine = KindToolSupport.requireInt(params, "toLine");
         String newContent = KindToolSupport.requireRawString(params, "newContent");

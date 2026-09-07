@@ -6,6 +6,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import de.mhus.vance.shared.document.kind.AgeKindHandler;
 import de.mhus.vance.shared.document.kind.DiagramCodec;
 import de.mhus.vance.shared.document.kind.KindHandler;
 
@@ -36,6 +37,19 @@ class KindDetectionTest {
         KindRegistry r = new KindRegistry(List.of(handlers));
         r.collect();
         return r;
+    }
+
+    @Test
+    void detectKind_ageArmor_isClaimedByAge() {
+        KindRegistry registry = registryOf(() -> "text", new AgeKindHandler());
+
+        assertThat(registry.detectKind("""
+                -----BEGIN AGE ENCRYPTED FILE-----
+                YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB0QXVkQmNwZ3Z6YnNRZDJP
+                -----END AGE ENCRYPTED FILE-----
+                """)).isEqualTo("age");
+
+        assertThat(registry.detectKind("# plain markdown")).isNull();
     }
 
     @Test

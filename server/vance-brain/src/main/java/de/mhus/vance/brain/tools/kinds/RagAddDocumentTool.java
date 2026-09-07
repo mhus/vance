@@ -4,6 +4,7 @@ import de.mhus.vance.brain.rag.RagService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.rag.RagDocument;
 import java.util.LinkedHashMap;
@@ -57,6 +58,7 @@ public class RagAddDocumentTool implements Tool {
         String ragName = KindToolSupport.requireString(params, "ragName");
 
         DocumentDocument doc = support.requireInline(support.loadDocument(params, ctx));
+        AgeDocumentGuard.requireReadable(doc);
         // Flush the buffer so we index the in-flight body, not stale disk.
         support.buffer().flush(ctx.processId(), doc.getId());
         DocumentDocument fresh = support.buffer().read(ctx.processId(), doc.getId());

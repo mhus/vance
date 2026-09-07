@@ -120,6 +120,7 @@ public class DocReadTool implements Tool {
                                     + project.getName() + "'"));
         }
 
+        AgeDocumentGuard.requireReadable(doc);
         String content = loadAsText(doc);
         int fullLength = content.length();
         boolean truncated = fullLength > MAX_BODY_CHARS;

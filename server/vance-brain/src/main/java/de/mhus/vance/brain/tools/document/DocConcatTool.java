@@ -137,6 +137,7 @@ public class DocConcatTool implements Tool {
                     .orElseThrow(() -> new ToolException(
                             "Source document '" + path + "' not found in project '"
                                     + project.getName() + "'"));
+            AgeDocumentGuard.requireReadable(doc);
             String text = loadAsText(doc);
             if (i > 0 || header != null) body.append(separator);
             body.append(text);

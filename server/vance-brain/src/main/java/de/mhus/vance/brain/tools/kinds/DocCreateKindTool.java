@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.KindRegistry;
 import de.mhus.vance.toolpack.Tool;
@@ -128,6 +129,9 @@ public class DocCreateKindTool implements Tool {
                 : null;
         String body = KindToolSupport.paramRawString(params, "body");
         if (body == null) body = stubFor(kind, mimeType);
+        // A stub body is never armored ciphertext — age documents are born
+        // from upload or the web UI's Encrypt action, not from doc tools.
+        AgeDocumentGuard.requireCreatable(kind, body);
 
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
         support.enforceDocWrite(ctx, project.getName(), path,

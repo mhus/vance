@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.document;
 
 import de.mhus.vance.api.common.AccentColor;
+import de.mhus.vance.api.documents.AgeDocumentKind;
 import de.mhus.vance.api.documents.MountSearchOutcome;
 import de.mhus.vance.api.mount.MountedStat;
 import de.mhus.vance.shared.document.jaglan.JaglanAccessException;
@@ -1673,6 +1674,14 @@ public class DocumentService {
                             + tenantId + "/" + projectId);
         }
 
+        // Age-encrypted documents only ever store armored ciphertext. Guard
+        // here (before the single write funnel) so a plaintext body under
+        // an age mime fails with a named error instead of creating a
+        // document no client will ever be able to decrypt. The stream is
+        // only peeked at, never fully buffered.
+        if (AgeDocumentKind.isAgeEncrypted(null, mimeType)) {
+            content = requireAgeArmoredStream(normalizedPath, content);
+        }
         ContentWriteResult write =
                 streamingStoreContent(tenantId, projectId, normalizedPath, content);
 
@@ -1811,6 +1820,10 @@ public class DocumentService {
             case "sql" -> "application/sql";
             case "tex", "sty", "cls", "ltx", "dtx" -> "text/x-tex";
             case "bib", "bst" -> "text/x-bibtex";
+            // Armored age ciphertext — the one non-text mapping here, so
+            // upload / webdav / createText agree on a single marker mime
+            // (see AgeDocumentKind.MIME_TYPE).
+            case "age" -> AgeDocumentKind.MIME_TYPE;
             default -> "text/plain";
         };
     }
@@ -1966,6 +1979,8 @@ public class DocumentService {
             doc.setMimeType(newMimeType);
         }
 
+        requireAgeArmorIfEncrypted(doc, newBytes);
+
         boolean archived = false;
         if (contentChanged && shouldArchiveOnSave(doc)) {
             try {
@@ -2057,6 +2072,9 @@ public class DocumentService {
             throw new IllegalArgumentException(
                     "bytes must not be null for binary replace");
         }
+        // Age documents hold armored ciphertext — binary payloads (images,
+        // PDFs) are refused rather than silently replacing it.
+        requireAgeArmorIfEncrypted(doc, bytes);
         if (doc.getLineageId() == null) {
             doc.setLineageId(java.util.UUID.randomUUID().toString());
         }
@@ -2568,6 +2586,11 @@ public class DocumentService {
 
         if (newInlineText != null) {
             byte[] bytes = newInlineText.getBytes(StandardCharsets.UTF_8);
+            // The mime-type change above is already applied, so the check
+            // sees the state the row will be saved with — an age document
+            // accepts armored bodies only, everything else is refused
+            // instead of destroying the ciphertext.
+            requireAgeArmorIfEncrypted(doc, newInlineText);
             String currentContent = readAsString(doc, null);
             contentChanged = !newInlineText.equals(currentContent);
 
@@ -3183,12 +3206,14 @@ public class DocumentService {
             // Mounted documents are excluded here and not only via their
             // autoSummary flag: autoSummary is derived from the mime type, so
             // a mounted markdown or PDF would qualify, and a tool can flip the
-            // flag on any row. The query is the reliable guard.
+            // flag on any row. The query is the reliable guard. Age-encrypted
+            // documents join them — a flipped flag would summarise ciphertext.
             Query q = new Query(Criteria.where("tenantId").is(tenantId)
                     .and("projectId").is(projectId)
                     .and("summaryDirty").is(true)
                     .and("autoSummary").is(true)
                     .and("claimedBy").is(null)
+                    .and("kind").ne(AgeDocumentKind.KIND)
                     .and("path").not().regex(MOUNTED_PATH_REGEX));
             Update u = new Update()
                     .set("claimedBy", podId)
@@ -3286,6 +3311,13 @@ public class DocumentService {
         // mounted content at all — indexing a foreign library into our own
         // vector store is not a thing we want reachable by setting a flag.
         if (isMounted(doc.getPath())) return false;
+        // Same position, same reasoning for age-encrypted documents: the
+        // body is ciphertext, and an embed run over it would fill the
+        // vector store with noise no query can ever hit. Not reachable by
+        // a flag either.
+        if (AgeDocumentKind.isAgeEncrypted(doc.getKind(), doc.getMimeType())) {
+            return false;
+        }
         Boolean override = doc.getRagEnabled();
         if (override != null) return override;
         if (doc.getPath() == null) return false;
@@ -3839,6 +3871,17 @@ public class DocumentService {
      * on every save and is never written back from.
      */
     private void applyHeader(DocumentDocument doc) {
+        // An age-encrypted body is opaque ciphertext: it cannot declare a
+        // kind or headers, and the armor lines must never be read as front
+        // matter. The mime type is the carrier instead — every save
+        // re-asserts the kind, so even an uploaded .age without an explicit
+        // kind gets typed on its first write instead of losing it to the
+        // "unparsable body" branch below.
+        if (AgeDocumentKind.isAgeEncrypted(doc.getKind(), doc.getMimeType())) {
+            doc.setKind(AgeDocumentKind.KIND);
+            doc.setHeaders(new java.util.LinkedHashMap<>());
+            return;
+        }
         Optional<DocumentHeader> parsed;
         if (doc.getStorageId() != null) {
             try (InputStream in = loadContent(doc)) {
@@ -3861,6 +3904,56 @@ public class DocumentService {
         doc.setKind(header.getKind());
         doc.setHeaders(new java.util.LinkedHashMap<>(header.getValues()));
         applySystemTags(doc);
+    }
+
+    /**
+     * Refuse non-armored content for an age-encrypted document — the one
+     * server-side invariant of the age feature, and no crypto at all: a
+     * shape check on the first line. {@code kind: age} documents always
+     * contain armored ciphertext, so every reader (Web-UI, foot, external
+     * age CLI through webdav) can trust the body without a key round-trip,
+     * and the classic data-loss path — plaintext saved over
+     * {@code secret.md.age} — fails with a named error instead of
+     * silently destroying the ciphertext.
+     */
+    private static void requireAgeArmorIfEncrypted(DocumentDocument doc, String content) {
+        if (AgeDocumentKind.isAgeEncrypted(doc.getKind(), doc.getMimeType())
+                && !AgeDocumentKind.looksArmored(content)) {
+            throw new AgeContentException(doc.getPath());
+        }
+    }
+
+    /** Byte-array variant of {@link #requireAgeArmorIfEncrypted}. */
+    private static void requireAgeArmorIfEncrypted(DocumentDocument doc, byte[] bytes) {
+        if (AgeDocumentKind.isAgeEncrypted(doc.getKind(), doc.getMimeType())
+                && !AgeDocumentKind.looksArmored(bytes)) {
+            throw new AgeContentException(doc.getPath());
+        }
+    }
+
+    /**
+     * Stream variant of the armor guard for {@link #create}: peek the
+     * first line (bounded, byte-wise) and return a stream that replays the
+     * consumed prefix — large uploads are never fully buffered for this
+     * check.
+     */
+    private static InputStream requireAgeArmoredStream(String path, InputStream content) {
+        ByteArrayOutputStream firstLine = new ByteArrayOutputStream();
+        int b;
+        try {
+            while (firstLine.size() < 128 && (b = content.read()) != -1) {
+                firstLine.write(b);
+                if (b == '\n') break;
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "Failed to read armored content header for '" + path + "'", e);
+        }
+        if (!AgeDocumentKind.looksArmored(firstLine.toByteArray())) {
+            throw new AgeContentException(path);
+        }
+        return new SequenceInputStream(
+                new ByteArrayInputStream(firstLine.toByteArray()), content);
     }
 
     /**
@@ -4030,6 +4123,22 @@ public class DocumentService {
             if (d.getLineageId() != null) found.add(d.getLineageId());
         }
         return found;
+    }
+
+    /**
+     * Raised when a store would replace an age document's armored
+     * ciphertext with a non-armored body — the plaintext would sit in the
+     * database unencrypted and no client could ever decrypt the document
+     * again. Extends {@link IllegalArgumentException} so the existing
+     * REST (400) and webdav (400) surfaces map it without new plumbing.
+     */
+    public static class AgeContentException extends IllegalArgumentException {
+        public AgeContentException(String path) {
+            super("Document '" + path + "' is age-encrypted but the new content is not "
+                    + "armored ciphertext — expected first line '"
+                    + AgeDocumentKind.ARMOR_BEGIN + "'. Refusing to store the body "
+                    + "unencrypted.");
+        }
     }
 
     public static class DocumentAlreadyExistsException extends RuntimeException {

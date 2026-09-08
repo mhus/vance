@@ -6,10 +6,10 @@ import de.mhus.vance.api.documents.MountSearchOutcome;
 import de.mhus.vance.api.mount.MountedStat;
 import de.mhus.vance.shared.document.jaglan.JaglanAccessException;
 import de.mhus.vance.shared.document.jaglan.JaglanPaths;
-import de.mhus.vance.shared.document.jaglan.JaglanShellService.MountFolderView;
-import de.mhus.vance.shared.document.jaglan.JaglanUnavailableException;
 import de.mhus.vance.shared.document.jaglan.JaglanPort;
 import de.mhus.vance.shared.document.jaglan.JaglanShellService;
+import de.mhus.vance.shared.document.jaglan.JaglanShellService.MountFolderView;
+import de.mhus.vance.shared.document.jaglan.JaglanUnavailableException;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.storage.StorageService;
 import jakarta.annotation.PreDestroy;
@@ -93,8 +93,8 @@ public class DocumentService {
     /** Lazy — DocumentService is a core bean; resolve the permission layer on
      *  demand to keep it out of this service's construction graph. Writes on
      *  the actor-carrying overloads enforce through {@link #enforceWrite}. */
-    private final org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.shared.permission.PermissionService> permissionServiceProvider;
+    private final org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.permission.PermissionService>
+            permissionServiceProvider;
 
     @Value("${vance.document.inline-threshold:40960}")
     private int inlineThreshold;
@@ -142,11 +142,10 @@ public class DocumentService {
      * @throws JaglanUnavailableException when no Jaglan implementation exists
      */
     private JaglanPort requireJaglanPort(String path) {
-        JaglanPort port =
-                jaglanPortProvider == null ? null : jaglanPortProvider.getIfAvailable();
+        JaglanPort port = jaglanPortProvider == null ? null : jaglanPortProvider.getIfAvailable();
         if (port == null) {
-            throw new JaglanUnavailableException(null,
-                    "no mount support in this process — cannot serve '" + path + "'");
+            throw new JaglanUnavailableException(
+                    null, "no mount support in this process — cannot serve '" + path + "'");
         }
         return port;
     }
@@ -155,8 +154,12 @@ public class DocumentService {
     private InputStream openMountedContent(DocumentDocument doc, @Nullable String query) {
         String path = doc.getPath();
         JaglanPort port = requireJaglanPort(path);
-        InputStream raw = port.open(doc.getTenantId(), doc.getProjectId(),
-                JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path), query);
+        InputStream raw = port.open(
+                doc.getTenantId(),
+                doc.getProjectId(),
+                JaglanPaths.mountNameOf(path),
+                JaglanPaths.pathInMount(path),
+                query);
         return learnKindWhileStreaming(doc, raw);
     }
 
@@ -201,7 +204,8 @@ public class DocumentService {
             return raw;
         }
         try (InputStream head = new ByteArrayInputStream(probe, 0, read)) {
-            applyLearnedKind(doc, headerParser.parseStream(doc.getMimeType(), head).orElse(null));
+            applyLearnedKind(
+                    doc, headerParser.parseStream(doc.getMimeType(), head).orElse(null));
         } catch (IOException | RuntimeException e) {
             log.debug("Could not read the kind of '{}': {}", doc.getPath(), e.toString());
         }
@@ -248,8 +252,8 @@ public class DocumentService {
                 return n;
             }
         };
-        MountedStat stat = port.write(tenantId, projectId,
-                JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path), counting);
+        MountedStat stat =
+                port.write(tenantId, projectId, JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path), counting);
         // The source is authoritative about what it now holds — it may have
         // normalised or transformed the payload. But a source that reports 0
         // has told us nothing, so fall back to what we actually sent rather
@@ -266,8 +270,8 @@ public class DocumentService {
     private void deleteMountedContent(DocumentDocument doc) {
         String path = doc.getPath();
         JaglanPort port = requireJaglanPort(path);
-        port.delete(doc.getTenantId(), doc.getProjectId(),
-                JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path));
+        port.delete(
+                doc.getTenantId(), doc.getProjectId(), JaglanPaths.mountNameOf(path), JaglanPaths.pathInMount(path));
     }
 
     /**
@@ -319,8 +323,7 @@ public class DocumentService {
      *                  absence of a storage handle is exactly what marks the
      *                  content as living elsewhere.
      */
-    public record ContentWriteResult(
-            @Nullable String storageId, boolean compressed, long originalSize) {}
+    public record ContentWriteResult(@Nullable String storageId, boolean compressed, long originalSize) {}
 
     /**
      * Operator-level kill-switch for document versioning. When {@code false},
@@ -357,8 +360,7 @@ public class DocumentService {
     public static final String SETTING_ARCHIVE_ENABLED = "documents.archive.enabled";
 
     /** Per-project cascade setting: minimum seconds between archive entries. */
-    public static final String SETTING_ARCHIVE_MIN_INTERVAL_SECONDS =
-            "documents.archive.minVersionIntervalSeconds";
+    public static final String SETTING_ARCHIVE_MIN_INTERVAL_SECONDS = "documents.archive.minVersionIntervalSeconds";
 
     /**
      * By id, with the mount's {@code access} filled in for a mounted row.
@@ -376,8 +378,7 @@ public class DocumentService {
     public Optional<DocumentDocument> findById(String id) {
         Optional<DocumentDocument> found = repository.findById(id);
         if (shellService != null) {
-            found.filter(doc -> JaglanPaths.isMounted(doc.getPath()))
-                    .ifPresent(shellService::decorateAccess);
+            found.filter(doc -> JaglanPaths.isMounted(doc.getPath())).ifPresent(shellService::decorateAccess);
         }
         return found;
     }
@@ -413,14 +414,12 @@ public class DocumentService {
     public List<DocumentDocument> listMountedFolder(
             String tenantId, String projectId, String folderPath, boolean force) {
         if (shellService == null || !JaglanPaths.isMounted(folderPath)) return List.of();
-        return shellService.listFolder(tenantId, projectId,
-                JaglanPaths.mountNameOf(folderPath),
-                JaglanPaths.pathInMount(folderPath), force);
+        return shellService.listFolder(
+                tenantId, projectId, JaglanPaths.mountNameOf(folderPath), JaglanPaths.pathInMount(folderPath), force);
     }
 
     /** The mounts configured for a project — empty without Jaglan. */
-    public List<de.mhus.vance.api.mount.MountedSource> listMounts(
-            String tenantId, String projectId) {
+    public List<de.mhus.vance.api.mount.MountedSource> listMounts(String tenantId, String projectId) {
         return listMounts(tenantId, projectId, false);
     }
 
@@ -430,8 +429,7 @@ public class DocumentService {
      *        indistinguishable from a misconfiguration for whoever just wrote
      *        the settings.
      */
-    public List<de.mhus.vance.api.mount.MountedSource> listMounts(
-            String tenantId, String projectId, boolean refresh) {
+    public List<de.mhus.vance.api.mount.MountedSource> listMounts(String tenantId, String projectId, boolean refresh) {
         if (shellService == null) return List.of();
         if (refresh) shellService.refreshMounts(tenantId, projectId);
         return shellService.mounts(tenantId, projectId);
@@ -486,8 +484,7 @@ public class DocumentService {
         // mounts and always true; its document count aggregates sources that
         // may not know their own size, so it stays unknown rather than
         // becoming a sum with a hole in it.
-        out.add(new FolderInfo(JaglanPaths.ROOT, JaglanPaths.ROOT, null,
-                null, mountFolders.size()));
+        out.add(new FolderInfo(JaglanPaths.ROOT, JaglanPaths.ROOT, null, null, mountFolders.size()));
         for (MountFolderView folder : mountFolders) {
             out.add(new FolderInfo(
                     JaglanPaths.mountRootPath(folder.mount()),
@@ -514,9 +511,7 @@ public class DocumentService {
     private void refreshMountFolderIfNeeded(String tenantId, String projectId, String prefix) {
         if (shellService == null || !JaglanPaths.isMounted(prefix)) return;
         // prefix carries a trailing slash by normalizeFolderPrefix.
-        String folderPath = prefix.endsWith("/")
-                ? prefix.substring(0, prefix.length() - 1)
-                : prefix;
+        String folderPath = prefix.endsWith("/") ? prefix.substring(0, prefix.length() - 1) : prefix;
         // Browsing `_ext/` itself: the namespace root names no mount, and the
         // synthetic injection already answers that level. Checked rather than
         // caught — this is every root-level browse, and an exception is not
@@ -524,8 +519,7 @@ public class DocumentService {
         if (!JaglanPaths.isMounted(folderPath)) return;
         try {
             String mount = JaglanPaths.mountNameOf(folderPath);
-            shellService.listFolder(
-                    tenantId, projectId, mount, JaglanPaths.pathInMount(folderPath), false);
+            shellService.listFolder(tenantId, projectId, mount, JaglanPaths.pathInMount(folderPath), false);
         } catch (IllegalArgumentException e) {
             // "_ext/" with no mount named — nothing to refresh, and the
             // synthetic injection already answers that level.
@@ -533,8 +527,7 @@ public class DocumentService {
         } catch (RuntimeException e) {
             // A listing must still render: the mount may be down, and the rows
             // we already have are better than an error page.
-            log.warn("Mount refresh failed for '{}' in {}/{}: {}",
-                    prefix, tenantId, projectId, e.toString());
+            log.warn("Mount refresh failed for '{}' in {}/{}: {}", prefix, tenantId, projectId, e.toString());
         }
     }
 
@@ -582,8 +575,7 @@ public class DocumentService {
      * (a real folder prefix); a blank prefix returns an empty list rather
      * than the whole project, so an empty selection can never match all.
      */
-    public List<DocumentDocument> listUnderFolder(
-            String tenantId, String projectId, String folderPrefix) {
+    public List<DocumentDocument> listUnderFolder(String tenantId, String projectId, String folderPrefix) {
         String prefix = folderPrefix == null ? "" : folderPrefix.trim();
         while (prefix.startsWith("/")) prefix = prefix.substring(1);
         if (prefix.isEmpty()) return List.of();
@@ -591,8 +583,7 @@ public class DocumentService {
                 .addCriteria(Criteria.where("tenantId").is(tenantId))
                 .addCriteria(Criteria.where("projectId").is(projectId))
                 .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE))
-                .addCriteria(Criteria.where("path")
-                        .regex("^" + java.util.regex.Pattern.quote(prefix)));
+                .addCriteria(Criteria.where("path").regex("^" + java.util.regex.Pattern.quote(prefix)));
         return mongoTemplate.find(q, DocumentDocument.class);
     }
 
@@ -619,8 +610,7 @@ public class DocumentService {
      * {@code false} rather than matching everything.
      */
     public boolean existsAnyUnderPrefixes(
-            String tenantId, String projectId, List<String> pathPrefixes,
-            @Nullable String pathSuffix) {
+            String tenantId, String projectId, List<String> pathPrefixes, @Nullable String pathSuffix) {
         if (pathPrefixes == null || pathPrefixes.isEmpty()) return false;
         String suffix = (pathSuffix == null || pathSuffix.isBlank()) ? "" : pathSuffix.trim();
         List<Criteria> prefixCriteria = new ArrayList<>();
@@ -651,8 +641,7 @@ public class DocumentService {
      * loop. A blank prefix list returns nothing.
      */
     public List<DocumentDocument> listUnderFoldersAfter(
-            String tenantId, String projectId, List<String> folderPrefixes,
-            @Nullable String afterPath, int limit) {
+            String tenantId, String projectId, List<String> folderPrefixes, @Nullable String afterPath, int limit) {
         List<Criteria> prefixCriteria = new ArrayList<>();
         for (String raw : folderPrefixes) {
             String p = raw == null ? "" : raw.trim();
@@ -670,8 +659,7 @@ public class DocumentService {
         if (afterPath != null && !afterPath.isEmpty()) {
             q.addCriteria(Criteria.where("path").gt(afterPath));
         }
-        q.with(org.springframework.data.domain.Sort.by(
-                org.springframework.data.domain.Sort.Direction.ASC, "path"));
+        q.with(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.ASC, "path"));
         q.limit(Math.max(1, limit));
         return mongoTemplate.find(q, DocumentDocument.class);
     }
@@ -681,8 +669,7 @@ public class DocumentService {
      * sorted by {@code path} ascending so the order is deterministic across
      * pages. {@code page} is zero-based.
      */
-    public Page<DocumentDocument> listByProjectPaged(
-            String tenantId, String projectId, int page, int size) {
+    public Page<DocumentDocument> listByProjectPaged(String tenantId, String projectId, int page, int size) {
         return listByProjectPaged(tenantId, projectId, page, size, null);
     }
 
@@ -696,8 +683,7 @@ public class DocumentService {
      * unfiltered (same as the no-prefix overload).
      */
     public Page<DocumentDocument> listByProjectPaged(
-            String tenantId, String projectId, int page, int size,
-            @Nullable String pathPrefix) {
+            String tenantId, String projectId, int page, int size, @Nullable String pathPrefix) {
         return listByProjectPaged(tenantId, projectId, page, size, pathPrefix, null);
     }
 
@@ -708,11 +694,11 @@ public class DocumentService {
      * list to documents whose body declared {@code kind: <value>}.
      */
     public Page<DocumentDocument> listByProjectPaged(
-            String tenantId, String projectId, int page, int size,
-            @Nullable String pathPrefix, @Nullable String kind) {
+            String tenantId, String projectId, int page, int size, @Nullable String pathPrefix, @Nullable String kind) {
         int safePage = Math.max(0, page);
         int safeSize = Math.max(1, Math.min(size, 200));
-        PageRequest pageable = PageRequest.of(safePage, safeSize, Sort.by("path").ascending());
+        PageRequest pageable =
+                PageRequest.of(safePage, safeSize, Sort.by("path").ascending());
 
         String trimmedPrefix = (pathPrefix == null || pathPrefix.isBlank()) ? null : pathPrefix.trim();
         if (trimmedPrefix != null) {
@@ -739,9 +725,8 @@ public class DocumentService {
         if (trimmedPrefix != null) {
             query.addCriteria(Criteria.where("path").regex("^" + java.util.regex.Pattern.quote(trimmedPrefix)));
         } else {
-            query.addCriteria(Criteria.where("path")
-                    .not()
-                    .regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
+            query.addCriteria(
+                    Criteria.where("path").not().regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
         }
         long total = mongoTemplate.count(Query.of(query).limit(-1).skip(-1), DocumentDocument.class);
         List<DocumentDocument> content = mongoTemplate.find(query, DocumentDocument.class);
@@ -766,8 +751,7 @@ public class DocumentService {
      * inside it — same convention as {@link #listByProjectPaged}.
      */
     public FolderListing listByFolder(
-            String tenantId, String projectId, @Nullable String path,
-            @Nullable String search, int page, int size) {
+            String tenantId, String projectId, @Nullable String path, @Nullable String search, int page, int size) {
         int safePage = Math.max(0, page);
         int safeSize = Math.max(1, Math.min(size, 200));
         String prefix = normalizeFolderPrefix(path);
@@ -805,22 +789,22 @@ public class DocumentService {
         Criteria notADirectoryRow = Criteria.where("mountDirectory").ne(true);
         Criteria fileCriteria;
         if (needle == null) {
-            fileCriteria = new Criteria().andOperator(
-                    Criteria.where("path").regex(filesRegex), notADirectoryRow);
+            fileCriteria = new Criteria().andOperator(Criteria.where("path").regex(filesRegex), notADirectoryRow);
         } else {
             String needleRegex = java.util.regex.Pattern.quote(needle);
-            fileCriteria = new Criteria().andOperator(
-                    Criteria.where("path").regex(filesRegex),
-                    notADirectoryRow,
-                    new Criteria().orOperator(
-                            Criteria.where("path").regex(needleRegex, "i"),
-                            Criteria.where("title").regex(needleRegex, "i")));
+            fileCriteria = new Criteria()
+                    .andOperator(
+                            Criteria.where("path").regex(filesRegex),
+                            notADirectoryRow,
+                            new Criteria()
+                                    .orOperator(
+                                            Criteria.where("path").regex(needleRegex, "i"),
+                                            Criteria.where("title").regex(needleRegex, "i")));
         }
         Query filesQuery = baseProjectQuery(tenantId, projectId)
                 .addCriteria(fileCriteria)
                 .with(PageRequest.of(safePage, safeSize, Sort.by("path").ascending()));
-        long totalFiles = mongoTemplate.count(
-                Query.of(filesQuery).limit(-1).skip(-1), DocumentDocument.class);
+        long totalFiles = mongoTemplate.count(Query.of(filesQuery).limit(-1).skip(-1), DocumentDocument.class);
         List<DocumentDocument> files = mongoTemplate.find(filesQuery, DocumentDocument.class);
 
         // ─── Folders: distinct first segments of paths that nest
@@ -835,51 +819,60 @@ public class DocumentService {
                 .append("tenantId", tenantId)
                 .append("projectId", projectId)
                 .append("status", DocumentStatus.ACTIVE.name())
-                .append("path", new org.bson.Document(
-                        "$regex", "^" + java.util.regex.Pattern.quote(prefix)));
+                .append("path", new org.bson.Document("$regex", "^" + java.util.regex.Pattern.quote(prefix)));
         if (prefix.isEmpty()) {
             // Same trash-exclusion as the file query.
-            match.append("$nor", List.of(new org.bson.Document(
-                    "path",
-                    new org.bson.Document("$regex",
-                            "^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)))));
+            match.append(
+                    "$nor",
+                    List.of(new org.bson.Document(
+                            "path",
+                            new org.bson.Document(
+                                    "$regex", "^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)))));
         }
         pipeline.add(new org.bson.Document("$match", match));
         // {@code $substr} of (path, prefixLen, -1) returns the suffix
         // after the prefix. With prefixLen=0 (root) that's the full
         // path; with prefix=`documents/` and path=`documents/notes/x`
         // we get `notes/x`.
-        pipeline.add(new org.bson.Document("$project", new org.bson.Document(
-                "rest", new org.bson.Document("$substr",
-                        java.util.List.of("$path", prefix.length(), -1)))));
-        pipeline.add(new org.bson.Document("$match", new org.bson.Document(
-                "rest", new org.bson.Document("$regex", "/"))));
-        pipeline.add(new org.bson.Document("$project", new org.bson.Document(
-                "folder", new org.bson.Document("$arrayElemAt",
-                        java.util.List.of(new org.bson.Document(
-                                "$split", java.util.List.of("$rest", "/")), 0)))));
+        pipeline.add(new org.bson.Document(
+                "$project",
+                new org.bson.Document(
+                        "rest", new org.bson.Document("$substr", java.util.List.of("$path", prefix.length(), -1)))));
+        pipeline.add(
+                new org.bson.Document("$match", new org.bson.Document("rest", new org.bson.Document("$regex", "/"))));
+        pipeline.add(new org.bson.Document(
+                "$project",
+                new org.bson.Document(
+                        "folder",
+                        new org.bson.Document(
+                                "$arrayElemAt",
+                                java.util.List.of(
+                                        new org.bson.Document("$split", java.util.List.of("$rest", "/")), 0)))));
         pipeline.add(new org.bson.Document("$group", new org.bson.Document("_id", "$folder")));
         if (needle != null) {
             // Filter folder names by the same search needle (case-
             // insensitive substring on the folder segment itself).
-            pipeline.add(new org.bson.Document("$match", new org.bson.Document(
-                    "_id", new org.bson.Document()
-                            .append("$regex", java.util.regex.Pattern.quote(needle))
-                            .append("$options", "i"))));
+            pipeline.add(new org.bson.Document(
+                    "$match",
+                    new org.bson.Document(
+                            "_id",
+                            new org.bson.Document()
+                                    .append("$regex", java.util.regex.Pattern.quote(needle))
+                                    .append("$options", "i"))));
         }
         pipeline.add(new org.bson.Document("$sort", new org.bson.Document("_id", 1)));
 
         List<String> folders = new ArrayList<>();
-        for (org.bson.Document doc : mongoTemplate.getCollection("documents")
-                .aggregate(pipeline).allowDiskUse(true)) {
+        for (org.bson.Document doc :
+                mongoTemplate.getCollection("documents").aggregate(pipeline).allowDiskUse(true)) {
             Object id = doc.get("_id");
             if (id instanceof String s && !s.isBlank()) folders.add(s);
         }
         injectMountFolderNames(tenantId, projectId, prefix, needle, folders);
         folders.sort(Comparator.naturalOrder());
 
-        return new FolderListing(folders, files, safePage, safeSize, totalFiles, null,
-                mountFailureFor(tenantId, projectId, prefix));
+        return new FolderListing(
+                folders, files, safePage, safeSize, totalFiles, null, mountFailureFor(tenantId, projectId, prefix));
     }
 
     /**
@@ -890,18 +883,13 @@ public class DocumentService {
      * happened rather than the previous attempt. Mongo-only and cheap: a
      * findById on the folder marker.
      */
-    private @Nullable String mountFailureFor(
-            String tenantId, String projectId, String prefix) {
+    private @Nullable String mountFailureFor(String tenantId, String projectId, String prefix) {
         if (shellService == null || !JaglanPaths.isMounted(prefix)) return null;
-        String folderPath = prefix.endsWith("/")
-                ? prefix.substring(0, prefix.length() - 1)
-                : prefix;
+        String folderPath = prefix.endsWith("/") ? prefix.substring(0, prefix.length() - 1) : prefix;
         if (!JaglanPaths.isMounted(folderPath)) return null;
         try {
             JaglanShellService.FolderFailure failure = shellService.folderFailure(
-                    tenantId, projectId,
-                    JaglanPaths.mountNameOf(folderPath),
-                    JaglanPaths.pathInMount(folderPath));
+                    tenantId, projectId, JaglanPaths.mountNameOf(folderPath), JaglanPaths.pathInMount(folderPath));
             return failure == null ? null : failure.message();
         } catch (IllegalArgumentException e) {
             // `_ext/` itself names no mount — nothing to explain there.
@@ -927,12 +915,9 @@ public class DocumentService {
      * the source returned; later pages are empty rather than pretending.
      */
     private FolderListing delegatedMountSearch(
-            String tenantId, String projectId, String prefix, String needle,
-            int page, int size) {
+            String tenantId, String projectId, String prefix, String needle, int page, int size) {
 
-        String folderPath = prefix.endsWith("/")
-                ? prefix.substring(0, prefix.length() - 1)
-                : prefix;
+        String folderPath = prefix.endsWith("/") ? prefix.substring(0, prefix.length() - 1) : prefix;
         String mount;
         try {
             mount = JaglanPaths.mountNameOf(folderPath);
@@ -942,13 +927,11 @@ public class DocumentService {
             return new FolderListing(List.of(), List.of(), page, size, 0, null);
         }
         if (page > 0) {
-            return new FolderListing(List.of(), List.of(), page, size, 0,
-                    MountSearchOutcome.DELEGATED);
+            return new FolderListing(List.of(), List.of(), page, size, 0, MountSearchOutcome.DELEGATED);
         }
-        JaglanShellService.MountSearch result =
-                shellService.searchInMount(tenantId, projectId, mount, needle, size);
-        return new FolderListing(List.of(), result.hits(), page, size,
-                result.hits().size(), result.outcome());
+        JaglanShellService.MountSearch result = shellService.searchInMount(tenantId, projectId, mount, needle, size);
+        return new FolderListing(
+                List.of(), result.hits(), page, size, result.hits().size(), result.outcome());
     }
 
     /**
@@ -966,12 +949,12 @@ public class DocumentService {
      * every search.
      */
     private void injectMountFolderNames(
-            String tenantId, String projectId, String prefix,
-            @Nullable String needle, List<String> folders) {
+            String tenantId, String projectId, String prefix, @Nullable String needle, List<String> folders) {
 
         List<String> candidates;
         if (prefix.isEmpty()) {
-            candidates = shellService == null || shellService.mounts(tenantId, projectId).isEmpty()
+            candidates = shellService == null
+                            || shellService.mounts(tenantId, projectId).isEmpty()
                     ? List.of()
                     : List.of(JaglanPaths.ROOT);
         } else if (prefix.equals(JaglanPaths.PREFIX)) {
@@ -987,9 +970,8 @@ public class DocumentService {
             // things inside it, so an empty mount folder would otherwise be
             // invisible — and a non-empty one would appear twice.
             String folderPath = prefix.substring(0, prefix.length() - 1);
-            candidates = shellService == null
-                    ? List.of()
-                    : shellService.directoryNamesIn(tenantId, projectId, folderPath);
+            candidates =
+                    shellService == null ? List.of() : shellService.directoryNamesIn(tenantId, projectId, folderPath);
         } else {
             return;
         }
@@ -1040,8 +1022,11 @@ public class DocumentService {
 
         /** Ordinary (non-mounted) listing — nothing to explain. */
         public FolderListing(
-                List<String> folders, List<DocumentDocument> files,
-                int page, int pageSize, long totalFiles,
+                List<String> folders,
+                List<DocumentDocument> files,
+                int page,
+                int pageSize,
+                long totalFiles,
                 @Nullable MountSearchOutcome mountSearch) {
             this(folders, files, page, pageSize, totalFiles, mountSearch, null);
         }
@@ -1060,10 +1045,7 @@ public class DocumentService {
      * the indexed {@code path} field), not client-side filtering.
      */
     public ImageListing listImages(
-            String tenantId, String projectId,
-            @Nullable String pathPrefix,
-            @Nullable String pathSearch,
-            int limit) {
+            String tenantId, String projectId, @Nullable String pathPrefix, @Nullable String pathSearch, int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 200));
         Query q = new Query()
                 .addCriteria(Criteria.where("tenantId").is(tenantId))
@@ -1072,12 +1054,10 @@ public class DocumentService {
                 .addCriteria(Criteria.where("mimeType").regex("^image/"));
         if (pathPrefix != null && !pathPrefix.isBlank()) {
             String prefix = pathPrefix.startsWith("/") ? pathPrefix.substring(1) : pathPrefix;
-            q.addCriteria(Criteria.where("path")
-                    .regex("^" + java.util.regex.Pattern.quote(prefix)));
+            q.addCriteria(Criteria.where("path").regex("^" + java.util.regex.Pattern.quote(prefix)));
         }
         if (pathSearch != null && !pathSearch.isBlank()) {
-            q.addCriteria(Criteria.where("path")
-                    .regex(java.util.regex.Pattern.quote(pathSearch.trim()), "i"));
+            q.addCriteria(Criteria.where("path").regex(java.util.regex.Pattern.quote(pathSearch.trim()), "i"));
         }
         long total = mongoTemplate.count(Query.of(q), DocumentDocument.class);
         q.with(org.springframework.data.domain.Sort.by("path").ascending()).limit(safeLimit);
@@ -1093,7 +1073,8 @@ public class DocumentService {
     }
 
     /** Slim projection for {@link #listImages}. */
-    public record ImageMatch(String id, String path, String name, @Nullable String mimeType) {}
+    public record ImageMatch(
+            String id, String path, String name, @Nullable String mimeType) {}
 
     /** Return shape for {@link #listImages}. */
     public record ImageListing(List<ImageMatch> items, long total) {}
@@ -1112,10 +1093,7 @@ public class DocumentService {
      * path, capped at {@code limit} (max 200).
      */
     public DocumentListing searchProjectDocuments(
-            String tenantId, String projectId,
-            @Nullable String pathPrefix,
-            @Nullable String query,
-            int limit) {
+            String tenantId, String projectId, @Nullable String pathPrefix, @Nullable String query, int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 200));
         Query q = new Query()
                 .addCriteria(Criteria.where("tenantId").is(tenantId))
@@ -1127,8 +1105,7 @@ public class DocumentService {
         List<DocumentDocument> docs = mongoTemplate.find(q, DocumentDocument.class);
         List<DocumentMatch> matches = new ArrayList<>(docs.size());
         for (DocumentDocument d : docs) {
-            matches.add(new DocumentMatch(
-                    d.getId(), d.getPath(), d.getTitle(), d.getKind(), d.getMimeType()));
+            matches.add(new DocumentMatch(d.getId(), d.getPath(), d.getTitle(), d.getKind(), d.getMimeType()));
         }
         return new DocumentListing(matches, total);
     }
@@ -1147,19 +1124,17 @@ public class DocumentService {
      */
     static Criteria searchPathCriterion(@Nullable String pathPrefix, @Nullable String query) {
         List<Criteria> constraints = new ArrayList<>();
-        constraints.add(Criteria.where("path")
-                .not()
-                .regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
+        constraints.add(Criteria.where("path").not().regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
         if (pathPrefix != null && !pathPrefix.isBlank()) {
             String prefix = pathPrefix.startsWith("/") ? pathPrefix.substring(1) : pathPrefix;
-            constraints.add(Criteria.where("path")
-                    .regex("^" + java.util.regex.Pattern.quote(prefix)));
+            constraints.add(Criteria.where("path").regex("^" + java.util.regex.Pattern.quote(prefix)));
         }
         if (query != null && !query.isBlank()) {
             String needle = java.util.regex.Pattern.quote(query.trim());
-            constraints.add(new Criteria().orOperator(
-                    Criteria.where("path").regex(needle, "i"),
-                    Criteria.where("title").regex(needle, "i")));
+            constraints.add(new Criteria()
+                    .orOperator(
+                            Criteria.where("path").regex(needle, "i"),
+                            Criteria.where("title").regex(needle, "i")));
         }
         return constraints.size() == 1
                 ? constraints.get(0)
@@ -1168,7 +1143,8 @@ public class DocumentService {
 
     /** Slim projection for {@link #searchProjectDocuments}. */
     public record DocumentMatch(
-            String id, String path,
+            String id,
+            String path,
             @Nullable String title,
             @Nullable String kind,
             @Nullable String mimeType) {}
@@ -1202,7 +1178,8 @@ public class DocumentService {
      *                     them (lower-case, dots→underscores).
      */
     public DocumentMetaListing searchProjectDocumentsMeta(
-            String tenantId, String projectId,
+            String tenantId,
+            String projectId,
             @Nullable String pathPrefix,
             @Nullable String query,
             @Nullable List<String> requireTags,
@@ -1215,28 +1192,31 @@ public class DocumentService {
                 .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE));
 
         List<Criteria> pathConstraints = new ArrayList<>();
-        pathConstraints.add(Criteria.where("path")
-                .not().regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
+        pathConstraints.add(
+                Criteria.where("path").not().regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
         if (pathPrefix != null && !pathPrefix.isBlank()) {
             String prefix = pathPrefix.startsWith("/") ? pathPrefix.substring(1) : pathPrefix;
-            pathConstraints.add(Criteria.where("path")
-                    .regex("^" + java.util.regex.Pattern.quote(prefix)));
+            pathConstraints.add(Criteria.where("path").regex("^" + java.util.regex.Pattern.quote(prefix)));
         }
-        q.addCriteria(pathConstraints.size() == 1
-                ? pathConstraints.get(0)
-                : new Criteria().andOperator(pathConstraints.toArray(new Criteria[0])));
+        q.addCriteria(
+                pathConstraints.size() == 1
+                        ? pathConstraints.get(0)
+                        : new Criteria().andOperator(pathConstraints.toArray(new Criteria[0])));
 
         String needle = query == null ? "" : query.trim();
         if (!needle.isEmpty()) {
             String rx = java.util.regex.Pattern.quote(needle);
-            q.addCriteria(new Criteria().orOperator(
-                    Criteria.where("title").regex(rx, "i"),
-                    Criteria.where("summary").regex(rx, "i"),
-                    Criteria.where("tags").regex(rx, "i")));
+            q.addCriteria(new Criteria()
+                    .orOperator(
+                            Criteria.where("title").regex(rx, "i"),
+                            Criteria.where("summary").regex(rx, "i"),
+                            Criteria.where("tags").regex(rx, "i")));
         }
         if (requireTags != null) {
             List<String> tags = requireTags.stream()
-                    .filter(t -> t != null && !t.isBlank()).map(String::trim).toList();
+                    .filter(t -> t != null && !t.isBlank())
+                    .map(String::trim)
+                    .toList();
             if (!tags.isEmpty()) q.addCriteria(Criteria.where("tags").all(tags));
         }
         if (headerEquals != null) {
@@ -1254,8 +1234,13 @@ public class DocumentService {
         List<DocumentMetaMatch> matches = new ArrayList<>(docs.size());
         for (DocumentDocument d : docs) {
             matches.add(new DocumentMetaMatch(
-                    d.getId(), d.getPath(), d.getTitle(), d.getKind(), d.getMimeType(),
-                    buildSnippet(d, needle), scoreOf(d, needle)));
+                    d.getId(),
+                    d.getPath(),
+                    d.getTitle(),
+                    d.getKind(),
+                    d.getMimeType(),
+                    buildSnippet(d, needle),
+                    scoreOf(d, needle)));
         }
         return new DocumentMetaListing(matches, total);
     }
@@ -1265,10 +1250,12 @@ public class DocumentService {
         if (needle.isEmpty()) return 0;
         String low = needle.toLowerCase(java.util.Locale.ROOT);
         int score = 0;
-        if (doc.getTitle() != null && doc.getTitle().toLowerCase(java.util.Locale.ROOT).contains(low)) {
+        if (doc.getTitle() != null
+                && doc.getTitle().toLowerCase(java.util.Locale.ROOT).contains(low)) {
             score += 2;
         }
-        if (doc.getSummary() != null && doc.getSummary().toLowerCase(java.util.Locale.ROOT).contains(low)) {
+        if (doc.getSummary() != null
+                && doc.getSummary().toLowerCase(java.util.Locale.ROOT).contains(low)) {
             score += 1;
         }
         return score;
@@ -1284,8 +1271,7 @@ public class DocumentService {
         if (summary != null && !summary.isBlank()) {
             String flat = summary.replaceAll("\\s+", " ").trim();
             if (!needle.isEmpty()) {
-                int at = flat.toLowerCase(java.util.Locale.ROOT)
-                        .indexOf(needle.toLowerCase(java.util.Locale.ROOT));
+                int at = flat.toLowerCase(java.util.Locale.ROOT).indexOf(needle.toLowerCase(java.util.Locale.ROOT));
                 if (at >= 0) {
                     int start = Math.max(0, at - 40);
                     int end = Math.min(flat.length(), at + needle.length() + 80);
@@ -1300,7 +1286,8 @@ public class DocumentService {
 
     /** Slim projection for {@link #searchProjectDocumentsMeta} — carries a snippet + score. */
     public record DocumentMetaMatch(
-            String id, String path,
+            String id,
+            String path,
             @Nullable String title,
             @Nullable String kind,
             @Nullable String mimeType,
@@ -1312,8 +1299,7 @@ public class DocumentService {
 
     /** All {@link DocumentStatus#ACTIVE} documents in the project that declared {@code kind: <kind>}. */
     public List<DocumentDocument> listByKind(String tenantId, String projectId, String kind) {
-        return repository.findByTenantIdAndProjectIdAndStatusAndKind(
-                tenantId, projectId, DocumentStatus.ACTIVE, kind);
+        return repository.findByTenantIdAndProjectIdAndStatusAndKind(tenantId, projectId, DocumentStatus.ACTIVE, kind);
     }
 
     /**
@@ -1323,12 +1309,15 @@ public class DocumentService {
      * are not part of this projection).
      */
     public List<String> listKinds(String tenantId, String projectId) {
-        Query query = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("projectId").is(projectId)
-                .and("status").is(DocumentStatus.ACTIVE)
-                .and("kind").ne(null));
-        List<String> kinds = mongoTemplate.findDistinct(
-                query, "kind", DocumentDocument.class, String.class);
+        Query query = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("projectId")
+                .is(projectId)
+                .and("status")
+                .is(DocumentStatus.ACTIVE)
+                .and("kind")
+                .ne(null));
+        List<String> kinds = mongoTemplate.findDistinct(query, "kind", DocumentDocument.class, String.class);
         TreeSet<String> sorted = new TreeSet<>();
         for (String k : kinds) {
             if (k != null && !k.isBlank()) sorted.add(k);
@@ -1366,16 +1355,20 @@ public class DocumentService {
      * else to move this".
      */
     public FolderNames listFolders(String tenantId, String projectId) {
-        Query query = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("projectId").is(projectId)
-                .and("status").is(DocumentStatus.ACTIVE)
+        Query query = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("projectId")
+                .is(projectId)
+                .and("status")
+                .is(DocumentStatus.ACTIVE)
                 // One negated regex, not two criteria: Mongo's document model
                 // rejects a second condition on the same field.
-                .and("path").not().regex("^("
+                .and("path")
+                .not()
+                .regex("^("
                         + java.util.regex.Pattern.quote(JaglanPaths.PREFIX) + "|"
                         + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX) + ")"));
-        List<String> paths = mongoTemplate.findDistinct(
-                query, "path", DocumentDocument.class, String.class);
+        List<String> paths = mongoTemplate.findDistinct(query, "path", DocumentDocument.class, String.class);
         TreeSet<String> folders = new TreeSet<>();
         for (String p : paths) {
             for (String f : foldersOfPath(p)) {
@@ -1394,8 +1387,12 @@ public class DocumentService {
                 if (capped.size() == folderListLimit) break;
                 capped.add(f);
             }
-            log.info("listFolders {}/{}: {} folders, capped at {}",
-                    tenantId, projectId, folders.size(), folderListLimit);
+            log.info(
+                    "listFolders {}/{}: {} folders, capped at {}",
+                    tenantId,
+                    projectId,
+                    folders.size(),
+                    folderListLimit);
             return new FolderNames(capped, true);
         }
         return new FolderNames(new ArrayList<>(folders), false);
@@ -1415,7 +1412,6 @@ public class DocumentService {
                 || folder.equals(TRASH_FOLDER)
                 || folder.startsWith(TRASH_FOLDER_PREFIX);
     }
-
 
     /**
      * Folder destinations plus whether the list was cut short.
@@ -1445,8 +1441,10 @@ public class DocumentService {
      * installs hold tens to low-hundreds of model overrides total).
      */
     public List<DocumentDocument> findAllByPathPrefix(String pathPrefix) {
-        Query query = new Query(Criteria.where("status").is(DocumentStatus.ACTIVE)
-                .and("path").regex("^" + java.util.regex.Pattern.quote(pathPrefix)));
+        Query query = new Query(Criteria.where("status")
+                .is(DocumentStatus.ACTIVE)
+                .and("path")
+                .regex("^" + java.util.regex.Pattern.quote(pathPrefix)));
         return mongoTemplate.find(query, DocumentDocument.class);
     }
 
@@ -1467,9 +1465,12 @@ public class DocumentService {
      * it is authorizing.
      */
     public List<DocumentDocument> findByPathAcrossProjects(String tenantId, String path) {
-        Query query = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("status").is(DocumentStatus.ACTIVE)
-                .and("path").is(normalizePath(path)));
+        Query query = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("status")
+                .is(DocumentStatus.ACTIVE)
+                .and("path")
+                .is(normalizePath(path)));
         return mongoTemplate.find(query, DocumentDocument.class);
     }
 
@@ -1509,8 +1510,7 @@ public class DocumentService {
      *                  per project; storage itself is tenant-scoped and
      *                  ignores it
      */
-    ContentWriteResult streamingStoreContent(
-            String tenantId, String projectId, String path, InputStream content) {
+    ContentWriteResult streamingStoreContent(String tenantId, String projectId, String path, InputStream content) {
         if (JaglanPaths.isMounted(path)) {
             return writeMountedContent(tenantId, projectId, path, content);
         }
@@ -1555,7 +1555,11 @@ public class DocumentService {
                     log.error("Failed to compress document content for path='{}'", path, e);
                     // Closing the pipe makes the storage-side reader observe EOF
                     // (and the partial write fails at the StorageService level).
-                    try { pipedOut.close(); } catch (Exception ignored) { /* best effort */ }
+                    try {
+                        pipedOut.close();
+                    } catch (Exception ignored) {
+                        /* best effort */
+                    }
                 }
             });
             finalStream = pipedIn;
@@ -1618,8 +1622,7 @@ public class DocumentService {
             InputStream content,
             @Nullable String createdBy,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        return create(tenantId, projectId, path, title, tags, mimeType, content, createdBy,
-                null, null, actor);
+        return create(tenantId, projectId, path, title, tags, mimeType, content, createdBy, null, null, actor);
     }
 
     /**
@@ -1657,8 +1660,7 @@ public class DocumentService {
             de.mhus.vance.shared.permission.WriteActor actor) {
 
         String normalizedPath = normalizePath(path);
-        enforceWrite(tenantId, projectId, normalizedPath,
-                de.mhus.vance.shared.permission.Action.CREATE, actor);
+        enforceWrite(tenantId, projectId, normalizedPath, de.mhus.vance.shared.permission.Action.CREATE, actor);
         boolean mounted = JaglanPaths.isMounted(normalizedPath);
         // For a mount the repository alone cannot answer "does this already
         // exist": the shell row only appears once somebody browsed or stat'ed
@@ -1666,12 +1668,10 @@ public class DocumentService {
         // overwrite a file that is sitting in the source.
         boolean exists = mounted
                 ? findByPath(tenantId, projectId, normalizedPath).isPresent()
-                : repository.existsByTenantIdAndProjectIdAndPath(
-                        tenantId, projectId, normalizedPath);
+                : repository.existsByTenantIdAndProjectIdAndPath(tenantId, projectId, normalizedPath);
         if (exists) {
             throw new DocumentAlreadyExistsException(
-                    "Document '" + normalizedPath + "' already exists in "
-                            + tenantId + "/" + projectId);
+                    "Document '" + normalizedPath + "' already exists in " + tenantId + "/" + projectId);
         }
 
         // Age-encrypted documents only ever store armored ciphertext. Guard
@@ -1682,12 +1682,9 @@ public class DocumentService {
         if (AgeDocumentKind.isAgeEncrypted(null, mimeType)) {
             content = requireAgeArmoredStream(normalizedPath, content);
         }
-        ContentWriteResult write =
-                streamingStoreContent(tenantId, projectId, normalizedPath, content);
+        ContentWriteResult write = streamingStoreContent(tenantId, projectId, normalizedPath, content);
 
-        boolean autoSummary = autoSummaryOverride != null
-                ? autoSummaryOverride
-                : isAutoSummaryEligible(mimeType);
+        boolean autoSummary = autoSummaryOverride != null ? autoSummaryOverride : isAutoSummaryEligible(mimeType);
 
         // A mounted document's row is a metadata shell addressed by a
         // *derived* id — see JaglanPaths.documentId. Letting Mongo mint an
@@ -1696,9 +1693,7 @@ public class DocumentService {
         // the derived id, hit the unique (tenant, project, path) index, and the
         // resulting DuplicateKeyException was booked as a mount outage. One
         // created document made the whole mount unusable, and it did not heal.
-        String mountedId = mounted
-                ? JaglanPaths.documentIdForPath(tenantId, projectId, normalizedPath)
-                : null;
+        String mountedId = mounted ? JaglanPaths.documentIdForPath(tenantId, projectId, normalizedPath) : null;
 
         DocumentDocument doc = DocumentDocument.builder()
                 .tenantId(tenantId)
@@ -1721,7 +1716,10 @@ public class DocumentService {
                 // Derived rather than random for a mounted row, matching
                 // JaglanShellService: a purged-and-rewritten shell keeps its
                 // identity, and archives do not apply there anyway.
-                .lineageId(mountedId != null ? mountedId : java.util.UUID.randomUUID().toString())
+                .lineageId(
+                        mountedId != null
+                                ? mountedId
+                                : java.util.UUID.randomUUID().toString())
                 .build();
         if (mountedId != null) {
             doc.setId(mountedId);
@@ -1761,9 +1759,14 @@ public class DocumentService {
         doc.setRagDirty(isRagEligible(doc));
 
         DocumentDocument saved = repository.save(doc);
-        log.info("Created document tenantId='{}' projectId='{}' path='{}' id='{}' compressed={} size={}",
-                saved.getTenantId(), saved.getProjectId(), saved.getPath(), saved.getId(),
-                saved.isCompressed(), saved.getSize());
+        log.info(
+                "Created document tenantId='{}' projectId='{}' path='{}' id='{}' compressed={} size={}",
+                saved.getTenantId(),
+                saved.getProjectId(),
+                saved.getPath(),
+                saved.getId(),
+                saved.isCompressed(),
+                saved.getSize());
         return publishUpserted(saved);
     }
 
@@ -1783,10 +1786,16 @@ public class DocumentService {
             @Nullable String createdBy,
             de.mhus.vance.shared.permission.WriteActor actor) {
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-        return create(tenantId, projectId, path, title, tags,
+        return create(
+                tenantId,
+                projectId,
+                path,
+                title,
+                tags,
                 mimeFromPath(path),
                 new ByteArrayInputStream(bytes),
-                createdBy, actor);
+                createdBy,
+                actor);
     }
 
     /** Map file extension to a canonical text MIME. Falls back to
@@ -1852,8 +1861,7 @@ public class DocumentService {
         if (existing.isPresent()) {
             return update(existing.get().getId(), title, tags, text, null, actor);
         }
-        return createText(tenantId, projectId, path, title, tags,
-                text, createdBy, actor);
+        return createText(tenantId, projectId, path, title, tags, text, createdBy, actor);
     }
 
     /**
@@ -1938,11 +1946,15 @@ public class DocumentService {
             @Nullable String newMimeType,
             WriterIdentity identity,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        DocumentDocument doc = repository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown document id='" + id + "'"));
-        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                de.mhus.vance.shared.permission.Action.WRITE, actor);
+        DocumentDocument doc = repository
+                .findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
+        enforceWrite(
+                doc.getTenantId(),
+                doc.getProjectId(),
+                doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE,
+                actor);
         enforcePrivilegedAdmin(doc, actor);
         requireWriteAllowed(doc, identity);
 
@@ -1958,17 +1970,19 @@ public class DocumentService {
         try {
             newBytes = content.readAllBytes();
         } catch (IOException e) {
-            throw new IllegalStateException(
-                    "Failed to buffer new content for id='" + id + "'", e);
+            throw new IllegalStateException("Failed to buffer new content for id='" + id + "'", e);
         }
 
-        boolean mimeChanged = newMimeType != null
-                && !newMimeType.isBlank()
-                && !newMimeType.equals(doc.getMimeType());
+        boolean mimeChanged = newMimeType != null && !newMimeType.isBlank() && !newMimeType.equals(doc.getMimeType());
         boolean contentChanged = isContentDifferent(doc, newBytes);
         if (!mimeChanged && !contentChanged) {
-            log.debug("Skipping no-op content replace tenantId='{}' projectId='{}' path='{}' id='{}' size={}",
-                    doc.getTenantId(), doc.getProjectId(), doc.getPath(), id, newBytes.length);
+            log.debug(
+                    "Skipping no-op content replace tenantId='{}' projectId='{}' path='{}' id='{}' size={}",
+                    doc.getTenantId(),
+                    doc.getProjectId(),
+                    doc.getPath(),
+                    id,
+                    newBytes.length);
             return doc;
         }
 
@@ -1988,21 +2002,21 @@ public class DocumentService {
                 doc.setLastArchivedAt(Instant.now());
                 archived = true;
             } catch (RuntimeException e) {
-                log.warn("Failed to archive document id='{}' before content replace — "
-                                + "proceeding without version snapshot", id, e);
+                log.warn(
+                        "Failed to archive document id='{}' before content replace — "
+                                + "proceeding without version snapshot",
+                        id,
+                        e);
             }
         }
         String oldStorageId = doc.getStorageId();
 
         ContentWriteResult write = streamingStoreContent(
-                doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                new ByteArrayInputStream(newBytes));
+                doc.getTenantId(), doc.getProjectId(), doc.getPath(), new ByteArrayInputStream(newBytes));
         doc.setStorageId(write.storageId());
         doc.setCompressed(write.compressed());
         doc.setSize(write.originalSize());
-        if (oldStorageId != null
-                && !oldStorageId.equals(write.storageId())
-                && !archived) {
+        if (oldStorageId != null && !oldStorageId.equals(write.storageId()) && !archived) {
             deleteStorageBlobQuietly(oldStorageId, id);
         }
 
@@ -2013,9 +2027,14 @@ public class DocumentService {
         applyHeader(doc);
 
         DocumentDocument saved = repository.save(doc);
-        log.info("Replaced content tenantId='{}' projectId='{}' path='{}' id='{}' size={} compressed={}",
-                saved.getTenantId(), saved.getProjectId(), saved.getPath(),
-                saved.getId(), saved.getSize(), saved.isCompressed());
+        log.info(
+                "Replaced content tenantId='{}' projectId='{}' path='{}' id='{}' size={} compressed={}",
+                saved.getTenantId(),
+                saved.getProjectId(),
+                saved.getPath(),
+                saved.getId(),
+                saved.getSize(),
+                saved.isCompressed());
         return publishUpserted(saved, contentChanged, identity);
     }
 
@@ -2032,8 +2051,8 @@ public class DocumentService {
             existing.transferTo(sink);
             return !java.util.Arrays.equals(sink.toByteArray(), newBytes);
         } catch (IOException | RuntimeException e) {
-            log.debug("isContentDifferent: read failed for id='{}', treating as changed: {}",
-                    doc.getId(), e.toString());
+            log.debug(
+                    "isContentDifferent: read failed for id='{}', treating as changed: {}", doc.getId(), e.toString());
             return true;
         }
     }
@@ -2061,16 +2080,19 @@ public class DocumentService {
             @Nullable String updatedBy,
             WriterIdentity identity,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        DocumentDocument doc = repository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown document id='" + id + "'"));
-        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                de.mhus.vance.shared.permission.Action.WRITE, actor);
+        DocumentDocument doc = repository
+                .findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
+        enforceWrite(
+                doc.getTenantId(),
+                doc.getProjectId(),
+                doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE,
+                actor);
         enforcePrivilegedAdmin(doc, actor);
         requireWriteAllowed(doc, identity);
         if (bytes == null) {
-            throw new IllegalArgumentException(
-                    "bytes must not be null for binary replace");
+            throw new IllegalArgumentException("bytes must not be null for binary replace");
         }
         // Age documents hold armored ciphertext — binary payloads (images,
         // PDFs) are refused rather than silently replacing it.
@@ -2081,12 +2103,9 @@ public class DocumentService {
         String oldStorageId = doc.getStorageId();
         ContentWriteResult write;
         try (InputStream in = new ByteArrayInputStream(bytes)) {
-            write = streamingStoreContent(
-                    doc.getTenantId(), doc.getProjectId(), doc.getPath(), in);
+            write = streamingStoreContent(doc.getTenantId(), doc.getProjectId(), doc.getPath(), in);
         } catch (IOException e) {
-            throw new IllegalStateException(
-                    "Failed to stream replaced binary content for id='"
-                            + id + "'", e);
+            throw new IllegalStateException("Failed to stream replaced binary content for id='" + id + "'", e);
         }
         if (newMimeType != null && !newMimeType.isBlank()) {
             doc.setMimeType(newMimeType);
@@ -2103,10 +2122,14 @@ public class DocumentService {
         if (oldStorageId != null && !oldStorageId.equals(write.storageId())) {
             deleteStorageBlobQuietly(oldStorageId, id);
         }
-        log.info("Replaced binary content tenantId='{}' projectId='{}' "
-                        + "path='{}' id='{}' bytes={} compressed={}",
-                saved.getTenantId(), saved.getProjectId(),
-                saved.getPath(), saved.getId(), saved.getSize(), saved.isCompressed());
+        log.info(
+                "Replaced binary content tenantId='{}' projectId='{}' " + "path='{}' id='{}' bytes={} compressed={}",
+                saved.getTenantId(),
+                saved.getProjectId(),
+                saved.getPath(),
+                saved.getId(),
+                saved.getSize(),
+                saved.isCompressed());
         return publishUpserted(saved);
     }
 
@@ -2156,8 +2179,8 @@ public class DocumentService {
             @Nullable Map<String, String> headers,
             @Nullable String createdBy,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        return createOrReplaceBinary(tenantId, projectId, path, bytes, mimeType,
-                title, tags, headers, createdBy, TOOL_IDENTITY, actor);
+        return createOrReplaceBinary(
+                tenantId, projectId, path, bytes, mimeType, title, tags, headers, createdBy, TOOL_IDENTITY, actor);
     }
 
     /** Actor-carrying create-or-replace binary funnel — threads the actor into the source. */
@@ -2174,17 +2197,15 @@ public class DocumentService {
             WriterIdentity identity,
             de.mhus.vance.shared.permission.WriteActor actor) {
         if (bytes == null) {
-            throw new IllegalArgumentException(
-                    "bytes must not be null for binary write");
+            throw new IllegalArgumentException("bytes must not be null for binary write");
         }
         if (mimeType == null || mimeType.isBlank()) {
-            throw new IllegalArgumentException(
-                    "mimeType must not be blank for binary write");
+            throw new IllegalArgumentException("mimeType must not be blank for binary write");
         }
         Optional<DocumentDocument> existing = findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
-            DocumentDocument doc = replaceBinaryContent(
-                    existing.get().getId(), mimeType, bytes, createdBy, identity, actor);
+            DocumentDocument doc =
+                    replaceBinaryContent(existing.get().getId(), mimeType, bytes, createdBy, identity, actor);
             boolean changed = false;
             if (title != null) {
                 doc.setTitle(title);
@@ -2201,10 +2222,7 @@ public class DocumentService {
             return changed ? repository.save(doc) : doc;
         }
         DocumentDocument doc = create(
-                tenantId, projectId, path,
-                title, tags, mimeType,
-                new ByteArrayInputStream(bytes),
-                createdBy, actor);
+                tenantId, projectId, path, title, tags, mimeType, new ByteArrayInputStream(bytes), createdBy, actor);
         if (headers != null) {
             doc.setHeaders(new LinkedHashMap<>(headers));
             doc = repository.save(doc);
@@ -2233,26 +2251,22 @@ public class DocumentService {
      * @return the resolved document, or {@link Optional#empty()} when
      *         no layer carries the path
      */
-    public Optional<LookupResult> lookupCascade(
-            String tenantId, String projectId, String path) {
+    public Optional<LookupResult> lookupCascade(String tenantId, String projectId, String path) {
         String norm = normalizePath(path);
 
         // 1. Project (if not the _vance project itself).
         if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
-            Optional<LookupResult> hit = tryProjectLookup(
-                    tenantId, projectId, norm, LookupResult.Source.PROJECT);
+            Optional<LookupResult> hit = tryProjectLookup(tenantId, projectId, norm, LookupResult.Source.PROJECT);
             if (hit.isPresent()) return hit;
         }
 
         // 2. _vance project.
-        Optional<LookupResult> vance = tryProjectLookup(
-                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, norm,
-                LookupResult.Source.VANCE);
+        Optional<LookupResult> vance =
+                tryProjectLookup(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, norm, LookupResult.Source.VANCE);
         if (vance.isPresent()) return vance;
 
         // 3. Classpath fallback.
-        return loadResource(norm).map(content ->
-                new LookupResult(norm, content, LookupResult.Source.RESOURCE, null));
+        return loadResource(norm).map(content -> new LookupResult(norm, content, LookupResult.Source.RESOURCE, null));
     }
 
     /**
@@ -2276,8 +2290,7 @@ public class DocumentService {
      *                   passing {@code ""} or {@code "/"} means top-level
      *                   (matches paths without any slash).
      */
-    public Map<String, LookupResult> listByPrefixCascade(
-            String tenantId, String projectId, String pathPrefix) {
+    public Map<String, LookupResult> listByPrefixCascade(String tenantId, String projectId, String pathPrefix) {
         String prefix = normalizePrefix(pathPrefix);
         Map<String, LookupResult> merged = new LinkedHashMap<>();
 
@@ -2285,13 +2298,10 @@ public class DocumentService {
         // entry for the same path. This guarantees no duplicates and
         // honours "innermost wins" without tracking seen-keys manually.
         applyResourceLayer(merged, prefix);
-        applyProjectLayer(merged,
-                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, prefix,
-                LookupResult.Source.VANCE);
+        applyProjectLayer(
+                merged, tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, prefix, LookupResult.Source.VANCE);
         if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
-            applyProjectLayer(merged,
-                    tenantId, projectId, prefix,
-                    LookupResult.Source.PROJECT);
+            applyProjectLayer(merged, tenantId, projectId, prefix, LookupResult.Source.PROJECT);
         }
         return merged;
     }
@@ -2299,13 +2309,11 @@ public class DocumentService {
     // ──────────────────── Cascade helpers ────────────────────
 
     private Optional<LookupResult> tryProjectLookup(
-            String tenantId, String projectId, String normalizedPath,
-            LookupResult.Source source) {
+            String tenantId, String projectId, String normalizedPath, LookupResult.Source source) {
         return repository
                 .findByTenantIdAndProjectIdAndPath(tenantId, projectId, normalizedPath)
                 .filter(doc -> doc.getStatus() == DocumentStatus.ACTIVE)
-                .map(doc -> new LookupResult(
-                        doc.getPath(), readAsString(doc, null), source, doc));
+                .map(doc -> new LookupResult(doc.getPath(), readAsString(doc, null), source, doc));
     }
 
     /**
@@ -2320,7 +2328,9 @@ public class DocumentService {
      */
     private void applyProjectLayer(
             Map<String, LookupResult> acc,
-            String tenantId, String projectId, String prefix,
+            String tenantId,
+            String projectId,
+            String prefix,
             LookupResult.Source source) {
         for (DocumentDocument doc : repository.findByTenantIdAndProjectIdAndStatusAndPathStartsWith(
                 tenantId, projectId, DocumentStatus.ACTIVE, prefix)) {
@@ -2349,11 +2359,9 @@ public class DocumentService {
             String path = prefix + filename;
             try (InputStream in = resource.getInputStream()) {
                 String content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                acc.put(path, new LookupResult(
-                        path, content, LookupResult.Source.RESOURCE, null));
+                acc.put(path, new LookupResult(path, content, LookupResult.Source.RESOURCE, null));
             } catch (IOException e) {
-                log.warn("Failed to read classpath resource '{}': {}",
-                        resource, e.toString());
+                log.warn("Failed to read classpath resource '{}': {}", resource, e.toString());
             }
         }
     }
@@ -2361,8 +2369,7 @@ public class DocumentService {
     private Optional<String> loadResource(String normalizedPath) {
         String resourcePath = RESOURCE_PREFIX + normalizedPath;
         try {
-            Resource resource = resourcePatternResolver.getResource(
-                    "classpath:" + resourcePath);
+            Resource resource = resourcePatternResolver.getResource("classpath:" + resourcePath);
             if (!resource.exists() || !resource.isReadable()) {
                 return Optional.empty();
             }
@@ -2384,8 +2391,7 @@ public class DocumentService {
         try (InputStream in = loadContent(doc, query)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            log.warn("Failed to read document id='{}' path='{}': {}",
-                    doc.getId(), doc.getPath(), e.toString());
+            log.warn("Failed to read document id='{}' path='{}': {}", doc.getId(), doc.getPath(), e.toString());
             return "";
         }
     }
@@ -2413,11 +2419,9 @@ public class DocumentService {
         doc.setHeaders(new LinkedHashMap<>(header.getValues()));
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where("_id").is(doc.getId())),
-                new Update().set("kind", header.getKind())
-                        .set("headers", header.getValues()),
+                new Update().set("kind", header.getKind()).set("headers", header.getValues()),
                 DocumentDocument.class);
-        log.debug("Learned kind='{}' for mounted document '{}'",
-                header.getKind(), doc.getPath());
+        log.debug("Learned kind='{}' for mounted document '{}'", header.getKind(), doc.getPath());
     }
 
     /**
@@ -2479,9 +2483,8 @@ public class DocumentService {
             return openMountedContent(doc, parameterised ? query : null);
         }
         if (parameterised) {
-            throw new IllegalArgumentException(
-                    "document '" + doc.getPath() + "' is stored, not mounted — "
-                            + "there is nothing to parameterise with a query");
+            throw new IllegalArgumentException("document '" + doc.getPath() + "' is stored, not mounted — "
+                    + "there is nothing to parameterise with a query");
         }
         String sid = doc.getStorageId();
         if (sid == null) {
@@ -2489,17 +2492,23 @@ public class DocumentService {
         }
         InputStream stream = storageService.load(sid);
         if (stream == null) {
-            log.warn("StorageService returned null for document id='{}' storageId='{}'",
-                    doc.getId(), sid);
+            log.warn("StorageService returned null for document id='{}' storageId='{}'", doc.getId(), sid);
             return InputStream.nullInputStream();
         }
         if (doc.isCompressed()) {
             try {
                 return new GZIPInputStream(stream);
             } catch (IOException e) {
-                log.warn("Failed to open gzip stream for document id='{}' storageId='{}': {}",
-                        doc.getId(), sid, e.toString());
-                try { stream.close(); } catch (IOException ignored) { /* best effort */ }
+                log.warn(
+                        "Failed to open gzip stream for document id='{}' storageId='{}': {}",
+                        doc.getId(),
+                        sid,
+                        e.toString());
+                try {
+                    stream.close();
+                } catch (IOException ignored) {
+                    /* best effort */
+                }
                 return InputStream.nullInputStream();
             }
         }
@@ -2530,8 +2539,7 @@ public class DocumentService {
             @Nullable String newInlineText,
             @Nullable String newPath,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        return update(id, newTitle, newTags, newInlineText, newPath,
-                null, null, null, null, TOOL_IDENTITY, actor);
+        return update(id, newTitle, newTags, newInlineText, newPath, null, null, null, null, TOOL_IDENTITY, actor);
     }
 
     /** Actor-carrying update funnel — enforces {@code WRITE} at the source (F1). */
@@ -2548,10 +2556,15 @@ public class DocumentService {
             WriterIdentity identity,
             de.mhus.vance.shared.permission.WriteActor actor) {
 
-        DocumentDocument doc = repository.findById(id)
+        DocumentDocument doc = repository
+                .findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
-        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                de.mhus.vance.shared.permission.Action.WRITE, actor);
+        enforceWrite(
+                doc.getTenantId(),
+                doc.getProjectId(),
+                doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE,
+                actor);
         enforcePrivilegedAdmin(doc, actor);
         requireWriteAllowed(doc, identity);
 
@@ -2613,9 +2626,11 @@ public class DocumentService {
                     // log and proceed with the regular update path
                     // (the old version is then lost, which is the same
                     // behaviour we had before versioning landed).
-                    log.warn("Failed to archive document id='{}' before update — "
+                    log.warn(
+                            "Failed to archive document id='{}' before update — "
                                     + "proceeding without version snapshot",
-                            id, e);
+                            id,
+                            e);
                 }
             }
             String oldStorageId = doc.getStorageId();
@@ -2625,19 +2640,15 @@ public class DocumentService {
             // mid-update leaves both blobs; orphan reclaim handles that.
             ContentWriteResult write;
             try (InputStream in = new ByteArrayInputStream(bytes)) {
-                write = streamingStoreContent(
-                        doc.getTenantId(), doc.getProjectId(), doc.getPath(), in);
+                write = streamingStoreContent(doc.getTenantId(), doc.getProjectId(), doc.getPath(), in);
             } catch (IOException e) {
                 throw new IllegalStateException(
-                        "Failed to stream updated document content to "
-                                + "storage for id='" + id + "'", e);
+                        "Failed to stream updated document content to " + "storage for id='" + id + "'", e);
             }
-                doc.setStorageId(write.storageId());
+            doc.setStorageId(write.storageId());
             doc.setCompressed(write.compressed());
             doc.setSize(write.originalSize());
-            if (oldStorageId != null
-                    && !oldStorageId.equals(write.storageId())
-                    && !archived) {
+            if (oldStorageId != null && !oldStorageId.equals(write.storageId()) && !archived) {
                 deleteStorageBlobQuietly(oldStorageId, id);
             }
 
@@ -2660,20 +2671,20 @@ public class DocumentService {
                 // a row with no storageId whose content reads as empty. Neither
                 // touches the source, so the rename would be a lie either way.
                 if (JaglanPaths.isMounted(doc.getPath())) {
-                    throw new JaglanAccessException(JaglanPaths.mountNameOf(doc.getPath()),
-                            "mounted documents cannot be renamed or moved — rename at the "
-                                    + "source instead: '" + doc.getPath() + "'");
+                    throw new JaglanAccessException(
+                            JaglanPaths.mountNameOf(doc.getPath()),
+                            "mounted documents cannot be renamed or moved — rename at the " + "source instead: '"
+                                    + doc.getPath() + "'");
                 }
                 if (JaglanPaths.isMounted(normalized)) {
-                    throw new JaglanAccessException(JaglanPaths.mountNameOf(normalized),
-                            "documents cannot be moved into a mount — create them at the "
-                                    + "source instead: '" + normalized + "'");
+                    throw new JaglanAccessException(
+                            JaglanPaths.mountNameOf(normalized),
+                            "documents cannot be moved into a mount — create them at the " + "source instead: '"
+                                    + normalized + "'");
                 }
-                if (repository.existsByTenantIdAndProjectIdAndPath(
-                        doc.getTenantId(), doc.getProjectId(), normalized)) {
-                    throw new DocumentAlreadyExistsException(
-                            "Document '" + normalized + "' already exists in "
-                                    + doc.getTenantId() + "/" + doc.getProjectId());
+                if (repository.existsByTenantIdAndProjectIdAndPath(doc.getTenantId(), doc.getProjectId(), normalized)) {
+                    throw new DocumentAlreadyExistsException("Document '" + normalized + "' already exists in "
+                            + doc.getTenantId() + "/" + doc.getProjectId());
                 }
                 doc.setPath(normalized);
                 doc.setName(extractName(normalized));
@@ -2690,8 +2701,11 @@ public class DocumentService {
         }
 
         DocumentDocument saved = repository.save(doc);
-        log.info("Updated document tenantId='{}' projectId='{}' id='{}' fields={}",
-                saved.getTenantId(), saved.getProjectId(), saved.getId(),
+        log.info(
+                "Updated document tenantId='{}' projectId='{}' id='{}' fields={}",
+                saved.getTenantId(),
+                saved.getProjectId(),
+                saved.getId(),
                 describeChanges(newTitle, newTags, newInlineText, newPath, newMimeType));
         return publishUpserted(saved, contentChanged || pathChanged, identity);
     }
@@ -2726,8 +2740,11 @@ public class DocumentService {
         if (isMounted(doc.getPath())) return false;
         if (!archiveEnabledDefault) return false;
         boolean projectEnabled = settingService.getBooleanValueCascade(
-                doc.getTenantId(), doc.getProjectId(), /*thinkProcessId*/ null,
-                SETTING_ARCHIVE_ENABLED, /*default*/ true);
+                doc.getTenantId(),
+                doc.getProjectId(), /*thinkProcessId*/
+                null,
+                SETTING_ARCHIVE_ENABLED, /*default*/
+                true);
         if (!projectEnabled) return false;
         Instant last = doc.getLastArchivedAt();
         if (last == null) {
@@ -2738,8 +2755,7 @@ public class DocumentService {
             last = doc.getCreatedAt();
         }
         if (last == null) return true; // no reference — be safe, archive.
-        long minSeconds = resolveMinIntervalSeconds(
-                doc.getTenantId(), doc.getProjectId());
+        long minSeconds = resolveMinIntervalSeconds(doc.getTenantId(), doc.getProjectId());
         return Instant.now().isAfter(last.plusSeconds(minSeconds));
     }
 
@@ -2755,15 +2771,15 @@ public class DocumentService {
      */
     private static void requireNotMountedForVersioning(DocumentDocument doc) {
         if (!isMounted(doc.getPath())) return;
-        throw new JaglanAccessException(JaglanPaths.mountNameOf(doc.getPath()),
-                "mounted documents are not versioned — there is nothing to snapshot or "
-                        + "restore for '" + doc.getPath() + "'");
+        throw new JaglanAccessException(
+                JaglanPaths.mountNameOf(doc.getPath()),
+                "mounted documents are not versioned — there is nothing to snapshot or " + "restore for '"
+                        + doc.getPath() + "'");
     }
 
     private long resolveMinIntervalSeconds(String tenantId, String projectId) {
         String raw = settingService.getStringValueCascade(
-                tenantId, projectId, /*thinkProcessId*/ null,
-                SETTING_ARCHIVE_MIN_INTERVAL_SECONDS);
+                tenantId, projectId, /*thinkProcessId*/ null, SETTING_ARCHIVE_MIN_INTERVAL_SECONDS);
         if (raw == null || raw.isBlank()) {
             return archiveMinIntervalSecondsDefault;
         }
@@ -2772,9 +2788,13 @@ public class DocumentService {
             if (parsed < 0) return archiveMinIntervalSecondsDefault;
             return parsed;
         } catch (NumberFormatException e) {
-            log.warn("Invalid {} setting for tenantId='{}' projectId='{}': '{}' — falling back to default {}",
-                    SETTING_ARCHIVE_MIN_INTERVAL_SECONDS, tenantId, projectId,
-                    raw, archiveMinIntervalSecondsDefault);
+            log.warn(
+                    "Invalid {} setting for tenantId='{}' projectId='{}': '{}' — falling back to default {}",
+                    SETTING_ARCHIVE_MIN_INTERVAL_SECONDS,
+                    tenantId,
+                    projectId,
+                    raw,
+                    archiveMinIntervalSecondsDefault);
             return archiveMinIntervalSecondsDefault;
         }
     }
@@ -2791,8 +2811,7 @@ public class DocumentService {
      */
     public long countArchives(DocumentDocument doc) {
         if (isMounted(doc.getPath())) return 0L;
-        return archiveService.countForLineage(
-                doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
+        return archiveService.countForLineage(doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
     }
 
     /**
@@ -2801,8 +2820,7 @@ public class DocumentService {
      */
     public List<DocumentArchiveDocument> listArchives(DocumentDocument doc) {
         if (isMounted(doc.getPath())) return List.of();
-        return archiveService.listForLineage(
-                doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
+        return archiveService.listForLineage(doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
     }
 
     public Optional<DocumentArchiveDocument> findArchive(String archiveId) {
@@ -2844,23 +2862,26 @@ public class DocumentService {
      *         to the live document's lineage.
      */
     /** Actor-carrying archive restore — enforces {@code WRITE} at the source (F1). */
-    public DocumentDocument restoreArchive(String liveDocId, String archiveId,
-            de.mhus.vance.shared.permission.WriteActor actor) {
-        DocumentDocument live = repository.findById(liveDocId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown document id='" + liveDocId + "'"));
-        enforceWrite(live.getTenantId(), live.getProjectId(), live.getPath(),
-                de.mhus.vance.shared.permission.Action.WRITE, actor);
+    public DocumentDocument restoreArchive(
+            String liveDocId, String archiveId, de.mhus.vance.shared.permission.WriteActor actor) {
+        DocumentDocument live = repository
+                .findById(liveDocId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + liveDocId + "'"));
+        enforceWrite(
+                live.getTenantId(),
+                live.getProjectId(),
+                live.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE,
+                actor);
         enforcePrivilegedAdmin(live, actor);
         requireNotMountedForVersioning(live);
-        DocumentArchiveDocument archive = archiveService.findById(archiveId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown archive id='" + archiveId + "'"));
+        DocumentArchiveDocument archive = archiveService
+                .findById(archiveId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown archive id='" + archiveId + "'"));
         if (!archive.getLineageId().equals(live.getLineageId())) {
-            throw new IllegalArgumentException(
-                    "Archive id='" + archiveId + "' does not belong to "
-                            + "document id='" + liveDocId
-                            + "' (lineage mismatch)");
+            throw new IllegalArgumentException("Archive id='" + archiveId + "' does not belong to "
+                    + "document id='" + liveDocId
+                    + "' (lineage mismatch)");
         }
 
         // 1. Archive the current live content (unconditional — restoring
@@ -2871,8 +2892,11 @@ public class DocumentService {
             archiveService.archiveCurrent(live);
             live.setLastArchivedAt(Instant.now());
         } catch (RuntimeException e) {
-            log.warn("Failed to archive document id='{}' before restore — "
-                            + "proceeding without snapshot of current version", liveDocId, e);
+            log.warn(
+                    "Failed to archive document id='{}' before restore — "
+                            + "proceeding without snapshot of current version",
+                    liveDocId,
+                    e);
             // Continue: an explicit restore takes priority over preserving
             // the current version. The user asked for the older version
             // back.
@@ -2905,8 +2929,12 @@ public class DocumentService {
         if (oldStorageId != null && !oldStorageId.equals(saved.getStorageId())) {
             deleteStorageBlobQuietly(oldStorageId, liveDocId);
         }
-        log.info("Restored document id='{}' from archive id='{}' lineageId='{}' archivedAt='{}'",
-                liveDocId, archiveId, archive.getLineageId(), archive.getArchivedAt());
+        log.info(
+                "Restored document id='{}' from archive id='{}' lineageId='{}' archivedAt='{}'",
+                liveDocId,
+                archiveId,
+                archive.getLineageId(),
+                archive.getArchivedAt());
         return saved;
     }
 
@@ -2939,21 +2967,26 @@ public class DocumentService {
      *         is already occupied.
      */
     public DocumentDocument restoreArchiveToNewDocument(
-            String liveDocId, String archiveId, @Nullable String targetPath,
+            String liveDocId,
+            String archiveId,
+            @Nullable String targetPath,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        DocumentDocument live = repository.findById(liveDocId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown document id='" + liveDocId + "'"));
-        enforceWrite(live.getTenantId(), live.getProjectId(), live.getPath(),
-                de.mhus.vance.shared.permission.Action.READ, actor);
+        DocumentDocument live = repository
+                .findById(liveDocId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + liveDocId + "'"));
+        enforceWrite(
+                live.getTenantId(),
+                live.getProjectId(),
+                live.getPath(),
+                de.mhus.vance.shared.permission.Action.READ,
+                actor);
         requireNotMountedForVersioning(live);
-        DocumentArchiveDocument archive = archiveService.findById(archiveId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown archive id='" + archiveId + "'"));
+        DocumentArchiveDocument archive = archiveService
+                .findById(archiveId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown archive id='" + archiveId + "'"));
         if (!archive.getLineageId().equals(live.getLineageId())) {
-            throw new IllegalArgumentException(
-                    "Archive id='" + archiveId + "' does not belong to "
-                            + "document id='" + liveDocId + "' (lineage mismatch)");
+            throw new IllegalArgumentException("Archive id='" + archiveId + "' does not belong to " + "document id='"
+                    + liveDocId + "' (lineage mismatch)");
         }
 
         String target = (targetPath != null && !targetPath.isBlank())
@@ -2962,20 +2995,25 @@ public class DocumentService {
 
         try (InputStream content = archiveService.loadContent(archive)) {
             DocumentDocument created = create(
-                    live.getTenantId(), live.getProjectId(), target,
+                    live.getTenantId(),
+                    live.getProjectId(),
+                    target,
                     archive.getTitle(),
                     archive.getTags(),
                     archive.getMimeType(),
                     content,
                     actor.subject().subjectId(),
                     actor);
-            log.info("Restored archive id='{}' of document id='{}' into new document id='{}' path='{}'",
-                    archiveId, liveDocId, created.getId(), created.getPath());
+            log.info(
+                    "Restored archive id='{}' of document id='{}' into new document id='{}' path='{}'",
+                    archiveId,
+                    liveDocId,
+                    created.getId(),
+                    created.getPath());
             return created;
         } catch (IOException e) {
             throw new IllegalStateException(
-                    "Failed to read archive content for restore-copy archive id='"
-                            + archiveId + "'", e);
+                    "Failed to read archive content for restore-copy archive id='" + archiveId + "'", e);
         }
     }
 
@@ -2983,8 +3021,7 @@ public class DocumentService {
      * Derive a collision-free {@code foo-version-<N>-<date>.<ext>} path next to
      * the live document for {@link #restoreArchiveToNewDocument}.
      */
-    private String generateVersionCopyPath(
-            DocumentDocument live, DocumentArchiveDocument archive) {
+    private String generateVersionCopyPath(DocumentDocument live, DocumentArchiveDocument archive) {
         String path = live.getPath();
         int slash = path.lastIndexOf('/');
         String dir = slash >= 0 ? path.substring(0, slash + 1) : "";
@@ -3011,8 +3048,8 @@ public class DocumentService {
     /** 1-based chronological position of {@code archive} among its lineage's
      *  versions (oldest = 1). Falls back to the version count on mismatch. */
     private int versionOrdinal(DocumentDocument live, DocumentArchiveDocument archive) {
-        List<DocumentArchiveDocument> all = archiveService.listForLineage(
-                live.getTenantId(), live.getProjectId(), live.getLineageId());
+        List<DocumentArchiveDocument> all =
+                archiveService.listForLineage(live.getTenantId(), live.getProjectId(), live.getLineageId());
         // listForLineage is newest-first — ordinal from the oldest end.
         for (int i = 0; i < all.size(); i++) {
             if (archive.getId() != null && archive.getId().equals(all.get(i).getId())) {
@@ -3042,13 +3079,16 @@ public class DocumentService {
      * @return a {@link CreateVersionResult} describing whether a version was
      *         created and why not, when it was not.
      */
-    public CreateVersionResult createVersionNow(
-            String docId, de.mhus.vance.shared.permission.WriteActor actor) {
-        DocumentDocument doc = repository.findById(docId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown document id='" + docId + "'"));
-        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                de.mhus.vance.shared.permission.Action.WRITE, actor);
+    public CreateVersionResult createVersionNow(String docId, de.mhus.vance.shared.permission.WriteActor actor) {
+        DocumentDocument doc = repository
+                .findById(docId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + docId + "'"));
+        enforceWrite(
+                doc.getTenantId(),
+                doc.getProjectId(),
+                doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE,
+                actor);
         enforcePrivilegedAdmin(doc, actor);
         requireNotMountedForVersioning(doc);
 
@@ -3058,8 +3098,11 @@ public class DocumentService {
             return CreateVersionResult.notCreated(CreateVersionResult.Reason.DISABLED);
         }
         boolean projectEnabled = settingService.getBooleanValueCascade(
-                doc.getTenantId(), doc.getProjectId(), /*thinkProcessId*/ null,
-                SETTING_ARCHIVE_ENABLED, /*default*/ true);
+                doc.getTenantId(),
+                doc.getProjectId(), /*thinkProcessId*/
+                null,
+                SETTING_ARCHIVE_ENABLED, /*default*/
+                true);
         if (!projectEnabled) {
             return CreateVersionResult.notCreated(CreateVersionResult.Reason.DISABLED);
         }
@@ -3072,8 +3115,8 @@ public class DocumentService {
 
         // Content-diff against the most recent archived version. No archive yet
         // ⇒ nothing to compare, always create the first version.
-        DocumentArchiveDocument latest = archiveService.findLatestForLineage(
-                doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
+        DocumentArchiveDocument latest =
+                archiveService.findLatestForLineage(doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
         if (latest != null && !isContentDifferentFromArchive(doc, latest)) {
             return CreateVersionResult.notCreated(CreateVersionResult.Reason.UNCHANGED);
         }
@@ -3091,8 +3134,7 @@ public class DocumentService {
      * treated as "different" — better a redundant version than a silently
      * skipped one.
      */
-    private boolean isContentDifferentFromArchive(
-            DocumentDocument doc, DocumentArchiveDocument archive) {
+    private boolean isContentDifferentFromArchive(DocumentDocument doc, DocumentArchiveDocument archive) {
         if (doc.getSize() != archive.getSize()) return true;
         try (InputStream live = loadContent(doc);
                 InputStream archived = archiveService.loadContent(archive)) {
@@ -3100,9 +3142,12 @@ public class DocumentService {
             byte[] archivedBytes = archived.readAllBytes();
             return !java.util.Arrays.equals(liveBytes, archivedBytes);
         } catch (IOException | RuntimeException e) {
-            log.debug("isContentDifferentFromArchive: read failed for id='{}' archiveId='{}', "
+            log.debug(
+                    "isContentDifferentFromArchive: read failed for id='{}' archiveId='{}', "
                             + "treating as changed: {}",
-                    doc.getId(), archive.getId(), e.toString());
+                    doc.getId(),
+                    archive.getId(),
+                    e.toString());
             return true;
         }
     }
@@ -3112,9 +3157,7 @@ public class DocumentService {
      * when {@link #created} is {@code true}.
      */
     public record CreateVersionResult(
-            boolean created,
-            @Nullable DocumentArchiveDocument archive,
-            Reason reason) {
+            boolean created, @Nullable DocumentArchiveDocument archive, Reason reason) {
 
         public enum Reason {
             /** A new archive version was written. */
@@ -3142,9 +3185,11 @@ public class DocumentService {
         try {
             storageService.delete(storageId);
         } catch (Exception e) {
-            log.warn("Failed to delete old storage blob during update — "
-                            + "leaving orphan; docId='{}' storageId='{}'",
-                    docId, storageId, e);
+            log.warn(
+                    "Failed to delete old storage blob during update — " + "leaving orphan; docId='{}' storageId='{}'",
+                    docId,
+                    storageId,
+                    e);
         }
     }
 
@@ -3156,10 +3201,22 @@ public class DocumentService {
             @Nullable String mimeType) {
         StringBuilder sb = new StringBuilder("[");
         if (title != null) sb.append("title");
-        if (tags != null) { if (sb.length() > 1) sb.append(','); sb.append("tags"); }
-        if (inlineText != null) { if (sb.length() > 1) sb.append(','); sb.append("inlineText"); }
-        if (path != null) { if (sb.length() > 1) sb.append(','); sb.append("path"); }
-        if (mimeType != null) { if (sb.length() > 1) sb.append(','); sb.append("mimeType"); }
+        if (tags != null) {
+            if (sb.length() > 1) sb.append(',');
+            sb.append("tags");
+        }
+        if (inlineText != null) {
+            if (sb.length() > 1) sb.append(',');
+            sb.append("inlineText");
+        }
+        if (path != null) {
+            if (sb.length() > 1) sb.append(',');
+            sb.append("path");
+        }
+        if (mimeType != null) {
+            if (sb.length() > 1) sb.append(',');
+            sb.append("mimeType");
+        }
         return sb.append(']').toString();
     }
 
@@ -3185,19 +3242,20 @@ public class DocumentService {
      *         when no dirty documents are available.
      */
     public List<DocumentDocument> claimForSummary(
-            String tenantId, String projectId,
-            String podId, int batchSize, Duration claimTtl) {
+            String tenantId, String projectId, String podId, int batchSize, Duration claimTtl) {
 
         // 1. Stale-claim recovery: free anything that's been claimed
         //    for longer than the TTL. Bounded by the index, single
         //    multi-update — cheap.
-        Query stale = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("projectId").is(projectId)
-                .and("claimedBy").ne(null)
-                .and("claimedAt").lt(Instant.now().minus(claimTtl)));
-        mongoTemplate.updateMulti(stale,
-                new Update().unset("claimedBy").unset("claimedAt"),
-                DocumentDocument.class);
+        Query stale = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("projectId")
+                .is(projectId)
+                .and("claimedBy")
+                .ne(null)
+                .and("claimedAt")
+                .lt(Instant.now().minus(claimTtl)));
+        mongoTemplate.updateMulti(stale, new Update().unset("claimedBy").unset("claimedAt"), DocumentDocument.class);
 
         // 2. Claim loop: per-document findAndModify until the batch is
         //    full or no more candidates are available.
@@ -3208,19 +3266,24 @@ public class DocumentService {
             // a mounted markdown or PDF would qualify, and a tool can flip the
             // flag on any row. The query is the reliable guard. Age-encrypted
             // documents join them — a flipped flag would summarise ciphertext.
-            Query q = new Query(Criteria.where("tenantId").is(tenantId)
-                    .and("projectId").is(projectId)
-                    .and("summaryDirty").is(true)
-                    .and("autoSummary").is(true)
-                    .and("claimedBy").is(null)
-                    .and("kind").ne(AgeDocumentKind.KIND)
-                    .and("path").not().regex(MOUNTED_PATH_REGEX));
-            Update u = new Update()
-                    .set("claimedBy", podId)
-                    .set("claimedAt", Instant.now());
+            Query q = new Query(Criteria.where("tenantId")
+                    .is(tenantId)
+                    .and("projectId")
+                    .is(projectId)
+                    .and("summaryDirty")
+                    .is(true)
+                    .and("autoSummary")
+                    .is(true)
+                    .and("claimedBy")
+                    .is(null)
+                    .and("kind")
+                    .ne(AgeDocumentKind.KIND)
+                    .and("path")
+                    .not()
+                    .regex(MOUNTED_PATH_REGEX));
+            Update u = new Update().set("claimedBy", podId).set("claimedAt", Instant.now());
             DocumentDocument doc = mongoTemplate.findAndModify(
-                    q, u, FindAndModifyOptions.options().returnNew(true),
-                    DocumentDocument.class);
+                    q, u, FindAndModifyOptions.options().returnNew(true), DocumentDocument.class);
             if (doc == null) break;
             claimed.add(doc);
         }
@@ -3262,23 +3325,16 @@ public class DocumentService {
      * for the audit trail. An empty/blank summary clears the field.
      */
     /** Actor-carrying summary set — enforces {@code WRITE} at the source (F1). */
-    public void setSummary(String id, @Nullable String summary,
-            de.mhus.vance.shared.permission.WriteActor actor) {
+    public void setSummary(String id, @Nullable String summary, de.mhus.vance.shared.permission.WriteActor actor) {
         if (enforceWriteById(id, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) return;
-        String normalised = (summary != null && !summary.isBlank())
-                ? summary.trim() : null;
-        Update update = new Update()
-                .set("summarizedAt", Instant.now())
-                .set("summaryDirty", false);
+        String normalised = (summary != null && !summary.isBlank()) ? summary.trim() : null;
+        Update update = new Update().set("summarizedAt", Instant.now()).set("summaryDirty", false);
         if (normalised == null) {
             update.unset("summary");
         } else {
             update.set("summary", normalised);
         }
-        mongoTemplate.updateFirst(
-                Query.query(Criteria.where("_id").is(id)),
-                update,
-                DocumentDocument.class);
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(id)), update, DocumentDocument.class);
     }
 
     /**
@@ -3339,33 +3395,38 @@ public class DocumentService {
      * — self-healing for pod crashes between claim and write.
      */
     public List<DocumentDocument> claimForRagIndex(
-            String tenantId, String projectId,
-            String podId, int batchSize, Duration claimTtl) {
+            String tenantId, String projectId, String podId, int batchSize, Duration claimTtl) {
 
-        Query stale = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("projectId").is(projectId)
-                .and("ragClaimedBy").ne(null)
-                .and("ragClaimedAt").lt(Instant.now().minus(claimTtl)));
-        mongoTemplate.updateMulti(stale,
-                new Update().unset("ragClaimedBy").unset("ragClaimedAt"),
-                DocumentDocument.class);
+        Query stale = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("projectId")
+                .is(projectId)
+                .and("ragClaimedBy")
+                .ne(null)
+                .and("ragClaimedAt")
+                .lt(Instant.now().minus(claimTtl)));
+        mongoTemplate.updateMulti(
+                stale, new Update().unset("ragClaimedBy").unset("ragClaimedAt"), DocumentDocument.class);
 
         List<DocumentDocument> claimed = new ArrayList<>(batchSize);
         for (int i = 0; i < batchSize; i++) {
             // Same reasoning as claimForSummary: isRagEligible already keeps
             // _ext out (it requires the documents/ prefix), but an explicit
             // ragEnabled=true override on a mounted row would slip past it.
-            Query q = new Query(Criteria.where("tenantId").is(tenantId)
-                    .and("projectId").is(projectId)
-                    .and("ragDirty").is(true)
-                    .and("ragClaimedBy").is(null)
-                    .and("path").not().regex(MOUNTED_PATH_REGEX));
-            Update u = new Update()
-                    .set("ragClaimedBy", podId)
-                    .set("ragClaimedAt", Instant.now());
+            Query q = new Query(Criteria.where("tenantId")
+                    .is(tenantId)
+                    .and("projectId")
+                    .is(projectId)
+                    .and("ragDirty")
+                    .is(true)
+                    .and("ragClaimedBy")
+                    .is(null)
+                    .and("path")
+                    .not()
+                    .regex(MOUNTED_PATH_REGEX));
+            Update u = new Update().set("ragClaimedBy", podId).set("ragClaimedAt", Instant.now());
             DocumentDocument doc = mongoTemplate.findAndModify(
-                    q, u, FindAndModifyOptions.options().returnNew(true),
-                    DocumentDocument.class);
+                    q, u, FindAndModifyOptions.options().returnNew(true), DocumentDocument.class);
             if (doc == null) break;
             claimed.add(doc);
         }
@@ -3380,10 +3441,7 @@ public class DocumentService {
     public void markRagClean(String id) {
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where("_id").is(id)),
-                new Update()
-                        .set("ragDirty", false)
-                        .unset("ragClaimedBy")
-                        .unset("ragClaimedAt"),
+                new Update().set("ragDirty", false).unset("ragClaimedBy").unset("ragClaimedAt"),
                 DocumentDocument.class);
     }
 
@@ -3405,12 +3463,14 @@ public class DocumentService {
      * Released claims are not cleared — they expire via TTL.
      */
     public long markAllForReindex(String tenantId, String projectId) {
-        Query q = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("projectId").is(projectId)
-                .and("status").is(DocumentStatus.ACTIVE));
+        Query q = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("projectId")
+                .is(projectId)
+                .and("status")
+                .is(DocumentStatus.ACTIVE));
         Update u = new Update().set("ragDirty", true);
-        return mongoTemplate.updateMulti(q, u, DocumentDocument.class)
-                .getModifiedCount();
+        return mongoTemplate.updateMulti(q, u, DocumentDocument.class).getModifiedCount();
     }
 
     /**
@@ -3420,9 +3480,7 @@ public class DocumentService {
      */
     public void markRagDirty(String id) {
         mongoTemplate.updateFirst(
-                Query.query(Criteria.where("_id").is(id)),
-                new Update().set("ragDirty", true),
-                DocumentDocument.class);
+                Query.query(Criteria.where("_id").is(id)), new Update().set("ragDirty", true), DocumentDocument.class);
     }
 
     /**
@@ -3441,29 +3499,23 @@ public class DocumentService {
      * (use {@link #clearColor} to remove an existing color).
      */
     /** Actor-carrying color set — enforces {@code WRITE} at the source (F1). */
-    public void setColor(String id, @Nullable AccentColor value,
-            de.mhus.vance.shared.permission.WriteActor actor) {
+    public void setColor(String id, @Nullable AccentColor value, de.mhus.vance.shared.permission.WriteActor actor) {
         if (value == null) return;
         if (enforceWriteById(id, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) return;
         mongoTemplate.updateFirst(
-                Query.query(Criteria.where("_id").is(id)),
-                new Update().set("color", value),
-                DocumentDocument.class);
+                Query.query(Criteria.where("_id").is(id)), new Update().set("color", value), DocumentDocument.class);
     }
 
     /** Actor-carrying color clear — enforces {@code WRITE} at the source (F1). */
-    public void clearColor(String id,
-            de.mhus.vance.shared.permission.WriteActor actor) {
+    public void clearColor(String id, de.mhus.vance.shared.permission.WriteActor actor) {
         if (enforceWriteById(id, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) return;
         mongoTemplate.updateFirst(
-                Query.query(Criteria.where("_id").is(id)),
-                new Update().unset("color"),
-                DocumentDocument.class);
+                Query.query(Criteria.where("_id").is(id)), new Update().unset("color"), DocumentDocument.class);
     }
 
     /** Actor-carrying RAG-override set — enforces {@code WRITE} at the source (F1). */
-    public void setRagEnabledOverride(String id, @Nullable Boolean value,
-            de.mhus.vance.shared.permission.WriteActor actor) {
+    public void setRagEnabledOverride(
+            String id, @Nullable Boolean value, de.mhus.vance.shared.permission.WriteActor actor) {
         if (enforceWriteById(id, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) return;
         Update u = new Update().set("ragDirty", true);
         if (value == null) {
@@ -3471,9 +3523,7 @@ public class DocumentService {
         } else {
             u.set("ragEnabled", value);
         }
-        mongoTemplate.updateFirst(
-                Query.query(Criteria.where("_id").is(id)),
-                u, DocumentDocument.class);
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(id)), u, DocumentDocument.class);
     }
 
     /**
@@ -3492,9 +3542,7 @@ public class DocumentService {
                 .set("lastDeepReviewedHash", contentHash)
                 .set("lastDeepReviewWarningsJson", warningsJson)
                 .set("lastDeepReviewedAt", Instant.now());
-        mongoTemplate.updateFirst(
-                Query.query(Criteria.where("_id").is(id)),
-                u, DocumentDocument.class);
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(id)), u, DocumentDocument.class);
     }
 
     /**
@@ -3505,13 +3553,10 @@ public class DocumentService {
      * documents and the list-filter cannot find them.
      */
     /** Actor-carrying kind stamp — enforces {@code WRITE} at the source (F1). */
-    public void setKind(String id, String kind,
-            de.mhus.vance.shared.permission.WriteActor actor) {
+    public void setKind(String id, String kind, de.mhus.vance.shared.permission.WriteActor actor) {
         if (enforceWriteById(id, de.mhus.vance.shared.permission.Action.WRITE, actor) == null) return;
         mongoTemplate.updateFirst(
-                Query.query(Criteria.where("_id").is(id)),
-                new Update().set("kind", kind),
-                DocumentDocument.class);
+                Query.query(Criteria.where("_id").is(id)), new Update().set("kind", kind), DocumentDocument.class);
     }
 
     /**
@@ -3525,11 +3570,14 @@ public class DocumentService {
     }
 
     /** Actor-carrying delete funnel — enforces {@code DELETE} at the source (F1). */
-    public void delete(String id, WriterIdentity identity,
-            de.mhus.vance.shared.permission.WriteActor actor) {
+    public void delete(String id, WriterIdentity identity, de.mhus.vance.shared.permission.WriteActor actor) {
         repository.findById(id).ifPresent(doc -> {
-            enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                    de.mhus.vance.shared.permission.Action.DELETE, actor);
+            enforceWrite(
+                    doc.getTenantId(),
+                    doc.getProjectId(),
+                    doc.getPath(),
+                    de.mhus.vance.shared.permission.Action.DELETE,
+                    actor);
             enforcePrivilegedAdmin(doc, actor);
             requireWriteAllowed(doc, identity);
             if (JaglanPaths.isMounted(doc.getPath())) {
@@ -3544,8 +3592,7 @@ public class DocumentService {
                     try {
                         storageService.delete(sid);
                     } catch (Exception e) {
-                        log.warn("Failed to delete storage blob for document id='{}' storageId='{}'",
-                                id, sid, e);
+                        log.warn("Failed to delete storage blob for document id='{}' storageId='{}'", id, sid, e);
                     }
                 }
             }
@@ -3554,11 +3601,13 @@ public class DocumentService {
             // archive entries (and their exclusively owned storage blobs)
             // from outliving the document they belong to.
             try {
-                archiveService.deleteAllForLineage(
-                        doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
+                archiveService.deleteAllForLineage(doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
             } catch (Exception e) {
-                log.warn("Failed to delete archive entries for document id='{}' lineageId='{}'",
-                        id, doc.getLineageId(), e);
+                log.warn(
+                        "Failed to delete archive entries for document id='{}' lineageId='{}'",
+                        id,
+                        doc.getLineageId(),
+                        e);
             }
             log.info("Deleted document id='{}' path='{}'", id, doc.getPath());
             publishDeleted(doc, identity);
@@ -3580,8 +3629,7 @@ public class DocumentService {
     public static final String TRASH_FOLDER_PREFIX = "_vance/trash/";
 
     /** The same folder without the trailing slash — see {@link #isNotADestination}. */
-    private static final String TRASH_FOLDER =
-            TRASH_FOLDER_PREFIX.substring(0, TRASH_FOLDER_PREFIX.length() - 1);
+    private static final String TRASH_FOLDER = TRASH_FOLDER_PREFIX.substring(0, TRASH_FOLDER_PREFIX.length() - 1);
 
     /** Default folder for user-content documents. Search / list tools
      *  scope to this prefix by default so trash, kit manifests
@@ -3624,12 +3672,17 @@ public class DocumentService {
     }
 
     /** Actor-carrying trash funnel — enforces {@code DELETE} at the source (F1). */
-    public DocumentDocument trash(String id, WriterIdentity identity,
-            de.mhus.vance.shared.permission.WriteActor actor) {
-        DocumentDocument doc = repository.findById(id)
+    public DocumentDocument trash(
+            String id, WriterIdentity identity, de.mhus.vance.shared.permission.WriteActor actor) {
+        DocumentDocument doc = repository
+                .findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
-        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                de.mhus.vance.shared.permission.Action.DELETE, actor);
+        enforceWrite(
+                doc.getTenantId(),
+                doc.getProjectId(),
+                doc.getPath(),
+                de.mhus.vance.shared.permission.Action.DELETE,
+                actor);
         enforcePrivilegedAdmin(doc, actor);
         requireWriteAllowed(doc, identity);
         if (JaglanPaths.isMounted(doc.getPath())) {
@@ -3638,9 +3691,9 @@ public class DocumentService {
             // break the address it is derived from — the path no longer names
             // a mount, and the derived id no longer matches. Refuse instead of
             // producing a row nobody can resolve.
-            throw new JaglanAccessException(JaglanPaths.mountNameOf(doc.getPath()),
-                    "mounted documents cannot be trashed — delete at the source "
-                            + "instead: '" + doc.getPath() + "'");
+            throw new JaglanAccessException(
+                    JaglanPaths.mountNameOf(doc.getPath()),
+                    "mounted documents cannot be trashed — delete at the source " + "instead: '" + doc.getPath() + "'");
         }
         if (isTrash(doc.getPath())) {
             log.debug("Document id='{}' is already in trash at path='{}'", id, doc.getPath());
@@ -3671,8 +3724,7 @@ public class DocumentService {
         // (e.g. UrsaHookDocumentListener) need a Deleted event for it.
         // We synthesise one with the original path; the trash row itself
         // lives under _vance/trash/… and is filtered out by isEventPublishable.
-        publishDeleted(originalPath, doc.getTenantId(), doc.getProjectId(), saved.getId(),
-                identity);
+        publishDeleted(originalPath, doc.getTenantId(), doc.getProjectId(), saved.getId(), identity);
         return saved;
     }
 
@@ -3692,14 +3744,14 @@ public class DocumentService {
      *         the document isn't in the trash folder.
      */
     /** Actor-carrying restore — enforces {@code WRITE} at the restored path (F1). */
-    public DocumentDocument restore(String id, @Nullable String newPath,
-            de.mhus.vance.shared.permission.WriteActor actor) {
-        DocumentDocument doc = repository.findById(id)
+    public DocumentDocument restore(
+            String id, @Nullable String newPath, de.mhus.vance.shared.permission.WriteActor actor) {
+        DocumentDocument doc = repository
+                .findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
         if (!isTrash(doc.getPath())) {
             throw new IllegalArgumentException(
-                    "Document id='" + id + "' is not in the trash folder (path='"
-                            + doc.getPath() + "')");
+                    "Document id='" + id + "' is not in the trash folder (path='" + doc.getPath() + "')");
         }
         java.util.Map<String, String> headers = doc.getHeaders();
         String original = headers != null ? headers.get(TRASH_ORIGINAL_PATH_HEADER) : null;
@@ -3710,14 +3762,12 @@ public class DocumentService {
             throw new IllegalArgumentException(
                     "Cannot restore: no original path recorded and no newPath given for id='" + id + "'");
         }
-        enforceWrite(doc.getTenantId(), doc.getProjectId(), target,
-                de.mhus.vance.shared.permission.Action.WRITE, actor);
+        enforceWrite(
+                doc.getTenantId(), doc.getProjectId(), target, de.mhus.vance.shared.permission.Action.WRITE, actor);
         enforcePrivilegedAdmin(doc, actor);
-        if (repository.existsByTenantIdAndProjectIdAndPath(
-                doc.getTenantId(), doc.getProjectId(), target)) {
-            throw new DocumentAlreadyExistsException(
-                    "Cannot restore to '" + target + "' — a document already lives there. "
-                            + "Pass a different newPath.");
+        if (repository.existsByTenantIdAndProjectIdAndPath(doc.getTenantId(), doc.getProjectId(), target)) {
+            throw new DocumentAlreadyExistsException("Cannot restore to '" + target
+                    + "' — a document already lives there. " + "Pass a different newPath.");
         }
         doc.setPath(target);
         doc.setName(extractName(target));
@@ -3756,8 +3806,7 @@ public class DocumentService {
 
     /** Anchored regex form of the mount namespace, for Mongo queries that
      *  need to exclude mounted rows (the summary and RAG claim loops). */
-    private static final String MOUNTED_PATH_REGEX =
-            "^" + java.util.regex.Pattern.quote(JaglanPaths.PREFIX);
+    private static final String MOUNTED_PATH_REGEX = "^" + java.util.regex.Pattern.quote(JaglanPaths.PREFIX);
 
     /** Magic value the search / list tools accept on
      *  {@code pathPrefix} to opt out of the default
@@ -3799,18 +3848,18 @@ public class DocumentService {
      *                   all folders at every depth
      */
     public List<FolderInfo> extractFolders(String tenantId, String projectId, @Nullable String parentPath) {
-        String normalizedParent = parentPath == null || parentPath.isBlank()
-                ? null
-                : parentPath.replaceAll("/+$", "");
+        String normalizedParent = parentPath == null || parentPath.isBlank() ? null : parentPath.replaceAll("/+$", "");
 
         // Project-distinct paths only — never load full documents (no
         // inlineText, no storage blob lookup) just to derive the folder
         // tree. Mirrors {@link #listFolders} but keeps per-folder counts.
-        Query query = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("projectId").is(projectId)
-                .and("status").is(DocumentStatus.ACTIVE));
-        List<String> paths = mongoTemplate.findDistinct(
-                query, "path", DocumentDocument.class, String.class);
+        Query query = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("projectId")
+                .is(projectId)
+                .and("status")
+                .is(DocumentStatus.ACTIVE));
+        List<String> paths = mongoTemplate.findDistinct(query, "path", DocumentDocument.class, String.class);
         Map<String, FolderStats> folders = new HashMap<>();
         for (String path : paths) {
             for (String folder : foldersOfPath(path)) {
@@ -3841,11 +3890,7 @@ public class DocumentService {
             String name = slash < 0 ? folder : folder.substring(slash + 1);
             String parent = slash < 0 ? null : folder.substring(0, slash);
             result.add(new FolderInfo(
-                    folder,
-                    name,
-                    parent,
-                    entry.getValue().documentCount,
-                    entry.getValue().subfolderCount));
+                    folder, name, parent, entry.getValue().documentCount, entry.getValue().subfolderCount));
         }
         // Mount folders exist independently of any row, so they are added
         // rather than derived — see syntheticMountFolders. Filtered by the
@@ -3887,8 +3932,11 @@ public class DocumentService {
             try (InputStream in = loadContent(doc)) {
                 parsed = headerParser.parseStream(doc.getMimeType(), in);
             } catch (IOException e) {
-                log.warn("Failed to stream document for header parsing id='{}' path='{}': {}",
-                        doc.getId(), doc.getPath(), e.toString());
+                log.warn(
+                        "Failed to stream document for header parsing id='{}' path='{}': {}",
+                        doc.getId(),
+                        doc.getPath(),
+                        e.toString());
                 parsed = Optional.empty();
             }
         } else {
@@ -3925,8 +3973,7 @@ public class DocumentService {
 
     /** Byte-array variant of {@link #requireAgeArmorIfEncrypted}. */
     private static void requireAgeArmorIfEncrypted(DocumentDocument doc, byte[] bytes) {
-        if (AgeDocumentKind.isAgeEncrypted(doc.getKind(), doc.getMimeType())
-                && !AgeDocumentKind.looksArmored(bytes)) {
+        if (AgeDocumentKind.isAgeEncrypted(doc.getKind(), doc.getMimeType()) && !AgeDocumentKind.looksArmored(bytes)) {
             throw new AgeContentException(doc.getPath());
         }
     }
@@ -3946,14 +3993,12 @@ public class DocumentService {
                 if (b == '\n') break;
             }
         } catch (IOException e) {
-            throw new IllegalStateException(
-                    "Failed to read armored content header for '" + path + "'", e);
+            throw new IllegalStateException("Failed to read armored content header for '" + path + "'", e);
         }
         if (!AgeDocumentKind.looksArmored(firstLine.toByteArray())) {
             throw new AgeContentException(path);
         }
-        return new SequenceInputStream(
-                new ByteArrayInputStream(firstLine.toByteArray()), content);
+        return new SequenceInputStream(new ByteArrayInputStream(firstLine.toByteArray()), content);
     }
 
     /**
@@ -4095,8 +4140,7 @@ public class DocumentService {
      * to this storage" — the cleanup-sweep then asks the archive side too
      * before declaring the blob an orphan.
      */
-    public java.util.Set<String> findReferencedStorageIds(
-            java.util.Collection<String> storageIds) {
+    public java.util.Set<String> findReferencedStorageIds(java.util.Collection<String> storageIds) {
         if (storageIds == null || storageIds.isEmpty()) return java.util.Set.of();
         Query q = new Query(Criteria.where("storageId").in(storageIds));
         q.fields().include("storageId");
@@ -4113,8 +4157,7 @@ public class DocumentService {
      * left in this lineage" — those lineage's archives are orphans that the
      * cleanup-sweep should remove.
      */
-    public java.util.Set<String> findLineageIdsWithLiveDocument(
-            java.util.Collection<String> lineageIds) {
+    public java.util.Set<String> findLineageIdsWithLiveDocument(java.util.Collection<String> lineageIds) {
         if (lineageIds == null || lineageIds.isEmpty()) return java.util.Set.of();
         Query q = new Query(Criteria.where("lineageId").in(lineageIds));
         q.fields().include("lineageId");
@@ -4221,11 +4264,8 @@ public class DocumentService {
      * subscribers expected on these paths. Anything not on this list IS
      * eligible — including {@code documents/...} and {@code _vance/...}.
      */
-    static final java.util.List<String> LIVE_EVENT_EXCLUDE_PREFIXES = java.util.List.of(
-            EVENT_PUBLISH_EXCLUDE_LOGS_PREFIX,
-            TRASH_FOLDER_PREFIX,
-            "_slart/",
-            "_chatbox/");
+    static final java.util.List<String> LIVE_EVENT_EXCLUDE_PREFIXES =
+            java.util.List.of(EVENT_PUBLISH_EXCLUDE_LOGS_PREFIX, TRASH_FOLDER_PREFIX, "_slart/", "_chatbox/");
 
     /**
      * Decides whether a document path should fan out as a
@@ -4279,9 +4319,7 @@ public class DocumentService {
             @Nullable String userId,
             @Nullable String displayName) {
         public static WriterIdentity of(
-                @Nullable String editorId,
-                @Nullable String userId,
-                @Nullable String displayName) {
+                @Nullable String editorId, @Nullable String userId, @Nullable String displayName) {
             return new WriterIdentity(editorId, userId, displayName);
         }
     }
@@ -4293,8 +4331,7 @@ public class DocumentService {
      * {@code userId}/{@code displayName} are left {@code null} so the
      * client-side badge doesn't render a misleading user name.
      */
-    public static final WriterIdentity TOOL_IDENTITY =
-            WriterIdentity.of(EDITOR_ID_TOOL, null, null);
+    public static final WriterIdentity TOOL_IDENTITY = WriterIdentity.of(EDITOR_ID_TOOL, null, null);
 
     /**
      * Sentinel editorId used by the Kit-Apply path. Mapped to
@@ -4306,8 +4343,7 @@ public class DocumentService {
     public static final String EDITOR_ID_KIT = "_kit";
 
     /** Identity placeholder for {@code KitApplyService} content writes. */
-    public static final WriterIdentity KIT_IDENTITY =
-            WriterIdentity.of(EDITOR_ID_KIT, null, null);
+    public static final WriterIdentity KIT_IDENTITY = WriterIdentity.of(EDITOR_ID_KIT, null, null);
 
     /**
      * Map a {@link WriterIdentity} onto the soft-lock writer role.
@@ -4361,18 +4397,26 @@ public class DocumentService {
             String id,
             java.util.@Nullable Collection<de.mhus.vance.api.documents.WriterRole> lockedFor,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        DocumentDocument doc = repository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown document id='" + id + "'"));
-        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                de.mhus.vance.shared.permission.Action.WRITE, actor);
+        DocumentDocument doc = repository
+                .findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
+        enforceWrite(
+                doc.getTenantId(),
+                doc.getProjectId(),
+                doc.getPath(),
+                de.mhus.vance.shared.permission.Action.WRITE,
+                actor);
         enforcePrivilegedAdmin(doc, actor);
         java.util.Set<de.mhus.vance.api.documents.WriterRole> normalized = normalizeLockedFor(lockedFor);
         doc.setLockedFor(normalized);
         DocumentDocument saved = repository.save(doc);
-        log.info("Updated document lock tenantId='{}' projectId='{}' path='{}' id='{}' lockedFor={}",
-                saved.getTenantId(), saved.getProjectId(), saved.getPath(),
-                saved.getId(), normalized);
+        log.info(
+                "Updated document lock tenantId='{}' projectId='{}' path='{}' id='{}' lockedFor={}",
+                saved.getTenantId(),
+                saved.getProjectId(),
+                saved.getPath(),
+                saved.getId(),
+                normalized);
         // No live-broadcast: the lock change is meta, not content, and
         // the live-WS layer treats lockedFor as part of DocumentMetaDto —
         // a subsequent read by the subscriber will see the new value.
@@ -4410,8 +4454,7 @@ public class DocumentService {
      * <p>Caller is expected to feed the result through
      * {@link #normalizeLockedFor} for the AI-auto-add rule.
      */
-    public static java.util.Set<de.mhus.vance.api.documents.WriterRole> parseLockedForInitial(
-            @Nullable String raw) {
+    public static java.util.Set<de.mhus.vance.api.documents.WriterRole> parseLockedForInitial(@Nullable String raw) {
         java.util.EnumSet<de.mhus.vance.api.documents.WriterRole> out =
                 java.util.EnumSet.noneOf(de.mhus.vance.api.documents.WriterRole.class);
         if (raw == null) return out;
@@ -4425,8 +4468,7 @@ public class DocumentService {
             String t = token.trim();
             if (t.isEmpty()) continue;
             // Trim surrounding quotes that YAML inline-list emits.
-            if ((t.startsWith("\"") && t.endsWith("\""))
-                    || (t.startsWith("'") && t.endsWith("'"))) {
+            if ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'"))) {
                 t = t.substring(1, t.length() - 1);
             }
             try {
@@ -4447,13 +4489,19 @@ public class DocumentService {
      * real actor stays recorded. Orthogonal to {@link #requireWriteAllowed}
      * (the soft document-lock).
      */
-    private void enforceWrite(String tenantId, String projectId, String path,
+    private void enforceWrite(
+            String tenantId,
+            String projectId,
+            String path,
             de.mhus.vance.shared.permission.Action action,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        permissionServiceProvider.getObject().enforce(
-                actor.subject(),
-                new de.mhus.vance.shared.permission.Resource.Document(tenantId, projectId, path),
-                action, actor.reason());
+        permissionServiceProvider
+                .getObject()
+                .enforce(
+                        actor.subject(),
+                        new de.mhus.vance.shared.permission.Resource.Document(tenantId, projectId, path),
+                        action,
+                        actor.reason());
     }
 
     /**
@@ -4463,7 +4511,8 @@ public class DocumentService {
      * unknown (the caller then no-ops, preserving the setters' lenient
      * "unknown id → no-op" contract). Part of the F1 no-bypass chokepoint.
      */
-    private @Nullable DocumentDocument enforceWriteById(String id,
+    private @Nullable DocumentDocument enforceWriteById(
+            String id,
             de.mhus.vance.shared.permission.Action action,
             de.mhus.vance.shared.permission.WriteActor actor) {
         DocumentDocument doc = repository.findById(id).orElse(null);
@@ -4502,15 +4551,16 @@ public class DocumentService {
      * ({@code KitInstaller.scanBuildTree}), because there is no calling
      * principal there to hold responsible.
      */
-    private void enforcePrivilegedAdmin(DocumentDocument doc,
-            de.mhus.vance.shared.permission.WriteActor actor) {
+    private void enforcePrivilegedAdmin(DocumentDocument doc, de.mhus.vance.shared.permission.WriteActor actor) {
         if (!doc.isPrivileged()) return;
-        permissionServiceProvider.getObject().enforce(
-                actor.subject(),
-                new de.mhus.vance.shared.permission.Resource.Document(
-                        doc.getTenantId(), doc.getProjectId(), doc.getPath()),
-                de.mhus.vance.shared.permission.Action.ADMIN,
-                de.mhus.vance.shared.permission.WriteReason.USER);
+        permissionServiceProvider
+                .getObject()
+                .enforce(
+                        actor.subject(),
+                        new de.mhus.vance.shared.permission.Resource.Document(
+                                doc.getTenantId(), doc.getProjectId(), doc.getPath()),
+                        de.mhus.vance.shared.permission.Action.ADMIN,
+                        de.mhus.vance.shared.permission.WriteReason.USER);
     }
 
     /**
@@ -4541,35 +4591,27 @@ public class DocumentService {
         return publishUpserted(saved, true, TOOL_IDENTITY);
     }
 
-    private DocumentDocument publishUpserted(DocumentDocument saved, boolean contentChanged) {
-        return publishUpserted(saved, contentChanged, TOOL_IDENTITY);
-    }
-
-    /** Legacy single-arg-editorId overload — kept for callers that have
-     *  only the editorId on hand (no user info). Defaults user fields to null. */
-    private DocumentDocument publishUpserted(DocumentDocument saved, boolean contentChanged,
-            @Nullable String editorId) {
-        return publishUpserted(saved, contentChanged,
-                WriterIdentity.of(editorId, null, null));
-    }
-
-    private DocumentDocument publishUpserted(DocumentDocument saved, boolean contentChanged,
-            WriterIdentity identity) {
+    private DocumentDocument publishUpserted(DocumentDocument saved, boolean contentChanged, WriterIdentity identity) {
         ApplicationEventPublisher publisher = this.eventPublisher;
         if (publisher == null) return saved;
-        log.trace("publishUpserted tenantId='{}' projectId='{}' path='{}' contentChanged={} liveEligible={} writer={}",
-                saved.getTenantId(), saved.getProjectId(), saved.getPath(),
-                contentChanged, isLiveEventPublishable(saved.getPath()), identity);
+        log.trace(
+                "publishUpserted tenantId='{}' projectId='{}' path='{}' contentChanged={} liveEligible={} writer={}",
+                saved.getTenantId(),
+                saved.getProjectId(),
+                saved.getPath(),
+                contentChanged,
+                isLiveEventPublishable(saved.getPath()),
+                identity);
         if (isEventPublishable(saved.getPath())) {
             try {
                 publisher.publishEvent(new DocumentChangedEvent.Upserted(
+                        saved.getTenantId(), saved.getProjectId(), saved.getPath(), saved.getId()));
+            } catch (RuntimeException ex) {
+                log.warn(
+                        "DocumentService: publish Upserted failed for '{}/{}/{}': {}",
                         saved.getTenantId(),
                         saved.getProjectId(),
                         saved.getPath(),
-                        saved.getId()));
-            } catch (RuntimeException ex) {
-                log.warn("DocumentService: publish Upserted failed for '{}/{}/{}': {}",
-                        saved.getTenantId(), saved.getProjectId(), saved.getPath(),
                         ex.toString());
             }
         }
@@ -4584,8 +4626,11 @@ public class DocumentService {
                         identity.userId(),
                         identity.displayName()));
             } catch (RuntimeException ex) {
-                log.warn("DocumentService: publish LiveUpserted failed for '{}/{}/{}': {}",
-                        saved.getTenantId(), saved.getProjectId(), saved.getPath(),
+                log.warn(
+                        "DocumentService: publish LiveUpserted failed for '{}/{}/{}': {}",
+                        saved.getTenantId(),
+                        saved.getProjectId(),
+                        saved.getPath(),
                         ex.toString());
             }
         }
@@ -4593,8 +4638,7 @@ public class DocumentService {
     }
 
     private void publishDeleted(DocumentDocument doc, WriterIdentity identity) {
-        publishDeleted(doc.getPath(), doc.getTenantId(), doc.getProjectId(), doc.getId(),
-                identity);
+        publishDeleted(doc.getPath(), doc.getTenantId(), doc.getProjectId(), doc.getId(), identity);
     }
 
     /**
@@ -4603,31 +4647,39 @@ public class DocumentService {
      * <em>logical</em> location has moved away. Listeners keyed on the
      * original path need a Deleted event for it.
      */
-    private void publishDeleted(String path, String tenantId, String projectId,
-                                @Nullable String documentId,
-                                WriterIdentity identity) {
+    private void publishDeleted(
+            String path, String tenantId, String projectId, @Nullable String documentId, WriterIdentity identity) {
         ApplicationEventPublisher publisher = this.eventPublisher;
         if (publisher == null) return;
         if (isEventPublishable(path)) {
             try {
-                publisher.publishEvent(new DocumentChangedEvent.Deleted(
-                        tenantId, projectId, path, documentId));
+                publisher.publishEvent(new DocumentChangedEvent.Deleted(tenantId, projectId, path, documentId));
             } catch (RuntimeException ex) {
-                log.warn("DocumentService: publish Deleted failed for '{}/{}/{}': {}",
-                        tenantId, projectId, path, ex.toString());
+                log.warn(
+                        "DocumentService: publish Deleted failed for '{}/{}/{}': {}",
+                        tenantId,
+                        projectId,
+                        path,
+                        ex.toString());
             }
         }
         if (isLiveEventPublishable(path)) {
             try {
                 publisher.publishEvent(new DocumentLiveChangedEvent(
-                        tenantId, projectId, path,
+                        tenantId,
+                        projectId,
+                        path,
                         DocumentLiveChangedEvent.Kind.DELETED,
                         identity.editorId(),
                         identity.userId(),
                         identity.displayName()));
             } catch (RuntimeException ex) {
-                log.warn("DocumentService: publish LiveDeleted failed for '{}/{}/{}': {}",
-                        tenantId, projectId, path, ex.toString());
+                log.warn(
+                        "DocumentService: publish LiveDeleted failed for '{}/{}/{}': {}",
+                        tenantId,
+                        projectId,
+                        path,
+                        ex.toString());
             }
         }
     }
@@ -4689,27 +4741,28 @@ public class DocumentService {
                 .build();
 
         // $expr: { $lt: [ { $size: { $objectToArray: { $ifNull: [ "$notes", {} ] } } }, NOTES_MAX ] }
-        org.bson.Document sizeExpr = new org.bson.Document("$lt", java.util.List.of(
-                new org.bson.Document("$size", new org.bson.Document("$objectToArray",
-                        new org.bson.Document("$ifNull", java.util.List.of("$notes",
-                                new org.bson.Document())))),
-                NOTES_MAX));
-        Query query = Query.query(new Criteria().andOperator(
-                Criteria.where("_id").is(docId),
-                new Criteria("$expr").is(sizeExpr)));
+        org.bson.Document sizeExpr = new org.bson.Document(
+                "$lt",
+                java.util.List.of(
+                        new org.bson.Document(
+                                "$size",
+                                new org.bson.Document(
+                                        "$objectToArray",
+                                        new org.bson.Document(
+                                                "$ifNull", java.util.List.of("$notes", new org.bson.Document())))),
+                        NOTES_MAX));
+        Query query = Query.query(
+                new Criteria().andOperator(Criteria.where("_id").is(docId), new Criteria("$expr").is(sizeExpr)));
         Update update = new Update().set("notes." + note.getId(), note);
 
         DocumentDocument modified = mongoTemplate.findAndModify(
-                query, update, FindAndModifyOptions.options().returnNew(true),
-                DocumentDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(true), DocumentDocument.class);
         if (modified == null) {
             // Either the document is gone (covered above) or the cap was hit.
             throw new NotesLimitExceededException(docId);
         }
-        log.debug("Added note id='{}' to document id='{}' by user='{}'",
-                note.getId(), docId, userId);
-        publishNoteEvent(modified, DocumentNotesChangedEvent.Kind.ADDED,
-                note.getId(), note, editorId);
+        log.debug("Added note id='{}' to document id='{}' by user='{}'", note.getId(), docId, userId);
+        publishNoteEvent(modified, DocumentNotesChangedEvent.Kind.ADDED, note.getId(), note, editorId);
         return note;
     }
 
@@ -4757,17 +4810,16 @@ public class DocumentService {
             }
         }
 
-        Query query = Query.query(Criteria.where("_id").is(docId)
-                .and("notes." + noteId).exists(true));
+        Query query = Query.query(
+                Criteria.where("_id").is(docId).and("notes." + noteId).exists(true));
         DocumentDocument modified = mongoTemplate.findAndModify(
-                query, update, FindAndModifyOptions.options().returnNew(true),
-                DocumentDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(true), DocumentDocument.class);
         if (modified == null) return Optional.empty();
         log.debug("Updated note id='{}' on document id='{}'", noteId, docId);
-        DocumentNote refreshed = modified.getNotes() == null ? null : modified.getNotes().get(noteId);
+        DocumentNote refreshed =
+                modified.getNotes() == null ? null : modified.getNotes().get(noteId);
         if (refreshed != null) {
-            publishNoteEvent(modified, DocumentNotesChangedEvent.Kind.UPDATED,
-                    noteId, refreshed, editorId);
+            publishNoteEvent(modified, DocumentNotesChangedEvent.Kind.UPDATED, noteId, refreshed, editorId);
         }
         return Optional.ofNullable(refreshed);
     }
@@ -4778,24 +4830,27 @@ public class DocumentService {
      * and was removed, {@code false} otherwise.
      */
     /** Actor-carrying note delete — enforces {@code WRITE} at the source (F1). */
-    public boolean deleteNote(String docId, String noteId, @Nullable String editorId,
-            de.mhus.vance.shared.permission.WriteActor actor) {
+    public boolean deleteNote(
+            String docId, String noteId, @Nullable String editorId, de.mhus.vance.shared.permission.WriteActor actor) {
         // Resolve the doc once so the event can carry tenantId/projectId/path.
         DocumentDocument doc = repository.findById(docId).orElse(null);
         if (doc == null) return false;
         // Notes are annotations → Document READ (see addNote), not WRITE.
-        enforceWrite(doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                de.mhus.vance.shared.permission.Action.READ, actor);
+        enforceWrite(
+                doc.getTenantId(),
+                doc.getProjectId(),
+                doc.getPath(),
+                de.mhus.vance.shared.permission.Action.READ,
+                actor);
         enforcePrivilegedAdmin(doc, actor);
-        Query query = Query.query(Criteria.where("_id").is(docId)
-                .and("notes." + noteId).exists(true));
+        Query query = Query.query(
+                Criteria.where("_id").is(docId).and("notes." + noteId).exists(true));
         Update update = new Update().unset("notes." + noteId);
-        long modified = mongoTemplate.updateFirst(query, update, DocumentDocument.class)
-                .getModifiedCount();
+        long modified =
+                mongoTemplate.updateFirst(query, update, DocumentDocument.class).getModifiedCount();
         if (modified > 0) {
             log.debug("Deleted note id='{}' from document id='{}'", noteId, docId);
-            publishNoteEvent(doc, DocumentNotesChangedEvent.Kind.DELETED,
-                    noteId, null, editorId);
+            publishNoteEvent(doc, DocumentNotesChangedEvent.Kind.DELETED, noteId, null, editorId);
             return true;
         }
         return false;
@@ -4816,17 +4871,16 @@ public class DocumentService {
         if (publisher == null) return;
         try {
             publisher.publishEvent(new DocumentNotesChangedEvent(
+                    doc.getTenantId(), doc.getProjectId(), doc.getPath(), kind, noteId, note, editorId));
+        } catch (RuntimeException ex) {
+            log.warn(
+                    "DocumentService: publish NotesChanged failed for '{}/{}/{}' kind={} noteId='{}': {}",
                     doc.getTenantId(),
                     doc.getProjectId(),
                     doc.getPath(),
                     kind,
                     noteId,
-                    note,
-                    editorId));
-        } catch (RuntimeException ex) {
-            log.warn("DocumentService: publish NotesChanged failed for '{}/{}/{}' kind={} noteId='{}': {}",
-                    doc.getTenantId(), doc.getProjectId(), doc.getPath(),
-                    kind, noteId, ex.toString());
+                    ex.toString());
         }
     }
 
@@ -4836,7 +4890,8 @@ public class DocumentService {
      * preserved (insertion-order via {@code LinkedHashMap}).
      */
     public List<DocumentNote> listNotes(String docId) {
-        return repository.findById(docId)
+        return repository
+                .findById(docId)
                 .map(DocumentDocument::getNotes)
                 .map(m -> new ArrayList<>(m.values()))
                 .map(list -> (List<DocumentNote>) list)

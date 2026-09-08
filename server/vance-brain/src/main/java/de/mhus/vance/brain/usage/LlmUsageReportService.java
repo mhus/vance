@@ -68,11 +68,7 @@ public class LlmUsageReportService {
      * {@code day}.
      */
     public UsageReportDto summary(
-            String tenantId,
-            Instant from,
-            Instant to,
-            String groupBy,
-            @Nullable String projectId) {
+            String tenantId, Instant from, Instant to, String groupBy, @Nullable String projectId) {
 
         TimeBucket bucket = TimeBucket.parse(groupBy);
         MatchOperation match = matchTenantWindow(tenantId, from, to, projectId);
@@ -80,29 +76,26 @@ public class LlmUsageReportService {
         // The stored `day` is a yyyy-MM-dd string (see LlmUsageDailyDocument
         // — a UTC calendar day, not an instant), so it is turned back into a
         // date before $dateTrunc can widen it to a week or month.
-        Document asDate = new Document("$dateFromString", new Document()
-                .append("dateString", "$day")
-                .append("format", "%Y-%m-%d")
-                .append("timezone", "UTC"));
-        Document trunc = new Document("$dateTrunc", new Document()
-                .append("date", asDate)
-                .append("unit", bucket.unit())
-                .append("binSize", 1));
-        Document groupKey = new Document()
-                .append("ts", trunc)
-                .append("currency", "$currency");
+        Document asDate = new Document(
+                "$dateFromString",
+                new Document()
+                        .append("dateString", "$day")
+                        .append("format", "%Y-%m-%d")
+                        .append("timezone", "UTC"));
+        Document trunc = new Document(
+                "$dateTrunc",
+                new Document()
+                        .append("date", asDate)
+                        .append("unit", bucket.unit())
+                        .append("binSize", 1));
+        Document groupKey = new Document().append("ts", trunc).append("currency", "$currency");
 
-        List<UsageBucketDto> rows = runPipeline(
-                match,
-                groupStage(groupKey),
-                Sort.by(Sort.Order.asc("_id.ts")),
-                doc -> {
-                    Document key = doc.get("_id", Document.class);
-                    return row(doc)
-                            .bucketStart(key.getDate("ts").toInstant())
-                            .currency(asString(key.get("currency"), ""))
-                            .build();
-                });
+        List<UsageBucketDto> rows = runPipeline(match, groupStage(groupKey), Sort.by(Sort.Order.asc("_id.ts")), doc -> {
+            Document key = doc.get("_id", Document.class);
+            return row(doc).bucketStart(key.getDate("ts").toInstant())
+                    .currency(asString(key.get("currency"), ""))
+                    .build();
+        });
 
         return UsageReportDto.builder()
                 .from(from)
@@ -139,17 +132,10 @@ public class LlmUsageReportService {
         return groupedByKey(tenantId, from, to, "recipeName", "recipe");
     }
 
-    private UsageReportDto groupedByKey(
-            String tenantId,
-            Instant from,
-            Instant to,
-            String keyField,
-            String label) {
+    private UsageReportDto groupedByKey(String tenantId, Instant from, Instant to, String keyField, String label) {
 
         MatchOperation match = matchTenantWindow(tenantId, from, to, /*projectId*/ null);
-        Document groupKey = new Document()
-                .append("key", "$" + keyField)
-                .append("currency", "$currency");
+        Document groupKey = new Document().append("key", "$" + keyField).append("currency", "$currency");
 
         List<UsageBucketDto> rows = runPipeline(
                 match,
@@ -160,8 +146,7 @@ public class LlmUsageReportService {
                 Sort.by(Sort.Order.desc("costTotalMicros"), Sort.Order.desc("tokensIn")),
                 doc -> {
                     Document key = doc.get("_id", Document.class);
-                    return row(doc)
-                            .key(asString(key.get("key"), "?"))
+                    return row(doc).key(asString(key.get("key"), "?"))
                             .currency(asString(key.get("currency"), ""))
                             .build();
                 });
@@ -179,11 +164,23 @@ public class LlmUsageReportService {
     private static Document groupStage(Document groupKey) {
         Document acc = new Document("_id", groupKey);
         for (String f : List.of(
-                "tokensIn", "tokensOut", "cacheReadTokens", "cacheWriteTokens", "images",
-                "costInputMicros", "costOutputMicros", "costCacheReadMicros",
-                "costCacheWriteMicros", "costTotalMicros",
-                "calls", "callsFailed", "tokensInFailed", "tokensOutFailed",
-                "unpricedCalls", "unpricedTokensIn", "unpricedTokensOut",
+                "tokensIn",
+                "tokensOut",
+                "cacheReadTokens",
+                "cacheWriteTokens",
+                "images",
+                "costInputMicros",
+                "costOutputMicros",
+                "costCacheReadMicros",
+                "costCacheWriteMicros",
+                "costTotalMicros",
+                "calls",
+                "callsFailed",
+                "tokensInFailed",
+                "tokensOutFailed",
+                "unpricedCalls",
+                "unpricedTokensIn",
+                "unpricedTokensOut",
                 "unmeasuredCalls")) {
             acc.append(f, new Document("$sum", "$" + f));
         }
@@ -202,10 +199,8 @@ public class LlmUsageReportService {
                 // micros is what keeps the total exact.
                 .costInput(LlmUsageService.fromMicros(asLong(doc.get("costInputMicros"))))
                 .costOutput(LlmUsageService.fromMicros(asLong(doc.get("costOutputMicros"))))
-                .costCacheRead(
-                        LlmUsageService.fromMicros(asLong(doc.get("costCacheReadMicros"))))
-                .costCacheWrite(
-                        LlmUsageService.fromMicros(asLong(doc.get("costCacheWriteMicros"))))
+                .costCacheRead(LlmUsageService.fromMicros(asLong(doc.get("costCacheReadMicros"))))
+                .costCacheWrite(LlmUsageService.fromMicros(asLong(doc.get("costCacheWriteMicros"))))
                 .costTotal(LlmUsageService.fromMicros(asLong(doc.get("costTotalMicros"))))
                 .calls(asLong(doc.get("calls")))
                 .callsFailed(asLong(doc.get("callsFailed")))
@@ -224,12 +219,11 @@ public class LlmUsageReportService {
      * day's bucket in full — which is the only sensible reading of a
      * pre-aggregated day.
      */
-    private MatchOperation matchTenantWindow(
-            String tenantId, Instant from, Instant to, @Nullable String projectId) {
+    private MatchOperation matchTenantWindow(String tenantId, Instant from, Instant to, @Nullable String projectId) {
         String fromDay = LocalDate.ofInstant(from, ZoneOffset.UTC).toString();
         String toDay = LocalDate.ofInstant(to, ZoneOffset.UTC).toString();
-        Criteria c = Criteria.where("tenantId").is(tenantId)
-                .and("day").gte(fromDay).lte(toDay);
+        Criteria c =
+                Criteria.where("tenantId").is(tenantId).and("day").gte(fromDay).lte(toDay);
         if (projectId != null && !projectId.isBlank()) {
             c = c.and("projectId").is(projectId);
         }
@@ -264,25 +258,18 @@ public class LlmUsageReportService {
 
         AggregationOperation rawGroup = ctx -> group;
         Aggregation pipeline = Aggregation.newAggregation(match, rawGroup, Aggregation.sort(sort));
-        AggregationResults<Document> result =
-                mongoTemplate.aggregate(pipeline, DAILY, Document.class);
+        AggregationResults<Document> result = mongoTemplate.aggregate(pipeline, DAILY, Document.class);
         List<UsageBucketDto> out = new ArrayList<>();
         for (Document d : result.getMappedResults()) {
             out.add(mapper.apply(d));
         }
-        out.sort(Comparator.comparing(
-                b -> b.getBucketStart() == null ? Instant.EPOCH : b.getBucketStart()));
+        out.sort(Comparator.comparing(b -> b.getBucketStart() == null ? Instant.EPOCH : b.getBucketStart()));
         return out;
     }
 
     private static long asLong(@Nullable Object raw) {
         if (raw instanceof Number n) return n.longValue();
         return 0L;
-    }
-
-    private static double asDouble(@Nullable Object raw) {
-        if (raw instanceof Number n) return n.doubleValue();
-        return 0.0;
     }
 
     private static String asString(@Nullable Object raw, String fallback) {

@@ -1,22 +1,18 @@
 package de.mhus.vance.brain.ws.handlers;
 
-import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.thinkprocess.ProcessCreateRequest;
 import de.mhus.vance.api.thinkprocess.ProcessCreateResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
-import de.mhus.vance.brain.recipe.AppliedRecipe;
-import de.mhus.vance.brain.recipe.RecipeResolver;
-import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkprocess.ProcessSpawnService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
-import de.mhus.vance.shared.chat.ChatMessageDocument;
-import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -77,12 +73,12 @@ public class ProcessCreateHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 500, "Session bound but sessionId missing");
             return;
         }
-        String projectId = sessionService.findBySessionId(sessionId)
+        String projectId = sessionService
+                .findBySessionId(sessionId)
                 .map(SessionDocument::getProjectId)
                 .orElse(null);
-        authority.enforce(ctx,
-                new Resource.Session(tenantId, projectId == null ? "" : projectId, sessionId),
-                Action.START);
+        authority.enforce(
+                ctx, new Resource.Session(tenantId, projectId == null ? "" : projectId, sessionId), Action.START);
 
         ThinkProcessDocument refreshed;
         try {
@@ -118,21 +114,6 @@ public class ProcessCreateHandler implements WsHandler {
                 .status(refreshed.getStatus())
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.PROCESS_CREATE, response);
-    }
-
-    private static ChatMessageAppendedData toDto(ChatMessageDocument doc, String processName) {
-        return ChatMessageAppendedData.builder()
-                .chatMessageId(doc.getId())
-                .thinkProcessId(doc.getThinkProcessId())
-                .processName(processName)
-                .role(doc.getRole())
-                .content(doc.getContent())
-                .thinking(doc.getThinking())
-                .createdAt(doc.getCreatedAt())
-                .senderUserId(doc.getSenderUserId())
-                .senderDisplayName(doc.getSenderDisplayName())
-                .addressedToAgent(doc.isAddressedToAgent())
-                .build();
     }
 
     private static boolean isBlank(@Nullable String s) {

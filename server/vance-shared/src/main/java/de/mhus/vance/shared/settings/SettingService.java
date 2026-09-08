@@ -47,22 +47,19 @@ public class SettingService {
      * diagnostics, and the core must not hold the diagnostic service open.
      * Same trick {@code ProjectService} uses for the permission layer.
      */
-    private final org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.shared.megadodo.MegadodoService> megadodoServiceProvider;
+    private final org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.megadodo.MegadodoService>
+            megadodoServiceProvider;
+
     private final AgentSettingKeyPolicy agentKeyPolicy;
 
     // ──────────────────── Raw lookup ────────────────────
 
-    public Optional<SettingDocument> find(
-            String tenantId, String referenceType, String referenceId, String key) {
-        return repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
-                tenantId, referenceType, referenceId, key);
+    public Optional<SettingDocument> find(String tenantId, String referenceType, String referenceId, String key) {
+        return repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(tenantId, referenceType, referenceId, key);
     }
 
-    public List<SettingDocument> findAll(
-            String tenantId, String referenceType, String referenceId) {
-        return repository.findByTenantIdAndReferenceTypeAndReferenceId(
-                tenantId, referenceType, referenceId);
+    public List<SettingDocument> findAll(String tenantId, String referenceType, String referenceId) {
+        return repository.findByTenantIdAndReferenceTypeAndReferenceId(tenantId, referenceType, referenceId);
     }
 
     /** All settings across scopes for a tenant sharing the same {@code key}. */
@@ -70,21 +67,17 @@ public class SettingService {
         return repository.findByTenantIdAndKey(tenantId, key);
     }
 
-    public boolean exists(
-            String tenantId, String referenceType, String referenceId, String key) {
+    public boolean exists(String tenantId, String referenceType, String referenceId, String key) {
         return repository.existsByTenantIdAndReferenceTypeAndReferenceIdAndKey(
                 tenantId, referenceType, referenceId, key);
     }
 
-    public void delete(
-            String tenantId, String referenceType, String referenceId, String key) {
-        repository.deleteByTenantIdAndReferenceTypeAndReferenceIdAndKey(
-                tenantId, referenceType, referenceId, key);
+    public void delete(String tenantId, String referenceType, String referenceId, String key) {
+        repository.deleteByTenantIdAndReferenceTypeAndReferenceIdAndKey(tenantId, referenceType, referenceId, key);
     }
 
     public long deleteAll(String tenantId, String referenceType, String referenceId) {
-        return repository.deleteByTenantIdAndReferenceTypeAndReferenceId(
-                tenantId, referenceType, referenceId);
+        return repository.deleteByTenantIdAndReferenceTypeAndReferenceId(tenantId, referenceType, referenceId);
     }
 
     /**
@@ -96,17 +89,20 @@ public class SettingService {
      * {@code oauth.<providerId>.*} including any flat-extra projections
      * the connect flow may have written (cloud_id, site_url, …).
      */
-    public long deleteByPrefix(
-            String tenantId, String referenceType, String referenceId, String keyPrefix) {
+    public long deleteByPrefix(String tenantId, String referenceType, String referenceId, String keyPrefix) {
         if (keyPrefix == null || keyPrefix.isEmpty()) return 0;
         // Single atomic prefix-remove instead of scan-then-N-deletes: no
         // window for a concurrent write to slip a matching key past the delete,
         // and one round-trip instead of O(n). Pattern.quote keeps prefix dots
         // (e.g. "oauth.slack.") literal rather than regex wildcards.
-        Query query = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("referenceType").is(referenceType)
-                .and("referenceId").is(referenceId)
-                .and("key").regex("^" + Pattern.quote(keyPrefix)));
+        Query query = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("referenceType")
+                .is(referenceType)
+                .and("referenceId")
+                .is(referenceId)
+                .and("key")
+                .regex("^" + Pattern.quote(keyPrefix)));
         return mongoTemplate.remove(query, SettingDocument.class).getDeletedCount();
     }
 
@@ -130,8 +126,7 @@ public class SettingService {
             @Nullable String value,
             SettingType type,
             @Nullable String description) {
-        return setAs(tenantId, referenceType, referenceId, key, value, type, description,
-                /*actor*/ null);
+        return setAs(tenantId, referenceType, referenceId, key, value, type, description, /*actor*/ null);
     }
 
     /**
@@ -162,23 +157,9 @@ public class SettingService {
             // Encrypted values must be encrypted at rest — route through
             // setEncryptedSecret so nothing can persist a plaintext secret
             // via the generic setter (code-review F4).
-            throw new IllegalArgumentException(
-                    type + " settings must be written via setEncryptedSecret(), not set()");
+            throw new IllegalArgumentException(type + " settings must be written via setEncryptedSecret(), not set()");
         }
-        return setInternal(tenantId, referenceType, referenceId, key, value, type, description,
-                actor);
-    }
-
-    private SettingDocument setInternal(
-            String tenantId,
-            String referenceType,
-            String referenceId,
-            String key,
-            @Nullable String value,
-            SettingType type,
-            @Nullable String description) {
-        return setInternal(tenantId, referenceType, referenceId, key, value, type, description,
-                /*actor*/ null);
+        return setInternal(tenantId, referenceType, referenceId, key, value, type, description, actor);
     }
 
     private SettingDocument setInternal(
@@ -191,8 +172,7 @@ public class SettingService {
             @Nullable String description,
             @Nullable String actor) {
         SettingDocument doc = repository
-                .findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
-                        tenantId, referenceType, referenceId, key)
+                .findByTenantIdAndReferenceTypeAndReferenceIdAndKey(tenantId, referenceType, referenceId, key)
                 .orElseGet(() -> SettingDocument.builder()
                         .tenantId(tenantId)
                         .referenceType(referenceType)
@@ -207,12 +187,18 @@ public class SettingService {
         }
         SettingDocument saved = repository.save(doc);
         auditService.settingsUpdate(tenantId, referenceType, referenceId, key, type);
-        megadodoServiceProvider.getObject().settingChanged(
-                tenantId,
-                // Only a project-scoped setting belongs to a project feed;
-                // tenant and user settings are tenant-wide by nature.
-                SCOPE_PROJECT.equals(referenceType) ? referenceId : null,
-                referenceType, referenceId, key, type.encrypted(), actor);
+        megadodoServiceProvider
+                .getObject()
+                .settingChanged(
+                        tenantId,
+                        // Only a project-scoped setting belongs to a project feed;
+                        // tenant and user settings are tenant-wide by nature.
+                        SCOPE_PROJECT.equals(referenceType) ? referenceId : null,
+                        referenceType,
+                        referenceId,
+                        key,
+                        type.encrypted(),
+                        actor);
         return saved;
     }
 
@@ -225,31 +211,32 @@ public class SettingService {
      * the script surface ({@code vance.settings.get}) blind to secrets of
      * either encrypted type.
      */
-    public @Nullable String getStringValue(
-            String tenantId, String referenceType, String referenceId, String key) {
+    public @Nullable String getStringValue(String tenantId, String referenceType, String referenceId, String key) {
         Optional<SettingDocument> opt = find(tenantId, referenceType, referenceId, key);
         if (opt.isEmpty()) {
             return null;
         }
         SettingDocument doc = opt.get();
         if (doc.getType().encrypted()) {
-            log.warn("Refusing to read {} setting via getStringValue: tenant='{}' ref='{}:{}' key='{}'",
-                    doc.getType(), tenantId, referenceType, referenceId, key);
+            log.warn(
+                    "Refusing to read {} setting via getStringValue: tenant='{}' ref='{}:{}' key='{}'",
+                    doc.getType(),
+                    tenantId,
+                    referenceType,
+                    referenceId,
+                    key);
             return null;
         }
         return doc.getValue();
     }
 
     public String getStringValue(
-            String tenantId, String referenceType, String referenceId, String key,
-            String defaultValue) {
+            String tenantId, String referenceType, String referenceId, String key, String defaultValue) {
         String v = getStringValue(tenantId, referenceType, referenceId, key);
         return v != null ? v : defaultValue;
     }
 
-    public int getIntValue(
-            String tenantId, String referenceType, String referenceId, String key,
-            int defaultValue) {
+    public int getIntValue(String tenantId, String referenceType, String referenceId, String key, int defaultValue) {
         String v = getStringValue(tenantId, referenceType, referenceId, key);
         if (v == null || v.isBlank()) {
             return defaultValue;
@@ -257,15 +244,12 @@ public class SettingService {
         try {
             return Integer.parseInt(v.trim());
         } catch (NumberFormatException e) {
-            log.warn("Failed to parse int value for ref='{}:{}' key='{}': {}",
-                    referenceType, referenceId, key, v);
+            log.warn("Failed to parse int value for ref='{}:{}' key='{}': {}", referenceType, referenceId, key, v);
             return defaultValue;
         }
     }
 
-    public long getLongValue(
-            String tenantId, String referenceType, String referenceId, String key,
-            long defaultValue) {
+    public long getLongValue(String tenantId, String referenceType, String referenceId, String key, long defaultValue) {
         String v = getStringValue(tenantId, referenceType, referenceId, key);
         if (v == null || v.isBlank()) {
             return defaultValue;
@@ -273,15 +257,13 @@ public class SettingService {
         try {
             return Long.parseLong(v.trim());
         } catch (NumberFormatException e) {
-            log.warn("Failed to parse long value for ref='{}:{}' key='{}': {}",
-                    referenceType, referenceId, key, v);
+            log.warn("Failed to parse long value for ref='{}:{}' key='{}': {}", referenceType, referenceId, key, v);
             return defaultValue;
         }
     }
 
     public double getDoubleValue(
-            String tenantId, String referenceType, String referenceId, String key,
-            double defaultValue) {
+            String tenantId, String referenceType, String referenceId, String key, double defaultValue) {
         String v = getStringValue(tenantId, referenceType, referenceId, key);
         if (v == null || v.isBlank()) {
             return defaultValue;
@@ -289,15 +271,13 @@ public class SettingService {
         try {
             return Double.parseDouble(v.trim());
         } catch (NumberFormatException e) {
-            log.warn("Failed to parse double value for ref='{}:{}' key='{}': {}",
-                    referenceType, referenceId, key, v);
+            log.warn("Failed to parse double value for ref='{}:{}' key='{}': {}", referenceType, referenceId, key, v);
             return defaultValue;
         }
     }
 
     public boolean getBooleanValue(
-            String tenantId, String referenceType, String referenceId, String key,
-            boolean defaultValue) {
+            String tenantId, String referenceType, String referenceId, String key, boolean defaultValue) {
         String v = getStringValue(tenantId, referenceType, referenceId, key);
         if (v == null || v.isBlank()) {
             return defaultValue;
@@ -360,6 +340,7 @@ public class SettingService {
      * {@code _vance} / {@code _user_<login>} as the reference id.
      */
     public static final String SCOPE_TENANT = "tenant";
+
     public static final String SCOPE_USER = "user";
     public static final String SCOPE_PROJECT = "project";
     public static final String SCOPE_THINK_PROCESS = "think-process";
@@ -382,21 +363,16 @@ public class SettingService {
      * consulted.
      */
     public @Nullable String getStringValueCascade(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String thinkProcessId,
-            String key) {
+            String tenantId, @Nullable String projectId, @Nullable String thinkProcessId, String key) {
         if (thinkProcessId != null && !thinkProcessId.isBlank()) {
             String v = getStringValue(tenantId, SCOPE_THINK_PROCESS, thinkProcessId, key);
             if (v != null) return v;
         }
-        if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             String v = getStringValue(tenantId, SCOPE_PROJECT, projectId, key);
             if (v != null) return v;
         }
-        return getStringValue(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, key);
+        return getStringValue(tenantId, SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     /**
@@ -430,21 +406,16 @@ public class SettingService {
      * Returns {@code null} when nothing is set or decryption fails.
      */
     public @Nullable String getDecryptedPasswordCascade(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String thinkProcessId,
-            String key) {
+            String tenantId, @Nullable String projectId, @Nullable String thinkProcessId, String key) {
         if (thinkProcessId != null && !thinkProcessId.isBlank()) {
             String v = getDecryptedPassword(tenantId, SCOPE_THINK_PROCESS, thinkProcessId, key);
             if (v != null) return v;
         }
-        if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             String v = getDecryptedPassword(tenantId, SCOPE_PROJECT, projectId, key);
             if (v != null) return v;
         }
-        return getDecryptedPassword(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, key);
+        return getDecryptedPassword(tenantId, SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     /**
@@ -457,15 +428,10 @@ public class SettingService {
      * {@link #getStringValueCascade}.
      */
     public Map<String, String> findByPrefixCascade(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String thinkProcessId,
-            String keyPrefix) {
+            String tenantId, @Nullable String projectId, @Nullable String thinkProcessId, String keyPrefix) {
         Map<String, String> merged = new LinkedHashMap<>();
-        applyPrefixScope(merged, tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, keyPrefix);
-        if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+        applyPrefixScope(merged, tenantId, SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, keyPrefix);
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             applyPrefixScope(merged, tenantId, SCOPE_PROJECT, projectId, keyPrefix);
         }
         if (thinkProcessId != null && !thinkProcessId.isBlank()) {
@@ -498,17 +464,15 @@ public class SettingService {
             if (v != null) return v;
         }
         if (userId != null && !userId.isBlank()) {
-            String v = getStringValue(tenantId, SCOPE_PROJECT,
-                    HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
+            String v =
+                    getStringValue(tenantId, SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
             if (v != null) return v;
         }
-        if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             String v = getStringValue(tenantId, SCOPE_PROJECT, projectId, key);
             if (v != null) return v;
         }
-        return getStringValue(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, key);
+        return getStringValue(tenantId, SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     /**
@@ -526,17 +490,15 @@ public class SettingService {
             if (v != null) return v;
         }
         if (userId != null && !userId.isBlank()) {
-            String v = getDecryptedPassword(tenantId, SCOPE_PROJECT,
-                    HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
+            String v = getDecryptedPassword(
+                    tenantId, SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
             if (v != null) return v;
         }
-        if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             String v = getDecryptedPassword(tenantId, SCOPE_PROJECT, projectId, key);
             if (v != null) return v;
         }
-        return getDecryptedPassword(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, key);
+        return getDecryptedPassword(tenantId, SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     // ──────────────────── User-only settings ────────────────────
@@ -550,11 +512,9 @@ public class SettingService {
      * the project cascade: language, telegram-conversation-id,
      * notification toggles, terminal theme, …
      */
-    public @Nullable String getUserStringValue(
-            String tenantId, String userId, String key) {
+    public @Nullable String getUserStringValue(String tenantId, String userId, String key) {
         if (userId == null || userId.isBlank()) return null;
-        return getStringValue(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
+        return getStringValue(tenantId, SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
     }
 
     /**
@@ -565,23 +525,20 @@ public class SettingService {
      * skipped — that's the whole point of "user vs. project" being
      * separate cascades.
      */
-    public @Nullable String getUserStringValueWithDefault(
-            String tenantId, String userId, String key) {
+    public @Nullable String getUserStringValueWithDefault(String tenantId, String userId, String key) {
         String v = getUserStringValue(tenantId, userId, key);
         if (v != null) return v;
-        return getStringValue(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, key);
+        return getStringValue(tenantId, SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     /**
      * Decrypts a user-private password setting. No fallback to other
      * scopes — passwords are explicit per-user secrets here.
      */
-    public @Nullable String getDecryptedUserPassword(
-            String tenantId, String userId, String key) {
+    public @Nullable String getDecryptedUserPassword(String tenantId, String userId, String key) {
         if (userId == null || userId.isBlank()) return null;
-        return getDecryptedPassword(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
+        return getDecryptedPassword(
+                tenantId, SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
     }
 
     /**
@@ -589,21 +546,16 @@ public class SettingService {
      * Returns {@code Map<key, value>} from the {@code _user_<userId>}
      * project only — passwords skipped.
      */
-    public Map<String, String> findUserSettingsByPrefix(
-            String tenantId, String userId, String keyPrefix) {
+    public Map<String, String> findUserSettingsByPrefix(String tenantId, String userId, String keyPrefix) {
         Map<String, String> out = new LinkedHashMap<>();
         if (userId == null || userId.isBlank()) return out;
-        applyPrefixScope(out, tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, keyPrefix);
+        applyPrefixScope(
+                out, tenantId, SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, keyPrefix);
         return out;
     }
 
     private void applyPrefixScope(
-            Map<String, String> acc,
-            String tenantId,
-            String referenceType,
-            String referenceId,
-            String keyPrefix) {
+            Map<String, String> acc, String tenantId, String referenceType, String referenceId, String keyPrefix) {
         for (SettingDocument doc : findAll(tenantId, referenceType, referenceId)) {
             String key = doc.getKey();
             if (key == null || !key.startsWith(keyPrefix)) continue;
@@ -623,10 +575,8 @@ public class SettingService {
      * {@link #setEncryptedSecret} directly.
      */
     public SettingDocument setEncryptedPassword(
-            String tenantId, String referenceType, String referenceId, String key,
-            @Nullable String plaintext) {
-        return setEncryptedSecret(
-                tenantId, referenceType, referenceId, key, plaintext, SettingType.PASSWORD);
+            String tenantId, String referenceType, String referenceId, String key, @Nullable String plaintext) {
+        return setEncryptedSecret(tenantId, referenceType, referenceId, key, plaintext, SettingType.PASSWORD);
     }
 
     /**
@@ -657,8 +607,12 @@ public class SettingService {
      * @throws IllegalArgumentException if {@code type} is not an encrypted type
      */
     public SettingDocument setAgentSecret(
-            String tenantId, String referenceType, String referenceId, String key,
-            @Nullable String plaintext, SettingType type) {
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String plaintext,
+            SettingType type) {
         agentKeyPolicy.requireAgentWritable(key);
         Optional<SettingDocument> existing = find(tenantId, referenceType, referenceId, key);
         // The threshold is referenceReadable(), not encrypted(): W1 protects
@@ -669,16 +623,18 @@ public class SettingService {
         // whole reason SettingType exposes two monotone thresholds instead of
         // asking call sites to enumerate constants.
         if (existing.isPresent() && !existing.get().getType().referenceReadable()) {
-            log.warn("Refusing agent-originated overwrite of PASSWORD setting: "
-                            + "tenant='{}' ref='{}:{}' key='{}'",
-                    tenantId, referenceType, referenceId, key);
+            log.warn(
+                    "Refusing agent-originated overwrite of PASSWORD setting: " + "tenant='{}' ref='{}:{}' key='{}'",
+                    tenantId,
+                    referenceType,
+                    referenceId,
+                    key);
             throw new SecretAccessDeniedException(
                     "setting '" + key + "' exists as PASSWORD and cannot be overwritten by an "
                             + "agent: PASSWORD settings can neither be read nor written through "
                             + "an agent-reachable path. A human has to change it.");
         }
-        return setEncryptedSecret(
-                tenantId, referenceType, referenceId, key, plaintext, type);
+        return setEncryptedSecret(tenantId, referenceType, referenceId, key, plaintext, type);
     }
 
     /**
@@ -692,10 +648,13 @@ public class SettingService {
      * @throws IllegalArgumentException if {@code type} is not an encrypted type
      */
     public SettingDocument setEncryptedSecret(
-            String tenantId, String referenceType, String referenceId, String key,
-            @Nullable String plaintext, SettingType type) {
-        return setEncryptedSecretAs(
-                tenantId, referenceType, referenceId, key, plaintext, type, /*actor*/ null);
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String plaintext,
+            SettingType type) {
+        return setEncryptedSecretAs(tenantId, referenceType, referenceId, key, plaintext, type, /*actor*/ null);
     }
 
     /**
@@ -705,15 +664,18 @@ public class SettingService {
      * line a reader is most likely to want a name on.
      */
     public SettingDocument setEncryptedSecretAs(
-            String tenantId, String referenceType, String referenceId, String key,
-            @Nullable String plaintext, SettingType type, @Nullable String actor) {
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String plaintext,
+            SettingType type,
+            @Nullable String actor) {
         if (!type.encrypted()) {
-            throw new IllegalArgumentException(
-                    "setEncryptedSecret() requires an encrypted type, got " + type);
+            throw new IllegalArgumentException("setEncryptedSecret() requires an encrypted type, got " + type);
         }
         String ciphertext = encryption.encrypt(plaintext);
-        return setInternal(
-                tenantId, referenceType, referenceId, key, ciphertext, type, null, actor);
+        return setInternal(tenantId, referenceType, referenceId, key, ciphertext, type, null, actor);
     }
 
     /**
@@ -736,23 +698,32 @@ public class SettingService {
         }
         SettingDocument doc = opt.get();
         if (!doc.getType().encrypted()) {
-            log.warn("Setting is not an encrypted secret: tenant='{}' ref='{}:{}' key='{}' type='{}'",
-                    tenantId, referenceType, referenceId, key, doc.getType());
+            log.warn(
+                    "Setting is not an encrypted secret: tenant='{}' ref='{}:{}' key='{}' type='{}'",
+                    tenantId,
+                    referenceType,
+                    referenceId,
+                    key,
+                    doc.getType());
             return null;
         }
         return decryptSecret(doc, tenantId, referenceType, referenceId, key);
     }
 
     private @Nullable String decryptSecret(
-            SettingDocument doc, String tenantId, String referenceType, String referenceId,
-            String key) {
+            SettingDocument doc, String tenantId, String referenceType, String referenceId, String key) {
         try {
             String plaintext = encryption.decrypt(doc.getValue());
             auditService.settingsPasswordRead(tenantId, referenceType, referenceId, key);
             return plaintext;
         } catch (AesEncryptionService.EncryptionException e) {
-            log.warn("Failed to decrypt secret for tenant='{}' ref='{}:{}' key='{}': {}",
-                    tenantId, referenceType, referenceId, key, e.getMessage());
+            log.warn(
+                    "Failed to decrypt secret for tenant='{}' ref='{}:{}' key='{}': {}",
+                    tenantId,
+                    referenceType,
+                    referenceId,
+                    key,
+                    e.getMessage());
             return null;
         }
     }
@@ -775,8 +746,7 @@ public class SettingService {
      * @throws SecretAccessDeniedException when the setting exists as
      *         {@link SettingType#PASSWORD}
      */
-    public @Nullable String getReferenceSecret(
-            String tenantId, String referenceType, String referenceId, String key) {
+    public @Nullable String getReferenceSecret(String tenantId, String referenceType, String referenceId, String key) {
         return readReferenceSecretAt(tenantId, referenceType, referenceId, key);
     }
 
@@ -793,21 +763,16 @@ public class SettingService {
      * and the walk continues, unchanged from {@link #getDecryptedPasswordCascade}.
      */
     public @Nullable String getReferenceSecretCascade(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String thinkProcessId,
-            String key) {
+            String tenantId, @Nullable String projectId, @Nullable String thinkProcessId, String key) {
         if (thinkProcessId != null && !thinkProcessId.isBlank()) {
             String v = readReferenceSecretAt(tenantId, SCOPE_THINK_PROCESS, thinkProcessId, key);
             if (v != null) return v;
         }
-        if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             String v = readReferenceSecretAt(tenantId, SCOPE_PROJECT, projectId, key);
             if (v != null) return v;
         }
-        return readReferenceSecretAt(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, key);
+        return readReferenceSecretAt(tenantId, SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     /**
@@ -815,11 +780,10 @@ public class SettingService {
      * {@code _user_<userId>} hub project. No fallback to other scopes, matching
      * {@link #getDecryptedUserPassword}.
      */
-    public @Nullable String getReferenceUserSecret(
-            String tenantId, @Nullable String userId, String key) {
+    public @Nullable String getReferenceUserSecret(String tenantId, @Nullable String userId, String key) {
         if (userId == null || userId.isBlank()) return null;
-        return readReferenceSecretAt(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
+        return readReferenceSecretAt(
+                tenantId, SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
     }
 
     private @Nullable String readReferenceSecretAt(
@@ -835,9 +799,13 @@ public class SettingService {
             return null;
         }
         if (!doc.getType().referenceReadable()) {
-            log.warn("Refusing to resolve {} setting through a secret reference: "
-                            + "tenant='{}' ref='{}:{}' key='{}'",
-                    doc.getType(), tenantId, referenceType, referenceId, key);
+            log.warn(
+                    "Refusing to resolve {} setting through a secret reference: " + "tenant='{}' ref='{}:{}' key='{}'",
+                    doc.getType(),
+                    tenantId,
+                    referenceType,
+                    referenceId,
+                    key);
             throw new SecretAccessDeniedException(key, doc.getType());
         }
         return decryptSecret(doc, tenantId, referenceType, referenceId, key);
@@ -858,8 +826,7 @@ public class SettingService {
      * encrypted type, or cannot be decrypted with the server key.
      */
     public @Nullable String decryptForExport(
-            String tenantId, String referenceType, String referenceId,
-            String key, String vaultPassword) {
+            String tenantId, String referenceType, String referenceId, String key, String vaultPassword) {
         String plaintext = getDecryptedPassword(tenantId, referenceType, referenceId, key);
         if (plaintext == null) {
             return null;
@@ -867,8 +834,12 @@ public class SettingService {
         try {
             return AesEncryptionService.encryptWith(plaintext, vaultPassword);
         } catch (AesEncryptionService.EncryptionException e) {
-            log.warn("Failed to re-encrypt password with vault key for ref='{}:{}' key='{}': {}",
-                    referenceType, referenceId, key, e.getMessage());
+            log.warn(
+                    "Failed to re-encrypt password with vault key for ref='{}:{}' key='{}': {}",
+                    referenceType,
+                    referenceId,
+                    key,
+                    e.getMessage());
             return null;
         }
     }
@@ -891,8 +862,12 @@ public class SettingService {
      * continue with the next setting.
      */
     public SecretImportOutcome encryptFromImport(
-            String tenantId, String referenceType, String referenceId,
-            String key, String vaultPassword, @Nullable String vaultCiphertext,
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            String vaultPassword,
+            @Nullable String vaultCiphertext,
             SettingType type) {
         if (vaultCiphertext == null) {
             setEncryptedSecret(tenantId, referenceType, referenceId, key, null, type);
@@ -902,8 +877,12 @@ public class SettingService {
         try {
             plaintext = AesEncryptionService.decryptWith(vaultCiphertext, vaultPassword);
         } catch (AesEncryptionService.EncryptionException e) {
-            log.warn("Failed to decrypt vault blob for ref='{}:{}' key='{}': {}",
-                    referenceType, referenceId, key, e.getMessage());
+            log.warn(
+                    "Failed to decrypt vault blob for ref='{}:{}' key='{}': {}",
+                    referenceType,
+                    referenceId,
+                    key,
+                    e.getMessage());
             return SecretImportOutcome.FAILED;
         }
         // Asked here rather than by the caller, so the decrypted value never
@@ -945,11 +924,14 @@ public class SettingService {
      *     PASSWORD nor demoted to HIDDEN, see {@link #encryptFromImport}
      */
     public SecretImportOutcome storeServerEncrypted(
-            String tenantId, String referenceType, String referenceId,
-            String key, @Nullable String ciphertext, SettingType type) {
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String ciphertext,
+            SettingType type) {
         if (!type.encrypted()) {
-            throw new IllegalArgumentException(
-                    "storeServerEncrypted() requires an encrypted type, got " + type);
+            throw new IllegalArgumentException("storeServerEncrypted() requires an encrypted type, got " + type);
         }
         if (ciphertext == null) {
             setEncryptedSecret(tenantId, referenceType, referenceId, key, null, type);
@@ -959,9 +941,12 @@ public class SettingService {
         try {
             plaintext = encryption.decrypt(ciphertext);
         } catch (AesEncryptionService.EncryptionException e) {
-            log.warn("Server-encrypted blob for ref='{}:{}' key='{}' does not open with this"
-                            + " server's key: {}",
-                    referenceType, referenceId, key, e.getMessage());
+            log.warn(
+                    "Server-encrypted blob for ref='{}:{}' key='{}' does not open with this" + " server's key: {}",
+                    referenceType,
+                    referenceId,
+                    key,
+                    e.getMessage());
             return SecretImportOutcome.FAILED;
         }
         if (encryptedSecretEquals(tenantId, referenceType, referenceId, key, plaintext)) {
@@ -1011,8 +996,7 @@ public class SettingService {
      *         skipped rotation
      */
     public boolean encryptedSecretEquals(
-            String tenantId, String referenceType, String referenceId, String key,
-            @Nullable String plaintext) {
+            String tenantId, String referenceType, String referenceId, String key, @Nullable String plaintext) {
         if (plaintext == null) return false;
         Optional<SettingDocument> opt = find(tenantId, referenceType, referenceId, key);
         if (opt.isEmpty()) return false;
@@ -1022,12 +1006,16 @@ public class SettingService {
         try {
             current = encryption.decrypt(doc.getValue());
         } catch (AesEncryptionService.EncryptionException e) {
-            log.warn("Failed to decrypt secret for comparison: tenant='{}' ref='{}:{}' key='{}': {}",
-                    tenantId, referenceType, referenceId, key, e.getMessage());
+            log.warn(
+                    "Failed to decrypt secret for comparison: tenant='{}' ref='{}:{}' key='{}': {}",
+                    tenantId,
+                    referenceType,
+                    referenceId,
+                    key,
+                    e.getMessage());
             return false;
         }
         return MessageDigest.isEqual(
-                current.getBytes(StandardCharsets.UTF_8),
-                plaintext.getBytes(StandardCharsets.UTF_8));
+                current.getBytes(StandardCharsets.UTF_8), plaintext.getBytes(StandardCharsets.UTF_8));
     }
 }

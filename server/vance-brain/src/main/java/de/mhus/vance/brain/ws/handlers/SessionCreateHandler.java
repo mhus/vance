@@ -1,15 +1,14 @@
 package de.mhus.vance.brain.ws.handlers;
 
-import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionCreateRequest;
 import de.mhus.vance.api.ws.SessionCreateResponse;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
@@ -17,11 +16,10 @@ import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
-import de.mhus.vance.shared.permission.Action;
-import de.mhus.vance.shared.permission.Resource;
-import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -29,7 +27,6 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
-import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -87,18 +84,16 @@ public class SessionCreateHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 400, "projectId is required");
             return;
         }
-        authority.enforce(ctx,
-                new Resource.Project(ctx.getTenantId(), request.getProjectId()), Action.START);
+        authority.enforce(ctx, new Resource.Project(ctx.getTenantId(), request.getProjectId()), Action.START);
 
         // Lazy Hub-provisioning: a session-create against an unknown
         // _user_<login> project where <login> is a real user triggers
         // the Hub bootstrap on the spot. Robustness against logins
         // that didn't go through the AccessController bootstrap path.
-        Optional<ProjectDocument> project = homeBootstrapService.resolveOrAutoProvision(
-                ctx.getTenantId(), request.getProjectId());
+        Optional<ProjectDocument> project =
+                homeBootstrapService.resolveOrAutoProvision(ctx.getTenantId(), request.getProjectId());
         if (project.isEmpty()) {
-            sender.sendError(wsSession, envelope, 404,
-                    "Project '" + request.getProjectId() + "' not found");
+            sender.sendError(wsSession, envelope, 404, "Project '" + request.getProjectId() + "' not found");
             return;
         }
         // Eligibility before claiming — a claim we would then refuse would leave
@@ -108,18 +103,24 @@ public class SessionCreateHandler implements WsHandler {
         if (!placementService.isEligibleHere(project.get())) {
             Optional<String> owner = projectManager.findProjectEndpoint(
                     ctx.getTenantId(), project.get().getName());
-            sender.sendError(wsSession, envelope, 409, owner
-                    .map(endpoint -> "Project '" + project.get().getName()
-                            + "' is owned by another brain process (" + endpoint + ")")
-                    .orElse("Project '" + project.get().getName()
-                            + "' cannot run on this brain process and is waiting for a "
-                            + "matching one (placement_pending)"));
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    409,
+                    owner.map(endpoint -> "Project '" + project.get().getName()
+                                    + "' is owned by another brain process (" + endpoint + ")")
+                            .orElse("Project '" + project.get().getName()
+                                    + "' cannot run on this brain process and is waiting for a "
+                                    + "matching one (placement_pending)"));
             return;
         }
         ClaimResult claim = projectManager.claimForLocalPodOrRedirect(
                 ctx.getTenantId(), project.get().getName());
         if (claim instanceof ClaimResult.Redirect redirect) {
-            sender.sendError(wsSession, envelope, 409,
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    409,
                     "Project '" + project.get().getName()
                             + "' is owned by another brain process ("
                             + redirect.endpoint() + ")");
@@ -145,15 +146,13 @@ public class SessionCreateHandler implements WsHandler {
                 ctx.getClientVersion(),
                 ctx.getClientName());
 
-        boolean bound = sessionService.tryBind(
-                created.getSessionId(), ctx.getEditorId());
+        boolean bound = sessionService.tryBind(created.getSessionId(), ctx.getEditorId());
         if (!bound) {
             // Freshly created — nobody else could have bound it. If this ever
             // happens, surface the problem and leave the session in Mongo for
             // manual inspection / cleanup rather than silently closing it.
             log.warn("Freshly created session '{}' failed to bind", created.getSessionId());
-            sender.sendError(wsSession, envelope, 500,
-                    "Session created but could not be bound — please retry");
+            sender.sendError(wsSession, envelope, 500, "Session created but could not be bound — please retry");
             return;
         }
 
@@ -195,8 +194,7 @@ public class SessionCreateHandler implements WsHandler {
                 // No replay needed here.
             }
         } catch (RuntimeException e) {
-            log.error("Chat-process bootstrap failed for session '{}'",
-                    created.getSessionId(), e);
+            log.error("Chat-process bootstrap failed for session '{}'", created.getSessionId(), e);
             // Session itself is fine — let the client connect; it just
             // won't have a default chat target. The chatProcessId fields
             // stay null in the response.
@@ -207,8 +205,7 @@ public class SessionCreateHandler implements WsHandler {
         // sees the current bound profile. Done after chat-process spawn
         // so the freshly created process is included. See
         // engine-message-routing.md §4.1.1.
-        thinkProcessService.updateBoundProfileForSession(
-                created.getSessionId(), ctx.getProfile());
+        thinkProcessService.updateBoundProfileForSession(created.getSessionId(), ctx.getProfile());
 
         SessionCreateResponse response = SessionCreateResponse.builder()
                 .sessionId(created.getSessionId())
@@ -218,31 +215,6 @@ public class SessionCreateHandler implements WsHandler {
                 .chatEngine(chatProcess == null ? null : chatProcess.getThinkEngine())
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.SESSION_CREATE, response);
-    }
-
-    private void pushAppendedMessages(
-            WebSocketSession wsSession, ThinkProcessDocument process) throws IOException {
-        List<ChatMessageDocument> full = chatMessageService.history(
-                process.getTenantId(), process.getSessionId(), process.getId());
-        for (ChatMessageDocument appended : full) {
-            // User-removed messages (Modify/Crop) are gone from the
-            // scrollback — don't re-emit them on reconnect. Matches the
-            // REST history path.
-            if (appended.isRemoved()) continue;
-            sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
-                    ChatMessageAppendedData.builder()
-                            .chatMessageId(appended.getId())
-                            .thinkProcessId(appended.getThinkProcessId())
-                            .processName(process.getName())
-                            .role(appended.getRole())
-                            .content(appended.getContent())
-                            .thinking(appended.getThinking())
-                            .createdAt(appended.getCreatedAt())
-                            .senderUserId(appended.getSenderUserId())
-                            .senderDisplayName(appended.getSenderDisplayName())
-                            .addressedToAgent(appended.isAddressedToAgent())
-                            .build());
-        }
     }
 
     private static boolean isBlank(@org.jspecify.annotations.Nullable String s) {

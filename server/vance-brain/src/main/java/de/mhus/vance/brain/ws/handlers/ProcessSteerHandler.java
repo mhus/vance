@@ -1,6 +1,5 @@
 package de.mhus.vance.brain.ws.handlers;
 
-import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.IdeContext;
 import de.mhus.vance.api.thinkprocess.IdeFileRange;
@@ -11,19 +10,18 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.chat.ChatMentionParser;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
-import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
-import de.mhus.vance.api.chat.ChatRole;
-import de.mhus.vance.shared.permission.Action;
-import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
@@ -31,7 +29,6 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -141,16 +138,22 @@ public class ProcessSteerHandler implements WsHandler {
         Optional<ThinkProcessDocument> processOpt =
                 thinkProcessService.findByName(tenantId, sessionId, request.getProcessName());
         if (processOpt.isEmpty()) {
-            sender.sendError(wsSession, envelope, 404,
-                    "Think-process '" + request.getProcessName() + "' not found in session '"
-                            + sessionId + "'");
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    404,
+                    "Think-process '" + request.getProcessName() + "' not found in session '" + sessionId + "'");
             return;
         }
         ThinkProcessDocument process = processOpt.get();
         String processId = process.getId();
-        authority.enforce(ctx,
-                new Resource.ThinkProcess(process.getTenantId(), process.getProjectId(),
-                        process.getSessionId(), processId == null ? "" : processId),
+        authority.enforce(
+                ctx,
+                new Resource.ThinkProcess(
+                        process.getTenantId(),
+                        process.getProjectId(),
+                        process.getSessionId(),
+                        processId == null ? "" : processId),
                 Action.EXECUTE);
 
         // Multi-user routing — see planning/multi-user-sessions.md §3.3.
@@ -158,8 +161,7 @@ public class ProcessSteerHandler implements WsHandler {
         // AND more than one is currently bound. Mention status follows
         // the simple parser (no code-block awareness in v1).
         boolean collabActive = isCollabActive(sessionId);
-        boolean addressedToAgent =
-                !collabActive || ChatMentionParser.isAddressedToAgent(request.getContent());
+        boolean addressedToAgent = !collabActive || ChatMentionParser.isAddressedToAgent(request.getContent());
 
         if (!addressedToAgent) {
             // Background turn — persist into chat history for context
@@ -196,8 +198,7 @@ public class ProcessSteerHandler implements WsHandler {
         // implicitly a "continue" signal.
         boolean wasResumed = false;
         if (process.getStatus() == ThinkProcessStatus.PAUSED) {
-            log.info("Auto-resume on user steer: process='{}' PAUSED -> IDLE",
-                    request.getProcessName());
+            log.info("Auto-resume on user steer: process='{}' PAUSED -> IDLE", request.getProcessName());
             thinkProcessService.updateStatus(processId, ThinkProcessStatus.IDLE);
             thinkProcessService.clearHalt(processId);
             wasResumed = true;
@@ -235,19 +236,23 @@ public class ProcessSteerHandler implements WsHandler {
         PendingMessageDocument doc = SteerMessageCodec.toDocument(userInput);
 
         if (!thinkProcessService.appendPending(processId, doc)) {
-            sender.sendError(wsSession, envelope, 404,
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    404,
                     "Think-process '" + request.getProcessName() + "' disappeared before steer");
             return;
         }
 
         // Snapshot before lane work so the appended-notification diff
         // doesn't include messages that already lived in the log.
-        int beforeSize = chatMessageService.history(
-                tenantId, sessionId, processId).size();
+        int beforeSize =
+                chatMessageService.history(tenantId, sessionId, processId).size();
 
-        laneScheduler.submit(processId, () -> runLaneTurn(
-                wsSession, envelope, processId, request.getProcessName(),
-                tenantId, sessionId, beforeSize));
+        laneScheduler.submit(
+                processId,
+                () -> runLaneTurn(
+                        wsSession, envelope, processId, request.getProcessName(), tenantId, sessionId, beforeSize));
     }
 
     /**
@@ -276,8 +281,7 @@ public class ProcessSteerHandler implements WsHandler {
             try {
                 // toString(), not getMessage(): Errors frequently carry a
                 // null message, which would ship a useless "null" to the UI.
-                sender.sendError(wsSession, envelope, 500,
-                        "Engine steer failed: " + e);
+                sender.sendError(wsSession, envelope, 500, "Engine steer failed: " + e);
             } catch (IOException sendErr) {
                 log.warn("Failed to send error reply: {}", sendErr.toString());
             }
@@ -285,8 +289,8 @@ public class ProcessSteerHandler implements WsHandler {
         }
 
         try {
-            ThinkProcessDocument refreshed = thinkProcessService.findById(processId)
-                    .orElse(null);
+            ThinkProcessDocument refreshed =
+                    thinkProcessService.findById(processId).orElse(null);
             // CHAT_MESSAGE_APPENDED frames for the chat-messages produced
             // by this turn are pushed by ChatMessageNotificationDispatcher
             // (Spring listener on ChatMessageAppendedEvent). Doing it
@@ -373,13 +377,15 @@ public class ProcessSteerHandler implements WsHandler {
         return sb.toString();
     }
 
-    private static void appendRange(StringBuilder sb, String tag,
-                                    @Nullable IdeFileRange range) {
+    private static void appendRange(StringBuilder sb, String tag, @Nullable IdeFileRange range) {
         if (range == null || isBlank(range.getFilePath())) {
             return;
         }
-        sb.append('<').append(tag).append(" file=\"")
-                .append(escapeAttr(range.getFilePath())).append('"');
+        sb.append('<')
+                .append(tag)
+                .append(" file=\"")
+                .append(escapeAttr(range.getFilePath()))
+                .append('"');
         if (range.getLineStart() != null) {
             sb.append(" lineStart=\"").append(range.getLineStart()).append('"');
         }
@@ -391,21 +397,6 @@ public class ProcessSteerHandler implements WsHandler {
 
     private static String escapeAttr(String s) {
         return s.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;");
-    }
-
-    private static ChatMessageAppendedData toDto(ChatMessageDocument doc, String processName) {
-        return ChatMessageAppendedData.builder()
-                .chatMessageId(doc.getId())
-                .thinkProcessId(doc.getThinkProcessId())
-                .processName(processName)
-                .role(doc.getRole())
-                .content(doc.getContent())
-                .thinking(doc.getThinking())
-                .createdAt(doc.getCreatedAt())
-                .senderUserId(doc.getSenderUserId())
-                .senderDisplayName(doc.getSenderDisplayName())
-                .addressedToAgent(doc.isAddressedToAgent())
-                .build();
     }
 
     private static boolean isBlank(@Nullable String s) {

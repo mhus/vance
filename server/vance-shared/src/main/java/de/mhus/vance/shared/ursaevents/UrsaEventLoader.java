@@ -45,12 +45,10 @@ public class UrsaEventLoader {
      * Resolve a single event by name in the project/_vance cascade.
      * Returns empty if no tier carries it.
      */
-    public Optional<ResolvedUrsaEvent> load(
-            String tenantId, @Nullable String projectId, String name) {
+    public Optional<ResolvedUrsaEvent> load(String tenantId, @Nullable String projectId, String name) {
         if (name == null || name.isBlank()) return Optional.empty();
         String path = pathFor(name);
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                tenantId, effectiveProjectId(projectId), path);
+        Optional<LookupResult> hit = documentService.lookupCascade(tenantId, effectiveProjectId(projectId), path);
         if (hit.isEmpty()) return Optional.empty();
         LookupResult result = hit.get();
         if (result.source() == LookupResult.Source.RESOURCE) {
@@ -63,7 +61,8 @@ public class UrsaEventLoader {
             throw new UrsaEventParseException(
                     "Failed to parse event '" + name + "' from "
                             + result.source() + " at path '" + result.path()
-                            + "': " + e.getMessage(), e);
+                            + "': " + e.getMessage(),
+                    e);
         }
     }
 
@@ -73,8 +72,8 @@ public class UrsaEventLoader {
      * logged and skipped — the rest of the listing continues.
      */
     public List<ResolvedUrsaEvent> listAll(String tenantId, @Nullable String projectId) {
-        Map<String, LookupResult> hits = documentService.listByPrefixCascade(
-                tenantId, effectiveProjectId(projectId), EVENT_PATH_PREFIX);
+        Map<String, LookupResult> hits =
+                documentService.listByPrefixCascade(tenantId, effectiveProjectId(projectId), EVENT_PATH_PREFIX);
         List<ResolvedUrsaEvent> out = new ArrayList<>(hits.size());
         for (Map.Entry<String, LookupResult> e : hits.entrySet()) {
             String path = e.getKey();
@@ -85,8 +84,11 @@ public class UrsaEventLoader {
             try {
                 out.add(parse(name, hit));
             } catch (RuntimeException ex) {
-                log.warn("UrsaEventLoader: skipping malformed event path='{}' source={}: {}",
-                        path, hit.source(), ex.getMessage());
+                log.warn(
+                        "UrsaEventLoader: skipping malformed event path='{}' source={}: {}",
+                        path,
+                        hit.source(),
+                        ex.getMessage());
             }
         }
         return out;
@@ -116,25 +118,19 @@ public class UrsaEventLoader {
     }
 
     private static String effectiveProjectId(@Nullable String projectId) {
-        return (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
+        return (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
     private static @Nullable String nameFromPath(String path) {
         if (!path.startsWith(EVENT_PATH_PREFIX)) return null;
         if (!path.endsWith(EVENT_PATH_SUFFIX)) return null;
-        String stem = path.substring(
-                EVENT_PATH_PREFIX.length(),
-                path.length() - EVENT_PATH_SUFFIX.length());
+        String stem = path.substring(EVENT_PATH_PREFIX.length(), path.length() - EVENT_PATH_SUFFIX.length());
         return stem.isBlank() ? null : stem;
     }
 
     private static LookupResult syntheticHit(String name, String yaml) {
         return new LookupResult(
-                EVENT_PATH_PREFIX + name + EVENT_PATH_SUFFIX,
-                yaml,
-                LookupResult.Source.PROJECT,
-                /*document*/ null);
+                EVENT_PATH_PREFIX + name + EVENT_PATH_SUFFIX, yaml, LookupResult.Source.PROJECT, /*document*/ null);
     }
 
     @SuppressWarnings("unchecked")
@@ -153,16 +149,12 @@ public class UrsaEventLoader {
         String workflow = stringOrNull(spec.get("workflow"));
         de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.ScriptSpec script =
                 parseScriptSpec(spec.get("script"));
-        int targetCount = (recipe != null ? 1 : 0)
-                + (workflow != null ? 1 : 0)
-                + (script != null ? 1 : 0);
+        int targetCount = (recipe != null ? 1 : 0) + (workflow != null ? 1 : 0) + (script != null ? 1 : 0);
         if (targetCount > 1) {
-            throw new IllegalStateException(
-                    "'recipe', 'workflow', 'script' are mutually exclusive — set exactly one");
+            throw new IllegalStateException("'recipe', 'workflow', 'script' are mutually exclusive — set exactly one");
         }
         if (targetCount == 0) {
-            throw new IllegalStateException(
-                    "missing trigger target — set 'recipe', 'workflow' or 'script'");
+            throw new IllegalStateException("missing trigger target — set 'recipe', 'workflow' or 'script'");
         }
         String initialMessage = stringOrNull(spec.get("initialMessage"));
         String description = stringOrNull(spec.get("description"));
@@ -175,9 +167,8 @@ public class UrsaEventLoader {
         // silent one; now it is a load error naming the one-line fix.
         Object rawAuth = spec.get("auth");
         if (rawAuth == null) {
-            throw new IllegalStateException(
-                    "missing 'auth' block — set 'auth.tokenSetting', 'auth.token', "
-                            + "or 'auth.public: true' to declare the event deliberately open");
+            throw new IllegalStateException("missing 'auth' block — set 'auth.tokenSetting', 'auth.token', "
+                    + "or 'auth.public: true' to declare the event deliberately open");
         }
         if (!(rawAuth instanceof Map<?, ?> am)) {
             throw new IllegalStateException("'auth' must be a map");
@@ -186,18 +177,14 @@ public class UrsaEventLoader {
         String tokenLiteral = stringOrNull(auth.get("token"));
         String tokenSettingKey = stringOrNull(auth.get("tokenSetting"));
         boolean authPublic = auth.get("public") instanceof Boolean pub && pub;
-        int authCount = (tokenLiteral != null ? 1 : 0)
-                + (tokenSettingKey != null ? 1 : 0)
-                + (authPublic ? 1 : 0);
+        int authCount = (tokenLiteral != null ? 1 : 0) + (tokenSettingKey != null ? 1 : 0) + (authPublic ? 1 : 0);
         if (authCount > 1) {
-            throw new IllegalStateException(
-                    "'auth.token', 'auth.tokenSetting' and 'auth.public' are mutually "
-                            + "exclusive — set exactly one");
+            throw new IllegalStateException("'auth.token', 'auth.tokenSetting' and 'auth.public' are mutually "
+                    + "exclusive — set exactly one");
         }
         if (authCount == 0) {
             throw new IllegalStateException(
-                    "'auth' block carries none of 'tokenSetting', 'token', 'public: true' "
-                            + "— set exactly one");
+                    "'auth' block carries none of 'tokenSetting', 'token', 'public: true' " + "— set exactly one");
         }
 
         Boolean async = booleanOrNull(spec.get("async"), "async");
@@ -206,9 +193,8 @@ public class UrsaEventLoader {
             // lane-serialised and may block on user input, so there is no
             // result to return and no error either. Rejecting here beats
             // a request that hangs until some proxy gives up.
-            throw new IllegalStateException(
-                    "'async: false' is only supported for 'script:' events — a recipe or "
-                            + "workflow spawn is open-ended; poll its id instead");
+            throw new IllegalStateException("'async: false' is only supported for 'script:' events — a recipe or "
+                    + "workflow spawn is open-ended; poll its id instead");
         }
         Boolean outputToAgents = booleanOrNull(spec.get("outputToAgents"), "outputToAgents");
 
@@ -257,7 +243,8 @@ public class UrsaEventLoader {
     }
 
     /** Parses the {@code script:} block when present; returns {@code null} when absent. */
-    private static de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.@Nullable ScriptSpec parseScriptSpec(@Nullable Object raw) {
+    private static de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.@Nullable ScriptSpec parseScriptSpec(
+            @Nullable Object raw) {
         if (raw == null) return null;
         if (!(raw instanceof Map<?, ?> sm)) {
             throw new IllegalStateException(
@@ -284,15 +271,11 @@ public class UrsaEventLoader {
             throw new IllegalStateException("'script.path' must be non-blank");
         }
         String dirName = stringOrNull(map.get("dirName"));
-        if (source == de.mhus.vance.api.action.ScriptSource.WORKSPACE
-                && (dirName == null || dirName.isBlank())) {
-            throw new IllegalStateException(
-                    "'script.dirName' is required when source=workspace");
+        if (source == de.mhus.vance.api.action.ScriptSource.WORKSPACE && (dirName == null || dirName.isBlank())) {
+            throw new IllegalStateException("'script.dirName' is required when source=workspace");
         }
-        if (source == de.mhus.vance.api.action.ScriptSource.DOCUMENT
-                && dirName != null && !dirName.isBlank()) {
-            throw new IllegalStateException(
-                    "'script.dirName' must be omitted when source=document");
+        if (source == de.mhus.vance.api.action.ScriptSource.DOCUMENT && dirName != null && !dirName.isBlank()) {
+            throw new IllegalStateException("'script.dirName' must be omitted when source=document");
         }
         Integer timeoutSeconds = null;
         Object rawTimeout = map.get("timeoutSeconds");
@@ -302,13 +285,11 @@ public class UrsaEventLoader {
             try {
                 timeoutSeconds = Integer.parseInt(s.trim());
             } catch (NumberFormatException e) {
-                throw new IllegalStateException(
-                        "'script.timeoutSeconds' must be an integer, got '" + s + "'");
+                throw new IllegalStateException("'script.timeoutSeconds' must be an integer, got '" + s + "'");
             }
         }
         if (timeoutSeconds != null && timeoutSeconds <= 0) {
-            throw new IllegalStateException(
-                    "'script.timeoutSeconds' must be > 0, got " + timeoutSeconds);
+            throw new IllegalStateException("'script.timeoutSeconds' must be > 0, got " + timeoutSeconds);
         }
         return new de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.ScriptSpec(
                 source, dirName, path, timeoutSeconds);
@@ -323,8 +304,7 @@ public class UrsaEventLoader {
         Set<String> out = new LinkedHashSet<>();
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
-                throw new IllegalStateException(
-                        "'methods' contains a non-string or blank entry");
+                throw new IllegalStateException("'methods' contains a non-string or blank entry");
             }
             String norm = s.trim().toUpperCase(Locale.ROOT);
             if (!"GET".equals(norm) && !"POST".equals(norm)) {
@@ -340,17 +320,8 @@ public class UrsaEventLoader {
         return switch (source) {
             case PROJECT -> EventSource.PROJECT;
             case VANCE -> EventSource.TENANT;
-            case RESOURCE -> throw new IllegalStateException(
-                    "resource layer is not allowed for events");
+            case RESOURCE -> throw new IllegalStateException("resource layer is not allowed for events");
         };
-    }
-
-    private static String stringOrThrow(@Nullable Object raw, String fieldName) {
-        if (!(raw instanceof String s) || s.isBlank()) {
-            throw new IllegalStateException(
-                    "missing required field '" + fieldName + "' (must be a non-empty string)");
-        }
-        return s;
     }
 
     private static @Nullable String stringOrNull(@Nullable Object raw) {
@@ -376,8 +347,7 @@ public class UrsaEventLoader {
         List<String> out = new ArrayList<>(list.size());
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
-                throw new IllegalStateException(
-                        "'" + fieldName + "' contains a non-string or blank entry");
+                throw new IllegalStateException("'" + fieldName + "' contains a non-string or blank entry");
             }
             out.add(s);
         }

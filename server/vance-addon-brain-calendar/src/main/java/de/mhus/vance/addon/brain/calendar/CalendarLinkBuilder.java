@@ -24,19 +24,15 @@ import org.jspecify.annotations.Nullable;
  */
 public final class CalendarLinkBuilder {
 
-    private static final DateTimeFormatter UTC_COMPACT =
-            DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
-    private static final DateTimeFormatter LOCAL_COMPACT =
-            DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
-    private static final DateTimeFormatter DATE_COMPACT =
-            DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final DateTimeFormatter UTC_COMPACT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
+    private static final DateTimeFormatter DATE_COMPACT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private CalendarLinkBuilder() {
         // utility class
     }
 
     /** Convenience holder for an event's three render flavours. */
-    public record Links(@Nullable String google, @Nullable String outlook) { }
+    public record Links(@Nullable String google, @Nullable String outlook) {}
 
     public static Links buildLinks(CalendarEvent ev) {
         return new Links(googleUrl(ev), outlookUrl(ev));
@@ -54,8 +50,7 @@ public final class CalendarLinkBuilder {
     public static @Nullable String googleUrl(CalendarEvent ev) {
         String range = googleDateRange(ev);
         if (range == null) return null;
-        StringBuilder sb = new StringBuilder(
-                "https://calendar.google.com/calendar/render?action=TEMPLATE");
+        StringBuilder sb = new StringBuilder("https://calendar.google.com/calendar/render?action=TEMPLATE");
         appendParam(sb, "text", ev.title());
         appendParam(sb, "dates", range);
         if (ev.notes() != null) appendParam(sb, "details", ev.notes());
@@ -134,9 +129,18 @@ public final class CalendarLinkBuilder {
     static @Nullable LocalDate parseDate(@Nullable String iso) {
         if (iso == null || iso.isBlank()) return null;
         String s = iso.trim();
-        try { return LocalDate.parse(s); } catch (DateTimeParseException ignored) { }
-        try { return LocalDateTime.parse(s).toLocalDate(); } catch (DateTimeParseException ignored) { }
-        try { return OffsetDateTime.parse(s).toLocalDate(); } catch (DateTimeParseException ignored) { }
+        try {
+            return LocalDate.parse(s);
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return LocalDateTime.parse(s).toLocalDate();
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return OffsetDateTime.parse(s).toLocalDate();
+        } catch (DateTimeParseException ignored) {
+        }
         return null;
     }
 
@@ -170,10 +174,13 @@ public final class CalendarLinkBuilder {
         if (iso == null || iso.isBlank()) return null;
         String s = iso.trim();
         for (DateTimeFormatter fmt : new DateTimeFormatter[] {
-                DateTimeFormatter.ISO_LOCAL_DATE_TIME,
-                DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm") }) {
-            try { return LocalDateTime.parse(s, fmt); }
-            catch (DateTimeParseException ignored) { /* try next */ }
+            DateTimeFormatter.ISO_LOCAL_DATE_TIME, DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+        }) {
+            try {
+                return LocalDateTime.parse(s, fmt);
+            } catch (DateTimeParseException ignored) {
+                /* try next */
+            }
         }
         return null;
     }
@@ -195,7 +202,6 @@ public final class CalendarLinkBuilder {
 
     private static void appendParam(StringBuilder sb, String key, String value) {
         if (value == null) return;
-        sb.append('&').append(key).append('=')
-                .append(URLEncoder.encode(value, StandardCharsets.UTF_8));
+        sb.append('&').append(key).append('=').append(URLEncoder.encode(value, StandardCharsets.UTF_8));
     }
 }

@@ -32,13 +32,18 @@ public class DocLockSetTool implements Tool {
             "required", List.of("lockedFor"));
 
     private static Map<String, Object> buildProps() {
-        Map<String, Object> p = new java.util.LinkedHashMap<>(de.mhus.vance.brain.tools.kinds.KindToolSupport.documentSelectorPropertiesWithIdAlias());
-        p.put("lockedFor", Map.of(
-                "type", "array",
-                "items", Map.of("type", "string", "enum", List.of("AI", "USER", "KIT")),
-                "description",
-                "Writer roles to block. Empty array clears the lock. "
-                        + "Each role is independently selectable."));
+        Map<String, Object> p = new java.util.LinkedHashMap<>(
+                de.mhus.vance.brain.tools.kinds.KindToolSupport.documentSelectorPropertiesWithIdAlias());
+        p.put(
+                "lockedFor",
+                Map.of(
+                        "type",
+                        "array",
+                        "items",
+                        Map.of("type", "string", "enum", List.of("AI", "USER", "KIT")),
+                        "description",
+                        "Writer roles to block. Empty array clears the lock. "
+                                + "Each role is independently selectable."));
         return p;
     }
 
@@ -46,7 +51,8 @@ public class DocLockSetTool implements Tool {
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
     private final de.mhus.vance.brain.tools.kinds.KindToolSupport support;
 
-    public DocLockSetTool(DocumentService documentService,
+    public DocLockSetTool(
+            DocumentService documentService,
             de.mhus.vance.brain.permission.SecurityContextFactory contextFactory,
             de.mhus.vance.brain.tools.kinds.KindToolSupport support) {
         this.documentService = documentService;
@@ -54,7 +60,10 @@ public class DocLockSetTool implements Tool {
         this.support = support;
     }
 
-    @Override public String name() { return "doc_lock_set"; }
+    @Override
+    public String name() {
+        return "doc_lock_set";
+    }
 
     @Override
     public String description() {
@@ -65,7 +74,10 @@ public class DocLockSetTool implements Tool {
                 + "independently selectable — no auto-add, no implicit rules.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -82,14 +94,13 @@ public class DocLockSetTool implements Tool {
         Set<WriterRole> requested = parseRoles(params == null ? null : params.get("lockedFor"));
         // Standard doc selector (path | id, plus the legacy documentId alias).
         // Resolution, tenant scoping and the READ check live in loadDocument.
-        DocumentDocument doc = support.loadDocument(
-                de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
+        DocumentDocument doc =
+                support.loadDocument(de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
         String documentId = doc.getId();
 
-        DocumentDocument saved = documentService.setLockedFor(documentId, requested,
-                contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
-        log.info("DocLockSetTool tenant='{}' id='{}' lockedFor={}",
-                ctx.tenantId(), documentId, requested);
+        DocumentDocument saved = documentService.setLockedFor(
+                documentId, requested, contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
+        log.info("DocLockSetTool tenant='{}' id='{}' lockedFor={}", ctx.tenantId(), documentId, requested);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", documentId);
@@ -107,19 +118,12 @@ public class DocLockSetTool implements Tool {
                     try {
                         out.add(WriterRole.valueOf(s.trim().toUpperCase()));
                     } catch (IllegalArgumentException e) {
-                        throw new ToolException("Unknown WriterRole '" + s
-                                + "' — expected one of AI, USER, KIT");
+                        throw new ToolException("Unknown WriterRole '" + s + "' — expected one of AI, USER, KIT");
                     }
                 }
             }
             return out;
         }
         throw new ToolException("lockedFor must be an array of role names (AI/USER/KIT)");
-    }
-
-    private static @Nullable String paramString(@Nullable Map<String, Object> params, String key) {
-        if (params == null) return null;
-        Object v = params.get(key);
-        return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
 }

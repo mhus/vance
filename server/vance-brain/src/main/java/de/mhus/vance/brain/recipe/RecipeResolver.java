@@ -1,15 +1,15 @@
 package de.mhus.vance.brain.recipe;
 
 import de.mhus.vance.api.thinkprocess.ProcessMode;
-import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
-import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.brain.tools.client.ClientToolRegistry;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.home.HomeBootstrapService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -71,15 +71,10 @@ public class RecipeResolver {
      * {@code planning/tool-schema-deferral.md} §14.5.
      */
     public record ToolFilter(
-            List<String> remove,
-            List<String> add,
-            List<String> defer,
-            List<String> keep,
-            List<String> dropFirst) {
+            List<String> remove, List<String> add, List<String> defer, List<String> keep, List<String> dropFirst) {
 
         /** Empty filter — no overlays applied. */
-        public static final ToolFilter EMPTY =
-                new ToolFilter(List.of(), List.of(), List.of(), List.of(), List.of());
+        public static final ToolFilter EMPTY = new ToolFilter(List.of(), List.of(), List.of(), List.of(), List.of());
 
         /**
          * Visibility-only filter without budget-priority hints. Keeps the
@@ -95,8 +90,7 @@ public class RecipeResolver {
          * ranks tools still has something to say to the budget stage.
          */
         public boolean isEmpty() {
-            return remove.isEmpty() && add.isEmpty() && defer.isEmpty()
-                    && keep.isEmpty() && dropFirst.isEmpty();
+            return remove.isEmpty() && add.isEmpty() && defer.isEmpty() && keep.isEmpty() && dropFirst.isEmpty();
         }
     }
 
@@ -105,8 +99,7 @@ public class RecipeResolver {
      * Returns empty if no tier carries the name — the caller will
      * normally turn this into a 4xx-style error for the LLM/REST API.
      */
-    public Optional<ResolvedRecipe> resolve(
-            String tenantId, @Nullable String projectId, String name) {
+    public Optional<ResolvedRecipe> resolve(String tenantId, @Nullable String projectId, String name) {
         if (name == null || name.isBlank()) {
             return Optional.empty();
         }
@@ -125,12 +118,12 @@ public class RecipeResolver {
         //    when the caller already specified a path (contains '/'),
         //    so explicit `_slart/<runId>/<name>` lookups don't loop.
         if (!name.contains("/")) {
-            Optional<ResolvedRecipe> userScoped =
-                    loader.load(tenantId, effectiveProject, "_user/" + name);
+            Optional<ResolvedRecipe> userScoped = loader.load(tenantId, effectiveProject, "_user/" + name);
             if (userScoped.isPresent()) {
-                log.info("RecipeResolver: short name '{}' resolved via "
-                                + "_user/-namespace fallback → '{}'",
-                        name, userScoped.get().name());
+                log.info(
+                        "RecipeResolver: short name '{}' resolved via " + "_user/-namespace fallback → '{}'",
+                        name,
+                        userScoped.get().name());
                 return userScoped;
             }
         }
@@ -154,13 +147,13 @@ public class RecipeResolver {
             String name,
             @Nullable String connectionProfile,
             @Nullable Map<String, Object> callerParams) {
-        ResolvedRecipe r = resolve(tenantId, projectId, name)
-                .orElseThrow(() -> new UnknownRecipeException(name));
+        ResolvedRecipe r = resolve(tenantId, projectId, name).orElseThrow(() -> new UnknownRecipeException(name));
 
-        ThinkEngine engine = thinkEngineServiceProvider.getObject().resolve(r.engine())
+        ThinkEngine engine = thinkEngineServiceProvider
+                .getObject()
+                .resolve(r.engine())
                 .orElseThrow(() -> new UnknownEngineException(
-                        "Recipe '" + r.name() + "' references unknown engine '"
-                                + r.engine() + "'"));
+                        "Recipe '" + r.name() + "' references unknown engine '" + r.engine() + "'"));
 
         // Profile-block cascade: exact match → "default" key → empty.
         // Open-string semantics — unknown profiles silently fall through.
@@ -174,8 +167,10 @@ public class RecipeResolver {
         List<String> overriddenKeys = new ArrayList<>();
         if (callerParams != null && !callerParams.isEmpty()) {
             if (r.locked()) {
-                log.warn("RecipeResolver: recipe='{}' is locked — ignoring caller params {}",
-                        r.name(), callerParams.keySet());
+                log.warn(
+                        "RecipeResolver: recipe='{}' is locked — ignoring caller params {}",
+                        r.name(),
+                        callerParams.keySet());
             } else {
                 for (Map.Entry<String, Object> e : callerParams.entrySet()) {
                     if (mergedParams.containsKey(e.getKey())) {
@@ -184,8 +179,11 @@ public class RecipeResolver {
                     mergedParams.put(e.getKey(), e.getValue());
                 }
                 if (!overriddenKeys.isEmpty()) {
-                    log.info("RecipeResolver: recipe='{}' override applied — overridden_keys={} source={}",
-                            r.name(), overriddenKeys, r.source());
+                    log.info(
+                            "RecipeResolver: recipe='{}' override applied — overridden_keys={} source={}",
+                            r.name(),
+                            overriddenKeys,
+                            r.source());
                 }
             }
         }
@@ -211,8 +209,7 @@ public class RecipeResolver {
         List<String> expandedAdd = expandLabelSelectors(tenantId, projectId, combinedAdd);
         List<String> expandedRemove = expandLabelSelectors(tenantId, projectId, combinedRemove);
 
-        Set<String> effectiveAllowed = computeAllowed(
-                engine.allowedTools(), expandedAdd, expandedRemove);
+        Set<String> effectiveAllowed = computeAllowed(engine.allowedTools(), expandedAdd, expandedRemove);
 
         // Recipe override and profile-append are kept separate so the
         // recipe template can place {{ profileAppend }} at any position
@@ -246,8 +243,7 @@ public class RecipeResolver {
      * profile name skips the exact-match step and goes straight to
      * "default" (then empty) — same semantics as an unknown profile.
      */
-    private static ProfileBlock resolveProfileBlock(
-            ResolvedRecipe r, @Nullable String connectionProfile) {
+    private static ProfileBlock resolveProfileBlock(ResolvedRecipe r, @Nullable String connectionProfile) {
         Map<String, ProfileBlock> profiles = r.profiles();
         if (profiles == null || profiles.isEmpty()) {
             return ProfileBlock.EMPTY;
@@ -294,14 +290,12 @@ public class RecipeResolver {
      * (label is "optional") — and it avoids spawn failures when a
      * label-bearing tool is removed at runtime.
      */
-    private List<String> expandLabelSelectors(
-            String tenantId, @Nullable String projectId, List<String> entries) {
+    private List<String> expandLabelSelectors(String tenantId, @Nullable String projectId, List<String> entries) {
         return expandLabelSelectors(tenantId, projectId, entries, /*ctx*/ null);
     }
 
     private List<String> expandLabelSelectors(
-            String tenantId, @Nullable String projectId, List<String> entries,
-            @Nullable ToolInvocationContext ctx) {
+            String tenantId, @Nullable String projectId, List<String> entries, @Nullable ToolInvocationContext ctx) {
         if (entries == null || entries.isEmpty()) return List.of();
         boolean hasSelector = false;
         for (String e : entries) {
@@ -318,8 +312,7 @@ public class RecipeResolver {
             if (entry == null || entry.isBlank()) continue;
             if (entry.startsWith(LABEL_PREFIX) && entry.length() > 1) {
                 String label = entry.substring(LABEL_PREFIX.length());
-                for (Tool t : serverToolService.findByLabel(
-                        tenantId, effectiveProjectId, label, ctx)) {
+                for (Tool t : serverToolService.findByLabel(tenantId, effectiveProjectId, label, ctx)) {
                     if (seen.add(t.name())) out.add(t.name());
                 }
                 for (String name : clientToolNamesByLabel(label, ctx)) {
@@ -338,8 +331,7 @@ public class RecipeResolver {
      * no registration for it (client disconnected), or no WS stack at
      * all — the label then behaves like any other unresolved selector.
      */
-    private List<String> clientToolNamesByLabel(
-            String label, @Nullable ToolInvocationContext ctx) {
+    private List<String> clientToolNamesByLabel(String label, @Nullable ToolInvocationContext ctx) {
         if (ctx == null || ctx.sessionId() == null || ctx.sessionId().isBlank()) {
             return List.of();
         }
@@ -373,9 +365,7 @@ public class RecipeResolver {
      * empty engineDefault + remove also stays null at spawn.
      */
     private static @Nullable Set<String> computeAllowed(
-            Set<String> engineDefault,
-            List<String> add,
-            List<String> remove) {
+            Set<String> engineDefault, List<String> add, List<String> remove) {
         boolean addPresent = add != null && !add.isEmpty();
         boolean removePresent = remove != null && !remove.isEmpty();
         if (!addPresent && !removePresent) {
@@ -451,8 +441,7 @@ public class RecipeResolver {
             @Nullable String connectionProfile,
             @Nullable ProcessMode mode,
             @Nullable ToolInvocationContext ctx) {
-        String name = (recipeName != null && !recipeName.isBlank())
-                ? recipeName : "default";
+        String name = (recipeName != null && !recipeName.isBlank()) ? recipeName : "default";
         Optional<ResolvedRecipe> resolved = resolve(tenantId, projectId, name);
         if (resolved.isEmpty()) {
             return ToolFilter.EMPTY;
@@ -470,14 +459,18 @@ public class RecipeResolver {
         // only the one that wins the visibility lookup below.
         List<String> keep = new ArrayList<>();
         List<String> dropFirst = new ArrayList<>();
-        collectPriority(tenantId, projectId, ctx,
-                r.allowedToolsKeep(), r.allowedToolsDropFirst(), keep, dropFirst);
-        collectPriority(tenantId, projectId, ctx,
-                profileBlock.allowedToolsKeep(), profileBlock.allowedToolsDropFirst(),
-                keep, dropFirst);
+        collectPriority(tenantId, projectId, ctx, r.allowedToolsKeep(), r.allowedToolsDropFirst(), keep, dropFirst);
+        collectPriority(
+                tenantId,
+                projectId,
+                ctx,
+                profileBlock.allowedToolsKeep(),
+                profileBlock.allowedToolsDropFirst(),
+                keep,
+                dropFirst);
         for (RecipeModeBlock block : modeChain) {
-            collectPriority(tenantId, projectId, ctx,
-                    block.allowedToolsKeep(), block.allowedToolsDropFirst(), keep, dropFirst);
+            collectPriority(
+                    tenantId, projectId, ctx, block.allowedToolsKeep(), block.allowedToolsDropFirst(), keep, dropFirst);
         }
 
         // Visibility cascade: first block that actually states visibility wins.
@@ -514,8 +507,7 @@ public class RecipeResolver {
         if (!keep.isEmpty() || !dropFirst.isEmpty()) {
             // Ranking-only recipe: no visibility overlay, but the budget
             // stage still has something to go by.
-            return new ToolFilter(List.of(), List.of(), List.of(),
-                    List.copyOf(keep), List.copyOf(dropFirst));
+            return new ToolFilter(List.of(), List.of(), List.of(), List.copyOf(keep), List.copyOf(dropFirst));
         }
         return ToolFilter.EMPTY;
     }
@@ -567,9 +559,8 @@ public class RecipeResolver {
         Map<String, ProfileBlock> profiles = r.profiles();
         // 1+2: exact profile, then default profile
         ProfileBlock[] profileChain = {
-                profiles == null ? null
-                        : (connectionProfile == null ? null : profiles.get(connectionProfile)),
-                profiles == null ? null : profiles.get(Profiles.DEFAULT)
+            profiles == null ? null : (connectionProfile == null ? null : profiles.get(connectionProfile)),
+            profiles == null ? null : profiles.get(Profiles.DEFAULT)
         };
         for (ProfileBlock pb : profileChain) {
             if (pb == null) continue;
@@ -582,9 +573,7 @@ public class RecipeResolver {
 
     /** Appends {@code modes[key]} then {@code modes["default"]}, when present. */
     private static void addModeBlocks(
-            List<RecipeModeBlock> chain,
-            @Nullable Map<String, RecipeModeBlock> modes,
-            String key) {
+            List<RecipeModeBlock> chain, @Nullable Map<String, RecipeModeBlock> modes, String key) {
         if (modes == null || modes.isEmpty()) return;
         RecipeModeBlock exact = modes.get(key);
         if (exact != null) chain.add(exact);
@@ -594,26 +583,18 @@ public class RecipeResolver {
         }
     }
 
-    private ToolFilter expandFilter(
-            String tenantId, @Nullable String projectId, RecipeModeBlock block) {
-        return expandFilter(tenantId, projectId, block, /*ctx*/ null);
-    }
-
-    private ToolFilter expandFilter(
-            String tenantId, @Nullable String projectId, RecipeModeBlock block,
-            @Nullable ToolInvocationContext ctx) {
-        return expandFilter(tenantId, projectId, block, ctx, List.of(), List.of());
-    }
-
     /**
      * Variant that carries pre-resolved priority hints — those are unioned
      * across the cascade by {@link #toolFilterFor} rather than taken from
      * the winning block alone.
      */
     private ToolFilter expandFilter(
-            String tenantId, @Nullable String projectId, RecipeModeBlock block,
+            String tenantId,
+            @Nullable String projectId,
+            RecipeModeBlock block,
             @Nullable ToolInvocationContext ctx,
-            List<String> keep, List<String> dropFirst) {
+            List<String> keep,
+            List<String> dropFirst) {
         return new ToolFilter(
                 expandLabelSelectors(tenantId, projectId, block.allowedToolsRemove(), ctx),
                 expandLabelSelectors(tenantId, projectId, block.allowedToolsAdd(), ctx),
@@ -645,15 +626,12 @@ public class RecipeResolver {
             @Nullable String recipeName,
             @Nullable String connectionProfile,
             @Nullable Map<String, Object> callerParams) {
-        String effectiveRecipe = (recipeName != null && !recipeName.isBlank())
-                ? recipeName : "default";
-        return apply(tenantId, projectId, effectiveRecipe,
-                connectionProfile, callerParams);
+        String effectiveRecipe = (recipeName != null && !recipeName.isBlank()) ? recipeName : "default";
+        return apply(tenantId, projectId, effectiveRecipe, connectionProfile, callerParams);
     }
 
     private static String effectiveProjectId(@Nullable String projectId) {
-        return (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
+        return (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
     public static class UnknownRecipeException extends RuntimeException {

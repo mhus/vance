@@ -31,11 +31,14 @@ public class DocLockRemoveTool implements Tool {
             "required", List.of("role"));
 
     private static Map<String, Object> buildProps() {
-        Map<String, Object> p = new java.util.LinkedHashMap<>(de.mhus.vance.brain.tools.kinds.KindToolSupport.documentSelectorPropertiesWithIdAlias());
-        p.put("role", Map.of(
-                "type", "string",
-                "enum", List.of("AI", "USER", "KIT"),
-                "description", "Writer role to unblock."));
+        Map<String, Object> p = new java.util.LinkedHashMap<>(
+                de.mhus.vance.brain.tools.kinds.KindToolSupport.documentSelectorPropertiesWithIdAlias());
+        p.put(
+                "role",
+                Map.of(
+                        "type", "string",
+                        "enum", List.of("AI", "USER", "KIT"),
+                        "description", "Writer role to unblock."));
         return p;
     }
 
@@ -43,7 +46,8 @@ public class DocLockRemoveTool implements Tool {
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
     private final de.mhus.vance.brain.tools.kinds.KindToolSupport support;
 
-    public DocLockRemoveTool(DocumentService documentService,
+    public DocLockRemoveTool(
+            DocumentService documentService,
             de.mhus.vance.brain.permission.SecurityContextFactory contextFactory,
             de.mhus.vance.brain.tools.kinds.KindToolSupport support) {
         this.documentService = documentService;
@@ -51,7 +55,10 @@ public class DocLockRemoveTool implements Tool {
         this.support = support;
     }
 
-    @Override public String name() { return "doc_lock_remove"; }
+    @Override
+    public String name() {
+        return "doc_lock_remove";
+    }
 
     @Override
     public String description() {
@@ -60,7 +67,10 @@ public class DocLockRemoveTool implements Tool {
                 + "not touch the others.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -77,19 +87,17 @@ public class DocLockRemoveTool implements Tool {
         WriterRole role = parseRole(params == null ? null : params.get("role"));
         // Standard doc selector (path | id, plus the legacy documentId alias).
         // Resolution, tenant scoping and the READ check live in loadDocument.
-        DocumentDocument doc = support.loadDocument(
-                de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
+        DocumentDocument doc =
+                support.loadDocument(de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
         String documentId = doc.getId();
 
-        EnumSet<WriterRole> next = doc.getLockedFor() == null
-                ? EnumSet.noneOf(WriterRole.class)
-                : EnumSet.copyOf(doc.getLockedFor());
+        EnumSet<WriterRole> next =
+                doc.getLockedFor() == null ? EnumSet.noneOf(WriterRole.class) : EnumSet.copyOf(doc.getLockedFor());
         next.remove(role);
 
-        DocumentDocument saved = documentService.setLockedFor(documentId, next,
-                contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
-        log.info("DocLockRemoveTool tenant='{}' id='{}' removed={} now={}",
-                ctx.tenantId(), documentId, role, next);
+        DocumentDocument saved = documentService.setLockedFor(
+                documentId, next, contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
+        log.info("DocLockRemoveTool tenant='{}' id='{}' removed={} now={}", ctx.tenantId(), documentId, role, next);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", documentId);
@@ -103,16 +111,9 @@ public class DocLockRemoveTool implements Tool {
             try {
                 return WriterRole.valueOf(s.trim().toUpperCase());
             } catch (IllegalArgumentException e) {
-                throw new ToolException("Unknown WriterRole '" + s
-                        + "' — expected one of AI, USER, KIT");
+                throw new ToolException("Unknown WriterRole '" + s + "' — expected one of AI, USER, KIT");
             }
         }
         throw new ToolException("role is required (AI, USER, or KIT)");
-    }
-
-    private static @Nullable String paramString(@Nullable Map<String, Object> params, String key) {
-        if (params == null) return null;
-        Object v = params.get(key);
-        return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
 }

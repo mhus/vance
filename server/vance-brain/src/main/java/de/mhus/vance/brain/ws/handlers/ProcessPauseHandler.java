@@ -6,9 +6,9 @@ import de.mhus.vance.api.thinkprocess.ProcessPauseResponse;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
-import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.ws.ConnectionContext;
@@ -21,10 +21,8 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 import tools.jackson.databind.ObjectMapper;
@@ -69,8 +67,7 @@ public class ProcessPauseHandler implements WsHandler {
         try {
             request = objectMapper.convertValue(envelope.getData(), ProcessPauseRequest.class);
         } catch (IllegalArgumentException e) {
-            sender.sendError(wsSession, envelope, 400,
-                    "Invalid process-pause payload: " + e.getMessage());
+            sender.sendError(wsSession, envelope, 400, "Invalid process-pause payload: " + e.getMessage());
             return;
         }
 
@@ -80,9 +77,9 @@ public class ProcessPauseHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 500, "Session bound but sessionId missing");
             return;
         }
-        authority.enforce(ctx,
-                new Resource.Session(tenantId,
-                        ctx.getProjectId() == null ? "" : ctx.getProjectId(), sessionId),
+        authority.enforce(
+                ctx,
+                new Resource.Session(tenantId, ctx.getProjectId() == null ? "" : ctx.getProjectId(), sessionId),
                 Action.EXECUTE);
 
         String processName = request == null ? null : request.getProcessName();
@@ -99,8 +96,7 @@ public class ProcessPauseHandler implements WsHandler {
             Optional<ThinkProcessDocument> processOpt =
                     thinkProcessService.findByName(tenantId, sessionId, processName);
             if (processOpt.isEmpty()) {
-                sender.sendError(wsSession, envelope, 404,
-                        "Think-process '" + processName + "' not found in session");
+                sender.sendError(wsSession, envelope, 404, "Think-process '" + processName + "' not found in session");
                 return;
             }
             ThinkProcessDocument target = processOpt.get();
@@ -108,19 +104,16 @@ public class ProcessPauseHandler implements WsHandler {
             if (s == ThinkProcessStatus.CLOSED || s == ThinkProcessStatus.PAUSED) {
                 paused = List.of();
             } else {
-                progressEmitter.emitStatus(target, StatusTag.ENGINE_HALT_REQUESTED,
-                        target.getName() + " pause requested");
+                progressEmitter.emitStatus(
+                        target, StatusTag.ENGINE_HALT_REQUESTED, target.getName() + " pause requested");
                 try {
                     // pauseProcess honours isInterruptible: a process that is IDLE or
                     // BLOCKED is not mid-turn and is left alone, and says so by
                     // returning false. Reporting it as paused would tell the client
                     // something that did not happen.
-                    paused = sessionLifecycle.pauseProcess(target)
-                            ? List.of(target.getName())
-                            : List.of();
+                    paused = sessionLifecycle.pauseProcess(target) ? List.of(target.getName()) : List.of();
                 } catch (RuntimeException ex) {
-                    sender.sendError(wsSession, envelope, 500,
-                            "Pause failed: " + ex.getMessage());
+                    sender.sendError(wsSession, envelope, 500, "Pause failed: " + ex.getMessage());
                     return;
                 }
             }
@@ -135,24 +128,17 @@ public class ProcessPauseHandler implements WsHandler {
         // the engine's tool-call site treats that as a normal tool
         // error and the next loop check picks up the PAUSED status
         // (see FrankieEngine.runTurn external-interrupt block).
-        int cancelled = clientToolRegistry.cancelAllForSession(
-                sessionId, "process paused — invocation cancelled");
+        int cancelled = clientToolRegistry.cancelAllForSession(sessionId, "process paused — invocation cancelled");
         if (cancelled > 0) {
-            log.info("process-pause sessionId='{}' cancelled {} pending client-tool call(s)",
-                    sessionId, cancelled);
+            log.info("process-pause sessionId='{}' cancelled {} pending client-tool call(s)", sessionId, cancelled);
         }
 
         // "requested", not "paused": the halt flag is set and the PAUSED write
         // is queued on the lane, which lands once the current turn yields.
         log.info("process-pause sessionId='{}' requested={}", sessionId, paused);
-        ProcessPauseResponse response = ProcessPauseResponse.builder()
-                .pausedProcessNames(paused)
-                .build();
+        ProcessPauseResponse response =
+                ProcessPauseResponse.builder().pausedProcessNames(paused).build();
         sender.sendReply(wsSession, envelope, MessageType.PROCESS_PAUSE, response);
-    }
-
-    private static boolean isBlank(@Nullable String s) {
-        return s == null || s.isBlank();
     }
 
     /**
@@ -165,14 +151,12 @@ public class ProcessPauseHandler implements WsHandler {
      * announcing a pause that never happens.
      */
     private void emitHaltRequestedForActiveProcesses(String tenantId, String sessionId) {
-        java.util.List<ThinkProcessDocument> all =
-                thinkProcessService.findBySession(tenantId, sessionId);
+        java.util.List<ThinkProcessDocument> all = thinkProcessService.findBySession(tenantId, sessionId);
         for (ThinkProcessDocument p : all) {
             if (!SessionLifecycleService.isInterruptible(p)) {
                 continue;
             }
-            progressEmitter.emitStatus(p, StatusTag.ENGINE_HALT_REQUESTED,
-                    p.getName() + " pause requested");
+            progressEmitter.emitStatus(p, StatusTag.ENGINE_HALT_REQUESTED, p.getName() + " pause requested");
         }
     }
 }

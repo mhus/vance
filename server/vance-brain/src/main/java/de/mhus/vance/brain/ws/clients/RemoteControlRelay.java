@@ -46,6 +46,7 @@ public class RemoteControlRelay {
 
     /** Direction marker on the wire. */
     static final String TO_CLIENT = "c";
+
     static final String TO_WATCHERS = "w";
 
     /** clientId → watcher connections on this pod. */
@@ -65,18 +66,18 @@ public class RemoteControlRelay {
     /** Per-process identity, used only to ignore our own Redis echo. */
     private final String podId = UUID.randomUUID().toString();
 
-    public RemoteControlRelay(WebSocketSender sender,
-                              VanceRedisMessagingService redis,
-                              ObjectMapper objectMapper,
-                              RemoteClientRegistry registry) {
+    public RemoteControlRelay(
+            WebSocketSender sender,
+            VanceRedisMessagingService redis,
+            ObjectMapper objectMapper,
+            RemoteClientRegistry registry) {
         this.sender = sender;
         this.redis = redis;
         this.objectMapper = objectMapper;
         this.registry = registry;
     }
 
-    private record Watcher(WebSocketSession wsSession, String tenantId, String userId,
-                           String editorId) {}
+    private record Watcher(WebSocketSession wsSession, String tenantId, String userId, String editorId) {}
 
     @PostConstruct
     public void start() {
@@ -93,10 +94,13 @@ public class RemoteControlRelay {
 
     public void attachWatcher(WebSocketSession wsSession, ConnectionContext ctx, String clientId) {
         String wsId = wsSession.getId();
-        watchersByClient.computeIfAbsent(clientId, k -> ConcurrentHashMap.newKeySet()).add(wsId);
-        clientsByWatcher.computeIfAbsent(wsId, k -> ConcurrentHashMap.newKeySet()).add(clientId);
-        watcherInfo.putIfAbsent(wsId,
-                new Watcher(wsSession, ctx.getTenantId(), ctx.getUserId(), ctx.getEditorId()));
+        watchersByClient
+                .computeIfAbsent(clientId, k -> ConcurrentHashMap.newKeySet())
+                .add(wsId);
+        clientsByWatcher
+                .computeIfAbsent(wsId, k -> ConcurrentHashMap.newKeySet())
+                .add(clientId);
+        watcherInfo.putIfAbsent(wsId, new Watcher(wsSession, ctx.getTenantId(), ctx.getUserId(), ctx.getEditorId()));
         log.trace("remote watcher attached: ws={} client={}", wsId, clientId);
     }
 
@@ -131,8 +135,7 @@ public class RemoteControlRelay {
             // remain: it keeps its own set and must not be left holding a
             // phantom entry that keeps the stream alive forever.
             if (watcher != null) {
-                sendDetachToClient(watcher.tenantId(), watcher.userId(), clientId,
-                        watcher.editorId());
+                sendDetachToClient(watcher.tenantId(), watcher.userId(), clientId, watcher.editorId());
             }
         }
     }
@@ -147,17 +150,13 @@ public class RemoteControlRelay {
         }
     }
 
-    private boolean hasWatchers(String clientId) {
-        Set<String> ids = watchersByClient.get(clientId);
-        return ids != null && !ids.isEmpty();
-    }
-
-    private void sendDetachToClient(String tenantId, String userId, String clientId,
-                                    String watcherId) {
+    private void sendDetachToClient(String tenantId, String userId, String clientId, String watcherId) {
         WebSocketEnvelope detach = WebSocketEnvelope.notification(
                 de.mhus.vance.api.ws.MessageType.CLIENT_DETACH,
                 de.mhus.vance.api.ws.RemoteAttachRequest.builder()
-                        .clientId(clientId).watcherId(watcherId).build());
+                        .clientId(clientId)
+                        .watcherId(watcherId)
+                        .build());
         toClient(tenantId, userId, clientId, detach);
     }
 
@@ -171,8 +170,7 @@ public class RemoteControlRelay {
         // local entry must not silently swallow the command.
         publish(TO_CLIENT, tenantId, userId, clientId, envelope);
         if (!deliveredLocally && !redis.isEnabled()) {
-            log.debug("remote command for {} undeliverable — client not on this pod and Redis is off",
-                    clientId);
+            log.debug("remote command for {} undeliverable — client not on this pod and Redis is off", clientId);
         }
     }
 
@@ -191,16 +189,13 @@ public class RemoteControlRelay {
      * as bytes on a shared Redis channel rather than from a handler that just
      * checked something.
      */
-    private boolean deliverToLocalClient(String tenantId, String userId, String clientId,
-                                         WebSocketEnvelope envelope) {
+    private boolean deliverToLocalClient(String tenantId, String userId, String clientId, WebSocketEnvelope envelope) {
         RemoteClientRegistry.LocalClient client = registry.findLocal(clientId);
         if (client == null) {
             return false;
         }
-        if (!Objects.equals(client.tenantId(), tenantId)
-                || !Objects.equals(client.userId(), userId)) {
-            log.debug("remote-control drop: client '{}' is not owned by {}/{}",
-                    clientId, tenantId, userId);
+        if (!Objects.equals(client.tenantId(), tenantId) || !Objects.equals(client.userId(), userId)) {
+            log.debug("remote-control drop: client '{}' is not owned by {}/{}", clientId, tenantId, userId);
             return false;
         }
         return trySend(client.wsSession(), envelope, clientId);
@@ -226,16 +221,15 @@ public class RemoteControlRelay {
             sender.sendOnChannel(wsSession, LiveChannels.CLIENTS, envelope);
             return true;
         } catch (IOException e) {
-            log.debug("remote-control push failed ws='{}' client='{}': {}",
-                    wsSession.getId(), clientId, e.toString());
+            log.debug("remote-control push failed ws='{}' client='{}': {}", wsSession.getId(), clientId, e.toString());
             return false;
         }
     }
 
     // ─── cross-pod ──────────────────────────────────────────────────────
 
-    private void publish(String direction, String tenantId, String userId, String clientId,
-                         WebSocketEnvelope envelope) {
+    private void publish(
+            String direction, String tenantId, String userId, String clientId, WebSocketEnvelope envelope) {
         if (!redis.isEnabled()) {
             return;
         }
@@ -250,7 +244,7 @@ public class RemoteControlRelay {
         // {podId}|{direction}|{tenantId}|{userId}|{clientId}|{base64(json(envelope))}
         String[] parts = body.split("\\|", -1);
         if (parts.length < 6) return;
-        if (Objects.equals(parts[0], podId)) return;  // own echo
+        if (Objects.equals(parts[0], podId)) return; // own echo
         String direction = parts[1];
         String tenantId = parts[2];
         String userId = parts[3];
@@ -264,13 +258,12 @@ public class RemoteControlRelay {
         }
     }
 
-    private String encode(String direction, String tenantId, String userId, String clientId,
-                          WebSocketEnvelope envelope) {
+    private String encode(
+            String direction, String tenantId, String userId, String clientId, WebSocketEnvelope envelope) {
         String prefix = podId + "|" + direction + "|" + tenantId + "|" + userId + "|" + clientId + "|";
         try {
             String json = objectMapper.writeValueAsString(envelope);
-            return prefix + Base64.getEncoder()
-                    .encodeToString(json.getBytes(StandardCharsets.UTF_8));
+            return prefix + Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
         } catch (JacksonException e) {
             return prefix;
         }
@@ -280,8 +273,7 @@ public class RemoteControlRelay {
         if (b64.isEmpty()) return null;
         try {
             byte[] json = Base64.getDecoder().decode(b64);
-            return objectMapper.readValue(
-                    new String(json, StandardCharsets.UTF_8), WebSocketEnvelope.class);
+            return objectMapper.readValue(new String(json, StandardCharsets.UTF_8), WebSocketEnvelope.class);
         } catch (RuntimeException e) {
             return null;
         }

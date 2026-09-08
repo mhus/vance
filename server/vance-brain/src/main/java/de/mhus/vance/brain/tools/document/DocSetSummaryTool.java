@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -33,11 +32,15 @@ public class DocSetSummaryTool implements Tool {
             "required", List.of("summary"));
 
     private static Map<String, Object> buildProps() {
-        Map<String, Object> p = new java.util.LinkedHashMap<>(de.mhus.vance.brain.tools.kinds.KindToolSupport.documentSelectorPropertiesWithIdAlias());
-        p.put("summary", Map.of(
-                "type", "string",
-                "description", "Summary text. Pass an empty "
-                        + "string to clear an existing summary."));
+        Map<String, Object> p = new java.util.LinkedHashMap<>(
+                de.mhus.vance.brain.tools.kinds.KindToolSupport.documentSelectorPropertiesWithIdAlias());
+        p.put(
+                "summary",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Summary text. Pass an empty " + "string to clear an existing summary."));
         return p;
     }
 
@@ -45,7 +48,8 @@ public class DocSetSummaryTool implements Tool {
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
     private final de.mhus.vance.brain.tools.kinds.KindToolSupport support;
 
-    public DocSetSummaryTool(DocumentService documentService,
+    public DocSetSummaryTool(
+            DocumentService documentService,
             de.mhus.vance.brain.permission.SecurityContextFactory contextFactory,
             de.mhus.vance.brain.tools.kinds.KindToolSupport support) {
         this.documentService = documentService;
@@ -53,7 +57,10 @@ public class DocSetSummaryTool implements Tool {
         this.support = support;
     }
 
-    @Override public String name() { return "doc_set_summary"; }
+    @Override
+    public String name() {
+        return "doc_set_summary";
+    }
 
     @Override
     public String description() {
@@ -65,7 +72,10 @@ public class DocSetSummaryTool implements Tool {
                 + "in the manifest.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -88,14 +98,13 @@ public class DocSetSummaryTool implements Tool {
 
         // Standard doc selector (path | id, plus the legacy documentId alias).
         // Resolution, tenant scoping and the READ check live in loadDocument.
-        DocumentDocument doc = support.loadDocument(
-                de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
+        DocumentDocument doc =
+                support.loadDocument(de.mhus.vance.brain.tools.kinds.KindToolSupport.withIdAlias(params), ctx);
         String documentId = doc.getId();
 
-        documentService.setSummary(documentId, summary,
-                contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
-        log.info("DocSetSummaryTool tenant='{}' id='{}' cleared={}",
-                ctx.tenantId(), documentId, summary.isBlank());
+        documentService.setSummary(
+                documentId, summary, contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
+        log.info("DocSetSummaryTool tenant='{}' id='{}' cleared={}", ctx.tenantId(), documentId, summary.isBlank());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", documentId);
@@ -106,11 +115,5 @@ public class DocSetSummaryTool implements Tool {
             out.put("cleared", true);
         }
         return out;
-    }
-
-    private static @Nullable String paramString(Map<String, Object> params, String key) {
-        if (params == null) return null;
-        Object v = params.get(key);
-        return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
 }

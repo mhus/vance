@@ -1,9 +1,9 @@
 package de.mhus.vance.anus.setup;
 
+import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.password.PasswordService;
-import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.tenant.TenantDocument;
@@ -61,8 +61,7 @@ public class SetupWizard {
     // provider (Simple-Auth) is loaded. The setup wizard only ever provisions
     // an ADMIN, so the created user is seeded as tenant-admin; all other users
     // get their grants later through the normal tooling.
-    private final ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap>
-            permissionBootstrapProvider;
+    private final ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider;
     // ObjectProvider mirrors the AccessCommands trick — the LineReader bean
     // depends transitively on the command catalog, so resolving it lazily
     // breaks the wiring cycle Spring Boot 4 otherwise rejects.
@@ -145,11 +144,9 @@ public class SetupWizard {
                     HomeBootstrapService.TENANT_PROJECT_NAME,
                     "ai.default.provider");
             String providerLabel = provider != null && !provider.isBlank() ? provider : "—";
-            out.printf("  >> [%d] Tenant: %s - %s (%s)%n",
-                    idx,
-                    t.getName(),
-                    StringUtils.defaultIfBlank(t.getTitle(), t.getName()),
-                    providerLabel);
+            out.printf(
+                    "  >> [%d] Tenant: %s - %s (%s)%n",
+                    idx, t.getName(), StringUtils.defaultIfBlank(t.getTitle(), t.getName()), providerLabel);
             List<UserDocument> users = userService.all(t.getName()).stream()
                     .sorted(Comparator.comparing(UserDocument::getName))
                     .toList();
@@ -157,7 +154,8 @@ public class SetupWizard {
                 out.println("     (no users)");
             } else {
                 for (UserDocument u : users) {
-                    out.printf("     - User: %s - %s - %s%n",
+                    out.printf(
+                            "     - User: %s - %s - %s%n",
                             u.getName(),
                             StringUtils.defaultIfBlank(u.getTitle(), u.getName()),
                             StringUtils.defaultIfBlank(u.getEmail(), "—"));
@@ -172,8 +170,7 @@ public class SetupWizard {
     // ──────────────────────── tenant selection ────────────────────────
 
     /** @return {@code false} if the operator quit. */
-    private boolean selectTenant(PrintWriter out, LineReader reader,
-            List<TenantDocument> tenants, SetupState state) {
+    private boolean selectTenant(PrintWriter out, LineReader reader, List<TenantDocument> tenants, SetupState state) {
         if (tenants.isEmpty()) {
             out.println("No tenants yet — let's create one.");
             out.flush();
@@ -216,8 +213,7 @@ public class SetupWizard {
                 continue;
             }
             if (TenantService.SYSTEM_TENANT.equals(name)) {
-                out.println("'" + TenantService.SYSTEM_TENANT
-                        + "' is reserved for internal use — pick another name.");
+                out.println("'" + TenantService.SYSTEM_TENANT + "' is reserved for internal use — pick another name.");
                 out.flush();
                 continue;
             }
@@ -250,8 +246,7 @@ public class SetupWizard {
         }
         if (users.isEmpty()) {
             out.println();
-            out.println("No users in tenant '" + state.getTenantId()
-                    + "' — let's create one.");
+            out.println("No users in tenant '" + state.getTenantId() + "' — let's create one.");
             out.flush();
             return createUser(out, reader, state);
         }
@@ -259,7 +254,8 @@ public class SetupWizard {
         out.println("Users in tenant '" + state.getTenantId() + "':");
         int idx = 1;
         for (UserDocument u : users) {
-            out.printf("  >> [%d] %s - %s - %s%n",
+            out.printf(
+                    "  >> [%d] %s - %s - %s%n",
                     idx,
                     u.getName(),
                     StringUtils.defaultIfBlank(u.getTitle(), u.getName()),
@@ -309,10 +305,8 @@ public class SetupWizard {
                 out.flush();
                 continue;
             }
-            if (!state.isTenantCreated()
-                    && userService.existsByTenantAndName(state.getTenantId(), name)) {
-                out.println("User '" + name + "' already exists in tenant '"
-                        + state.getTenantId() + "'.");
+            if (!state.isTenantCreated() && userService.existsByTenantAndName(state.getTenantId(), name)) {
+                out.println("User '" + name + "' already exists in tenant '" + state.getTenantId() + "'.");
                 out.flush();
                 continue;
             }
@@ -367,8 +361,10 @@ public class SetupWizard {
         }
         String tenantId = state.getTenantId();
         String providerId = settingService.getStringValue(
-                tenantId, SettingService.SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, "ai.default.provider");
+                tenantId,
+                SettingService.SCOPE_PROJECT,
+                HomeBootstrapService.TENANT_PROJECT_NAME,
+                "ai.default.provider");
         if (providerId == null) {
             return;
         }
@@ -394,11 +390,11 @@ public class SetupWizard {
         }
         state.setProvider(preset);
         String model = settingService.getStringValue(
-                tenantId, SettingService.SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, "ai.default.model");
+                tenantId, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, "ai.default.model");
         state.setAiModel(StringUtils.defaultIfBlank(model, preset.defaultModel()));
         String baseUrl = settingService.getStringValue(
-                tenantId, SettingService.SCOPE_PROJECT,
+                tenantId,
+                SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.TENANT_PROJECT_NAME,
                 "ai.provider." + instance + ".baseUrl");
         if (StringUtils.isNotBlank(baseUrl)) {
@@ -416,39 +412,37 @@ public class SetupWizard {
             out.println();
             out.println("Setup");
             out.println("-----");
-            out.printf("  1) Tenant:               %s%n", state.getTenantId()
-                    + (state.isTenantCreated() ? "  (new)" : ""));
-            out.printf("  2) Tenant title:         %s%n",
-                    StringUtils.defaultIfBlank(state.getTenantTitle(), "—"));
-            out.printf("  3) Username:             %s%n", state.getUserName()
-                    + (state.isUserCreated() ? "  (new)" : ""));
-            out.printf("  4) User title:           %s%n",
-                    StringUtils.defaultIfBlank(state.getUserTitle(), "—"));
-            out.printf("  5) User email:           %s%n",
-                    StringUtils.defaultIfBlank(state.getUserEmail(), "—"));
-            out.printf("  6) AI provider:          %s%n",
-                    p == null ? "(not configured)" : providerLabel(p, state));
-            out.printf("  7) AI model:             %s%n",
+            out.printf(
+                    "  1) Tenant:               %s%n",
+                    state.getTenantId() + (state.isTenantCreated() ? "  (new)" : ""));
+            out.printf("  2) Tenant title:         %s%n", StringUtils.defaultIfBlank(state.getTenantTitle(), "—"));
+            out.printf(
+                    "  3) Username:             %s%n", state.getUserName() + (state.isUserCreated() ? "  (new)" : ""));
+            out.printf("  4) User title:           %s%n", StringUtils.defaultIfBlank(state.getUserTitle(), "—"));
+            out.printf("  5) User email:           %s%n", StringUtils.defaultIfBlank(state.getUserEmail(), "—"));
+            out.printf("  6) AI provider:          %s%n", p == null ? "(not configured)" : providerLabel(p, state));
+            out.printf(
+                    "  7) AI model:             %s%n",
                     p == null ? "—" : StringUtils.defaultIfBlank(state.getAiModel(), "—"));
             if (p != null && p.requiresBaseUrl()) {
-                out.printf("  8) AI base URL:          %s%n",
+                out.printf(
+                        "  8) AI base URL:          %s%n",
                         StringUtils.defaultIfBlank(state.getBaseUrl(), "(required — not set)"));
             } else {
-                out.printf("  8) AI base URL:          %s%n",
-                        p == null ? "—" : "(n/a — provider uses its own endpoint)");
+                out.printf(
+                        "  8) AI base URL:          %s%n", p == null ? "—" : "(n/a — provider uses its own endpoint)");
             }
-            out.printf("  9) AI API key:           %s%n",
-                    p == null ? "—" : maskedFor(state.getAiApiKey(), existing));
+            out.printf("  9) AI API key:           %s%n", p == null ? "—" : maskedFor(state.getAiApiKey(), existing));
             if (p != null && p.supportsEmbedding()) {
-                out.printf(" 10) Embedding API key:    %s  (reuses chat key if blank)%n",
+                out.printf(
+                        " 10) Embedding API key:    %s  (reuses chat key if blank)%n",
                         maskedFor(state.getEmbeddingApiKey(), existing));
             } else if (p != null) {
                 out.println(" 10) Embedding API key:    (provider has no embeddings — uses in-process model)");
             } else {
                 out.println(" 10) Embedding API key:    —");
             }
-            out.printf(" 11) Serper key (research): %s%n",
-                    maskedFor(state.getSerperKey(), existing));
+            out.printf(" 11) Serper key (research): %s%n", maskedFor(state.getSerperKey(), existing));
             out.println();
             out.flush();
 
@@ -523,17 +517,14 @@ public class SetupWizard {
                         break;
                     }
                     if (!pr.supportsEmbedding()) {
-                        out.println("Provider " + pr.displayName()
-                                + " has no embedding endpoint — skip.");
+                        out.println("Provider " + pr.displayName() + " has no embedding endpoint — skip.");
                         break;
                     }
-                    String v = readPassword(reader,
-                            "Embedding API key (blank to reuse chat key): ");
+                    String v = readPassword(reader, "Embedding API key (blank to reuse chat key): ");
                     if (!StringUtils.isBlank(v)) state.setEmbeddingApiKey(v);
                 }
                 case "11" -> {
-                    String v = readPassword(reader,
-                            "Serper key (https://serper.dev, blank to skip research): ");
+                    String v = readPassword(reader, "Serper key (https://serper.dev, blank to skip research): ");
                     if (!StringUtils.isBlank(v)) state.setSerperKey(v);
                 }
                 default -> out.println("Unknown choice.");
@@ -553,8 +544,7 @@ public class SetupWizard {
             return p.displayName();
         }
         String instance = state.effectiveInstance();
-        return p.displayName() + "  ["
-                + (instance == null ? "instance not named" : instance) + "]";
+        return p.displayName() + "  [" + (instance == null ? "instance not named" : instance) + "]";
     }
 
     private void editProvider(PrintWriter out, LineReader reader, SetupState state) {
@@ -599,8 +589,8 @@ public class SetupWizard {
             askInstanceName(out, reader, state);
         }
         if (chosen.requiresBaseUrl()) {
-            out.println("OpenAI-compatible gateway selected — set the base URL (entry 8)"
-                    + " and a model id (entry 7).");
+            out.println(
+                    "OpenAI-compatible gateway selected — set the base URL (entry 8)" + " and a model id (entry 7).");
             out.flush();
         }
     }
@@ -624,23 +614,23 @@ public class SetupWizard {
         out.println("replaces that provider's own endpoint for this tenant.");
         out.flush();
         while (true) {
-            String raw = readLine(reader, "Instance name"
-                    + (state.getInstanceName() == null
-                            ? "" : " [" + state.getInstanceName() + "]")
-                    + ": ");
+            String raw = readLine(
+                    reader,
+                    "Instance name"
+                            + (state.getInstanceName() == null ? "" : " [" + state.getInstanceName() + "]")
+                            + ": ");
             if (raw == null) {
                 return;
             }
             if (raw.isBlank() && state.getInstanceName() != null) {
-                return;  // keep what is already there
+                return; // keep what is already there
             }
             String normalised = ProviderPreset.normaliseInstanceName(raw);
             if (normalised != null) {
                 state.setInstanceName(normalised);
                 return;
             }
-            out.println("Not a usable instance name — lower-case letters, digits, "
-                    + "'.', '_' and '-' only.");
+            out.println("Not a usable instance name — lower-case letters, digits, " + "'.', '_' and '-' only.");
             out.flush();
         }
     }
@@ -675,9 +665,7 @@ public class SetupWizard {
         if (p != null && keyPresent) {
             return true;
         }
-        String reason = (p == null)
-                ? "No AI provider is configured"
-                : "No AI API key is set for " + p.displayName();
+        String reason = (p == null) ? "No AI provider is configured" : "No AI API key is set for " + p.displayName();
         out.println();
         out.println(reason + " — the assistant won't be able to answer until you");
         out.println("configure a provider + API key later (Web-UI → LLM setup).");
@@ -698,8 +686,10 @@ public class SetupWizard {
             out.println("  + tenant '" + state.getTenantId() + "' created");
         } else if (!StringUtils.equals(
                 state.getTenantTitle(),
-                tenantService.findByName(state.getTenantId())
-                        .map(TenantDocument::getTitle).orElse(null))) {
+                tenantService
+                        .findByName(state.getTenantId())
+                        .map(TenantDocument::getTitle)
+                        .orElse(null))) {
             tenantService.update(state.getTenantId(), state.getTenantTitle(), null);
             out.println("  ~ tenant '" + state.getTenantId() + "' title updated");
         }
@@ -711,20 +701,11 @@ public class SetupWizard {
         if (state.isUserCreated()) {
             String hash = passwordService.hash(state.getUserPassword());
             userService.create(
-                    state.getTenantId(),
-                    state.getUserName(),
-                    hash,
-                    state.getUserTitle(),
-                    state.getUserEmail());
+                    state.getTenantId(), state.getUserName(), hash, state.getUserTitle(), state.getUserEmail());
             out.println("  + user '" + state.getUserName() + "' created");
         } else if (state.isUserFieldsChanged()) {
             userService.update(
-                    state.getTenantId(),
-                    state.getUserName(),
-                    state.getUserTitle(),
-                    state.getUserEmail(),
-                    null,
-                    null);
+                    state.getTenantId(), state.getUserName(), state.getUserTitle(), state.getUserEmail(), null, null);
             out.println("  ~ user '" + state.getUserName() + "' updated");
         }
 
@@ -764,10 +745,8 @@ public class SetupWizard {
             out.println("  ! AI provider has no instance name — settings skipped");
             return;
         }
-        setString(tenantId, "ai.default.provider", instance,
-                "Default AI provider for new sessions.");
-        setString(tenantId, "ai.default.model", state.getAiModel(),
-                "Default model id for the configured provider.");
+        setString(tenantId, "ai.default.provider", instance, "Default AI provider for new sessions.");
+        setString(tenantId, "ai.default.model", state.getAiModel(), "Default model id for the configured provider.");
         // A named instance is only a namespace until something binds it to a
         // protocol. The bundled `_provider.yaml` sidecars do that for the
         // instances we ship (see AiModelResolver), but an operator-chosen name
@@ -776,7 +755,9 @@ public class SetupWizard {
         // and pinning the type there would turn a shipped default into a
         // per-tenant setting nobody asked for.
         if (preset.requiresInstanceName()) {
-            setString(tenantId, "ai.provider." + instance + ".type",
+            setString(
+                    tenantId,
+                    "ai.provider." + instance + ".type",
                     ProviderPreset.CUSTOM_WIRE_TYPE,
                     "Wire protocol this provider instance speaks.");
         }
@@ -784,8 +765,11 @@ public class SetupWizard {
         // endpoint override lives next to the api key on the same instance.
         String baseUrl = state.getBaseUrl();
         if (StringUtils.isNotBlank(baseUrl)) {
-            setString(tenantId, "ai.provider." + instance + ".baseUrl",
-                    baseUrl.trim(), "OpenAI-compatible endpoint base URL.");
+            setString(
+                    tenantId,
+                    "ai.provider." + instance + ".baseUrl",
+                    baseUrl.trim(),
+                    "OpenAI-compatible endpoint base URL.");
             out.println("  + base URL written (" + baseUrl.trim() + ")");
         }
         // Aliases all point at the chat model — operator can split later
@@ -797,32 +781,35 @@ public class SetupWizard {
         }
         if (!StringUtils.isBlank(state.getAiApiKey())) {
             settingService.setEncryptedPassword(
-                    tenantId, SettingService.SCOPE_PROJECT,
+                    tenantId,
+                    SettingService.SCOPE_PROJECT,
                     HomeBootstrapService.TENANT_PROJECT_NAME,
                     "ai.provider." + instance + ".apiKey",
                     state.getAiApiKey());
             out.println("  + API key written for instance '" + instance + "'");
         }
         if (preset.supportsEmbedding()) {
-            setString(tenantId, "ai.embedding.provider", instance,
-                    "Embedding provider for RAG indexing.");
-            String embedKey = StringUtils.isBlank(state.getEmbeddingApiKey())
-                    ? state.getAiApiKey()
-                    : state.getEmbeddingApiKey();
+            setString(tenantId, "ai.embedding.provider", instance, "Embedding provider for RAG indexing.");
+            String embedKey =
+                    StringUtils.isBlank(state.getEmbeddingApiKey()) ? state.getAiApiKey() : state.getEmbeddingApiKey();
             if (!StringUtils.isBlank(embedKey)) {
                 settingService.setEncryptedPassword(
-                        tenantId, SettingService.SCOPE_PROJECT,
+                        tenantId,
+                        SettingService.SCOPE_PROJECT,
                         HomeBootstrapService.TENANT_PROJECT_NAME,
-                        "ai.embedding.apiKey", embedKey);
+                        "ai.embedding.apiKey",
+                        embedKey);
             }
         } else {
             // In-process model, no key. Matches the embedded provider in
             // ai.embedding.provider's documented vocabulary.
-            setString(tenantId, "ai.embedding.provider", "embedded",
+            setString(
+                    tenantId,
+                    "ai.embedding.provider",
+                    "embedded",
                     "Embedding provider for RAG indexing (in-process E5).");
         }
-        out.println("  ~ AI defaults written (instance '" + instance + "' / "
-                + state.getAiModel() + ")");
+        out.println("  ~ AI defaults written (instance '" + instance + "' / " + state.getAiModel() + ")");
     }
 
     /**
@@ -907,7 +894,12 @@ public class SetupWizard {
             return 0;
         }
         documentService.createText(
-                tenantId, project, path, /*title*/ null, /*tags*/ null, body,
+                tenantId,
+                project,
+                path, /*title*/
+                null, /*tags*/
+                null,
+                body,
                 /*createdBy*/ null,
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         return 1;
@@ -937,24 +929,35 @@ public class SetupWizard {
 
         boolean seeded = false;
         if (StringUtils.isNotBlank(name)) {
-            if (setStringIfAbsent(tenantId, SettingService.SCOPE_PROJECT,
+            if (setStringIfAbsent(
+                    tenantId,
+                    SettingService.SCOPE_PROJECT,
                     HomeBootstrapService.TENANT_PROJECT_NAME,
-                    LanguageResolver.Keys.CHAT_LANGUAGE, name.trim(),
+                    LanguageResolver.Keys.CHAT_LANGUAGE,
+                    name.trim(),
                     "Default assistant chat language.")) {
                 seeded = true;
             }
-            if (setStringIfAbsent(tenantId, SettingService.SCOPE_PROJECT,
+            if (setStringIfAbsent(
+                    tenantId,
+                    SettingService.SCOPE_PROJECT,
                     HomeBootstrapService.TENANT_PROJECT_NAME,
-                    LanguageResolver.Keys.CONTENT_LANGUAGE, name.trim(),
+                    LanguageResolver.Keys.CONTENT_LANGUAGE,
+                    name.trim(),
                     "Default document/memory content language.")) {
                 seeded = true;
             }
         }
         if (StringUtils.isNotBlank(code) && StringUtils.isNotBlank(state.getUserName())) {
             String hubProject = homeBootstrapService
-                    .ensureHome(tenantId, state.getUserName()).getName();
-            if (setStringIfAbsent(tenantId, SettingService.SCOPE_PROJECT, hubProject,
-                    LanguageResolver.Keys.WEBUI_LANGUAGE, code.trim().toLowerCase(),
+                    .ensureHome(tenantId, state.getUserName())
+                    .getName();
+            if (setStringIfAbsent(
+                    tenantId,
+                    SettingService.SCOPE_PROJECT,
+                    hubProject,
+                    LanguageResolver.Keys.WEBUI_LANGUAGE,
+                    code.trim().toLowerCase(),
                     "Default Web-UI chrome language.")) {
                 seeded = true;
             }
@@ -965,8 +968,8 @@ public class SetupWizard {
     }
 
     /** @return {@code true} if the setting was newly written (absent before). */
-    private boolean setStringIfAbsent(String tenantId, String scope, String refId,
-            String key, String value, @Nullable String description) {
+    private boolean setStringIfAbsent(
+            String tenantId, String scope, String refId, String key, String value, @Nullable String description) {
         if (StringUtils.isNotBlank(settingService.getStringValue(tenantId, scope, refId, key))) {
             return false;
         }
@@ -976,16 +979,13 @@ public class SetupWizard {
 
     private void setString(String tenantId, String key, String value, @Nullable String description) {
         settingService.set(
-                tenantId, SettingService.SCOPE_PROJECT,
+                tenantId,
+                SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.TENANT_PROJECT_NAME,
-                key, value, SettingType.STRING, description);
-    }
-
-    private void setBoolean(String tenantId, String key, boolean value) {
-        settingService.set(
-                tenantId, SettingService.SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME,
-                key, Boolean.toString(value), SettingType.BOOLEAN, null);
+                key,
+                value,
+                SettingType.STRING,
+                description);
     }
 
     // ──────────────────────── helpers ────────────────────────

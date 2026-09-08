@@ -8,7 +8,6 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
-import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
@@ -28,7 +27,6 @@ import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolErrorPayload;
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
@@ -39,6 +37,7 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.ToolException;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -49,6 +48,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -57,10 +57,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -103,10 +101,9 @@ public class Ford implements ThinkEngine {
      * specialised) recipes always supply the real prompt. Kept tiny
      * on purpose.
      */
-    private static final String SYSTEM_PROMPT =
-            "You are Ford, a generalist Vance worker. Use tools to "
-                    + "gather concrete data; paste the relevant data into "
-                    + "your reply. Don't invent content from training.";
+    private static final String SYSTEM_PROMPT = "You are Ford, a generalist Vance worker. Use tools to "
+            + "gather concrete data; paste the relevant data into "
+            + "your reply. Don't invent content from training.";
 
     /**
      * Base cascade path for the Ford engine prompt. Loaded via
@@ -179,6 +176,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver;
     private final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
+    private final de.mhus.vance.brain.guard.ShootyGuardService guardService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -217,6 +215,7 @@ public class Ford implements ThinkEngine {
      * are pulled in by that recipe via {@code allowedToolsAdd}.
      */
     private static final Set<String> ENGINE_DEFAULT_TOOLS;
+
     static {
         java.util.LinkedHashSet<String> base = new java.util.LinkedHashSet<>();
         // Discovery / introspection — Ford's bread-and-butter loop
@@ -295,8 +294,11 @@ public class Ford implements ThinkEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("Ford.start tenant='{}' session='{}' id='{}'",
-                process.getTenantId(), process.getSessionId(), process.getId());
+        log.info(
+                "Ford.start tenant='{}' session='{}' id='{}'",
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId());
         // No greeting on start. Workers spawned with steerContent
         // (the recipe-driven default) immediately drain that input —
         // a "Ford here. Ask me anything." message would just be
@@ -351,12 +353,14 @@ public class Ford implements ThinkEngine {
 
     // ──────────────────── One turn ────────────────────
 
-    private TurnOutcome runTurnFor(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            List<SteerMessage> inbox) {
+    private TurnOutcome runTurnFor(ThinkProcessDocument process, ThinkEngineContext ctx, List<SteerMessage> inbox) {
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
+        // START-point guards fire per genuine user turn, before prompt assembly
+        // (skill-trigger matching, active-skill resolution) — a start guard
+        // that activates a skill puts it into this very turn. Fail-open;
+        // guard-injected turns fire nothing. See planning/shooty.md.
+        guardService.runStartGuards(process, inbox);
         // Default IDLE on any abnormal exit — matches legacy lifecycle.
         // Set to outcome.awaitingUserInput() inside the try when the
         // tool-loop returns cleanly.
@@ -384,7 +388,8 @@ public class Ford implements ThinkEngine {
             List<SteerMessage> extras = new ArrayList<>();
             for (SteerMessage m : inbox) {
                 if (m instanceof SteerMessage.UserChatInput uci
-                        && uci.content() != null && !uci.content().isBlank()) {
+                        && uci.content() != null
+                        && !uci.content().isBlank()) {
                     chatLog.append(ChatMessageDocument.builder()
                             .tenantId(process.getTenantId())
                             .sessionId(process.getSessionId())
@@ -415,20 +420,21 @@ public class Ford implements ThinkEngine {
 
             List<ResolvedSkill> activeSkills = resolveActiveSkills(process);
 
-            ContextToolsApi tools = ctx.tools()
-                    .withAdditional(skillPromptComposer.mergedTools(activeSkills));
+            ContextToolsApi tools = ctx.tools().withAdditional(skillPromptComposer.mergedTools(activeSkills));
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                    process.getTenantId(), process.getProjectId(),
-                    config.providerInstance(), config.provider(), config.modelName());
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    config.providerInstance(),
+                    config.provider(),
+                    config.modelName());
 
             // params.modelSize: SMALL/LARGE force the prompt variant
             // independently of the catalog; AUTO/missing falls back
             // to the catalog's classification.
-            ModelSize effectiveSize = ModelSize.parseOrAuto(
-                    paramString(process, "modelSize", null), modelInfo.size());
-            List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, extras, modelInfo, effectiveSize, activeSkills, tools);
+            ModelSize effectiveSize = ModelSize.parseOrAuto(paramString(process, "modelSize", null), modelInfo.size());
+            List<ChatMessage> messages =
+                    buildPromptMessages(process, chatLog, extras, modelInfo, effectiveSize, activeSkills, tools);
             // Shared trigger: SOFT / HARD / EMERGENCY based on
             // estimated-tokens-vs-context-window thresholds in
             // vance.prak.*. Compacts via the strength-aware selector
@@ -436,35 +442,35 @@ public class Ford implements ThinkEngine {
             CompactionResult compactResult =
                     memoryCompactionService.compactIfNeeded(process, config, messages, modelInfo);
             if (compactResult.compacted()) {
-                log.info("Ford.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
+                log.info(
+                        "Ford.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
                         process.getId(),
                         compactResult.messagesCompacted(),
                         compactResult.summaryChars(),
                         compactResult.memoryId());
                 // Rebuild the prompt: the active-history shrunk and a
                 // new ARCHIVED_CHAT memory pinned the summary at top.
-                messages = buildPromptMessages(
-                        process, chatLog, extras, modelInfo, effectiveSize, activeSkills, tools);
+                messages = buildPromptMessages(process, chatLog, extras, modelInfo, effectiveSize, activeSkills, tools);
             }
 
             int maxIters = paramInt(process, "maxIterations", MAX_TOOL_ITERATIONS);
             boolean validation = paramBool(process, "validation", false);
             if (validation) {
-                log.info("Ford.turn id='{}' validation=on maxIters={}",
-                        process.getId(), maxIters);
+                log.info("Ford.turn id='{}' validation=on maxIters={}", process.getId(), maxIters);
             }
             String modelAlias = config.provider() + ":" + config.modelName();
-            TurnOutcome outcome = runToolLoop(
-                    aiChat, toolSpecs, tools, messages, ctx, process,
-                    maxIters, validation, modelAlias);
+            TurnOutcome outcome =
+                    runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process, maxIters, validation, modelAlias);
             if (outcome.interrupted()) {
                 // ESC / /pause bailed the loop: surface no answer, drop
                 // buffered history tags, let the finally park the status.
                 interrupted = true;
                 interruptForcePause = outcome.interruptForcePause();
                 ctx.historyTagSink().discard();
-                log.info("Ford.turn id='{}' interrupted (forcePause={}) — parking, no answer surfaced",
-                        process.getId(), interruptForcePause);
+                log.info(
+                        "Ford.turn id='{}' interrupted (forcePause={}) — parking, no answer surfaced",
+                        process.getId(),
+                        interruptForcePause);
                 return outcome;
             }
             if (outcome.recovered()) {
@@ -529,8 +535,7 @@ public class Ford implements ThinkEngine {
             }
 
             String preview = finalText.length() > 120 ? finalText.substring(0, 120) + "…" : finalText;
-            log.info("Ford.steer id='{}' awaiting={} -> '{}'",
-                    process.getId(), awaitingUserInput, preview);
+            log.info("Ford.steer id='{}' awaiting={} -> '{}'", process.getId(), awaitingUserInput, preview);
             return outcome;
         } finally {
             // Drain one-shot skills before the next turn — they only
@@ -541,8 +546,7 @@ public class Ford implements ThinkEngine {
                 // PAUSED (next message auto-resumes); status-flip path
                 // leaves the status the pause handler already set.
                 if (interruptForcePause) {
-                    thinkProcessService.updateStatus(
-                            process.getId(), ThinkProcessStatus.PAUSED);
+                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
                 }
             } else if (recoveredFromMaxIter && process.getParentProcessId() != null) {
                 // Sub-process worker exhausted its iteration budget.
@@ -554,13 +558,14 @@ public class Ford implements ThinkEngine {
                 // inbox). Without this the worker stays BLOCKED and
                 // every subsequent user message auto-forwards into a
                 // dead-end.
-                log.info("Ford id='{}' worker hit maxIter — closing INCOMPLETE so parent '{}' releases delegation pointer and learns the task did not finish",
-                        process.getId(), process.getParentProcessId());
+                log.info(
+                        "Ford id='{}' worker hit maxIter — closing INCOMPLETE so parent '{}' releases delegation pointer and learns the task did not finish",
+                        process.getId(),
+                        process.getParentProcessId());
                 thinkProcessService.closeProcess(process.getId(), CloseReason.INCOMPLETE);
             } else {
-                ThinkProcessStatus exitStatus = awaitingUserInput
-                        ? ThinkProcessStatus.BLOCKED
-                        : ThinkProcessStatus.IDLE;
+                ThinkProcessStatus exitStatus =
+                        awaitingUserInput ? ThinkProcessStatus.BLOCKED : ThinkProcessStatus.IDLE;
                 thinkProcessService.updateStatus(process.getId(), exitStatus);
             }
         }
@@ -604,25 +609,26 @@ public class Ford implements ThinkEngine {
         List<ResolvedSkill> out = new ArrayList<>(active.size());
         for (ActiveSkillRefEmbedded ref : active) {
             try {
-                skillResolver.resolve(scope, ref.getName())
-                        .ifPresentOrElse(out::add, () -> log.warn(
-                                "Ford id='{}' active skill '{}' no longer resolves — skipping",
-                                process.getId(), ref.getName()));
+                skillResolver
+                        .resolve(scope, ref.getName())
+                        .ifPresentOrElse(
+                                out::add,
+                                () -> log.warn(
+                                        "Ford id='{}' active skill '{}' no longer resolves — skipping",
+                                        process.getId(),
+                                        ref.getName()));
             } catch (UnknownSkillException e) {
-                log.warn("Ford id='{}' active skill '{}' unknown — skipping",
-                        process.getId(), ref.getName());
+                log.warn("Ford id='{}' active skill '{}' unknown — skipping", process.getId(), ref.getName());
             }
         }
         return out;
     }
 
     private SkillScopeContext scopeFor(ThinkProcessDocument process) {
-        SessionDocument session = sessionService.findBySessionId(process.getSessionId())
-                .orElse(null);
-        String userId = session != null && !session.getUserId().isBlank()
-                ? session.getUserId() : null;
-        String projectId = session != null && !session.getProjectId().isBlank()
-                ? session.getProjectId() : null;
+        SessionDocument session =
+                sessionService.findBySessionId(process.getSessionId()).orElse(null);
+        String userId = session != null && !session.getUserId().isBlank() ? session.getUserId() : null;
+        String projectId = session != null && !session.getProjectId().isBlank() ? session.getProjectId() : null;
         return SkillScopeContext.of(process.getTenantId(), userId, projectId);
     }
 
@@ -728,32 +734,30 @@ public class Ford implements ThinkEngine {
             // FrankieEngine and the StructuredActionEngine action loop).
             // Status-flip → bail, leave the status as-is; out-of-band halt
             // flag → clear it and park PAUSED so the next message resumes.
-            ThinkProcessStatus liveStatus = thinkProcessService.findById(process.getId())
-                    .map(ThinkProcessDocument::getStatus).orElse(process.getStatus());
+            ThinkProcessStatus liveStatus = thinkProcessService
+                    .findById(process.getId())
+                    .map(ThinkProcessDocument::getStatus)
+                    .orElse(process.getStatus());
             if (liveStatus == ThinkProcessStatus.SUSPENDED
                     || liveStatus == ThinkProcessStatus.PAUSED
                     || liveStatus == ThinkProcessStatus.CLOSED) {
-                log.info("Ford id='{}' tool-loop interrupt (status={}) — exiting",
-                        process.getId(), liveStatus);
+                log.info("Ford id='{}' tool-loop interrupt (status={}) — exiting", process.getId(), liveStatus);
                 return TurnOutcome.interrupted(false);
             }
             if (thinkProcessService.isHaltRequested(process.getId())) {
-                log.info("Ford id='{}' tool-loop halt requested — exiting (PAUSED)",
-                        process.getId());
+                log.info("Ford id='{}' tool-loop halt requested — exiting (PAUSED)", process.getId());
                 thinkProcessService.clearHalt(process.getId());
                 return TurnOutcome.interrupted(true);
             }
 
-            ChatRequest.Builder req = ChatRequest.builder()
-                    .messages(turnContextHandlers.apply(messages, ctx, process));
+            ChatRequest.Builder req = ChatRequest.builder().messages(turnContextHandlers.apply(messages, ctx, process));
             if (!toolSpecs.isEmpty()) {
                 req.toolSpecifications(toolSpecs);
             }
 
             AiMessage reply;
             try {
-                StreamResult streamed = streamOneIteration(
-                        aiChat, req.build(), ctx, process, modelAlias);
+                StreamResult streamed = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
                 reply = streamed.message;
             } catch (RuntimeException e) {
                 // LLM collapsed mid-loop (typically: Gemini "neither
@@ -765,11 +769,12 @@ public class Ford implements ThinkEngine {
                 if (!bestFreeText.isEmpty()) {
                     log.warn(
                             "Ford id='{}' tool-loop LLM failure ({}) — recovering with best Free-Text seen ({} chars)",
-                            process.getId(), e.toString(), bestFreeText.length());
+                            process.getId(),
+                            e.toString(),
+                            bestFreeText.length());
                     return TurnOutcome.recovered(bestFreeText);
                 }
-                log.warn("Ford id='{}' tool-loop LLM failure with no recoverable text",
-                        process.getId());
+                log.warn("Ford id='{}' tool-loop LLM failure with no recoverable text", process.getId());
                 throw e;
             }
 
@@ -795,19 +800,21 @@ public class Ford implements ThinkEngine {
                 // model re-read the tool results before it stops.
                 String text = reply.text();
                 int replyLen = text == null ? 0 : text.length();
-                if (validation && corrections < MAX_VALIDATION_CORRECTIONS
+                if (validation
+                        && corrections < MAX_VALIDATION_CORRECTIONS
                         && toolDataChars >= TOOL_DATA_THRESHOLD
                         && replyLen <= REPLY_BRIEF_THRESHOLD) {
-                    String template = nonBlankOr(
-                            process.getDataRelayCorrectionOverride(),
-                            DATA_RELAY_CORRECTION_TEMPLATE);
+                    String template =
+                            nonBlankOr(process.getDataRelayCorrectionOverride(), DATA_RELAY_CORRECTION_TEMPLATE);
                     log.info(
                             "Ford id='{}' validation: data-relay-gap (toolData={}, reply={}), correcting ({}/{})",
-                            process.getId(), toolDataChars, replyLen,
-                            corrections + 1, MAX_VALIDATION_CORRECTIONS);
+                            process.getId(),
+                            toolDataChars,
+                            replyLen,
+                            corrections + 1,
+                            MAX_VALIDATION_CORRECTIONS);
                     messages.add(reply);
-                    messages.add(SystemMessage.from(
-                            formatSafe(template, toolDataChars, replyLen)));
+                    messages.add(SystemMessage.from(formatSafe(template, toolDataChars, replyLen)));
                     corrections++;
                     continue;
                 }
@@ -815,8 +822,7 @@ public class Ford implements ThinkEngine {
                     finalText.append(text);
                 }
                 if (validation && corrections > 0) {
-                    log.info("Ford id='{}' validation: completed after {} correction(s)",
-                            process.getId(), corrections);
+                    log.info("Ford id='{}' validation: completed after {} correction(s)", process.getId(), corrections);
                 }
                 // awaiting by role: a worker (has a parent) is done → IDLE
                 // so the parent can steer again; a primary (no parent)
@@ -842,12 +848,13 @@ public class Ford implements ThinkEngine {
         if (!bestFreeText.isEmpty()) {
             log.warn(
                     "Ford id='{}' exceeded {} tool iterations — recovering with best Free-Text seen ({} chars)",
-                    process.getId(), maxIters, bestFreeText.length());
+                    process.getId(),
+                    maxIters,
+                    bestFreeText.length());
             return TurnOutcome.recovered(bestFreeText);
         }
         throw new AiChatException(
-                "Ford exceeded " + maxIters
-                        + " tool iterations — no recoverable text, aborting turn.");
+                "Ford exceeded " + maxIters + " tool iterations — no recoverable text, aborting turn.");
     }
 
     /**
@@ -868,9 +875,7 @@ public class Ford implements ThinkEngine {
         long startMs = System.currentTimeMillis();
 
         ChunkBatcher batcher = new ChunkBatcher(
-                streamingProperties.getChunkCharThreshold(),
-                streamingProperties.getChunkFlushMs(),
-                chunk -> {
+                streamingProperties.getChunkCharThreshold(), streamingProperties.getChunkFlushMs(), chunk -> {
                     ChatMessageChunkData data = ChatMessageChunkData.builder()
                             .thinkProcessId(process.getId())
                             .processName(process.getName())
@@ -914,14 +919,12 @@ public class Ford implements ThinkEngine {
             // throw AiChatException so runToolLoop's bestFreeText/format-correction
             // recovery engages, exactly as the structured engines do.
             ChatResponse response = done.get(STREAM_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-            llmCallTracker.record(
-                    process, request, response, System.currentTimeMillis() - startMs, modelAlias);
+            llmCallTracker.record(process, request, response, System.currentTimeMillis() - startMs, modelAlias);
             AiMessage reply = response.aiMessage();
             return new StreamResult(reply, reply.text() == null ? "" : reply.text());
         } catch (TimeoutException e) {
             done.cancel(true);
-            throw new AiChatException(
-                    "Ford streaming timed out after " + STREAM_TIMEOUT_MINUTES + "m", e);
+            throw new AiChatException("Ford streaming timed out after " + STREAM_TIMEOUT_MINUTES + "m", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new AiChatException("Ford streaming failed: " + cause.getMessage(), cause);
@@ -937,26 +940,22 @@ public class Ford implements ThinkEngine {
      * stringified rather than thrown — the model should see them and
      * retry or give up gracefully, not crash the turn.
      */
-    private String invokeOne(
-            ContextToolsApi tools, ToolExecutionRequest call, String processId) {
+    private String invokeOne(ContextToolsApi tools, ToolExecutionRequest call, String processId) {
         Map<String, Object> params;
         try {
             params = parseArgs(call.arguments());
         } catch (RuntimeException e) {
-            log.warn("Ford id='{}' tool='{}' bad arguments: {}",
-                    processId, call.name(), e.getMessage());
+            log.warn("Ford id='{}' tool='{}' bad arguments: {}", processId, call.name(), e.getMessage());
             return errorJson("Invalid tool arguments: " + e.getMessage());
         }
         try {
             Map<String, Object> result = tools.invoke(call.name(), params);
             return objectMapper.writeValueAsString(result);
         } catch (ToolException e) {
-            log.info("Ford id='{}' tool='{}' returned error: {}",
-                    processId, call.name(), e.getMessage());
+            log.info("Ford id='{}' tool='{}' returned error: {}", processId, call.name(), e.getMessage());
             return errorJson(e);
         } catch (RuntimeException e) {
-            log.warn("Ford id='{}' tool='{}' unexpected failure: {}",
-                    processId, call.name(), e.toString());
+            log.warn("Ford id='{}' tool='{}' unexpected failure: {}", processId, call.name(), e.toString());
             return errorJson("Tool failed: " + e.getMessage());
         }
     }
@@ -1006,14 +1005,16 @@ public class Ford implements ThinkEngine {
      *        {@link SystemMessage} after the engine-default prompt.
      */
     private List<ChatMessage> buildPromptMessages(
-            ThinkProcessDocument process, ChatMessageService chatLog,
+            ThinkProcessDocument process,
+            ChatMessageService chatLog,
             List<SteerMessage> inboxExtras,
-            ModelInfo modelInfo, ModelSize tier, List<ResolvedSkill> activeSkills,
+            ModelInfo modelInfo,
+            ModelSize tier,
+            List<ResolvedSkill> activeSkills,
             ContextToolsApi tools) {
         List<ChatMessage> messages = new ArrayList<>();
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
-                de.mhus.vance.brain.prompt.PromptContextBuilder
-                        .forProcess(process, modelInfo)
+                de.mhus.vance.brain.prompt.PromptContextBuilder.forProcess(process, modelInfo)
                         .tier(tier)
                         .engine(NAME);
         // Per-turn client context — cortex-mode fires only when a Cortex
@@ -1023,15 +1024,14 @@ public class Ford implements ThinkEngine {
         // template reads only the cortex half today, and setting the rest
         // costs nothing — see ClientTurnContextResolver.
         clientTurnContextResolver.resolve(process, inboxExtras).applyTo(ctxBuilder);
-        ctxBuilder.withRootDirTypes(workspaceService.getRootDirTypes(
-                        process.getTenantId(), process.getProjectId()))
+        ctxBuilder
+                .withRootDirTypes(workspaceService.getRootDirTypes(process.getTenantId(), process.getProjectId()))
                 // This turn's manifest, so the template can gate
                 // tool-specific text on the tool being callable.
                 // Ford already has the classified surface as a
                 // parameter — no second classify() needed here.
                 .withAvailableTools(tools.primary());
-        String base = composer.compose(process,
-                engineDefaultPrompt(process), ctxBuilder);
+        String base = composer.compose(process, engineDefaultPrompt(process), ctxBuilder);
         String memoryBlock = memoryContextLoader.composeBlock(process);
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             base = base + "\n\n" + memoryBlock;
@@ -1040,8 +1040,7 @@ public class Ford implements ThinkEngine {
         // Pack-level tool usage notes — see ContextToolsApi.activePromptHints.
         // Fires only when a reachable tool's ServerToolConfig.promptHint
         // is non-empty (Jira: "cloudId is auto-injected", etc.).
-        java.util.List<String> hints = tools == null
-                ? java.util.List.of() : tools.activePromptHints();
+        java.util.List<String> hints = tools == null ? java.util.List.of() : tools.activePromptHints();
         if (!hints.isEmpty()) {
             StringBuilder hb = new StringBuilder("## Tool usage notes\n\n");
             for (int i = 0; i < hints.size(); i++) {
@@ -1050,8 +1049,8 @@ public class Ford implements ThinkEngine {
             }
             messages.add(SystemMessage.from(hb.toString()));
         }
-        String skillSection = skillPromptComposer.compose(activeSkills, ctxBuilder.build(),
-                de.mhus.vance.brain.skill.SkillTurnSupport.rawArgsByName(process));
+        String skillSection = skillPromptComposer.compose(
+                activeSkills, ctxBuilder.build(), de.mhus.vance.brain.skill.SkillTurnSupport.rawArgsByName(process));
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }
@@ -1063,14 +1062,12 @@ public class Ford implements ThinkEngine {
         // specification/public/prompt-caching.md §5a.
         for (MemoryDocument m : memoryService.activeByProcessAndKind(
                 process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {
-            messages.add(SystemMessage.from(
-                    "[Conversation summary from earlier turns]\n" + m.getContent()));
+            messages.add(SystemMessage.from("[Conversation summary from earlier turns]\n" + m.getContent()));
         }
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour, default none). DYNAMIC — date rollover stays
         // behind the cache marker. See PromptDateBlock.
-        promptDateContextResolver.appendDynamicMessage(
-                messages, process, modelInfo == null ? null : modelInfo.size());
+        promptDateContextResolver.appendDynamicMessage(messages, process, modelInfo == null ? null : modelInfo.size());
         // Client environment (os/shell/cwd/sandbox) — tells the LLM which
         // command dialect its client_exec_run calls run on. DYNAMIC, no-op
         // when no CLIENT connection is bound. See PromptEnvironmentBlock.
@@ -1078,8 +1075,8 @@ public class Ford implements ThinkEngine {
         // Scratchpad slot inventory — DYNAMIC, no-op for a process that
         // took no notes. See ScratchpadPromptBlock.
         scratchpadPromptContributor.appendDynamicMessage(messages, process);
-        for (ChatMessageDocument msg : historyStrengthFilter.filter(chatLog.activeHistory(
-                process.getTenantId(), process.getSessionId(), process.getId()))) {
+        for (ChatMessageDocument msg : historyStrengthFilter.filter(
+                chatLog.activeHistory(process.getTenantId(), process.getSessionId(), process.getId()))) {
             messages.add(toLangchain(msg));
         }
         // Non-UserChatInput inbox items (ProcessEvent, ToolResult,
@@ -1114,17 +1111,17 @@ public class Ford implements ThinkEngine {
             sb.append("<process-event sourceProcessId=\"")
                     .append(escapeAttr(pe.sourceProcessId()))
                     .append("\"");
-            String sourceName = thinkProcessService.findById(pe.sourceProcessId())
-                    .map(ThinkProcessDocument::getName).orElse(null);
+            String sourceName = thinkProcessService
+                    .findById(pe.sourceProcessId())
+                    .map(ThinkProcessDocument::getName)
+                    .orElse(null);
             if (sourceName != null && !sourceName.isBlank()) {
                 sb.append(" sourceProcessName=\"")
                         .append(escapeAttr(sourceName))
                         .append("\"");
             }
             if (pe.eventId() != null && !pe.eventId().isBlank()) {
-                sb.append(" eventId=\"")
-                        .append(escapeAttr(pe.eventId()))
-                        .append("\"");
+                sb.append(" eventId=\"").append(escapeAttr(pe.eventId())).append("\"");
             }
             if (pe.inResponseToAt() != null) {
                 sb.append(" respondingToTurnAt=\"")
@@ -1197,8 +1194,7 @@ public class Ford implements ThinkEngine {
         return p == null ? null : p.get(key);
     }
 
-    private static @Nullable String paramString(
-            ThinkProcessDocument process, String key, @Nullable String fallback) {
+    private static @Nullable String paramString(ThinkProcessDocument process, String key, @Nullable String fallback) {
         Object v = param(process, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
     }
@@ -1217,25 +1213,25 @@ public class Ford implements ThinkEngine {
         try {
             return String.format(template, args);
         } catch (RuntimeException e) {
-            log.warn("Ford: validator template format failed ({}), using template verbatim",
-                    e.toString());
+            log.warn("Ford: validator template format failed ({}), using template verbatim", e.toString());
             return template;
         }
     }
 
-    private static int paramInt(
-            ThinkProcessDocument process, String key, int fallback) {
+    private static int paramInt(ThinkProcessDocument process, String key, int fallback) {
         Object v = param(process, key);
         if (v instanceof Number n) return n.intValue();
         if (v instanceof String s) {
-            try { return Integer.parseInt(s.trim()); }
-            catch (NumberFormatException e) { return fallback; }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                return fallback;
+            }
         }
         return fallback;
     }
 
-    private static boolean paramBool(
-            ThinkProcessDocument process, String key, boolean fallback) {
+    private static boolean paramBool(ThinkProcessDocument process, String key, boolean fallback) {
         Object v = param(process, key);
         if (v instanceof Boolean b) return b;
         if (v instanceof String s) return Boolean.parseBoolean(s.trim());

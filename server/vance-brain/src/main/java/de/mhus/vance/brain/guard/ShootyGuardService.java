@@ -162,6 +162,13 @@ public class ShootyGuardService {
     private final Map<String, Map<String, Object>> loopScratch = boundedLru(SCRATCH_MAX);
     /** Transient per-session scratch: sessionId → flags. Bounded LRU, non-persistent. */
     private final Map<String, Map<String, Object>> sessionScratch = boundedLru(SCRATCH_MAX);
+    /**
+     * Transient turn-prompt replacement: processId → this turn's system
+     * prompt, set by a START guard via {@code vance.guard.setTurnPrompt}
+     * and consumed by {@link GuardTurnContextHandler}. Bounded LRU,
+     * non-persistent; cleared at the next genuine user turn.
+     */
+    private final Map<String, String> turnPromptStore = boundedLru(SCRATCH_MAX);
 
     // ────────────────────────── STOP / TERMINATE ──────────────────────────
 
@@ -289,6 +296,11 @@ public class ShootyGuardService {
             public boolean activateSkill(String skillName, @Nullable String args) {
                 return ShootyGuardService.this.activateSkill(process, skillName, args);
             }
+
+            @Override
+            public void setTurnPrompt(String text) {
+                throw unavailable("setTurnPrompt", "stop/terminate");
+            }
         };
     }
 
@@ -316,6 +328,10 @@ public class ShootyGuardService {
         if (userText == null) {
             return;
         }
+        // A genuine user turn starts a fresh work unit: a turn prompt the
+        // previous turn's START guard may have set is stale now. Clear it
+        // before the guards run — by default nothing is replaced.
+        turnPromptStore.remove(process.getId());
         boolean any = false;
         for (GuardConfig guard : resolveGuards(process)) {
             if (!guard.trigger().firesOnStart()) {
@@ -336,6 +352,12 @@ public class ShootyGuardService {
                 @Override
                 public boolean activateSkill(String skillName, @Nullable String args) {
                     return ShootyGuardService.this.activateSkill(process, skillName, args);
+                }
+
+                @Override
+                public void setTurnPrompt(String text) {
+                    turnPromptStore.put(process.getId(), text);
+                    log.info("Guard set turn prompt id='{}' ({} chars)", process.getId(), text.length());
                 }
             };
             try {
@@ -404,6 +426,11 @@ public class ShootyGuardService {
                 public boolean activateSkill(String skillName, @Nullable String args) {
                     return ShootyGuardService.this.activateSkill(process, skillName, args);
                 }
+
+                @Override
+                public void setTurnPrompt(String text) {
+                    throw unavailable("setTurnPrompt", "command");
+                }
             };
             try {
                 runGuardScript(
@@ -430,6 +457,16 @@ public class ShootyGuardService {
             metrics.counter(METRIC, "outcome", "passed").increment();
         }
         return null;
+    }
+
+    /**
+     * The turn-prompt replacement a START guard set for this process's
+     * current turn, or {@code null} when the prompt is not manipulated
+     * (the default). Read by {@link GuardTurnContextHandler} before each
+     * LLM request.
+     */
+    public @Nullable String turnPromptFor(ThinkProcessDocument process) {
+        return turnPromptStore.get(process.getId());
     }
 
     /** The {@code vance.guard.command} context: {@code {name, args}}. */

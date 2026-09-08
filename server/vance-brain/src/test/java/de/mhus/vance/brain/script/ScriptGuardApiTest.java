@@ -70,6 +70,11 @@ class ScriptGuardApiTest {
             public boolean activateSkill(String skillName, String args) {
                 throw new ScriptHostException("activateSkill: stub", null);
             }
+
+            @Override
+            public void setTurnPrompt(String text) {
+                throw new ScriptHostException("setTurnPrompt: stub", null);
+            }
         };
     }
 
@@ -104,6 +109,11 @@ class ScriptGuardApiTest {
             @Override
             public boolean activateSkill(String skillName, String args) {
                 return false;
+            }
+
+            @Override
+            public void setTurnPrompt(String text) {
+                throw new ScriptHostException("setTurnPrompt: stub", null);
             }
         });
         assertThat(g.point).isEqualTo("command");
@@ -154,6 +164,11 @@ class ScriptGuardApiTest {
             public boolean activateSkill(String skillName, String args) {
                 return false;
             }
+
+            @Override
+            public void setTurnPrompt(String text) {
+                throw new ScriptHostException("setTurnPrompt: stub", null);
+            }
         });
         assertThatThrownBy(() -> g.deny("  ")).isInstanceOf(ScriptHostException.class);
     }
@@ -177,6 +192,11 @@ class ScriptGuardApiTest {
             @Override
             public boolean activateSkill(String skillName, String args) {
                 return false;
+            }
+
+            @Override
+            public void setTurnPrompt(String text) {
+                throw new ScriptHostException("setTurnPrompt: stub", null);
             }
         });
         assertThatThrownBy(() -> g.continueWith("nudge"))

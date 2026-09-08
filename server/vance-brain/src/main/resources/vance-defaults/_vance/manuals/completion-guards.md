@@ -13,7 +13,7 @@ the point's context and actions. Present only in guard runs;
 |---|---|---|---|
 | `stop` (default) | engine would finish and yield | `continueWith(prompt)` | open |
 | `terminate` | explicit terminate (e.g. `_terminate`) | `continueWith(prompt)` | open |
-| `start` | once per genuine user turn | `activateSkill(...)` | open |
+| `start` | once per genuine user turn | `activateSkill(...)`, `setTurnPrompt(text)` | open |
 | `command` | before an engine command runs | `deny(reason)` | **closed, hard** |
 
 The scratch stores (`loopValues` / `sessionValues`) are shared across all
@@ -38,6 +38,8 @@ vance.guard.deny("this command deletes project data");
 // → command fails hard with this reason. Command point only.
 const fresh = vance.guard.activateSkill("review-mode", "optional args");
 // → sticky skill activation, no separate action turn. Any point.
+vance.guard.setTurnPrompt("You are the release auditor. Check every step...");
+// → REPLACES this turn's system prompt entirely. Start point only.
 
 // transient scratch — survives the re-entrant guard runs of this loop/session
 vance.guard.loopValues     // per process/loop (reset on a real user turn)
@@ -72,6 +74,24 @@ if (/deploy|release/i.test(vance.guard.task))
 
 Run-once-per-process logic belongs in `sessionValues` (it survives the
 per-turn reset); `loopValues` is wiped on every genuine user turn.
+
+**Replace the turn's system prompt** (start) — full replacement, not
+additive: the recipe prompt, skill blocks and date context are gone for the
+turn; fold anything you still need (even skills you activated) into the
+text. One text per turn (last call wins), computed freely — e.g. from a
+LightLlm call or documents read this turn:
+
+```js
+if (!vance.guard.sessionValues.get('audited') && /audit/i.test(vance.guard.task)) {
+  vance.guard.sessionValues.set('audited', true);
+  const v = vance.llm.callForJson("audit-framing", "Frame this audit turn.", { task: vance.guard.task });
+  vance.guard.setTurnPrompt(v.prompt);
+}
+```
+
+By default the prompt is not manipulated: a turn whose start guard sets
+nothing gets the normal recipe prompt. A guard-injected follow-up turn
+inherits the replacement (same work unit).
 
 **Gate a command with an LLM judge** (command) — a deny fails the command
 hard, and so does a script error (fail-closed):

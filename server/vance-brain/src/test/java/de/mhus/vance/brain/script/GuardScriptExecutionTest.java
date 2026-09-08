@@ -63,6 +63,7 @@ class GuardScriptExecutionTest {
     private static class RecordingHost implements GuardScriptHost {
         final List<String> prompts = new ArrayList<>();
         final List<String> denials = new ArrayList<>();
+        volatile String turnPrompt;
         int rounds;
         final int maxRounds;
 
@@ -90,6 +91,11 @@ class GuardScriptExecutionTest {
         @Override
         public boolean activateSkill(String skillName, String args) {
             throw new ScriptHostException("activateSkill: stubbed out in this test", null);
+        }
+
+        @Override
+        public void setTurnPrompt(String text) {
+            turnPrompt = text;
         }
     }
 
@@ -261,5 +267,37 @@ class GuardScriptExecutionTest {
                         "command",
                         Map.of("name", "ping", "args", Map.of())))
                 .isInstanceOf(ScriptExecutionException.class);
+    }
+
+    @Test
+    void startPoint_setTurnPrompt_recordsViaTheRealExecutor() {
+        RecordingHost host = new RecordingHost(0, 3);
+        Object result = runGuard(
+                "const ok = vance.guard.point === 'start';\n"
+                        + "vance.guard.setTurnPrompt('custom framing');\n"
+                        + "ok;",
+                "",
+                new ConcurrentHashMap<>(),
+                new ConcurrentHashMap<>(),
+                host,
+                "start",
+                null);
+        assertThat(result).isEqualTo(true);
+        assertThat(host.turnPrompt).isEqualTo("custom framing");
+    }
+
+    @Test
+    void startPoint_setTurnPrompt_blankText_failsTheScript() {
+        RecordingHost host = new RecordingHost(0, 3);
+        assertThatThrownBy(() -> runGuard(
+                        "vance.guard.setTurnPrompt('  ');",
+                        "",
+                        new ConcurrentHashMap<>(),
+                        new ConcurrentHashMap<>(),
+                        host,
+                        "start",
+                        null))
+                .isInstanceOf(ScriptExecutionException.class);
+        assertThat(host.turnPrompt).isNull();
     }
 }

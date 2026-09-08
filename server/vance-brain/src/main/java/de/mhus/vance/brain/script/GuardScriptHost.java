@@ -31,6 +31,11 @@ import org.jspecify.annotations.Nullable;
  *       guarded process, auto-trigger-style (marked active, no separate
  *       action turn), so a {@code start} guard firing before prompt
  *       assembly puts the skill into the very turn it opens.</li>
+ *   <li>{@link #setTurnPrompt} — START. <b>Replaces</b> this turn's
+ *       system prompt with {@code text} (not additive — the recipe's
+ *       prompt, skill blocks and date context are gone for the turn).
+ *       One text per turn, last call wins; the store is cleared at the
+ *       next genuine user turn, and by default nothing is replaced.</li>
  * </ul>
  */
 public interface GuardScriptHost {
@@ -68,4 +73,16 @@ public interface GuardScriptHost {
      *         {@code false} when it was already active
      */
     boolean activateSkill(String skillName, @Nullable String args);
+
+    /**
+     * <b>Replace</b> this turn's system prompt with {@code text}. START
+     * point only — the host throws a
+     * {@link VanceScriptApi.ScriptHostException} elsewhere. Not additive:
+     * recipe prompt, skill blocks and date context are gone for the
+     * turn. One text per turn (last call wins); cleared at the next
+     * genuine user turn; nothing set means no manipulation.
+     *
+     * @param text the turn's system prompt (non-blank)
+     */
+    void setTurnPrompt(String text);
 }

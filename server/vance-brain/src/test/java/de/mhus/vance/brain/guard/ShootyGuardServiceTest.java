@@ -49,6 +49,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -492,6 +493,98 @@ class ShootyGuardServiceTest {
 
         // Fail-open: the turn proceeds, the exception does not propagate.
         service.runStartGuards(recipeProcess(), List.of(userMsg));
+    }
+
+    // ─────────── START: turn-prompt replacement ───────────
+
+    @Test
+    void startGuard_setTurnPrompt_isStoredForTheTurn() {
+        recipeWith(GuardConfig.scriptBody("vance.guard.setTurnPrompt('custom framing');", false, GuardPoint.START, 1));
+        when(scriptExecutor.run(any())).thenAnswer(inv -> {
+            ScriptRequest req = inv.getArgument(0);
+            req.guardApi().setTurnPrompt("custom framing");
+            return new ScriptResult(null, Duration.ZERO);
+        });
+        SteerMessage userMsg = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "hi");
+
+        service.runStartGuards(recipeProcess(), List.of(userMsg));
+
+        assertThat(service.turnPromptFor(recipeProcess())).isEqualTo("custom framing");
+    }
+
+    @Test
+    void startGuard_nextUserTurn_clearsStaleTurnPrompt_byDefault() {
+        // Turn 1: the start guard replaces the prompt. Turn 2: the start
+        // guard does NOT set a prompt — by default the prompt is not
+        // manipulated, so the stale replacement must be gone. One answer
+        // with a flag instead of re-stubbing: a second when(...) would
+        // execute this very answer with a null matcher argument.
+        AtomicBoolean setPrompt = new AtomicBoolean(true);
+        recipeWith(GuardConfig.scriptBody("vance.guard.setTurnPrompt('v1');", false, GuardPoint.START, 1));
+        when(scriptExecutor.run(any())).thenAnswer(inv -> {
+            ScriptRequest req = inv.getArgument(0);
+            if (setPrompt.get() && req != null) {
+                req.guardApi().setTurnPrompt("v1");
+            }
+            return new ScriptResult(null, Duration.ZERO);
+        });
+        SteerMessage userMsg = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "hi");
+        service.runStartGuards(recipeProcess(), List.of(userMsg));
+        assertThat(service.turnPromptFor(recipeProcess())).isEqualTo("v1");
+
+        setPrompt.set(false);
+        SteerMessage next = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "next request");
+        service.runStartGuards(recipeProcess(), List.of(next));
+
+        assertThat(service.turnPromptFor(recipeProcess())).isNull();
+    }
+
+    @Test
+    void startGuard_lastSetTurnPromptWins() {
+        recipeWith(GuardConfig.scriptBody("vance.guard.setTurnPrompt('a');", false, GuardPoint.START, 1));
+        AtomicReference<String> seen = new AtomicReference<>();
+        when(scriptExecutor.run(any())).thenAnswer(inv -> {
+            ScriptRequest req = inv.getArgument(0);
+            req.guardApi().setTurnPrompt("first");
+            req.guardApi().setTurnPrompt("second");
+            seen.set(req.guardApi().point);
+            return new ScriptResult(null, Duration.ZERO);
+        });
+        SteerMessage userMsg = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "hi");
+
+        service.runStartGuards(recipeProcess(), List.of(userMsg));
+
+        assertThat(seen.get()).isEqualTo("start");
+        assertThat(service.turnPromptFor(recipeProcess())).isEqualTo("second");
+    }
+
+    @Test
+    void noStartGuard_noTurnPrompt_byDefault() {
+        // A process with only a STOP guard (the runtime override) never
+        // touches the turn prompt.
+        SteerMessage userMsg = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "hi");
+
+        service.runStartGuards(guarded(0), List.of(userMsg));
+
+        assertThat(service.turnPromptFor(guarded(0))).isNull();
+        verify(scriptExecutor, never()).run(any());
+    }
+
+    @Test
+    void stopGuard_setTurnPrompt_failsOpen() {
+        // setTurnPrompt is a START-only action — a stop-guard script
+        // calling it is a script bug; the throw is caught and the yield
+        // proceeds (fail-open, like every other stop-script error).
+        when(scriptExecutor.run(any())).thenAnswer(inv -> {
+            ScriptRequest req = inv.getArgument(0);
+            req.guardApi().setTurnPrompt("nope");
+            return new ScriptResult(null, Duration.ZERO);
+        });
+
+        GuardEvaluation result = service.evaluate(guarded(0), "done", true);
+
+        assertThat(result.fired()).isFalse();
+        assertThat(service.turnPromptFor(guarded(0))).isNull();
     }
 
     // ─────────────────── COMMAND point ───────────────────

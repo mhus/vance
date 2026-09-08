@@ -1017,8 +1017,10 @@ public final class VanceScriptApi {
      * {@link #output}, {@link #round}, {@link #maxRounds},
      * {@link #naturalStop}, {@link #point}, {@link #command}), the
      * point-specific actions {@link #continueWith(String)} (STOP/TERMINATE),
-     * {@link #deny(String)} (COMMAND) and {@link #activateSkill(String,
-     * String)} (any point), and the two transient scratch stores
+     * {@link #deny(String)} (COMMAND), {@link #activateSkill(String,
+     * String)} (any point) and {@link #setTurnPrompt(String)} (START —
+     * replaces this turn's system prompt), and the two transient scratch
+     * stores
      * {@link #loopValues} (per process/loop) and {@link #sessionValues}
      * (per session) — both {@link ScriptGuardScratchApi} instances backed
      * by host-side maps that survive across the re-entrant guard runs.
@@ -1155,6 +1157,24 @@ public final class VanceScriptApi {
                 throw new ScriptHostException("vance.guard.activateSkill: skillName must not be blank", null);
             }
             return host.activateSkill(skillName, args);
+        }
+
+        /**
+         * <b>Replace</b> this turn's system prompt with {@code text} —
+         * START point only; the host throws a {@link ScriptHostException}
+         * at every other point. Not additive: recipe prompt, skill blocks
+         * and date context are gone for the turn. One text per turn (last
+         * call wins), cleared at the next genuine user turn; nothing set
+         * means the prompt is not manipulated.
+         *
+         * @param text the turn's system prompt (non-blank)
+         */
+        @HostAccess.Export
+        public void setTurnPrompt(String text) {
+            if (text == null || text.isBlank()) {
+                throw new ScriptHostException("vance.guard.setTurnPrompt: text must not be blank", null);
+            }
+            host.setTurnPrompt(text);
         }
     }
 

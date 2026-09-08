@@ -90,7 +90,7 @@ const canConfirm = computed(() => {
   }
   if (props.mode === 'encrypt') {
     return keyMode.value === 'identities'
-      ? ageKeys.identities.length > 0
+      ? ageKeys.identities.length > 0 || identityText.value.trim().length > 0
       : newPassphrase.value.length > 0;
   }
   return ageKeys.hasSecrets || identityText.value.trim().length > 0 || passphraseText.value.length > 0;
@@ -159,6 +159,11 @@ async function onConfirm(): Promise<void> {
 }
 
 async function confirmEncrypt(): Promise<void> {
+  // Consume the paste box first, exactly like the decrypt side: a pasted
+  // identity the user never explicitly "added" is still the key they expect
+  // to decrypt with — silently dropping it would leave them believing a
+  // second device can read what only the stored identities can.
+  if (!addPastedIdentity()) return;
   const plaintext = props.document.inlineText;
   const useIdentities = keyMode.value === 'identities' && ageKeys.identities.length > 0;
   const armored = useIdentities

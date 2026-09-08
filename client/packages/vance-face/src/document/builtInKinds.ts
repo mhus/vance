@@ -96,10 +96,6 @@ export function registerBuiltInKinds(): void {
   // Same identity-codec shape as compose — the Edit tab stays a raw
   // YAML CodeEditor (the definition is the artefact, and it is what
   // the server parses), the View tab renders the state graph.
-  // ── Magrathea workflow: state machine drawn as a flow ──────────
-  // Same identity-codec shape as compose — the Edit tab stays a raw
-  // YAML CodeEditor (the definition is the artefact, and it is what
-  // the server parses), the View tab renders the state graph.
   // Matched by kind alone: a workflow document is one wherever it
   // lives, not only under `_vance/workflows/` (spec §2.5).
   registerKind<string>({

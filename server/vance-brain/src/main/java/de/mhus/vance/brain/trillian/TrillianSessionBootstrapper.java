@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.trillian;
 
+import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.session.DisconnectPolicy;
 import de.mhus.vance.api.session.IdlePolicy;
 import de.mhus.vance.api.session.SessionLifecycleConfig;
-import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.session.SuspendPolicy;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
@@ -134,8 +134,7 @@ public class TrillianSessionBootstrapper {
     public static final String PARAM_PEER_PROCESS_ID = "peerProcessId";
     public static final String PARAM_PEER_SESSION_ID = "peerSessionId";
     /** See {@link TrillianProcessKeys#PARAM_TRILLIAN_USER_NAME} — one authority. */
-    public static final String PARAM_TRILLIAN_USER_NAME =
-            TrillianProcessKeys.PARAM_TRILLIAN_USER_NAME;
+    public static final String PARAM_TRILLIAN_USER_NAME = TrillianProcessKeys.PARAM_TRILLIAN_USER_NAME;
 
     /**
      * engineParams key on a control process that parks the outgoing
@@ -167,6 +166,7 @@ public class TrillianSessionBootstrapper {
      * would need coordination across pods for a value nobody reads.
      */
     private static final String ACCOUNT_PREFIX = "_trillian-";
+
     private static final int MAX_NAMING_ATTEMPTS = 16;
     private static final int INSTANCE_BOUND = 10_000;
 
@@ -199,9 +199,7 @@ public class TrillianSessionBootstrapper {
      * the control-session is still alive for the human; a future
      * re-bootstrap or manual cleanup is the recovery path.
      */
-    public void maybeBootstrap(
-            SessionDocument controlSession,
-            @Nullable ThinkProcessDocument controlProcess) {
+    public void maybeBootstrap(SessionDocument controlSession, @Nullable ThinkProcessDocument controlProcess) {
         if (controlProcess == null) {
             return;
         }
@@ -214,36 +212,40 @@ public class TrillianSessionBootstrapper {
 
         // Idempotency: peerSessionId already wired?
         Object peerSessRaw = controlProcess.getEngineParams() == null
-                ? null : controlProcess.getEngineParams().get(PARAM_PEER_SESSION_ID);
+                ? null
+                : controlProcess.getEngineParams().get(PARAM_PEER_SESSION_ID);
         if (peerSessRaw instanceof String peerSess && !peerSess.isBlank()) {
-            log.debug("Trillian user-session '{}' already wired for control id='{}' — adopting",
-                    peerSess, controlProcess.getId());
+            log.debug(
+                    "Trillian user-session '{}' already wired for control id='{}' — adopting",
+                    peerSess,
+                    controlProcess.getId());
             return;
         }
 
         try {
             doBootstrap(controlSession, controlProcess);
         } catch (RuntimeException e) {
-            log.error("Trillian bootstrap failed for control session '{}'; "
+            log.error(
+                    "Trillian bootstrap failed for control session '{}'; "
                             + "control-process stays but user-session is missing",
-                    controlSession.getSessionId(), e);
+                    controlSession.getSessionId(),
+                    e);
         }
     }
 
-    private void doBootstrap(
-            SessionDocument controlSession,
-            ThinkProcessDocument controlProcess) {
+    private void doBootstrap(SessionDocument controlSession, ThinkProcessDocument controlProcess) {
         // 0. Podless projects (_user_*, _tenant, system) never get a home
         //    pod: they attach to whichever pod received the WebSocket and
         //    can move on reconnect. A Trillian is supposed to sit still
         //    and keep watch — its worker session, its lanes and its
         //    periodic self-check all assume one owner. Refusing here beats
         //    minting one that silently never wakes up.
-        if (de.mhus.vance.shared.project.ProjectService.isPodless(
-                controlSession.getProjectId())) {
-            log.warn("Trillian bootstrap refused in podless project '{}' (session '{}') — "
+        if (de.mhus.vance.shared.project.ProjectService.isPodless(controlSession.getProjectId())) {
+            log.warn(
+                    "Trillian bootstrap refused in podless project '{}' (session '{}') — "
                             + "a Trillian needs a project with a home pod",
-                    controlSession.getProjectId(), controlSession.getSessionId());
+                    controlSession.getProjectId(),
+                    controlSession.getSessionId());
             return;
         }
 
@@ -266,8 +268,10 @@ public class TrillianSessionBootstrapper {
             trillianName = pickUniqueTrillianName(controlSession.getTenantId(), nature);
         }
         if (adopted) {
-            log.info("Adopted Trillian service-account '{}' for reactivated control session '{}'",
-                    trillianName, controlSession.getSessionId());
+            log.info(
+                    "Adopted Trillian service-account '{}' for reactivated control session '{}'",
+                    trillianName,
+                    controlSession.getSessionId());
         } else {
             // The title is a starting point, not an identity: it is what
             // the UI shows, and a human may rename it (//trillian name).
@@ -280,8 +284,11 @@ public class TrillianSessionBootstrapper {
                     /*passwordHash*/ null,
                     /*title*/ "Trillian " + accountSuffix(trillianName),
                     /*email*/ null);
-            log.info("Minted Trillian service-account '{}' id='{}' for control session '{}'",
-                    trillian.getName(), trillian.getId(), controlSession.getSessionId());
+            log.info(
+                    "Minted Trillian service-account '{}' id='{}' for control session '{}'",
+                    trillian.getName(),
+                    trillian.getId(),
+                    controlSession.getSessionId());
         }
         final String trillianNameFinal = trillianName;
 
@@ -295,8 +302,7 @@ public class TrillianSessionBootstrapper {
         //     denied until someone grants that explicitly.
         if (!adopted) {
             permissionBootstrapProvider.ifAvailable(pb -> pb.grantProjectAdmin(
-                    controlSession.getTenantId(), controlSession.getProjectId(),
-                    trillianNameFinal));
+                    controlSession.getTenantId(), controlSession.getProjectId(), trillianNameFinal));
         }
 
         // 3. Resolve the user recipe — the Nature variant of the loop.
@@ -308,11 +314,11 @@ public class TrillianSessionBootstrapper {
                 HEADLESS_PROFILE,
                 /*callerParams*/ null);
         final String userRecipeNameFinal = userRecipeName;
-        ThinkEngine engine = thinkEngineService.resolve(applied.engine())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Recipe '" + userRecipeNameFinal
-                                + "' references unknown engine '" + applied.engine()
-                                + "' — known: " + thinkEngineService.listEngines()));
+        ThinkEngine engine = thinkEngineService
+                .resolve(applied.engine())
+                .orElseThrow(() -> new IllegalStateException("Recipe '" + userRecipeNameFinal
+                        + "' references unknown engine '" + applied.engine()
+                        + "' — known: " + thinkEngineService.listEngines()));
 
         // 4. Create the headless user-session owned by the service-
         //    account. system=true marks it as auto-managed (UI may
@@ -329,8 +335,11 @@ public class TrillianSessionBootstrapper {
                 CLIENT_VERSION,
                 CLIENT_NAME,
                 /*system*/ true);
-        log.info("Trillian user-session created id='{}' owner='{}' project='{}'",
-                userSession.getSessionId(), trillianName, controlSession.getProjectId());
+        log.info(
+                "Trillian user-session created id='{}' owner='{}' project='{}'",
+                userSession.getSessionId(),
+                trillianName,
+                controlSession.getProjectId());
 
         // 5. Spawn the primary user-process in the user-session.
         //    parentProcessId = controlProcess.id makes terminal events
@@ -349,14 +358,16 @@ public class TrillianSessionBootstrapper {
             // Nothing parked by a reactivate. A persistent Nature keeps
             // its own copy that outlives the process rows entirely; an
             // ephemeral one returns nothing and the worker starts blank.
-            carried = natureRegistry.resolve(nature).initialAttributes(
-                    controlSession.getTenantId(), controlSession.getProjectId(),
-                    trillianName);
+            carried = natureRegistry
+                    .resolve(nature)
+                    .initialAttributes(controlSession.getTenantId(), controlSession.getProjectId(), trillianName);
         }
         if (!carried.isEmpty()) {
             userParams.put(TrillianInternalApi.PARAM_ATTRIBUTES, carried);
-            log.info("Restored {} Trillian attribute(s) for control session '{}'",
-                    carried.size(), controlSession.getSessionId());
+            log.info(
+                    "Restored {} Trillian attribute(s) for control session '{}'",
+                    carried.size(),
+                    controlSession.getSessionId());
         }
         // A Nature that names its Trillians gets that name onto the
         // account, so the UI shows "Ada" rather than "Trillian adam-4711".
@@ -391,10 +402,10 @@ public class TrillianSessionBootstrapper {
                     applied.effectiveAllowedTools(),
                     applied.connectionProfile(),
                     applied.defaultActiveSkills(),
-                    applied.allowedSkills() == null
-                            ? null : Set.copyOf(applied.allowedSkills()));
+                    applied.allowedSkills() == null ? null : Set.copyOf(applied.allowedSkills()));
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException race) {
-            log.warn("Concurrent Trillian-User process create in session '{}'; aborting bootstrap",
+            log.warn(
+                    "Concurrent Trillian-User process create in session '{}'; aborting bootstrap",
                     userSession.getSessionId());
             return;
         }
@@ -419,8 +430,8 @@ public class TrillianSessionBootstrapper {
         sessionService.markBootstrapped(userSession.getSessionId());
 
         // 6. Record cross-references on the control-process too.
-        ThinkProcessDocument refreshedControl = thinkProcessService.findById(controlProcess.getId())
-                .orElse(controlProcess);
+        ThinkProcessDocument refreshedControl =
+                thinkProcessService.findById(controlProcess.getId()).orElse(controlProcess);
         Map<String, Object> controlParams = new LinkedHashMap<>();
         if (refreshedControl.getEngineParams() != null) {
             controlParams.putAll(refreshedControl.getEngineParams());
@@ -438,30 +449,37 @@ public class TrillianSessionBootstrapper {
         //     which '_trillian-*' belongs to which session. Persisted as a
         //     regular chat message on purpose: a transient notification
         //     would be gone by the time it is needed.
-        announceIdentity(controlSession, controlProcess, trillianName,
+        announceIdentity(
+                controlSession,
+                controlProcess,
+                trillianName,
                 natureRegistry.resolve(nature).callName(carried));
 
         // 7. Start the user-process on its own lane.
         try {
-            laneScheduler.submit(userProc.getId(), () -> {
-                thinkEngineService.start(userProc);
-                return null;
-            }).get();
+            laneScheduler
+                    .submit(userProc.getId(), () -> {
+                        thinkEngineService.start(userProc);
+                        return null;
+                    })
+                    .get();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(
-                    "Interrupted starting Trillian user-process id='"
-                            + userProc.getId() + "'", ie);
+                    "Interrupted starting Trillian user-process id='" + userProc.getId() + "'", ie);
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-            throw new IllegalStateException(
-                    "Trillian user-process start failed: " + cause.getMessage(), cause);
+            throw new IllegalStateException("Trillian user-process start failed: " + cause.getMessage(), cause);
         }
 
-        log.info("Bootstrapped Trillian pair: control id='{}' session='{}' / "
+        log.info(
+                "Bootstrapped Trillian pair: control id='{}' session='{}' / "
                         + "user id='{}' session='{}' trillianUser='{}'",
-                controlProcess.getId(), controlSession.getSessionId(),
-                userProc.getId(), userSession.getSessionId(), trillianName);
+                controlProcess.getId(),
+                controlSession.getSessionId(),
+                userProc.getId(),
+                userSession.getSessionId(),
+                trillianName);
     }
 
     /**
@@ -470,10 +488,7 @@ public class TrillianSessionBootstrapper {
      * bootstrap that is otherwise complete, so it is logged and swallowed.
      */
     private void announceIdentity(
-            SessionDocument controlSession,
-            ThinkProcessDocument controlProcess,
-            String trillianName,
-            String callName) {
+            SessionDocument controlSession, ThinkProcessDocument controlProcess, String trillianName, String callName) {
         try {
             chatMessageService.append(ChatMessageDocument.builder()
                     .tenantId(controlSession.getTenantId())
@@ -487,11 +502,13 @@ public class TrillianSessionBootstrapper {
                             + " account needs access there.")
                     .build());
         } catch (RuntimeException e) {
-            log.warn("Trillian bootstrap: could not announce identity '{}' in session '{}': {}",
-                    trillianName, controlSession.getSessionId(), e.toString());
+            log.warn(
+                    "Trillian bootstrap: could not announce identity '{}' in session '{}': {}",
+                    trillianName,
+                    controlSession.getSessionId(),
+                    e.toString());
         }
     }
-
 
     /**
      * The service account a previous incarnation of this control session
@@ -507,8 +524,8 @@ public class TrillianSessionBootstrapper {
         // behind, and an older one may name an account that has since
         // been deleted.
         for (ThinkProcessDocument p : newestFirst(controlSession)) {
-            Object name = p.getEngineParams() == null
-                    ? null : p.getEngineParams().get(PARAM_TRILLIAN_USER_NAME);
+            Object name =
+                    p.getEngineParams() == null ? null : p.getEngineParams().get(PARAM_TRILLIAN_USER_NAME);
             if (name == null || name.toString().isBlank()) {
                 continue;
             }
@@ -529,8 +546,8 @@ public class TrillianSessionBootstrapper {
     @SuppressWarnings("unchecked")
     private Map<String, Object> carriedAttributesOf(SessionDocument controlSession) {
         for (ThinkProcessDocument p : newestFirst(controlSession)) {
-            Object raw = p.getEngineParams() == null
-                    ? null : p.getEngineParams().get(PARAM_CARRIED_ATTRIBUTES);
+            Object raw =
+                    p.getEngineParams() == null ? null : p.getEngineParams().get(PARAM_CARRIED_ATTRIBUTES);
             if (!(raw instanceof Map<?, ?> m) || m.isEmpty()) {
                 continue;
             }
@@ -545,11 +562,11 @@ public class TrillianSessionBootstrapper {
     /** Processes of the session, most recently created first. */
     private java.util.List<ThinkProcessDocument> newestFirst(SessionDocument session) {
         java.util.List<ThinkProcessDocument> processes = new java.util.ArrayList<>(
-                thinkProcessService.findBySession(
-                        session.getTenantId(), session.getSessionId()));
+                thinkProcessService.findBySession(session.getTenantId(), session.getSessionId()));
         processes.sort(java.util.Comparator.comparing(
-                ThinkProcessDocument::getCreatedAt,
-                java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())).reversed());
+                        ThinkProcessDocument::getCreatedAt,
+                        java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder()))
+                .reversed());
         return processes;
     }
 
@@ -558,18 +575,16 @@ public class TrillianSessionBootstrapper {
      * when it has one. Cosmetic and best-effort — a Trillian without a
      * title is odd-looking, one that fails to bootstrap is broken.
      */
-    private void adoptCharacterName(
-            String tenantId, String trillianName, Map<String, Object> attributes) {
+    private void adoptCharacterName(String tenantId, String trillianName, Map<String, Object> attributes) {
         Object given = attributes.get("name");
         if (!(given instanceof String name) || name.isBlank()) {
             return;
         }
         try {
-            userService.update(tenantId, trillianName, name.strip(),
-                    /*email*/ null, /*status*/ null, /*loginEnabled*/ null);
+            userService.update(
+                    tenantId, trillianName, name.strip(), /*email*/ null, /*status*/ null, /*loginEnabled*/ null);
         } catch (RuntimeException e) {
-            log.warn("Trillian: could not title account '{}' as '{}': {}",
-                    trillianName, name, e.toString());
+            log.warn("Trillian: could not title account '{}' as '{}': {}", trillianName, name, e.toString());
         }
     }
 
@@ -592,16 +607,14 @@ public class TrillianSessionBootstrapper {
      */
     private String pickUniqueTrillianName(String tenantId, String nature) {
         for (int i = 0; i < MAX_NAMING_ATTEMPTS; i++) {
-            String name = ACCOUNT_PREFIX + nature + "-"
-                    + String.format("%04d", random.nextInt(INSTANCE_BOUND));
+            String name = ACCOUNT_PREFIX + nature + "-" + String.format("%04d", random.nextInt(INSTANCE_BOUND));
             if (!userService.existsByTenantAndName(tenantId, name)) {
                 return name;
             }
         }
-        throw new IllegalStateException(
-                "Could not find a unique Trillian name for nature '" + nature
-                        + "' in tenant '" + tenantId + "' after "
-                        + MAX_NAMING_ATTEMPTS + " attempts");
+        throw new IllegalStateException("Could not find a unique Trillian name for nature '" + nature
+                + "' in tenant '" + tenantId + "' after "
+                + MAX_NAMING_ATTEMPTS + " attempts");
     }
 
     /**

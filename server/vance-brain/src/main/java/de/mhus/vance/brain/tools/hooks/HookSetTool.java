@@ -31,30 +31,39 @@ import org.springframework.stereotype.Component;
 public class HookSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("event", Map.of(
-                "type", "string",
-                "description", "Wire-form event name, e.g. 'process.completed'."));
-        props.put("name", Map.of(
-                "type", "string",
-                "description", "Hook name — lowercase, alphanumeric + '_-', max 64 chars."));
-        props.put("yaml", Map.of(
-                "type", "string",
-                "description", "Full YAML body. Required: 'type' (js|llm). "
-                        + "JS: 'script'. LLM: 'prompt' + 'model'."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", props,
-                "required", List.of("event", "name", "yaml"));
+        props.put(
+                "event",
+                Map.of(
+                        "type", "string",
+                        "description", "Wire-form event name, e.g. 'process.completed'."));
+        props.put(
+                "name",
+                Map.of(
+                        "type", "string",
+                        "description", "Hook name — lowercase, alphanumeric + '_-', max 64 chars."));
+        props.put(
+                "yaml",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Full YAML body. Required: 'type' (js|llm). " + "JS: 'script'. LLM: 'prompt' + 'model'."));
+        SCHEMA = Map.of("type", "object", "properties", props, "required", List.of("event", "name", "yaml"));
     }
 
     private final UrsaHookService ursaHookService;
     private final HookToolSupport support;
 
-    @Override public String name() { return "hook_set"; }
+    @Override
+    public String name() {
+        return "hook_set";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Create or replace a hook in the current project. Idempotent: "
                 + "if a hook with the same (event, name) already exists its "
                 + "YAML is overwritten (the previous version is auto-archived). "
@@ -62,30 +71,45 @@ public class HookSetTool implements Tool {
                 + "tell which path ran.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write", "hook"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write", "hook");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx.projectId() == null) {
             throw new ToolException("hook_set requires a project scope");
         }
-        UrsaHookEventName event = HookToolSupport.parseEvent(
-                support.stringOrThrow(params, "event"));
-        String name = HookToolSupport.normalizeName(
-                support.stringOrThrow(params, "name"));
+        UrsaHookEventName event = HookToolSupport.parseEvent(support.stringOrThrow(params, "event"));
+        String name = HookToolSupport.normalizeName(support.stringOrThrow(params, "name"));
         String yaml = support.stringOrThrow(params, "yaml");
 
-        boolean existed = ursaHookService.findOne(ctx.tenantId(), ctx.projectId(), event, name)
+        boolean existed = ursaHookService
+                .findOne(ctx.tenantId(), ctx.projectId(), event, name)
                 .isPresent();
         UrsaHookDef saved;
         try {
             saved = ursaHookService.save(
-                    ctx.tenantId(), ctx.projectId(), event, name, yaml, ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.projectId(),
+                    event,
+                    name,
+                    yaml,
+                    ctx.userId(),
                     support.adminSystemActor(ctx.tenantId(), ctx.projectId(), ctx.userId()));
         } catch (UrsaHookParseException ex) {
-            throw new ToolException("hook YAML rejected: " + ex.getMessage());
+            throw new ToolException("hook YAML rejected: " + ex.getMessage(), ex);
         }
         Map<String, Object> resp = new LinkedHashMap<>(support.shape(ctx.tenantId(), ctx.projectId(), saved));
         resp.put("created", !existed);

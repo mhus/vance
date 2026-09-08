@@ -34,34 +34,65 @@ public class ImageAdjustTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Source image path."),
-                    "targetPath", Map.of(
-                            "type", "string",
-                            "description", "Optional destination path; default = overwrite source."),
-                    "brightness", Map.of(
-                            "type", "number", "minimum", -1.0, "maximum", 1.0,
-                            "description",
-                                    "Brightness delta in [-1.0, 1.0]. 0 = neutral, "
-                                            + "+0.2 ≈ noticeably brighter."),
-                    "contrast", Map.of(
-                            "type", "number", "minimum", -1.0, "maximum", 1.0,
-                            "description", "Contrast delta in [-1.0, 1.0]. 0 = neutral."),
-                    "saturation", Map.of(
-                            "type", "number", "minimum", -1.0, "maximum", 1.0,
-                            "description",
-                                    "Saturation delta in [-1.0, 1.0]. -1 = grayscale, "
-                                            + "0 = neutral, +1 = vivid."),
-                    "gamma", Map.of(
-                            "type", "number", "minimum", 0.1, "maximum", 5.0,
-                            "description",
-                                    "Gamma factor in [0.1, 5.0]. 1.0 = neutral. "
-                                            + "Below 1 brightens midtones; above 1 darkens them.")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Source image path."),
+                            "targetPath",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional destination path; default = overwrite source."),
+                            "brightness",
+                                    Map.of(
+                                            "type",
+                                            "number",
+                                            "minimum",
+                                            -1.0,
+                                            "maximum",
+                                            1.0,
+                                            "description",
+                                            "Brightness delta in [-1.0, 1.0]. 0 = neutral, "
+                                                    + "+0.2 ≈ noticeably brighter."),
+                            "contrast",
+                                    Map.of(
+                                            "type",
+                                            "number",
+                                            "minimum",
+                                            -1.0,
+                                            "maximum",
+                                            1.0,
+                                            "description",
+                                            "Contrast delta in [-1.0, 1.0]. 0 = neutral."),
+                            "saturation",
+                                    Map.of(
+                                            "type",
+                                            "number",
+                                            "minimum",
+                                            -1.0,
+                                            "maximum",
+                                            1.0,
+                                            "description",
+                                            "Saturation delta in [-1.0, 1.0]. -1 = grayscale, "
+                                                    + "0 = neutral, +1 = vivid."),
+                            "gamma",
+                                    Map.of(
+                                            "type",
+                                            "number",
+                                            "minimum",
+                                            0.1,
+                                            "maximum",
+                                            5.0,
+                                            "description",
+                                            "Gamma factor in [0.1, 5.0]. 1.0 = neutral. "
+                                                    + "Below 1 brightens midtones; above 1 darkens them.")),
             "required", List.of("path"));
 
-    @Override public String name() { return "image_adjust"; }
+    @Override
+    public String name() {
+        return "image_adjust";
+    }
 
     @Override
     public String description() {
@@ -71,9 +102,20 @@ public class ImageAdjustTool implements Tool {
                 + "For a one-call \"fix this flat photo\" pass, prefer `image_auto_enhance` instead.";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -100,7 +142,7 @@ public class ImageAdjustTool implements Tool {
             log.info("image_adjust failed: reason={} msg={}", e.getReason(), e.getMessage());
             return errorResponse(e);
         } catch (IllegalArgumentException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
     }
 }

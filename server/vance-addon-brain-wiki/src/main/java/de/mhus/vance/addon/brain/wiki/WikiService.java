@@ -35,8 +35,8 @@ public class WikiService {
     private final WikiFolderReader folderReader;
     private final SecurityContextFactory contextFactory;
 
-    public WikiService(DocumentService documentService, WikiFolderReader folderReader,
-                       SecurityContextFactory contextFactory) {
+    public WikiService(
+            DocumentService documentService, WikiFolderReader folderReader, SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.folderReader = folderReader;
         this.contextFactory = contextFactory;
@@ -59,11 +59,7 @@ public class WikiService {
      *                    space from the target, else the current space)
      */
     public record Resolution(
-            boolean exists,
-            @Nullable WikiPage page,
-            boolean ambiguous,
-            String slug,
-            String createSpace) {}
+            boolean exists, @Nullable WikiPage page, boolean ambiguous, String slug, String createSpace) {}
 
     /**
      * Resolve a {@code [[target]]} against a scan, space-aware, per the
@@ -150,9 +146,7 @@ public class WikiService {
     public List<WikiPage> recentlyModified(WikiFolderReader.Scan scan, int limit) {
         int safe = Math.max(1, limit);
         List<WikiPage> sorted = new ArrayList<>(scan.pages());
-        sorted.sort(Comparator.comparing(
-                (WikiPage p) -> effectiveModified(p.doc()),
-                Comparator.reverseOrder()));
+        sorted.sort(Comparator.comparing((WikiPage p) -> effectiveModified(p.doc()), Comparator.reverseOrder()));
         return sorted.size() > safe ? new ArrayList<>(sorted.subList(0, safe)) : sorted;
     }
 
@@ -199,8 +193,12 @@ public class WikiService {
      * @return the stored document
      */
     public DocumentDocument createPage(
-            String tenantId, String projectId, String folder,
-            @Nullable String space, String title, @Nullable String userId) {
+            String tenantId,
+            String projectId,
+            String folder,
+            @Nullable String space,
+            String title,
+            @Nullable String userId) {
         if (title == null || title.isBlank()) throw new ToolException("title is required");
         String normalisedFolder = WikiFolderReader.normaliseFolder(folder);
         String normalisedSpace = normaliseSpace(space);
@@ -215,21 +213,25 @@ public class WikiService {
         String body = workpageStub(title);
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
-                    tenantId, projectId, path, title,
-                    List.of("wiki", "workpage"), MD_MIME, in, userId,
+                    tenantId,
+                    projectId,
+                    path,
+                    title,
+                    List.of("wiki", "workpage"),
+                    MD_MIME,
+                    in,
+                    userId,
                     contextFactory.writeActor(tenantId, userId, path));
-            log.info("WikiService.createPage tenant='{}' folder='{}' path='{}'",
-                    tenantId, normalisedFolder, path);
+            log.info("WikiService.createPage tenant='{}' folder='{}' path='{}'", tenantId, normalisedFolder, path);
             return stored;
         } catch (IOException e) {
-            throw new ToolException("Could not write wiki page '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not write wiki page '" + path + "': " + e.getMessage(), e);
         }
     }
 
     /** Seed body for a new wiki page — a minimal {@code kind: workpage} document. */
     public static String workpageStub(String title) {
-        return "---\n$meta:\n  kind: workpage\ntitle: \"" + escape(title) + "\"\n---\n"
-                + "# " + title + "\n\n";
+        return "---\n$meta:\n  kind: workpage\ntitle: \"" + escape(title) + "\"\n---\n" + "# " + title + "\n\n";
     }
 
     private String uniquePath(String tenantId, String projectId, String base) {
@@ -273,7 +275,9 @@ public class WikiService {
     private static String escape(String s) {
         // Backslash first, then quote, then newline — see WikiApplication.escape.
         // Prevents an unterminated double-quoted YAML scalar (title ending in '\').
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "");
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "");
     }
 }

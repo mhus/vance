@@ -39,16 +39,25 @@ import org.springframework.stereotype.Component;
 public class AppRebuildTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of(
-                        "type", "string",
-                        "description", "App folder containing _app.yaml."));
-                put("projectId", Map.of(
-                        "type", "string",
-                        "description", "Default: active project."));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "App folder containing _app.yaml."));
+                    put(
+                            "projectId",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Default: active project."));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
@@ -56,11 +65,12 @@ public class AppRebuildTool implements Tool {
     private final de.mhus.vance.shared.permission.PermissionService permissionService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public AppRebuildTool(EddieContext eddieContext,
-                          DocumentService documentService,
-                          VanceApplicationRegistry registry,
-                          de.mhus.vance.shared.permission.PermissionService permissionService,
-                          de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public AppRebuildTool(
+            EddieContext eddieContext,
+            DocumentService documentService,
+            VanceApplicationRegistry registry,
+            de.mhus.vance.shared.permission.PermissionService permissionService,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.registry = registry;
@@ -68,7 +78,10 @@ public class AppRebuildTool implements Tool {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String name() { return "app_rebuild"; }
+    @Override
+    public String name() {
+        return "app_rebuild";
+    }
 
     @Override
     public String description() {
@@ -80,7 +93,10 @@ public class AppRebuildTool implements Tool {
                 + "edits to refresh the views.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -117,13 +133,14 @@ public class AppRebuildTool implements Tool {
 
         VanceApplication app = registry.require(manifest.app());
         VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                ctx.tenantId(), projectName, normalisedFolder,
-                ctx.userId(), ctx.processId());
+                ctx.tenantId(), projectName, normalisedFolder, ctx.userId(), ctx.processId());
 
         VanceApplication.RefreshResult result = app.refresh(rc);
-        log.info("AppRebuildTool tenant='{}' folder='{}' app='{}' "
-                        + "→ {} artefacts",
-                ctx.tenantId(), normalisedFolder, manifest.app(),
+        log.info(
+                "AppRebuildTool tenant='{}' folder='{}' app='{}' " + "→ {} artefacts",
+                ctx.tenantId(),
+                normalisedFolder,
+                manifest.app(),
                 result.artefacts().size());
 
         return result.toMap();
@@ -134,28 +151,24 @@ public class AppRebuildTool implements Tool {
 
     private DocumentDocument loadManifest(String tenantId, String projectName, String folder) {
         String path = folder + "/" + VanceApplication.APP_MANIFEST;
-        return documentService.findByPath(tenantId, projectName, path)
-                .orElseThrow(() -> new ToolException(
-                        "No _app.yaml manifest found at '" + path
-                                + "'. Create one with `$meta: { kind: "
-                                + "application, app: <type> }` to turn "
-                                + "the folder into a Vance app."));
+        return documentService
+                .findByPath(tenantId, projectName, path)
+                .orElseThrow(() -> new ToolException("No _app.yaml manifest found at '" + path
+                        + "'. Create one with `$meta: { kind: "
+                        + "application, app: <type> }` to turn "
+                        + "the folder into a Vance app."));
     }
 
     private ApplicationDocument parseManifest(DocumentDocument doc) {
         String body = loadAsText(doc);
         String mime = doc.getMimeType();
         if (!ApplicationCodec.supports(mime)) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' has mime '"
-                            + mime + "' — must be JSON or YAML.");
+            throw new ToolException("Manifest '" + doc.getPath() + "' has mime '" + mime + "' — must be JSON or YAML.");
         }
         try {
             return ApplicationCodec.parse(body, mime);
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse manifest '" + doc.getPath()
-                            + "': " + e.getMessage());
+            throw new ToolException("Could not parse manifest '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -164,8 +177,7 @@ public class AppRebuildTool implements Tool {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read manifest content: " + e.getMessage());
+            throw new ToolException("Could not read manifest content: " + e.getMessage(), e);
         }
     }
 

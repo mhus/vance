@@ -30,15 +30,20 @@ public class SlideshowFolderReader {
 
     public static final String APP_MANIFEST = "_app.yaml";
 
-    private static final List<String> GENERATED_LEAF_NAMES = List.of(
-            "_app.yaml", "_index.yaml", "_info.yaml");
+    private static final List<String> GENERATED_LEAF_NAMES = List.of("_app.yaml", "_index.yaml", "_info.yaml");
 
     /** Mime types we treat as slide-eligible. SVG kept in for vector
      *  diagrams but {@link ImageDimensionProbe} won't know the
      *  dimensions for those — the UI accepts {@code null} sizes. */
     private static final List<String> IMAGE_MIMES = List.of(
-            "image/png", "image/jpeg", "image/jpg", "image/gif",
-            "image/webp", "image/svg+xml", "image/bmp", "image/tiff");
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+            "image/gif",
+            "image/webp",
+            "image/svg+xml",
+            "image/bmp",
+            "image/tiff");
 
     public record Slide(
             DocumentDocument doc,
@@ -47,14 +52,14 @@ public class SlideshowFolderReader {
             @Nullable Integer width,
             @Nullable Integer height,
             long sizeBytes,
-            String mimeType) { }
+            String mimeType) {}
 
     public record Scan(
             String folder,
             @Nullable DocumentDocument manifestDoc,
             ApplicationDocument manifest,
             SlideshowAppConfig slideshowConfig,
-            List<Slide> slides) { }
+            List<Slide> slides) {}
 
     private final DocumentService documentService;
 
@@ -67,10 +72,9 @@ public class SlideshowFolderReader {
         DocumentDocument manifestDoc = loadManifest(tenantId, projectName, normalised);
         ApplicationDocument manifest = parseManifest(manifestDoc);
         if (!SlideshowAppConfig.APP_NAME.equalsIgnoreCase(manifest.app())) {
-            throw new ToolException(
-                    "Folder '" + normalised + "' is an "
-                            + (manifest.app().isBlank() ? "untyped" : manifest.app())
-                            + " application — expected 'slideshow'.");
+            throw new ToolException("Folder '" + normalised + "' is an "
+                    + (manifest.app().isBlank() ? "untyped" : manifest.app())
+                    + " application — expected 'slideshow'.");
         }
         SlideshowAppConfig cfg = SlideshowAppConfig.from(manifest);
         List<Slide> slides = loadSlides(tenantId, projectName, normalised, cfg);
@@ -79,8 +83,8 @@ public class SlideshowFolderReader {
 
     public Scan scanOptional(String tenantId, String projectName, String folder) {
         String normalised = normaliseFolder(folder);
-        Optional<DocumentDocument> manifestOpt = documentService.findByPath(
-                tenantId, projectName, normalised + "/" + APP_MANIFEST);
+        Optional<DocumentDocument> manifestOpt =
+                documentService.findByPath(tenantId, projectName, normalised + "/" + APP_MANIFEST);
         DocumentDocument manifestDoc;
         ApplicationDocument manifest;
         SlideshowAppConfig cfg;
@@ -89,8 +93,7 @@ public class SlideshowFolderReader {
             manifest = parseManifest(manifestDoc);
             if (!SlideshowAppConfig.APP_NAME.equalsIgnoreCase(manifest.app())) {
                 throw new ToolException(
-                        "Folder '" + normalised + "' is an "
-                                + manifest.app() + " app, expected 'slideshow'.");
+                        "Folder '" + normalised + "' is an " + manifest.app() + " app, expected 'slideshow'.");
             }
             cfg = SlideshowAppConfig.from(manifest);
         } else {
@@ -106,58 +109,49 @@ public class SlideshowFolderReader {
 
     private DocumentDocument loadManifest(String tenantId, String projectName, String folder) {
         String path = folder + "/" + APP_MANIFEST;
-        return documentService.findByPath(tenantId, projectName, path)
-                .orElseThrow(() -> new ToolException(
-                        "No _app.yaml manifest found at '" + path
-                                + "'. Use `slideshow_app_create` to "
-                                + "bootstrap a new slideshow app."));
+        return documentService
+                .findByPath(tenantId, projectName, path)
+                .orElseThrow(() -> new ToolException("No _app.yaml manifest found at '" + path
+                        + "'. Use `slideshow_app_create` to "
+                        + "bootstrap a new slideshow app."));
     }
 
     private ApplicationDocument parseManifest(DocumentDocument doc) {
         String body = loadAsText(doc);
         String mime = doc.getMimeType();
         if (!ApplicationCodec.supports(mime)) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' has mime '" + mime
-                            + "' — must be JSON or YAML.");
+            throw new ToolException("Manifest '" + doc.getPath() + "' has mime '" + mime + "' — must be JSON or YAML.");
         }
         ApplicationDocument parsed;
         try {
             parsed = ApplicationCodec.parse(body, mime);
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse manifest '" + doc.getPath()
-                            + "': " + e.getMessage());
+            throw new ToolException("Could not parse manifest '" + doc.getPath() + "': " + e.getMessage(), e);
         }
         String dbKind = doc.getKind();
         if (dbKind == null || dbKind.isBlank()) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' is missing "
-                            + "`$meta.kind: application`. Recreate the "
-                            + "app via `slideshow_app_create` or add "
-                            + "the `$meta` header manually:\n"
-                            + "  $meta:\n"
-                            + "    kind: application\n"
-                            + "    app:  slideshow");
+            throw new ToolException("Manifest '" + doc.getPath() + "' is missing "
+                    + "`$meta.kind: application`. Recreate the "
+                    + "app via `slideshow_app_create` or add "
+                    + "the `$meta` header manually:\n"
+                    + "  $meta:\n"
+                    + "    kind: application\n"
+                    + "    app:  slideshow");
         }
         if (!"application".equalsIgnoreCase(dbKind)) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' has "
-                            + "`$meta.kind: " + dbKind + "`, expected "
-                            + "'application'.");
+            throw new ToolException("Manifest '" + doc.getPath() + "' has "
+                    + "`$meta.kind: " + dbKind + "`, expected "
+                    + "'application'.");
         }
         if (parsed.app() == null || parsed.app().isBlank()) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' is missing "
-                            + "`$meta.app: slideshow`.");
+            throw new ToolException("Manifest '" + doc.getPath() + "' is missing " + "`$meta.app: slideshow`.");
         }
         return parsed;
     }
 
     // ── Slides ────────────────────────────────────────────────────
 
-    private List<Slide> loadSlides(String tenantId, String projectName,
-                                   String folder, SlideshowAppConfig cfg) {
+    private List<Slide> loadSlides(String tenantId, String projectName, String folder, SlideshowAppConfig cfg) {
         // Find every image document under the folder.
         List<DocumentDocument> all = documentService.listByProject(tenantId, projectName);
         String prefix = folder + "/";
@@ -197,14 +191,17 @@ public class SlideshowFolderReader {
             String caption = cfg.captions().get(relative);
             if (caption == null) {
                 String summary = d.getSummary();
-                caption = (summary != null && !summary.isBlank())
-                        ? summary.trim() : stem(relative);
+                caption = (summary != null && !summary.isBlank()) ? summary.trim() : stem(relative);
             }
             ImageDimensionProbe.Dim dim = probeDimensions(d);
-            out.add(new Slide(d, relative, caption,
+            out.add(new Slide(
+                    d,
+                    relative,
+                    caption,
                     dim != null ? dim.width() : null,
                     dim != null ? dim.height() : null,
-                    d.getSize(), d.getMimeType()));
+                    d.getSize(),
+                    d.getMimeType()));
         }
         return out;
     }
@@ -222,8 +219,7 @@ public class SlideshowFolderReader {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 

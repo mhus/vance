@@ -1,9 +1,9 @@
 package de.mhus.vance.addon.brain.workbook;
 
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
-import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -60,12 +60,15 @@ public class WorkbookInputService {
      * per-input system session (fence {@code session: true}).
      */
     public void saveInput(
-            String tenantId, String projectId, String docPath,
-            @Nullable String content, @Nullable String saveScript,
-            boolean session, String editorId) {
+            String tenantId,
+            String projectId,
+            String docPath,
+            @Nullable String content,
+            @Nullable String saveScript,
+            boolean session,
+            String editorId) {
         String full = content != null ? content : "";
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectId, docPath);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, docPath);
         if (existing.isPresent()) {
             documentService.replaceContent(
                     existing.get().getId(),
@@ -75,11 +78,16 @@ public class WorkbookInputService {
                     contextFactory.writeActor(tenantId, editorId, docPath));
         } else {
             documentService.createText(
-                    tenantId, projectId, docPath, null, null, full, editorId,
+                    tenantId,
+                    projectId,
+                    docPath,
+                    null,
+                    null,
+                    full,
+                    editorId,
                     contextFactory.writeActor(tenantId, editorId, docPath));
         }
-        log.info("WorkbookInputService.saveInput tenant='{}' doc='{}' len={}",
-                tenantId, docPath, full.length());
+        log.info("WorkbookInputService.saveInput tenant='{}' doc='{}' len={}", tenantId, docPath, full.length());
 
         runOnSave(tenantId, projectId, docPath, saveScript, session, editorId);
     }
@@ -94,8 +102,7 @@ public class WorkbookInputService {
      * {@code input-<n>.md} is used.
      */
     public String createInput(
-            String tenantId, String projectId, String folder,
-            @Nullable String name, String editorId) {
+            String tenantId, String projectId, String folder, @Nullable String name, String editorId) {
         String base = folder == null ? "" : folder.strip();
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
         String fileName = fileNameFrom(name);
@@ -104,7 +111,14 @@ public class WorkbookInputService {
             if (documentService.findByPath(tenantId, projectId, path).isPresent()) {
                 throw new ToolException("document already exists: " + path);
             }
-            documentService.createText(tenantId, projectId, path, null, null, "", editorId,
+            documentService.createText(
+                    tenantId,
+                    projectId,
+                    path,
+                    null,
+                    null,
+                    "",
+                    editorId,
                     contextFactory.writeActor(tenantId, editorId, path));
             log.info("WorkbookInputService.createInput tenant='{}' doc='{}'", tenantId, path);
             return path;
@@ -112,8 +126,15 @@ public class WorkbookInputService {
         for (int n = 1; n <= 9999; n++) {
             String path = (base.isEmpty() ? "" : base + "/") + "input-" + n + ".md";
             if (documentService.findByPath(tenantId, projectId, path).isEmpty()) {
-                documentService.createText(tenantId, projectId, path, null, null, "", editorId,
-                    contextFactory.writeActor(tenantId, editorId, path));
+                documentService.createText(
+                        tenantId,
+                        projectId,
+                        path,
+                        null,
+                        null,
+                        "",
+                        editorId,
+                        contextFactory.writeActor(tenantId, editorId, path));
                 log.info("WorkbookInputService.createInput tenant='{}' doc='{}'", tenantId, path);
                 return path;
             }
@@ -132,37 +153,43 @@ public class WorkbookInputService {
      * per-input system session so session-bound tools / LLM are available.
      */
     private void runOnSave(
-            String tenantId, String projectId, String docPath,
-            @Nullable String fenceScript, boolean session, String editorId) {
+            String tenantId,
+            String projectId,
+            String docPath,
+            @Nullable String fenceScript,
+            boolean session,
+            String editorId) {
         if (fenceScript == null || fenceScript.isBlank()) return;
         String scriptPath = resolveRelative(
                 docPath, WorkbookFormService.stripVanceScheme(fenceScript).strip());
         if (!scriptPath.toLowerCase(Locale.ROOT).endsWith(".js")) {
-            throw new ToolException(
-                    "saveScript must be a .js document (got '" + scriptPath
-                            + "') — only in-JVM JavaScript is supported in v1");
+            throw new ToolException("saveScript must be a .js document (got '" + scriptPath
+                    + "') — only in-JVM JavaScript is supported in v1");
         }
-        DocumentDocument scriptDoc = documentService.findByPath(tenantId, projectId, scriptPath)
+        DocumentDocument scriptDoc = documentService
+                .findByPath(tenantId, projectId, scriptPath)
                 .orElseThrow(() -> new ToolException("saveScript not found: " + scriptPath));
         String code = read(scriptDoc);
 
-        String sessionId = session
-                ? resolveInputSession(tenantId, projectId, docPath, editorId)
-                : null;
-        ToolInvocationContext scope =
-                new ToolInvocationContext(tenantId, projectId, sessionId, null, editorId);
+        String sessionId = session ? resolveInputSession(tenantId, projectId, docPath, editorId) : null;
+        ToolInvocationContext scope = new ToolInvocationContext(tenantId, projectId, sessionId, null, editorId);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
-            scriptExecutor.run(new ScriptRequest(
-                    "js", code, "input-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT)
+            scriptExecutor.run(new ScriptRequest("js", code, "input-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT)
                     .withDocumentBasePath(WorkbookFormService.parentPath(scriptPath)));
-            log.info("WorkbookInputService.runOnSave tenant='{}' script='{}' session={} ok",
-                    tenantId, scriptPath, session);
+            log.info(
+                    "WorkbookInputService.runOnSave tenant='{}' script='{}' session={} ok",
+                    tenantId,
+                    scriptPath,
+                    session);
         } catch (ScriptExecutionException e) {
-            log.warn("WorkbookInputService.runOnSave tenant='{}' script='{}' failed [{}]: {}",
-                    tenantId, scriptPath, e.errorClass(), e.getMessage());
-            throw new ToolException(
-                    "saveScript '" + scriptPath + "' failed: " + e.getMessage());
+            log.warn(
+                    "WorkbookInputService.runOnSave tenant='{}' script='{}' failed [{}]: {}",
+                    tenantId,
+                    scriptPath,
+                    e.errorClass(),
+                    e.getMessage());
+            throw new ToolException("saveScript '" + scriptPath + "' failed: " + e.getMessage(), e);
         }
     }
 
@@ -172,15 +199,21 @@ public class WorkbookInputService {
      * that opted in ({@code session: true}) runs inside a session scope. Same
      * lazy-reuse pattern as {@code WorkbookFormService#resolveFormSession}.
      */
-    private String resolveInputSession(
-            String tenantId, String projectId, String docPath, String runAs) {
+    private String resolveInputSession(String tenantId, String projectId, String docPath, String runAs) {
         String displayName = "_input_" + docPath.replaceAll("[^a-zA-Z0-9._-]", "_");
-        return sessionService.findSystemSession(tenantId, projectId, displayName)
+        return sessionService
+                .findSystemSession(tenantId, projectId, displayName)
                 .map(SessionDocument::getSessionId)
                 .orElseGet(() -> {
                     SessionDocument created = sessionService.create(
-                            tenantId, runAs, projectId, displayName,
-                            Profiles.DAEMON, "workbook-input", null, /*system*/ true);
+                            tenantId,
+                            runAs,
+                            projectId,
+                            displayName,
+                            Profiles.DAEMON,
+                            "workbook-input",
+                            null, /*system*/
+                            true);
                     sessionService.markBootstrapped(created.getSessionId());
                     return created.getSessionId();
                 });
@@ -216,7 +249,8 @@ public class WorkbookInputService {
     }
 
     private static String slugify(String name) {
-        return name.strip().toLowerCase(Locale.ROOT)
+        return name.strip()
+                .toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9]+", "-")
                 .replaceAll("(^-+)|(-+$)", "");
     }
@@ -236,7 +270,7 @@ public class WorkbookInputService {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 }

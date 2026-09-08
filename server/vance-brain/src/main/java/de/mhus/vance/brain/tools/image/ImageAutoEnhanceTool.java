@@ -35,17 +35,22 @@ public class ImageAutoEnhanceTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Source image path."),
-                    "targetPath", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional destination path; default = overwrite source.")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Source image path."),
+                            "targetPath",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional destination path; default = overwrite source.")),
             "required", List.of("path"));
 
-    @Override public String name() { return "image_auto_enhance"; }
+    @Override
+    public String name() {
+        return "image_auto_enhance";
+    }
 
     @Override
     public String description() {
@@ -55,9 +60,20 @@ public class ImageAutoEnhanceTool implements Tool {
                 + "`image_adjust` instead. Output preserves source MIME.";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -77,11 +93,10 @@ public class ImageAutoEnhanceTool implements Tool {
             ImageOpResult result = imageService.autoEnhance(request);
             return successResponse(result);
         } catch (ImageManipulationException e) {
-            log.info("image_auto_enhance failed: reason={} msg={}",
-                    e.getReason(), e.getMessage());
+            log.info("image_auto_enhance failed: reason={} msg={}", e.getReason(), e.getMessage());
             return errorResponse(e);
         } catch (IllegalArgumentException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
     }
 }

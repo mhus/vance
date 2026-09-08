@@ -30,8 +30,7 @@ public enum TemplateInputType {
 
     public static TemplateInputType parse(String raw, String fieldLabel) {
         if (raw == null || raw.isBlank()) {
-            throw new IllegalArgumentException(
-                    "template input '" + fieldLabel + "': 'type' is required");
+            throw new IllegalArgumentException("template input '" + fieldLabel + "': 'type' is required");
         }
         // Accept both `multi_select` (canonical Java enum form) and `multiselect`
         // (YAML-friendly shorthand) as aliases.
@@ -43,7 +42,8 @@ public enum TemplateInputType {
             throw new IllegalArgumentException(
                     "template input '" + fieldLabel + "': unknown type '" + raw
                             + "' — expected one of "
-                            + java.util.Arrays.toString(values()).toLowerCase());
+                            + java.util.Arrays.toString(values()).toLowerCase(),
+                    e);
         }
     }
 }

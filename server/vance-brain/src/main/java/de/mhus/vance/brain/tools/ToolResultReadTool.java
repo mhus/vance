@@ -52,25 +52,35 @@ public class ToolResultReadTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "The opaque '_resultId' value from a "
-                                    + "truncated tool-result stub. Copy it "
-                                    + "verbatim — it's a bare UUID, no path "
-                                    + "prefix or suffix."),
-                    "offset", Map.of(
-                            "type", "integer",
-                            "description", "Character offset to start reading "
-                                    + "from. Default 0. For content larger "
-                                    + "than one window, pass the 'nextOffset' "
-                                    + "from the previous read to page forward — "
-                                    + "do NOT re-read from 0."),
-                    "maxChars", Map.of(
-                            "type", "integer",
-                            "description", "Max characters to return in this "
-                                    + "read. Default " + DEFAULT_WINDOW_CHARS
-                                    + ", capped at " + MAX_WINDOW_CHARS + ".")),
+            "properties",
+                    Map.of(
+                            "id",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "The opaque '_resultId' value from a "
+                                                    + "truncated tool-result stub. Copy it "
+                                                    + "verbatim — it's a bare UUID, no path "
+                                                    + "prefix or suffix."),
+                            "offset",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Character offset to start reading "
+                                                    + "from. Default 0. For content larger "
+                                                    + "than one window, pass the 'nextOffset' "
+                                                    + "from the previous read to page forward — "
+                                                    + "do NOT re-read from 0."),
+                            "maxChars",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Max characters to return in this "
+                                                    + "read. Default " + DEFAULT_WINDOW_CHARS
+                                                    + ", capped at " + MAX_WINDOW_CHARS + ".")),
             "required", List.of("id"));
 
     private final ToolResultStorage toolResultStorage;
@@ -164,7 +174,7 @@ public class ToolResultReadTool implements Tool {
             }
             return out;
         } catch (IOException e) {
-            throw new ToolException("tool_result_read failed: " + e.getMessage());
+            throw new ToolException("tool_result_read failed: " + e.getMessage(), e);
         }
     }
 
@@ -180,7 +190,7 @@ public class ToolResultReadTool implements Tool {
             try {
                 return Integer.parseInt(s.trim());
             } catch (NumberFormatException e) {
-                throw new ToolException("'" + key + "' must be an integer, got: '" + s + "'");
+                throw new ToolException("'" + key + "' must be an integer, got: '" + s + "'", e);
             }
         }
         throw new ToolException("'" + key + "' must be an integer");

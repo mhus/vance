@@ -51,9 +51,9 @@ class UrsaEventToolSupport {
      */
     private de.mhus.vance.shared.permission.WriteActor adminSystemActor(
             String tenantId, String projectId, @Nullable String userId) {
-        de.mhus.vance.shared.permission.SecurityContext subject =
-                contextFactory.forToolSubject(tenantId, userId);
-        permissionService.enforce(subject,
+        de.mhus.vance.shared.permission.SecurityContext subject = contextFactory.forToolSubject(tenantId, userId);
+        permissionService.enforce(
+                subject,
                 new de.mhus.vance.shared.permission.Resource.Project(tenantId, projectId),
                 de.mhus.vance.shared.permission.Action.ADMIN);
         return de.mhus.vance.shared.permission.WriteActor.system(subject);
@@ -68,15 +68,13 @@ class UrsaEventToolSupport {
             throw new ToolException("'name' must be a non-empty string");
         }
         if (!NAME_PATTERN.matcher(trimmed).matches()) {
-            throw new ToolException(
-                    "'name' must match " + NAME_PATTERN.pattern() + " — got '" + name + "'");
+            throw new ToolException("'name' must match " + NAME_PATTERN.pattern() + " — got '" + name + "'");
         }
         return trimmed;
     }
 
     static String pathFor(String name) {
-        return UrsaEventLoader.EVENT_PATH_PREFIX + name
-                + UrsaEventLoader.EVENT_PATH_SUFFIX;
+        return UrsaEventLoader.EVENT_PATH_PREFIX + name + UrsaEventLoader.EVENT_PATH_SUFFIX;
     }
 
     /**
@@ -91,7 +89,7 @@ class UrsaEventToolSupport {
         try {
             return loader.validateYaml(name, yaml);
         } catch (UrsaEventParseException ex) {
-            throw new ToolException(ex.getMessage());
+            throw new ToolException(ex.getMessage(), ex);
         }
     }
 
@@ -102,9 +100,7 @@ class UrsaEventToolSupport {
      *
      * <p>Returns {@code true} when an existing doc was replaced.
      */
-    boolean upsert(
-            String tenantId, String projectId, String name, String yaml,
-            @Nullable String createdBy) {
+    boolean upsert(String tenantId, String projectId, String name, String yaml, @Nullable String createdBy) {
         String path = pathFor(name);
         Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
@@ -118,7 +114,9 @@ class UrsaEventToolSupport {
             return true;
         }
         documentService.createText(
-                tenantId, projectId, path,
+                tenantId,
+                projectId,
+                path,
                 /*title*/ "Event: " + name,
                 /*tags*/ null,
                 yaml,
@@ -132,8 +130,7 @@ class UrsaEventToolSupport {
      * tenant copy (if any) is untouched — same semantics as
      * {@code scheduler_delete}.
      */
-    boolean deleteByName(String tenantId, String projectId, String name,
-            @Nullable String userId) {
+    boolean deleteByName(String tenantId, String projectId, String name, @Nullable String userId) {
         String path = pathFor(name);
         Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, path);
         if (existing.isEmpty()) {

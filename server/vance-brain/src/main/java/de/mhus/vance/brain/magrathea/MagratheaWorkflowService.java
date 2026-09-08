@@ -19,14 +19,14 @@ import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow;
-import de.mhus.vance.shared.metric.MetricService;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.magrathea.journal.ResultRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.journal.StateEnteredRecord;
 import de.mhus.vance.shared.magrathea.journal.StatusRecord;
 import de.mhus.vance.shared.magrathea.journal.TaskResultRecord;
 import de.mhus.vance.shared.magrathea.journal.VarRecord;
+import de.mhus.vance.shared.metric.MetricService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -36,7 +36,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,10 +56,7 @@ import org.springframework.stereotype.Service;
  * of which thread publishes the event (plan §10).
  */
 @Service
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @Slf4j
 public class MagratheaWorkflowService {
 
@@ -79,6 +75,7 @@ public class MagratheaWorkflowService {
     private final MagratheaWorkflowLoader workflowLoader;
     /** Datenhoheit: document bodies are read through the owning service, never from Mongo directly. */
     private final DocumentService documentService;
+
     private final MagratheaJournalService journalService;
     private final MagratheaTaskService taskService;
     private final MagratheaProjectLaneManager laneManager;
@@ -90,12 +87,14 @@ public class MagratheaWorkflowService {
     private final de.mhus.vance.shared.magrathea.MagratheaStateProjector stateProjector;
     /** Tells an owning process that its run is waiting, or done. */
     private final MagratheaOwnerNotifier ownerNotifier;
+
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final MetricService metricService;
     /** Only to stop an agent whose task ended on its deadline. */
     private final ThinkProcessService thinkProcessService;
     /** Unwinding a stopped run: withdraw its gate item, drop its timers. */
     private final de.mhus.vance.shared.inbox.MaximegalonService inboxItemService;
+
     private final de.mhus.vance.shared.magrathea.MagratheaTimerService timerService;
 
     public MagratheaWorkflowService(
@@ -147,8 +146,14 @@ public class MagratheaWorkflowService {
             String workflowName,
             @Nullable Map<String, Object> callerParams,
             @Nullable String startedBy) {
-        return start(tenantId, projectId, workflowName, callerParams, startedBy,
-                /* parentMagratheaProcessId */ null, /* parentState */ null);
+        return start(
+                tenantId,
+                projectId,
+                workflowName,
+                callerParams,
+                startedBy,
+                /* parentMagratheaProcessId */ null, /* parentState */
+                null);
     }
 
     /**
@@ -166,8 +171,15 @@ public class MagratheaWorkflowService {
             @Nullable String startedBy,
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState) {
-        return start(tenantId, projectId, workflowName, callerParams, startedBy,
-                parentMagratheaProcessId, parentState, MagratheaRunBinding.headless());
+        return start(
+                tenantId,
+                projectId,
+                workflowName,
+                callerParams,
+                startedBy,
+                parentMagratheaProcessId,
+                parentState,
+                MagratheaRunBinding.headless());
     }
 
     /**
@@ -185,12 +197,20 @@ public class MagratheaWorkflowService {
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState,
             MagratheaRunBinding binding) {
-        ResolvedMagratheaWorkflow workflow = workflowLoader.load(tenantId, projectId, workflowName)
-                .orElseThrow(() -> new MagratheaWorkflowException(
-                        "Workflow '" + workflowName + "' not found in cascade for tenant="
-                                + tenantId + " project=" + projectId));
-        return startResolved(tenantId, projectId, workflow, /* sourcePath */ null,
-                callerParams, startedBy, parentMagratheaProcessId, parentState, binding);
+        ResolvedMagratheaWorkflow workflow = workflowLoader
+                .load(tenantId, projectId, workflowName)
+                .orElseThrow(() -> new MagratheaWorkflowException("Workflow '" + workflowName
+                        + "' not found in cascade for tenant=" + tenantId + " project=" + projectId));
+        return startResolved(
+                tenantId,
+                projectId,
+                workflow, /* sourcePath */
+                null,
+                callerParams,
+                startedBy,
+                parentMagratheaProcessId,
+                parentState,
+                binding);
     }
 
     /**
@@ -218,8 +238,7 @@ public class MagratheaWorkflowService {
             String path,
             @Nullable Map<String, Object> callerParams,
             @Nullable String startedBy) {
-        return startFromDocument(tenantId, projectId, path, callerParams, startedBy,
-                MagratheaRunBinding.headless());
+        return startFromDocument(tenantId, projectId, path, callerParams, startedBy, MagratheaRunBinding.headless());
     }
 
     /**
@@ -242,20 +261,28 @@ public class MagratheaWorkflowService {
         if (norm.isEmpty()) {
             throw new MagratheaWorkflowException("Document path is required");
         }
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, norm)
-                .orElseThrow(() -> new MagratheaWorkflowException(
-                        "No document at '" + norm + "' in project '" + projectId + "'"));
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, norm)
+                .orElseThrow(() ->
+                        new MagratheaWorkflowException("No document at '" + norm + "' in project '" + projectId + "'"));
 
         // Deliberately no `kind: vance-workflow` check: the parser is the
         // real gate, and requiring the header would refuse the legacy
         // definitions under _vance/workflows/ that the name-based route
         // starts happily. The kind drives which documents *offer* the
         // button, not which ones may run.
-        ResolvedMagratheaWorkflow workflow = MagratheaWorkflowLoader.parseYaml(
-                workflowNameFromPath(norm), documentService.readContent(doc));
+        ResolvedMagratheaWorkflow workflow =
+                MagratheaWorkflowLoader.parseYaml(workflowNameFromPath(norm), documentService.readContent(doc));
 
-        return startResolved(tenantId, projectId, workflow, norm,
-                callerParams, startedBy, /* parent */ null, /* parentState */ null,
+        return startResolved(
+                tenantId,
+                projectId,
+                workflow,
+                norm,
+                callerParams,
+                startedBy, /* parent */
+                null, /* parentState */
+                null,
                 binding);
     }
 
@@ -294,22 +321,30 @@ public class MagratheaWorkflowService {
         // a write failure propagates instead of leaving the caller with a
         // runId for a run that never materialised (code-review Phase 2).
         try {
-            laneManager.submitTracked(projectId, () -> writeStartRecords(
-                    tenantId, projectId, runId, workflow, resolvedParams, startedBy,
-                    sourcePath, parentMagratheaProcessId, parentState, binding))
+            laneManager
+                    .submitTracked(
+                            projectId,
+                            () -> writeStartRecords(
+                                    tenantId,
+                                    projectId,
+                                    runId,
+                                    workflow,
+                                    resolvedParams,
+                                    startedBy,
+                                    sourcePath,
+                                    parentMagratheaProcessId,
+                                    parentState,
+                                    binding))
                     .get(START_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         } catch (java.util.concurrent.ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             throw new MagratheaWorkflowException(
-                    "Failed to start workflow '" + workflow.name() + "': " + cause.getMessage(),
-                    cause);
+                    "Failed to start workflow '" + workflow.name() + "': " + cause.getMessage(), cause);
         } catch (java.util.concurrent.TimeoutException e) {
-            throw new MagratheaWorkflowException(
-                    "Timed out starting workflow '" + workflow.name() + "'", e);
+            throw new MagratheaWorkflowException("Timed out starting workflow '" + workflow.name() + "'", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new MagratheaWorkflowException(
-                    "Interrupted starting workflow '" + workflow.name() + "'", e);
+            throw new MagratheaWorkflowException("Interrupted starting workflow '" + workflow.name() + "'", e);
         }
 
         metricService.counter(METRIC_STARTS, "workflow", workflow.name()).increment();
@@ -330,8 +365,7 @@ public class MagratheaWorkflowService {
      * said what to do when the thing is impossible, so it is allowed to run
      * and find out.
      */
-    private void requireCapabilities(
-            ResolvedMagratheaWorkflow workflow, MagratheaRunBinding binding) {
+    private void requireCapabilities(ResolvedMagratheaWorkflow workflow, MagratheaRunBinding binding) {
         List<String> problems = new ArrayList<>();
         for (Map.Entry<String, MagratheaStateSpec> entry : workflow.states().entrySet()) {
             MagratheaStateSpec state = entry.getValue();
@@ -347,11 +381,10 @@ public class MagratheaWorkflowService {
             }
         }
         if (!problems.isEmpty()) {
-            throw new MagratheaWorkflowException(
-                    "Workflow '" + workflow.name() + "' cannot run with this binding: "
-                            + String.join("; ", problems)
-                            + ". Start it bound to a session/process, or declare "
-                            + "catch: { capability_missing: <state> } on the state.");
+            throw new MagratheaWorkflowException("Workflow '" + workflow.name() + "' cannot run with this binding: "
+                    + String.join("; ", problems)
+                    + ". Start it bound to a session/process, or declare "
+                    + "catch: { capability_missing: <state> } on the state.");
         }
     }
 
@@ -374,11 +407,13 @@ public class MagratheaWorkflowService {
         try {
             taskService.unlinkSubProcess(task.getId());
             thinkProcessService.closeProcess(subProcessId, CloseReason.STOPPED);
-            log.info("Magrathea task {} timed out — closed agent process {}",
-                    task.getId(), subProcessId);
+            log.info("Magrathea task {} timed out — closed agent process {}", task.getId(), subProcessId);
         } catch (RuntimeException ex) {
-            log.warn("Magrathea task {} timed out but agent process {} could not be closed: {}",
-                    task.getId(), subProcessId, ex.toString());
+            log.warn(
+                    "Magrathea task {} timed out but agent process {} could not be closed: {}",
+                    task.getId(),
+                    subProcessId,
+                    ex.toString());
         }
     }
 
@@ -399,9 +434,14 @@ public class MagratheaWorkflowService {
         MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
         if (status != MagratheaRunStatus.RUNNING) return false;
         onLane(projectId, () -> {
-            journalService.append(tenantId, projectId, workflowRunId,
-                    StatusRecord.builder().status(MagratheaRunStatus.PAUSED)
-                            .reason("paused from the run view").build());
+            journalService.append(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    StatusRecord.builder()
+                            .status(MagratheaRunStatus.PAUSED)
+                            .reason("paused from the run view")
+                            .build());
             long held = taskService.holdRun(workflowRunId);
             log.info("Magrathea run {} paused — {} task(s) held", workflowRunId, held);
         });
@@ -418,9 +458,14 @@ public class MagratheaWorkflowService {
         if (status != MagratheaRunStatus.PAUSED) return false;
         onLane(projectId, () -> {
             long released = taskService.releaseRun(workflowRunId);
-            journalService.append(tenantId, projectId, workflowRunId,
-                    StatusRecord.builder().status(MagratheaRunStatus.RUNNING)
-                            .reason("resumed from the run view").build());
+            journalService.append(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    StatusRecord.builder()
+                            .status(MagratheaRunStatus.RUNNING)
+                            .reason("resumed from the run view")
+                            .build());
             log.info("Magrathea run {} resumed — {} task(s) released", workflowRunId, released);
         });
         return true;
@@ -451,17 +496,12 @@ public class MagratheaWorkflowService {
      * decision somebody made, a stall is a defect, and a run list that
      * shows the two alike hides the thing worth looking at.
      */
-    public boolean failStalledRun(
-            String tenantId, String projectId, String workflowRunId, String reason) {
+    public boolean failStalledRun(String tenantId, String projectId, String workflowRunId, String reason) {
         return endRun(tenantId, projectId, workflowRunId, MagratheaRunStatus.FAILED, reason);
     }
 
     private boolean endRun(
-            String tenantId,
-            String projectId,
-            String workflowRunId,
-            MagratheaRunStatus terminalStatus,
-            String reason) {
+            String tenantId, String projectId, String workflowRunId, MagratheaRunStatus terminalStatus, String reason) {
         MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
         if (status == MagratheaRunStatus.DONE
                 || status == MagratheaRunStatus.FAILED
@@ -480,10 +520,20 @@ public class MagratheaWorkflowService {
             }
             timerService.deleteRun(workflowRunId);
             if (!stillWorking) {
-                journalService.append(tenantId, projectId, workflowRunId,
-                        StatusRecord.builder().status(terminalStatus).reason(reason).build());
-                recordTerminalMetrics(workflowNameOf(tenantId, projectId, workflowRunId),
-                        terminalStatus, tenantId, projectId, workflowRunId);
+                journalService.append(
+                        tenantId,
+                        projectId,
+                        workflowRunId,
+                        StatusRecord.builder()
+                                .status(terminalStatus)
+                                .reason(reason)
+                                .build());
+                recordTerminalMetrics(
+                        workflowNameOf(tenantId, projectId, workflowRunId),
+                        terminalStatus,
+                        tenantId,
+                        projectId,
+                        workflowRunId);
                 // Whoever owns this run finds out here or not at all: no
                 // task completion follows a stop or a watchdog fail, so the
                 // TERMINAL branch of onTaskCompleted never runs for it. A
@@ -496,18 +546,26 @@ public class MagratheaWorkflowService {
                 ProcessEventType eventType = terminalStatus == MagratheaRunStatus.FAILED
                         ? ProcessEventType.FAILED
                         : ProcessEventType.STOPPED;
-                journalService.readLast(tenantId, projectId, workflowRunId, StartRecord.class)
+                journalService
+                        .readLast(tenantId, projectId, workflowRunId, StartRecord.class)
                         .ifPresent(s -> ownerNotifier.runTerminated(
-                                s.getOwnerProcessId(), workflowRunId, eventType,
-                                "Workflow run " + terminalStatus.name().toLowerCase(Locale.ROOT)
-                                        + ": " + reason));
+                                s.getOwnerProcessId(),
+                                workflowRunId,
+                                eventType,
+                                "Workflow run " + terminalStatus.name().toLowerCase(Locale.ROOT) + ": " + reason));
             }
             // Says what was ended, not just what was blocked: "0 held" on a
             // run whose only task was already claimed reads like nothing
             // happened, when in fact an agent was just closed.
-            log.info("Magrathea run {} → {} ({}) — {} queued task(s) held,"
+            log.info(
+                    "Magrathea run {} → {} ({}) — {} queued task(s) held,"
                             + " {} in-flight task(s) unwound, opaque work remaining: {}",
-                    workflowRunId, terminalStatus, reason, held, unwound, stillWorking);
+                    workflowRunId,
+                    terminalStatus,
+                    reason,
+                    held,
+                    unwound,
+                    stillWorking);
         });
         return true;
     }
@@ -534,8 +592,7 @@ public class MagratheaWorkflowService {
             try {
                 inboxItemService.dismiss(tenantId, task.getInboxItemId(), "_magrathea");
             } catch (RuntimeException ex) {
-                log.warn("Magrathea stop: could not dismiss gate item '{}': {}",
-                        task.getInboxItemId(), ex.toString());
+                log.warn("Magrathea stop: could not dismiss gate item '{}': {}", task.getInboxItemId(), ex.toString());
             }
             ended = true;
         }
@@ -544,8 +601,10 @@ public class MagratheaWorkflowService {
             try {
                 thinkProcessService.closeProcess(task.getSubProcessId(), CloseReason.STOPPED);
             } catch (RuntimeException ex) {
-                log.warn("Magrathea stop: could not close agent process '{}': {}",
-                        task.getSubProcessId(), ex.toString());
+                log.warn(
+                        "Magrathea stop: could not close agent process '{}': {}",
+                        task.getSubProcessId(),
+                        ex.toString());
             }
             ended = true;
         }
@@ -553,8 +612,7 @@ public class MagratheaWorkflowService {
             try {
                 stopRun(tenantId, task.getProjectId(), task.getSubWorkflowRunId(), reason);
             } catch (RuntimeException ex) {
-                log.warn("Magrathea stop: could not stop sub-run '{}': {}",
-                        task.getSubWorkflowRunId(), ex.toString());
+                log.warn("Magrathea stop: could not stop sub-run '{}': {}", task.getSubWorkflowRunId(), ex.toString());
             }
             ended = true;
         }
@@ -567,13 +625,16 @@ public class MagratheaWorkflowService {
     }
 
     private String workflowNameOf(String tenantId, String projectId, String workflowRunId) {
-        return journalService.readLast(tenantId, projectId, workflowRunId, StartRecord.class)
-                .map(StartRecord::getWorkflowName).orElse("unknown");
+        return journalService
+                .readLast(tenantId, projectId, workflowRunId, StartRecord.class)
+                .map(StartRecord::getWorkflowName)
+                .orElse("unknown");
     }
 
     /** Projected run status; {@code RUNNING} until a status record says otherwise. */
     public MagratheaRunStatus currentStatus(String tenantId, String projectId, String workflowRunId) {
-        return journalService.readLast(tenantId, projectId, workflowRunId, StatusRecord.class)
+        return journalService
+                .readLast(tenantId, projectId, workflowRunId, StatusRecord.class)
                 .map(StatusRecord::getStatus)
                 .orElse(MagratheaRunStatus.RUNNING);
     }
@@ -605,25 +666,34 @@ public class MagratheaWorkflowService {
             @Nullable String parentState,
             MagratheaRunBinding binding) {
 
-        journalService.append(tenantId, projectId, runId, StartRecord.builder()
-                .workflowName(workflow.name())
-                .workflowVersion(workflow.version())
-                .definitionYaml(workflow.yaml())
-                .params(params)
-                .startedBy(startedBy)
-                .sourcePath(sourcePath)
-                .parentMagratheaProcessId(parentMagratheaProcessId)
-                .parentState(parentState)
-                .sessionId(binding.sessionId())
-                .ownerProcessId(binding.ownerProcessId())
-                .capabilities(binding.capabilities().stream()
-                        .map(Enum::name)
-                        .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new)))
-                .derivedParamKeys(binding.derivedParamKeys().isEmpty()
-                        ? null : new java.util.LinkedHashSet<>(binding.derivedParamKeys()))
-                .build());
+        journalService.append(
+                tenantId,
+                projectId,
+                runId,
+                StartRecord.builder()
+                        .workflowName(workflow.name())
+                        .workflowVersion(workflow.version())
+                        .definitionYaml(workflow.yaml())
+                        .params(params)
+                        .startedBy(startedBy)
+                        .sourcePath(sourcePath)
+                        .parentMagratheaProcessId(parentMagratheaProcessId)
+                        .parentState(parentState)
+                        .sessionId(binding.sessionId())
+                        .ownerProcessId(binding.ownerProcessId())
+                        .capabilities(binding.capabilities().stream()
+                                .map(Enum::name)
+                                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new)))
+                        .derivedParamKeys(
+                                binding.derivedParamKeys().isEmpty()
+                                        ? null
+                                        : new java.util.LinkedHashSet<>(binding.derivedParamKeys()))
+                        .build());
 
-        journalService.append(tenantId, projectId, runId,
+        journalService.append(
+                tenantId,
+                projectId,
+                runId,
                 StateEnteredRecord.builder().state(workflow.startState()).build());
 
         MagratheaStateSpec startState = workflow.states().get(workflow.startState());
@@ -641,13 +711,17 @@ public class MagratheaWorkflowService {
                 .attemptCount(0)
                 .build();
         localDispatch.dispatch(taskService.insert(task));
-        log.info("Magrathea run {} started workflow='{}' tenant={} project={} startState={}",
-                runId, workflow.name(), tenantId, projectId, workflow.startState());
+        log.info(
+                "Magrathea run {} started workflow='{}' tenant={} project={} startState={}",
+                runId,
+                workflow.name(),
+                tenantId,
+                projectId,
+                workflow.startState());
     }
 
     private Map<String, Object> applyDefaultsAndValidate(
-            ResolvedMagratheaWorkflow workflow,
-            @Nullable Map<String, Object> callerParams) {
+            ResolvedMagratheaWorkflow workflow, @Nullable Map<String, Object> callerParams) {
         Map<String, Object> out = new LinkedHashMap<>();
         Map<String, Object> caller = callerParams == null ? Map.of() : callerParams;
         for (Map.Entry<String, MagratheaParameterSpec> e : workflow.parameters().entrySet()) {
@@ -659,8 +733,7 @@ public class MagratheaWorkflowService {
                 out.put(key, spec.defaultValue());
             } else if (spec.required()) {
                 throw new MagratheaWorkflowException(
-                        "Required parameter '" + key + "' missing for workflow '"
-                                + workflow.name() + "'");
+                        "Required parameter '" + key + "' missing for workflow '" + workflow.name() + "'");
             }
         }
         // Caller-supplied parameters not in the schema are passed through
@@ -722,8 +795,8 @@ public class MagratheaWorkflowService {
         }
 
         // Re-load fresh definition + state spec for transition resolution.
-        Optional<StartRecord> start = journalService.readLast(
-                event.tenantId(), event.projectId(), event.workflowRunId(), StartRecord.class);
+        Optional<StartRecord> start =
+                journalService.readLast(event.tenantId(), event.projectId(), event.workflowRunId(), StartRecord.class);
         if (start.isEmpty()) {
             log.error("Magrathea onTaskCompleted: run {} has no StartRecord", event.workflowRunId());
             markTaskTerminal(task, event.outcome());
@@ -732,11 +805,10 @@ public class MagratheaWorkflowService {
 
         ResolvedMagratheaWorkflow workflow;
         try {
-            workflow = workflowLoader.validateYaml(start.get().getWorkflowName(),
-                    start.get().getDefinitionYaml());
+            workflow = workflowLoader.validateYaml(
+                    start.get().getWorkflowName(), start.get().getDefinitionYaml());
         } catch (RuntimeException ex) {
-            log.error("Magrathea onTaskCompleted: cannot re-parse frozen YAML for run {}",
-                    event.workflowRunId(), ex);
+            log.error("Magrathea onTaskCompleted: cannot re-parse frozen YAML for run {}", event.workflowRunId(), ex);
             markTaskTerminal(task, "failure");
             writeRunFailed(event, "frozen YAML invalid: " + ex.getMessage());
             return;
@@ -753,8 +825,13 @@ public class MagratheaWorkflowService {
         // 1. storeAs → VarRecord
         if (state.storeAs() != null && event.output() != null) {
             journalService.append(
-                    event.tenantId(), event.projectId(), event.workflowRunId(),
-                    VarRecord.builder().key(state.storeAs()).value(event.output()).build());
+                    event.tenantId(),
+                    event.projectId(),
+                    event.workflowRunId(),
+                    VarRecord.builder()
+                            .key(state.storeAs())
+                            .value(event.output())
+                            .build());
         }
 
         // 2. TERMINAL-specific: write StatusRecord + ResultRecord
@@ -764,16 +841,30 @@ public class MagratheaWorkflowService {
                     : MagratheaRunStatus.FAILED;
             if (event.output() != null) {
                 journalService.append(
-                        event.tenantId(), event.projectId(), event.workflowRunId(),
-                        ResultRecord.builder().state(event.stateName()).result(event.output()).build());
+                        event.tenantId(),
+                        event.projectId(),
+                        event.workflowRunId(),
+                        ResultRecord.builder()
+                                .state(event.stateName())
+                                .result(event.output())
+                                .build());
             }
             journalService.append(
-                    event.tenantId(), event.projectId(), event.workflowRunId(),
-                    StatusRecord.builder().status(runStatus).reason(event.errorMessage()).build());
+                    event.tenantId(),
+                    event.projectId(),
+                    event.workflowRunId(),
+                    StatusRecord.builder()
+                            .status(runStatus)
+                            .reason(event.errorMessage())
+                            .build());
             markTaskTerminal(task, event.outcome());
 
-            recordTerminalMetrics(start.get().getWorkflowName(), runStatus,
-                    event.tenantId(), event.projectId(), event.workflowRunId());
+            recordTerminalMetrics(
+                    start.get().getWorkflowName(),
+                    runStatus,
+                    event.tenantId(),
+                    event.projectId(),
+                    event.workflowRunId());
 
             // Surface to any parent that's waiting on this run as a sub-workflow.
             publishWorkflowCompleted(event, start.get(), runStatus);
@@ -783,12 +874,10 @@ public class MagratheaWorkflowService {
             ownerNotifier.runTerminated(
                     start.get().getOwnerProcessId(),
                     event.workflowRunId(),
-                    runStatus == MagratheaRunStatus.DONE
-                            ? ProcessEventType.DONE
-                            : ProcessEventType.FAILED,
+                    runStatus == MagratheaRunStatus.DONE ? ProcessEventType.DONE : ProcessEventType.FAILED,
                     terminalSummary(event, runStatus));
-            log.info("Magrathea run {} reached terminal '{}' → {}",
-                    event.workflowRunId(), event.stateName(), runStatus);
+            log.info(
+                    "Magrathea run {} reached terminal '{}' → {}", event.workflowRunId(), event.stateName(), runStatus);
             return;
         }
 
@@ -801,11 +890,10 @@ public class MagratheaWorkflowService {
 
         // 4. Bounds check before enqueueing any further task — same
         //    place catches both normal transitions and catch-routes.
-        Optional<String> boundsViolation = checkBounds(
-                event.tenantId(), event.projectId(), event.workflowRunId(), workflow);
+        Optional<String> boundsViolation =
+                checkBounds(event.tenantId(), event.projectId(), event.workflowRunId(), workflow);
         if (boundsViolation.isPresent()) {
-            log.warn("Magrathea run {} bounds exhausted: {}",
-                    event.workflowRunId(), boundsViolation.get());
+            log.warn("Magrathea run {} bounds exhausted: {}", event.workflowRunId(), boundsViolation.get());
             markTaskTerminal(task, event.outcome());
             writeRunFailed(event, "bounds exhausted: " + boundsViolation.get());
             return;
@@ -817,16 +905,18 @@ public class MagratheaWorkflowService {
 
         if (nextState == null) {
             // No transition matches and no catch matches — treat as run failure.
-            log.warn("Magrathea run {} state '{}' produced outcome '{}' with no transition",
-                    event.workflowRunId(), event.stateName(), event.outcome());
+            log.warn(
+                    "Magrathea run {} state '{}' produced outcome '{}' with no transition",
+                    event.workflowRunId(),
+                    event.stateName(),
+                    event.outcome());
             writeRunFailed(event, "no transition for outcome '" + event.outcome() + "'");
             return;
         }
         enqueueNextTask(event, workflow, nextState);
     }
 
-    private static boolean canRetry(
-            MagratheaStateSpec state, MagratheaTaskDocument task, TaskCompletedEvent event) {
+    private static boolean canRetry(MagratheaStateSpec state, MagratheaTaskDocument task, TaskCompletedEvent event) {
         if (state.retry() == null) return false;
         MagratheaErrorKind kind = parseErrorKind(event.outcome());
         if (kind == null) return false;
@@ -837,10 +927,7 @@ public class MagratheaWorkflowService {
     }
 
     private void enqueueRetry(
-            TaskCompletedEvent prev,
-            ResolvedMagratheaWorkflow workflow,
-            MagratheaStateSpec state,
-            int retryCount) {
+            TaskCompletedEvent prev, ResolvedMagratheaWorkflow workflow, MagratheaStateSpec state, int retryCount) {
         int backoff = Math.max(0, state.retry().backoffSeconds());
         MagratheaTaskDocument retry = MagratheaTaskDocument.builder()
                 .tenantId(prev.tenantId())
@@ -858,33 +945,35 @@ public class MagratheaWorkflowService {
         // Dispatched locally only when the back-off has already elapsed
         // (backoff == 0); otherwise the claimer picks it up when it is due.
         localDispatch.dispatch(taskService.insert(retry));
-        log.info("Magrathea run {} state '{}' retry {} scheduled (backoff={}s)",
-                prev.workflowRunId(), prev.stateName(), retryCount, backoff);
+        log.info(
+                "Magrathea run {} state '{}' retry {} scheduled (backoff={}s)",
+                prev.workflowRunId(),
+                prev.stateName(),
+                retryCount,
+                backoff);
     }
 
     private Optional<String> checkBounds(
-            String tenantId, String projectId, String workflowRunId,
-            ResolvedMagratheaWorkflow workflow) {
+            String tenantId, String projectId, String workflowRunId, ResolvedMagratheaWorkflow workflow) {
         MagratheaBoundsSpec bounds = workflow.bounds();
         if (bounds == null) return Optional.empty();
 
         if (bounds.maxWallclockSeconds() != null) {
-            Optional<Instant> runStart =
-                    journalService.firstCreatedAt(tenantId, projectId, workflowRunId);
+            Optional<Instant> runStart = journalService.firstCreatedAt(tenantId, projectId, workflowRunId);
             if (runStart.isPresent()) {
-                long elapsed = java.time.Duration.between(runStart.get(), Instant.now()).getSeconds();
+                long elapsed = java.time.Duration.between(runStart.get(), Instant.now())
+                        .getSeconds();
                 if (elapsed > bounds.maxWallclockSeconds()) {
-                    return Optional.of("maxWallclockSeconds=" + bounds.maxWallclockSeconds()
-                            + " exceeded (elapsed " + elapsed + "s)");
+                    return Optional.of("maxWallclockSeconds=" + bounds.maxWallclockSeconds() + " exceeded (elapsed "
+                            + elapsed + "s)");
                 }
             }
         }
         if (bounds.maxTaskSpawns() != null) {
-            long spawned = journalService.count(tenantId, projectId, workflowRunId,
-                    de.mhus.vance.shared.magrathea.journal.TaskStartedRecord.class);
+            long spawned = journalService.count(
+                    tenantId, projectId, workflowRunId, de.mhus.vance.shared.magrathea.journal.TaskStartedRecord.class);
             if (spawned > bounds.maxTaskSpawns()) {
-                return Optional.of("maxTaskSpawns=" + bounds.maxTaskSpawns()
-                        + " exceeded (started " + spawned + ")");
+                return Optional.of("maxTaskSpawns=" + bounds.maxTaskSpawns() + " exceeded (started " + spawned + ")");
             }
         }
         // maxTotalCostUsd is reserved for the LLM-cost-tracking integration (plan §14).
@@ -918,22 +1007,26 @@ public class MagratheaWorkflowService {
         }
     }
 
-    private void enqueueNextTask(
-            TaskCompletedEvent prev, ResolvedMagratheaWorkflow workflow, String nextStateName) {
+    private void enqueueNextTask(TaskCompletedEvent prev, ResolvedMagratheaWorkflow workflow, String nextStateName) {
         MagratheaStateSpec next = workflow.states().get(nextStateName);
         if (next == null) {
-            log.error("Magrathea run {} transition target '{}' missing from workflow",
-                    prev.workflowRunId(), nextStateName);
+            log.error(
+                    "Magrathea run {} transition target '{}' missing from workflow",
+                    prev.workflowRunId(),
+                    nextStateName);
             writeRunFailed(prev, "transition target missing: " + nextStateName);
             return;
         }
-        journalService.append(prev.tenantId(), prev.projectId(), prev.workflowRunId(),
+        journalService.append(
+                prev.tenantId(),
+                prev.projectId(),
+                prev.workflowRunId(),
                 StateEnteredRecord.builder().state(nextStateName).build());
         applyCounters(prev.tenantId(), prev.projectId(), prev.workflowRunId(), next);
         // A task created while the run is paused must not slip past the
         // hold: pausing moved the queue to HELD, but this row is new.
-        boolean paused = currentStatus(prev.tenantId(), prev.projectId(), prev.workflowRunId())
-                == MagratheaRunStatus.PAUSED;
+        boolean paused =
+                currentStatus(prev.tenantId(), prev.projectId(), prev.workflowRunId()) == MagratheaRunStatus.PAUSED;
         MagratheaTaskDocument task = MagratheaTaskDocument.builder()
                 .tenantId(prev.tenantId())
                 .projectId(prev.projectId())
@@ -964,25 +1057,33 @@ public class MagratheaWorkflowService {
      * plus {@code enterCounter: rounds} and land on 1, not 0.
      */
     private void applyCounters(
-            String tenantId, String projectId, String workflowRunId,
-            @Nullable MagratheaStateSpec state) {
+            String tenantId, String projectId, String workflowRunId, @Nullable MagratheaStateSpec state) {
         if (state == null) return;
 
         for (String name : state.resetCounters()) {
-            journalService.append(tenantId, projectId, workflowRunId,
-                    VarRecord.builder().key(name)
-                            .value(tools.jackson.databind.node.LongNode.valueOf(0L)).build());
+            journalService.append(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    VarRecord.builder()
+                            .key(name)
+                            .value(tools.jackson.databind.node.LongNode.valueOf(0L))
+                            .build());
         }
         String counter = state.enterCounter();
         if (counter == null || counter.isBlank()) return;
 
         Map<String, Object> vars = projectorVars(tenantId, projectId, workflowRunId);
         long next = asLong(vars.get(counter)) + 1;
-        journalService.append(tenantId, projectId, workflowRunId,
-                VarRecord.builder().key(counter)
-                        .value(tools.jackson.databind.node.LongNode.valueOf(next)).build());
-        log.debug("Magrathea run {} state '{}' counter '{}' = {}",
-                workflowRunId, state.name(), counter, next);
+        journalService.append(
+                tenantId,
+                projectId,
+                workflowRunId,
+                VarRecord.builder()
+                        .key(counter)
+                        .value(tools.jackson.databind.node.LongNode.valueOf(next))
+                        .build());
+        log.debug("Magrathea run {} state '{}' counter '{}' = {}", workflowRunId, state.name(), counter, next);
     }
 
     /**
@@ -1003,8 +1104,7 @@ public class MagratheaWorkflowService {
         return 0L;
     }
 
-    private Map<String, Object> projectorVars(
-            String tenantId, String projectId, String workflowRunId) {
+    private Map<String, Object> projectorVars(String tenantId, String projectId, String workflowRunId) {
         return stateProjector.projectVars(tenantId, projectId, workflowRunId);
     }
 
@@ -1015,8 +1115,7 @@ public class MagratheaWorkflowService {
      * and the owner reads it there, typed. What travels here is only enough
      * for a human to know what happened without opening anything.
      */
-    private static @Nullable String terminalSummary(
-            TaskCompletedEvent event, MagratheaRunStatus status) {
+    private static @Nullable String terminalSummary(TaskCompletedEvent event, MagratheaRunStatus status) {
         if (status != MagratheaRunStatus.DONE) {
             return event.errorMessage() != null && !event.errorMessage().isBlank()
                     ? "Workflow run failed: " + event.errorMessage()
@@ -1034,13 +1133,19 @@ public class MagratheaWorkflowService {
     }
 
     private void writeRunFailed(TaskCompletedEvent event, String reason) {
-        journalService.append(event.tenantId(), event.projectId(), event.workflowRunId(),
-                StatusRecord.builder().status(MagratheaRunStatus.FAILED).reason(reason).build());
-        Optional<StartRecord> start = journalService.readLast(
-                event.tenantId(), event.projectId(), event.workflowRunId(), StartRecord.class);
+        journalService.append(
+                event.tenantId(),
+                event.projectId(),
+                event.workflowRunId(),
+                StatusRecord.builder()
+                        .status(MagratheaRunStatus.FAILED)
+                        .reason(reason)
+                        .build());
+        Optional<StartRecord> start =
+                journalService.readLast(event.tenantId(), event.projectId(), event.workflowRunId(), StartRecord.class);
         String workflowName = start.map(StartRecord::getWorkflowName).orElse("unknown");
-        recordTerminalMetrics(workflowName, MagratheaRunStatus.FAILED,
-                event.tenantId(), event.projectId(), event.workflowRunId());
+        recordTerminalMetrics(
+                workflowName, MagratheaRunStatus.FAILED, event.tenantId(), event.projectId(), event.workflowRunId());
         // Surface this non-terminal failure to any parent waiting on the run as a
         // sub-workflow. Only onTaskCompleted's TERMINAL branch publishes the
         // completion event, and there is no WAITING_SUBWORKFLOW recovery scan —
@@ -1054,7 +1159,9 @@ public class MagratheaWorkflowService {
         // on the same event, and telling only the first leaves a Vogon
         // process idling forever behind a run that already ended.
         start.ifPresent(s -> ownerNotifier.runTerminated(
-                s.getOwnerProcessId(), event.workflowRunId(), ProcessEventType.FAILED,
+                s.getOwnerProcessId(),
+                event.workflowRunId(),
+                ProcessEventType.FAILED,
                 "Workflow run failed: " + reason));
     }
 
@@ -1065,30 +1172,26 @@ public class MagratheaWorkflowService {
      * paths) the timer is skipped, the counter still fires.
      */
     private void recordTerminalMetrics(
-            String workflowName, MagratheaRunStatus status,
-            String tenantId, String projectId, String workflowRunId) {
-        metricService.counter(METRIC_TERMINATIONS,
-                "workflow", workflowName,
-                "status", status.name()).increment();
+            String workflowName, MagratheaRunStatus status, String tenantId, String projectId, String workflowRunId) {
+        metricService
+                .counter(METRIC_TERMINATIONS, "workflow", workflowName, "status", status.name())
+                .increment();
         Instant startedAt = findStartInstant(tenantId, projectId, workflowRunId);
         if (startedAt != null) {
-            metricService.timer(METRIC_DURATION,
-                    "workflow", workflowName,
-                    "status", status.name())
+            metricService
+                    .timer(METRIC_DURATION, "workflow", workflowName, "status", status.name())
                     .record(Duration.between(startedAt, Instant.now()));
         }
     }
 
     /** Walks the journal in createdAt order; the first entry is the StartRecord. */
-    private @Nullable Instant findStartInstant(
-            String tenantId, String projectId, String workflowRunId) {
+    private @Nullable Instant findStartInstant(String tenantId, String projectId, String workflowRunId) {
         List<MagratheaJournalEntry> entries = journalService.read(tenantId, projectId, workflowRunId);
         if (entries.isEmpty()) return null;
         return entries.get(0).getCreatedAt();
     }
 
-    private void publishWorkflowCompleted(
-            TaskCompletedEvent event, StartRecord start, MagratheaRunStatus status) {
+    private void publishWorkflowCompleted(TaskCompletedEvent event, StartRecord start, MagratheaRunStatus status) {
         eventPublisher.publishEvent(new WorkflowCompletedEvent(
                 event.tenantId(),
                 event.projectId(),

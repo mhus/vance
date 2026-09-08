@@ -39,8 +39,7 @@ import org.yaml.snakeyaml.resolver.Resolver;
  */
 final class BistromathYaml {
 
-    private BistromathYaml() {
-    }
+    private BistromathYaml() {}
 
     /**
      * Parse a document, naming it if the YAML does not hold together.
@@ -55,13 +54,14 @@ final class BistromathYaml {
         if (text == null || text.isBlank()) return null;
         try {
             // SnakeYAML is not thread-safe → one instance per parse.
-            Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()),
-                    new Representer(new DumperOptions()), new DumperOptions(),
+            Yaml yaml = new Yaml(
+                    new SafeConstructor(new LoaderOptions()),
+                    new Representer(new DumperOptions()),
+                    new DumperOptions(),
                     new CoreResolver());
             return yaml.load(text);
         } catch (RuntimeException e) {
-            throw new ToolException("View '" + docPath + "' is not valid YAML: "
-                    + firstLine(e.getMessage()));
+            throw new ToolException("View '" + docPath + "' is not valid YAML: " + firstLine(e.getMessage()), e);
         }
     }
 
@@ -77,8 +77,7 @@ final class BistromathYaml {
 
     /** @see BistromathYaml the class comment explains why this exists. */
     private static final class CoreResolver extends Resolver {
-        private static final Pattern CORE_BOOL =
-                Pattern.compile("^(?:true|True|TRUE|false|False|FALSE)$");
+        private static final Pattern CORE_BOOL = Pattern.compile("^(?:true|True|TRUE|false|False|FALSE)$");
 
         @Override
         protected void addImplicitResolvers() {

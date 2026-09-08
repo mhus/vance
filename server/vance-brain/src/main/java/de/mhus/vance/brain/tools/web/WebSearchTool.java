@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.tools.web;
 
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.settings.SettingService;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -49,16 +49,20 @@ public class WebSearchTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "query", Map.of(
-                            "type", "string",
-                            "description", "Natural-language search query."),
-                    "num", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Maximum number of results (1–"
-                                            + MAX_NUM + ", default "
-                                            + DEFAULT_NUM + ").")),
+            "properties",
+                    Map.of(
+                            "query",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Natural-language search query."),
+                            "num",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Maximum number of results (1–"
+                                                    + MAX_NUM + ", default "
+                                                    + DEFAULT_NUM + ").")),
             "required", List.of("query"));
 
     private final SettingService settings;
@@ -125,34 +129,31 @@ public class WebSearchTool implements Tool {
         // ToolInvocationContext carries the full call scope, so the
         // serper-key lookup can honour project / process overrides
         // (e.g. a project pinning a stricter rate-limited key).
-        String apiKey = settings.getDecryptedPasswordCascade(
-                tenantId, ctx.projectId(), ctx.processId(), SETTING_KEY);
+        String apiKey = settings.getDecryptedPasswordCascade(tenantId, ctx.projectId(), ctx.processId(), SETTING_KEY);
         if (apiKey == null || apiKey.isBlank()) {
-            return errorResult(
-                    "Serper API key not configured (setting '" + SETTING_KEY
-                            + "' in _vance / project / think-process). Ask the operator to set it.");
+            return errorResult("Serper API key not configured (setting '" + SETTING_KEY
+                    + "' in _vance / project / think-process). Ask the operator to set it.");
         }
 
         Instant firedAt = Instant.now();
         long startNanos = System.nanoTime();
         try {
-            String requestBody = objectMapper.writeValueAsString(
-                    Map.of("q", query, "num", num));
+            String requestBody = objectMapper.writeValueAsString(Map.of("q", query, "num", num));
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(SERPER_API_URL))
                     .header("X-API-KEY", apiKey)
                     .header("Content-Type", "application/json")
                     .timeout(REQUEST_TIMEOUT)
-                    .POST(HttpRequest.BodyPublishers.ofString(
-                            requestBody, StandardCharsets.UTF_8))
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .build();
-            HttpResponse<String> response = http.send(
-                    request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                log.warn("Serper returned status {} for tenant='{}': {}",
-                        response.statusCode(), tenantId, truncate(response.body(), 200));
-                return errorResult(
-                        "Search returned status " + response.statusCode());
+                log.warn(
+                        "Serper returned status {} for tenant='{}': {}",
+                        response.statusCode(),
+                        tenantId,
+                        truncate(response.body(), 200));
+                return errorResult("Search returned status " + response.statusCode());
             }
             Map<String, Object> result = parseResults(query, response.body());
             // Log only successful parses with no error key — failures
@@ -160,16 +161,16 @@ public class WebSearchTool implements Tool {
             // and writing diagnostic documents for them would balloon
             // the log volume on rate-limit storms.
             if (!result.containsKey("error")) {
-                long durationMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+                long durationMs =
+                        Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
                 logSearchSuccess(ctx, query, num, result, firedAt, durationMs);
             }
             return result;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted while searching");
+            throw new ToolException("Interrupted while searching", e);
         } catch (Exception e) {
-            log.warn("WebSearchTool tenant='{}' query='{}' failed: {}",
-                    tenantId, truncate(query, 80), e.toString());
+            log.warn("WebSearchTool tenant='{}' query='{}' failed: {}", tenantId, truncate(query, 80), e.toString());
             return errorResult("Search failed: " + e.getMessage());
         }
     }
@@ -181,14 +182,16 @@ public class WebSearchTool implements Tool {
      * different shape under the {@code "results"} key.
      */
     @SuppressWarnings("unchecked")
-    private void logSearchSuccess(ToolInvocationContext ctx,
-                                   String query, int requestedNum,
-                                   Map<String, Object> result,
-                                   Instant firedAt, long durationMs) {
+    private void logSearchSuccess(
+            ToolInvocationContext ctx,
+            String query,
+            int requestedNum,
+            Map<String, Object> result,
+            Instant firedAt,
+            long durationMs) {
         Object hitsRaw = result.get("results");
-        List<Map<String, Object>> hits = (hitsRaw instanceof List<?> l)
-                ? (List<Map<String, Object>>) hitsRaw
-                : List.of();
+        List<Map<String, Object>> hits =
+                (hitsRaw instanceof List<?> l) ? (List<Map<String, Object>>) hitsRaw : List.of();
         Object countObj = result.get("count");
         int count = countObj instanceof Number n ? n.intValue() : hits.size();
         String correlationId = WebToolLogService.SearchOutcome.mintCorrelationId();
@@ -224,8 +227,7 @@ public class WebSearchTool implements Tool {
                     rows.add(row);
                 }
             }
-            log.info("WebSearchTool query='{}' → {} results",
-                    truncate(query, 80), rows.size());
+            log.info("WebSearchTool query='{}' → {} results", truncate(query, 80), rows.size());
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("query", query);
             out.put("results", rows);

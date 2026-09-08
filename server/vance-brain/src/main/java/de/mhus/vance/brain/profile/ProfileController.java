@@ -71,8 +71,7 @@ public class ProfileController {
      * to set without admin involvement.
      */
     static final Set<String> ALLOWED_EXTRA_KEYS = Set.of(
-            LanguageResolver.Keys.CHAT_LANGUAGE,
-            de.mhus.vance.shared.settings.TimezoneResolver.Keys.DISPLAY_TIMEZONE);
+            LanguageResolver.Keys.CHAT_LANGUAGE, de.mhus.vance.shared.settings.TimezoneResolver.Keys.DISPLAY_TIMEZONE);
 
     private final UserService userService;
     private final SettingService settingService;
@@ -89,13 +88,12 @@ public class ProfileController {
     private String buildTime;
 
     @GetMapping
-    public ProfileDto get(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+    public ProfileDto get(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         String username = currentUser(httpRequest);
-        UserDocument user = userService.findByTenantAndName(tenant, username)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Profile not found for current user"));
+        UserDocument user = userService
+                .findByTenantAndName(tenant, username)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found for current user"));
         return toDto(user, loadTeams(tenant, username), loadSettings(tenant, username));
     }
 
@@ -110,13 +108,13 @@ public class ProfileController {
             // the caller cannot escalate / lock themselves out via
             // this endpoint. Title and email are the only mutable
             // fields exposed here.
-            UserDocument saved = userService.update(
-                    tenant, username, request.getTitle(), request.getEmail(), null, null);
+            UserDocument saved =
+                    userService.update(tenant, username, request.getTitle(), request.getEmail(), null, null);
             log.info("Profile updated tenant='{}' user='{}'", tenant, username);
-            return withRefreshedDataCookie(httpRequest, saved,
-                    toDto(saved, loadTeams(tenant, username), loadSettings(tenant, username)));
+            return withRefreshedDataCookie(
+                    httpRequest, saved, toDto(saved, loadTeams(tenant, username), loadSettings(tenant, username)));
         } catch (UserService.UserNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
@@ -134,24 +132,26 @@ public class ProfileController {
             @Valid @RequestBody de.mhus.vance.api.profile.ProfilePasswordRequest request,
             HttpServletRequest httpRequest) {
         String username = currentUser(httpRequest);
-        UserDocument user = userService.findByTenantAndName(tenant, username)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Profile not found for current user"));
+        UserDocument user = userService
+                .findByTenantAndName(tenant, username)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found for current user"));
 
         // Verify the current password. An account with no local password
         // (e.g. SSO-only) cannot use this self-service flow.
         String hash = user.getPasswordHash();
         if (hash == null || !passwordService.verify(request.getCurrentPassword(), hash)) {
-            log.debug("Profile password change rejected: current password mismatch tenant='{}' user='{}'",
-                    tenant, username);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Current password is incorrect.");
+            log.debug(
+                    "Profile password change rejected: current password mismatch tenant='{}' user='{}'",
+                    tenant,
+                    username);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect.");
         }
 
         try {
             passwordPolicyService.validate(request.getNewPassword());
         } catch (de.mhus.vance.shared.password.PasswordPolicyException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
 
         userService.setPasswordHash(tenant, username, passwordService.hash(request.getNewPassword()));
@@ -170,7 +170,8 @@ public class ProfileController {
         // Stored on the per-user `_user_<login>` project — the same
         // location AdminSettingsController writes to for the {@code
         // user/<login>} wire scope.
-        settingService.setAs(tenant,
+        settingService.setAs(
+                tenant,
                 SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + username,
                 key,
@@ -178,31 +179,27 @@ public class ProfileController {
                 SettingType.STRING,
                 null,
                 username);
-        log.info("Profile setting upserted tenant='{}' user='{}' key='{}'",
-                tenant, username, key);
-        UserDocument user = userService.findByTenantAndName(tenant, username)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Profile not found for current user"));
-        return withRefreshedDataCookie(httpRequest, user,
-                toDto(user, loadTeams(tenant, username), loadSettings(tenant, username)));
+        log.info("Profile setting upserted tenant='{}' user='{}' key='{}'", tenant, username, key);
+        UserDocument user = userService
+                .findByTenantAndName(tenant, username)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found for current user"));
+        return withRefreshedDataCookie(
+                httpRequest, user, toDto(user, loadTeams(tenant, username), loadSettings(tenant, username)));
     }
 
     @DeleteMapping("/settings/{key}")
     public ResponseEntity<Void> deleteSetting(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("key") String key,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("key") String key, HttpServletRequest httpRequest) {
         String username = currentUser(httpRequest);
         requireSelfServiceKey(key);
-        settingService.delete(tenant,
-                SettingService.SCOPE_PROJECT,
-                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + username,
-                key);
-        log.info("Profile setting deleted tenant='{}' user='{}' key='{}'",
-                tenant, username, key);
-        UserDocument user = userService.findByTenantAndName(tenant, username)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Profile not found for current user"));
+        settingService.delete(
+                tenant, SettingService.SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + username, key);
+        log.info("Profile setting deleted tenant='{}' user='{}' key='{}'", tenant, username, key);
+        UserDocument user = userService
+                .findByTenantAndName(tenant, username)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found for current user"));
         ResponseEntity.HeadersBuilder<?> builder = ResponseEntity.noContent();
         webUiCookieService.refreshDataCookie(httpRequest, builder, user);
         return builder.build();
@@ -226,20 +223,19 @@ public class ProfileController {
     private static String currentUser(HttpServletRequest req) {
         Object u = req.getAttribute(AccessFilterBase.ATTR_USERNAME);
         if (!(u instanceof String s) || s.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                    "No authenticated user");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
         }
         return s;
     }
 
     private static void requireSelfServiceKey(String key) {
         if (key == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Profile settings key required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Profile settings key required");
         }
         if (key.startsWith(WebUiCookies.SETTINGS_PREFIX)) return;
         if (ALLOWED_EXTRA_KEYS.contains(key)) return;
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+        throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
                 "Profile settings keys must start with '"
                         + WebUiCookies.SETTINGS_PREFIX + "' or be in the "
                         + "self-service allowlist (" + ALLOWED_EXTRA_KEYS + ")");
@@ -253,9 +249,7 @@ public class ProfileController {
                     .id(t.getId() == null ? "" : t.getId())
                     .name(t.getName())
                     .title(t.getTitle())
-                    .members(t.getMembers() == null
-                            ? new ArrayList<>()
-                            : new ArrayList<>(t.getMembers()))
+                    .members(t.getMembers() == null ? new ArrayList<>() : new ArrayList<>(t.getMembers()))
                     .enabled(t.isEnabled())
                     .build());
         }
@@ -264,8 +258,7 @@ public class ProfileController {
 
     private Map<String, String> loadSettings(String tenant, String username) {
         Map<String, String> merged = new LinkedHashMap<>(
-                settingService.findUserSettingsByPrefix(
-                        tenant, username, WebUiCookies.SETTINGS_PREFIX));
+                settingService.findUserSettingsByPrefix(tenant, username, WebUiCookies.SETTINGS_PREFIX));
         // Pull each allowlisted self-service key from the user scope
         // explicitly. They live outside the webui.* prefix so the
         // prefix query above misses them; we still want them in the
@@ -277,9 +270,7 @@ public class ProfileController {
         return merged;
     }
 
-    private ProfileDto toDto(UserDocument user,
-                             List<TeamSummary> teams,
-                             Map<String, String> settings) {
+    private ProfileDto toDto(UserDocument user, List<TeamSummary> teams, Map<String, String> settings) {
         return ProfileDto.builder()
                 .tenantId(user.getTenantId())
                 .name(user.getName())

@@ -159,12 +159,11 @@ public record ApplicationsConfig(
         if (!(raw instanceof Map<?, ?> map)) {
             throw new ToolException(PATH + ": expected a mapping at the top level.");
         }
-        AppPolicy global = map.containsKey("default")
-                ? policy(map.get("default"), "default")
-                : AppPolicy.forbidden();
+        AppPolicy global = map.containsKey("default") ? policy(map.get("default"), "default") : AppPolicy.forbidden();
 
         Map<String, AppPolicy> projects = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> e : section(map.get("projects"), "projects").entrySet()) {
+        for (Map.Entry<String, Object> e :
+                section(map.get("projects"), "projects").entrySet()) {
             projects.put(e.getKey(), policy(e.getValue(), "projects." + e.getKey()));
         }
         Map<String, AppPolicy> apps = new LinkedHashMap<>();
@@ -208,8 +207,8 @@ public record ApplicationsConfig(
         if (raw instanceof Map<?, ?> map) {
             Object modeValue = map.get("mode");
             if (modeValue == null) {
-                throw new ToolException(PATH + ": `" + where + "` needs a `mode`"
-                        + " (forbidden, restricted or allowed).");
+                throw new ToolException(
+                        PATH + ": `" + where + "` needs a `mode`" + " (forbidden, restricted or allowed).");
             }
             AppMode mode = mode(String.valueOf(modeValue), where + ".mode");
             List<String> rest = families(map.get("rest"), where + ".rest");
@@ -242,8 +241,8 @@ public record ApplicationsConfig(
      * closed mode, and the exact reading that {@code forbidden()}'s own comment
      * warns a caller who forgets the mode check would get.
      */
-    private static AppPolicy of(AppMode mode, @Nullable List<String> rest,
-                                @Nullable Boolean surface, @Nullable Boolean writable) {
+    private static AppPolicy of(
+            AppMode mode, @Nullable List<String> rest, @Nullable Boolean surface, @Nullable Boolean writable) {
         if (mode == AppMode.FORBIDDEN) return AppPolicy.forbidden();
         boolean restricted = mode == AppMode.RESTRICTED;
         return new AppPolicy(
@@ -269,16 +268,15 @@ public record ApplicationsConfig(
         String s = String.valueOf(raw).trim().toLowerCase(Locale.ROOT);
         if (s.equals("read")) return false;
         if (s.equals("write")) return true;
-        throw new ToolException(PATH + ": `" + where + "` is `" + raw
-                + "` — expected `read` or `write`.");
+        throw new ToolException(PATH + ": `" + where + "` is `" + raw + "` — expected `read` or `write`.");
     }
 
     private static AppMode mode(String raw, String where) {
         try {
             return AppMode.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new ToolException(PATH + ": `" + where + "` is `" + raw
-                    + "` — expected forbidden, restricted or allowed.");
+            throw new ToolException(
+                    PATH + ": `" + where + "` is `" + raw + "` — expected forbidden, restricted or allowed.", e);
         }
     }
 

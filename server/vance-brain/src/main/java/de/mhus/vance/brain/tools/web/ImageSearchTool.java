@@ -1,10 +1,10 @@
 package de.mhus.vance.brain.tools.web;
 
 import de.mhus.vance.brain.tools.web.ImageValidatorService.ValidationResult;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.settings.SettingService;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -48,20 +48,26 @@ public class ImageSearchTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "query", Map.of(
-                            "type", "string",
-                            "description", "Natural-language image search query, "
-                                    + "e.g. 'Lisbon tram', 'red panda baby'."),
-                    "num", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Maximum results to return (1–"
-                                            + MAX_NUM + ", default "
-                                            + DEFAULT_NUM
-                                            + "). Note: validator may drop entries that "
-                                            + "fail liveness check — final count can be "
-                                            + "lower than requested.")),
+            "properties",
+                    Map.of(
+                            "query",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Natural-language image search query, "
+                                                    + "e.g. 'Lisbon tram', 'red panda baby'."),
+                            "num",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Maximum results to return (1–"
+                                                    + MAX_NUM + ", default "
+                                                    + DEFAULT_NUM
+                                                    + "). Note: validator may drop entries that "
+                                                    + "fail liveness check — final count can be "
+                                                    + "lower than requested.")),
             "required", List.of("query"));
 
     private final SettingService settings;
@@ -121,9 +127,8 @@ public class ImageSearchTool implements Tool {
         String apiKey = settings.getDecryptedPasswordCascade(
                 tenantId, ctx.projectId(), ctx.processId(), WebSearchTool.SETTING_KEY);
         if (apiKey == null || apiKey.isBlank()) {
-            return errorResult(
-                    "Serper API key not configured (setting '" + WebSearchTool.SETTING_KEY
-                            + "' in _vance / project / think-process). Ask the operator to set it.");
+            return errorResult("Serper API key not configured (setting '" + WebSearchTool.SETTING_KEY
+                    + "' in _vance / project / think-process). Ask the operator to set it.");
         }
 
         List<RawResult> raw;
@@ -133,10 +138,9 @@ public class ImageSearchTool implements Tool {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted while searching images");
+            throw new ToolException("Interrupted while searching images", e);
         } catch (Exception e) {
-            log.warn("ImageSearchTool tenant='{}' query='{}' failed: {}",
-                    tenantId, truncate(query, 80), e.toString());
+            log.warn("ImageSearchTool tenant='{}' query='{}' failed: {}", tenantId, truncate(query, 80), e.toString());
             return errorResult("Image search failed: " + e.getMessage());
         }
 
@@ -152,8 +156,7 @@ public class ImageSearchTool implements Tool {
 
         List<String> urls = new ArrayList<>(raw.size());
         for (RawResult r : raw) urls.add(r.imageUrl);
-        List<ValidationResult> verdicts = validator.validate(
-                urls, tenantId, ctx.projectId(), ctx.processId());
+        List<ValidationResult> verdicts = validator.validate(urls, tenantId, ctx.projectId(), ctx.processId());
         Map<String, ValidationResult> verdictByUrl = new HashMap<>();
         for (ValidationResult v : verdicts) verdictByUrl.put(v.getUrl(), v);
 
@@ -163,8 +166,10 @@ public class ImageSearchTool implements Tool {
             ValidationResult v = verdictByUrl.get(r.imageUrl);
             if (v == null || !v.isOk()) {
                 dropped++;
-                log.debug("ImageSearchTool query='{}' dropped url='{}' reason='{}'",
-                        truncate(query, 60), truncate(r.imageUrl, 120),
+                log.debug(
+                        "ImageSearchTool query='{}' dropped url='{}' reason='{}'",
+                        truncate(query, 60),
+                        truncate(r.imageUrl, 120),
                         v == null ? "no_verdict" : v.getReason());
                 continue;
             }
@@ -180,8 +185,12 @@ public class ImageSearchTool implements Tool {
             validRows.add(row);
         }
 
-        log.info("ImageSearchTool query='{}' total={} valid={} dropped={}",
-                truncate(query, 80), raw.size(), validRows.size(), dropped);
+        log.info(
+                "ImageSearchTool query='{}' total={} valid={} dropped={}",
+                truncate(query, 80),
+                raw.size(),
+                validRows.size(),
+                dropped);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("query", query);
         out.put("results", validRows);
@@ -189,17 +198,17 @@ public class ImageSearchTool implements Tool {
         out.put("dropped_count", dropped);
         out.put("total_count", raw.size());
         if (validRows.isEmpty() && dropped > 0) {
-            out.put("note", "All " + dropped + " image URLs failed validation. "
-                    + "The source pages may still be reachable via web_search — "
-                    + "let the user know the live image set is empty.");
+            out.put(
+                    "note",
+                    "All " + dropped + " image URLs failed validation. "
+                            + "The source pages may still be reachable via web_search — "
+                            + "let the user know the live image set is empty.");
         }
         return out;
     }
 
-    private List<RawResult> callSerper(String query, int num, String apiKey, String tenantId)
-            throws Exception {
-        String requestBody = objectMapper.writeValueAsString(
-                Map.of("q", query, "num", num));
+    private List<RawResult> callSerper(String query, int num, String apiKey, String tenantId) throws Exception {
+        String requestBody = objectMapper.writeValueAsString(Map.of("q", query, "num", num));
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(SERPER_IMAGES_URL))
                 .header("X-API-KEY", apiKey)
@@ -209,8 +218,11 @@ public class ImageSearchTool implements Tool {
                 .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) {
-            log.warn("Serper /images returned status {} for tenant='{}': {}",
-                    response.statusCode(), tenantId, truncate(response.body(), 200));
+            log.warn(
+                    "Serper /images returned status {} for tenant='{}': {}",
+                    response.statusCode(),
+                    tenantId,
+                    truncate(response.body(), 200));
             throw new ToolException("Image search returned status " + response.statusCode());
         }
         return parseSerper(response.body());

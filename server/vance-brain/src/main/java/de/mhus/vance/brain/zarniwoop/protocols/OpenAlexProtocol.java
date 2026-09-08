@@ -67,10 +67,23 @@ public class OpenAlexProtocol implements SearchProtocol {
         this.http = http;
     }
 
-    @Override public String id() { return ID; }
-    @Override public String displayName() { return "OpenAlex"; }
-    @Override public Set<SearchModality> modalitiesSupported() { return Set.of(SearchModality.ACADEMIC); }
-    @Override public Set<SearchTier> tiersSupported() {
+    @Override
+    public String id() {
+        return ID;
+    }
+
+    @Override
+    public String displayName() {
+        return "OpenAlex";
+    }
+
+    @Override
+    public Set<SearchModality> modalitiesSupported() {
+        return Set.of(SearchModality.ACADEMIC);
+    }
+
+    @Override
+    public Set<SearchTier> tiersSupported() {
         return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
     }
 
@@ -79,8 +92,7 @@ public class OpenAlexProtocol implements SearchProtocol {
         if (cfg == null) throw new IllegalArgumentException("cfg is required");
         if (!ID.equals(cfg.protocolId())) {
             throw new IllegalArgumentException(
-                    "OpenAlexProtocol cannot instantiate config with protocol '"
-                            + cfg.protocolId() + "'");
+                    "OpenAlexProtocol cannot instantiate config with protocol '" + cfg.protocolId() + "'");
         }
         return new OpenAlexInstance(cfg, objectMapper, http);
     }
@@ -97,19 +109,34 @@ public class OpenAlexProtocol implements SearchProtocol {
         private final ObjectMapper objectMapper;
         private final SimpleHttpClient http;
 
-        OpenAlexInstance(ProviderInstanceConfig cfg,
-                         ObjectMapper objectMapper,
-                         SimpleHttpClient http) {
+        OpenAlexInstance(ProviderInstanceConfig cfg, ObjectMapper objectMapper, SimpleHttpClient http) {
             this.cfg = cfg;
             this.objectMapper = objectMapper;
             this.http = http;
         }
 
-        @Override public String id() { return cfg.instanceId(); }
-        @Override public String displayName() { return "OpenAlex (" + cfg.instanceId() + ")"; }
-        @Override public Set<SearchModality> modalities() { return Set.of(SearchModality.ACADEMIC); }
-        @Override public Set<SearchDomain> domains() { return Set.of(SearchDomain.ACADEMIC); }
-        @Override public Set<SearchTier> tiers() {
+        @Override
+        public String id() {
+            return cfg.instanceId();
+        }
+
+        @Override
+        public String displayName() {
+            return "OpenAlex (" + cfg.instanceId() + ")";
+        }
+
+        @Override
+        public Set<SearchModality> modalities() {
+            return Set.of(SearchModality.ACADEMIC);
+        }
+
+        @Override
+        public Set<SearchDomain> domains() {
+            return Set.of(SearchDomain.ACADEMIC);
+        }
+
+        @Override
+        public Set<SearchTier> tiers() {
             return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
         }
 
@@ -127,7 +154,8 @@ public class OpenAlexProtocol implements SearchProtocol {
             return ProviderAvailability.READY;
         }
 
-        @Override public Optional<QuotaStatus> currentQuota(SearchScope scope) {
+        @Override
+        public Optional<QuotaStatus> currentQuota(SearchScope scope) {
             return Optional.empty();
         }
 
@@ -162,8 +190,8 @@ public class OpenAlexProtocol implements SearchProtocol {
         @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             if (req.modality() != SearchModality.ACADEMIC) {
-                return softFailure(req, "modality " + req.modality()
-                        + " not supported by OpenAlex '" + cfg.instanceId() + "'");
+                return softFailure(
+                        req, "modality " + req.modality() + " not supported by OpenAlex '" + cfg.instanceId() + "'");
             }
             int num = clampNum(req.maxResults());
             Map<String, String> params = SimpleHttpClient.mapOf(
@@ -173,27 +201,32 @@ public class OpenAlexProtocol implements SearchProtocol {
             if (!StringUtils.isBlank(mail)) {
                 params.put("mailto", mail);
             }
-            String url = SimpleHttpClient.buildQuery(
-                    URI.create(baseUrl() + "/works"), params);
+            String url = SimpleHttpClient.buildQuery(URI.create(baseUrl() + "/works"), params);
             Response response;
             try {
                 response = http.get(URI.create(url), USER_AGENT, TIMEOUT);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException(
-                        "Interrupted while calling OpenAlex '" + cfg.instanceId() + "'");
+                throw new RuntimeException("Interrupted while calling OpenAlex '" + cfg.instanceId() + "'", ie);
             } catch (Exception e) {
-                throw new RuntimeException(
-                        "OpenAlex '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
+                throw new RuntimeException("OpenAlex '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
             }
             if (response.statusCode() != 200) {
-                throw new RuntimeException("OpenAlex '" + cfg.instanceId()
-                        + "' returned HTTP " + response.statusCode());
+                throw new RuntimeException(
+                        "OpenAlex '" + cfg.instanceId() + "' returned HTTP " + response.statusCode());
             }
             List<SearchHit> hits = parseHits(response.body());
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    hits, hits.size(), 0, null, null, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    hits,
+                    hits.size(),
+                    0,
+                    null,
+                    null,
+                    Map.of());
         }
 
         List<SearchHit> parseHits(String json) {
@@ -204,7 +237,8 @@ public class OpenAlexProtocol implements SearchProtocol {
                 if (!results.isArray()) return out;
                 for (JsonNode item : results) {
                     String title = item.path("title").asText("");
-                    if (StringUtils.isBlank(title)) title = item.path("display_name").asText("");
+                    if (StringUtils.isBlank(title))
+                        title = item.path("display_name").asText("");
                     if (StringUtils.isBlank(title)) continue;
                     String openalexId = item.path("id").asText("");
                     String url = pickPrimaryUrl(item, openalexId);
@@ -221,15 +255,16 @@ public class OpenAlexProtocol implements SearchProtocol {
                     if (!StringUtils.isBlank(type)) extras.put("workType", type);
                     String authors = collectAuthors(item.path("authorships"));
                     if (!StringUtils.isBlank(authors)) extras.put("authors", authors);
-                    String venue = item.path("primary_location").path("source")
-                            .path("display_name").asText("");
+                    String venue = item.path("primary_location")
+                            .path("source")
+                            .path("display_name")
+                            .asText("");
                     if (!StringUtils.isBlank(venue)) extras.put("venue", venue);
                     boolean openAccess = item.path("open_access").path("is_oa").asBoolean(false);
                     if (openAccess) extras.put("openAccess", true);
 
                     String snippet = composeSnippet(authors, year, venue);
-                    String abstractText = reconstructAbstract(
-                            item.path("abstract_inverted_index"));
+                    String abstractText = reconstructAbstract(item.path("abstract_inverted_index"));
                     ContentReference content = null;
                     if (!StringUtils.isBlank(abstractText)) {
                         content = new ContentReference(
@@ -241,10 +276,13 @@ public class OpenAlexProtocol implements SearchProtocol {
                                 null);
                     }
                     out.add(new SearchHit(
-                            title, url,
+                            title,
+                            url,
                             StringUtils.isBlank(snippet) ? null : snippet,
                             "OpenAlex",
-                            SearchModality.ACADEMIC, content, extras));
+                            SearchModality.ACADEMIC,
+                            content,
+                            extras));
                 }
                 return out;
             } catch (Exception e) {
@@ -349,8 +387,16 @@ public class OpenAlexProtocol implements SearchProtocol {
 
         private SearchResult softFailure(SearchRequest req, String message) {
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    List.of(), 0, 0, null, message, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    List.of(),
+                    0,
+                    0,
+                    null,
+                    message,
+                    Map.of());
         }
 
         private static int clampNum(int requested) {

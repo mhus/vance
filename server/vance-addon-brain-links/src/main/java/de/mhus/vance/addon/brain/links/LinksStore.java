@@ -42,10 +42,7 @@ public class LinksStore {
 
     /** A loaded manifest: the document, its parsed form, and the block. */
     public record Loaded(
-            String folder,
-            DocumentDocument manifest,
-            ApplicationDocument manifestDoc,
-            LinksConfig config) {}
+            String folder, DocumentDocument manifest, ApplicationDocument manifestDoc, LinksConfig config) {}
 
     /**
      * Load the manifest of a link list.
@@ -62,9 +59,9 @@ public class LinksStore {
     public Loaded load(String tenantId, String projectId, String folder) {
         String normalised = normaliseFolder(folder);
         String manifestPath = manifestPath(normalised);
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, manifestPath)
-                .orElseThrow(() -> new ToolException(
-                        "No links manifest at '" + manifestPath + "'."));
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, manifestPath)
+                .orElseThrow(() -> new ToolException("No links manifest at '" + manifestPath + "'."));
         ApplicationDocument parsed = parse(doc);
         String app = parsed.app();
         if (!app.isBlank() && !LinksConfig.BLOCK.equals(app)) {
@@ -80,67 +77,99 @@ public class LinksStore {
         Map<String, Object> configBlock = new LinkedHashMap<>(current.config());
         configBlock.put(LinksConfig.BLOCK, config.toBlock());
         ApplicationDocument next = new ApplicationDocument(
-                "application", LinksConfig.BLOCK, current.title(), current.description(),
-                configBlock, new LinkedHashMap<>(current.extra()));
+                "application",
+                LinksConfig.BLOCK,
+                current.title(),
+                current.description(),
+                configBlock,
+                new LinkedHashMap<>(current.extra()));
         DocumentDocument manifest = loaded.manifest();
-        return documentService.update(manifest.getId(),
-                manifest.getTitle(), KINDS,
+        return documentService.update(
+                manifest.getId(),
+                manifest.getTitle(),
+                KINDS,
                 ApplicationCodec.serialize(next, YAML_MIME),
-                null, null, null, null, YAML_MIME,
+                null,
+                null,
+                null,
+                null,
+                YAML_MIME,
                 DocumentService.TOOL_IDENTITY,
-                contextFactory.writeActor(
-                        manifest.getTenantId(), userId, manifest.getPath()));
+                contextFactory.writeActor(manifest.getTenantId(), userId, manifest.getPath()));
     }
 
     /** Write a fresh manifest (create or replace). Used by {@code create()}. */
-    public DocumentDocument writeManifest(String tenantId, String projectId, String folder,
-                                          @Nullable String title, @Nullable String description,
-                                          LinksConfig config, @Nullable String userId) {
+    public DocumentDocument writeManifest(
+            String tenantId,
+            String projectId,
+            String folder,
+            @Nullable String title,
+            @Nullable String description,
+            LinksConfig config,
+            @Nullable String userId) {
         String normalised = normaliseFolder(folder);
         String manifestPath = manifestPath(normalised);
         Map<String, Object> configBlock = new LinkedHashMap<>();
         configBlock.put(LinksConfig.BLOCK, config.toBlock());
         ApplicationDocument manifest = new ApplicationDocument(
-                "application", LinksConfig.BLOCK, title, description,
-                configBlock, new LinkedHashMap<>());
+                "application", LinksConfig.BLOCK, title, description, configBlock, new LinkedHashMap<>());
         String body = ApplicationCodec.serialize(manifest, YAML_MIME);
         String docTitle = title == null || title.isBlank() ? "Links" : title;
 
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectId, manifestPath);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, manifestPath);
         var actor = contextFactory.writeActor(tenantId, userId, manifestPath);
         if (existing.isPresent()) {
-            return documentService.update(existing.get().getId(), docTitle, KINDS,
-                    body, null, null, null, null, YAML_MIME,
-                    DocumentService.TOOL_IDENTITY, actor);
+            return documentService.update(
+                    existing.get().getId(),
+                    docTitle,
+                    KINDS,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    actor);
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
-            return documentService.create(tenantId, projectId, manifestPath, docTitle,
-                    KINDS, YAML_MIME, in, userId, actor);
+            return documentService.create(
+                    tenantId, projectId, manifestPath, docTitle, KINDS, YAML_MIME, in, userId, actor);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write manifest '" + manifestPath + "': " + e.getMessage());
+            throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
         }
     }
 
     /** Create or replace a derived artefact (the generated index). */
-    public DocumentDocument writeArtefact(String tenantId, String projectId, String path,
-                                          String title, String mimeType, String body,
-                                          List<String> kinds, @Nullable String userId) {
+    public DocumentDocument writeArtefact(
+            String tenantId,
+            String projectId,
+            String path,
+            String title,
+            String mimeType,
+            String body,
+            List<String> kinds,
+            @Nullable String userId) {
         var actor = contextFactory.writeActor(tenantId, userId, path);
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectId, path);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
-            return documentService.update(existing.get().getId(), title, kinds,
-                    body, null, null, null, null, mimeType,
-                    DocumentService.TOOL_IDENTITY, actor);
+            return documentService.update(
+                    existing.get().getId(),
+                    title,
+                    kinds,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    mimeType,
+                    DocumentService.TOOL_IDENTITY,
+                    actor);
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
-            return documentService.create(tenantId, projectId, path, title, kinds,
-                    mimeType, in, userId, actor);
+            return documentService.create(tenantId, projectId, path, title, kinds, mimeType, in, userId, actor);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write artefact '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not write artefact '" + path + "': " + e.getMessage(), e);
         }
     }
 
@@ -166,22 +195,21 @@ public class LinksStore {
     }
 
     public static String resolveOutputPath(String folder, @Nullable String configured) {
-        String c = configured == null || configured.isBlank()
-                ? LinksConfig.DEFAULT_INDEX : configured.trim();
+        String c = configured == null || configured.isBlank() ? LinksConfig.DEFAULT_INDEX : configured.trim();
         return c.startsWith("/") ? c.substring(1) : folder + "/" + c;
     }
 
     private ApplicationDocument parse(DocumentDocument manifest) {
         String mime = manifest.getMimeType();
         if (!ApplicationCodec.supports(mime)) {
-            throw new ToolException("Links manifest '" + manifest.getPath()
-                    + "' has mime '" + mime + "' — must be YAML or JSON.");
+            throw new ToolException(
+                    "Links manifest '" + manifest.getPath() + "' has mime '" + mime + "' — must be YAML or JSON.");
         }
         try {
             return ApplicationCodec.parse(documentService.readContent(manifest), mime);
         } catch (RuntimeException e) {
-            throw new ToolException("Could not parse links manifest '"
-                    + manifest.getPath() + "': " + e.getMessage());
+            throw new ToolException(
+                    "Could not parse links manifest '" + manifest.getPath() + "': " + e.getMessage(), e);
         }
     }
 }

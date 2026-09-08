@@ -98,12 +98,10 @@ public class WorkspaceRootService {
             realProbe = probe.toRealPath();
         } catch (IOException e) {
             // Dangling symlink or unreadable link target — refuse.
-            throw new WorkspaceException(
-                    "Path escapes workspace folder (symlink): '" + relativePath + "'");
+            throw new WorkspaceException("Path escapes workspace folder (symlink): '" + relativePath + "'", e);
         }
         if (!realProbe.startsWith(realBase)) {
-            throw new WorkspaceException(
-                    "Path escapes workspace folder (symlink): '" + relativePath + "'");
+            throw new WorkspaceException("Path escapes workspace folder (symlink): '" + relativePath + "'");
         }
     }
 }

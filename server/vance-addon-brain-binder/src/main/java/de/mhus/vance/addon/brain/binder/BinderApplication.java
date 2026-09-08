@@ -48,17 +48,21 @@ public class BinderApplication implements VanceApplication {
     private final DocumentLinkBuilder linkBuilder;
     private final SecurityContextFactory contextFactory;
 
-    public BinderApplication(BinderResolver resolver,
-                             DocumentService documentService,
-                             DocumentLinkBuilder linkBuilder,
-                             SecurityContextFactory contextFactory) {
+    public BinderApplication(
+            BinderResolver resolver,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            SecurityContextFactory contextFactory) {
         this.resolver = resolver;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
         this.contextFactory = contextFactory;
     }
 
-    @Override public String appName() { return APP_NAME; }
+    @Override
+    public String appName() {
+        return APP_NAME;
+    }
 
     @Override
     public String promptInject(PromptInjectContext ctx) {
@@ -80,8 +84,8 @@ public class BinderApplication implements VanceApplication {
         Optional<DocumentDocument> existing =
                 documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
-            throw new ToolException("Manifest already exists at '" + manifestPath
-                    + "'. Pass overwrite=true to replace it.");
+            throw new ToolException(
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -101,51 +105,64 @@ public class BinderApplication implements VanceApplication {
         }
 
         Map<String, Object> config = new LinkedHashMap<>();
-        config.put(APP_NAME, BinderManifestOps.buildBlock(
-                landingRef, entries, BinderConfig.DEFAULT_INDEX));
+        config.put(APP_NAME, BinderManifestOps.buildBlock(landingRef, entries, BinderConfig.DEFAULT_INDEX));
 
-        ApplicationDocument manifest = new ApplicationDocument(
-                "application", APP_NAME, title, description, config, new LinkedHashMap<>());
+        ApplicationDocument manifest =
+                new ApplicationDocument("application", APP_NAME, title, description, config, new LinkedHashMap<>());
         String manifestBody = ApplicationCodec.serialize(manifest, YAML_MIME);
 
         DocumentDocument stored;
         if (existing.isPresent()) {
-            stored = documentService.update(existing.get().getId(),
+            stored = documentService.update(
+                    existing.get().getId(),
                     title != null ? title : "Binder",
                     List.of("application", "binder"),
-                    manifestBody, null, null, null, null, YAML_MIME,
+                    manifestBody,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
-            try (InputStream in = new ByteArrayInputStream(
-                    manifestBody.getBytes(StandardCharsets.UTF_8))) {
-                stored = documentService.create(ctx.tenantId(), ctx.projectName(), manifestPath,
+            try (InputStream in = new ByteArrayInputStream(manifestBody.getBytes(StandardCharsets.UTF_8))) {
+                stored = documentService.create(
+                        ctx.tenantId(),
+                        ctx.projectName(),
+                        manifestPath,
                         title != null ? title : "Binder",
                         List.of("application", "binder"),
-                        YAML_MIME, in, ctx.userId(),
+                        YAML_MIME,
+                        in,
+                        ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not write manifest '" + manifestPath + "': " + e.getMessage());
+                throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
         }
 
-        RefreshResult refresh = refresh(new RefreshContext(
-                ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId()));
+        RefreshResult refresh =
+                refresh(new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId()));
 
-        log.info("BinderApplication.create tenant='{}' folder='{}' entries={}",
-                ctx.tenantId(), folder, entries.size());
+        log.info("BinderApplication.create tenant='{}' folder='{}' entries={}", ctx.tenantId(), folder, entries.size());
 
         Map<String, Object> stats = new LinkedHashMap<>();
         if (title != null) stats.put("title", title);
         stats.put("entryCount", entries.size());
 
-        String nextStep = "Binder ready. Anchor documents with "
-                + "`binder_entry_add(folder=\"" + folder + "\", ref=\"vance:/<path>\")`.";
+        String nextStep = "Binder ready. Anchor documents with " + "`binder_entry_add(folder=\"" + folder
+                + "\", ref=\"vance:/<path>\")`.";
 
-        return new CreateResult(APP_NAME, folder, stored.getPath(),
+        return new CreateResult(
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
-                List.of(), refresh.artefacts(), nextStep, stats);
+                List.of(),
+                refresh.artefacts(),
+                nextStep,
+                stats);
     }
 
     @Override
@@ -165,11 +182,15 @@ public class BinderApplication implements VanceApplication {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("entryCount", scan.entries().size());
         stats.put("missingCount", missing);
-        ArtefactResult index = new ArtefactResult(
-                "index", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), stats);
+        ArtefactResult index =
+                new ArtefactResult("index", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), stats);
 
-        log.info("BinderApplication.refresh tenant='{}' folder='{}' entries={} missing={}",
-                ctx.tenantId(), folder, scan.entries().size(), missing);
+        log.info(
+                "BinderApplication.refresh tenant='{}' folder='{}' entries={} missing={}",
+                ctx.tenantId(),
+                folder,
+                scan.entries().size(),
+                missing);
         return new RefreshResult(APP_NAME, folder, List.of(index));
     }
 
@@ -209,8 +230,7 @@ public class BinderApplication implements VanceApplication {
 
     /** Resolve an entry's ref against the store so it is stored canonically. */
     private BinderEntry canonicalise(CreateContext ctx, BinderEntry e) {
-        BinderResolver.ResolvedEntry r =
-                resolver.resolve(ctx.tenantId(), ctx.projectName(), e);
+        BinderResolver.ResolvedEntry r = resolver.resolve(ctx.tenantId(), ctx.projectName(), e);
         return new BinderEntry(r.ref(), e.section(), e.title());
     }
 
@@ -237,13 +257,21 @@ public class BinderApplication implements VanceApplication {
         }
         for (Map.Entry<String, List<BinderResolver.ResolvedEntry>> group : bySection.entrySet()) {
             if (group.getValue().isEmpty()) continue;
-            if (!group.getKey().isEmpty()) sb.append("## ").append(group.getKey()).append("\n\n");
+            if (!group.getKey().isEmpty())
+                sb.append("## ").append(group.getKey()).append("\n\n");
             for (BinderResolver.ResolvedEntry e : group.getValue()) {
                 if (!e.exists()) {
-                    sb.append("- ⚠ ").append(e.title()).append(" *(fehlt: `")
-                            .append(e.path()).append("`)*\n");
+                    sb.append("- ⚠ ")
+                            .append(e.title())
+                            .append(" *(fehlt: `")
+                            .append(e.path())
+                            .append("`)*\n");
                 } else {
-                    sb.append("- [").append(e.title()).append("](").append(e.ref()).append(")\n");
+                    sb.append("- [")
+                            .append(e.title())
+                            .append("](")
+                            .append(e.ref())
+                            .append(")\n");
                 }
             }
             sb.append("\n");
@@ -251,25 +279,35 @@ public class BinderApplication implements VanceApplication {
         return sb.toString();
     }
 
-    private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath,
-                                           String body, String title) {
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
+    private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath, String body, String title) {
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
         if (existing.isPresent()) {
-            return documentService.update(existing.get().getId(),
-                    title, List.of("binder", "generated", "index"),
-                    body, null, null, null, null, MD_MIME,
+            return documentService.update(
+                    existing.get().getId(),
+                    title,
+                    List.of("binder", "generated", "index"),
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    MD_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
-            return documentService.create(ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, List.of("binder", "generated", "index"),
-                    MD_MIME, in, ctx.userId(),
+            return documentService.create(
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    outputPath,
+                    title,
+                    List.of("binder", "generated", "index"),
+                    MD_MIME,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write artefact '" + outputPath + "': " + e.getMessage());
+            throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }
     }
 

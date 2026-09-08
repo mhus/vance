@@ -1,13 +1,6 @@
 package de.mhus.vance.brain.insights;
 
 import de.mhus.vance.api.addon.AddonInsightDto;
-import de.mhus.vance.api.toolhealth.ToolHealthClassification;
-import de.mhus.vance.api.toolhealth.ToolHealthCooldownDto;
-import de.mhus.vance.api.toolhealth.ToolHealthEntryDto;
-import de.mhus.vance.api.toolhealth.ToolHealthScope;
-import de.mhus.vance.shared.toolhealth.ToolHealthCooldown;
-import de.mhus.vance.shared.toolhealth.ToolHealthDocument;
-import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.api.insights.ActiveSkillInsightsDto;
 import de.mhus.vance.api.insights.BrainPodInsightsDto;
 import de.mhus.vance.api.insights.BrainPodProjectInsightsDto;
@@ -26,50 +19,51 @@ import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
 import de.mhus.vance.api.insights.ToolUsageEntryInsightsDto;
 import de.mhus.vance.api.insights.ToolUsageRoleInsightsDto;
 import de.mhus.vance.api.insights.ZarniwoopInsightsDto;
-import de.mhus.vance.brain.zarniwoop.ZarniwoopGateService;
-import de.mhus.vance.brain.zarniwoop.ZarniwoopInsightsService;
-import de.mhus.vance.toolpack.research.SearchScope;
+import de.mhus.vance.api.llmtrace.LlmTraceDto;
+import de.mhus.vance.api.llmtrace.LlmTraceListResponse;
+import de.mhus.vance.api.session.SessionStatus;
+import de.mhus.vance.api.toolhealth.ToolHealthClassification;
+import de.mhus.vance.api.toolhealth.ToolHealthCooldownDto;
+import de.mhus.vance.api.toolhealth.ToolHealthEntryDto;
+import de.mhus.vance.api.toolhealth.ToolHealthScope;
 import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.brain.cluster.ClusterService;
-import de.mhus.vance.shared.cluster.ClusterMasterDocument;
-import de.mhus.vance.shared.project.LifecycleType;
-import de.mhus.vance.shared.project.ProjectDocument;
-import de.mhus.vance.shared.project.ProjectService;
-import de.mhus.vance.shared.project.ProjectStatus;
-import de.mhus.vance.shared.addon.AddonInsightsService;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.recipe.RecipeLoader;
-import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.tools.BuiltInToolSource;
-import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.workspace.access.PodForwarder;
 import de.mhus.vance.brain.workspace.access.ProjectPodKey;
 import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
 import de.mhus.vance.brain.workspace.access.WorkspaceRoutingCache;
-import de.mhus.vance.shared.cluster.BrainPodDocument;
-import de.mhus.vance.shared.home.HomeBootstrapService;
-import de.mhus.vance.shared.servertool.ServerToolConfig;
-import de.mhus.vance.shared.servertool.ServerToolLoader;
-import de.mhus.vance.api.llmtrace.LlmTraceDto;
-import de.mhus.vance.api.llmtrace.LlmTraceListResponse;
-import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.zarniwoop.ZarniwoopGateService;
+import de.mhus.vance.brain.zarniwoop.ZarniwoopInsightsService;
+import de.mhus.vance.shared.addon.AddonInsightsService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.cluster.BrainPodDocument;
+import de.mhus.vance.shared.cluster.ClusterMasterDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
-import de.mhus.vance.shared.permission.Action;
-import de.mhus.vance.shared.permission.Resource;
-import de.mhus.vance.shared.prak.audit.PrakRunRecord;
-import de.mhus.vance.shared.prak.audit.PrakRunService;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.llmtrace.LlmTraceDocument;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.marvin.MarvinNodeDocument;
 import de.mhus.vance.shared.marvin.MarvinNodeService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryService;
-import de.mhus.vance.api.session.SessionStatus;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.prak.audit.PrakRunRecord;
+import de.mhus.vance.shared.prak.audit.PrakRunService;
+import de.mhus.vance.shared.project.LifecycleType;
+import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.project.ProjectStatus;
+import de.mhus.vance.shared.servertool.ServerToolConfig;
+import de.mhus.vance.shared.servertool.ServerToolLoader;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.session.exchange.SessionExchangeService;
@@ -77,11 +71,14 @@ import de.mhus.vance.shared.session.exchange.SessionExportEmitter;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.toolhealth.ToolHealthCooldown;
+import de.mhus.vance.shared.toolhealth.ToolHealthDocument;
+import de.mhus.vance.shared.toolhealth.ToolHealthService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.research.SearchScope;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.OutputStream;
 import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -96,13 +93,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -180,8 +177,7 @@ public class InsightsAdminController {
                 statuses = EnumSet.allOf(SessionStatus.class);
             } else {
                 try {
-                    statuses = EnumSet.of(
-                            SessionStatus.valueOf(status.toUpperCase(Locale.ROOT)));
+                    statuses = EnumSet.of(SessionStatus.valueOf(status.toUpperCase(Locale.ROOT)));
                 } catch (IllegalArgumentException ignored) {
                     statuses = null;
                 }
@@ -189,13 +185,11 @@ public class InsightsAdminController {
         }
 
         int cappedLimit = Math.min(Math.max(1, limit), 500);
-        List<SessionDocument> sessions = sessionService.listForInsights(
-                tenant, userId, projectId, statuses, Math.max(0, offset), cappedLimit);
+        List<SessionDocument> sessions =
+                sessionService.listForInsights(tenant, userId, projectId, statuses, Math.max(0, offset), cappedLimit);
 
         // Already sorted (lastActivityAt desc) and sliced at the DB.
-        return sessions.stream()
-                .map(s -> toListDto(tenant, s))
-                .toList();
+        return sessions.stream().map(s -> toListDto(tenant, s)).toList();
     }
 
     @GetMapping("/sessions/{sessionId}")
@@ -203,12 +197,13 @@ public class InsightsAdminController {
             @PathVariable("tenant") String tenant,
             @PathVariable("sessionId") String sessionId,
             HttpServletRequest httpRequest) {
-        SessionDocument doc = sessionService.findBySessionId(sessionId)
+        SessionDocument doc = sessionService
+                .findBySessionId(sessionId)
                 .filter(s -> tenant.equals(s.getTenantId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Session '" + sessionId + "' not found"));
-        authority.enforce(httpRequest,
-                new Resource.Session(tenant, doc.getProjectId(), doc.getSessionId()), Action.ADMIN);
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Session '" + sessionId + "' not found"));
+        authority.enforce(
+                httpRequest, new Resource.Session(tenant, doc.getProjectId(), doc.getSessionId()), Action.ADMIN);
         return toListDto(tenant, doc);
     }
 
@@ -219,17 +214,19 @@ public class InsightsAdminController {
             HttpServletRequest httpRequest) {
         // Verify the session exists in this tenant before walking processes —
         // otherwise a wrong sessionId silently returns [].
-        SessionDocument session = sessionService.findBySessionId(sessionId)
+        SessionDocument session = sessionService
+                .findBySessionId(sessionId)
                 .filter(s -> tenant.equals(s.getTenantId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Session '" + sessionId + "' not found"));
-        authority.enforce(httpRequest,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.ADMIN);
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Session '" + sessionId + "' not found"));
+        authority.enforce(
+                httpRequest,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
+                Action.ADMIN);
 
         return thinkProcessService.findBySession(tenant, sessionId).stream()
-                .sorted(Comparator
-                        .comparing(ThinkProcessDocument::getCreatedAt,
-                                Comparator.nullsLast(Comparator.naturalOrder())))
+                .sorted(Comparator.comparing(
+                        ThinkProcessDocument::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(this::toDto)
                 .toList();
     }
@@ -245,18 +242,19 @@ public class InsightsAdminController {
      * <p>Allowed for running sessions too — Mongo reads are non-locking
      * and a sub-second snapshot drift is acceptable for diagnostics.
      */
-    @GetMapping(value = "/sessions/{sessionId}/export.jsonl",
-            produces = "application/x-ndjson")
+    @GetMapping(value = "/sessions/{sessionId}/export.jsonl", produces = "application/x-ndjson")
     public ResponseEntity<StreamingResponseBody> exportSession(
             @PathVariable("tenant") String tenant,
             @PathVariable("sessionId") String sessionId,
             HttpServletRequest httpRequest) {
 
-        SessionDocument session = sessionService.findBySessionId(sessionId)
+        SessionDocument session = sessionService
+                .findBySessionId(sessionId)
                 .filter(s -> tenant.equals(s.getTenantId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Session '" + sessionId + "' not found"));
-        authority.enforce(httpRequest,
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Session '" + sessionId + "' not found"));
+        authority.enforce(
+                httpRequest,
                 new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
                 Action.ADMIN);
 
@@ -292,11 +290,9 @@ public class InsightsAdminController {
             HttpServletRequest httpRequest) {
         ThinkProcessDocument process = loadProcess(tenant, processId);
         authority.enforce(httpRequest, processResource(process), Action.ADMIN);
-        List<ChatMessageDocument> messages = chatMessageService.history(
-                tenant, process.getSessionId(), process.getId());
-        return messages.stream()
-                .map(InsightsAdminController::toDto)
-                .toList();
+        List<ChatMessageDocument> messages =
+                chatMessageService.history(tenant, process.getSessionId(), process.getId());
+        return messages.stream().map(InsightsAdminController::toDto).toList();
     }
 
     @GetMapping("/processes/{processId}/memory")
@@ -308,9 +304,8 @@ public class InsightsAdminController {
         authority.enforce(httpRequest, processResource(process), Action.ADMIN);
         List<MemoryDocument> memories = memoryService.listByProcess(tenant, process.getId());
         return memories.stream()
-                .sorted(Comparator
-                        .comparing(MemoryDocument::getCreatedAt,
-                                Comparator.nullsLast(Comparator.naturalOrder())))
+                .sorted(Comparator.comparing(
+                        MemoryDocument::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(InsightsAdminController::toDto)
                 .toList();
     }
@@ -369,9 +364,8 @@ public class InsightsAdminController {
         authority.enforce(httpRequest, processResource(process), Action.ADMIN);
         org.springframework.data.domain.Page<LlmTraceDocument> result =
                 llmTraceService.listByProcess(tenant, process.getId(), page, size);
-        List<LlmTraceDto> items = result.getContent().stream()
-                .map(InsightsAdminController::toDto)
-                .toList();
+        List<LlmTraceDto> items =
+                result.getContent().stream().map(InsightsAdminController::toDto).toList();
         return LlmTraceListResponse.builder()
                 .items(items)
                 .page(result.getNumber())
@@ -394,8 +388,7 @@ public class InsightsAdminController {
             HttpServletRequest httpRequest) {
         ThinkProcessDocument process = loadProcess(tenant, processId);
         authority.enforce(httpRequest, processResource(process), Action.ADMIN);
-        LlmTraceService.CacheStatsAccumulator acc =
-                llmTraceService.cacheStatsByProcess(tenant, process.getId());
+        LlmTraceService.CacheStatsAccumulator acc = llmTraceService.cacheStatsByProcess(tenant, process.getId());
         return CacheStatsDto.builder()
                 .roundTrips(acc.roundTrips())
                 .inputTokens(acc.inputTokens())
@@ -409,10 +402,11 @@ public class InsightsAdminController {
     // ─── Authorization helpers ─────────────────────────────────────────────
 
     private ThinkProcessDocument loadProcess(String tenant, String processId) {
-        return thinkProcessService.findById(processId)
+        return thinkProcessService
+                .findById(processId)
                 .filter(p -> tenant.equals(p.getTenantId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Process '" + processId + "' not found"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Process '" + processId + "' not found"));
     }
 
     private static Resource.ThinkProcess processResource(ThinkProcessDocument p) {
@@ -429,8 +423,7 @@ public class InsightsAdminController {
         try {
             count = thinkProcessService.findBySession(tenant, s.getSessionId()).size();
         } catch (RuntimeException e) {
-            log.debug("processCount lookup failed for session {}: {}",
-                    s.getSessionId(), e.toString());
+            log.debug("processCount lookup failed for session {}: {}", s.getSessionId(), e.toString());
         }
         return SessionInsightsDto.builder()
                 .id(s.getId())
@@ -481,9 +474,10 @@ public class InsightsAdminController {
     private static ActiveSkillInsightsDto toDto(ActiveSkillRefEmbedded a) {
         return ActiveSkillInsightsDto.builder()
                 .name(a.getName())
-                .resolvedFromScope(a.getResolvedFromScope() == null
-                        ? null
-                        : a.getResolvedFromScope().name())
+                .resolvedFromScope(
+                        a.getResolvedFromScope() == null
+                                ? null
+                                : a.getResolvedFromScope().name())
                 .oneShot(a.isOneShot())
                 .fromRecipe(a.isFromRecipe())
                 .activatedAt(a.getActivatedAt())
@@ -617,9 +611,8 @@ public class InsightsAdminController {
                 .engine(t.getEngine())
                 .turnId(t.getTurnId())
                 .sequence(t.getSequence())
-                .direction(t.getDirection() == null
-                        ? ""
-                        : t.getDirection().name().toLowerCase())
+                .direction(
+                        t.getDirection() == null ? "" : t.getDirection().name().toLowerCase())
                 .role(t.getRole())
                 .content(t.getContent())
                 .toolName(t.getToolName())
@@ -657,14 +650,18 @@ public class InsightsAdminController {
                     .engine(r.engine())
                     .source(r.source().name())
                     .paramsCount(r.params() == null ? 0 : r.params().size())
-                    .hasPromptPrefix(r.promptPrefix() != null && !r.promptPrefix().isBlank())
+                    .hasPromptPrefix(
+                            r.promptPrefix() != null && !r.promptPrefix().isBlank())
                     .allowedToolsAdd(r.allowedToolsAdd())
                     .allowedToolsRemove(r.allowedToolsRemove())
                     .defaultActiveSkills(r.defaultActiveSkills())
                     .allowedSkills(r.allowedSkills())
                     .locked(r.locked())
                     .tags(r.tags())
-                    .profileKeys(r.profiles() == null ? List.of() : new ArrayList<>(r.profiles().keySet()))
+                    .profileKeys(
+                            r.profiles() == null
+                                    ? List.of()
+                                    : new ArrayList<>(r.profiles().keySet()))
                     .build());
         }
         out.sort(Comparator.comparing(EffectiveRecipeDto::getName));
@@ -719,8 +716,7 @@ public class InsightsAdminController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
         Map<String, List<ToolUsageEntryInsightsDto>> byRole = new LinkedHashMap<>();
-        for (de.mhus.vance.shared.toolusage.ToolUsageDocument doc
-                : toolUsageService.listByProject(tenant, project)) {
+        for (de.mhus.vance.shared.toolusage.ToolUsageDocument doc : toolUsageService.listByProject(tenant, project)) {
             if (doc.getToolName() == null) continue;
             String role = doc.getRecipeName() == null || doc.getRecipeName().isBlank()
                     ? de.mhus.vance.shared.toolusage.ToolUsageService.ROLE_UNKNOWN
@@ -741,11 +737,15 @@ public class InsightsAdminController {
             List<ToolUsageEntryInsightsDto> tools = e.getValue();
             // Most-demanded first, name as the tie-break so the table is
             // reproducible between reloads.
-            tools.sort(Comparator
-                    .comparingLong(ToolUsageEntryInsightsDto::getDemand).reversed()
+            tools.sort(Comparator.comparingLong(ToolUsageEntryInsightsDto::getDemand)
+                    .reversed()
                     .thenComparing(ToolUsageEntryInsightsDto::getToolName));
-            long calls = tools.stream().mapToLong(ToolUsageEntryInsightsDto::getCalls).sum();
-            long hits = tools.stream().mapToLong(ToolUsageEntryInsightsDto::getDiscoveryHits).sum();
+            long calls = tools.stream()
+                    .mapToLong(ToolUsageEntryInsightsDto::getCalls)
+                    .sum();
+            long hits = tools.stream()
+                    .mapToLong(ToolUsageEntryInsightsDto::getDiscoveryHits)
+                    .sum();
             out.add(ToolUsageRoleInsightsDto.builder()
                     .role(e.getKey())
                     .toolCount(tools.size())
@@ -756,15 +756,14 @@ public class InsightsAdminController {
                     .tools(tools)
                     .build());
         }
-        out.sort(Comparator
-                .comparingLong(ToolUsageRoleInsightsDto::getDemand).reversed()
+        out.sort(Comparator.comparingLong(ToolUsageRoleInsightsDto::getDemand)
+                .reversed()
                 .thenComparing(ToolUsageRoleInsightsDto::getRole));
         return out;
     }
 
     /** Newest call- or discovery-timestamp across a role's tools. */
-    private static java.time.@Nullable Instant latestActivity(
-            List<ToolUsageEntryInsightsDto> tools) {
+    private static java.time.@Nullable Instant latestActivity(List<ToolUsageEntryInsightsDto> tools) {
         java.time.@Nullable Instant best = null;
         for (ToolUsageEntryInsightsDto t : tools) {
             best = later(best, t.getLastCallAt());
@@ -773,8 +772,7 @@ public class InsightsAdminController {
         return best;
     }
 
-    private static java.time.@Nullable Instant later(
-            java.time.@Nullable Instant a, java.time.@Nullable Instant b) {
+    private static java.time.@Nullable Instant later(java.time.@Nullable Instant a, java.time.@Nullable Instant b) {
         if (a == null) return b;
         if (b == null) return a;
         return a.isAfter(b) ? a : b;
@@ -797,11 +795,12 @@ public class InsightsAdminController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.WRITE);
         if (request == null || request.enabled() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Body must carry {\"enabled\":true|false}");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Body must carry {\"enabled\":true|false}");
         }
         SearchScope scope = new SearchScope(tenant, project, null, null);
-        zarniwoopGateService.setOverride(scope, instanceId,
+        zarniwoopGateService.setOverride(
+                scope,
+                instanceId,
                 request.enabled()
                         ? ZarniwoopGateService.ManualState.ENABLED
                         : ZarniwoopGateService.ManualState.DISABLED);
@@ -822,7 +821,7 @@ public class InsightsAdminController {
     }
 
     /** Request body shape for the override endpoint. */
-    public record ZarniwoopOverrideRequest(Boolean enabled) { }
+    public record ZarniwoopOverrideRequest(Boolean enabled) {}
 
     @GetMapping("/projects/{project}/insights/tools")
     public List<EffectiveToolDto> listEffectiveTools(
@@ -835,16 +834,18 @@ public class InsightsAdminController {
 
         // Layer 1 — built-in beans
         for (Tool t : builtInToolSource.list()) {
-            acc.put(t.name(), EffectiveToolDto.builder()
-                    .name(t.name())
-                    .description(t.description())
-                    .primary(t.primary())
-                    .deferred(t.deferred())
-                    .searchHint(t.searchHint())
-                    .source("BUILTIN")
-                    .labels(new ArrayList<>(t.labels()))
-                    .type(null)
-                    .disabledByInnerLayer(false));
+            acc.put(
+                    t.name(),
+                    EffectiveToolDto.builder()
+                            .name(t.name())
+                            .description(t.description())
+                            .primary(t.primary())
+                            .deferred(t.deferred())
+                            .searchHint(t.searchHint())
+                            .source("BUILTIN")
+                            .labels(new ArrayList<>(t.labels()))
+                            .type(null)
+                            .disabledByInnerLayer(false));
         }
 
         // Layer 2 — tenant-wide _vance project
@@ -877,31 +878,35 @@ public class InsightsAdminController {
                 if (existing != null) {
                     existing.disabledByInnerLayer(true);
                 } else {
-                    acc.put(name, EffectiveToolDto.builder()
-                            .name(name)
-                            .description(cfg.description())
-                            .primary(false)
-                            .deferred(false)
-                            .searchHint("")
-                            .source(sourceLabel)
-                            .labels(new ArrayList<>(cfg.labels()))
-                            .type(cfg.type())
-                            .disabledByInnerLayer(true));
+                    acc.put(
+                            name,
+                            EffectiveToolDto.builder()
+                                    .name(name)
+                                    .description(cfg.description())
+                                    .primary(false)
+                                    .deferred(false)
+                                    .searchHint("")
+                                    .source(sourceLabel)
+                                    .labels(new ArrayList<>(cfg.labels()))
+                                    .type(cfg.type())
+                                    .disabledByInnerLayer(true));
                 }
                 continue;
             }
             // Enabled config → fully replaces lower layer
             Tool materialized = serverToolService.lookup(tenant, project, name).orElse(null);
-            acc.put(name, EffectiveToolDto.builder()
-                    .name(name)
-                    .description(materialized != null ? materialized.description() : cfg.description())
-                    .primary(materialized != null && materialized.primary())
-                    .deferred(materialized != null && materialized.deferred())
-                    .searchHint(materialized != null ? materialized.searchHint() : "")
-                    .source(sourceLabel)
-                    .labels(new ArrayList<>(cfg.labels()))
-                    .type(cfg.type())
-                    .disabledByInnerLayer(false));
+            acc.put(
+                    name,
+                    EffectiveToolDto.builder()
+                            .name(name)
+                            .description(materialized != null ? materialized.description() : cfg.description())
+                            .primary(materialized != null && materialized.primary())
+                            .deferred(materialized != null && materialized.deferred())
+                            .searchHint(materialized != null ? materialized.searchHint() : "")
+                            .source(sourceLabel)
+                            .labels(new ArrayList<>(cfg.labels()))
+                            .type(cfg.type())
+                            .disabledByInnerLayer(false));
         }
     }
 
@@ -920,12 +925,15 @@ public class InsightsAdminController {
             @PathVariable("tenant") String tenant,
             @PathVariable("sessionId") String sessionId,
             HttpServletRequest httpRequest) {
-        SessionDocument session = sessionService.findBySessionId(sessionId)
+        SessionDocument session = sessionService
+                .findBySessionId(sessionId)
                 .filter(s -> tenant.equals(s.getTenantId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Session '" + sessionId + "' not found"));
-        authority.enforce(httpRequest,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.ADMIN);
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Session '" + sessionId + "' not found"));
+        authority.enforce(
+                httpRequest,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
+                Action.ADMIN);
 
         // Bypass mode (used in single-pod tests) and podless system
         // projects (_vance / _user_<login>, no homeNode by design)
@@ -954,7 +962,8 @@ public class InsightsAdminController {
     }
 
     private SessionClientToolsDto localClientTools(String sessionId) {
-        return clientToolRegistry.entry(sessionId)
+        return clientToolRegistry
+                .entry(sessionId)
                 .map(e -> SessionClientToolsDto.builder()
                         .sessionId(sessionId)
                         .bound(true)
@@ -983,36 +992,36 @@ public class InsightsAdminController {
      * — when the lease is absent or expired no row is flagged.
      */
     @GetMapping("/cluster/pods")
-    public ClusterInsightsDto listClusterPods(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+    public ClusterInsightsDto listClusterPods(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
 
         Instant now = Instant.now();
         String selfPodId = clusterService.selfPodId();
         String tenantPrefix = tenant + "/";
 
-        Optional<ClusterMasterDocument> leaseOpt = clusterMasterService
-                .flatMap(ClusterMasterService::currentLease);
-        String masterPodId = leaseOpt.map(ClusterMasterDocument::getCurrentPodId).orElse(null);
+        Optional<ClusterMasterDocument> leaseOpt = clusterMasterService.flatMap(ClusterMasterService::currentLease);
+        String masterPodId =
+                leaseOpt.map(ClusterMasterDocument::getCurrentPodId).orElse(null);
 
         Function<String, @Nullable ProjectDocument> projectLookup =
                 name -> projectService.findByTenantAndName(tenant, name).orElse(null);
 
         List<BrainPodInsightsDto> pods = clusterService.listCluster().stream()
-                .sorted(Comparator.comparing(BrainPodDocument::getNodeName,
-                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .sorted(Comparator.comparing(
+                        BrainPodDocument::getNodeName, Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(doc -> toClusterPodDto(
-                        doc, tenantPrefix, selfPodId, masterPodId,
-                        clusterService.isStale(doc, now), projectLookup))
+                        doc, tenantPrefix, selfPodId, masterPodId, clusterService.isStale(doc, now), projectLookup))
                 .toList();
 
         return ClusterInsightsDto.builder()
                 .clusterId(clusterService.selfClusterId())
                 .masterPodId(masterPodId)
-                .masterNodeName(leaseOpt.map(ClusterMasterDocument::getCurrentNodeName).orElse(null))
-                .masterEndpoint(leaseOpt.map(ClusterMasterDocument::getCurrentEndpoint).orElse(null))
-                .masterLeaseUntil(leaseOpt.map(ClusterMasterDocument::getLeaseUntil).orElse(null))
+                .masterNodeName(
+                        leaseOpt.map(ClusterMasterDocument::getCurrentNodeName).orElse(null))
+                .masterEndpoint(
+                        leaseOpt.map(ClusterMasterDocument::getCurrentEndpoint).orElse(null))
+                .masterLeaseUntil(
+                        leaseOpt.map(ClusterMasterDocument::getLeaseUntil).orElse(null))
                 .pods(pods)
                 .build();
     }
@@ -1059,14 +1068,12 @@ public class InsightsAdminController {
                 .resourcesCurrentScore(doc.getResourcesCurrentScore())
                 .resourcesMaxScore(doc.getResourcesMaxScore())
                 .resourcesMaxScoreOverride(doc.getResourcesMaxScoreOverride())
-                .effectiveMaxScore(
-                        de.mhus.vance.shared.cluster.BrainPodCapacity.effectiveMaxScore(doc))
+                .effectiveMaxScore(de.mhus.vance.shared.cluster.BrainPodCapacity.effectiveMaxScore(doc))
                 .tenantProjects(tenantProjects)
                 .build();
     }
 
-    private static BrainPodProjectInsightsDto toProjectDto(
-            String name, @Nullable ProjectDocument project) {
+    private static BrainPodProjectInsightsDto toProjectDto(String name, @Nullable ProjectDocument project) {
         if (project == null) {
             return BrainPodProjectInsightsDto.builder()
                     .name(name)
@@ -1093,9 +1100,7 @@ public class InsightsAdminController {
      * system-wide but we still scope auth per tenant for consistency.
      */
     @GetMapping("/addons")
-    public List<AddonInsightDto> listAddons(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+    public List<AddonInsightDto> listAddons(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         return addonInsightsService.listForInsights();
     }
@@ -1123,8 +1128,7 @@ public class InsightsAdminController {
             scope = ToolHealthScope.valueOf(scopeRaw.trim().toUpperCase());
         } catch (IllegalArgumentException ex) {
             throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.BAD_REQUEST,
-                    "unknown scope: " + scopeRaw);
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "unknown scope: " + scopeRaw, ex);
         }
         Instant now = Instant.now();
         return toolHealthService.listForScope(tenant, scope, scopeId).stream()
@@ -1144,8 +1148,11 @@ public class InsightsAdminController {
             @org.springframework.web.bind.annotation.RequestBody ClearCooldownRequest body,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
-        if (body == null || body.scope == null || body.scopeId == null
-                || body.toolName == null || body.errorSignature == null) {
+        if (body == null
+                || body.scope == null
+                || body.scopeId == null
+                || body.toolName == null
+                || body.errorSignature == null) {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_REQUEST,
                     "scope, scopeId, toolName, errorSignature are required");
@@ -1155,12 +1162,9 @@ public class InsightsAdminController {
             scope = ToolHealthScope.valueOf(body.scope.trim().toUpperCase());
         } catch (IllegalArgumentException ex) {
             throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.BAD_REQUEST,
-                    "unknown scope: " + body.scope);
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "unknown scope: " + body.scope, ex);
         }
-        toolHealthService.clearCooldown(
-                tenant, scope, body.scopeId, body.toolName,
-                body.errorSignature, body.userId);
+        toolHealthService.clearCooldown(tenant, scope, body.scopeId, body.toolName, body.errorSignature, body.userId);
         return java.util.Map.of("cleared", true);
     }
 
@@ -1169,16 +1173,20 @@ public class InsightsAdminController {
         public String scopeId;
         public String toolName;
         public String errorSignature;
-        @Nullable public String userId;
+
+        @Nullable
+        public String userId;
     }
 
     private static ToolHealthEntryDto toEntryDto(ToolHealthDocument doc, Instant now) {
         List<ToolHealthCooldownDto> active = (doc.getCooldowns() == null
-                ? List.<ToolHealthCooldown>of() : doc.getCooldowns()).stream()
-                .filter(cd -> cd.getNextSpawnAllowedAt() != null
-                        && cd.getNextSpawnAllowedAt().isAfter(now))
-                .map(InsightsAdminController::toCooldownDto)
-                .toList();
+                        ? List.<ToolHealthCooldown>of()
+                        : doc.getCooldowns())
+                .stream()
+                        .filter(cd -> cd.getNextSpawnAllowedAt() != null
+                                && cd.getNextSpawnAllowedAt().isAfter(now))
+                        .map(InsightsAdminController::toCooldownDto)
+                        .toList();
         return ToolHealthEntryDto.builder()
                 .id(doc.getId())
                 .scope(doc.getScope())
@@ -1186,10 +1194,11 @@ public class InsightsAdminController {
                 .toolName(doc.getToolName())
                 .status(doc.getStatus())
                 .classification(doc.getLastClassification())
-                .statusSince(doc.getSince() == null
-                        ? null : doc.getSince().toString())
-                .expectedRecoveryAt(doc.getExpectedRecoveryAt() == null
-                        ? null : doc.getExpectedRecoveryAt().toString())
+                .statusSince(doc.getSince() == null ? null : doc.getSince().toString())
+                .expectedRecoveryAt(
+                        doc.getExpectedRecoveryAt() == null
+                                ? null
+                                : doc.getExpectedRecoveryAt().toString())
                 .note(doc.getLastNote())
                 .activeCooldowns(active)
                 .build();
@@ -1199,12 +1208,16 @@ public class InsightsAdminController {
         ToolHealthClassification cls = cd.getLastClassification();
         return ToolHealthCooldownDto.builder()
                 .errorSignature(cd.getErrorSignature())
-                .nextSpawnAllowedAt(cd.getNextSpawnAllowedAt() == null
-                        ? null : cd.getNextSpawnAllowedAt().toString())
+                .nextSpawnAllowedAt(
+                        cd.getNextSpawnAllowedAt() == null
+                                ? null
+                                : cd.getNextSpawnAllowedAt().toString())
                 .hits(cd.getHits())
                 .lastClassification(cls)
-                .lastTriggeredAt(cd.getLastTriggeredAt() == null
-                        ? null : cd.getLastTriggeredAt().toString())
+                .lastTriggeredAt(
+                        cd.getLastTriggeredAt() == null
+                                ? null
+                                : cd.getLastTriggeredAt().toString())
                 .note(cd.getNote())
                 .userId(cd.getUserId())
                 .build();

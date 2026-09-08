@@ -165,7 +165,7 @@ public final class IdeMcpClient {
             ws.sendText(json.writeValueAsString(envelope), true).get(2, TimeUnit.SECONDS);
         } catch (ExecutionException e) {
             pending.remove(id);
-            throw new IdeRpcException(-1, "send failed: " + cause(e), null);
+            throw new IdeRpcException(-1, "send failed: " + cause(e), null, e);
         } catch (TimeoutException e) {
             pending.remove(id);
             throw e;
@@ -179,7 +179,7 @@ public final class IdeMcpClient {
             if (e.getCause() instanceof IdeRpcException rpc) {
                 throw rpc;
             }
-            throw new IdeRpcException(-1, "request failed: " + cause(e), null);
+            throw new IdeRpcException(-1, "request failed: " + cause(e), null, e);
         }
     }
 

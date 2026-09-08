@@ -51,7 +51,7 @@ public class IssuesService {
         try (InputStream in = documentService.loadContent(doc)) {
             return IssueCodec.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8), doc.getMimeType());
         } catch (IOException | RuntimeException e) {
-            throw new ToolException("Could not read issue '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not read issue '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -115,7 +115,7 @@ public class IssuesService {
             } catch (DocumentService.DocumentAlreadyExistsException clash) {
                 log.debug("issue number {} taken, retrying", number);
             } catch (IOException e) {
-                throw new ToolException("Could not write issue '" + path + "': " + e.getMessage());
+                throw new ToolException("Could not write issue '" + path + "': " + e.getMessage(), e);
             }
         }
         throw new ToolException("Could not reserve a free issue number after " + MAX_NUMBER_ATTEMPTS + " attempts.");

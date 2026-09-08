@@ -62,6 +62,7 @@ public class SessionLifecycleService {
      * {@code ThinkEngineService} too. Used only by {@code reactivateFromArchive}.
      */
     private final ObjectProvider<SessionChatBootstrapper> chatBootstrapperProvider;
+
     private final LaneScheduler laneScheduler;
 
     /**
@@ -132,23 +133,20 @@ public class SessionLifecycleService {
         // AFTER the initial snapshot but before the terminal flip would otherwise
         // escape the cascade (running process outside a SUSPENDED session). The
         // loop re-scans until no new non-terminal process appears.
-        List<String> laneIdsToForget = drainSessionProcesses(
-                session.getTenantId(), sessionId, p -> {
-                    if (p.getStatus() == ThinkProcessStatus.SUSPENDED) {
-                        return null; // already suspended — only its lane needs forgetting
-                    }
-                    return laneScheduler.submit(p.getId(), () -> {
-                        try {
-                            engines.suspend(p);
-                        } catch (RuntimeException e) {
-                            log.warn("engine.suspend failed during cascade id='{}': {}",
-                                    p.getId(), e.toString());
-                            thinkProcessService.updateStatus(
-                                    p.getId(), ThinkProcessStatus.SUSPENDED);
-                        }
-                        return null;
-                    });
-                });
+        List<String> laneIdsToForget = drainSessionProcesses(session.getTenantId(), sessionId, p -> {
+            if (p.getStatus() == ThinkProcessStatus.SUSPENDED) {
+                return null; // already suspended — only its lane needs forgetting
+            }
+            return laneScheduler.submit(p.getId(), () -> {
+                try {
+                    engines.suspend(p);
+                } catch (RuntimeException e) {
+                    log.warn("engine.suspend failed during cascade id='{}': {}", p.getId(), e.toString());
+                    thinkProcessService.updateStatus(p.getId(), ThinkProcessStatus.SUSPENDED);
+                }
+                return null;
+            });
+        });
         // Memory cleanup: drop each suspended process's lane and per-engine
         // state so a SUSPENDED session lives only in MongoDB. The lane map
         // would otherwise grow monotonically over the pod's lifetime.
@@ -189,17 +187,17 @@ public class SessionLifecycleService {
         // Drain with re-scan (see suspendCascade) so a mid-cascade-spawned child
         // is stopped too rather than escaping into a CLOSED session.
         List<String> closedProcessIds = drainSessionProcesses(
-                session.getTenantId(), sessionId, p ->
-                        laneScheduler.submit(p.getId(), () -> {
-                            try {
-                                engines.stop(p);
-                            } catch (RuntimeException e) {
-                                log.warn("engine.stop failed during cascade id='{}': {}",
-                                        p.getId(), e.toString());
-                                thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
-                            }
-                            return null;
-                        }));
+                session.getTenantId(),
+                sessionId,
+                p -> laneScheduler.submit(p.getId(), () -> {
+                    try {
+                        engines.stop(p);
+                    } catch (RuntimeException e) {
+                        log.warn("engine.stop failed during cascade id='{}': {}", p.getId(), e.toString());
+                        thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
+                    }
+                    return null;
+                }));
         // Engines closed with reason=STOPPED — re-stamp to the cascade's
         // audit reason for everything that actually went through stop.
         // closeProcess is idempotent, but our overrideCloseReason only
@@ -228,8 +226,7 @@ public class SessionLifecycleService {
     public void archiveWithCascade(String sessionId) {
         SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
         if (session == null) return;
-        if (session.getStatus() == SessionStatus.ARCHIVED
-                || session.getStatus() == SessionStatus.CLOSED) {
+        if (session.getStatus() == SessionStatus.ARCHIVED || session.getStatus() == SessionStatus.CLOSED) {
             return;
         }
         log.info("Archive cascade sessionId='{}'", sessionId);
@@ -237,17 +234,17 @@ public class SessionLifecycleService {
         // Drain with re-scan (see suspendCascade) so a mid-cascade-spawned child
         // is stopped too rather than escaping into an ARCHIVED session.
         List<String> closedProcessIds = drainSessionProcesses(
-                session.getTenantId(), sessionId, p ->
-                        laneScheduler.submit(p.getId(), () -> {
-                            try {
-                                engines.stop(p);
-                            } catch (RuntimeException e) {
-                                log.warn("engine.stop failed during archive cascade id='{}': {}",
-                                        p.getId(), e.toString());
-                                thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
-                            }
-                            return null;
-                        }));
+                session.getTenantId(),
+                sessionId,
+                p -> laneScheduler.submit(p.getId(), () -> {
+                    try {
+                        engines.stop(p);
+                    } catch (RuntimeException e) {
+                        log.warn("engine.stop failed during archive cascade id='{}': {}", p.getId(), e.toString());
+                        thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
+                    }
+                    return null;
+                }));
         for (String id : closedProcessIds) {
             thinkProcessService.overrideCloseReason(id, CloseReason.ARCHIVED);
         }
@@ -274,8 +271,7 @@ public class SessionLifecycleService {
             throw new IllegalStateException("Session not found: " + sessionId);
         }
         if (session.getStatus() != SessionStatus.ARCHIVED) {
-            throw new IllegalStateException(
-                    "Session is not ARCHIVED: " + sessionId + " status=" + session.getStatus());
+            throw new IllegalStateException("Session is not ARCHIVED: " + sessionId + " status=" + session.getStatus());
         }
         log.info("Reactivate session sessionId='{}'", sessionId);
 
@@ -290,8 +286,10 @@ public class SessionLifecycleService {
         // pairing then never happened because the bootstrap keys on the
         // control engine. Every non-default recipe was affected; only
         // Arthur sessions could not tell.
-        String previousRecipe = oldChatProcessId == null ? null
-                : thinkProcessService.findById(oldChatProcessId)
+        String previousRecipe = oldChatProcessId == null
+                ? null
+                : thinkProcessService
+                        .findById(oldChatProcessId)
                         .map(ThinkProcessDocument::getRecipeName)
                         .orElse(null);
         if (oldChatProcessId != null) {
@@ -312,11 +310,10 @@ public class SessionLifecycleService {
         fireHooks("unarchived", session, SessionLifecycleHook::onSessionUnarchived);
 
         // Spawn the new chat-process.
-        SessionDocument refreshed = sessionService.findBySessionId(sessionId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Session disappeared mid-reactivate: " + sessionId));
-        chatBootstrapperProvider.getObject()
-                .ensureChatProcess(refreshed, /*parentProcessId*/ null, previousRecipe);
+        SessionDocument refreshed = sessionService
+                .findBySessionId(sessionId)
+                .orElseThrow(() -> new IllegalStateException("Session disappeared mid-reactivate: " + sessionId));
+        chatBootstrapperProvider.getObject().ensureChatProcess(refreshed, /*parentProcessId*/ null, previousRecipe);
     }
 
     /**
@@ -331,16 +328,14 @@ public class SessionLifecycleService {
         SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
         if (session == null) return;
         log.info("Hard-delete session sessionId='{}'", sessionId);
-        if (session.getStatus() != SessionStatus.CLOSED
-                && session.getStatus() != SessionStatus.ARCHIVED) {
+        if (session.getStatus() != SessionStatus.CLOSED && session.getStatus() != SessionStatus.ARCHIVED) {
             // Drive through the close cascade so engines see stop and
             // the per-process audit reason is correct.
             closeWithCascade(sessionId, CloseReason.USER_DELETE);
         } else if (session.getStatus() == SessionStatus.ARCHIVED) {
             // Already archived — engines are CLOSED with reason=ARCHIVED;
             // rewrite reason to USER_DELETE for the audit trail.
-            List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
-                    session.getTenantId(), sessionId);
+            List<ThinkProcessDocument> processes = thinkProcessService.findBySession(session.getTenantId(), sessionId);
             for (ThinkProcessDocument p : processes) {
                 thinkProcessService.overrideCloseReason(p.getId(), CloseReason.USER_DELETE);
             }
@@ -356,11 +351,9 @@ public class SessionLifecycleService {
         chatMessageService.deleteBySession(session.getTenantId(), sessionId);
         thinkProcessService.deleteBySession(session.getTenantId(), sessionId);
         memoryService.deleteBySession(session.getTenantId(), sessionId);
-        sessionGroupService.removeSessionFromProject(
-                session.getTenantId(), session.getProjectId(), sessionId);
+        sessionGroupService.removeSessionFromProject(session.getTenantId(), session.getProjectId(), sessionId);
         sessionService.delete(sessionId);
     }
-
 
     /**
      * Runs every {@link SessionLifecycleHook} for one transition.
@@ -370,15 +363,21 @@ public class SessionLifecycleService {
      * managed to follow it. A hook that fails leaves its own mess, not a
      * half-archived session.
      */
-    private void fireHooks(String transition, SessionDocument session,
+    private void fireHooks(
+            String transition,
+            SessionDocument session,
             java.util.function.BiConsumer<SessionLifecycleHook, SessionDocument> call) {
         for (SessionLifecycleHook hook : lifecycleHooks) {
             try {
                 call.accept(hook, session);
             } catch (RuntimeException e) {
-                log.warn("Session-lifecycle hook {} failed on {} for session '{}': {}",
-                        hook.getClass().getSimpleName(), transition,
-                        session.getSessionId(), e.toString(), e);
+                log.warn(
+                        "Session-lifecycle hook {} failed on {} for session '{}': {}",
+                        hook.getClass().getSimpleName(),
+                        transition,
+                        session.getSessionId(),
+                        e.toString(),
+                        e);
             }
         }
     }
@@ -413,8 +412,7 @@ public class SessionLifecycleService {
         SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
         if (session == null) return List.of();
 
-        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
-                session.getTenantId(), sessionId);
+        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(session.getTenantId(), sessionId);
         List<String> pausedNames = new ArrayList<>();
         for (ThinkProcessDocument p : processes) {
             if (!isInterruptible(p)) {
@@ -423,8 +421,7 @@ public class SessionLifecycleService {
             pausedNames.add(p.getName());
             requestPauseOfInterruptible(p.getId());
         }
-        log.info("Pause requested for {} process(es) in session='{}': {}",
-                pausedNames.size(), sessionId, pausedNames);
+        log.info("Pause requested for {} process(es) in session='{}': {}", pausedNames.size(), sessionId, pausedNames);
         return pausedNames;
     }
 
@@ -501,16 +498,13 @@ public class SessionLifecycleService {
      * because the bean graph wouldn't let the lifecycle service take
      * a direct dependency on the emitter without a cycle.
      */
-    public void resumeSessionCascade(String sessionId,
-                                     ProcessEventEmitter eventEmitter) {
+    public void resumeSessionCascade(String sessionId, ProcessEventEmitter eventEmitter) {
         SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
         if (session == null) return;
-        if (session.getStatus() == SessionStatus.CLOSED
-                || session.getStatus() == SessionStatus.ARCHIVED) {
+        if (session.getStatus() == SessionStatus.CLOSED || session.getStatus() == SessionStatus.ARCHIVED) {
             return;
         }
-        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
-                session.getTenantId(), sessionId);
+        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(session.getTenantId(), sessionId);
         boolean anySuspended = false;
         for (ThinkProcessDocument p : processes) {
             if (p.getStatus() == ThinkProcessStatus.SUSPENDED) {
@@ -523,8 +517,7 @@ public class SessionLifecycleService {
             // suspended. Skip the noise.
             return;
         }
-        log.info("Resume cascade sessionId='{}' (sessionStatus={})",
-                sessionId, session.getStatus());
+        log.info("Resume cascade sessionId='{}' (sessionStatus={})", sessionId, session.getStatus());
         ThinkEngineService engines = thinkEngineServiceProvider.getObject();
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (ThinkProcessDocument p : processes) {
@@ -533,12 +526,10 @@ public class SessionLifecycleService {
                 try {
                     engines.resume(p);
                 } catch (RuntimeException e) {
-                    log.warn("engine.resume failed during cascade id='{}': {}",
-                            p.getId(), e.toString());
+                    log.warn("engine.resume failed during cascade id='{}': {}", p.getId(), e.toString());
                     // Best-effort fallback: at least lift the status
                     // off SUSPENDED so the lane can run again.
-                    thinkProcessService.updateStatus(
-                            p.getId(), ThinkProcessStatus.IDLE);
+                    thinkProcessService.updateStatus(p.getId(), ThinkProcessStatus.IDLE);
                 }
                 return null;
             }));
@@ -581,8 +572,10 @@ public class SessionLifecycleService {
      */
     public boolean pauseProcess(ThinkProcessDocument process) {
         if (!isInterruptible(process)) {
-            log.debug("pauseProcess id='{}' skipped — status {} has nothing to interrupt",
-                    process.getId(), process.getStatus());
+            log.debug(
+                    "pauseProcess id='{}' skipped — status {} has nothing to interrupt",
+                    process.getId(),
+                    process.getStatus());
             return false;
         }
         requestPauseOfInterruptible(process.getId());
@@ -594,18 +587,18 @@ public class SessionLifecycleService {
      * lane, then a {@code runTurn} is scheduled so any pending
      * messages that piled up while paused get drained.
      */
-    public void resumeProcess(ThinkProcessDocument process,
-                              ProcessEventEmitter eventEmitter) {
+    public void resumeProcess(ThinkProcessDocument process, ProcessEventEmitter eventEmitter) {
         try {
-            laneScheduler.submit(process.getId(), () -> {
-                if (process.getStatus() == ThinkProcessStatus.PAUSED
-                        || process.getStatus() == ThinkProcessStatus.SUSPENDED) {
-                    thinkProcessService.updateStatus(
-                            process.getId(), ThinkProcessStatus.IDLE);
-                }
-                thinkProcessService.clearHalt(process.getId());
-                return null;
-            }).get(LANE_JOIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            laneScheduler
+                    .submit(process.getId(), () -> {
+                        if (process.getStatus() == ThinkProcessStatus.PAUSED
+                                || process.getStatus() == ThinkProcessStatus.SUSPENDED) {
+                            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+                        }
+                        thinkProcessService.clearHalt(process.getId());
+                        return null;
+                    })
+                    .get(LANE_JOIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted resuming process", ie);
@@ -616,8 +609,7 @@ public class SessionLifecycleService {
             log.warn("resumeProcess id='{}' — lane busy, IDLE stays queued", process.getId());
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-            throw new IllegalStateException(
-                    "resume failed: " + cause.getMessage(), cause);
+            throw new IllegalStateException("resume failed: " + cause.getMessage(), cause);
         }
         // Drain any pending that piled up while paused. scheduleTurn is a
         // no-op if status isn't drainable (handled inside ProcessEventEmitter).
@@ -646,8 +638,7 @@ public class SessionLifecycleService {
         String chatProcessId = session.getChatProcessId();
         if (chatProcessId == null) return List.of();
 
-        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
-                session.getTenantId(), sessionId);
+        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(session.getTenantId(), sessionId);
         ThinkEngineService engines = thinkEngineServiceProvider.getObject();
         List<String> stoppedNames = new ArrayList<>();
         List<CompletableFuture<Void>> futures = new ArrayList<>();
@@ -659,16 +650,18 @@ public class SessionLifecycleService {
                 try {
                     engines.stop(p);
                 } catch (RuntimeException e) {
-                    log.warn("engine.stop failed on cascade child id='{}': {}",
-                            p.getId(), e.toString());
+                    log.warn("engine.stop failed on cascade child id='{}': {}", p.getId(), e.toString());
                     thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
                 }
                 return null;
             }));
         }
         joinAll(futures);
-        log.info("Stopped {} worker(s) under chat-process of session='{}': {}",
-                stoppedNames.size(), sessionId, stoppedNames);
+        log.info(
+                "Stopped {} worker(s) under chat-process of session='{}': {}",
+                stoppedNames.size(),
+                sessionId,
+                stoppedNames);
         return stoppedNames;
     }
 
@@ -679,30 +672,27 @@ public class SessionLifecycleService {
     public void stopProcess(ThinkProcessDocument process) {
         ThinkEngineService engines = thinkEngineServiceProvider.getObject();
         try {
-            laneScheduler.submit(process.getId(), () -> {
-                try {
-                    engines.stop(process);
-                } catch (RuntimeException e) {
-                    log.warn("engine.stop failed for process id='{}': {}",
-                            process.getId(), e.toString());
-                    thinkProcessService.closeProcess(
-                            process.getId(), CloseReason.STOPPED);
-                }
-                return null;
-            }).get(LANE_JOIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            laneScheduler
+                    .submit(process.getId(), () -> {
+                        try {
+                            engines.stop(process);
+                        } catch (RuntimeException e) {
+                            log.warn("engine.stop failed for process id='{}': {}", process.getId(), e.toString());
+                            thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
+                        }
+                        return null;
+                    })
+                    .get(LANE_JOIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException(
-                    "Interrupted waiting for engine.stop", ie);
+            throw new IllegalStateException("Interrupted waiting for engine.stop", ie);
         } catch (java.util.concurrent.TimeoutException te) {
             // Queued behind the turn being stopped. Reporting success is
             // honest here — engine.stop will run, it just has not yet.
-            log.warn("stopProcess id='{}' — lane busy, engine.stop stays queued",
-                    process.getId());
+            log.warn("stopProcess id='{}' — lane busy, engine.stop stays queued", process.getId());
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-            throw new IllegalStateException(
-                    "engine.stop failed: " + cause.getMessage(), cause);
+            throw new IllegalStateException("engine.stop failed: " + cause.getMessage(), cause);
         }
     }
 
@@ -729,8 +719,7 @@ public class SessionLifecycleService {
                 Thread.currentThread().interrupt();
                 return;
             } catch (java.util.concurrent.TimeoutException te) {
-                log.warn("Lane task did not land within {}s — cascade continues without it",
-                        LANE_JOIN_TIMEOUT_SECONDS);
+                log.warn("Lane task did not land within {}s — cascade continues without it", LANE_JOIN_TIMEOUT_SECONDS);
             } catch (ExecutionException ee) {
                 // Already logged at the lane callback's catch.
             }
@@ -758,14 +747,14 @@ public class SessionLifecycleService {
      * @return the ids of every non-CLOSED process handled, across all rounds
      */
     private List<String> drainSessionProcesses(
-            String tenantId, String sessionId,
+            String tenantId,
+            String sessionId,
             java.util.function.Function<ThinkProcessDocument, CompletableFuture<Void>> action) {
         java.util.LinkedHashSet<String> handled = new java.util.LinkedHashSet<>();
         boolean stable = false;
         int rounds = 0;
         while (rounds++ < MAX_CASCADE_ROUNDS) {
-            List<ThinkProcessDocument> processes =
-                    thinkProcessService.findBySession(tenantId, sessionId);
+            List<ThinkProcessDocument> processes = thinkProcessService.findBySession(tenantId, sessionId);
             List<CompletableFuture<Void>> futures = new ArrayList<>();
             boolean sawNew = false;
             for (ThinkProcessDocument p : processes) {
@@ -782,8 +771,10 @@ public class SessionLifecycleService {
             joinAll(futures);
         }
         if (!stable) {
-            log.warn("Session cascade '{}' hit the {}-round drain cap — a process may still "
-                    + "be spawning children; proceeding to the terminal flip", sessionId,
+            log.warn(
+                    "Session cascade '{}' hit the {}-round drain cap — a process may still "
+                            + "be spawning children; proceeding to the terminal flip",
+                    sessionId,
                     MAX_CASCADE_ROUNDS);
         }
         return new ArrayList<>(handled);

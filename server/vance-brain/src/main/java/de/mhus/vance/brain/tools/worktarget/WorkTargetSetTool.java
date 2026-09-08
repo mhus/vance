@@ -35,27 +35,33 @@ public class WorkTargetSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "kind", Map.of(
-                            "type", "string",
-                            "enum", List.of("CLIENT", "WORK", "DAEMON"),
-                            "description",
-                                    "Backend to dispatch generic file_* / "
-                                            + "exec_* tools to. CLIENT = the "
-                                            + "session-bound Foot CLI on the "
-                                            + "user's host; WORK = Brain-server "
-                                            + "workspace RootDir; DAEMON = a "
-                                            + "named profile=daemon Foot in this "
-                                            + "project."),
-                    "targetName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Kind-dependent name. WORK: which RootDir "
-                                            + "to use (omit for the process's "
-                                            + "temp RootDir, lazy-created on "
-                                            + "first use). DAEMON: the daemon "
-                                            + "name (required). Ignored when "
-                                            + "kind=CLIENT.")),
+            "properties",
+                    Map.of(
+                            "kind",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("CLIENT", "WORK", "DAEMON"),
+                                            "description",
+                                            "Backend to dispatch generic file_* / "
+                                                    + "exec_* tools to. CLIENT = the "
+                                                    + "session-bound Foot CLI on the "
+                                                    + "user's host; WORK = Brain-server "
+                                                    + "workspace RootDir; DAEMON = a "
+                                                    + "named profile=daemon Foot in this "
+                                                    + "project."),
+                            "targetName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Kind-dependent name. WORK: which RootDir "
+                                                    + "to use (omit for the process's "
+                                                    + "temp RootDir, lazy-created on "
+                                                    + "first use). DAEMON: the daemon "
+                                                    + "name (required). Ignored when "
+                                                    + "kind=CLIENT.")),
             "required", List.of("kind"));
 
     private final WorkTargetService workTargetService;
@@ -118,29 +124,28 @@ public class WorkTargetSetTool implements Tool {
         try {
             kind = WorkTargetKind.valueOf(kindStr.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
-            throw new ToolException(
-                    "Unknown kind '" + kindStr + "' — expected CLIENT, WORK or DAEMON");
+            throw new ToolException("Unknown kind '" + kindStr + "' — expected CLIENT, WORK or DAEMON", ex);
         }
         String targetName = null;
         Object rawName = params == null ? null : params.get("targetName");
         if (rawName instanceof String s && !s.isBlank()) {
             targetName = s;
         }
-        WorkTarget next = switch (kind) {
-            case WORK -> WorkTarget.work(targetName);
-            case CLIENT -> WorkTarget.client();
-            case DAEMON -> {
-                if (targetName == null) {
-                    throw new ToolException(
-                            "'targetName' (the daemon name) is required when kind=DAEMON");
-                }
-                yield WorkTarget.daemon(targetName);
-            }
-        };
+        WorkTarget next =
+                switch (kind) {
+                    case WORK -> WorkTarget.work(targetName);
+                    case CLIENT -> WorkTarget.client();
+                    case DAEMON -> {
+                        if (targetName == null) {
+                            throw new ToolException("'targetName' (the daemon name) is required when kind=DAEMON");
+                        }
+                        yield WorkTarget.daemon(targetName);
+                    }
+                };
 
-        ThinkProcessDocument process = thinkProcessService.findById(ctx.processId())
-                .orElseThrow(() -> new ToolException(
-                        "work_target_set: process '" + ctx.processId() + "' not found"));
+        ThinkProcessDocument process = thinkProcessService
+                .findById(ctx.processId())
+                .orElseThrow(() -> new ToolException("work_target_set: process '" + ctx.processId() + "' not found"));
         WorkTarget previous = workTargetService.current(process);
         workTargetService.set(process.getId(), next);
 

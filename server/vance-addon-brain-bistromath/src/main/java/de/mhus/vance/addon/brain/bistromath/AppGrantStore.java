@@ -66,9 +66,11 @@ public class AppGrantStore {
             // Fail closed, like the hand-written file: a broken bookkeeping
             // document must not read as "nothing was ever granted" *and* not as
             // "everything was" — refusing keeps it from silently doing either.
-            throw new ToolException(PATH + " in tenant '" + tenantId
-                    + "' is malformed and cannot be trusted to say what was granted ("
-                    + e.getMessage() + ")", e);
+            throw new ToolException(
+                    PATH + " in tenant '" + tenantId
+                            + "' is malformed and cannot be trusted to say what was granted ("
+                            + e.getMessage() + ")",
+                    e);
         }
     }
 
@@ -93,12 +95,10 @@ public class AppGrantStore {
     // ── document I/O ───────────────────────────────────────────────────
 
     private Optional<DocumentDocument> find(String tenantId) {
-        return documentService.findByPath(
-                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, PATH);
+        return documentService.findByPath(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, PATH);
     }
 
-    private void write(String tenantId, Map<String, AppGrantRecord> records,
-                       WriteActor actor) {
+    private void write(String tenantId, Map<String, AppGrantRecord> records, WriteActor actor) {
         Map<String, Object> apps = new LinkedHashMap<>();
         for (Map.Entry<String, AppGrantRecord> e : records.entrySet()) {
             apps.put(e.getKey(), toMap(e.getValue()));
@@ -111,16 +111,21 @@ public class AppGrantStore {
         Optional<DocumentDocument> existing = find(tenantId);
         try {
             if (existing.isPresent()) {
-                documentService.update(existing.get().getId(),
-                        null, null, body, null, actor);
+                documentService.update(existing.get().getId(), null, null, body, null, actor);
             } else {
                 // Created on first request — which is why a tenant that never
                 // had an applications.yaml is not stuck: asking bootstraps this
                 // file, and approving fills it in.
-                documentService.create(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME,
-                        PATH, "Application grants", null, "application/yaml",
+                documentService.create(
+                        tenantId,
+                        HomeBootstrapService.TENANT_PROJECT_NAME,
+                        PATH,
+                        "Application grants",
+                        null,
+                        "application/yaml",
                         new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
-                        null, actor);
+                        null,
+                        actor);
             }
         } catch (RuntimeException e) {
             throw new ToolException("Failed to write " + PATH + ": " + e.getMessage(), e);
@@ -173,8 +178,7 @@ public class AppGrantStore {
     }
 
     private static AppGrantRecord fromMap(Map<String, Object> v, String key) {
-        AppGrantRecord.Status status = enumOf(AppGrantRecord.Status.class,
-                str(v.get("status")), key + ".status");
+        AppGrantRecord.Status status = enumOf(AppGrantRecord.Status.class, str(v.get("status")), key + ".status");
         AppMode mode = enumOf(AppMode.class, str(v.get("mode")), key + ".mode");
         List<String> rest = null;
         if (v.get("rest") instanceof List<?> list) {
@@ -186,11 +190,16 @@ public class AppGrantStore {
             rest = List.copyOf(families);
         }
         return new AppGrantRecord(
-                status, mode, rest,
+                status,
+                mode,
+                rest,
                 Boolean.TRUE.equals(v.get("surface")),
                 !"read".equalsIgnoreCase(String.valueOf(v.get("documents"))),
-                str(v.get("requestedBy")), str(v.get("requestedAt")),
-                str(v.get("inboxItemId")), str(v.get("decidedBy")), str(v.get("decidedAt")));
+                str(v.get("requestedBy")),
+                str(v.get("requestedAt")),
+                str(v.get("inboxItemId")),
+                str(v.get("decidedBy")),
+                str(v.get("decidedAt")));
     }
 
     private static <E extends Enum<E>> E enumOf(Class<E> type, @Nullable String raw, String where) {
@@ -200,8 +209,8 @@ public class AppGrantStore {
         try {
             return Enum.valueOf(type, raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new ToolException(PATH + ": `" + where + "` is `" + raw + "`, which is not one"
-                    + " of the expected values.");
+            throw new ToolException(
+                    PATH + ": `" + where + "` is `" + raw + "`, which is not one" + " of the expected values.", e);
         }
     }
 

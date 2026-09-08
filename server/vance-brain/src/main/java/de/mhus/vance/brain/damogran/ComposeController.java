@@ -1,15 +1,15 @@
 package de.mhus.vance.brain.damogran;
 
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.session.SessionAccess;
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.session.SessionDocument;
-import de.mhus.vance.shared.session.SessionService;
-import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
@@ -58,6 +58,7 @@ public class ComposeController {
 
     /** Fast-path: how long POST blocks for a quick result before handing back a runId. */
     private static final long FAST_PATH_WAIT_MS = 30_000;
+
     private static final int TAIL_LINES = 40;
 
     private final DamogranComposeService composeService;
@@ -69,14 +70,15 @@ public class ComposeController {
     private final ExecManager execManager;
     private final RequestAuthority authority;
 
-    public ComposeController(DamogranComposeService composeService,
-                             DamogranManifestParser manifestParser,
-                             DocumentService documentService,
-                             SessionService sessionService,
-                             DamogranProcessResolver processResolver,
-                             ComposeRunRegistry runRegistry,
-                             ExecManager execManager,
-                             RequestAuthority authority) {
+    public ComposeController(
+            DamogranComposeService composeService,
+            DamogranManifestParser manifestParser,
+            DocumentService documentService,
+            SessionService sessionService,
+            DamogranProcessResolver processResolver,
+            ComposeRunRegistry runRegistry,
+            ExecManager execManager,
+            RequestAuthority authority) {
         this.composeService = composeService;
         this.manifestParser = manifestParser;
         this.documentService = documentService;
@@ -89,9 +91,7 @@ public class ComposeController {
 
     @PostMapping("/run")
     public Map<String, Object> run(
-            @PathVariable("tenant") String tenant,
-            @RequestBody RunRequest body,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @RequestBody RunRequest body, HttpServletRequest httpRequest) {
 
         if (body.projectId() == null || body.projectId().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'projectId' is required");
@@ -107,7 +107,8 @@ public class ComposeController {
         String baseDir = body.composePath() != null && !body.composePath().isBlank()
                 ? DamogranUri.parentDir(body.composePath().trim())
                 : (body.composeBasePath() != null && !body.composeBasePath().isBlank()
-                        ? body.composeBasePath().trim() : null);
+                        ? body.composeBasePath().trim()
+                        : null);
 
         DamogranManifest manifest;
         String processId;
@@ -129,9 +130,10 @@ public class ComposeController {
         String stateKey = body.composePath() != null && !body.composePath().isBlank()
                 ? body.composePath().trim()
                 : (body.composeBasePath() != null && !body.composeBasePath().isBlank()
-                        ? body.composeBasePath().trim() : null);
-        ComposeRun run = composeService.runAsync(tenant, projectId, processId, manifest, baseDir,
-                stateKey, authority.contextOf(httpRequest));
+                        ? body.composeBasePath().trim()
+                        : null);
+        ComposeRun run = composeService.runAsync(
+                tenant, projectId, processId, manifest, baseDir, stateKey, authority.contextOf(httpRequest));
         try {
             run.awaitDone(FAST_PATH_WAIT_MS);
         } catch (InterruptedException e) {
@@ -148,9 +150,10 @@ public class ComposeController {
             @RequestParam("projectId") String projectId,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        ComposeRun run = runRegistry.find(tenant, projectId, runId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "compose run not found: " + runId));
+        ComposeRun run = runRegistry
+                .find(tenant, projectId, runId)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "compose run not found: " + runId));
         return renderRun(run, /*includeTail=*/ true);
     }
 
@@ -167,9 +170,10 @@ public class ComposeController {
             @RequestParam("projectId") String projectId,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        ComposeRun run = runRegistry.find(tenant, projectId, runId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "compose run not found: " + runId));
+        ComposeRun run = runRegistry
+                .find(tenant, projectId, runId)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "compose run not found: " + runId));
         run.requestCancel();
         String jobId = run.currentExecJobId();
         if (jobId != null) {
@@ -236,18 +240,16 @@ public class ComposeController {
             return List.of();
         }
         try {
-            List<String> out = execManager.tail(
-                    run.tenantId(), run.projectId(), jobId, TAIL_LINES, ExecManager.Stream.STDOUT);
-            List<String> err = execManager.tail(
-                    run.tenantId(), run.projectId(), jobId, TAIL_LINES, ExecManager.Stream.STDERR);
+            List<String> out =
+                    execManager.tail(run.tenantId(), run.projectId(), jobId, TAIL_LINES, ExecManager.Stream.STDOUT);
+            List<String> err =
+                    execManager.tail(run.tenantId(), run.projectId(), jobId, TAIL_LINES, ExecManager.Stream.STDERR);
             if (err.isEmpty()) return out;
             if (out.isEmpty()) return err;
             List<String> both = new ArrayList<>(out.size() + err.size());
             both.addAll(out);
             both.addAll(err);
-            return both.size() <= TAIL_LINES
-                    ? both
-                    : both.subList(both.size() - TAIL_LINES, both.size());
+            return both.size() <= TAIL_LINES ? both : both.subList(both.size() - TAIL_LINES, both.size());
         } catch (RuntimeException e) {
             return List.of();
         }
@@ -273,8 +275,11 @@ public class ComposeController {
      * standalone compose file. {@code session.clean} resets it before the run.
      */
     private @Nullable String resolveProcessId(
-            String tenant, String projectId, DamogranManifest manifest,
-            RunRequest body, HttpServletRequest httpRequest) {
+            String tenant,
+            String projectId,
+            DamogranManifest manifest,
+            RunRequest body,
+            HttpServletRequest httpRequest) {
         if (body.sessionId() != null && !body.sessionId().isBlank()) {
             // Tenant and project are not enough: running under a session's
             // chat process re-points that agent's WorkTarget and registers it
@@ -283,7 +288,8 @@ public class ComposeController {
             // is therefore not a carrier they may pick — the same rule the
             // shared-key branch below already applies.
             String caller = currentUser(httpRequest);
-            String chatProcess = sessionService.findBySessionId(body.sessionId().trim())
+            String chatProcess = sessionService
+                    .findBySessionId(body.sessionId().trim())
                     .filter(s -> tenant.equals(s.getTenantId()) && projectId.equals(s.getProjectId()))
                     .filter(s -> SessionAccess.mayAccess(s, caller))
                     .map(SessionDocument::getChatProcessId)
@@ -330,12 +336,11 @@ public class ComposeController {
             try (InputStream in = documentService.loadContent(doc)) {
                 return new String(in.readAllBytes(), StandardCharsets.UTF_8);
             } catch (IOException e) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "failed to read compose document: " + e.getMessage());
+                throw new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR, "failed to read compose document: " + e.getMessage(), e);
             }
         }
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "'composePath' or 'composeYaml' is required");
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'composePath' or 'composeYaml' is required");
     }
 
     /** Request body for the run endpoint. */

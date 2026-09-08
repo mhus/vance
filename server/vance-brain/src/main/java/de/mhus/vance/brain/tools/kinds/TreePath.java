@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.document.kind.TreeDocument;
 import de.mhus.vance.shared.document.kind.TreeItem;
+import de.mhus.vance.toolpack.ToolException;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -26,7 +26,7 @@ public final class TreePath {
             try {
                 out[i] = Integer.parseInt(parts[i].trim());
             } catch (NumberFormatException e) {
-                throw new ToolException("Invalid path segment: '" + parts[i] + "'");
+                throw new ToolException("Invalid path segment: '" + parts[i] + "'", e);
             }
             if (out[i] < 0) throw new ToolException("Negative path segment: " + out[i]);
         }
@@ -66,8 +66,7 @@ public final class TreePath {
         List<TreeItem> parent = parentList(doc, path);
         int idx = path[path.length - 1];
         if (idx < 0 || idx >= parent.size()) {
-            throw new ToolException("Final index " + idx + " out of range "
-                    + "[0," + (parent.size() - 1) + "]");
+            throw new ToolException("Final index " + idx + " out of range " + "[0," + (parent.size() - 1) + "]");
         }
         return parent.get(idx);
     }
@@ -103,14 +102,15 @@ public final class TreePath {
 
     /** Replace a path's leaf with {@code mutator(item)} and return
      *  a new {@link TreeDocument} where that one item is swapped. */
-    public static TreeDocument replaceAt(TreeDocument doc, int[] path, java.util.function.Function<TreeItem, TreeItem> mutator) {
+    public static TreeDocument replaceAt(
+            TreeDocument doc, int[] path, java.util.function.Function<TreeItem, TreeItem> mutator) {
         if (path.length == 0) throw new ToolException("Empty path");
         List<TreeItem> newItems = mutate(doc.items(), path, 0, mutator);
         return new TreeDocument(doc.kind(), newItems, doc.extra());
     }
 
-    private static List<TreeItem> mutate(List<TreeItem> source, int[] path, int depth,
-                                          java.util.function.Function<TreeItem, TreeItem> mutator) {
+    private static List<TreeItem> mutate(
+            List<TreeItem> source, int[] path, int depth, java.util.function.Function<TreeItem, TreeItem> mutator) {
         List<TreeItem> out = new ArrayList<>(source);
         int idx = path[depth];
         if (idx < 0 || idx >= out.size()) {

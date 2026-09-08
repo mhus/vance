@@ -84,10 +84,12 @@ public class YtDlpAudioDownloader {
         try {
             process = pb.start();
         } catch (IOException e) {
-            throw new ToolException("Failed to start yt-dlp — is it installed and on "
-                    + "the host PATH? (macOS: brew install yt-dlp; "
-                    + "container: apt-get install yt-dlp). "
-                    + "Underlying error: " + e.getMessage());
+            throw new ToolException(
+                    "Failed to start yt-dlp — is it installed and on "
+                            + "the host PATH? (macOS: brew install yt-dlp; "
+                            + "container: apt-get install yt-dlp). "
+                            + "Underlying error: " + e.getMessage(),
+                    e);
         }
 
         String stderr;
@@ -102,9 +104,9 @@ public class YtDlpAudioDownloader {
         } catch (InterruptedException e) {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted while downloading audio for " + videoId);
+            throw new ToolException("Interrupted while downloading audio for " + videoId, e);
         } catch (IOException e) {
-            throw new ToolException("yt-dlp output stream failed: " + e.getMessage());
+            throw new ToolException("yt-dlp output stream failed: " + e.getMessage(), e);
         }
 
         int exit = process.exitValue();

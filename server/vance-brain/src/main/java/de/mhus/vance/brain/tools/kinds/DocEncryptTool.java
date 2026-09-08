@@ -3,7 +3,6 @@ package de.mhus.vance.brain.tools.kinds;
 import de.mhus.vance.age.AgeCipher;
 import de.mhus.vance.age.AgeKeys;
 import de.mhus.vance.api.documents.AgeDocumentKind;
-import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -51,25 +50,45 @@ public class DocEncryptTool implements Tool {
         // its source, not the generic `path`/`id` selector, and advertising
         // those would invite ignored parameters.
         Map<String, Object> p = new LinkedHashMap<>();
-        p.put("projectId", Map.of(
-                "type", "string",
-                "description", "Optional project name. Defaults "
-                        + "to the active project."));
-        p.put("fromPath", Map.of("type", "string",
-                "description", "Path of an existing PLAINTEXT document to encrypt. "
-                        + "Mutually exclusive with 'content'. The source stays untouched."));
-        p.put("content", Map.of("type", "string",
-                "description", "Plaintext to encrypt directly (when not copying from a "
-                        + "document). Mutually exclusive with 'fromPath'."));
-        p.put("toPath", Map.of("type", "string",
-                "description", "Target path for the NEW encrypted document. Default "
-                        + "(fromPath mode): '<fromPath>.age'. A missing '.age' suffix is "
-                        + "appended. Required when encrypting 'content' directly."));
-        p.put("recipients", Map.of("type", "array",
-                "items", Map.of("type", "string"),
-                "description", "age public keys ('age1...') that can decrypt the document. "
-                        + "At least one required. Public keys are safe to share — ask the "
-                        + "user for theirs if unknown."));
+        p.put(
+                "projectId",
+                Map.of("type", "string", "description", "Optional project name. Defaults " + "to the active project."));
+        p.put(
+                "fromPath",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Path of an existing PLAINTEXT document to encrypt. "
+                                + "Mutually exclusive with 'content'. The source stays untouched."));
+        p.put(
+                "content",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Plaintext to encrypt directly (when not copying from a "
+                                + "document). Mutually exclusive with 'fromPath'."));
+        p.put(
+                "toPath",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Target path for the NEW encrypted document. Default "
+                                + "(fromPath mode): '<fromPath>.age'. A missing '.age' suffix is "
+                                + "appended. Required when encrypting 'content' directly."));
+        p.put(
+                "recipients",
+                Map.of(
+                        "type",
+                        "array",
+                        "items",
+                        Map.of("type", "string"),
+                        "description",
+                        "age public keys ('age1...') that can decrypt the document. "
+                                + "At least one required. Public keys are safe to share — ask the "
+                                + "user for theirs if unknown."));
         return Map.copyOf(p);
     }
 
@@ -168,27 +187,29 @@ public class DocEncryptTool implements Tool {
         // the latency, and permission is not something to earn by doing
         // work first.
         var project = support.eddieContext().resolveProject(params, ctx, false);
-        support.enforceDocWrite(ctx, project.getName(), toPath,
-                de.mhus.vance.shared.permission.Action.CREATE);
+        support.enforceDocWrite(ctx, project.getName(), toPath, de.mhus.vance.shared.permission.Action.CREATE);
 
         String armored = AgeCipher.encryptArmored(plaintext, recipients);
 
         DocumentDocument created;
         try {
-            created = support.documentService().create(
-                    ctx.tenantId(),
-                    project.getName(),
-                    toPath,
-                    /*title*/ null,
-                    /*tags*/ null,
-                    AgeDocumentKind.MIME_TYPE,
-                    new ByteArrayInputStream(armored.getBytes(StandardCharsets.UTF_8)),
-                    ctx.userId(),
-                    support.writeActor(ctx, toPath));
+            created = support.documentService()
+                    .create(
+                            ctx.tenantId(),
+                            project.getName(),
+                            toPath,
+                            /*title*/ null,
+                            /*tags*/ null,
+                            AgeDocumentKind.MIME_TYPE,
+                            new ByteArrayInputStream(armored.getBytes(StandardCharsets.UTF_8)),
+                            ctx.userId(),
+                            support.writeActor(ctx, toPath));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
-            throw new ToolException("Target '" + toPath + "' already exists — pick another "
-                    + "toPath; an encrypted document cannot be reviewed before overwriting "
-                    + "it, so doc_encrypt never overwrites.");
+            throw new ToolException(
+                    "Target '" + toPath + "' already exists — pick another "
+                            + "toPath; an encrypted document cannot be reviewed before overwriting "
+                            + "it, so doc_encrypt never overwrites.",
+                    e);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -209,7 +230,10 @@ public class DocEncryptTool implements Tool {
 
     private static List<String> parseRecipients(Map<String, Object> params) {
         List<String> recipients = params != null && params.get("recipients") instanceof List<?> l
-                ? l.stream().filter(String.class::isInstance).map(String.class::cast).toList()
+                ? l.stream()
+                        .filter(String.class::isInstance)
+                        .map(String.class::cast)
+                        .toList()
                 : List.of();
         if (recipients.isEmpty()) {
             throw new ToolException("'recipients' is required — at least one age public "
@@ -219,8 +243,7 @@ public class DocEncryptTool implements Tool {
         for (String recipient : recipients) {
             String trimmed = recipient.trim();
             if (!AgeKeys.isRecipient(trimmed)) {
-                throw new ToolException("Not a well-formed age recipient (expected age1...): "
-                        + recipient);
+                throw new ToolException("Not a well-formed age recipient (expected age1...): " + recipient);
             }
             unique.add(trimmed);
         }

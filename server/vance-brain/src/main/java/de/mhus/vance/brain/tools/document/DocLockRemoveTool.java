@@ -111,7 +111,7 @@ public class DocLockRemoveTool implements Tool {
             try {
                 return WriterRole.valueOf(s.trim().toUpperCase());
             } catch (IllegalArgumentException e) {
-                throw new ToolException("Unknown WriterRole '" + s + "' — expected one of AI, USER, KIT");
+                throw new ToolException("Unknown WriterRole '" + s + "' — expected one of AI, USER, KIT", e);
             }
         }
         throw new ToolException("role is required (AI, USER, or KIT)");

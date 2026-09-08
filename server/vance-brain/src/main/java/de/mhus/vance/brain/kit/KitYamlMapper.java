@@ -69,9 +69,8 @@ public final class KitYamlMapper {
         // inheritable cannot be used at all. Reject the descriptor up
         // front rather than failing later with a confusing message.
         if (!installable && sealed) {
-            throw new KitException(
-                    label + ": 'installable: false' and 'sealed: true' together would make"
-                            + " the kit unusable (no direct import, no inherit). Pick one.");
+            throw new KitException(label + ": 'installable: false' and 'sealed: true' together would make"
+                    + " the kit unusable (no direct import, no inherit). Pick one.");
         }
 
         List<KitInheritDto> inherits = new ArrayList<>();
@@ -106,8 +105,7 @@ public final class KitYamlMapper {
             for (int i = 0; i < list.size(); i++) {
                 String path = stringOrNull(list.get(i));
                 if (path == null || path.isBlank()) {
-                    throw new KitException(
-                            label + " render[" + i + "] must be a non-blank path");
+                    throw new KitException(label + " render[" + i + "] must be a non-blank path");
                 }
                 render.add(path.trim());
             }
@@ -295,8 +293,7 @@ public final class KitYamlMapper {
     }
 
     @SuppressWarnings("unchecked")
-    private static List<KitArtefactDto> parseArtefactList(
-            @Nullable Object raw, String idField, String label) {
+    private static List<KitArtefactDto> parseArtefactList(@Nullable Object raw, String idField, String label) {
         List<KitArtefactDto> out = new ArrayList<>();
         if (raw == null) return out;
         if (!(raw instanceof List<?> list)) {
@@ -334,7 +331,8 @@ public final class KitYamlMapper {
         if (o.getPath() != null) origin.put("path", o.getPath());
         if (o.getBranch() != null) origin.put("branch", o.getBranch());
         if (o.getCommit() != null) origin.put("commit", o.getCommit());
-        if (o.getInstalledAt() != null) origin.put("installedAt", o.getInstalledAt().toString());
+        if (o.getInstalledAt() != null)
+            origin.put("installedAt", o.getInstalledAt().toString());
         if (o.getInstalledBy() != null) origin.put("installedBy", o.getInstalledBy());
         if (o.getProvisioningStamp() != null) {
             origin.put("provisioningStamp", o.getProvisioningStamp());
@@ -367,8 +365,7 @@ public final class KitYamlMapper {
             root.put("hasEncryptedSecrets", true);
         }
         if (record.getSignatureStatus() != null) {
-            root.put("signatureStatus",
-                    record.getSignatureStatus().name().toLowerCase(Locale.ROOT));
+            root.put("signatureStatus", record.getSignatureStatus().name().toLowerCase(Locale.ROOT));
         }
         if (record.getSourceId() != null) {
             root.put("sourceId", record.getSourceId());
@@ -376,8 +373,7 @@ public final class KitYamlMapper {
         return dump(root);
     }
 
-    private static List<Map<String, Object>> writeArtefactList(
-            List<KitArtefactDto> artefacts, String idField) {
+    private static List<Map<String, Object>> writeArtefactList(List<KitArtefactDto> artefacts, String idField) {
         List<Map<String, Object>> out = new ArrayList<>(artefacts.size());
         for (KitArtefactDto a : artefacts) {
             Map<String, Object> e = new LinkedHashMap<>();
@@ -408,7 +404,7 @@ public final class KitYamlMapper {
             try {
                 sortIndex = Integer.valueOf(sortRaw.toString().trim());
             } catch (NumberFormatException e) {
-                throw new KitException(label + ": sortIndex must be a number, got '" + sortRaw + "'");
+                throw new KitException(label + ": sortIndex must be a number, got '" + sortRaw + "'", e);
             }
         }
 
@@ -438,8 +434,7 @@ public final class KitYamlMapper {
         String text = raw.toString().trim().toLowerCase(Locale.ROOT);
         if (text.equals("true")) return Boolean.TRUE;
         if (text.equals("false")) return Boolean.FALSE;
-        throw new KitException(label + ": overwriteSecrets must be true or false, got '"
-                + raw + "'");
+        throw new KitException(label + ": overwriteSecrets must be true or false, got '" + raw + "'");
     }
 
     /**
@@ -499,8 +494,9 @@ public final class KitYamlMapper {
         try {
             return KitPolicyAction.parse(raw);
         } catch (IllegalArgumentException e) {
-            throw new KitException(label + ": unknown action '" + raw.trim()
-                    + "' — expected one of keep, overwrite, ignore, merge");
+            throw new KitException(
+                    label + ": unknown action '" + raw.trim() + "' — expected one of keep, overwrite, ignore, merge",
+                    e);
         }
     }
 
@@ -609,9 +605,10 @@ public final class KitYamlMapper {
                     .id(id)
                     .type(type)
                     .url(requireString(e, "url", entryLabel))
-                    .signature(e.get("signature") == null
-                            ? KitSignaturePolicy.defaultFor(type)
-                            : parseSignaturePolicy(e.get("signature"), entryLabel))
+                    .signature(
+                            e.get("signature") == null
+                                    ? KitSignaturePolicy.defaultFor(type)
+                                    : parseSignaturePolicy(e.get("signature"), entryLabel))
                     .publicKey(stringOrNull(e.get("publicKey")))
                     .storeUrl(stringOrNull(e.get("storeUrl")))
                     .title(stringOrNull(e.get("title")))
@@ -631,8 +628,7 @@ public final class KitYamlMapper {
      * the field was added for.
      */
     @SuppressWarnings("unchecked")
-    private static @Nullable Map<String, Object> originParams(
-            @Nullable Object raw, String label) {
+    private static @Nullable Map<String, Object> originParams(@Nullable Object raw, String label) {
         if (raw == null) return null;
         if (!(raw instanceof Map<?, ?> map)) {
             throw new KitException(label + " 'params' must be a map");
@@ -647,8 +643,9 @@ public final class KitYamlMapper {
         try {
             return KitSourceType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new KitException(label + ": unknown source type '" + raw.trim()
-                    + "' — expected one of git, folder, library, ode");
+            throw new KitException(
+                    label + ": unknown source type '" + raw.trim() + "' — expected one of git, folder, library, ode",
+                    e);
         }
     }
 
@@ -666,15 +663,15 @@ public final class KitYamlMapper {
     private static KitSignaturePolicy parseSignaturePolicy(Object raw, String label) {
         if (Boolean.FALSE.equals(raw)) return KitSignaturePolicy.OFF;
         if (Boolean.TRUE.equals(raw)) {
-            throw new KitException(label + ": signature must say how strict it is — "
-                    + "write 'required' or 'warn', not 'on'/'true'");
+            throw new KitException(
+                    label + ": signature must say how strict it is — " + "write 'required' or 'warn', not 'on'/'true'");
         }
         String value = raw.toString().trim();
         try {
             return KitSignaturePolicy.valueOf(value.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new KitException(label + ": unknown signature policy '" + value
-                    + "' — expected one of off, warn, required");
+            throw new KitException(
+                    label + ": unknown signature policy '" + value + "' — expected one of off, warn, required", e);
         }
     }
 
@@ -793,9 +790,12 @@ public final class KitYamlMapper {
 
         Map<String, Object> origin = new LinkedHashMap<>();
         origin.put("url", manifest.getOrigin().getUrl());
-        if (manifest.getOrigin().getPath() != null) origin.put("path", manifest.getOrigin().getPath());
-        if (manifest.getOrigin().getBranch() != null) origin.put("branch", manifest.getOrigin().getBranch());
-        if (manifest.getOrigin().getCommit() != null) origin.put("commit", manifest.getOrigin().getCommit());
+        if (manifest.getOrigin().getPath() != null)
+            origin.put("path", manifest.getOrigin().getPath());
+        if (manifest.getOrigin().getBranch() != null)
+            origin.put("branch", manifest.getOrigin().getBranch());
+        if (manifest.getOrigin().getCommit() != null)
+            origin.put("commit", manifest.getOrigin().getCommit());
         if (manifest.getOrigin().getInstalledAt() != null) {
             origin.put("installedAt", manifest.getOrigin().getInstalledAt().toString());
         }
@@ -825,10 +825,12 @@ public final class KitYamlMapper {
             }
             root.put("inherits", serialized);
         }
-        if (manifest.getResolvedInherits() != null && !manifest.getResolvedInherits().isEmpty()) {
+        if (manifest.getResolvedInherits() != null
+                && !manifest.getResolvedInherits().isEmpty()) {
             root.put("resolvedInherits", new ArrayList<>(manifest.getResolvedInherits()));
         }
-        if (manifest.getInheritArtefacts() != null && !manifest.getInheritArtefacts().isEmpty()) {
+        if (manifest.getInheritArtefacts() != null
+                && !manifest.getInheritArtefacts().isEmpty()) {
             List<Map<String, Object>> serialized = new ArrayList<>();
             for (InheritArtefactsDto i : manifest.getInheritArtefacts()) {
                 Map<String, Object> e = new LinkedHashMap<>();
@@ -868,8 +870,7 @@ public final class KitYamlMapper {
             KitSecretEncoding encoding) {
 
         /** The shape every caller that does not ship a credential wants. */
-        public ParsedSetting(
-                SettingType type, @Nullable String value, @Nullable String description) {
+        public ParsedSetting(SettingType type, @Nullable String value, @Nullable String description) {
             this(type, value, description, KitSecretEncoding.DEFAULT);
         }
     }
@@ -900,8 +901,7 @@ public final class KitYamlMapper {
             int idx = 0;
             for (Object e : list) {
                 if (!(e instanceof Map<?, ?> m)) {
-                    throw new KitException(
-                            "template.yaml: inputs[" + idx + "] must be a map");
+                    throw new KitException("template.yaml: inputs[" + idx + "] must be a map");
                 }
                 try {
                     inputs.add(parseInput((Map<String, Object>) m));
@@ -916,8 +916,7 @@ public final class KitYamlMapper {
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();
         for (TemplateInput i : inputs) {
             if (!seen.add(i.name())) {
-                throw new KitException(
-                        "template.yaml: duplicate input name '" + i.name() + "'");
+                throw new KitException("template.yaml: duplicate input name '" + i.name() + "'");
             }
         }
 
@@ -932,16 +931,14 @@ public final class KitYamlMapper {
         }
 
         List<TemplateDerived> derived = parseDerived(map.get("derived"), inputs);
-        List<TemplateDocumentOverlay> documents = parseDocumentsOverlay(
-                map.get("documents"), inputs);
+        List<TemplateDocumentOverlay> documents = parseDocumentsOverlay(map.get("documents"), inputs);
 
-        return new TemplateDescriptor(name, title, description, icon,
-                List.copyOf(inputs), derived, documents, postInstall);
+        return new TemplateDescriptor(
+                name, title, description, icon, List.copyOf(inputs), derived, documents, postInstall);
     }
 
     @SuppressWarnings("unchecked")
-    private static List<TemplateDerived> parseDerived(
-            @Nullable Object raw, List<TemplateInput> inputs) {
+    private static List<TemplateDerived> parseDerived(@Nullable Object raw, List<TemplateInput> inputs) {
         if (raw == null) return List.of();
         if (!(raw instanceof List<?> list)) {
             throw new KitException("template.yaml: 'derived' must be a list");
@@ -951,8 +948,7 @@ public final class KitYamlMapper {
         Map<String, java.util.Set<String>> multiSelectChoices = new LinkedHashMap<>();
         for (TemplateInput in : inputs) {
             if (in.type() == TemplateInputType.MULTI_SELECT) {
-                multiSelectChoices.put(in.name(),
-                        new java.util.LinkedHashSet<>(in.choiceValues()));
+                multiSelectChoices.put(in.name(), new java.util.LinkedHashSet<>(in.choiceValues()));
             }
         }
         List<TemplateDerived> out = new ArrayList<>();
@@ -966,14 +962,12 @@ public final class KitYamlMapper {
             try {
                 TemplateDerived d = parseDerivedOne(mp, multiSelectChoices);
                 if (!seenNames.add(d.name())) {
-                    throw new IllegalArgumentException(
-                            "duplicate derived name '" + d.name() + "'");
+                    throw new IllegalArgumentException("duplicate derived name '" + d.name() + "'");
                 }
                 // Also forbid name collisions with inputs (would mask the input).
                 for (TemplateInput in : inputs) {
                     if (in.name().equals(d.name())) {
-                        throw new IllegalArgumentException(
-                                "derived '" + d.name() + "' shadows input of the same name");
+                        throw new IllegalArgumentException("derived '" + d.name() + "' shadows input of the same name");
                     }
                 }
                 out.add(d);
@@ -987,41 +981,35 @@ public final class KitYamlMapper {
 
     @SuppressWarnings("unchecked")
     private static TemplateDerived parseDerivedOne(
-            Map<String, Object> mp,
-            Map<String, java.util.Set<String>> multiSelectChoices) {
+            Map<String, Object> mp, Map<String, java.util.Set<String>> multiSelectChoices) {
         String name = stringOrNull(mp.get("name"));
         if (name == null) {
             throw new IllegalArgumentException("'name' is required");
         }
-        TemplateDerived.Kind kind = TemplateDerived.Kind.parse(
-                stringOrNull(mp.get("kind")), name);
+        TemplateDerived.Kind kind = TemplateDerived.Kind.parse(stringOrNull(mp.get("kind")), name);
         String from = stringOrNull(mp.get("from"));
         if (from == null) {
-            throw new IllegalArgumentException(
-                    "derived '" + name + "': 'from' (multi-select input name) is required");
+            throw new IllegalArgumentException("derived '" + name + "': 'from' (multi-select input name) is required");
         }
         java.util.Set<String> allowedChoices = multiSelectChoices.get(from);
         if (allowedChoices == null) {
-            throw new IllegalArgumentException(
-                    "derived '" + name + "': 'from' must reference a multi-select input "
-                            + "(known multi-select inputs: " + multiSelectChoices.keySet() + ")");
+            throw new IllegalArgumentException("derived '" + name + "': 'from' must reference a multi-select input "
+                    + "(known multi-select inputs: " + multiSelectChoices.keySet() + ")");
         }
         List<String> base = stringList(mp.get("base"));
         Map<String, List<String>> perChoice = new LinkedHashMap<>();
         Object perChoiceRaw = mp.get("perChoice");
         if (perChoiceRaw != null) {
             if (!(perChoiceRaw instanceof Map<?, ?> pm)) {
-                throw new IllegalArgumentException(
-                        "derived '" + name + "': perChoice must be a map");
+                throw new IllegalArgumentException("derived '" + name + "': perChoice must be a map");
             }
             for (Map.Entry<?, ?> e : pm.entrySet()) {
                 String key = e.getKey() == null ? null : e.getKey().toString();
                 if (key == null) continue;
                 if (!allowedChoices.contains(key)) {
-                    throw new IllegalArgumentException(
-                            "derived '" + name + "': perChoice key '" + key
-                                    + "' is not a value of input '" + from
-                                    + "' (allowed: " + allowedChoices + ")");
+                    throw new IllegalArgumentException("derived '" + name + "': perChoice key '" + key
+                            + "' is not a value of input '" + from
+                            + "' (allowed: " + allowedChoices + ")");
                 }
                 perChoice.put(key, stringList(e.getValue()));
             }
@@ -1062,16 +1050,14 @@ public final class KitYamlMapper {
                 }
                 List<String> requires = stringOrList(mp.get("requires"));
                 if (knownChoices.isEmpty()) {
-                    throw new IllegalArgumentException(
-                            "documents overlay on '" + path + "': requires a multi-select input "
-                                    + "(none declared in template.yaml)");
+                    throw new IllegalArgumentException("documents overlay on '" + path
+                            + "': requires a multi-select input " + "(none declared in template.yaml)");
                 }
                 for (String r : requires) {
                     if (!knownChoices.contains(r)) {
-                        throw new IllegalArgumentException(
-                                "documents '" + path + "': requires '" + r
-                                        + "' is not a known multi-select choice value "
-                                        + "(known: " + knownChoices + ")");
+                        throw new IllegalArgumentException("documents '" + path + "': requires '" + r
+                                + "' is not a known multi-select choice value "
+                                + "(known: " + knownChoices + ")");
                     }
                 }
                 out.add(new TemplateDocumentOverlay(path, requires));
@@ -1099,17 +1085,14 @@ public final class KitYamlMapper {
         if (inputName == null) {
             throw new IllegalArgumentException("input: 'name' is required");
         }
-        TemplateInputType type = TemplateInputType.parse(
-                stringOrNull(m.get("type")), inputName);
+        TemplateInputType type = TemplateInputType.parse(stringOrNull(m.get("type")), inputName);
         String label = stringOrNull(m.get("label"));
         String help = stringOrNull(m.get("help"));
         boolean required = booleanOr(m.get("required"), true);
         String defaultValue = stringOrNull(m.get("default"));
         List<TemplateChoice> choices = parseChoices(m.get("choices"), inputName);
         TemplateInputTarget target = parseTarget(m.get("target"), inputName);
-        return new TemplateInput(
-                inputName, type, label, help, required,
-                defaultValue, choices, target);
+        return new TemplateInput(inputName, type, label, help, required, defaultValue, choices, target);
     }
 
     /**
@@ -1127,23 +1110,20 @@ public final class KitYamlMapper {
     private static List<TemplateChoice> parseChoices(@Nullable Object raw, String inputName) {
         if (raw == null) return List.of();
         if (!(raw instanceof List<?> list)) {
-            throw new IllegalArgumentException(
-                    "input '" + inputName + "': choices must be a list");
+            throw new IllegalArgumentException("input '" + inputName + "': choices must be a list");
         }
         List<TemplateChoice> out = new ArrayList<>(list.size());
         int idx = 0;
         for (Object el : list) {
             if (el == null) {
-                throw new IllegalArgumentException(
-                        "input '" + inputName + "': choices[" + idx + "] is null");
+                throw new IllegalArgumentException("input '" + inputName + "': choices[" + idx + "] is null");
             }
             if (el instanceof Map<?, ?> mm) {
                 Map<String, Object> mp = (Map<String, Object>) mm;
                 String value = stringOrNull(mp.get("value"));
                 if (value == null) {
                     throw new IllegalArgumentException(
-                            "input '" + inputName + "': choices[" + idx
-                                    + "]: 'value' is required");
+                            "input '" + inputName + "': choices[" + idx + "]: 'value' is required");
                 }
                 String label = stringOrNull(mp.get("label"));
                 boolean dflt = booleanOr(mp.get("default"), false);
@@ -1160,43 +1140,36 @@ public final class KitYamlMapper {
     private static TemplateInputTarget parseTarget(@Nullable Object raw, String inputName) {
         if (raw == null) return TemplateInputTarget.documentInline();
         if (!(raw instanceof Map<?, ?> m)) {
-            throw new IllegalArgumentException(
-                    "input '" + inputName + "': target must be a map");
+            throw new IllegalArgumentException("input '" + inputName + "': target must be a map");
         }
         Map<String, Object> tm = (Map<String, Object>) m;
         String kindRaw = stringOrNull(tm.get("kind"));
-        if (kindRaw == null || "document-inline".equalsIgnoreCase(kindRaw)
-                || "inline".equalsIgnoreCase(kindRaw)) {
+        if (kindRaw == null || "document-inline".equalsIgnoreCase(kindRaw) || "inline".equalsIgnoreCase(kindRaw)) {
             return TemplateInputTarget.documentInline();
         }
         if (!"setting".equalsIgnoreCase(kindRaw)) {
             throw new IllegalArgumentException(
                     "input '" + inputName + "': target.kind must be 'setting' or 'document-inline'");
         }
-        TemplateInputTarget.Scope scope = TemplateInputTarget.Scope.parse(
-                stringOrNull(tm.get("scope")), inputName);
+        TemplateInputTarget.Scope scope = TemplateInputTarget.Scope.parse(stringOrNull(tm.get("scope")), inputName);
         String project = stringOrNull(tm.get("project"));
         String key = stringOrNull(tm.get("key"));
         if (key == null) {
-            throw new IllegalArgumentException(
-                    "input '" + inputName + "': target.key is required for kind=setting");
+            throw new IllegalArgumentException("input '" + inputName + "': target.key is required for kind=setting");
         }
         if (scope == TemplateInputTarget.Scope.PROJECT && project == null) {
             // project=null means "apply to the project the kit is being
             // applied to" — explicit choice, validated at apply time.
         }
-        return new TemplateInputTarget(
-                TemplateInputTarget.Kind.SETTING, scope, project, key);
+        return new TemplateInputTarget(TemplateInputTarget.Kind.SETTING, scope, project, key);
     }
 
     private static TemplatePostInstall parsePostInstall(Map<String, Object> m) {
-        TemplatePostInstall.Kind kind = TemplatePostInstall.Kind.parse(
-                stringOrNull(m.get("kind")));
+        TemplatePostInstall.Kind kind = TemplatePostInstall.Kind.parse(stringOrNull(m.get("kind")));
         String provider = stringOrNull(m.get("provider"));
         String message = stringOrNull(m.get("message"));
         if (kind == TemplatePostInstall.Kind.OAUTH_CONNECT && provider == null) {
-            throw new IllegalArgumentException(
-                    "postInstall (oauth-connect): 'provider' is required");
+            throw new IllegalArgumentException("postInstall (oauth-connect): 'provider' is required");
         }
         return new TemplatePostInstall(kind, provider, message);
     }
@@ -1210,12 +1183,12 @@ public final class KitYamlMapper {
         try {
             type = SettingType.valueOf(typeRaw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new KitException(filename + ": unknown setting type '" + typeRaw + "'");
+            throw new KitException(filename + ": unknown setting type '" + typeRaw + "'", e);
         }
         Object valueRaw = map.get("value");
         String value = valueRaw == null ? null : valueRaw.toString();
-        return new ParsedSetting(type, value, stringOrNull(map.get("description")),
-                parseEncoding(map.get("encoding"), type, filename));
+        return new ParsedSetting(
+                type, value, stringOrNull(map.get("description")), parseEncoding(map.get("encoding"), type, filename));
     }
 
     /**
@@ -1228,19 +1201,18 @@ public final class KitYamlMapper {
      * the author believed something about this file that is not true —
      * most likely that it would be encrypted.
      */
-    private static KitSecretEncoding parseEncoding(
-            @Nullable Object raw, SettingType type, String filename) {
+    private static KitSecretEncoding parseEncoding(@Nullable Object raw, SettingType type, String filename) {
         if (raw == null) return KitSecretEncoding.DEFAULT;
         KitSecretEncoding encoding;
         try {
             encoding = KitSecretEncoding.valueOf(raw.toString().trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new KitException(filename + ": unknown setting encoding '" + raw
-                    + "' — expected one of vault, plain");
+            throw new KitException(
+                    filename + ": unknown setting encoding '" + raw + "' — expected one of vault, plain", e);
         }
         if (!type.encrypted()) {
-            throw new KitException(filename + ": encoding is only meaningful for an encrypted "
-                    + "setting type, not for " + type);
+            throw new KitException(
+                    filename + ": encoding is only meaningful for an encrypted " + "setting type, not for " + type);
         }
         return encoding;
     }

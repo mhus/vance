@@ -451,7 +451,7 @@ public class ContentValidatingPhase {
         try {
             root = objectMapper.readTree(json);
         } catch (Exception e) {
-            throw new RuntimeException("not valid JSON: " + e.getMessage());
+            throw new RuntimeException("not valid JSON: " + e.getMessage(), e);
         }
         JsonNode criteriaArr = root.get("criteria");
         if (criteriaArr == null || !criteriaArr.isArray()) {

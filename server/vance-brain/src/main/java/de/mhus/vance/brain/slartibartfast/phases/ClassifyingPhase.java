@@ -131,25 +131,20 @@ public class ClassifyingPhase {
     private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
 
-    public void execute(
-            ArchitectState state,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    public void execute(ArchitectState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
 
         if (state.getEvidenceSources().isEmpty()) {
             // Empty-sources case: GATHERING produced nothing, so
             // there's nothing to classify. Skip silently with audit.
             state.setEvidenceClaims(List.of());
-            appendIteration(state, "0 sources",
-                    "0 claims (no sources to classify)",
-                    PhaseIteration.IterationOutcome.PASSED);
+            appendIteration(
+                    state, "0 sources", "0 claims (no sources to classify)", PhaseIteration.IterationOutcome.PASSED);
             return;
         }
 
-        EngineChatFactory.EngineChatBundle bundle =
-                engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
-        String modelAlias = bundle.primaryConfig().provider() + ":"
-                + bundle.primaryConfig().modelName();
+        EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
+        String modelAlias =
+                bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
 
         // Rebuild from scratch — CLASSIFYING re-entry must produce
         // a fresh claim set, not pile onto an old one.
@@ -181,7 +176,8 @@ public class ClassifyingPhase {
                         + source.getId() + "' (" + source.getPath()
                         + ") after " + MAX_OUTPUT_CORRECTIONS
                         + " corrections — last error: " + ex.getMessage());
-                appendIteration(state,
+                appendIteration(
+                        state,
                         state.getEvidenceSources().size() + " sources",
                         "FAILED at " + source.getId() + " — " + ex.getMessage(),
                         PhaseIteration.IterationOutcome.FAILED);
@@ -217,15 +213,16 @@ public class ClassifyingPhase {
         state.setRationales(rationalePool);
         state.setEvidenceClaims(allClaims);
 
-        appendIteration(state,
+        appendIteration(
+                state,
                 state.getEvidenceSources().size() + " sources",
-                allClaims.size() + " claims (" + totalRetries
-                        + " retry" + (totalRetries == 1 ? "" : "s") + ")",
+                allClaims.size() + " claims (" + totalRetries + " retry" + (totalRetries == 1 ? "" : "s") + ")",
                 PhaseIteration.IterationOutcome.PASSED);
 
-        log.info("Slartibartfast id='{}' CLASSIFYING produced {} claims "
-                        + "from {} sources",
-                process.getId(), allClaims.size(),
+        log.info(
+                "Slartibartfast id='{}' CLASSIFYING produced {} claims " + "from {} sources",
+                process.getId(),
+                allClaims.size(),
                 state.getEvidenceSources().size());
     }
 
@@ -240,9 +237,7 @@ public class ClassifyingPhase {
 
         List<ChatMessage> messages = new ArrayList<>();
         String langBlock = languageContextResolver.formatBlock(process);
-        messages.add(SystemMessage.from(langBlock.isEmpty()
-                ? SYSTEM_PROMPT
-                : SYSTEM_PROMPT + "\n\n" + langBlock));
+        messages.add(SystemMessage.from(langBlock.isEmpty() ? SYSTEM_PROMPT : SYSTEM_PROMPT + "\n\n" + langBlock));
         messages.add(UserMessage.from(buildInitialUserPrompt(state, source)));
 
         String validationError = null;
@@ -258,8 +253,7 @@ public class ClassifyingPhase {
             if (text == null) text = "";
 
             if (state.isAuditLlmCalls()) {
-                appendLlmRecord(state, source, text, modelAlias,
-                        durationMs, attempt);
+                appendLlmRecord(state, source, text, modelAlias, durationMs, attempt);
             }
 
             try {
@@ -267,9 +261,12 @@ public class ClassifyingPhase {
                 return new ClassifyResult(claims, attempt);
             } catch (ClassifyValidationException ve) {
                 validationError = ve.getMessage();
-                log.info("Slartibartfast id='{}' CLASSIFYING source='{}' "
-                                + "attempt {} validation failed: {}",
-                        process.getId(), source.getId(), attempt, validationError);
+                log.info(
+                        "Slartibartfast id='{}' CLASSIFYING source='{}' " + "attempt {} validation failed: {}",
+                        process.getId(),
+                        source.getId(),
+                        attempt,
+                        validationError);
                 if (attempt < MAX_OUTPUT_CORRECTIONS) {
                     messages.add(AiMessage.from(text));
                     messages.add(UserMessage.from(buildCorrectivePrompt(validationError)));
@@ -279,15 +276,16 @@ public class ClassifyingPhase {
         throw new ClassifyFailedException(validationError);
     }
 
-    private static String buildInitialUserPrompt(
-            ArchitectState state, EvidenceSource source) {
+    private static String buildInitialUserPrompt(ArchitectState state, EvidenceSource source) {
         StringBuilder sb = new StringBuilder();
         if (state.getGoal() != null) {
             sb.append("Framed goal (context for classification):\n")
-                    .append(state.getGoal().getFramed()).append("\n\n");
+                    .append(state.getGoal().getFramed())
+                    .append("\n\n");
         }
-        sb.append("Source path: ").append(source.getPath() == null
-                ? "<inline>" : source.getPath()).append("\n");
+        sb.append("Source path: ")
+                .append(source.getPath() == null ? "<inline>" : source.getPath())
+                .append("\n");
         sb.append("Source type: ").append(source.getType().name()).append("\n\n");
         sb.append("Source content:\n");
         sb.append("---BEGIN SOURCE---\n");
@@ -310,42 +308,36 @@ public class ClassifyingPhase {
     private List<ParsedClaim> parseAndValidate(String text) {
         String jsonOnly = extractJsonObject(text);
         if (jsonOnly == null) {
-            throw new ClassifyValidationException(
-                    "no JSON object found in reply");
+            throw new ClassifyValidationException("no JSON object found in reply");
         }
         Map<String, Object> root;
         try {
             root = objectMapper.readValue(jsonOnly, Map.class);
         } catch (RuntimeException e) {
-            throw new ClassifyValidationException(
-                    "JSON parse error: " + e.getMessage());
+            throw new ClassifyValidationException("JSON parse error: " + e.getMessage(), e);
         }
 
         Object claimsRaw = root.get("claims");
         if (!(claimsRaw instanceof List<?> claimsList)) {
-            throw new ClassifyValidationException(
-                    "required field 'claims' missing or not an array");
+            throw new ClassifyValidationException("required field 'claims' missing or not an array");
         }
 
         List<ParsedClaim> out = new ArrayList<>();
         for (int i = 0; i < claimsList.size(); i++) {
             Object entry = claimsList.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new ClassifyValidationException(
-                        "claims[" + i + "] is not an object");
+                throw new ClassifyValidationException("claims[" + i + "] is not an object");
             }
             Map<String, Object> m = (Map<String, Object>) entryMap;
 
             Object t = m.get("text");
             if (!(t instanceof String txt) || txt.isBlank()) {
-                throw new ClassifyValidationException(
-                        "claims[" + i + "].text missing or blank");
+                throw new ClassifyValidationException("claims[" + i + "].text missing or blank");
             }
 
             Object c = m.get("classification");
             if (!(c instanceof String cls) || cls.isBlank()) {
-                throw new ClassifyValidationException(
-                        "claims[" + i + "].classification missing");
+                throw new ClassifyValidationException("claims[" + i + "].classification missing");
             }
             ClassificationKind classification;
             try {
@@ -353,7 +345,8 @@ public class ClassifyingPhase {
             } catch (IllegalArgumentException ex) {
                 throw new ClassifyValidationException(
                         "claims[" + i + "].classification '" + cls
-                                + "' invalid (allowed: FACT | EXAMPLE | OPINION | OUTDATED)");
+                                + "' invalid (allowed: FACT | EXAMPLE | OPINION | OUTDATED)",
+                        ex);
             }
 
             Object q = m.get("quote");
@@ -372,10 +365,9 @@ public class ClassifyingPhase {
             // a missing one bounce back so the LLM justifies the
             // classification. FACT may carry a null rationale.
             if (classification != ClassificationKind.FACT && rationale == null) {
-                throw new ClassifyValidationException(
-                        "claims[" + i + "] classification '" + classification
-                                + "' requires a non-blank 'rationale' (only "
-                                + "FACT may omit it)");
+                throw new ClassifyValidationException("claims[" + i + "] classification '" + classification
+                        + "' requires a non-blank 'rationale' (only "
+                        + "FACT may omit it)");
             }
 
             out.add(new ParsedClaim(txt.trim(), classification, quote, rationale));
@@ -431,10 +423,8 @@ public class ClassifyingPhase {
                 .id(id)
                 .phase(ArchitectStatus.CLASSIFYING)
                 .iteration(attempt + 1)
-                .promptHash(sha256Hex(SYSTEM_PROMPT + "\n----\n"
-                        + source.getId() + "\n----\n" + source.getContent()))
-                .promptPreview(abbrev("source=" + source.getId() + " path="
-                        + source.getPath(), PROMPT_PREVIEW_LIMIT))
+                .promptHash(sha256Hex(SYSTEM_PROMPT + "\n----\n" + source.getId() + "\n----\n" + source.getContent()))
+                .promptPreview(abbrev("source=" + source.getId() + " path=" + source.getPath(), PROMPT_PREVIEW_LIMIT))
                 .response(response)
                 .modelAlias(modelAlias)
                 .durationMs(durationMs)
@@ -443,12 +433,11 @@ public class ClassifyingPhase {
     }
 
     private static void appendIteration(
-            ArchitectState state,
-            String inputSummary,
-            String outputSummary,
-            PhaseIteration.IterationOutcome outcome) {
+            ArchitectState state, String inputSummary, String outputSummary, PhaseIteration.IterationOutcome outcome) {
         int attempt = (int) state.getIterations().stream()
-                .filter(it -> it.getPhase() == ArchitectStatus.CLASSIFYING).count() + 1;
+                        .filter(it -> it.getPhase() == ArchitectStatus.CLASSIFYING)
+                        .count()
+                + 1;
         List<PhaseIteration> log = new ArrayList<>(state.getIterations());
         log.add(PhaseIteration.builder()
                 .iteration(attempt)
@@ -472,11 +461,19 @@ public class ClassifyingPhase {
     private record ClassifyResult(List<ParsedClaim> claims, int retries) {}
 
     private static class ClassifyValidationException extends RuntimeException {
-        ClassifyValidationException(String message) { super(message); }
+        ClassifyValidationException(String message) {
+            super(message);
+        }
+
+        ClassifyValidationException(String message, @org.jspecify.annotations.Nullable Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private static class ClassifyFailedException extends RuntimeException {
-        ClassifyFailedException(String message) { super(message); }
+        ClassifyFailedException(String message) {
+            super(message);
+        }
     }
 
     // ──────────────────── Utilities ────────────────────
@@ -495,21 +492,17 @@ public class ClassifyingPhase {
      * want quiet chats won't see it, those who turned on verbose
      * progress will.
      */
-    private void emitSourceProgress(
-            ThinkProcessDocument process, int index, int total,
-            EvidenceSource source) {
+    private void emitSourceProgress(ThinkProcessDocument process, int index, int total, EvidenceSource source) {
         String path = source.getPath() == null ? source.getId() : source.getPath();
         // Trim path to keep the side-channel readable in long manuals/ trees.
         if (path.length() > 80) path = "…" + path.substring(path.length() - 79);
         try {
-            progressEmitter.emitStatus(process,
+            progressEmitter.emitStatus(
+                    process,
                     de.mhus.vance.api.progress.StatusTag.INFO,
-                    "Slartibartfast CLASSIFYING: source "
-                            + index + "/" + total + " — " + path);
+                    "Slartibartfast CLASSIFYING: source " + index + "/" + total + " — " + path);
         } catch (RuntimeException e) {
-            log.debug("ClassifyingPhase progress emit failed for source "
-                            + "{}/{}: {}",
-                    index, total, e.toString());
+            log.debug("ClassifyingPhase progress emit failed for source " + "{}/{}: {}", index, total, e.toString());
         }
     }
 

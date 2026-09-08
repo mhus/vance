@@ -4,16 +4,16 @@ import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
+import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.util.MongoKeys;
 import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
-import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.util.MongoKeys;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -52,6 +52,7 @@ public class TrillianInternalApi {
      * without burning a top-level {@link ProcessEventType} value.
      */
     public static final String PAYLOAD_KEY_TASK_EVENT = "trillianTaskEvent";
+
     public static final String PAYLOAD_KEY_TASK_ID = "taskId";
     public static final String PAYLOAD_KEY_DESCRIPTION = "description";
     public static final String PAYLOAD_KEY_RESULT = "result";
@@ -107,21 +108,22 @@ public class TrillianInternalApi {
         }
         ThinkProcessDocument caller = callerOpt.get();
         Object peerIdRaw = caller.getEngineParams() == null
-                ? null : caller.getEngineParams().get(
-                        TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID);
+                ? null
+                : caller.getEngineParams().get(TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID);
         if (!(peerIdRaw instanceof String peerId) || peerId.isBlank()) {
             return Optional.empty();
         }
         Optional<ThinkProcessDocument> peer = thinkProcessService.findById(peerId);
         if (peer.isEmpty()) {
-            log.warn("Trillian peer process id='{}' (recorded on caller id='{}') is gone",
-                    peerId, callingProcessId);
+            log.warn("Trillian peer process id='{}' (recorded on caller id='{}') is gone", peerId, callingProcessId);
             return Optional.empty();
         }
         ThinkProcessDocument peerDoc = peer.get();
         if (!caller.getTenantId().equals(peerDoc.getTenantId())) {
-            log.warn("Trillian peer mismatch: caller tenant='{}' peer tenant='{}' — refusing",
-                    caller.getTenantId(), peerDoc.getTenantId());
+            log.warn(
+                    "Trillian peer mismatch: caller tenant='{}' peer tenant='{}' — refusing",
+                    caller.getTenantId(),
+                    peerDoc.getTenantId());
             return Optional.empty();
         }
         return Optional.of(peerDoc);
@@ -163,12 +165,20 @@ public class TrillianInternalApi {
                 .build();
         boolean ok = messageRouter.dispatch(senderProcessId, targetProcessId, message);
         if (!ok) {
-            log.warn("Trillian dispatch failed: sender='{}' target='{}' event='{}'",
-                    senderProcessId, targetProcessId, taskEvent);
+            log.warn(
+                    "Trillian dispatch failed: sender='{}' target='{}' event='{}'",
+                    senderProcessId,
+                    targetProcessId,
+                    taskEvent);
             return Optional.empty();
         }
-        log.info("Trillian dispatched event='{}' taskId='{}' sender='{}' target='{}' eventId='{}'",
-                taskEvent, taskId, senderProcessId, targetProcessId, eventId);
+        log.info(
+                "Trillian dispatched event='{}' taskId='{}' sender='{}' target='{}' eventId='{}'",
+                taskEvent,
+                taskId,
+                senderProcessId,
+                targetProcessId,
+                eventId);
         notifyNatureOfConclusion(senderProcessId, taskEvent, taskId, humanSummary);
         return Optional.of(eventId);
     }
@@ -189,30 +199,29 @@ public class TrillianInternalApi {
      * ({@code TrillianNatureAdam#taskConcluded} is {@code @Async}); this
      * funnel only guarantees that a failure here cannot undo the report.
      */
-    private void notifyNatureOfConclusion(
-            String senderProcessId, String taskEvent, String taskId, String summary) {
-        TrillianNature.TaskOutcome outcome = switch (taskEvent) {
-            case TASK_EVENT_DONE -> TrillianNature.TaskOutcome.DONE;
-            case TASK_EVENT_FAILED -> TrillianNature.TaskOutcome.FAILED;
-            default -> null;
-        };
+    private void notifyNatureOfConclusion(String senderProcessId, String taskEvent, String taskId, String summary) {
+        TrillianNature.TaskOutcome outcome =
+                switch (taskEvent) {
+                    case TASK_EVENT_DONE -> TrillianNature.TaskOutcome.DONE;
+                    case TASK_EVENT_FAILED -> TrillianNature.TaskOutcome.FAILED;
+                    default -> null;
+                };
         if (outcome == null) {
             return;
         }
         try {
-            ThinkProcessDocument worker = thinkProcessService.findById(senderProcessId)
-                    .orElse(null);
+            ThinkProcessDocument worker =
+                    thinkProcessService.findById(senderProcessId).orElse(null);
             if (worker == null) {
                 return;
             }
-            String nature = worker.getEngineParams() == null ? null
+            String nature = worker.getEngineParams() == null
+                    ? null
                     : java.util.Objects.toString(
-                            worker.getEngineParams()
-                                    .get(TrillianSessionBootstrapper.PARAM_NATURE), null);
+                            worker.getEngineParams().get(TrillianSessionBootstrapper.PARAM_NATURE), null);
             natureRegistry.resolve(nature).taskConcluded(worker, taskId, outcome, summary);
         } catch (RuntimeException e) {
-            log.warn("Trillian: nature hook for concluded task '{}' failed: {}",
-                    taskId, e.toString());
+            log.warn("Trillian: nature hook for concluded task '{}' failed: {}", taskId, e.toString());
         }
     }
 
@@ -242,8 +251,7 @@ public class TrillianInternalApi {
      * @return counts, so a caller can say what it actually threw away
      */
     public ClearResult clearPending(String targetProcessId, boolean onlyTaskRequests) {
-        List<EngineMessageDocument> queued =
-                engineMessageService.findInboxedByTargets(List.of(targetProcessId));
+        List<EngineMessageDocument> queued = engineMessageService.findInboxedByTargets(List.of(targetProcessId));
         if (queued.isEmpty()) {
             return new ClearResult(0, 0, 0);
         }
@@ -268,14 +276,16 @@ public class TrillianInternalApi {
             return new ClearResult(0, 0, 0);
         }
         engineMessageService.markDrained(ids);
-        log.info("Trillian cleared {} pending message(s) for process id='{}' (onlyTaskRequests={})",
-                ids.size(), targetProcessId, onlyTaskRequests);
+        log.info(
+                "Trillian cleared {} pending message(s) for process id='{}' (onlyTaskRequests={})",
+                ids.size(),
+                targetProcessId,
+                onlyTaskRequests);
         return new ClearResult(ids.size(), requests, other);
     }
 
     /** Outcome of {@link #clearPending(String, boolean)}. */
-    public record ClearResult(int total, int taskRequests, int other) {
-    }
+    public record ClearResult(int total, int taskRequests, int other) {}
 
     /**
      * The peer's inbox as it stands, without consuming it — what is
@@ -287,8 +297,7 @@ public class TrillianInternalApi {
      */
     public List<PendingEntry> listPending(String targetProcessId) {
         List<PendingEntry> entries = new ArrayList<>();
-        for (EngineMessageDocument m :
-                engineMessageService.findInboxedByTargets(List.of(targetProcessId))) {
+        for (EngineMessageDocument m : engineMessageService.findInboxedByTargets(List.of(targetProcessId))) {
             entries.add(new PendingEntry(
                     m.getMessageId(),
                     taskEventOf(m),
@@ -308,8 +317,7 @@ public class TrillianInternalApi {
             @Nullable String taskEvent,
             @Nullable String taskId,
             @Nullable String description,
-            @Nullable Instant queuedAt) {
-    }
+            @Nullable Instant queuedAt) {}
 
     /**
      * Queues a task for the peer. Shared by {@code task_enqueue} and the
@@ -318,13 +326,16 @@ public class TrillianInternalApi {
      *
      * @return the generated task id, or empty when dispatch failed
      */
-    public Optional<String> enqueueTask(
-            String senderProcessId, ThinkProcessDocument peer, String description) {
+    public Optional<String> enqueueTask(String senderProcessId, ThinkProcessDocument peer, String description) {
         String taskId = UUID.randomUUID().toString();
-        String humanSummary = "Task request: "
-                + (description.length() <= 240 ? description : description.substring(0, 237) + "...");
+        String humanSummary =
+                "Task request: " + (description.length() <= 240 ? description : description.substring(0, 237) + "...");
         Optional<String> eventId = dispatchTaskEvent(
-                senderProcessId, peer.getId(), TASK_EVENT_REQUEST, taskId, humanSummary,
+                senderProcessId,
+                peer.getId(),
+                TASK_EVENT_REQUEST,
+                taskId,
+                humanSummary,
                 Map.of(PAYLOAD_KEY_DESCRIPTION, description));
         return eventId.isEmpty() ? Optional.empty() : Optional.of(taskId);
     }
@@ -348,11 +359,7 @@ public class TrillianInternalApi {
      */
     public PeerStateSnapshot snapshotPeerState(ThinkProcessDocument peer) {
         long pending = engineMessageService.countInbox(peer.getId());
-        return new PeerStateSnapshot(
-                peer.getId(),
-                peer.getName(),
-                peer.getStatus(),
-                pending);
+        return new PeerStateSnapshot(peer.getId(), peer.getName(), peer.getStatus(), pending);
     }
 
     /**
@@ -431,8 +438,7 @@ public class TrillianInternalApi {
         // CLOSED, and IDLE → IDLE is a write we don't need), then wakes it.
         ThinkProcessStatus now = current == ThinkProcessStatus.IDLE
                 ? current
-                : setPeerStatus(peer, ThinkProcessStatus.IDLE,
-                        java.util.Set.of(ThinkProcessStatus.CLOSED));
+                : setPeerStatus(peer, ThinkProcessStatus.IDLE, java.util.Set.of(ThinkProcessStatus.CLOSED));
         wakePeer(peer.getId());
         return now;
     }
@@ -449,30 +455,31 @@ public class TrillianInternalApi {
      * still happens — so the target status is returned either way.
      */
     private ThinkProcessStatus setPeerStatus(
-            ThinkProcessDocument peer, ThinkProcessStatus target,
-            java.util.Set<ThinkProcessStatus> noOpWhen) {
+            ThinkProcessDocument peer, ThinkProcessStatus target, java.util.Set<ThinkProcessStatus> noOpWhen) {
         ThinkProcessStatus current = peer.getStatus();
         if (noOpWhen.contains(current)) {
             return current;
         }
         try {
-            laneScheduler.submit(peer.getId(), () -> {
-                thinkProcessService.updateStatus(peer.getId(), target);
-                return null;
-            }).get(LANE_WAIT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+            laneScheduler
+                    .submit(peer.getId(), () -> {
+                        thinkProcessService.updateStatus(peer.getId(), target);
+                        return null;
+                    })
+                    .get(LANE_WAIT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException(
-                    "Interrupted setting peer '" + peer.getId() + "' to " + target, ie);
+            throw new IllegalStateException("Interrupted setting peer '" + peer.getId() + "' to " + target, ie);
         } catch (java.util.concurrent.TimeoutException te) {
-            log.warn("Trillian: peer '{}' lane did not confirm {} within {}s — "
-                            + "the write stays queued",
-                    peer.getId(), target, LANE_WAIT_SECONDS);
+            log.warn(
+                    "Trillian: peer '{}' lane did not confirm {} within {}s — " + "the write stays queued",
+                    peer.getId(),
+                    target,
+                    LANE_WAIT_SECONDS);
         } catch (java.util.concurrent.ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
             throw new IllegalStateException(
-                    "Failed to set peer '" + peer.getId() + "' to " + target
-                            + ": " + cause.getMessage(), cause);
+                    "Failed to set peer '" + peer.getId() + "' to " + target + ": " + cause.getMessage(), cause);
         }
         return target;
     }
@@ -486,12 +493,7 @@ public class TrillianInternalApi {
         eventEmitter.scheduleTurn(targetProcessId);
     }
 
-    public record PeerStateSnapshot(
-            String processId,
-            String name,
-            ThinkProcessStatus status,
-            long pendingInboxCount) {
-    }
+    public record PeerStateSnapshot(String processId, String name, ThinkProcessStatus status, long pendingInboxCount) {}
 
     /**
      * Reads the (active, non-archived) chat history of a process the
@@ -506,10 +508,7 @@ public class TrillianInternalApi {
      * @return empty when the caller or observed process is missing,
      *         or when they don't share a tenant
      */
-    public List<ChatMessageDocument> readChatMemoryOf(
-            String callerProcessId,
-            String observedProcessId,
-            int limit) {
+    public List<ChatMessageDocument> readChatMemoryOf(String callerProcessId, String observedProcessId, int limit) {
         if (limit <= 0) {
             return List.of();
         }
@@ -521,12 +520,14 @@ public class TrillianInternalApi {
         ThinkProcessDocument caller = callerOpt.get();
         ThinkProcessDocument observed = observedOpt.get();
         if (!caller.getTenantId().equals(observed.getTenantId())) {
-            log.warn("Trillian readChatMemory denied: caller tenant='{}' observed tenant='{}'",
-                    caller.getTenantId(), observed.getTenantId());
+            log.warn(
+                    "Trillian readChatMemory denied: caller tenant='{}' observed tenant='{}'",
+                    caller.getTenantId(),
+                    observed.getTenantId());
             return List.of();
         }
-        List<ChatMessageDocument> full = chatMessageService.activeHistory(
-                observed.getTenantId(), observed.getSessionId(), observed.getId());
+        List<ChatMessageDocument> full =
+                chatMessageService.activeHistory(observed.getTenantId(), observed.getSessionId(), observed.getId());
         if (full.size() <= limit) {
             return full;
         }
@@ -669,14 +670,13 @@ public class TrillianInternalApi {
      */
     private void notifyNature(ThinkProcessDocument worker, Map<String, Object> attributes) {
         try {
-            String nature = worker.getEngineParams() == null ? null
+            String nature = worker.getEngineParams() == null
+                    ? null
                     : java.util.Objects.toString(
-                            worker.getEngineParams()
-                                    .get(TrillianSessionBootstrapper.PARAM_NATURE), null);
+                            worker.getEngineParams().get(TrillianSessionBootstrapper.PARAM_NATURE), null);
             natureRegistry.resolve(nature).attributesChanged(worker, attributes);
         } catch (RuntimeException e) {
-            log.warn("Trillian: nature hook for attribute change on '{}' failed: {}",
-                    worker.getId(), e.toString());
+            log.warn("Trillian: nature hook for attribute change on '{}' failed: {}", worker.getId(), e.toString());
         }
     }
 }

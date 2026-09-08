@@ -33,17 +33,12 @@ public class GtdFolderReader {
         this.documentService = documentService;
     }
 
-    public record Scan(
-            String folder,
-            DocumentDocument manifest,
-            GtdConfig config,
-            List<GtdAction> actions) {}
+    public record Scan(String folder, DocumentDocument manifest, GtdConfig config, List<GtdAction> actions) {}
 
     public Scan scan(String tenantId, String projectId, String folder) {
         String normalized = normaliseFolder(folder);
         String manifestPath = normalized + "/" + APP_MANIFEST;
-        Optional<DocumentDocument> manifest = documentService.findByPath(
-                tenantId, projectId, manifestPath);
+        Optional<DocumentDocument> manifest = documentService.findByPath(tenantId, projectId, manifestPath);
         if (manifest.isEmpty()) {
             throw new ToolException("No GTD manifest at '" + manifestPath + "'.");
         }
@@ -54,8 +49,7 @@ public class GtdFolderReader {
         String trashPrefix = prefix + config.trashDir() + "/";
         String projectsPrefix = prefix + config.projectsDir() + "/";
 
-        List<DocumentDocument> all = documentService.listByKind(
-                tenantId, projectId, GtdActionDocument.KIND);
+        List<DocumentDocument> all = documentService.listByKind(tenantId, projectId, GtdActionDocument.KIND);
         List<GtdAction> actions = new ArrayList<>();
         for (DocumentDocument doc : all) {
             String path = doc.getPath();
@@ -77,15 +71,13 @@ public class GtdFolderReader {
             String deadline = headerValue(doc, "deadline");
             boolean done = "true".equalsIgnoreCase(headerValue(doc, "done"));
             List<String> contexts = splitContexts(headerValue(doc, "contexts"));
-            String title = doc.getTitle() != null && !doc.getTitle().isBlank()
-                    ? doc.getTitle() : humanise(stem(leaf));
+            String title = doc.getTitle() != null && !doc.getTitle().isBlank() ? doc.getTitle() : humanise(stem(leaf));
 
-            actions.add(new GtdAction(doc, rel, inInbox, inTrash, project, title,
-                    when == null ? "" : when, deadline, contexts, done));
+            actions.add(new GtdAction(
+                    doc, rel, inInbox, inTrash, project, title, when == null ? "" : when, deadline, contexts, done));
         }
 
-        actions.sort(Comparator
-                .comparing((GtdAction a) -> a.done() ? 1 : 0)
+        actions.sort(Comparator.comparing((GtdAction a) -> a.done() ? 1 : 0)
                 .thenComparing(a -> a.title().toLowerCase(Locale.ROOT)));
         return new Scan(normalized, manifest.get(), config, actions);
     }
@@ -111,8 +103,7 @@ public class GtdFolderReader {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             return GtdConfig.parse(body);
         } catch (IOException | RuntimeException e) {
-            throw new ToolException(
-                    "Could not parse GTD manifest '" + manifest.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not parse GTD manifest '" + manifest.getPath() + "': " + e.getMessage(), e);
         }
     }
 

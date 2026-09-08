@@ -55,6 +55,7 @@ public class InitSettingsLoader {
      * {@link #loadIfPresent()}.
      */
     private static final String SETTINGS_REF_TYPE = SettingService.SCOPE_PROJECT;
+
     private static final String SETTINGS_REF_ID = HomeBootstrapService.TENANT_PROJECT_NAME;
 
     private final InitSettingsProperties properties;
@@ -69,8 +70,7 @@ public class InitSettingsLoader {
     public void loadIfPresent() {
         Optional<Path> file = locateFile();
         if (file.isEmpty()) {
-            log.info("Init settings file not found (configured: '{}'); skipping",
-                    properties.getSettingsFile());
+            log.info("Init settings file not found (configured: '{}'); skipping", properties.getSettingsFile());
             return;
         }
         Path path = file.get();
@@ -97,8 +97,10 @@ public class InitSettingsLoader {
                     continue;
                 }
                 if (!(e.getValue() instanceof Map<?, ?> spec)) {
-                    log.warn("init-settings: tenant='{}' key='{}' value is not a {{type, value}} map; skipping",
-                            tenant, key);
+                    log.warn(
+                            "init-settings: tenant='{}' key='{}' value is not a {{type, value}} map; skipping",
+                            tenant,
+                            key);
                     skipped++;
                     continue;
                 }
@@ -106,14 +108,12 @@ public class InitSettingsLoader {
                     applyOne(tenant, key, spec);
                     applied++;
                 } catch (RuntimeException ex) {
-                    log.warn("init-settings: tenant='{}' key='{}' failed: {}",
-                            tenant, key, ex.toString());
+                    log.warn("init-settings: tenant='{}' key='{}' failed: {}", tenant, key, ex.toString());
                     skipped++;
                 }
             }
         }
-        log.info("InitSettingsLoader applied {} setting(s) from '{}' ({} skipped)",
-                applied, path, skipped);
+        log.info("InitSettingsLoader applied {} setting(s) from '{}' ({} skipped)", applied, path, skipped);
     }
 
     private void applyOne(String tenant, String key, Map<?, ?> spec) {
@@ -122,7 +122,7 @@ public class InitSettingsLoader {
         try {
             type = SettingType.valueOf(typeStr.toUpperCase());
         } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Unknown setting type '" + typeStr + "'");
+            throw new IllegalArgumentException("Unknown setting type '" + typeStr + "'", ex);
         }
         Object rawValue = spec.get("value");
         String value = rawValue == null ? null : rawValue.toString();
@@ -130,18 +130,15 @@ public class InitSettingsLoader {
             // Empty placeholder — leave the setting untouched. Lets users
             // keep "TODO: fill me" entries in the file without producing
             // an empty record that breaks consumers.
-            log.debug("init-settings: tenant='{}' key='{}' has blank value — skipped",
-                    tenant, key);
+            log.debug("init-settings: tenant='{}' key='{}' has blank value — skipped", tenant, key);
             return;
         }
-        String description = spec.get("description") == null
-                ? null : spec.get("description").toString();
+        String description =
+                spec.get("description") == null ? null : spec.get("description").toString();
         if (type.encrypted()) {
-            settingService.setEncryptedSecret(
-                    tenant, SETTINGS_REF_TYPE, SETTINGS_REF_ID, key, value, type);
+            settingService.setEncryptedSecret(tenant, SETTINGS_REF_TYPE, SETTINGS_REF_ID, key, value, type);
         } else {
-            settingService.set(
-                    tenant, SETTINGS_REF_TYPE, SETTINGS_REF_ID, key, value, type, description);
+            settingService.set(tenant, SETTINGS_REF_TYPE, SETTINGS_REF_ID, key, value, type, description);
         }
     }
 
@@ -189,8 +186,10 @@ public class InitSettingsLoader {
                 Map<String, Object> casted = (Map<String, Object>) m;
                 return casted;
             }
-            log.warn("init-settings file '{}' top level is not a map; got {}",
-                    path, loaded == null ? "null" : loaded.getClass().getSimpleName());
+            log.warn(
+                    "init-settings file '{}' top level is not a map; got {}",
+                    path,
+                    loaded == null ? "null" : loaded.getClass().getSimpleName());
             return Map.of();
         } catch (IOException e) {
             log.warn("init-settings: failed to read '{}': {}", path, e.toString());

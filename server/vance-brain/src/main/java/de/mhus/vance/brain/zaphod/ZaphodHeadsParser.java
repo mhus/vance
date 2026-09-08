@@ -85,9 +85,7 @@ public final class ZaphodHeadsParser {
 
     /** One head entry inside {@link Spec#heads}. */
     public record HeadSpec(
-            String name,
-            String recipe,
-            @Nullable String persona) {}
+            String name, String recipe, @Nullable String persona) {}
 
     /**
      * Parse + validate the YAML content of a Zaphod recipe document.
@@ -100,8 +98,7 @@ public final class ZaphodHeadsParser {
     public static Spec parseRecipe(String yamlContent, String pathHint) {
         Object parsed = new Yaml().load(yamlContent);
         if (!(parsed instanceof Map<?, ?> m)) {
-            throw new IllegalStateException(
-                    pathHint + ": top-level YAML must be a map");
+            throw new IllegalStateException(pathHint + ": top-level YAML must be a map");
         }
         Map<String, Object> root = toStringMap(m);
 
@@ -110,43 +107,33 @@ public final class ZaphodHeadsParser {
 
         Object engineRaw = root.get("engine");
         if (engineRaw == null) {
-            throw new IllegalStateException(
-                    pathHint + ": recipe missing 'engine' field");
+            throw new IllegalStateException(pathHint + ": recipe missing 'engine' field");
         }
         if (!"zaphod".equalsIgnoreCase(String.valueOf(engineRaw).trim())) {
-            throw new IllegalStateException(
-                    pathHint + ": recipe engine='" + engineRaw
-                            + "', expected 'zaphod'");
+            throw new IllegalStateException(pathHint + ": recipe engine='" + engineRaw + "', expected 'zaphod'");
         }
 
         Object paramsRaw = root.get("params");
         if (!(paramsRaw instanceof Map<?, ?> paramsMap)) {
-            throw new IllegalStateException(
-                    pathHint + ": recipe '" + name
-                            + "' must declare a 'params:' map");
+            throw new IllegalStateException(pathHint + ": recipe '" + name + "' must declare a 'params:' map");
         }
         Map<String, Object> params = toStringMap(paramsMap);
 
         // pattern: required, COUNCIL or DEBATE.
         Object patternRaw = params.get("pattern");
         if (patternRaw == null) {
-            throw new IllegalStateException(
-                    pathHint + ": params.pattern missing — "
-                            + "must be 'COUNCIL' or 'DEBATE'");
+            throw new IllegalStateException(pathHint + ": params.pattern missing — " + "must be 'COUNCIL' or 'DEBATE'");
         }
         ZaphodPattern pattern;
         try {
-            pattern = ZaphodPattern.valueOf(
-                    String.valueOf(patternRaw).trim().toUpperCase());
+            pattern = ZaphodPattern.valueOf(String.valueOf(patternRaw).trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
-                    pathHint + ": params.pattern='" + patternRaw
-                            + "' is not a known ZaphodPattern");
+                    pathHint + ": params.pattern='" + patternRaw + "' is not a known ZaphodPattern", e);
         }
         if (pattern != ZaphodPattern.COUNCIL && pattern != ZaphodPattern.DEBATE) {
             throw new IllegalStateException(
-                    pathHint + ": Zaphod currently supports only "
-                            + "COUNCIL and DEBATE patterns; got " + pattern);
+                    pathHint + ": Zaphod currently supports only " + "COUNCIL and DEBATE patterns; got " + pattern);
         }
 
         // maxRounds: ignored for COUNCIL (engine forces 1); parsed
@@ -156,41 +143,34 @@ public final class ZaphodHeadsParser {
         // heads: required, non-empty, ≤ MAX_HEADS, unique names.
         Object headsRaw = params.get("heads");
         if (!(headsRaw instanceof List<?> headList) || headList.isEmpty()) {
-            throw new IllegalStateException(
-                    pathHint + ": params.heads must be a non-empty list");
+            throw new IllegalStateException(pathHint + ": params.heads must be a non-empty list");
         }
         if (headList.size() > MAX_HEADS) {
-            throw new IllegalStateException(
-                    pathHint + ": params.heads has " + headList.size()
-                            + " entries; the soft cap is " + MAX_HEADS
-                            + " — split into multiple councils or drop "
-                            + "less-distinct perspectives");
+            throw new IllegalStateException(pathHint + ": params.heads has " + headList.size()
+                    + " entries; the soft cap is " + MAX_HEADS
+                    + " — split into multiple councils or drop "
+                    + "less-distinct perspectives");
         }
         if (pattern == ZaphodPattern.DEBATE && headList.size() < MIN_DEBATE_HEADS) {
-            throw new IllegalStateException(
-                    pathHint + ": params.heads has " + headList.size()
-                            + " entry; debate requires at least "
-                            + MIN_DEBATE_HEADS
-                            + " — a single-head debate has nothing to react against");
+            throw new IllegalStateException(pathHint + ": params.heads has " + headList.size()
+                    + " entry; debate requires at least "
+                    + MIN_DEBATE_HEADS
+                    + " — a single-head debate has nothing to react against");
         }
         List<HeadSpec> heads = new ArrayList<>(headList.size());
         Set<String> seenNames = new LinkedHashSet<>();
         for (int i = 0; i < headList.size(); i++) {
             Object entry = headList.get(i);
             if (!(entry instanceof Map<?, ?> headMap)) {
-                throw new IllegalStateException(
-                        pathHint + ": params.heads[" + i + "] is not a map");
+                throw new IllegalStateException(pathHint + ": params.heads[" + i + "] is not a map");
             }
             Map<String, Object> head = toStringMap(headMap);
-            String headName = requireString(head, "name",
-                    pathHint + ": params.heads[" + i + "].name");
-            String headRecipe = requireString(head, "recipe",
-                    pathHint + ": params.heads[" + i + "].recipe");
+            String headName = requireString(head, "name", pathHint + ": params.heads[" + i + "].name");
+            String headRecipe = requireString(head, "recipe", pathHint + ": params.heads[" + i + "].recipe");
             if (!seenNames.add(headName)) {
-                throw new IllegalStateException(
-                        pathHint + ": params.heads has duplicate name '"
-                                + headName + "' — head names must be "
-                                + "unique within a council");
+                throw new IllegalStateException(pathHint + ": params.heads has duplicate name '"
+                        + headName + "' — head names must be "
+                        + "unique within a council");
             }
             String persona = optString(head.get("persona"));
             heads.add(new HeadSpec(headName, headRecipe, persona));
@@ -203,8 +183,7 @@ public final class ZaphodHeadsParser {
         return new Spec(name, description, pattern, maxRounds, heads, synthesisPrompt);
     }
 
-    private static int parseMaxRounds(
-            Map<String, Object> params, ZaphodPattern pattern, String pathHint) {
+    private static int parseMaxRounds(Map<String, Object> params, ZaphodPattern pattern, String pathHint) {
         Object raw = params.get("maxRounds");
         if (pattern == ZaphodPattern.COUNCIL) {
             // Engine forces 1 — we accept the field for ergonomic
@@ -222,21 +201,16 @@ public final class ZaphodHeadsParser {
             try {
                 value = Integer.parseInt(String.valueOf(raw).trim());
             } catch (NumberFormatException e) {
-                throw new IllegalStateException(
-                        pathHint + ": params.maxRounds='" + raw
-                                + "' is not an integer");
+                throw new IllegalStateException(pathHint + ": params.maxRounds='" + raw + "' is not an integer", e);
             }
         }
         if (value < 1) {
-            throw new IllegalStateException(
-                    pathHint + ": params.maxRounds=" + value
-                            + " must be at least 1");
+            throw new IllegalStateException(pathHint + ": params.maxRounds=" + value + " must be at least 1");
         }
         if (value > MAX_ROUNDS_HARD_CAP) {
-            throw new IllegalStateException(
-                    pathHint + ": params.maxRounds=" + value
-                            + " exceeds hard cap of " + MAX_ROUNDS_HARD_CAP
-                            + " — pick a tighter budget");
+            throw new IllegalStateException(pathHint + ": params.maxRounds=" + value
+                    + " exceeds hard cap of " + MAX_ROUNDS_HARD_CAP
+                    + " — pick a tighter budget");
         }
         return value;
     }
@@ -252,17 +226,14 @@ public final class ZaphodHeadsParser {
         return out;
     }
 
-    private static String requireString(
-            Map<String, Object> map, String key, String pathHint) {
+    private static String requireString(Map<String, Object> map, String key, String pathHint) {
         Object v = map.get(key);
         if (v == null) {
-            throw new IllegalStateException(
-                    pathHint + ": missing required field '" + key + "'");
+            throw new IllegalStateException(pathHint + ": missing required field '" + key + "'");
         }
         String s = String.valueOf(v).trim();
         if (s.isEmpty()) {
-            throw new IllegalStateException(
-                    pathHint + ": field '" + key + "' is blank");
+            throw new IllegalStateException(pathHint + ": field '" + key + "' is blank");
         }
         return s;
     }

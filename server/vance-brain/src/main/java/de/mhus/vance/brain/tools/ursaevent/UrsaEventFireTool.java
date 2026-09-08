@@ -48,27 +48,35 @@ public class UrsaEventFireTool implements Tool {
     private static final int OUTPUT_MAX_CHARS = 4000;
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("name", Map.of(
-                "type", "string",
-                "description", "Event name (without .yaml suffix), as it appears under _vance/events/."));
-        props.put("payload", Map.of(
-                "type", "object",
-                "description", "Optional JSON payload — exposed to the spawned "
-                        + "workflow/recipe under the 'payload' params key. "
-                        + "Mirrors what an external webhook caller would POST."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", props,
-                "required", List.of("name"));
+        props.put(
+                "name",
+                Map.of(
+                        "type", "string",
+                        "description", "Event name (without .yaml suffix), as it appears under _vance/events/."));
+        props.put(
+                "payload",
+                Map.of(
+                        "type",
+                        "object",
+                        "description",
+                        "Optional JSON payload — exposed to the spawned "
+                                + "workflow/recipe under the 'payload' params key. "
+                                + "Mirrors what an external webhook caller would POST."));
+        SCHEMA = Map.of("type", "object", "properties", props, "required", List.of("name"));
     }
 
     private final UrsaEventService eventService;
 
-    @Override public String name() { return "event_fire"; }
+    @Override
+    public String name() {
+        return "event_fire";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Trigger a configured UrsaEvent from the current project, "
                 + "bypassing the webhook bearer-token check. Returns "
                 + "correlationId + logPath so the run can be inspected via "
@@ -81,9 +89,20 @@ public class UrsaEventFireTool implements Tool {
                 + "do not retry waiting for one, read the log instead.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("admin", "events"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("admin", "events");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -105,7 +124,7 @@ public class UrsaEventFireTool implements Tool {
             // finally block — except for not_found which is
             // intentionally skip-logged.
             String reason = ex.getReason() == null ? ex.getStatusCode().toString() : ex.getReason();
-            throw new ToolException(reason);
+            throw new ToolException(reason, ex);
         }
 
         // The Result echoes the exact firedAt and correlationId the
@@ -121,9 +140,11 @@ public class UrsaEventFireTool implements Tool {
             out.put("output", capOutput(result.output()));
             out.put("note", "Event ran to completion; 'output' is its result.");
         } else {
-            out.put("note", "Event fired without a result — it is a spawn, is configured "
-                    + "async: true, or withholds its output from agents. Read '" + logPath
-                    + "' via doc_read for the per-trigger log.");
+            out.put(
+                    "note",
+                    "Event fired without a result — it is a spawn, is configured "
+                            + "async: true, or withholds its output from agents. Read '" + logPath
+                            + "' via doc_read for the per-trigger log.");
         }
         return out;
     }

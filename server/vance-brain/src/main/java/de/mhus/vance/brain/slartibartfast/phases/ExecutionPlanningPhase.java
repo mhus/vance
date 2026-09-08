@@ -4,7 +4,6 @@ import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.ArchitectStatus;
 import de.mhus.vance.api.slartibartfast.ExecutionDecision;
 import de.mhus.vance.api.slartibartfast.LlmCallRecord;
-import de.mhus.vance.api.slartibartfast.OutputSchemaType;
 import de.mhus.vance.api.slartibartfast.PhaseIteration;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
@@ -153,20 +152,14 @@ public class ExecutionPlanningPhase {
     private final ObjectMapper objectMapper;
     private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
 
-    public void execute(
-            ArchitectState state,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
-        EngineChatFactory.EngineChatBundle bundle =
-                engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
-        String modelAlias = bundle.primaryConfig().provider() + ":"
-                + bundle.primaryConfig().modelName();
+    public void execute(ArchitectState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
+        EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
+        String modelAlias =
+                bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
 
         List<ChatMessage> messages = new ArrayList<>();
         String langBlock = languageContextResolver.formatBlock(process);
-        messages.add(SystemMessage.from(langBlock.isEmpty()
-                ? SYSTEM_PROMPT
-                : SYSTEM_PROMPT + "\n\n" + langBlock));
+        messages.add(SystemMessage.from(langBlock.isEmpty() ? SYSTEM_PROMPT : SYSTEM_PROMPT + "\n\n" + langBlock));
         messages.add(UserMessage.from(buildUserPrompt(state)));
 
         DecisionResult parsed = null;
@@ -192,15 +185,16 @@ public class ExecutionPlanningPhase {
                 break;
             } catch (DecisionValidationException ve) {
                 validationError = ve.getMessage();
-                log.info("Slartibartfast id='{}' EXECUTION_PLANNING attempt {} "
-                                + "validation failed: {}",
-                        process.getId(), attempt, validationError);
+                log.info(
+                        "Slartibartfast id='{}' EXECUTION_PLANNING attempt {} " + "validation failed: {}",
+                        process.getId(),
+                        attempt,
+                        validationError);
                 if (attempt < MAX_OUTPUT_CORRECTIONS) {
                     messages.add(AiMessage.from(text));
-                    messages.add(UserMessage.from(
-                            "Your last JSON was rejected: " + validationError
-                                    + "\n\nCorrect it and emit a single JSON "
-                                    + "object matching the schema above."));
+                    messages.add(UserMessage.from("Your last JSON was rejected: " + validationError
+                            + "\n\nCorrect it and emit a single JSON "
+                            + "object matching the schema above."));
                 }
             }
         }
@@ -208,18 +202,20 @@ public class ExecutionPlanningPhase {
         if (parsed == null) {
             // Conservative fallback: SKIP on validation failure. Better
             // to not run than to run with an undefined prompt.
-            log.warn("Slartibartfast id='{}' EXECUTION_PLANNING budget "
+            log.warn(
+                    "Slartibartfast id='{}' EXECUTION_PLANNING budget "
                             + "exhausted — defaulting to SKIP "
                             + "(last error: {})",
-                    process.getId(), validationError);
+                    process.getId(),
+                    validationError);
             state.setExecutionDecision(ExecutionDecision.SKIP);
             state.setExecutionPrompt(null);
-            state.setExecutionDecisionReason(
-                    "Decision-LLM produced no valid output after "
-                            + MAX_OUTPUT_CORRECTIONS + " attempts — "
-                            + "defaulting to SKIP for safety. Last error: "
-                            + validationError);
-            appendIteration(state,
+            state.setExecutionDecisionReason("Decision-LLM produced no valid output after "
+                    + MAX_OUTPUT_CORRECTIONS + " attempts — "
+                    + "defaulting to SKIP for safety. Last error: "
+                    + validationError);
+            appendIteration(
+                    state,
                     "decision-LLM",
                     "FALLBACK_SKIP — " + validationError,
                     PhaseIteration.IterationOutcome.PASSED,
@@ -231,15 +227,16 @@ public class ExecutionPlanningPhase {
         state.setExecutionPrompt(parsed.prompt);
         state.setExecutionDecisionReason(parsed.reason);
 
-        log.info("Slartibartfast id='{}' EXECUTION_PLANNING decided {} "
-                        + "(prompt={} chars, reason='{}')",
-                process.getId(), parsed.decision,
+        log.info(
+                "Slartibartfast id='{}' EXECUTION_PLANNING decided {} " + "(prompt={} chars, reason='{}')",
+                process.getId(),
+                parsed.decision,
                 parsed.prompt == null ? 0 : parsed.prompt.length(),
                 parsed.reason);
 
-        appendIteration(state,
-                "schema=" + state.getOutputSchemaType()
-                        + ", description=" + abbrev(state.getUserDescription(), 60),
+        appendIteration(
+                state,
+                "schema=" + state.getOutputSchemaType() + ", description=" + abbrev(state.getUserDescription(), 60),
                 parsed.decision.name() + " — " + parsed.reason,
                 PhaseIteration.IterationOutcome.PASSED,
                 latestLlmRecordId(state));
@@ -249,17 +246,16 @@ public class ExecutionPlanningPhase {
 
     private static String buildUserPrompt(ArchitectState state) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Recipe schema type: ").append(state.getOutputSchemaType())
-                .append("\n");
-        sb.append("Persisted at: ").append(state.getPersistedRecipePath())
-                .append("\n");
-        if (state.getProposedRecipe() != null
-                && state.getProposedRecipe().getName() != null) {
-            sb.append("Recipe name: ").append(state.getProposedRecipe().getName())
+        sb.append("Recipe schema type: ").append(state.getOutputSchemaType()).append("\n");
+        sb.append("Persisted at: ").append(state.getPersistedRecipePath()).append("\n");
+        if (state.getProposedRecipe() != null && state.getProposedRecipe().getName() != null) {
+            sb.append("Recipe name: ")
+                    .append(state.getProposedRecipe().getName())
                     .append("\n");
         }
         sb.append("\nOriginal user description (verbatim):\n")
-                .append(state.getUserDescription()).append("\n\n");
+                .append(state.getUserDescription())
+                .append("\n\n");
         sb.append("Now emit a single JSON object matching the decision schema.");
         return sb.toString();
     }
@@ -276,22 +272,20 @@ public class ExecutionPlanningPhase {
         try {
             root = objectMapper.readValue(jsonOnly, Map.class);
         } catch (RuntimeException e) {
-            throw new DecisionValidationException(
-                    "JSON parse error: " + e.getMessage());
+            throw new DecisionValidationException("JSON parse error: " + e.getMessage(), e);
         }
 
         Object decisionRaw = root.get("decision");
         if (!(decisionRaw instanceof String decisionStr) || decisionStr.isBlank()) {
-            throw new DecisionValidationException(
-                    "required field 'decision' missing or blank");
+            throw new DecisionValidationException("required field 'decision' missing or blank");
         }
         ExecutionDecision decision;
         try {
             decision = ExecutionDecision.valueOf(decisionStr.trim());
         } catch (IllegalArgumentException e) {
             throw new DecisionValidationException(
-                    "decision '" + decisionStr + "' must be one of "
-                            + "USE_USER_PROMPT / USE_GENERATED_PROMPT / SKIP");
+                    "decision '" + decisionStr + "' must be one of " + "USE_USER_PROMPT / USE_GENERATED_PROMPT / SKIP",
+                    e);
         }
 
         Object promptRaw = root.get("prompt");
@@ -301,25 +295,21 @@ public class ExecutionPlanningPhase {
         } else if (promptRaw instanceof String s) {
             prompt = s.trim();
         } else {
-            throw new DecisionValidationException(
-                    "field 'prompt' must be a string or null (got "
-                            + promptRaw.getClass().getSimpleName() + ")");
+            throw new DecisionValidationException("field 'prompt' must be a string or null (got "
+                    + promptRaw.getClass().getSimpleName() + ")");
         }
 
         if (decision == ExecutionDecision.SKIP && prompt != null) {
             // Tolerate but normalise — SKIP must not carry a prompt.
             prompt = null;
         }
-        if (decision != ExecutionDecision.SKIP
-                && (prompt == null || prompt.isBlank())) {
-            throw new DecisionValidationException(
-                    "decision=" + decision + " requires a non-blank prompt");
+        if (decision != ExecutionDecision.SKIP && (prompt == null || prompt.isBlank())) {
+            throw new DecisionValidationException("decision=" + decision + " requires a non-blank prompt");
         }
 
         Object reasonRaw = root.get("reason");
         if (!(reasonRaw instanceof String reason) || reason.isBlank()) {
-            throw new DecisionValidationException(
-                    "required field 'reason' missing or blank");
+            throw new DecisionValidationException("required field 'reason' missing or blank");
         }
 
         return new DecisionResult(decision, prompt, reason.trim());
@@ -334,13 +324,19 @@ public class ExecutionPlanningPhase {
         boolean escape = false;
         for (int i = start; i < raw.length(); i++) {
             char c = raw.charAt(i);
-            if (escape) { escape = false; continue; }
+            if (escape) {
+                escape = false;
+                continue;
+            }
             if (inString) {
                 if (c == '\\') escape = true;
                 else if (c == '"') inString = false;
                 continue;
             }
-            if (c == '"') { inString = true; continue; }
+            if (c == '"') {
+                inString = true;
+                continue;
+            }
             if (c == '{') depth++;
             else if (c == '}') {
                 depth--;
@@ -353,16 +349,14 @@ public class ExecutionPlanningPhase {
     // ──────────────────── Audit append ────────────────────
 
     private static void appendLlmRecord(
-            ArchitectState state, String response, String modelAlias,
-            long durationMs, int attempt) {
+            ArchitectState state, String response, String modelAlias, long durationMs, int attempt) {
         List<LlmCallRecord> records = new ArrayList<>(state.getLlmCallRecords());
         String id = "llm" + (records.size() + 1);
         records.add(LlmCallRecord.builder()
                 .id(id)
                 .phase(ArchitectStatus.EXECUTION_PLANNING)
                 .iteration(attempt + 1)
-                .promptHash(sha256Hex(SYSTEM_PROMPT
-                        + "\n----\n" + state.getUserDescription()))
+                .promptHash(sha256Hex(SYSTEM_PROMPT + "\n----\n" + state.getUserDescription()))
                 .promptPreview(abbrev(SYSTEM_PROMPT, PROMPT_PREVIEW_LIMIT))
                 .response(response)
                 .modelAlias(modelAlias)
@@ -378,12 +372,15 @@ public class ExecutionPlanningPhase {
     }
 
     private static void appendIteration(
-            ArchitectState state, String input, String output,
+            ArchitectState state,
+            String input,
+            String output,
             PhaseIteration.IterationOutcome outcome,
             @Nullable String llmRecordId) {
         int attempt = (int) state.getIterations().stream()
-                .filter(it -> it.getPhase() == ArchitectStatus.EXECUTION_PLANNING)
-                .count() + 1;
+                        .filter(it -> it.getPhase() == ArchitectStatus.EXECUTION_PLANNING)
+                        .count()
+                + 1;
         List<PhaseIteration> log = new ArrayList<>(state.getIterations());
         log.add(PhaseIteration.builder()
                 .iteration(attempt)
@@ -400,12 +397,16 @@ public class ExecutionPlanningPhase {
     // ──────────────────── Internal types ────────────────────
 
     private record DecisionResult(
-            ExecutionDecision decision,
-            @Nullable String prompt,
-            String reason) {}
+            ExecutionDecision decision, @Nullable String prompt, String reason) {}
 
     private static class DecisionValidationException extends RuntimeException {
-        DecisionValidationException(String message) { super(message); }
+        DecisionValidationException(String message) {
+            super(message);
+        }
+
+        DecisionValidationException(String message, @org.jspecify.annotations.Nullable Throwable cause) {
+            super(message, cause);
+        }
     }
 
     // ──────────────────── Utilities ────────────────────

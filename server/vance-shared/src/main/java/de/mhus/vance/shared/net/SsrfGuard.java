@@ -68,6 +68,10 @@ public final class SsrfGuard {
         public SsrfException(String message) {
             super(message);
         }
+
+        public SsrfException(String message, @org.jspecify.annotations.Nullable Throwable cause) {
+            super(message, cause);
+        }
     }
 
     /** Convenience overload — parses {@code url} then delegates. */
@@ -76,7 +80,7 @@ public final class SsrfGuard {
         try {
             uri = URI.create(url.strip());
         } catch (IllegalArgumentException e) {
-            throw new SsrfException("Malformed URL: " + e.getMessage());
+            throw new SsrfException("Malformed URL: " + e.getMessage(), e);
         }
         assertAllowed(uri);
     }
@@ -87,10 +91,8 @@ public final class SsrfGuard {
      */
     public static void assertAllowed(URI uri) {
         String scheme = uri.getScheme();
-        if (scheme == null
-                || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
-            throw new SsrfException(
-                    "Only http:// and https:// URLs are allowed (got scheme '" + scheme + "')");
+        if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
+            throw new SsrfException("Only http:// and https:// URLs are allowed (got scheme '" + scheme + "')");
         }
         String host = uri.getHost();
         if (host == null || host.isBlank()) {
@@ -100,13 +102,12 @@ public final class SsrfGuard {
         try {
             addresses = InetAddress.getAllByName(host);
         } catch (UnknownHostException e) {
-            throw new SsrfException("Host does not resolve: " + host);
+            throw new SsrfException("Host does not resolve: " + host, e);
         }
         for (InetAddress addr : addresses) {
             if (isBlocked(addr)) {
                 throw new SsrfException(
-                        "Refusing to fetch a non-public address: " + host
-                                + " → " + addr.getHostAddress());
+                        "Refusing to fetch a non-public address: " + host + " → " + addr.getHostAddress());
             }
         }
     }
@@ -118,10 +119,10 @@ public final class SsrfGuard {
         if (allowPrivate) {
             return false;
         }
-        if (addr.isLoopbackAddress()      // 127.0.0.0/8, ::1
-                || addr.isAnyLocalAddress()   // 0.0.0.0, ::
-                || addr.isLinkLocalAddress()  // 169.254.0.0/16 (incl. metadata), fe80::/10
-                || addr.isSiteLocalAddress()  // 10/8, 172.16/12, 192.168/16
+        if (addr.isLoopbackAddress() // 127.0.0.0/8, ::1
+                || addr.isAnyLocalAddress() // 0.0.0.0, ::
+                || addr.isLinkLocalAddress() // 169.254.0.0/16 (incl. metadata), fe80::/10
+                || addr.isSiteLocalAddress() // 10/8, 172.16/12, 192.168/16
                 || addr.isMulticastAddress()) {
             return true;
         }
@@ -159,14 +160,12 @@ public final class SsrfGuard {
      * method stops at the 3xx response for the caller to handle.
      */
     public static <T> HttpResponse<T> sendGuarded(
-            HttpClient client, HttpRequest request, HttpResponse.BodyHandler<T> handler,
-            int maxRedirects) throws IOException, InterruptedException {
+            HttpClient client, HttpRequest request, HttpResponse.BodyHandler<T> handler, int maxRedirects)
+            throws IOException, InterruptedException {
         assertAllowed(request.uri());
         HttpResponse<T> response = client.send(request, handler);
         int hops = 0;
-        while (isRedirect(response.statusCode())
-                && hops++ < maxRedirects
-                && isRedirectableMethod(request.method())) {
+        while (isRedirect(response.statusCode()) && hops++ < maxRedirects && isRedirectableMethod(request.method())) {
             Optional<String> location = response.headers().firstValue("location");
             if (location.isEmpty()) break;
             URI next = response.uri().resolve(location.get());
@@ -184,8 +183,7 @@ public final class SsrfGuard {
     }
 
     private static boolean isRedirect(int status) {
-        return status == 301 || status == 302 || status == 303
-                || status == 307 || status == 308;
+        return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
     }
 
     private static boolean isRedirectableMethod(String method) {
@@ -214,8 +212,7 @@ public final class SsrfGuard {
      * future fails with {@link IOException}. Use as
      * {@code sendGuarded(client, req, SsrfGuard.capped(BodyHandlers.ofString()))}.
      */
-    public static <T> HttpResponse.BodyHandler<T> capped(
-            HttpResponse.BodyHandler<T> delegate, long maxBytes) {
+    public static <T> HttpResponse.BodyHandler<T> capped(HttpResponse.BodyHandler<T> delegate, long maxBytes) {
         return info -> new LimitingBodySubscriber<>(delegate.apply(info), maxBytes);
     }
 
@@ -264,8 +261,7 @@ public final class SsrfGuard {
                 if (subscription != null) {
                     subscription.cancel();
                 }
-                downstream.onError(new IOException(
-                        "Response body exceeds max size of " + maxBytes + " bytes"));
+                downstream.onError(new IOException("Response body exceeds max size of " + maxBytes + " bytes"));
                 return;
             }
             downstream.onNext(item);

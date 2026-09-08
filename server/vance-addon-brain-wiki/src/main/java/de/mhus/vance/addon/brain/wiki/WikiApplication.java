@@ -44,13 +44,14 @@ public class WikiApplication implements VanceApplication {
     private final DocumentLinkBuilder linkBuilder;
     private final SecurityContextFactory contextFactory;
 
-    public WikiApplication(WikiFolderReader folderReader,
-                           WikiService wikiService,
-                           WikiIndexRenderer indexRenderer,
-                           WikiBacklinksRenderer backlinksRenderer,
-                           DocumentService documentService,
-                           DocumentLinkBuilder linkBuilder,
-                           SecurityContextFactory contextFactory) {
+    public WikiApplication(
+            WikiFolderReader folderReader,
+            WikiService wikiService,
+            WikiIndexRenderer indexRenderer,
+            WikiBacklinksRenderer backlinksRenderer,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.wikiService = wikiService;
         this.indexRenderer = indexRenderer;
@@ -60,7 +61,10 @@ public class WikiApplication implements VanceApplication {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String appName() { return APP_NAME; }
+    @Override
+    public String appName() {
+        return APP_NAME;
+    }
 
     @Override
     public String promptInject(PromptInjectContext ctx) {
@@ -102,19 +106,15 @@ public class WikiApplication implements VanceApplication {
     @Override
     public List<AppTarget> targets(TargetsContext ctx) {
         if (ctx.purpose() != TargetPurpose.NAVIGATE) return List.of();
-        WikiFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), ctx.folder());
+        WikiFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), ctx.folder());
         List<AppTarget> out = new ArrayList<>(scan.pages().size());
         for (WikiPage page : scan.pages()) {
-            String handle = page.space().isBlank()
-                    ? page.slug() : page.space() + "/" + page.slug();
+            String handle = page.space().isBlank() ? page.slug() : page.space() + "/" + page.slug();
             if (handle.isBlank()) {
-                log.debug("wiki targets: page '{}' has no addressable slug — skipped",
-                        page.relativePath());
+                log.debug("wiki targets: page '{}' has no addressable slug — skipped", page.relativePath());
                 continue;
             }
-            String label = page.title() != null && !page.title().isBlank()
-                    ? page.title() : handle;
+            String label = page.title() != null && !page.title().isBlank() ? page.title() : handle;
             out.add(new AppTarget(handle, label, page.space().isBlank() ? null : page.space()));
         }
         return List.copyOf(out);
@@ -126,12 +126,11 @@ public class WikiApplication implements VanceApplication {
         Map<String, Object> params = ctx.params() != null ? ctx.params() : new LinkedHashMap<>();
         String manifestPath = folder + "/" + WikiFolderReader.APP_MANIFEST;
 
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), manifestPath);
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
             throw new ToolException(
-                    "Manifest already exists at '" + manifestPath
-                            + "'. Pass overwrite=true to replace it.");
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -140,11 +139,10 @@ public class WikiApplication implements VanceApplication {
         StringBuilder mb = new StringBuilder();
         mb.append("$meta:\n  kind: application\n  app: wiki\n");
         if (title != null) mb.append("title: \"").append(escape(title)).append("\"\n");
-        if (description != null) mb.append("description: \"").append(escape(description)).append("\"\n");
+        if (description != null)
+            mb.append("description: \"").append(escape(description)).append("\"\n");
         mb.append("wiki:\n");
-        mb.append("  index:\n")
-                .append("    outputPath: _index.md\n")
-                .append("    showDescriptions: true\n");
+        mb.append("  index:\n").append("    outputPath: _index.md\n").append("    showDescriptions: true\n");
         mb.append("  recentLimit: ").append(WikiConfig.DEFAULT_RECENT_LIMIT).append("\n");
         mb.append("  defaultPageKind: workpage\n");
         String manifestBody = mb.toString();
@@ -155,31 +153,36 @@ public class WikiApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Wiki",
                     List.of("application", "wiki"),
-                    manifestBody, null, null, null, null, YAML_MIME,
+                    manifestBody,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
-            try (InputStream in = new ByteArrayInputStream(
-                    manifestBody.getBytes(StandardCharsets.UTF_8))) {
+            try (InputStream in = new ByteArrayInputStream(manifestBody.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
-                        ctx.tenantId(), ctx.projectName(),
+                        ctx.tenantId(),
+                        ctx.projectName(),
                         manifestPath,
                         title != null ? title : "Wiki",
                         List.of("application", "wiki"),
-                        YAML_MIME, in, ctx.userId(),
+                        YAML_MIME,
+                        in,
+                        ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not write manifest '" + manifestPath + "': " + e.getMessage());
+                throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
         }
 
         // Seed the curated root home page if absent.
-        seedMainIfAbsent(ctx.tenantId(), ctx.projectName(), folder,
-                title != null ? title : "Home", ctx.userId());
+        seedMainIfAbsent(ctx.tenantId(), ctx.projectName(), folder, title != null ? title : "Home", ctx.userId());
 
-        RefreshContext rc = new RefreshContext(
-                ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
+        RefreshContext rc =
+                new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
         RefreshResult refresh = refresh(rc);
 
         log.info("WikiApplication.create tenant='{}' folder='{}'", ctx.tenantId(), folder);
@@ -194,18 +197,20 @@ public class WikiApplication implements VanceApplication {
                 + "to regenerate the indexes + backlinks.";
 
         return new CreateResult(
-                APP_NAME, folder, stored.getPath(),
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
                 List.of(),
                 refresh.artefacts(),
-                nextStep, stats);
+                nextStep,
+                stats);
     }
 
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
         String folder = WikiFolderReader.normaliseFolder(ctx.folder());
-        WikiFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), folder);
+        WikiFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
 
         String title = scan.config().title();
         if (title == null || title.isBlank()) title = leafFolderName(folder);
@@ -229,8 +234,8 @@ public class WikiApplication implements VanceApplication {
             String label = space.isEmpty()
                     ? "Index — " + title
                     : "Index — " + WikiFolderReader.humanise(space.replace('/', ' '));
-            DocumentDocument stored = writeArtefact(ctx, outputPath, indexBody, label, MD_MIME,
-                    List.of("wiki", "generated", "index"));
+            DocumentDocument stored =
+                    writeArtefact(ctx, outputPath, indexBody, label, MD_MIME, List.of("wiki", "generated", "index"));
             Map<String, Object> stats = new LinkedHashMap<>();
             stats.put("space", space);
             stats.put("pageCount", wikiService.pagesInSpace(scan, space).size());
@@ -245,17 +250,25 @@ public class WikiApplication implements VanceApplication {
         Map<String, List<String>> graph = wikiService.buildBacklinks(scan);
         String backlinksBody = backlinksRenderer.render(scan, graph);
         String backlinksPath = folder + "/" + BACKLINKS_FILE;
-        DocumentDocument backlinks = writeArtefact(ctx, backlinksPath, backlinksBody,
-                "Backlinks — " + title, YAML_MIME, List.of("wiki", "generated", "backlinks"));
+        DocumentDocument backlinks = writeArtefact(
+                ctx,
+                backlinksPath,
+                backlinksBody,
+                "Backlinks — " + title,
+                YAML_MIME,
+                List.of("wiki", "generated", "backlinks"));
         Map<String, Object> backlinkStats = new LinkedHashMap<>();
         backlinkStats.put("targetCount", graph.size());
         artefacts.add(new ArtefactResult(
-                "backlinks", backlinks.getPath(),
-                linkBuilder.linkFor(backlinks, ctx.projectName()),
-                backlinkStats));
+                "backlinks", backlinks.getPath(), linkBuilder.linkFor(backlinks, ctx.projectName()), backlinkStats));
 
-        log.info("WikiApplication.refresh tenant='{}' folder='{}' spaces={} pages={} backlinkTargets={}",
-                ctx.tenantId(), folder, scan.spaces().size(), scan.pages().size(), graph.size());
+        log.info(
+                "WikiApplication.refresh tenant='{}' folder='{}' spaces={} pages={} backlinkTargets={}",
+                ctx.tenantId(),
+                folder,
+                scan.spaces().size(),
+                scan.pages().size(),
+                graph.size());
 
         return new RefreshResult(APP_NAME, folder, artefacts);
     }
@@ -265,43 +278,59 @@ public class WikiApplication implements VanceApplication {
      * Returns {@code true} when a page was created (caller should re-scan).
      * Never overwrites — {@code main} is user-curated.
      */
-    private boolean seedMainIfAbsent(String tenant, String project, String folder,
-                                     String title, @Nullable String userId) {
+    private boolean seedMainIfAbsent(
+            String tenant, String project, String folder, String title, @Nullable String userId) {
         String mainPath = folder + "/" + WikiFolderReader.MAIN_PAGE + WikiFolderReader.PAGE_EXTENSION;
         if (documentService.findByPath(tenant, project, mainPath).isPresent()) return false;
         String homeBody = WikiService.workpageStub(title);
         try (InputStream in = new ByteArrayInputStream(homeBody.getBytes(StandardCharsets.UTF_8))) {
-            documentService.create(tenant, project, mainPath, title,
-                    List.of("wiki", "workpage"), MD_MIME, in, userId,
+            documentService.create(
+                    tenant,
+                    project,
+                    mainPath,
+                    title,
+                    List.of("wiki", "workpage"),
+                    MD_MIME,
+                    in,
+                    userId,
                     contextFactory.writeActor(tenant, userId, mainPath));
             log.info("WikiApplication.seedMain tenant='{}' path='{}'", tenant, mainPath);
             return true;
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not seed home page '" + mainPath + "': " + e.getMessage());
+            throw new ToolException("Could not seed home page '" + mainPath + "': " + e.getMessage(), e);
         }
     }
 
-    private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath,
-                                           String body, String title, String mime,
-                                           List<String> tags) {
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), outputPath);
+    private DocumentDocument writeArtefact(
+            RefreshContext ctx, String outputPath, String body, String title, String mime, List<String> tags) {
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
         if (existing.isPresent()) {
             return documentService.update(
-                    existing.get().getId(), title, tags,
-                    body, null, null, null, null, mime,
+                    existing.get().getId(),
+                    title,
+                    tags,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    mime,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
-                    ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, tags, mime, in, ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    outputPath,
+                    title,
+                    tags,
+                    mime,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write artefact '" + outputPath + "': " + e.getMessage());
+            throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }
     }
 
@@ -322,7 +351,9 @@ public class WikiApplication implements VanceApplication {
         // a backslash (e.g. "C:\") otherwise emits an unterminated double-quoted
         // YAML scalar that SnakeYAML rejects, corrupting the manifest so every
         // later scan() throws until the file is hand-repaired.
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "");
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "");
     }
 }

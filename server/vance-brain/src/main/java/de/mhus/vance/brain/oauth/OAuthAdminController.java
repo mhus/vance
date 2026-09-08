@@ -61,8 +61,7 @@ public class OAuthAdminController {
      * its Tenant ADMIN check; WriteReason.SYSTEM is the hint that lets the
      * resolver allow the reserved-path write, real user kept for audit. (F1)
      */
-    private de.mhus.vance.shared.permission.WriteActor systemActor(
-            jakarta.servlet.http.HttpServletRequest request) {
+    private de.mhus.vance.shared.permission.WriteActor systemActor(jakarta.servlet.http.HttpServletRequest request) {
         return de.mhus.vance.shared.permission.WriteActor.system(authority.contextOf(request));
     }
 
@@ -70,8 +69,7 @@ public class OAuthAdminController {
 
     @GetMapping("/providers")
     public List<OAuthProviderAdminDto> listProviders(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         List<OAuthProviderAdminDto> out = new ArrayList<>();
         for (ResolvedOAuthProvider rp : configRegistry.list(tenant)) {
@@ -87,9 +85,10 @@ public class OAuthAdminController {
             @PathVariable("providerId") String providerId,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
-        ResolvedOAuthProvider rp = configRegistry.resolve(tenant, providerId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "No OAuth provider '" + providerId + "' in tenant '" + tenant + "'"));
+        ResolvedOAuthProvider rp = configRegistry
+                .resolve(tenant, providerId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No OAuth provider '" + providerId + "' in tenant '" + tenant + "'"));
         return toDto(tenant, rp.config().providerId(), rp.config());
     }
 
@@ -106,26 +105,29 @@ public class OAuthAdminController {
         String createdBy = authority.contextOf(httpRequest).subjectId();
 
         if (body.getYaml() == null || body.getYaml().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "'yaml' must be a non-empty string");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'yaml' must be a non-empty string");
         }
         try {
             loader.validateYaml(norm, body.getYaml());
         } catch (OAuthProviderLoader.OAuthProviderParseException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }
 
         String path = OAuthProviderLoader.pathFor(norm);
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                tenant, HomeBootstrapService.TENANT_PROJECT_NAME, path);
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(tenant, HomeBootstrapService.TENANT_PROJECT_NAME, path);
         boolean created = existing.isEmpty();
         if (existing.isPresent()) {
-            documentService.update(existing.get().getId(), null, null, body.getYaml(), null,
-                    systemActor(httpRequest));
+            documentService.update(existing.get().getId(), null, null, body.getYaml(), null, systemActor(httpRequest));
         } else {
             documentService.createText(
-                    tenant, HomeBootstrapService.TENANT_PROJECT_NAME, path,
-                    "OAuth provider: " + norm, null, body.getYaml(), createdBy,
+                    tenant,
+                    HomeBootstrapService.TENANT_PROJECT_NAME,
+                    path,
+                    "OAuth provider: " + norm,
+                    null,
+                    body.getYaml(),
+                    createdBy,
                     systemActor(httpRequest));
         }
 
@@ -135,24 +137,28 @@ public class OAuthAdminController {
         if (body.getClientSecret() != null) {
             String secretKey = OAuthProviderLoader.clientSecretKey(norm);
             if (body.getClientSecret().isEmpty()) {
-                settingService.delete(tenant, SettingService.SCOPE_PROJECT,
-                        HomeBootstrapService.TENANT_PROJECT_NAME, secretKey);
+                settingService.delete(
+                        tenant, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, secretKey);
             } else {
-                settingService.setEncryptedPassword(tenant, SettingService.SCOPE_PROJECT,
-                        HomeBootstrapService.TENANT_PROJECT_NAME, secretKey,
+                settingService.setEncryptedPassword(
+                        tenant,
+                        SettingService.SCOPE_PROJECT,
+                        HomeBootstrapService.TENANT_PROJECT_NAME,
+                        secretKey,
                         body.getClientSecret());
             }
         }
 
         configRegistry.refreshOne(tenant, norm);
-        log.info("OAuth provider admin {}: tenant='{}' provider='{}'",
-                created ? "created" : "updated", tenant, norm);
+        log.info("OAuth provider admin {}: tenant='{}' provider='{}'", created ? "created" : "updated", tenant, norm);
 
-        OAuthProviderAdminDto dto = configRegistry.resolve(tenant, norm)
+        OAuthProviderAdminDto dto = configRegistry
+                .resolve(tenant, norm)
                 .map(rp -> toDto(tenant, norm, rp.config()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "OAuth provider vanished immediately after write"));
-        return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK).body(dto);
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR, "OAuth provider vanished immediately after write"));
+        return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(dto);
     }
 
     // ──────────────────── Delete ────────────────────
@@ -166,13 +172,14 @@ public class OAuthAdminController {
         String norm = OAuthProviderLoader.normalizedName(providerId);
 
         Optional<DocumentDocument> existing = documentService.findByPath(
-                tenant, HomeBootstrapService.TENANT_PROJECT_NAME,
-                OAuthProviderLoader.pathFor(norm));
+                tenant, HomeBootstrapService.TENANT_PROJECT_NAME, OAuthProviderLoader.pathFor(norm));
         if (existing.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         documentService.delete(existing.get().getId(), systemActor(httpRequest));
-        settingService.delete(tenant, SettingService.SCOPE_PROJECT,
+        settingService.delete(
+                tenant,
+                SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.TENANT_PROJECT_NAME,
                 OAuthProviderLoader.clientSecretKey(norm));
         configRegistry.refreshOne(tenant, norm);
@@ -182,20 +189,21 @@ public class OAuthAdminController {
 
     // ──────────────────── Mapping ────────────────────
 
-    private OAuthProviderAdminDto toDto(
-            String tenant, String providerId, OAuthProviderConfig cfg) {
+    private OAuthProviderAdminDto toDto(String tenant, String providerId, OAuthProviderConfig cfg) {
         // Re-read the YAML body straight from DocumentService so the
         // editor receives the verbatim text (with comments, ordering).
         // For resource-layer entries the body still round-trips.
-        String yamlBody = documentService.lookupCascade(
-                        tenant, HomeBootstrapService.TENANT_PROJECT_NAME,
-                        OAuthProviderLoader.pathFor(providerId))
+        String yamlBody = documentService
+                .lookupCascade(
+                        tenant, HomeBootstrapService.TENANT_PROJECT_NAME, OAuthProviderLoader.pathFor(providerId))
                 .map(hit -> hit.content())
                 .orElse(null);
         boolean hasSecret = settingService.getDecryptedPassword(
-                tenant, SettingService.SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME,
-                OAuthProviderLoader.clientSecretKey(providerId)) != null;
+                        tenant,
+                        SettingService.SCOPE_PROJECT,
+                        HomeBootstrapService.TENANT_PROJECT_NAME,
+                        OAuthProviderLoader.clientSecretKey(providerId))
+                != null;
         return OAuthProviderAdminDto.builder()
                 .providerId(providerId)
                 .typeId(cfg.typeId())

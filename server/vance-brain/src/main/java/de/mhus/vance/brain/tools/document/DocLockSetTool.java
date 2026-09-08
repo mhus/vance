@@ -118,7 +118,7 @@ public class DocLockSetTool implements Tool {
                     try {
                         out.add(WriterRole.valueOf(s.trim().toUpperCase()));
                     } catch (IllegalArgumentException e) {
-                        throw new ToolException("Unknown WriterRole '" + s + "' — expected one of AI, USER, KIT");
+                        throw new ToolException("Unknown WriterRole '" + s + "' — expected one of AI, USER, KIT", e);
                     }
                 }
             }

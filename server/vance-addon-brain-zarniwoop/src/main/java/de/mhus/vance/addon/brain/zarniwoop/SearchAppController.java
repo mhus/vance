@@ -13,7 +13,6 @@ import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.research.ContentInline;
 import de.mhus.vance.toolpack.research.ContentReference;
-import de.mhus.vance.toolpack.research.DroppedHit;
 import de.mhus.vance.toolpack.research.LoadedContent;
 import de.mhus.vance.toolpack.research.RankedHit;
 import de.mhus.vance.toolpack.research.RankedHitSet;
@@ -91,32 +90,35 @@ public class SearchAppController {
      * like a wrong key.
      */
     @GetMapping("/brain/{tenant}/addon/search/providers")
-    public List<ZarniwoopInsightsDto> providers(@PathVariable String tenant,
-                                                @RequestParam String projectId,
-                                                @RequestParam(defaultValue = "false")
-                                                boolean refresh,
-                                                HttpServletRequest request) {
+    public List<ZarniwoopInsightsDto> providers(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam(defaultValue = "false") boolean refresh,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         return insightsService.listInstances(tenant, projectId, refresh);
     }
 
     @GetMapping("/brain/{tenant}/addon/search/config")
-    public SearchConfigView config(@PathVariable String tenant,
-                                   @RequestParam String projectId,
-                                   @RequestParam String folder,
-                                   HttpServletRequest request) {
+    public SearchConfigView config(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
-        return toView(SearchApplication.normaliseFolder(folder),
+        return toView(
+                SearchApplication.normaliseFolder(folder),
                 application.readManifest(tenant, projectId, folder).title(),
                 application.readConfig(tenant, projectId, folder));
     }
 
     @PutMapping("/brain/{tenant}/addon/search/config")
-    public SearchConfigView saveConfig(@PathVariable String tenant,
-                                       @RequestParam String projectId,
-                                       @RequestParam String folder,
-                                       @RequestBody SearchConfigView body,
-                                       HttpServletRequest request) {
+    public SearchConfigView saveConfig(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody SearchConfigView body,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         application.writeConfig(tenant, projectId, folder, fromView(body), currentUser(request));
         return config(tenant, projectId, folder, request);
@@ -131,11 +133,12 @@ public class SearchAppController {
      * one — a reader who may see the project's research configuration may use it.
      */
     @PostMapping("/brain/{tenant}/addon/search/search")
-    public SearchResultView search(@PathVariable String tenant,
-                                   @RequestParam String projectId,
-                                   @RequestParam(required = false) @Nullable String folder,
-                                   @RequestBody SearchRequestView body,
-                                   HttpServletRequest request) {
+    public SearchResultView search(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam(required = false) @Nullable String folder,
+            @RequestBody SearchRequestView body,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         if (body == null || StringUtils.isBlank(body.query())) {
             throw new IllegalArgumentException("query is required");
@@ -145,18 +148,19 @@ public class SearchAppController {
         // The manifest supplies the defaults only when a folder was named. A
         // search without one is still valid — the surface may be previewing
         // before anything is stored.
-        SearchConfig config = StringUtils.isBlank(folder)
-                ? SearchConfig.empty()
-                : application.readConfig(tenant, projectId, folder);
+        SearchConfig config =
+                StringUtils.isBlank(folder) ? SearchConfig.empty() : application.readConfig(tenant, projectId, folder);
 
-        SearchModality modality = body.modality() == null
-                ? config.defaultModality()
-                : SearchConfig.modality(body.modality());
+        SearchModality modality =
+                body.modality() == null ? config.defaultModality() : SearchConfig.modality(body.modality());
         SearchTier tier = SearchConfig.tier(body.tier());
         int num = body.num() == null || body.num() <= 0 ? config.defaultNum() : body.num();
 
         SearchRequest req = new SearchRequest(
-                body.query().trim(), modality, tier, num,
+                body.query().trim(),
+                modality,
+                tier,
+                num,
                 locale(body.locale()),
                 // Pinning is expert-tier only in the dispatcher; passing it at
                 // normal tier would silently do nothing, so it is dropped here
@@ -184,25 +188,26 @@ public class SearchAppController {
      * a later phase adds Wikipedia and PubMed.
      */
     @PostMapping("/brain/{tenant}/addon/search/content")
-    public ResponseEntity<byte[]> content(@PathVariable String tenant,
-                                          @RequestParam String projectId,
-                                          @RequestBody ContentRequestView body,
-                                          HttpServletRequest request) {
+    public ResponseEntity<byte[]> content(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestBody ContentRequestView body,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
-        if (body == null || StringUtils.isBlank(body.instanceId())
-                || StringUtils.isBlank(body.contentId())) {
+        if (body == null || StringUtils.isBlank(body.instanceId()) || StringUtils.isBlank(body.contentId())) {
             throw new IllegalArgumentException("instanceId and contentId are required");
         }
         SearchScope scope = scope(tenant, projectId, request);
 
         SearchProviderInstance instance = findInstance(scope, body.instanceId());
         String mime = StringUtils.isBlank(body.mimeType())
-                ? "application/octet-stream" : body.mimeType().trim();
+                ? "application/octet-stream"
+                : body.mimeType().trim();
 
         // Rebuilt rather than remembered: holding a per-hit reference in memory
         // would tie the click to whichever pod answered the search.
-        ContentReference ref = new ContentReference(
-                body.contentId(), mime, 0L, ContentInline.STASH_ON_DEMAND, null, null);
+        ContentReference ref =
+                new ContentReference(body.contentId(), mime, 0L, ContentInline.STASH_ON_DEMAND, null, null);
 
         LoadedContent loaded;
         try {
@@ -210,15 +215,13 @@ public class SearchAppController {
         } catch (UnsupportedOperationException e) {
             // The provider never implemented it. A 409 rather than a 500: this
             // is the caller asking for something this source does not do.
-            throw new IllegalArgumentException("provider '" + body.instanceId()
-                    + "' does not serve hit bodies");
+            throw new IllegalArgumentException("provider '" + body.instanceId() + "' does not serve hit bodies", e);
         }
         byte[] bytes;
         try {
             bytes = Files.readAllBytes(loaded.stashPath());
         } catch (IOException e) {
-            throw new IllegalStateException(
-                    "could not read stashed content of '" + body.contentId() + "'", e);
+            throw new IllegalStateException("could not read stashed content of '" + body.contentId() + "'", e);
         }
         return ResponseEntity.ok()
                 // The type is clamped, not echoed. These bytes come from a
@@ -244,17 +247,17 @@ public class SearchAppController {
      * search button it would be a cost trap.
      */
     @PostMapping("/brain/{tenant}/addon/search/investigate")
-    public InvestigateResultView investigate(@PathVariable String tenant,
-                                            @RequestParam String projectId,
-                                            @RequestBody InvestigateRequestView body,
-                                            HttpServletRequest request) {
+    public InvestigateResultView investigate(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestBody InvestigateRequestView body,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         if (body == null || StringUtils.isBlank(body.question())) {
             throw new IllegalArgumentException("question is required");
         }
         SearchScope scope = scope(tenant, projectId, request);
-        RankedHitSet ranked = researchService.investigate(
-                body.question().trim(), scope, toolContext(scope));
+        RankedHitSet ranked = researchService.investigate(body.question().trim(), scope, toolContext(scope));
         return toView(ranked);
     }
 
@@ -266,8 +269,7 @@ public class SearchAppController {
      */
     @ExceptionHandler({ZarniwoopException.class, IllegalArgumentException.class})
     public ResponseEntity<Map<String, String>> onRefused(RuntimeException e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(Map.of("error", String.valueOf(e.getMessage())));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", String.valueOf(e.getMessage())));
     }
 
     // ── mapping ──────────────────────────────────────────────────────
@@ -304,8 +306,7 @@ public class SearchAppController {
             contentId = content.contentId();
             mimeType = content.mimeType();
             sizeBytes = content.sizeBytes() > 0 ? content.sizeBytes() : null;
-            if (content.inline() == ContentInline.EMBED_TEXT
-                    && !StringUtils.isBlank(content.inlineText())) {
+            if (content.inline() == ContentInline.EMBED_TEXT && !StringUtils.isBlank(content.inlineText())) {
                 state = SearchHitView.CONTENT_EMBEDDED;
                 body = content.inlineText();
             } else if (content.inline() == ContentInline.STASH_ON_DEMAND) {
@@ -320,9 +321,16 @@ public class SearchAppController {
             }
         }
         return new SearchHitView(
-                hit.title(), hit.url(), hit.snippet(), hit.source(),
+                hit.title(),
+                hit.url(),
+                hit.snippet(),
+                hit.source(),
                 hit.modality().name().toLowerCase(Locale.ROOT),
-                body, contentId, state, mimeType, sizeBytes,
+                body,
+                contentId,
+                state,
+                mimeType,
+                sizeBytes,
                 hit.extras() == null ? Map.of() : hit.extras());
     }
 
@@ -330,34 +338,34 @@ public class SearchAppController {
         List<RankedHitView> hits = new ArrayList<>(ranked.keptHits().size());
         for (RankedHit hit : ranked.keptHits()) {
             hits.add(new RankedHitView(
-                    hit.title(), hit.url(),
+                    hit.title(),
+                    hit.url(),
                     hit.modality().name().toLowerCase(Locale.ROOT),
                     hit.providerInstanceId(),
-                    hit.finalScore(), hit.relevanceScore(),
-                    hit.snippet(), hit.relevanceNote(),
+                    hit.finalScore(),
+                    hit.relevanceScore(),
+                    hit.snippet(),
+                    hit.relevanceNote(),
                     hit.extras() == null ? Map.of() : hit.extras()));
         }
         List<String> instances = new ArrayList<>(ranked.instancesUsed());
         instances.sort(String::compareTo);
         return new InvestigateResultView(
-                ranked.question(), hits,
-                ranked.droppedHits().size(),
-                instances,
-                ranked.gaps());
+                ranked.question(), hits, ranked.droppedHits().size(), instances, ranked.gaps());
     }
 
-    private static SearchConfigView toView(
-            String folder, @Nullable String title, SearchConfig config) {
+    private static SearchConfigView toView(String folder, @Nullable String title, SearchConfig config) {
         List<SavedSearchView> saved = new ArrayList<>(config.savedSearches().size());
         for (SearchConfig.SavedSearch s : config.savedSearches()) {
-            saved.add(new SavedSearchView(s.name(), s.query(),
+            saved.add(new SavedSearchView(
+                    s.name(),
+                    s.query(),
                     s.modality().name().toLowerCase(Locale.ROOT),
                     s.tier().name().toLowerCase(Locale.ROOT),
                     s.instance()));
         }
-        return new SearchConfigView(folder, title,
-                config.defaultModality().name().toLowerCase(Locale.ROOT),
-                config.defaultNum(), saved);
+        return new SearchConfigView(
+                folder, title, config.defaultModality().name().toLowerCase(Locale.ROOT), config.defaultNum(), saved);
     }
 
     private static SearchConfig fromView(SearchConfigView view) {
@@ -367,19 +375,20 @@ public class SearchAppController {
         List<SearchConfig.SavedSearch> saved = new ArrayList<>();
         if (view.savedSearches() != null) {
             for (SavedSearchView s : view.savedSearches()) {
-                if (s == null || StringUtils.isBlank(s.name())
-                        || StringUtils.isBlank(s.query())) {
+                if (s == null || StringUtils.isBlank(s.name()) || StringUtils.isBlank(s.query())) {
                     // Skipping an unusable row beats refusing the whole save and
                     // losing the rows that were fine.
                     continue;
                 }
-                saved.add(new SearchConfig.SavedSearch(s.name().trim(), s.query().trim(),
-                        SearchConfig.modality(s.modality()), SearchConfig.tier(s.tier()),
+                saved.add(new SearchConfig.SavedSearch(
+                        s.name().trim(),
+                        s.query().trim(),
+                        SearchConfig.modality(s.modality()),
+                        SearchConfig.tier(s.tier()),
                         blankToNull(s.instance())));
             }
         }
-        return new SearchConfig(
-                SearchConfig.modality(view.defaultModality()), view.defaultNum(), saved);
+        return new SearchConfig(SearchConfig.modality(view.defaultModality()), view.defaultNum(), saved);
     }
 
     // ── internals ────────────────────────────────────────────────────
@@ -432,11 +441,10 @@ public class SearchAppController {
         } catch (RuntimeException e) {
             return MediaType.APPLICATION_OCTET_STREAM;
         }
-        String essence = parsed.getType().toLowerCase(Locale.ROOT)
-                + "/" + parsed.getSubtype().toLowerCase(Locale.ROOT);
+        String essence = parsed.getType().toLowerCase(Locale.ROOT) + "/"
+                + parsed.getSubtype().toLowerCase(Locale.ROOT);
         if (!INLINE_SAFE_TYPES.contains(essence)) {
-            log.debug("Search app: hit body declared '{}' — serving it as an opaque "
-                    + "download instead", essence);
+            log.debug("Search app: hit body declared '{}' — serving it as an opaque " + "download instead", essence);
             return MediaType.APPLICATION_OCTET_STREAM;
         }
         // Rebuilt from the essence so a boundary or other parameter the source
@@ -492,8 +500,7 @@ public class SearchAppController {
         return out;
     }
 
-    private static SearchScope scope(
-            String tenant, String projectId, HttpServletRequest request) {
+    private static SearchScope scope(String tenant, String projectId, HttpServletRequest request) {
         return new SearchScope(tenant, projectId, null, currentUser(request));
     }
 
@@ -503,8 +510,7 @@ public class SearchAppController {
      * and inventing one would put a fake process in the research log.
      */
     private static ToolInvocationContext toolContext(SearchScope scope) {
-        return new ToolInvocationContext(
-                scope.tenantId(), scope.projectId(), null, null, scope.userId());
+        return new ToolInvocationContext(scope.tenantId(), scope.projectId(), null, null, scope.userId());
     }
 
     private static @Nullable String currentUser(HttpServletRequest req) {

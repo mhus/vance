@@ -15,10 +15,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import java.util.regex.Pattern;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
@@ -45,10 +45,7 @@ import org.yaml.snakeyaml.resolver.Resolver;
  * spawn time and never re-resolve.
  */
 @Service
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaWorkflowLoader {
@@ -65,13 +62,11 @@ public class MagratheaWorkflowLoader {
      * Resolve a single workflow by name in the project/_vance cascade.
      * Returns empty if no tier carries it.
      */
-    public Optional<ResolvedMagratheaWorkflow> load(
-            String tenantId, @Nullable String projectId, String name) {
+    public Optional<ResolvedMagratheaWorkflow> load(String tenantId, @Nullable String projectId, String name) {
         if (name == null || name.isBlank()) return Optional.empty();
         String norm = normalizedName(name);
         String path = pathFor(norm);
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                tenantId, effectiveProjectId(projectId), path);
+        Optional<LookupResult> hit = documentService.lookupCascade(tenantId, effectiveProjectId(projectId), path);
         if (hit.isEmpty()) return Optional.empty();
         LookupResult result = hit.get();
         if (result.source() == LookupResult.Source.RESOURCE) {
@@ -85,7 +80,8 @@ public class MagratheaWorkflowLoader {
             throw new MagratheaWorkflowParseException(
                     "Failed to parse workflow '" + name + "' from "
                             + result.source() + " at path '" + result.path()
-                            + "': " + e.getMessage(), e);
+                            + "': " + e.getMessage(),
+                    e);
         }
     }
 
@@ -95,8 +91,8 @@ public class MagratheaWorkflowLoader {
      * logged and skipped — the rest of the bootstrap continues.
      */
     public List<ResolvedMagratheaWorkflow> listAll(String tenantId, @Nullable String projectId) {
-        Map<String, LookupResult> hits = documentService.listByPrefixCascade(
-                tenantId, effectiveProjectId(projectId), WORKFLOW_PATH_PREFIX);
+        Map<String, LookupResult> hits =
+                documentService.listByPrefixCascade(tenantId, effectiveProjectId(projectId), WORKFLOW_PATH_PREFIX);
         List<ResolvedMagratheaWorkflow> out = new ArrayList<>(hits.size());
         for (Map.Entry<String, LookupResult> e : hits.entrySet()) {
             String path = e.getKey();
@@ -107,8 +103,11 @@ public class MagratheaWorkflowLoader {
             try {
                 out.add(parse(name, hit));
             } catch (RuntimeException ex) {
-                log.warn("MagratheaWorkflowLoader: skipping malformed workflow path='{}' source={}: {}",
-                        path, hit.source(), ex.getMessage());
+                log.warn(
+                        "MagratheaWorkflowLoader: skipping malformed workflow path='{}' source={}: {}",
+                        path,
+                        hit.source(),
+                        ex.getMessage());
             }
         }
         return out;
@@ -140,8 +139,7 @@ public class MagratheaWorkflowLoader {
         try {
             return parse(norm, syntheticHit(norm, yaml));
         } catch (RuntimeException ex) {
-            throw new MagratheaWorkflowParseException(
-                    "workflow YAML invalid: " + ex.getMessage(), ex);
+            throw new MagratheaWorkflowParseException("workflow YAML invalid: " + ex.getMessage(), ex);
         }
     }
 
@@ -154,16 +152,13 @@ public class MagratheaWorkflowLoader {
     }
 
     private static String effectiveProjectId(@Nullable String projectId) {
-        return (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
+        return (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
     private static @Nullable String nameFromPath(String path) {
         if (!path.startsWith(WORKFLOW_PATH_PREFIX)) return null;
         if (!path.endsWith(WORKFLOW_PATH_SUFFIX)) return null;
-        String stem = path.substring(
-                WORKFLOW_PATH_PREFIX.length(),
-                path.length() - WORKFLOW_PATH_SUFFIX.length());
+        String stem = path.substring(WORKFLOW_PATH_PREFIX.length(), path.length() - WORKFLOW_PATH_SUFFIX.length());
         return stem.isBlank() ? null : stem;
     }
 
@@ -189,22 +184,18 @@ public class MagratheaWorkflowLoader {
     private static final Resolver YAML_1_2_RESOLVER = new Resolver() {
         @Override
         protected void addImplicitResolvers() {
-            addImplicitResolver(Tag.BOOL,
-                    Pattern.compile("^(?:true|True|TRUE|false|False|FALSE)$"),
-                    "tTfF");
-            addImplicitResolver(Tag.INT,
-                    Pattern.compile("^(?:[-+]?(?:[0-9][0-9_]*))$"),
-                    "-+0123456789");
-            addImplicitResolver(Tag.FLOAT,
+            addImplicitResolver(Tag.BOOL, Pattern.compile("^(?:true|True|TRUE|false|False|FALSE)$"), "tTfF");
+            addImplicitResolver(Tag.INT, Pattern.compile("^(?:[-+]?(?:[0-9][0-9_]*))$"), "-+0123456789");
+            addImplicitResolver(
+                    Tag.FLOAT,
                     Pattern.compile("^(?:[-+]?(?:[0-9][0-9_]*)?\\.[0-9_]+(?:[eE][-+]?[0-9]+)?"
                             + "|[-+]?(?:[0-9][0-9_]*)(?:[eE][-+]?[0-9]+)|[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$"),
                     "-+0123456789.");
             addImplicitResolver(Tag.MERGE, Pattern.compile("^(?:<<)$"), "<");
-            addImplicitResolver(Tag.NULL,
-                    Pattern.compile("^(?:~|null|Null|NULL| *)$"),
-                    "~nN\0");
+            addImplicitResolver(Tag.NULL, Pattern.compile("^(?:~|null|Null|NULL| *)$"), "~nN\0");
             addImplicitResolver(Tag.NULL, Pattern.compile("^$"), null);
-            addImplicitResolver(Tag.TIMESTAMP,
+            addImplicitResolver(
+                    Tag.TIMESTAMP,
                     Pattern.compile("^(?:[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"
                             + "|[0-9][0-9][0-9][0-9]-[0-9][0-9]?-[0-9][0-9]?"
                             + "(?:[Tt]|[ \\t]+)[0-9][0-9]?:[0-9][0-9]:[0-9][0-9](?:\\.[0-9]*)?"
@@ -253,8 +244,7 @@ public class MagratheaWorkflowLoader {
             throw new IllegalStateException("workflow has no 'states' — at least one is required");
         }
         if (!states.containsKey(startState)) {
-            throw new IllegalStateException(
-                    "'start: " + startState + "' does not match any state in 'states:'");
+            throw new IllegalStateException("'start: " + startState + "' does not match any state in 'states:'");
         }
 
         validateTransitionTargets(states);
@@ -286,8 +276,7 @@ public class MagratheaWorkflowLoader {
         for (Map.Entry<?, ?> e : pm.entrySet()) {
             String key = String.valueOf(e.getKey());
             if (!(e.getValue() instanceof Map<?, ?> v)) {
-                throw new IllegalStateException(
-                        "parameter '" + key + "' must be a map of {type, required?, default?}");
+                throw new IllegalStateException("parameter '" + key + "' must be a map of {type, required?, default?}");
             }
             Map<String, Object> entry = (Map<String, Object>) v;
             String type = stringOrThrow(entry.get("type"), "parameters." + key + ".type");
@@ -323,8 +312,7 @@ public class MagratheaWorkflowLoader {
         for (Map.Entry<?, ?> e : sm.entrySet()) {
             String name = String.valueOf(e.getKey());
             if (!(e.getValue() instanceof Map<?, ?> v)) {
-                throw new IllegalStateException(
-                        "state '" + name + "' must be a map");
+                throw new IllegalStateException("state '" + name + "' must be a map");
             }
             out.put(name, parseState(name, (Map<String, Object>) v));
         }
@@ -334,8 +322,7 @@ public class MagratheaWorkflowLoader {
     private static MagratheaStateSpec parseState(String name, Map<String, Object> raw) {
         MagratheaTaskType type = parseTaskType(raw.get("type"), name);
         String description = stringOrNull(raw.get("description"));
-        Integer timeoutSeconds = numberAsIntOrNull(
-                raw.get("timeoutSeconds"), "states." + name + ".timeoutSeconds");
+        Integer timeoutSeconds = numberAsIntOrNull(raw.get("timeoutSeconds"), "states." + name + ".timeoutSeconds");
         String storeAs = stringOrNull(raw.get("storeAs"));
         String enterCounter = stringOrNull(raw.get("enterCounter"));
         List<String> resetCounters = parseNameList(raw.get("resetCounters"), name);
@@ -353,9 +340,16 @@ public class MagratheaWorkflowLoader {
         // which would surface as the useless message "workflow YAML invalid: null".
         Map<String, Object> spec = new LinkedHashMap<>();
         Set<String> lifecycleKeys = Set.of(
-                "type", "description", "timeoutSeconds", "storeAs",
-                "enterCounter", "resetCounters",
-                "on", "catch", "transitions", "retry");
+                "type",
+                "description",
+                "timeoutSeconds",
+                "storeAs",
+                "enterCounter",
+                "resetCounters",
+                "on",
+                "catch",
+                "transitions",
+                "retry");
         for (Map.Entry<String, Object> e : raw.entrySet()) {
             if (lifecycleKeys.contains(e.getKey())) continue;
             if (e.getValue() == null) continue;
@@ -363,8 +357,13 @@ public class MagratheaWorkflowLoader {
         }
 
         return new MagratheaStateSpec(
-                name, type, description, timeoutSeconds, storeAs,
-                enterCounter, resetCounters,
+                name,
+                type,
+                description,
+                timeoutSeconds,
+                storeAs,
+                enterCounter,
+                resetCounters,
                 Map.copyOf(onOutcomes),
                 Map.copyOf(catchKinds),
                 List.copyOf(transitions),
@@ -379,16 +378,14 @@ public class MagratheaWorkflowLoader {
             return s.isBlank() ? List.of() : List.of(s.trim());
         }
         if (!(raw instanceof List<?> list)) {
-            throw new IllegalStateException(
-                    "state '" + stateName + "' resetCounters must be a list of names");
+            throw new IllegalStateException("state '" + stateName + "' resetCounters must be a list of names");
         }
         List<String> out = new java.util.ArrayList<>(list.size());
         for (Object item : list) {
             if (item instanceof String s && !s.isBlank()) {
                 out.add(s.trim());
             } else {
-                throw new IllegalStateException(
-                        "state '" + stateName + "' resetCounters entries must be names");
+                throw new IllegalStateException("state '" + stateName + "' resetCounters entries must be names");
             }
         }
         return List.copyOf(out);
@@ -396,15 +393,13 @@ public class MagratheaWorkflowLoader {
 
     private static MagratheaTaskType parseTaskType(@Nullable Object raw, String stateName) {
         if (!(raw instanceof String s) || s.isBlank()) {
-            throw new IllegalStateException(
-                    "state '" + stateName + "' is missing required 'type'");
+            throw new IllegalStateException("state '" + stateName + "' is missing required 'type'");
         }
         String norm = s.trim().toUpperCase(Locale.ROOT).replace('-', '_');
         try {
             return MagratheaTaskType.valueOf(norm);
         } catch (IllegalArgumentException ex) {
-            throw new IllegalStateException(
-                    "state '" + stateName + "' has unknown type '" + s + "'");
+            throw new IllegalStateException("state '" + stateName + "' has unknown type '" + s + "'", ex);
         }
     }
 
@@ -412,16 +407,14 @@ public class MagratheaWorkflowLoader {
     private static Map<String, String> parseOnBlock(@Nullable Object raw, String stateName) {
         if (raw == null) return Map.of();
         if (!(raw instanceof Map<?, ?> m)) {
-            throw new IllegalStateException(
-                    "state '" + stateName + "' has non-map 'on:' block");
+            throw new IllegalStateException("state '" + stateName + "' has non-map 'on:' block");
         }
         Map<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : ((Map<String, Object>) m).entrySet()) {
             String outcome = String.valueOf(e.getKey());
             if (!(e.getValue() instanceof String target) || target.isBlank()) {
                 throw new IllegalStateException(
-                        "state '" + stateName + "' has non-string target for outcome '"
-                                + outcome + "'");
+                        "state '" + stateName + "' has non-string target for outcome '" + outcome + "'");
             }
             out.put(outcome, target);
         }
@@ -432,24 +425,22 @@ public class MagratheaWorkflowLoader {
     private static Map<MagratheaErrorKind, String> parseCatchBlock(@Nullable Object raw, String stateName) {
         if (raw == null) return Map.of();
         if (!(raw instanceof Map<?, ?> m)) {
-            throw new IllegalStateException(
-                    "state '" + stateName + "' has non-map 'catch:' block");
+            throw new IllegalStateException("state '" + stateName + "' has non-map 'catch:' block");
         }
         Map<MagratheaErrorKind, String> out = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : ((Map<String, Object>) m).entrySet()) {
-            String key = String.valueOf(e.getKey()).trim().toUpperCase(Locale.ROOT).replace('-', '_');
+            String key =
+                    String.valueOf(e.getKey()).trim().toUpperCase(Locale.ROOT).replace('-', '_');
             MagratheaErrorKind kind;
             try {
                 kind = MagratheaErrorKind.valueOf(key);
             } catch (IllegalArgumentException ex) {
                 throw new IllegalStateException(
-                        "state '" + stateName + "' catch-key '" + e.getKey()
-                                + "' is not a known error kind");
+                        "state '" + stateName + "' catch-key '" + e.getKey() + "' is not a known error kind", ex);
             }
             if (!(e.getValue() instanceof String target) || target.isBlank()) {
                 throw new IllegalStateException(
-                        "state '" + stateName + "' catch target for '" + key
-                                + "' must be a non-blank state name");
+                        "state '" + stateName + "' catch target for '" + key + "' must be a non-blank state name");
             }
             out.put(kind, target);
         }
@@ -461,20 +452,17 @@ public class MagratheaWorkflowLoader {
             @Nullable Object raw, String stateName, MagratheaTaskType type) {
         if (raw == null) return List.of();
         if (type != MagratheaTaskType.CONDITION_TASK) {
-            throw new IllegalStateException(
-                    "state '" + stateName + "' has 'transitions:' but type is " + type
-                            + " — only CONDITION_TASK accepts an ordered transition list");
+            throw new IllegalStateException("state '" + stateName + "' has 'transitions:' but type is " + type
+                    + " — only CONDITION_TASK accepts an ordered transition list");
         }
         if (!(raw instanceof List<?> list)) {
-            throw new IllegalStateException(
-                    "state '" + stateName + "' 'transitions:' must be a list");
+            throw new IllegalStateException("state '" + stateName + "' 'transitions:' must be a list");
         }
         List<MagratheaTransition> out = new ArrayList<>(list.size());
         boolean elseSeen = false;
         for (Object item : list) {
             if (!(item instanceof Map<?, ?> entry)) {
-                throw new IllegalStateException(
-                        "state '" + stateName + "' transition entry must be a map");
+                throw new IllegalStateException("state '" + stateName + "' transition entry must be a map");
             }
             Map<String, Object> e = (Map<String, Object>) entry;
             String target;
@@ -500,24 +488,19 @@ public class MagratheaWorkflowLoader {
     private static MagratheaRetrySpec parseRetry(@Nullable Object raw, String stateName) {
         if (raw == null) return MagratheaRetrySpec.none();
         if (!(raw instanceof Map<?, ?> m)) {
-            throw new IllegalStateException(
-                    "state '" + stateName + "' has non-map 'retry:' block");
+            throw new IllegalStateException("state '" + stateName + "' has non-map 'retry:' block");
         }
         Map<String, Object> r = (Map<String, Object>) m;
-        int maxAttempts = numberAsIntOrDefault(r.get("maxAttempts"), 1,
-                "states." + stateName + ".retry.maxAttempts");
+        int maxAttempts = numberAsIntOrDefault(r.get("maxAttempts"), 1, "states." + stateName + ".retry.maxAttempts");
         if (maxAttempts < 1) {
-            throw new IllegalStateException(
-                    "state '" + stateName + "' retry.maxAttempts must be ≥ 1");
+            throw new IllegalStateException("state '" + stateName + "' retry.maxAttempts must be ≥ 1");
         }
-        int backoff = numberAsIntOrDefault(r.get("backoffSeconds"), 30,
-                "states." + stateName + ".retry.backoffSeconds");
+        int backoff =
+                numberAsIntOrDefault(r.get("backoffSeconds"), 30, "states." + stateName + ".retry.backoffSeconds");
         if (backoff < 0) {
-            throw new IllegalStateException(
-                    "state '" + stateName + "' retry.backoffSeconds must be ≥ 0");
+            throw new IllegalStateException("state '" + stateName + "' retry.backoffSeconds must be ≥ 0");
         }
-        Set<MagratheaErrorKind> onKinds = parseErrorKindList(r.get("on"),
-                "states." + stateName + ".retry.on");
+        Set<MagratheaErrorKind> onKinds = parseErrorKindList(r.get("on"), "states." + stateName + ".retry.on");
         return new MagratheaRetrySpec(maxAttempts, onKinds, backoff);
     }
 
@@ -529,15 +512,13 @@ public class MagratheaWorkflowLoader {
         EnumSet<MagratheaErrorKind> set = EnumSet.noneOf(MagratheaErrorKind.class);
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
-                throw new IllegalStateException(
-                        "'" + fieldPath + "' contains a non-string or blank entry");
+                throw new IllegalStateException("'" + fieldPath + "' contains a non-string or blank entry");
             }
             String key = s.trim().toUpperCase(Locale.ROOT).replace('-', '_');
             try {
                 set.add(MagratheaErrorKind.valueOf(key));
             } catch (IllegalArgumentException ex) {
-                throw new IllegalStateException(
-                        "'" + fieldPath + "' has unknown error kind '" + s + "'");
+                throw new IllegalStateException("'" + fieldPath + "' has unknown error kind '" + s + "'", ex);
             }
         }
         return Set.copyOf(set);
@@ -548,23 +529,20 @@ public class MagratheaWorkflowLoader {
         for (MagratheaStateSpec state : states.values()) {
             for (Map.Entry<String, String> e : state.onOutcomes().entrySet()) {
                 if (!known.contains(e.getValue())) {
-                    throw new IllegalStateException(
-                            "state '" + state.name() + "' outcome '" + e.getKey()
-                                    + "' points to unknown state '" + e.getValue() + "'");
+                    throw new IllegalStateException("state '" + state.name() + "' outcome '" + e.getKey()
+                            + "' points to unknown state '" + e.getValue() + "'");
                 }
             }
             for (Map.Entry<MagratheaErrorKind, String> e : state.catchKinds().entrySet()) {
                 if (!known.contains(e.getValue())) {
-                    throw new IllegalStateException(
-                            "state '" + state.name() + "' catch '" + e.getKey()
-                                    + "' points to unknown state '" + e.getValue() + "'");
+                    throw new IllegalStateException("state '" + state.name() + "' catch '" + e.getKey()
+                            + "' points to unknown state '" + e.getValue() + "'");
                 }
             }
             for (MagratheaTransition t : state.transitions()) {
                 if (!known.contains(t.target())) {
-                    throw new IllegalStateException(
-                            "state '" + state.name() + "' transition target '"
-                                    + t.target() + "' is not a declared state");
+                    throw new IllegalStateException("state '" + state.name() + "' transition target '" + t.target()
+                            + "' is not a declared state");
                 }
             }
         }
@@ -576,15 +554,13 @@ public class MagratheaWorkflowLoader {
         return switch (source) {
             case PROJECT -> MagratheaWorkflowSource.PROJECT;
             case VANCE -> MagratheaWorkflowSource.TENANT;
-            case RESOURCE -> throw new IllegalStateException(
-                    "resource layer is not allowed for workflows");
+            case RESOURCE -> throw new IllegalStateException("resource layer is not allowed for workflows");
         };
     }
 
     private static String stringOrThrow(@Nullable Object raw, String fieldName) {
         if (!(raw instanceof String s) || s.isBlank()) {
-            throw new IllegalStateException(
-                    "missing required field '" + fieldName + "' (must be a non-empty string)");
+            throw new IllegalStateException("missing required field '" + fieldName + "' (must be a non-empty string)");
         }
         return s;
     }
@@ -602,8 +578,7 @@ public class MagratheaWorkflowLoader {
         List<String> out = new ArrayList<>(list.size());
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
-                throw new IllegalStateException(
-                        "'" + fieldName + "' contains a non-string or blank entry");
+                throw new IllegalStateException("'" + fieldName + "' contains a non-string or blank entry");
             }
             out.add(s);
         }

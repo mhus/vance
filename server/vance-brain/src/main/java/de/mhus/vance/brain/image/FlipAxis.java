@@ -21,15 +21,15 @@ public enum FlipAxis {
     public static FlipAxis fromWire(@Nullable String s) {
         if (s == null || s.isBlank()) {
             throw new ImageManipulationException(
-                    ImageManipulationException.Reason.PARAMETER_INVALID,
-                    "'axis' is required: horizontal or vertical");
+                    ImageManipulationException.Reason.PARAMETER_INVALID, "'axis' is required: horizontal or vertical");
         }
         try {
             return FlipAxis.valueOf(s.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.PARAMETER_INVALID,
-                    "Unknown flip axis '" + s + "'. Expected: horizontal, vertical.");
+                    "Unknown flip axis '" + s + "'. Expected: horizontal, vertical.",
+                    e);
         }
     }
 }

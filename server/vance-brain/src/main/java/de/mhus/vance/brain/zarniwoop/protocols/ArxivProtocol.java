@@ -65,10 +65,23 @@ public class ArxivProtocol implements SearchProtocol {
         this.http = http;
     }
 
-    @Override public String id() { return ID; }
-    @Override public String displayName() { return "arXiv (Atom)"; }
-    @Override public Set<SearchModality> modalitiesSupported() { return Set.of(SearchModality.ACADEMIC); }
-    @Override public Set<SearchTier> tiersSupported() {
+    @Override
+    public String id() {
+        return ID;
+    }
+
+    @Override
+    public String displayName() {
+        return "arXiv (Atom)";
+    }
+
+    @Override
+    public Set<SearchModality> modalitiesSupported() {
+        return Set.of(SearchModality.ACADEMIC);
+    }
+
+    @Override
+    public Set<SearchTier> tiersSupported() {
         return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
     }
 
@@ -77,8 +90,7 @@ public class ArxivProtocol implements SearchProtocol {
         if (cfg == null) throw new IllegalArgumentException("cfg is required");
         if (!ID.equals(cfg.protocolId())) {
             throw new IllegalArgumentException(
-                    "ArxivProtocol cannot instantiate config with protocol '"
-                            + cfg.protocolId() + "'");
+                    "ArxivProtocol cannot instantiate config with protocol '" + cfg.protocolId() + "'");
         }
         return new ArxivInstance(cfg, http);
     }
@@ -101,11 +113,28 @@ public class ArxivProtocol implements SearchProtocol {
             this.http = http;
         }
 
-        @Override public String id() { return cfg.instanceId(); }
-        @Override public String displayName() { return "arXiv (" + cfg.instanceId() + ")"; }
-        @Override public Set<SearchModality> modalities() { return Set.of(SearchModality.ACADEMIC); }
-        @Override public Set<SearchDomain> domains() { return Set.of(SearchDomain.ACADEMIC); }
-        @Override public Set<SearchTier> tiers() {
+        @Override
+        public String id() {
+            return cfg.instanceId();
+        }
+
+        @Override
+        public String displayName() {
+            return "arXiv (" + cfg.instanceId() + ")";
+        }
+
+        @Override
+        public Set<SearchModality> modalities() {
+            return Set.of(SearchModality.ACADEMIC);
+        }
+
+        @Override
+        public Set<SearchDomain> domains() {
+            return Set.of(SearchDomain.ACADEMIC);
+        }
+
+        @Override
+        public Set<SearchTier> tiers() {
             return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
         }
 
@@ -123,7 +152,8 @@ public class ArxivProtocol implements SearchProtocol {
             return ProviderAvailability.READY;
         }
 
-        @Override public Optional<QuotaStatus> currentQuota(SearchScope scope) {
+        @Override
+        public Optional<QuotaStatus> currentQuota(SearchScope scope) {
             return Optional.empty();
         }
 
@@ -158,41 +188,48 @@ public class ArxivProtocol implements SearchProtocol {
         @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             if (req.modality() != SearchModality.ACADEMIC) {
-                return softFailure(req, "modality " + req.modality()
-                        + " not supported by arXiv '" + cfg.instanceId() + "'");
+                return softFailure(
+                        req, "modality " + req.modality() + " not supported by arXiv '" + cfg.instanceId() + "'");
             }
             int num = clampNum(req.maxResults());
             String url = SimpleHttpClient.buildQuery(
                     URI.create(baseUrl() + "/query"),
                     SimpleHttpClient.mapOf(
-                            "search_query", "all:" + req.query(),
-                            "max_results", String.valueOf(num),
-                            "sortBy", "relevance"));
+                            "search_query",
+                            "all:" + req.query(),
+                            "max_results",
+                            String.valueOf(num),
+                            "sortBy",
+                            "relevance"));
             Response response;
             try {
                 response = http.get(URI.create(url), USER_AGENT, TIMEOUT);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException(
-                        "Interrupted while calling arXiv '" + cfg.instanceId() + "'");
+                throw new RuntimeException("Interrupted while calling arXiv '" + cfg.instanceId() + "'", ie);
             } catch (Exception e) {
-                throw new RuntimeException(
-                        "arXiv '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
+                throw new RuntimeException("arXiv '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
             }
             if (response.statusCode() != 200) {
-                throw new RuntimeException("arXiv '" + cfg.instanceId()
-                        + "' returned HTTP " + response.statusCode());
+                throw new RuntimeException("arXiv '" + cfg.instanceId() + "' returned HTTP " + response.statusCode());
             }
             List<SearchHit> hits = parseHits(response.body());
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    hits, hits.size(), 0, null, null, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    hits,
+                    hits.size(),
+                    0,
+                    null,
+                    null,
+                    Map.of());
         }
 
         List<SearchHit> parseHits(String xml) {
             try {
-                Document doc = newSafeBuilder().parse(
-                        new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+                Document doc = newSafeBuilder().parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
                 NodeList entries = doc.getElementsByTagNameNS(ATOM_NS, "entry");
                 List<SearchHit> out = new ArrayList<>();
                 for (int i = 0; i < entries.getLength(); i++) {
@@ -227,10 +264,13 @@ public class ArxivProtocol implements SearchProtocol {
                                 null);
                     }
                     out.add(new SearchHit(
-                            title, url,
+                            title,
+                            url,
                             composeSnippet(authors, year, primaryCategory),
                             "arXiv",
-                            SearchModality.ACADEMIC, content, extras));
+                            SearchModality.ACADEMIC,
+                            content,
+                            extras));
                 }
                 return out;
             } catch (Exception e) {
@@ -243,15 +283,10 @@ public class ArxivProtocol implements SearchProtocol {
 
         private static DocumentBuilder newSafeBuilder() throws Exception {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setFeature(
-                    "http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature(
-                    "http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature(
-                    "http://xml.org/sax/features/external-parameter-entities", false);
-            factory.setFeature(
-                    "http://apache.org/xml/features/nonvalidating/load-external-dtd",
-                    false);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
             factory.setXIncludeAware(false);
             factory.setExpandEntityReferences(false);
             factory.setNamespaceAware(true);
@@ -358,8 +393,16 @@ public class ArxivProtocol implements SearchProtocol {
 
         private SearchResult softFailure(SearchRequest req, String message) {
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    List.of(), 0, 0, null, message, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    List.of(),
+                    0,
+                    0,
+                    null,
+                    message,
+                    Map.of());
         }
 
         private static int clampNum(int requested) {

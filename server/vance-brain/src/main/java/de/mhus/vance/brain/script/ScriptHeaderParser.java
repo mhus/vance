@@ -30,23 +30,28 @@ import org.jspecify.annotations.Nullable;
 @Slf4j
 public final class ScriptHeaderParser {
 
-    private static final Pattern BLOCK_PATTERN = Pattern.compile(
-            "\\A\\s*/\\*\\*([\\s\\S]*?)\\*/", Pattern.DOTALL);
+    private static final Pattern BLOCK_PATTERN = Pattern.compile("\\A\\s*/\\*\\*([\\s\\S]*?)\\*/", Pattern.DOTALL);
 
     /** Matches one tag line. Group 1 = tag, group 2 = rest of line
      *  trimmed by the caller. Leading {@code *} of JSDoc-continuation
      *  is stripped before this matcher runs. */
-    private static final Pattern TAG_PATTERN = Pattern.compile(
-            "^\\s*@(\\w+)\\s+(.+?)\\s*$");
+    private static final Pattern TAG_PATTERN = Pattern.compile("^\\s*@(\\w+)\\s+(.+?)\\s*$");
 
     /** Allowed v1 tag names. Unknown names get warn-logged + dropped.
      *  v2 additions (e.g. {@code maxSpawnDepth}, {@code fixture}) get
      *  added here. */
     private static final Set<String> KNOWN_TAGS = Set.of(
-            "timeout", "statements", "maxResultNodes", "allowTools", "requiresTools",
-            "description", "version",
+            "timeout",
+            "statements",
+            "maxResultNodes",
+            "allowTools",
+            "requiresTools",
+            "description",
+            "version",
             // CommonJS require pathway (vance.script.require.enabled):
-            "requires", "workspaceRoot", "nodeBuiltins");
+            "requires",
+            "workspaceRoot",
+            "nodeBuiltins");
 
     private ScriptHeaderParser() {}
 
@@ -90,15 +95,19 @@ public final class ScriptHeaderParser {
             String tag = tm.group(1);
             String value = tm.group(2).trim();
             if (!KNOWN_TAGS.contains(tag)) {
-                log.warn("ScriptHeaderParser [{}]: unknown tag '@{}' "
-                                + "with value '{}' — ignored",
-                        sourceName, tag, abbreviate(value));
+                log.warn(
+                        "ScriptHeaderParser [{}]: unknown tag '@{}' " + "with value '{}' — ignored",
+                        sourceName,
+                        tag,
+                        abbreviate(value));
                 continue;
             }
             if (!seen.add(tag)) {
-                log.warn("ScriptHeaderParser [{}]: duplicate tag '@{}' "
-                                + "— previous value overwritten with '{}'",
-                        sourceName, tag, abbreviate(value));
+                log.warn(
+                        "ScriptHeaderParser [{}]: duplicate tag '@{}' " + "— previous value overwritten with '{}'",
+                        sourceName,
+                        tag,
+                        abbreviate(value));
             }
             switch (tag) {
                 case "timeout" -> timeout = parseDuration(value, sourceName, tag);
@@ -123,16 +132,26 @@ public final class ScriptHeaderParser {
                     nodeBuiltins.clear();
                     nodeBuiltins.addAll(parseList(value));
                 }
-                default -> { /* unreachable due to KNOWN_TAGS check */ }
+                default -> {
+                    /* unreachable due to KNOWN_TAGS check */
+                }
             }
             anyTag = true;
         }
         if (!anyTag) {
             return ScriptHeader.empty();
         }
-        return new ScriptHeader(timeout, statementLimit, maxResultNodes,
-                allowTools, requiresTools, description, version,
-                requires, workspaceRoot, nodeBuiltins);
+        return new ScriptHeader(
+                timeout,
+                statementLimit,
+                maxResultNodes,
+                allowTools,
+                requiresTools,
+                description,
+                version,
+                requires,
+                workspaceRoot,
+                nodeBuiltins);
     }
 
     // ──────────────────── value parsers ────────────────────
@@ -167,7 +186,8 @@ public final class ScriptHeaderParser {
                     ScriptExecutionException.ErrorClass.INVALID_HEADER,
                     "[" + sourceName + "] @" + tag + ": cannot parse "
                             + "duration value '" + raw + "' "
-                            + "(expected formats: 30s | 10m | 1h | 600)");
+                            + "(expected formats: 30s | 10m | 1h | 600)",
+                    nfe);
         }
     }
 
@@ -196,7 +216,8 @@ public final class ScriptHeaderParser {
                     ScriptExecutionException.ErrorClass.INVALID_HEADER,
                     "[" + sourceName + "] @" + tag + ": cannot parse "
                             + "count value '" + raw + "' "
-                            + "(expected formats: 100000 | 100k | 5M | 1_000_000)");
+                            + "(expected formats: 100000 | 100k | 5M | 1_000_000)",
+                    nfe);
         }
     }
 
@@ -217,13 +238,11 @@ public final class ScriptHeaderParser {
         return line.replaceFirst("^\\s*\\*\\s?", "");
     }
 
-    private static void requirePositive(
-            long value, String raw, String sourceName, String tag) {
+    private static void requirePositive(long value, String raw, String sourceName, String tag) {
         if (value <= 0) {
             throw new ScriptExecutionException(
                     ScriptExecutionException.ErrorClass.INVALID_HEADER,
-                    "[" + sourceName + "] @" + tag + ": value '"
-                            + raw + "' must be > 0");
+                    "[" + sourceName + "] @" + tag + ": value '" + raw + "' must be > 0");
         }
     }
 

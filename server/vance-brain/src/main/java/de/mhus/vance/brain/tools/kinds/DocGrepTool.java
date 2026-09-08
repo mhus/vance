@@ -1,17 +1,17 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
-import de.mhus.vance.shared.document.DocumentDocument;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -35,33 +35,64 @@ public class DocGrepTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("pattern", Map.of("type", "string",
-                "description", "Java regular expression. Use plain substrings for literal match."));
-        p.put("caseInsensitive", Map.of("type", "boolean",
-                "description", "Match case-insensitively. Default: false."));
-        p.put("contextBefore", Map.of("type", "integer",
-                "description", "Number of lines to include before each match. Default: 0."));
-        p.put("contextAfter", Map.of("type", "integer",
-                "description", "Number of lines to include after each match. Default: 0."));
-        p.put("limit", Map.of("type", "integer",
-                "description", "Cap on the number of matches returned. Default: " + DEFAULT_LIMIT
-                        + ", max: " + MAX_LIMIT + "."));
+        p.put(
+                "pattern",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Java regular expression. Use plain substrings for literal match."));
+        p.put("caseInsensitive", Map.of("type", "boolean", "description", "Match case-insensitively. Default: false."));
+        p.put(
+                "contextBefore",
+                Map.of("type", "integer", "description", "Number of lines to include before each match. Default: 0."));
+        p.put(
+                "contextAfter",
+                Map.of("type", "integer", "description", "Number of lines to include after each match. Default: 0."));
+        p.put(
+                "limit",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "Cap on the number of matches returned. Default: " + DEFAULT_LIMIT + ", max: " + MAX_LIMIT
+                                + "."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_grep"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_grep";
+    }
+
+    @Override
+    public String description() {
         return "Search one document for lines matching a regex pattern. Returns matching lines "
                 + "with their 1-based line numbers, optionally with context lines before/after. "
                 + "Pattern is Java regex; literal substring is fine.";
     }
-    @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("text-search", "eddie", "read-only"); }
-    @Override public Set<String> prakLabels() { return Set.of("knowledge", "documents", "search"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("text-search", "eddie", "read-only");
+    }
+
+    @Override
+    public Set<String> prakLabels() {
+        return Set.of("knowledge", "documents", "search");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -80,7 +111,7 @@ public class DocGrepTool implements Tool {
         try {
             pattern = Pattern.compile(patternStr, ci ? Pattern.CASE_INSENSITIVE : 0);
         } catch (PatternSyntaxException e) {
-            throw new ToolException("Invalid regex: " + e.getMessage());
+            throw new ToolException("Invalid regex: " + e.getMessage(), e);
         }
 
         // Wall-clock budget for the (untrusted) regex — see RegexGuard.
@@ -90,7 +121,10 @@ public class DocGrepTool implements Tool {
         boolean truncated = false;
         for (int i = 0; i < lines.length; i++) {
             if (!matchGuarded(pattern, lines[i], deadline)) continue;
-            if (matches.size() >= limit) { truncated = true; break; }
+            if (matches.size() >= limit) {
+                truncated = true;
+                break;
+            }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("lineNumber", i + 1);
             m.put("line", lines[i]);
@@ -122,8 +156,10 @@ public class DocGrepTool implements Tool {
         try {
             return RegexGuard.find(pattern, line, deadline);
         } catch (RegexGuard.RegexBudgetExceeded e) {
-            throw new ToolException("regex too slow — possible catastrophic backtracking; "
-                    + "simplify the pattern (avoid nested quantifiers like (a+)+).");
+            throw new ToolException(
+                    "regex too slow — possible catastrophic backtracking; "
+                            + "simplify the pattern (avoid nested quantifiers like (a+)+).",
+                    e);
         }
     }
 }

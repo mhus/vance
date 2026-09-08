@@ -6,15 +6,15 @@ import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.chat.ChatMessageDocument;
-import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -46,18 +46,22 @@ public class ProcessSteerTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Target process name in the current session."),
-                    "content", Map.of(
-                            "type", "string",
-                            "description", "Chat message to send.")),
+            "properties",
+                    Map.of(
+                            "name",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Target process name in the current session."),
+                            "content",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Chat message to send.")),
             "required", List.of("name", "content"));
 
     private final ThinkProcessService thinkProcessService;
     /** Lazy — see {@link ProcessCreateTool} for the cycle rationale. */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+
     private final ChatMessageService chatMessageService;
     private final LaneScheduler laneScheduler;
     private final EngineMessageRouter messageRouter;
@@ -119,16 +123,14 @@ public class ProcessSteerTool implements Tool {
         // process across boundaries.
         ThinkProcessDocument target = thinkProcessService
                 .findByName(ctx.tenantId(), sessionId, name)
-                .or(() -> thinkProcessService.findById(name)
-                        .filter(p -> ctx.tenantId().equals(p.getTenantId())
-                                && sessionId.equals(p.getSessionId())))
-                .orElseThrow(() -> new ToolException(
-                        notFoundMessage(name, ctx.tenantId(), sessionId, ctx.processId())));
+                .or(() -> thinkProcessService
+                        .findById(name)
+                        .filter(p -> ctx.tenantId().equals(p.getTenantId()) && sessionId.equals(p.getSessionId())))
+                .orElseThrow(
+                        () -> new ToolException(notFoundMessage(name, ctx.tenantId(), sessionId, ctx.processId())));
 
         if (target.getId() != null && target.getId().equals(ctx.processId())) {
-            throw new ToolException(
-                    "process_steer cannot target the current process — "
-                            + "self-steer would deadlock");
+            throw new ToolException("process_steer cannot target the current process — " + "self-steer would deadlock");
         }
 
         // Don't auto-wake paused/closed targets. The orchestrator
@@ -139,29 +141,25 @@ public class ProcessSteerTool implements Tool {
         ThinkProcessStatus targetStatus = target.getStatus();
         if (targetStatus == ThinkProcessStatus.CLOSED) {
             throw new ToolException(
-                    "process_steer: target '" + name + "' is CLOSED. "
-                            + "Use process_create for a fresh worker.");
+                    "process_steer: target '" + name + "' is CLOSED. " + "Use process_create for a fresh worker.");
         }
         if (targetStatus == ThinkProcessStatus.PAUSED) {
-            throw new ToolException(
-                    "process_steer: target '" + name + "' is PAUSED. "
-                            + "Call process_resume first if you want the "
-                            + "worker to act on this message.");
+            throw new ToolException("process_steer: target '" + name + "' is PAUSED. "
+                    + "Call process_resume first if you want the "
+                    + "worker to act on this message.");
         }
 
-        int beforeSize = chatMessageService.history(
-                ctx.tenantId(), sessionId, target.getId()).size();
+        int beforeSize = chatMessageService
+                .history(ctx.tenantId(), sessionId, target.getId())
+                .size();
 
         SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
                 Instant.now(),
                 /*idempotencyKey*/ null,
-                /*fromUser*/ ctx.processId() == null
-                        ? null
-                        : "process:" + ctx.processId(),
+                /*fromUser*/ ctx.processId() == null ? null : "process:" + ctx.processId(),
                 content);
 
-        ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
-                .resolveForProcess(target);
+        ThinkEngine targetEngine = thinkEngineServiceProvider.getObject().resolveForProcess(target);
         if (targetEngine.asyncSteer()) {
             // Async target (Marvin & co.): queue + wake through the router
             // so a future Multi-Pod cross-project process_steer takes the
@@ -173,31 +171,34 @@ public class ProcessSteerTool implements Tool {
                     PendingMessageDocument.builder()
                             .type(PendingMessageType.USER_CHAT_INPUT)
                             .at(java.time.Instant.now())
-                            .fromUser(ctx.processId() == null
-                                    ? null : "process:" + ctx.processId())
+                            .fromUser(ctx.processId() == null ? null : "process:" + ctx.processId())
                             .content(content)
                             .build());
-            log.info("process_steer async-queued name='{}' target={} engine='{}'",
-                    name, target.getId(), targetEngine.name());
+            log.info(
+                    "process_steer async-queued name='{}' target={} engine='{}'",
+                    name,
+                    target.getId(),
+                    targetEngine.name());
         } else {
             try {
                 // Different lane → no deadlock with the current tool's lane.
-                laneScheduler.submit(target.getId(),
-                        () -> thinkEngineServiceProvider.getObject().steer(target, message)).get();
+                laneScheduler
+                        .submit(
+                                target.getId(),
+                                () -> thinkEngineServiceProvider.getObject().steer(target, message))
+                        .get();
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new ToolException("Interrupted waiting for target steer");
+                throw new ToolException("Interrupted waiting for target steer", ie);
             } catch (ExecutionException ee) {
                 Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-                throw new ToolException(
-                        "Target steer failed: " + cause.getMessage(), cause);
+                throw new ToolException("Target steer failed: " + cause.getMessage(), cause);
             }
         }
 
-        ThinkProcessDocument refreshed = thinkProcessService.findById(target.getId())
-                .orElse(target);
-        List<ChatMessageDocument> full = chatMessageService.history(
-                ctx.tenantId(), sessionId, target.getId());
+        ThinkProcessDocument refreshed =
+                thinkProcessService.findById(target.getId()).orElse(target);
+        List<ChatMessageDocument> full = chatMessageService.history(ctx.tenantId(), sessionId, target.getId());
         List<Map<String, Object>> newMessages = new ArrayList<>();
         for (ChatMessageDocument m : full.subList(beforeSize, full.size())) {
             Map<String, Object> row = new LinkedHashMap<>();
@@ -207,8 +208,9 @@ public class ProcessSteerTool implements Tool {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", refreshed.getName());
-        out.put("status", refreshed.getStatus() == null
-                ? null : refreshed.getStatus().name());
+        out.put(
+                "status",
+                refreshed.getStatus() == null ? null : refreshed.getStatus().name());
         out.put("newMessages", newMessages);
         out.put("count", newMessages.size());
         return out;
@@ -228,12 +230,10 @@ public class ProcessSteerTool implements Tool {
      * — instead of just a dead-end "not found" that drives it toward
      * "spawn a new worker from scratch".
      */
-    private String notFoundMessage(
-            String wantedName, String tenantId, String sessionId, @Nullable String selfId) {
+    private String notFoundMessage(String wantedName, String tenantId, String sessionId, @Nullable String selfId) {
         List<ThinkProcessDocument> all = thinkProcessService.findBySession(tenantId, sessionId);
         StringBuilder sb = new StringBuilder();
-        sb.append("Process '").append(wantedName)
-                .append("' not found in current session.");
+        sb.append("Process '").append(wantedName).append("' not found in current session.");
         boolean any = false;
         for (ThinkProcessDocument p : all) {
             if (p.getId() == null || p.getId().equals(selfId)) continue;
@@ -244,8 +244,7 @@ public class ProcessSteerTool implements Tool {
             } else {
                 sb.append(", ");
             }
-            sb.append("name='").append(p.getName()).append("' status=")
-                    .append(p.getStatus());
+            sb.append("name='").append(p.getName()).append("' status=").append(p.getStatus());
         }
         if (any) {
             sb.append("]. Use one of these names verbatim.");

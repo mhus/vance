@@ -69,8 +69,7 @@ public class SessionChatBootstrapper {
      *      to no recipe override.
      */
     public Optional<ThinkProcessDocument> ensureChatProcess(
-            SessionDocument session,
-            @org.jspecify.annotations.Nullable String parentProcessId) {
+            SessionDocument session, @org.jspecify.annotations.Nullable String parentProcessId) {
         return ensureChatProcess(session, parentProcessId, null);
     }
 
@@ -102,20 +101,21 @@ public class SessionChatBootstrapper {
             @org.jspecify.annotations.Nullable String chatRecipeOverride) {
         // Already linked → just resolve the doc.
         if (session.getChatProcessId() != null) {
-            Optional<ThinkProcessDocument> linked = thinkProcessService.findById(
-                    session.getChatProcessId());
+            Optional<ThinkProcessDocument> linked = thinkProcessService.findById(session.getChatProcessId());
             if (linked.isPresent()) {
                 return linked;
             }
             // Linked id points nowhere — log and fall through to a fresh attempt.
-            log.warn("Session '{}' has chatProcessId='{}' but the process is gone; re-creating",
-                    session.getSessionId(), session.getChatProcessId());
+            log.warn(
+                    "Session '{}' has chatProcessId='{}' but the process is gone; re-creating",
+                    session.getSessionId(),
+                    session.getChatProcessId());
         }
 
         // A previous attempt may have created the process by name but
         // crashed before linking it back. Pick it up.
-        Optional<ThinkProcessDocument> existing = thinkProcessService.findByName(
-                session.getTenantId(), session.getSessionId(), CHAT_PROCESS_NAME);
+        Optional<ThinkProcessDocument> existing =
+                thinkProcessService.findByName(session.getTenantId(), session.getSessionId(), CHAT_PROCESS_NAME);
         if (existing.isPresent()) {
             sessionService.setChatProcessId(
                     session.getSessionId(), existing.get().getId());
@@ -134,20 +134,16 @@ public class SessionChatBootstrapper {
             recipeLookup = chatRecipeOverride;
         } else {
             String configured = settingService.getStringValueCascade(
-                    session.getTenantId(), session.getProjectId(),
-                    /*processId*/ null, SETTING_DEFAULT_CHAT_ENGINE);
-            recipeLookup = (configured == null || configured.isBlank())
-                    ? DEFAULT_CHAT_ENGINE : configured;
+                    session.getTenantId(), session.getProjectId(), /*processId*/ null, SETTING_DEFAULT_CHAT_ENGINE);
+            recipeLookup = (configured == null || configured.isBlank()) ? DEFAULT_CHAT_ENGINE : configured;
         }
 
         // Engines that ship their own bundled config (Vance, future
         // hub recipes) bypass recipe resolution — their persona and
         // params live in code, not in recipes.yaml. See
         // specification/vance-engine.md §1.2.
-        boolean explicitRecipeOverride = !hubProject
-                && chatRecipeOverride != null && !chatRecipeOverride.isBlank();
-        ThinkEngine engine = thinkEngineService.resolve(recipeLookup)
-                .orElse(null);
+        boolean explicitRecipeOverride = !hubProject && chatRecipeOverride != null && !chatRecipeOverride.isBlank();
+        ThinkEngine engine = thinkEngineService.resolve(recipeLookup).orElse(null);
 
         AppliedRecipe applied = null;
         if (explicitRecipeOverride) {
@@ -159,19 +155,16 @@ public class SessionChatBootstrapper {
                     session.getProfile(),
                     /*callerParams*/ null);
             final AppliedRecipe override = applied;
-            engine = thinkEngineService.resolve(applied.engine())
+            engine = thinkEngineService
+                    .resolve(applied.engine())
                     .orElseThrow(() -> new IllegalStateException(
-                            "Recipe '" + override.name()
-                                    + "' references unknown engine '"
-                                    + override.engine() + "'"));
+                            "Recipe '" + override.name() + "' references unknown engine '" + override.engine() + "'"));
         } else if (engine == null) {
-            throw new IllegalStateException(
-                    "Configured chat engine '" + recipeLookup
-                            + "' is not registered — known: "
-                            + thinkEngineService.listEngines());
+            throw new IllegalStateException("Configured chat engine '" + recipeLookup
+                    + "' is not registered — known: "
+                    + thinkEngineService.listEngines());
         }
-        Optional<EngineBundledConfig> bundled = engine.bundledConfig(
-                session.getTenantId(), session.getProjectId());
+        Optional<EngineBundledConfig> bundled = engine.bundledConfig(session.getTenantId(), session.getProjectId());
         if (!explicitRecipeOverride && bundled.isEmpty()) {
             // Auto-apply the engine-named recipe (e.g. "arthur") so
             // the chat-process inherits the engine's default prompt
@@ -195,21 +188,24 @@ public class SessionChatBootstrapper {
                 // "No manualPaths configured in the recipe." on the
                 // first manual_read). Loud enough to correlate with
                 // whatever made the lookup fail.
-                log.warn("No recipe '{}' in the cascade for tenant='{}' project='{}' — "
+                log.warn(
+                        "No recipe '{}' in the cascade for tenant='{}' project='{}' — "
                                 + "chat-process for session '{}' starts WITHOUT recipe "
                                 + "(no prompt prefix, no params, no manualPaths)",
-                        recipeLookup, session.getTenantId(), session.getProjectId(),
+                        recipeLookup,
+                        session.getTenantId(),
+                        session.getProjectId(),
                         session.getSessionId());
                 applied = null;
             }
             if (applied != null) {
                 // The recipe may redirect to a different engine.
                 final AppliedRecipe finalResolved = applied;
-                engine = thinkEngineService.resolve(applied.engine())
-                        .orElseThrow(() -> new IllegalStateException(
-                                "Recipe '" + finalResolved.name()
-                                        + "' references unknown engine '"
-                                        + finalResolved.engine() + "'"));
+                engine = thinkEngineService
+                        .resolve(applied.engine())
+                        .orElseThrow(() -> new IllegalStateException("Recipe '" + finalResolved.name()
+                                + "' references unknown engine '"
+                                + finalResolved.engine() + "'"));
             }
         }
 
@@ -222,9 +218,10 @@ public class SessionChatBootstrapper {
                         session.getProjectId(),
                         session.getSessionId(),
                         CHAT_PROCESS_NAME,
-                        engine.name(), engine.version(),
+                        engine.name(),
+                        engine.version(),
                         /*title*/ "Session Chat",
-                        /*goal*/  null,
+                        /*goal*/ null,
                         parentProcessId,
                         cfg.params(),
                         /*recipeName*/ null,
@@ -242,9 +239,10 @@ public class SessionChatBootstrapper {
                         session.getProjectId(),
                         session.getSessionId(),
                         CHAT_PROCESS_NAME,
-                        engine.name(), engine.version(),
+                        engine.name(),
+                        engine.version(),
                         /*title*/ "Session Chat",
-                        /*goal*/  null,
+                        /*goal*/ null,
                         parentProcessId,
                         applied.params(),
                         applied.name(),
@@ -255,24 +253,24 @@ public class SessionChatBootstrapper {
                         applied.effectiveAllowedTools(),
                         applied.connectionProfile(),
                         applied.defaultActiveSkills(),
-                        applied.allowedSkills() == null
-                                ? null : java.util.Set.copyOf(applied.allowedSkills()));
+                        applied.allowedSkills() == null ? null : java.util.Set.copyOf(applied.allowedSkills()));
             } else {
                 fresh = thinkProcessService.create(
                         session.getTenantId(),
                         session.getProjectId(),
                         session.getSessionId(),
                         CHAT_PROCESS_NAME,
-                        engine.name(), engine.version(),
+                        engine.name(),
+                        engine.version(),
                         /*title*/ "Session Chat",
-                        /*goal*/  null);
+                        /*goal*/ null);
             }
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException race) {
             // Lost the race against a concurrent bootstrapper — adopt their result.
-            ThinkProcessDocument adopted = thinkProcessService.findByName(
-                    session.getTenantId(), session.getSessionId(), CHAT_PROCESS_NAME)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Concurrent chat-process create reported clash but the "
+            ThinkProcessDocument adopted = thinkProcessService
+                    .findByName(session.getTenantId(), session.getSessionId(), CHAT_PROCESS_NAME)
+                    .orElseThrow(
+                            () -> new IllegalStateException("Concurrent chat-process create reported clash but the "
                                     + "process is gone — sessionId='" + session.getSessionId() + "'"));
             sessionService.setChatProcessId(session.getSessionId(), adopted.getId());
             return Optional.of(adopted);
@@ -286,32 +284,35 @@ public class SessionChatBootstrapper {
         // profile.session block, before engines start. Worker spawns
         // ignore their session block (see specification/session-lifecycle.md §6).
         if (applied != null && applied.sessionLifecycleConfig() != null) {
-            sessionService.applyLifecycleConfig(
-                    session.getSessionId(), applied.sessionLifecycleConfig());
+            sessionService.applyLifecycleConfig(session.getSessionId(), applied.sessionLifecycleConfig());
         }
         // Bootstrap is now considered complete; flip session INIT → IDLE
         // before the chat engine's first turn fires.
         sessionService.markBootstrapped(session.getSessionId());
 
         try {
-            laneScheduler.submit(fresh.getId(), () -> {
-                thinkEngineService.start(fresh);
-                return null;
-            }).get();
+            laneScheduler
+                    .submit(fresh.getId(), () -> {
+                        thinkEngineService.start(fresh);
+                        return null;
+                    })
+                    .get();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(
-                    "Interrupted starting chat engine for session '"
-                            + session.getSessionId() + "'", ie);
+                    "Interrupted starting chat engine for session '" + session.getSessionId() + "'", ie);
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
             throw new IllegalStateException(
-                    "Chat engine start failed for session '"
-                            + session.getSessionId() + "': " + cause.getMessage(), cause);
+                    "Chat engine start failed for session '" + session.getSessionId() + "': " + cause.getMessage(),
+                    cause);
         }
 
-        log.info("Bootstrapped chat-process id='{}' engine='{}' session='{}'",
-                fresh.getId(), engine.name(), session.getSessionId());
+        log.info(
+                "Bootstrapped chat-process id='{}' engine='{}' session='{}'",
+                fresh.getId(),
+                engine.name(),
+                session.getSessionId());
 
         // Trillian-Control sessions get a paired UserProcess + service-
         // account spawned here. No-op for every other recipe.
@@ -324,7 +325,8 @@ public class SessionChatBootstrapper {
         if (projectName == null || projectName.isBlank()) {
             return false;
         }
-        return projectService.findByTenantAndName(tenantId, projectName)
+        return projectService
+                .findByTenantAndName(tenantId, projectName)
                 .map(p -> p.getKind() == ProjectKind.SYSTEM)
                 .orElse(false);
     }

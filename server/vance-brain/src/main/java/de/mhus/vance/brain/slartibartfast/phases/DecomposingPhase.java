@@ -23,7 +23,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -120,25 +119,21 @@ public class DecomposingPhase {
     private final ObjectMapper objectMapper;
     private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
 
-    public void execute(
-            ArchitectState state,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    public void execute(ArchitectState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
 
         if (state.getGoal() == null) {
             state.setFailureReason("DECOMPOSING entered without a FramedGoal");
             return;
         }
         if (state.getAcceptanceCriteria().isEmpty()) {
-            state.setFailureReason("DECOMPOSING entered with empty "
-                    + "acceptanceCriteria — CONFIRMING must run first");
+            state.setFailureReason(
+                    "DECOMPOSING entered with empty " + "acceptanceCriteria — CONFIRMING must run first");
             return;
         }
 
-        EngineChatFactory.EngineChatBundle bundle =
-                engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
-        String modelAlias = bundle.primaryConfig().provider() + ":"
-                + bundle.primaryConfig().modelName();
+        EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
+        String modelAlias =
+                bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
 
         // Recovery hint from a failed BINDING pass — appended to the
         // prompt so the LLM sees what was rejected and why.
@@ -150,9 +145,7 @@ public class DecomposingPhase {
 
         List<ChatMessage> messages = new ArrayList<>();
         String langBlock = languageContextResolver.formatBlock(process);
-        messages.add(SystemMessage.from(langBlock.isEmpty()
-                ? SYSTEM_PROMPT
-                : SYSTEM_PROMPT + "\n\n" + langBlock));
+        messages.add(SystemMessage.from(langBlock.isEmpty() ? SYSTEM_PROMPT : SYSTEM_PROMPT + "\n\n" + langBlock));
         messages.add(UserMessage.from(buildInitialUserPrompt(state, recoveryHint)));
 
         DecomposeResult parsed = null;
@@ -178,15 +171,17 @@ public class DecomposingPhase {
                 break;
             } catch (DecomposeValidationException ve) {
                 validationError = ve.getMessage();
-                log.info("Slartibartfast id='{}' DECOMPOSING attempt {} validation failed: {}",
-                        process.getId(), attempt, validationError);
+                log.info(
+                        "Slartibartfast id='{}' DECOMPOSING attempt {} validation failed: {}",
+                        process.getId(),
+                        attempt,
+                        validationError);
                 if (attempt < MAX_OUTPUT_CORRECTIONS) {
                     messages.add(AiMessage.from(text));
-                    messages.add(UserMessage.from(
-                            "Your last JSON was rejected: "
-                                    + validationError
-                                    + "\n\nCorrect it and emit a single JSON "
-                                    + "object matching the schema."));
+                    messages.add(UserMessage.from("Your last JSON was rejected: "
+                            + validationError
+                            + "\n\nCorrect it and emit a single JSON "
+                            + "object matching the schema."));
                 }
             }
         }
@@ -195,7 +190,8 @@ public class DecomposingPhase {
             state.setFailureReason("DECOMPOSING failed after "
                     + MAX_OUTPUT_CORRECTIONS + " corrections — last error: "
                     + validationError);
-            appendIteration(state,
+            appendIteration(
+                    state,
                     summariseInputs(state),
                     "FAILED — " + validationError,
                     PhaseIteration.IterationOutcome.FAILED,
@@ -213,10 +209,10 @@ public class DecomposingPhase {
             state.setPendingRecovery(null);
         }
 
-        appendIteration(state,
+        appendIteration(
+                state,
                 summariseInputs(state),
-                parsed.subgoals.size() + " subgoals ("
-                        + countSpeculative(parsed.subgoals) + " speculative)",
+                parsed.subgoals.size() + " subgoals (" + countSpeculative(parsed.subgoals) + " speculative)",
                 PhaseIteration.IterationOutcome.PASSED,
                 wasRecovery ? "recovery" : "initial",
                 latestLlmRecordId(state));
@@ -224,43 +220,51 @@ public class DecomposingPhase {
 
     // ──────────────────── Prompt building ────────────────────
 
-    private static String buildInitialUserPrompt(
-            ArchitectState state, @Nullable String recoveryHint) {
+    private static String buildInitialUserPrompt(ArchitectState state, @Nullable String recoveryHint) {
         StringBuilder sb = new StringBuilder();
         sb.append("Framed goal:\n").append(state.getGoal().getFramed()).append("\n\n");
 
-        sb.append("acceptanceCriteria (each MUST be addressed by at "
-                + "least one subgoal):\n");
+        sb.append("acceptanceCriteria (each MUST be addressed by at " + "least one subgoal):\n");
         for (Criterion c : state.getAcceptanceCriteria()) {
-            sb.append("  ").append(c.getId()).append(" [")
-                    .append(c.getOrigin()).append("]: ")
-                    .append(c.getText()).append("\n");
+            sb.append("  ")
+                    .append(c.getId())
+                    .append(" [")
+                    .append(c.getOrigin())
+                    .append("]: ")
+                    .append(c.getText())
+                    .append("\n");
         }
         sb.append("\n");
 
         sb.append("evidenceClaims (subgoals cite these via evidenceRefs):\n");
         if (state.getEvidenceClaims().isEmpty()) {
-            sb.append("  (none — subgoals must therefore be mostly "
-                    + "speculative if the plan is still feasible)\n");
+            sb.append("  (none — subgoals must therefore be mostly " + "speculative if the plan is still feasible)\n");
         } else {
             for (Claim c : state.getEvidenceClaims()) {
-                sb.append("  ").append(c.getId()).append(" [")
-                        .append(c.getClassification()).append(", from ")
-                        .append(c.getSourceId()).append("]: ")
-                        .append(c.getText()).append("\n");
+                sb.append("  ")
+                        .append(c.getId())
+                        .append(" [")
+                        .append(c.getClassification())
+                        .append(", from ")
+                        .append(c.getSourceId())
+                        .append("]: ")
+                        .append(c.getText())
+                        .append("\n");
             }
         }
         sb.append("\n");
 
         sb.append("Output schema type (informational): ")
-                .append(state.getOutputSchemaType()).append("\n");
+                .append(state.getOutputSchemaType())
+                .append("\n");
         sb.append("maxSpeculativeRatio: ")
-                .append(state.getMaxSpeculativeRatio()).append("\n\n");
+                .append(state.getMaxSpeculativeRatio())
+                .append("\n\n");
 
         if (recoveryHint != null && !recoveryHint.isBlank()) {
-            sb.append("IMPORTANT — the previous decomposing attempt "
-                    + "was rejected. Correction hint:\n")
-                    .append(recoveryHint).append("\n\n");
+            sb.append("IMPORTANT — the previous decomposing attempt " + "was rejected. Correction hint:\n")
+                    .append(recoveryHint)
+                    .append("\n\n");
         }
 
         sb.append("Now emit a single JSON object matching the "
@@ -277,55 +281,46 @@ public class DecomposingPhase {
     private DecomposeResult parseAndValidate(String text) {
         String jsonOnly = extractJsonObject(text);
         if (jsonOnly == null) {
-            throw new DecomposeValidationException(
-                    "no JSON object found in reply");
+            throw new DecomposeValidationException("no JSON object found in reply");
         }
         Map<String, Object> root;
         try {
             root = objectMapper.readValue(jsonOnly, Map.class);
         } catch (RuntimeException e) {
-            throw new DecomposeValidationException(
-                    "JSON parse error: " + e.getMessage());
+            throw new DecomposeValidationException("JSON parse error: " + e.getMessage(), e);
         }
 
         Object subgoalsRaw = root.get("subgoals");
         if (!(subgoalsRaw instanceof List<?> subgoalsList)) {
-            throw new DecomposeValidationException(
-                    "required field 'subgoals' missing or not an array");
+            throw new DecomposeValidationException("required field 'subgoals' missing or not an array");
         }
         if (subgoalsList.isEmpty()) {
             throw new DecomposeValidationException(
-                    "subgoals must not be empty — the plan must "
-                            + "contain at least one step");
+                    "subgoals must not be empty — the plan must " + "contain at least one step");
         }
 
         List<ParsedSubgoal> subgoals = new ArrayList<>();
         for (int i = 0; i < subgoalsList.size(); i++) {
             Object entry = subgoalsList.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new DecomposeValidationException(
-                        "subgoals[" + i + "] is not an object");
+                throw new DecomposeValidationException("subgoals[" + i + "] is not an object");
             }
             Map<String, Object> m = (Map<String, Object>) entryMap;
 
             Object g = m.get("goal");
             if (!(g instanceof String goal) || goal.isBlank()) {
-                throw new DecomposeValidationException(
-                        "subgoals[" + i + "].goal missing or blank");
+                throw new DecomposeValidationException("subgoals[" + i + "].goal missing or blank");
             }
 
-            List<String> evidenceRefs = parseStringArray(
-                    m.get("evidenceRefs"), "subgoals[" + i + "].evidenceRefs");
-            List<String> criterionRefs = parseStringArray(
-                    m.get("criterionRefs"), "subgoals[" + i + "].criterionRefs");
+            List<String> evidenceRefs = parseStringArray(m.get("evidenceRefs"), "subgoals[" + i + "].evidenceRefs");
+            List<String> criterionRefs = parseStringArray(m.get("criterionRefs"), "subgoals[" + i + "].criterionRefs");
 
             boolean speculative = false;
             Object s = m.get("speculative");
             if (s instanceof Boolean b) {
                 speculative = b;
             } else if (s != null) {
-                throw new DecomposeValidationException(
-                        "subgoals[" + i + "].speculative must be boolean");
+                throw new DecomposeValidationException("subgoals[" + i + "].speculative must be boolean");
             }
 
             String specRationale = null;
@@ -339,32 +334,27 @@ public class DecomposingPhase {
             if (speculative) {
                 if (specRationale == null) {
                     throw new DecomposeValidationException(
-                            "subgoals[" + i + "].speculative=true requires "
-                                    + "non-blank speculationRationale");
+                            "subgoals[" + i + "].speculative=true requires " + "non-blank speculationRationale");
                 }
             } else {
                 if (evidenceRefs.isEmpty()) {
-                    throw new DecomposeValidationException(
-                            "subgoals[" + i + "] is non-speculative but "
-                                    + "evidenceRefs is empty — either cite "
-                                    + "claims or mark speculative");
+                    throw new DecomposeValidationException("subgoals[" + i + "] is non-speculative but "
+                            + "evidenceRefs is empty — either cite "
+                            + "claims or mark speculative");
                 }
             }
             if (criterionRefs.isEmpty()) {
-                throw new DecomposeValidationException(
-                        "subgoals[" + i + "].criterionRefs is empty — every "
-                                + "subgoal must address at least one "
-                                + "acceptance criterion");
+                throw new DecomposeValidationException("subgoals[" + i + "].criterionRefs is empty — every "
+                        + "subgoal must address at least one "
+                        + "acceptance criterion");
             }
 
-            subgoals.add(new ParsedSubgoal(goal.trim(), evidenceRefs,
-                    criterionRefs, speculative, specRationale));
+            subgoals.add(new ParsedSubgoal(goal.trim(), evidenceRefs, criterionRefs, speculative, specRationale));
         }
 
         Object dr = root.get("decompositionRationale");
         if (!(dr instanceof String drs) || drs.isBlank()) {
-            throw new DecomposeValidationException(
-                    "required field 'decompositionRationale' missing or blank");
+            throw new DecomposeValidationException("required field 'decompositionRationale' missing or blank");
         }
 
         return new DecomposeResult(subgoals, drs.trim());
@@ -374,16 +364,14 @@ public class DecomposingPhase {
     private static List<String> parseStringArray(@Nullable Object raw, String label) {
         if (raw == null) return List.of();
         if (!(raw instanceof List<?> list)) {
-            throw new DecomposeValidationException(label
-                    + " must be an array (or be omitted)");
+            throw new DecomposeValidationException(label + " must be an array (or be omitted)");
         }
         List<String> out = new ArrayList<>(list.size());
         for (Object o : list) {
             if (o instanceof String s && !s.isBlank()) {
                 out.add(s.trim());
             } else {
-                throw new DecomposeValidationException(label
-                        + " contains a non-string or blank entry");
+                throw new DecomposeValidationException(label + " contains a non-string or blank entry");
             }
         }
         return out;
@@ -429,11 +417,7 @@ public class DecomposingPhase {
     // ──────────────────── Audit append ────────────────────
 
     private static void appendLlmRecord(
-            ArchitectState state,
-            String response,
-            String modelAlias,
-            long durationMs,
-            int attempt) {
+            ArchitectState state, String response, String modelAlias, long durationMs, int attempt) {
         List<LlmCallRecord> records = new ArrayList<>(state.getLlmCallRecords());
         String id = "llm" + (records.size() + 1);
         records.add(LlmCallRecord.builder()
@@ -463,7 +447,9 @@ public class DecomposingPhase {
             String triggeredBy,
             @Nullable String llmRecordId) {
         int attempt = (int) state.getIterations().stream()
-                .filter(it -> it.getPhase() == ArchitectStatus.DECOMPOSING).count() + 1;
+                        .filter(it -> it.getPhase() == ArchitectStatus.DECOMPOSING)
+                        .count()
+                + 1;
         List<PhaseIteration> log = new ArrayList<>(state.getIterations());
         log.add(PhaseIteration.builder()
                 .iteration(attempt)
@@ -498,13 +484,19 @@ public class DecomposingPhase {
         boolean escape = false;
         for (int i = start; i < raw.length(); i++) {
             char c = raw.charAt(i);
-            if (escape) { escape = false; continue; }
+            if (escape) {
+                escape = false;
+                continue;
+            }
             if (inString) {
                 if (c == '\\') escape = true;
                 else if (c == '"') inString = false;
                 continue;
             }
-            if (c == '"') { inString = true; continue; }
+            if (c == '"') {
+                inString = true;
+                continue;
+            }
             if (c == '{') depth++;
             else if (c == '}') {
                 depth--;
@@ -540,11 +532,15 @@ public class DecomposingPhase {
             boolean speculative,
             @Nullable String speculationRationale) {}
 
-    private record DecomposeResult(
-            List<ParsedSubgoal> subgoals,
-            String decompositionRationale) {}
+    private record DecomposeResult(List<ParsedSubgoal> subgoals, String decompositionRationale) {}
 
     private static class DecomposeValidationException extends RuntimeException {
-        DecomposeValidationException(String message) { super(message); }
+        DecomposeValidationException(String message) {
+            super(message);
+        }
+
+        DecomposeValidationException(String message, @org.jspecify.annotations.Nullable Throwable cause) {
+            super(message, cause);
+        }
     }
 }

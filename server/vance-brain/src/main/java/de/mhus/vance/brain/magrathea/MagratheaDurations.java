@@ -32,21 +32,19 @@ public final class MagratheaDurations {
         if (m.matches()) {
             long n = Long.parseLong(m.group(1));
             return switch (m.group(2).toLowerCase()) {
-                case "d"  -> Duration.ofDays(n);
-                case "h"  -> Duration.ofHours(n);
-                case "m"  -> Duration.ofMinutes(n);
-                case "s"  -> Duration.ofSeconds(n);
+                case "d" -> Duration.ofDays(n);
+                case "h" -> Duration.ofHours(n);
+                case "m" -> Duration.ofMinutes(n);
+                case "s" -> Duration.ofSeconds(n);
                 case "ms" -> Duration.ofMillis(n);
-                default -> throw new IllegalArgumentException(
-                        "unreachable duration unit: " + m.group(2));
+                default -> throw new IllegalArgumentException("unreachable duration unit: " + m.group(2));
             };
         }
         try {
             return Duration.parse(trimmed);
         } catch (DateTimeParseException ex) {
             throw new IllegalArgumentException(
-                    "duration '" + input + "' is neither ISO-8601 nor a shortcut "
-                            + "(e.g. '7d', '30m', '45s')");
+                    "duration '" + input + "' is neither ISO-8601 nor a shortcut " + "(e.g. '7d', '30m', '45s')", ex);
         }
     }
 }

@@ -84,17 +84,14 @@ public class GmailShareHandler implements ShareHandler {
             DocumentService documentService,
             GmailApiClient gmailApiClient,
             @Value("${vance.milliways.gmail.provider-id:google}") String providerId,
-            @Value("${vance.milliways.gmail.max-attachment-bytes:26214400}")
-            long maxAttachmentBytes) {
+            @Value("${vance.milliways.gmail.max-attachment-bytes:26214400}") long maxAttachmentBytes) {
         this.configRegistry = configRegistry;
         this.tokenRefresher = tokenRefresher;
         this.settingService = settingService;
         this.documentService = documentService;
         this.gmailApiClient = gmailApiClient;
         this.providerId = providerId == null || providerId.isBlank() ? "google" : providerId.trim();
-        this.maxAttachmentBytes = maxAttachmentBytes > 0
-                ? maxAttachmentBytes
-                : DEFAULT_MAX_ATTACHMENT_BYTES;
+        this.maxAttachmentBytes = maxAttachmentBytes > 0 ? maxAttachmentBytes : DEFAULT_MAX_ATTACHMENT_BYTES;
     }
 
     @Override
@@ -112,18 +109,16 @@ public class GmailShareHandler implements ShareHandler {
         if (configRegistry.resolve(scope.tenantId(), providerId).isEmpty()) {
             // The tenant never registered the Google app. Phrased for the
             // admin who can fix it, not for the sharer who cannot.
-            return ShareAvailability.unavailable(
-                    "Google is not configured for this tenant — an admin adds it under "
-                            + "OAuth Providers ('" + providerId + "')");
+            return ShareAvailability.unavailable("Google is not configured for this tenant — an admin adds it under "
+                    + "OAuth Providers ('" + providerId + "')");
         }
         if (!isConnected(scope)) {
             return ShareAvailability.unavailable(
                     "Your Google account is not connected — connect it under Connected Accounts");
         }
         if (!maySend(scope)) {
-            return ShareAvailability.unavailable(
-                    "Your Google connection has no permission to send mail — "
-                            + "reconnect it under Connected Accounts");
+            return ShareAvailability.unavailable("Your Google connection has no permission to send mail — "
+                    + "reconnect it under Connected Accounts");
         }
         return ShareAvailability.ready();
     }
@@ -139,14 +134,12 @@ public class GmailShareHandler implements ShareHandler {
     @Override
     public ShareResult share(ShareRequest request) {
         ShareScope scope = request.scope();
-        List<String> recipients =
-                MailShareSupport.parseRecipients(request.string(MailShareSupport.FIELD_TO));
+        List<String> recipients = MailShareSupport.parseRecipients(request.string(MailShareSupport.FIELD_TO));
         if (recipients.isEmpty()) {
             throw new ShareException("Name at least one mail address");
         }
         String subject = request.stringOr(MailShareSupport.FIELD_SUBJECT, scope.displayTitle());
-        String body = MailShareSupport.bodyOf(
-                scope, request.stringOr(MailShareSupport.FIELD_TEXT, ""));
+        String body = MailShareSupport.bodyOf(scope, request.stringOr(MailShareSupport.FIELD_TEXT, ""));
 
         List<MailMessage.Attachment> attachments = scope.hasDocument()
                 ? List.of(MailShareSupport.attachmentOf(scope, documentService, maxAttachmentBytes))
@@ -154,38 +147,39 @@ public class GmailShareHandler implements ShareHandler {
 
         String accessToken;
         try {
-            accessToken = tokenRefresher.resolveAccessToken(
-                    scope.tenantId(), scope.sharer(), providerId);
+            accessToken = tokenRefresher.resolveAccessToken(scope.tenantId(), scope.sharer(), providerId);
         } catch (OAuthExpiredException e) {
             // The connection went away between the availability check and
             // now — revoked in Google's UI, or a refresh Google rejected.
             // Unavailable, not failed: nothing broke, the sharer has to
             // reconnect.
             throw new ShareUnavailableException(
-                    "Your Google account has to be reconnected under Connected Accounts — "
-                            + e.getMessage());
+                    "Your Google account has to be reconnected under Connected Accounts — " + e.getMessage(), e);
         }
 
         Map<String, Object> sendResult;
         try {
-            sendResult = gmailApiClient.send(accessToken, new MailMessage(
-                    recipients,
-                    /*cc*/ null,
-                    /*bcc*/ null,
-                    subject,
-                    body,
-                    /*html*/ null,
-                    // Left to Google: it fills in the account's own address,
-                    // and an invented From is either redundant or rejected
-                    // as an unregistered send-as alias.
-                    /*from*/ null,
-                    /*replyTo*/ null,
-                    attachments));
+            sendResult = gmailApiClient.send(
+                    accessToken,
+                    new MailMessage(
+                            recipients,
+                            /*cc*/ null,
+                            /*bcc*/ null,
+                            subject,
+                            body,
+                            /*html*/ null,
+                            // Left to Google: it fills in the account's own address,
+                            // and an invented From is either redundant or rejected
+                            // as an unregistered send-as alias.
+                            /*from*/ null,
+                            /*replyTo*/ null,
+                            attachments));
         } catch (GmailApiClient.GmailException e) {
             if (e.authFailure()) {
                 throw new ShareUnavailableException(
-                        "Google rejected the token — reconnect your account under "
-                                + "Connected Accounts (" + e.getMessage() + ")");
+                        "Google rejected the token — reconnect your account under " + "Connected Accounts ("
+                                + e.getMessage() + ")",
+                        e);
             }
             if (e.refusal()) {
                 throw new ShareException(e.getMessage(), e);
@@ -205,8 +199,11 @@ public class GmailShareHandler implements ShareHandler {
         Object messageId = sendResult.get("id");
         if (messageId != null) details.put("messageId", messageId);
 
-        log.info("Milliways gmail share: {} recipient(s) as '{}', subject={}",
-                recipients.size(), scope.sharer(), scope.subject().parts());
+        log.info(
+                "Milliways gmail share: {} recipient(s) as '{}', subject={}",
+                recipients.size(),
+                scope.sharer(),
+                scope.subject().parts());
         String message = recipients.size() == 1
                 ? "Sent to " + recipients.get(0)
                 : "Sent to " + recipients.size() + " recipients";
@@ -218,8 +215,8 @@ public class GmailShareHandler implements ShareHandler {
     /** Same question the Connected-Accounts page asks: is a token stored. */
     private boolean isConnected(ShareScope scope) {
         return settingService.getDecryptedUserPassword(
-                scope.tenantId(), scope.sharer(),
-                USER_KEY_PREFIX + providerId + KEY_ACCESS_TOKEN) != null;
+                        scope.tenantId(), scope.sharer(), USER_KEY_PREFIX + providerId + KEY_ACCESS_TOKEN)
+                != null;
     }
 
     /**
@@ -234,8 +231,7 @@ public class GmailShareHandler implements ShareHandler {
      */
     private boolean maySend(ShareScope scope) {
         String granted = settingService.getUserStringValue(
-                scope.tenantId(), scope.sharer(),
-                USER_KEY_PREFIX + providerId + KEY_SCOPES);
+                scope.tenantId(), scope.sharer(), USER_KEY_PREFIX + providerId + KEY_SCOPES);
         if (granted == null || granted.isBlank()) return true;
         for (String s : granted.split("[\\s,]+")) {
             if (SENDING_SCOPES.contains(s.trim().toLowerCase(Locale.ROOT))) return true;

@@ -54,8 +54,8 @@ public class DesktopStatusService {
      */
     private final ObjectProvider<VanceApplicationRegistry> registryProvider;
 
-    public DesktopStatusService(DocumentService documentService,
-                                ObjectProvider<VanceApplicationRegistry> registryProvider) {
+    public DesktopStatusService(
+            DocumentService documentService, ObjectProvider<VanceApplicationRegistry> registryProvider) {
         this.documentService = documentService;
         this.registryProvider = registryProvider;
     }
@@ -67,8 +67,7 @@ public class DesktopStatusService {
      * @throws ToolException when the folder has no {@code common-desktop}
      *         manifest.
      */
-    public DesktopView aggregate(String tenantId, String projectName,
-                                 String desktopFolder, @Nullable String userId) {
+    public DesktopView aggregate(String tenantId, String projectName, String desktopFolder, @Nullable String userId) {
         ApplicationDocument manifest = loadDesktopManifest(tenantId, projectName, desktopFolder);
         DesktopAppConfig config = DesktopAppConfig.from(manifest);
         String root = resolveRoot(desktopFolder, config.root());
@@ -78,7 +77,7 @@ public class DesktopStatusService {
             String path = doc.getPath();
             if (path == null || !path.endsWith(MANIFEST_SUFFIX)) continue;
             String appFolder = path.substring(0, path.length() - MANIFEST_SUFFIX.length());
-            if (appFolder.equals(desktopFolder)) continue;          // self
+            if (appFolder.equals(desktopFolder)) continue; // self
             if (!underRoot(appFolder, root, config.recurse())) continue;
 
             ApplicationDocument appManifest = parseQuietly(doc);
@@ -86,27 +85,34 @@ public class DesktopStatusService {
             String appType = appManifest.app();
             if (appType == null || appType.isBlank()) continue;
             String appTypeKey = appType.toLowerCase(Locale.ROOT);
-            if (DesktopAppConfig.APP_NAME.equals(appTypeKey)) continue;   // never nest desktops
+            if (DesktopAppConfig.APP_NAME.equals(appTypeKey)) continue; // never nest desktops
             if (config.exclude().contains(appTypeKey)) continue;
             if (!config.include().isEmpty() && !config.include().contains(appTypeKey)) continue;
 
-            cards.add(buildCard(tenantId, projectName, doc.getId(), appFolder, path,
-                    appType, appManifest, userId));
+            cards.add(buildCard(tenantId, projectName, doc.getId(), appFolder, path, appType, appManifest, userId));
         }
 
         applyOrder(cards, config.order());
-        log.debug("DesktopStatusService.aggregate tenant='{}' folder='{}' root='{}' → {} apps",
-                tenantId, desktopFolder, root, cards.size());
+        log.debug(
+                "DesktopStatusService.aggregate tenant='{}' folder='{}' root='{}' → {} apps",
+                tenantId,
+                desktopFolder,
+                root,
+                cards.size());
         return DesktopView.builder().folder(desktopFolder).cards(cards).build();
     }
 
     // ── Per-app card ──────────────────────────────────────────────
 
-    private DesktopCard buildCard(String tenantId, String projectName,
-                                  @Nullable String manifestId,
-                                  String appFolder, String manifestPath,
-                                  String appType, ApplicationDocument manifest,
-                                  @Nullable String userId) {
+    private DesktopCard buildCard(
+            String tenantId,
+            String projectName,
+            @Nullable String manifestId,
+            String appFolder,
+            String manifestPath,
+            String appType,
+            ApplicationDocument manifest,
+            @Nullable String userId) {
         Map<String, Object> configBlock = configBlock(manifest, appType);
         String icon = FALLBACK_ICON;
         String openLink = null;
@@ -116,28 +122,24 @@ public class DesktopStatusService {
         if (appOpt.isPresent()) {
             VanceApplication app = appOpt.get();
             try {
-                AppCard card = app.describe(new DescribeContext(
-                        tenantId, projectName, appFolder, userId, configBlock));
+                AppCard card = app.describe(new DescribeContext(tenantId, projectName, appFolder, userId, configBlock));
                 icon = card.icon();
                 openLink = card.openLink();
             } catch (RuntimeException e) {
-                log.warn("desktop describe() failed for app='{}' folder='{}': {}",
-                        appType, appFolder, e.toString());
+                log.warn("desktop describe() failed for app='{}' folder='{}': {}", appType, appFolder, e.toString());
             }
             try {
-                Optional<AppStatus> st = app.status(new StatusContext(
-                        tenantId, projectName, appFolder, userId, null, configBlock));
+                Optional<AppStatus> st =
+                        app.status(new StatusContext(tenantId, projectName, appFolder, userId, null, configBlock));
                 if (st.isPresent()) status = DesktopMapper.toView(st.get());
             } catch (RuntimeException e) {
-                log.warn("desktop status() failed for app='{}' folder='{}': {}",
-                        appType, appFolder, e.toString());
+                log.warn("desktop status() failed for app='{}' folder='{}': {}", appType, appFolder, e.toString());
                 status = DesktopMapper.errorView("Status failed: " + e.getMessage());
             }
         }
 
         if (openLink == null) openLink = "vance:/" + manifestPath;
-        String title = manifest.title() != null && !manifest.title().isBlank()
-                ? manifest.title() : leaf(appFolder);
+        String title = manifest.title() != null && !manifest.title().isBlank() ? manifest.title() : leaf(appFolder);
 
         return DesktopCard.builder()
                 .id(manifestId)
@@ -163,8 +165,7 @@ public class DesktopStatusService {
     /** Apps whose type is listed in {@code order} come first (in that
      *  order); the rest follow sorted by folder. Stable. */
     private static void applyOrder(List<DesktopCard> cards, List<String> order) {
-        cards.sort(Comparator
-                .comparingInt((DesktopCard c) -> {
+        cards.sort(Comparator.comparingInt((DesktopCard c) -> {
                     int idx = order.indexOf(c.getApp().toLowerCase(Locale.ROOT));
                     return idx < 0 ? Integer.MAX_VALUE : idx;
                 })
@@ -188,7 +189,7 @@ public class DesktopStatusService {
         String prefix = root + "/";
         if (!appFolder.startsWith(prefix)) return false;
         if (recurse) return true;
-        return appFolder.indexOf('/', prefix.length()) < 0;   // direct child only
+        return appFolder.indexOf('/', prefix.length()) < 0; // direct child only
     }
 
     private static String leaf(String folder) {
@@ -198,16 +199,14 @@ public class DesktopStatusService {
 
     // ── Manifest loading / parsing ────────────────────────────────
 
-    private ApplicationDocument loadDesktopManifest(String tenantId, String projectName,
-                                                    String desktopFolder) {
+    private ApplicationDocument loadDesktopManifest(String tenantId, String projectName, String desktopFolder) {
         String path = desktopFolder + MANIFEST_SUFFIX;
-        DocumentDocument doc = documentService.findByPath(tenantId, projectName, path)
-                .orElseThrow(() -> new ToolException(
-                        "No _app.yaml manifest found at '" + path + "'."));
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectName, path)
+                .orElseThrow(() -> new ToolException("No _app.yaml manifest found at '" + path + "'."));
         ApplicationDocument manifest = parseQuietly(doc);
         if (manifest == null || !DesktopAppConfig.APP_NAME.equalsIgnoreCase(manifest.app())) {
-            throw new ToolException(
-                    "Folder '" + desktopFolder + "' is not a common-desktop app.");
+            throw new ToolException("Folder '" + desktopFolder + "' is not a common-desktop app.");
         }
         return manifest;
     }
@@ -229,7 +228,7 @@ public class DesktopStatusService {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException("Could not read manifest content: " + e.getMessage());
+            throw new ToolException("Could not read manifest content: " + e.getMessage(), e);
         }
     }
 }

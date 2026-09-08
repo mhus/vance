@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.script.cortex;
 
+import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentListResponse;
 import de.mhus.vance.api.documents.DocumentSummary;
@@ -12,19 +14,15 @@ import de.mhus.vance.api.scripts.ScriptExecutionStatus;
 import de.mhus.vance.api.scripts.ScriptGenerateRequest;
 import de.mhus.vance.api.scripts.ScriptGenerateResponse;
 import de.mhus.vance.api.scripts.ScriptGenerationResult;
-import de.mhus.vance.api.scripts.ScriptValidateRequest;
 import de.mhus.vance.api.scripts.ScriptValidateError;
+import de.mhus.vance.api.scripts.ScriptValidateRequest;
 import de.mhus.vance.api.scripts.ScriptValidateResponse;
-import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.slartibartfast.ArchitectMode;
 import de.mhus.vance.api.slartibartfast.ArchitectState;
-import de.mhus.vance.api.slartibartfast.ArchitectStatus;
 import de.mhus.vance.api.slartibartfast.RecipeDraft;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
-import de.mhus.vance.brain.action.ActionInvocation;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.script.JsValidationService;
 import de.mhus.vance.brain.slartibartfast.SlartibartfastEngine;
@@ -119,10 +117,12 @@ public class ScriptCortexController {
         // over the full project tree, not a "scripts only" silo. The
         // {@code .js} extension is what makes a file executable; other
         // kinds (manuals, data, notes) live alongside.
-        Page<DocumentDocument> result = documentService.listByProjectPaged(
-                tenant, projectId, page, size, pathPrefix, /*kind*/ null);
+        Page<DocumentDocument> result =
+                documentService.listByProjectPaged(tenant, projectId, page, size, pathPrefix, /*kind*/ null);
         return DocumentListResponse.builder()
-                .items(result.getContent().stream().map(ScriptCortexController::toSummary).toList())
+                .items(result.getContent().stream()
+                        .map(ScriptCortexController::toSummary)
+                        .toList())
                 .page(result.getNumber())
                 .pageSize(result.getSize())
                 .totalCount(result.getTotalElements())
@@ -131,12 +131,9 @@ public class ScriptCortexController {
 
     @GetMapping("/brain/{tenant}/scripts/{id}")
     public DocumentDto get(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
         DocumentDocument doc = loadOwned(tenant, id);
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        authority.enforce(httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
         return toDto(doc);
     }
 
@@ -174,9 +171,9 @@ public class ScriptCortexController {
                     username,
                     actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
         // No kind-stamping. Script Cortex doesn't need a special marker
         // — the file's extension is what makes it executable. Leaving
@@ -211,18 +208,16 @@ public class ScriptCortexController {
                     DocumentService.TOOL_IDENTITY,
                     actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
         return toDto(updated);
     }
 
     @DeleteMapping("/brain/{tenant}/scripts/{id}")
     public ResponseEntity<Void> delete(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
         DocumentDocument existing = loadOwned(tenant, id);
         if (DocumentService.isTrash(existing.getPath())) {
             documentService.delete(id, actor(httpRequest));
@@ -236,11 +231,9 @@ public class ScriptCortexController {
 
     @PostMapping("/brain/{tenant}/scripts/validate")
     public ScriptValidateResponse validateQuick(
-            @PathVariable("tenant") String tenant,
-            @RequestBody ScriptValidateRequest request) {
+            @PathVariable("tenant") String tenant, @RequestBody ScriptValidateRequest request) {
         String code = resolveCode(tenant, request);
-        JsValidationService.JsValidationResult result =
-                jsValidationService.validate(code, request.getSourceName());
+        JsValidationService.JsValidationResult result = jsValidationService.validate(code, request.getSourceName());
         List<ScriptValidateError> errors = new ArrayList<>();
         for (JsValidationService.JsValidationError e : result.errors()) {
             errors.add(ScriptValidateError.builder()
@@ -250,10 +243,7 @@ public class ScriptCortexController {
                     .message(e.message())
                     .build());
         }
-        return ScriptValidateResponse.builder()
-                .ok(result.ok())
-                .errors(errors)
-                .build();
+        return ScriptValidateResponse.builder().ok(result.ok()).errors(errors).build();
     }
 
     @PostMapping("/brain/{tenant}/scripts/validate-deep")
@@ -268,8 +258,8 @@ public class ScriptCortexController {
             DocumentDocument doc = loadOwned(tenant, docId);
             resolvedProjectId = doc.getProjectId();
         }
-        ScriptDeepValidateResponse resp = deepValidateService.review(
-                tenant, resolvedProjectId, code, request.getSourceName());
+        ScriptDeepValidateResponse resp =
+                deepValidateService.review(tenant, resolvedProjectId, code, request.getSourceName());
         if (docId != null) {
             cacheDeepReview(docId, code, resp);
         }
@@ -290,43 +280,32 @@ public class ScriptCortexController {
         @Nullable String sourceName = request.getSourceName();
         if (request.getScriptId() != null && !request.getScriptId().isBlank()) {
             DocumentDocument doc = loadOwned(tenant, request.getScriptId());
-            authority.enforce(httpRequest,
-                    new Resource.Document(tenant, doc.getProjectId(), doc.getPath()),
-                    Action.EXECUTE);
+            authority.enforce(
+                    httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.EXECUTE);
             code = documentService.readContent(doc);
             if (resolvedProjectId == null) resolvedProjectId = doc.getProjectId();
             if (sourceName == null) sourceName = doc.getPath();
         } else if (request.getCode() != null && !request.getCode().isBlank()) {
             code = request.getCode();
             if (resolvedProjectId == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "projectId is required when executing inline code");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "projectId is required when executing inline code");
             }
-            authority.enforce(httpRequest,
-                    new Resource.Project(tenant, resolvedProjectId), Action.EXECUTE);
+            authority.enforce(httpRequest, new Resource.Project(tenant, resolvedProjectId), Action.EXECUTE);
         } else {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Either scriptId or code must be supplied");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Either scriptId or code must be supplied");
         }
 
         String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
-        ScriptCortexExecutionService.StartRequest startReq =
-                new ScriptCortexExecutionService.StartRequest(
-                        tenant,
-                        resolvedProjectId,
-                        username,
-                        code,
-                        sourceName,
-                        request.getArgs(),
-                        request.getTimeoutMs());
+        ScriptCortexExecutionService.StartRequest startReq = new ScriptCortexExecutionService.StartRequest(
+                tenant, resolvedProjectId, username, code, sourceName, request.getArgs(), request.getTimeoutMs());
         String executionId = executionService.start(startReq);
         return ScriptExecuteResponse.builder().executionId(executionId).build();
     }
 
     @PostMapping("/brain/{tenant}/scripts/executions/{executionId}/cancel")
     public ResponseEntity<Void> cancel(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("executionId") String executionId) {
+            @PathVariable("tenant") String tenant, @PathVariable("executionId") String executionId) {
         boolean ok = executionService.cancel(executionId);
         return ok
                 ? ResponseEntity.noContent().build()
@@ -335,11 +314,11 @@ public class ScriptCortexController {
 
     @GetMapping("/brain/{tenant}/scripts/executions/{executionId}")
     public ScriptExecutionStatus executionStatus(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("executionId") String executionId) {
-        return executionService.getStatus(executionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Unknown executionId: " + executionId));
+            @PathVariable("tenant") String tenant, @PathVariable("executionId") String executionId) {
+        return executionService
+                .getStatus(executionId)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown executionId: " + executionId));
     }
 
     // ──────────────────── Script-Generation (via Slart) ────────────────────
@@ -352,8 +331,7 @@ public class ScriptCortexController {
             @Valid @RequestBody ScriptGenerateRequest request,
             HttpServletRequest httpRequest) {
 
-        authority.enforce(httpRequest,
-                new Resource.Project(tenant, projectId), Action.CREATE);
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.CREATE);
         String processName = "script-gen-" + UUID.randomUUID().toString().substring(0, 8);
 
         // Resolve mode + existing-script-ref. Explicit `mode` from
@@ -365,8 +343,7 @@ public class ScriptCortexController {
         if (mode == ArchitectMode.UPDATE) {
             if (request.getExistingScriptId() == null
                     || request.getExistingScriptId().isBlank()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "mode=UPDATE requires existingScriptId");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "mode=UPDATE requires existingScriptId");
             }
             DocumentDocument existing = loadOwned(tenant, request.getExistingScriptId());
             existingScriptRef = existing.getPath();
@@ -377,23 +354,21 @@ public class ScriptCortexController {
         // + planOnly are already in the recipe; mode/userDescription/
         // existingScriptRef/failureReason are per-call).
         Map<String, Object> overrideParams = new LinkedHashMap<>();
-        overrideParams.put(SlartibartfastEngine.USER_DESCRIPTION_KEY,
-                request.getPrompt());
+        overrideParams.put(SlartibartfastEngine.USER_DESCRIPTION_KEY, request.getPrompt());
         overrideParams.put(SlartibartfastEngine.MODE_KEY, mode.name());
         if (existingScriptRef != null) {
-            overrideParams.put(SlartibartfastEngine.EXISTING_SCRIPT_REF_KEY,
-                    existingScriptRef);
+            overrideParams.put(SlartibartfastEngine.EXISTING_SCRIPT_REF_KEY, existingScriptRef);
         }
         if (mode == ArchitectMode.UPDATE
                 && request.getFailureReason() != null
                 && !request.getFailureReason().isBlank()) {
-            overrideParams.put(SlartibartfastEngine.FAILURE_REASON_KEY,
-                    request.getFailureReason());
+            overrideParams.put(SlartibartfastEngine.FAILURE_REASON_KEY, request.getFailureReason());
         }
 
         String userId = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
         TriggerContext triggerCtx = TriggerContext.sessioned(
-                tenant, projectId,
+                tenant,
+                projectId,
                 /*resolvedRunAs*/ userId,
                 /*correlationId*/ processName,
                 /*sourceTag*/ "cortex:scripts/generate",
@@ -402,21 +377,18 @@ public class ScriptCortexController {
 
         ActionResult result = actionExecutorRegistry.execute(
                 TriggerAction.Recipe.of(
-                        "slart-script-author",
-                        /*initialMessage*/ null,
-                        overrideParams,
-                        /*runAs*/ userId),
+                        "slart-script-author", /*initialMessage*/ null, overrideParams, /*runAs*/ userId),
                 triggerCtx,
                 TriggerKind.USER);
 
         if (result.outcome().isFailure()) {
             log.warn("Cortex /scripts/generate failed: {}", result.errorMessage());
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to start Slart: " + result.errorMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Failed to start Slart: " + result.errorMessage());
         }
         if (result.spawnedId() == null || result.spawnedId().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "SpawnActionExecutor did not return a process id");
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "SpawnActionExecutor did not return a process id");
         }
         return ScriptGenerateResponse.builder()
                 .thinkProcessId(result.spawnedId())
@@ -426,9 +398,9 @@ public class ScriptCortexController {
 
     @GetMapping("/brain/{tenant}/scripts/generations/{thinkProcessId}/result")
     public ScriptGenerationResult generationResult(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("thinkProcessId") String thinkProcessId) {
-        ThinkProcessDocument process = thinkProcessService.findById(thinkProcessId)
+            @PathVariable("tenant") String tenant, @PathVariable("thinkProcessId") String thinkProcessId) {
+        ThinkProcessDocument process = thinkProcessService
+                .findById(thinkProcessId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(process.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
@@ -438,8 +410,10 @@ public class ScriptCortexController {
         return ScriptGenerationResult.builder()
                 .thinkProcessId(thinkProcessId)
                 .status(process.getStatus() == null ? null : process.getStatus().name())
-                .reason(state == null || state.getStatus() == null
-                        ? null : state.getStatus().name())
+                .reason(
+                        state == null || state.getStatus() == null
+                                ? null
+                                : state.getStatus().name())
                 // Draft.yaml carries the JS source for SCRIPT_JS — see
                 // JsScriptArchitect.extractRecipeYaml (the field-name
                 // is artefact-agnostic in the schema-agnostic phases).
@@ -451,8 +425,8 @@ public class ScriptCortexController {
     // ──────────────────── Internals ────────────────────
 
     private DocumentDocument loadOwned(String tenant, String id) {
-        DocumentDocument doc = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument doc =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(doc.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
@@ -467,8 +441,7 @@ public class ScriptCortexController {
             DocumentDocument doc = loadOwned(tenant, request.getScriptId());
             return documentService.readContent(doc);
         }
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Either scriptId or code must be supplied");
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Either scriptId or code must be supplied");
     }
 
     private @Nullable ArchitectState loadSlartState(ThinkProcessDocument process) {
@@ -492,33 +465,30 @@ public class ScriptCortexController {
             try {
                 ArchitectMode m = ArchitectMode.valueOf(norm);
                 if (m == ArchitectMode.EDIT) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Cortex script-generate only accepts CREATE or "
-                                    + "UPDATE — EDIT is recipe-only");
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "Cortex script-generate only accepts CREATE or " + "UPDATE — EDIT is recipe-only");
                 }
                 return m;
             } catch (IllegalArgumentException iae) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Unknown mode: '" + raw + "' (expected CREATE or UPDATE)");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Unknown mode: '" + raw + "' (expected CREATE or UPDATE)", iae);
             }
         }
         return request.getExistingScriptId() != null
-                && !request.getExistingScriptId().isBlank()
+                        && !request.getExistingScriptId().isBlank()
                 ? ArchitectMode.UPDATE
                 : ArchitectMode.CREATE;
     }
 
-    private void cacheDeepReview(
-            String docId, String code, ScriptDeepValidateResponse response) {
+    private void cacheDeepReview(String docId, String code, ScriptDeepValidateResponse response) {
         String hash = sha256Hex(code);
         try {
-            List<ScriptDeepWarning> warnings = response.getWarnings() == null
-                    ? List.of() : response.getWarnings();
+            List<ScriptDeepWarning> warnings = response.getWarnings() == null ? List.of() : response.getWarnings();
             String json = objectMapper.writeValueAsString(warnings);
             documentService.setDeepReviewCache(docId, hash, json);
         } catch (RuntimeException e) {
-            log.warn("Failed to persist deep-review cache for doc='{}': {}",
-                    docId, e.toString());
+            log.warn("Failed to persist deep-review cache for doc='{}': {}", docId, e.toString());
         }
     }
 
@@ -567,9 +537,7 @@ public class ScriptCortexController {
                 .createdAtMs(toMillis(doc.getCreatedAt()))
                 .createdBy(doc.getCreatedBy())
                 .kind(doc.getKind())
-                .headers(doc.getHeaders() == null
-                        ? new LinkedHashMap<>()
-                        : new LinkedHashMap<>(doc.getHeaders()))
+                .headers(doc.getHeaders() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(doc.getHeaders()))
                 .autoSummary(doc.isAutoSummary())
                 .summaryDirty(doc.isSummaryDirty())
                 .summary(doc.getSummary())

@@ -3,7 +3,6 @@ package de.mhus.vance.brain.tools.ursascheduler;
 import de.mhus.vance.api.megadodo.MegadodoRefType;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.ursascheduler.UrsaSchedulerService;
-import de.mhus.vance.brain.ursascheduler.UrsaSchedulerSourceKeys;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.megadodo.MegadodoService;
@@ -57,9 +56,9 @@ class UrsaSchedulerToolSupport {
      */
     private de.mhus.vance.shared.permission.WriteActor adminSystemActor(
             String tenantId, String projectId, @org.jspecify.annotations.Nullable String userId) {
-        de.mhus.vance.shared.permission.SecurityContext subject =
-                contextFactory.forToolSubject(tenantId, userId);
-        permissionService.enforce(subject,
+        de.mhus.vance.shared.permission.SecurityContext subject = contextFactory.forToolSubject(tenantId, userId);
+        permissionService.enforce(
+                subject,
                 new de.mhus.vance.shared.permission.Resource.Project(tenantId, projectId),
                 de.mhus.vance.shared.permission.Action.ADMIN);
         return de.mhus.vance.shared.permission.WriteActor.system(subject);
@@ -87,15 +86,13 @@ class UrsaSchedulerToolSupport {
             throw new ToolException("'name' must be a non-empty string");
         }
         if (!NAME_PATTERN.matcher(trimmed).matches()) {
-            throw new ToolException(
-                    "'name' must match " + NAME_PATTERN.pattern() + " — got '" + name + "'");
+            throw new ToolException("'name' must match " + NAME_PATTERN.pattern() + " — got '" + name + "'");
         }
         return trimmed;
     }
 
     static String pathFor(String name) {
-        return UrsaSchedulerLoader.SCHEDULER_PATH_PREFIX + name
-                + UrsaSchedulerLoader.SCHEDULER_PATH_SUFFIX;
+        return UrsaSchedulerLoader.SCHEDULER_PATH_PREFIX + name + UrsaSchedulerLoader.SCHEDULER_PATH_SUFFIX;
     }
 
     /**
@@ -120,10 +117,9 @@ class UrsaSchedulerToolSupport {
         loader.load(tenantId, projectId, name)
                 .filter(de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler::isLlmLocked)
                 .ifPresent(r -> {
-                    throw new ToolException(
-                            "scheduler '" + name + "' is locked (lockMode="
-                                    + r.lockMode().name().toLowerCase(Locale.ROOT)
-                                    + ") and cannot be modified by LLM tools");
+                    throw new ToolException("scheduler '" + name + "' is locked (lockMode="
+                            + r.lockMode().name().toLowerCase(Locale.ROOT)
+                            + ") and cannot be modified by LLM tools");
                 });
     }
 
@@ -139,7 +135,7 @@ class UrsaSchedulerToolSupport {
         try {
             return loader.validateYaml(name, yaml);
         } catch (UrsaSchedulerLoader.SchedulerParseException ex) {
-            throw new ToolException(ex.getMessage());
+            throw new ToolException(ex.getMessage(), ex);
         }
     }
 
@@ -156,11 +152,11 @@ class UrsaSchedulerToolSupport {
      * referenced recipe, or by setting {@code enabled: false} until the
      * referenced object exists).
      */
-    List<String> crossReferenceWarnings(
-            String tenantId, String projectId, ResolvedUrsaScheduler r) {
+    List<String> crossReferenceWarnings(String tenantId, String projectId, ResolvedUrsaScheduler r) {
         List<String> warnings = new ArrayList<>();
         if (r.recipe() != null && !r.recipe().isBlank()) {
-            boolean exists = recipeResolver.resolve(tenantId, projectId, r.recipe()).isPresent();
+            boolean exists =
+                    recipeResolver.resolve(tenantId, projectId, r.recipe()).isPresent();
             if (!exists) {
                 warnings.add("recipe '" + r.recipe()
                         + "' is not defined in this project's cascade — "
@@ -177,9 +173,7 @@ class UrsaSchedulerToolSupport {
      * updated inline; otherwise a new doc is created. Returns the
      * persisted document.
      */
-    DocumentDocument upsert(
-            String tenantId, String projectId, String name, String yaml,
-            @Nullable String createdBy) {
+    DocumentDocument upsert(String tenantId, String projectId, String name, String yaml, @Nullable String createdBy) {
         String path = pathFor(name);
         Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
@@ -192,7 +186,9 @@ class UrsaSchedulerToolSupport {
                     adminSystemActor(tenantId, projectId, createdBy));
         }
         return documentService.createText(
-                tenantId, projectId, path,
+                tenantId,
+                projectId,
+                path,
                 /*title*/ "Scheduler: " + name,
                 /*tags*/ null,
                 yaml,
@@ -200,17 +196,15 @@ class UrsaSchedulerToolSupport {
                 adminSystemActor(tenantId, projectId, createdBy));
     }
 
-    void deleteByPath(String tenantId, String projectId, String name,
-            @Nullable String userId) {
+    void deleteByPath(String tenantId, String projectId, String name, @Nullable String userId) {
         String path = pathFor(name);
-        documentService.findByPath(tenantId, projectId, path)
-                .ifPresent(doc -> documentService.delete(doc.getId(),
-                        adminSystemActor(tenantId, projectId, userId)));
+        documentService
+                .findByPath(tenantId, projectId, path)
+                .ifPresent(doc -> documentService.delete(doc.getId(), adminSystemActor(tenantId, projectId, userId)));
     }
 
     /** Compact list-shape for the read tools and REST list endpoint. */
-    Map<String, Object> shape(
-            String tenantId, String projectId, ResolvedUrsaScheduler r) {
+    Map<String, Object> shape(String tenantId, String projectId, ResolvedUrsaScheduler r) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", r.name());
         out.put("description", r.description());
@@ -229,25 +223,28 @@ class UrsaSchedulerToolSupport {
         }
         if (!r.tags().isEmpty()) out.put("tags", r.tags());
 
-        megadodoService.latestForRef(
-                tenantId, projectId, MegadodoRefType.SCHEDULER, r.name()).ifPresent(e -> {
-            Map<String, Object> lastRun = new LinkedHashMap<>();
-            lastRun.put("at", e.getTimestamp());
-            // Outcome once the run closed; the phase while it is open, so
-            // the model can tell "running" from "finished ok".
-            lastRun.put("outcome",
-                    e.getOutcome() != null ? e.getOutcome() : e.getPhase().name().toLowerCase());
-            if (e.getMessage() != null) lastRun.put("message", e.getMessage());
-            lastRun.put("runId", e.getTraceId());
-            out.put("lastRun", lastRun);
-        });
+        megadodoService
+                .latestForRef(tenantId, projectId, MegadodoRefType.SCHEDULER, r.name())
+                .ifPresent(e -> {
+                    Map<String, Object> lastRun = new LinkedHashMap<>();
+                    lastRun.put("at", e.getTimestamp());
+                    // Outcome once the run closed; the phase while it is open, so
+                    // the model can tell "running" from "finished ok".
+                    lastRun.put(
+                            "outcome",
+                            e.getOutcome() != null
+                                    ? e.getOutcome()
+                                    : e.getPhase().name().toLowerCase());
+                    if (e.getMessage() != null) lastRun.put("message", e.getMessage());
+                    lastRun.put("runId", e.getTraceId());
+                    out.put("lastRun", lastRun);
+                });
         Instant next = schedulerService.nextFireFor(tenantId, projectId, r.name());
         if (next != null) out.put("nextRunAt", next);
         return out;
     }
 
-    Map<String, Object> shapeFull(
-            String tenantId, String projectId, ResolvedUrsaScheduler r) {
+    Map<String, Object> shapeFull(String tenantId, String projectId, ResolvedUrsaScheduler r) {
         Map<String, Object> out = shape(tenantId, projectId, r);
         out.put("yaml", r.yaml());
         if (r.params() != null && !r.params().isEmpty()) out.put("params", r.params());

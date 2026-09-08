@@ -62,9 +62,8 @@ public class StarredController {
             @RequestParam(name = "all", defaultValue = "false") boolean all,
             HttpServletRequest request) {
         String user = currentUser(request);
-        List<StarredItem> items = all
-                ? starredService.listResolvable(tenant, user)
-                : starredService.listDisplayed(tenant, user);
+        List<StarredItem> items =
+                all ? starredService.listResolvable(tenant, user) : starredService.listDisplayed(tenant, user);
         return items.stream().map(StarredController::toDto).toList();
     }
 
@@ -75,31 +74,33 @@ public class StarredController {
      */
     @GetMapping("/by-type/{type}")
     public StarredItemDto findByType(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("type") String type,
-            HttpServletRequest request) {
+            @PathVariable("tenant") String tenant, @PathVariable("type") String type, HttpServletRequest request) {
         String user = currentUser(request);
-        return starredService.findByType(tenant, user, type)
+        return starredService
+                .findByType(tenant, user, type)
                 .map(StarredController::toDto)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "No starred entry of type '" + type + "'"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "No starred entry of type '" + type + "'"));
     }
 
     /** Star a document, or edit an existing entry's authored fields. */
     @PutMapping
     public StarredItemDto star(
-            @PathVariable("tenant") String tenant,
-            @Valid @RequestBody StarredRequest req,
-            HttpServletRequest request) {
+            @PathVariable("tenant") String tenant, @Valid @RequestBody StarredRequest req, HttpServletRequest request) {
         String user = currentUser(request);
         try {
             return toDto(starredService.star(
-                    tenant, user, req.getProject(), req.getPath(),
-                    req.getTitle(), req.getDescription(),
-                    req.getHighlight(), req.getHidden(),
+                    tenant,
+                    user,
+                    req.getProject(),
+                    req.getPath(),
+                    req.getTitle(),
+                    req.getDescription(),
+                    req.getHighlight(),
+                    req.getHidden(),
                     authority.contextOf(request)));
         } catch (StarredService.StarredException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
@@ -114,8 +115,7 @@ public class StarredController {
             @RequestParam("path") String path,
             HttpServletRequest request) {
         String user = currentUser(request);
-        boolean changed = starredService.unstar(
-                tenant, user, project, path, authority.contextOf(request));
+        boolean changed = starredService.unstar(tenant, user, project, path, authority.contextOf(request));
         return changed
                 ? ResponseEntity.noContent().build()
                 : ResponseEntity.status(HttpStatus.NOT_FOUND).build();
@@ -133,8 +133,7 @@ public class StarredController {
             @RequestParam("hidden") boolean hidden,
             HttpServletRequest request) {
         String user = currentUser(request);
-        boolean found = starredService.setHidden(
-                tenant, user, project, path, hidden, authority.contextOf(request));
+        boolean found = starredService.setHidden(tenant, user, project, path, hidden, authority.contextOf(request));
         return found
                 ? ResponseEntity.noContent().build()
                 : ResponseEntity.status(HttpStatus.NOT_FOUND).build();
@@ -146,12 +145,9 @@ public class StarredController {
      * asked.
      */
     @PostMapping("/reconcile")
-    public StarredReconcileDto reconcile(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest request) {
+    public StarredReconcileDto reconcile(@PathVariable("tenant") String tenant, HttpServletRequest request) {
         String user = currentUser(request);
-        StarredService.ReconcileResult result =
-                starredService.reconcile(tenant, user, authority.contextOf(request));
+        StarredService.ReconcileResult result = starredService.reconcile(tenant, user, authority.contextOf(request));
         return StarredReconcileDto.builder()
                 .changed(result.changed())
                 .entries(result.entries().stream()

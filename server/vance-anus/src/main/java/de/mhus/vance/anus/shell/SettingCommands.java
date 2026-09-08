@@ -57,18 +57,22 @@ public class SettingCommands {
         this.lineReader = lineReader;
     }
 
-    @Command(name = {"setting", "list"},
-            description = "List settings. Either --scope+--ref for a scope, or --key alone for that key across the tenant.")
+    @Command(
+            name = {"setting", "list"},
+            description =
+                    "List settings. Either --scope+--ref for a scope, or --key alone for that key across the tenant.")
     public String list(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
-            @Option(longName = "scope", shortName = 's',
-                    description = "tenant | user | project | think-process")
-            @Nullable String scope,
-            @Option(longName = "ref", shortName = 'r',
-                    description = "user login / project name / think-process id; auto-filled for scope=tenant.")
-            @Nullable String ref,
-            @Option(longName = "key", shortName = 'k')
-            @Nullable String key) {
+            @Option(longName = "scope", shortName = 's', description = "tenant | user | project | think-process")
+                    @Nullable
+                    String scope,
+            @Option(
+                            longName = "ref",
+                            shortName = 'r',
+                            description = "user login / project name / think-process id; auto-filled for scope=tenant.")
+                    @Nullable
+                    String ref,
+            @Option(longName = "key", shortName = 'k') @Nullable String key) {
 
         if (scope == null && StringUtils.isBlank(key)) {
             return "Provide either (--scope + --ref) or --key.";
@@ -97,7 +101,9 @@ public class SettingCommands {
         return renderTable(docs);
     }
 
-    @Command(name = {"setting", "show"}, description = "Show a single setting.")
+    @Command(
+            name = {"setting", "show"},
+            description = "Show a single setting.")
     public String show(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "scope", shortName = 's', required = true) String scope,
@@ -112,35 +118,41 @@ public class SettingCommands {
         }
         Optional<SettingDocument> doc = settingService.find(tenant, storage.type(), storage.id(), key);
         if (doc.isEmpty()) {
-            return "Setting not found — tenant='" + tenant + "' scope='" + scope
-                    + "' ref='" + storage.id() + "' key='" + key + "'.";
+            return "Setting not found — tenant='" + tenant + "' scope='" + scope + "' ref='" + storage.id() + "' key='"
+                    + key + "'.";
         }
         return renderOne(doc.get());
     }
 
-    @Command(name = {"setting", "set"},
+    @Command(
+            name = {"setting", "set"},
             description = "Set a plaintext value. Use 'setting set-secret' for PASSWORD / HIDDEN.")
     public String set(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "scope", shortName = 's', required = true) String scope,
             @Option(longName = "ref", shortName = 'r') @Nullable String ref,
             @Option(longName = "key", shortName = 'k', required = true) String key,
-            @Option(longName = "value", shortName = 'v',
-                    description = "Plain string value. Omit to clear the value while keeping the document.")
-            @Nullable String value,
-            @Option(longName = "type", shortName = 't',
-                    description = "STRING | INT | LONG | DOUBLE | BOOLEAN — the encrypted types "
-                            + "(PASSWORD, HIDDEN) are rejected here.",
-                    defaultValue = "STRING")
-            SettingType type,
+            @Option(
+                            longName = "value",
+                            shortName = 'v',
+                            description = "Plain string value. Omit to clear the value while keeping the document.")
+                    @Nullable
+                    String value,
+            @Option(
+                            longName = "type",
+                            shortName = 't',
+                            description = "STRING | INT | LONG | DOUBLE | BOOLEAN — the encrypted types "
+                                    + "(PASSWORD, HIDDEN) are rejected here.",
+                            defaultValue = "STRING")
+                    SettingType type,
             @Option(longName = "description", shortName = 'd') @Nullable String description) {
 
         // Every encrypted type, not just PASSWORD: SettingService.set() throws
         // for those, so a type-specific guard would let HIDDEN through into an
         // IllegalArgumentException instead of this message.
         if (type.encrypted()) {
-            return "Refusing to set " + type + " via 'setting set' — use "
-                    + "'setting set-secret --type " + type + "' instead.";
+            return "Refusing to set " + type + " via 'setting set' — use " + "'setting set-secret --type " + type
+                    + "' instead.";
         }
         StorageRef storage;
         try {
@@ -151,12 +163,12 @@ public class SettingCommands {
         if (value != null && !isParseable(type, value)) {
             return "Value '" + value + "' is not a valid " + type + ".";
         }
-        SettingDocument saved = settingService.set(
-                tenant, storage.type(), storage.id(), key, value, type, description);
+        SettingDocument saved = settingService.set(tenant, storage.type(), storage.id(), key, value, type, description);
         return "Set:\n" + renderOne(saved);
     }
 
-    @Command(name = {"setting", "set-secret"},
+    @Command(
+            name = {"setting", "set-secret"},
             description = "Store an encrypted setting (PASSWORD or HIDDEN). "
                     + "Plaintext is prompted (masked) when --value is omitted.")
     public String setSecret(
@@ -164,19 +176,24 @@ public class SettingCommands {
             @Option(longName = "scope", shortName = 's', required = true) String scope,
             @Option(longName = "ref", shortName = 'r') @Nullable String ref,
             @Option(longName = "key", shortName = 'k', required = true) String key,
-            @Option(longName = "value", shortName = 'v',
-                    description = "Plaintext. Stored AES-GCM-encrypted with the shared encryption key.")
-            @Nullable String value,
-            @Option(longName = "type", shortName = 't',
-                    description = "PASSWORD (server-internal only) or HIDDEN (also resolvable "
-                            + "through a {{secret:...}} reference, i.e. usable by tool documents, "
-                            + "compose manifests and scripts).",
-                    defaultValue = "PASSWORD")
-            SettingType type) {
+            @Option(
+                            longName = "value",
+                            shortName = 'v',
+                            description = "Plaintext. Stored AES-GCM-encrypted with the shared encryption key.")
+                    @Nullable
+                    String value,
+            @Option(
+                            longName = "type",
+                            shortName = 't',
+                            description = "PASSWORD (server-internal only) or HIDDEN (also resolvable "
+                                    + "through a {{secret:...}} reference, i.e. usable by tool documents, "
+                                    + "compose manifests and scripts).",
+                            defaultValue = "PASSWORD")
+                    SettingType type) {
 
         if (!type.encrypted()) {
-            return "'" + type + "' is not an encrypted type — use 'setting set --type "
-                    + type + "' for plaintext values.";
+            return "'" + type + "' is not an encrypted type — use 'setting set --type " + type
+                    + "' for plaintext values.";
         }
         StorageRef storage;
         try {
@@ -191,51 +208,68 @@ public class SettingCommands {
         if (StringUtils.isBlank(plain)) {
             return "Empty value — refusing.";
         }
-        SettingDocument saved = settingService.setEncryptedSecret(
-                tenant, storage.type(), storage.id(), key, plain, type);
+        SettingDocument saved =
+                settingService.setEncryptedSecret(tenant, storage.type(), storage.id(), key, plain, type);
         return "Set (encrypted):\n" + renderOne(saved);
     }
 
-    @Command(name = {"setting", "set-password"},
+    @Command(
+            name = {"setting", "set-password"},
             description = "Deprecated alias for 'setting set-secret --type PASSWORD'.")
     public String setPassword(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "scope", shortName = 's', required = true) String scope,
             @Option(longName = "ref", shortName = 'r') @Nullable String ref,
             @Option(longName = "key", shortName = 'k', required = true) String key,
-            @Option(longName = "value", shortName = 'v',
-                    description = "Plaintext. Stored AES-GCM-encrypted with the shared encryption key.")
-            @Nullable String value) {
+            @Option(
+                            longName = "value",
+                            shortName = 'v',
+                            description = "Plaintext. Stored AES-GCM-encrypted with the shared encryption key.")
+                    @Nullable
+                    String value) {
         // Kept so existing scripts and docs keep working; one implementation,
         // two entrances, so the two can never drift apart.
         return setSecret(tenant, scope, ref, key, value, SettingType.PASSWORD);
     }
 
-    @Command(name = {"setting", "import"},
+    @Command(
+            name = {"setting", "import"},
             description = "Bulk-import settings from a YAML file (init-settings.yaml format). "
                     + "Top-level YAML key is the tenant; CLI --scope/--ref decide where the "
                     + "settings land. Idempotent upsert; PASSWORD entries are encrypted.")
     public String importYaml(
-            @Option(longName = "file", shortName = 'f', required = true,
-                    description = "Path to the YAML file. Relative paths walk parent directories.")
-            String fileArg,
-            @Option(longName = "tenant", shortName = 'T',
-                    description = "Tenant to import into. When set, must match the YAML top-level "
-                            + "key (single-tenant files); when omitted, every tenant entry "
-                            + "in the YAML is applied to its own tenant.")
-            @Nullable String tenantFilter,
-            @Option(longName = "scope", shortName = 's',
-                    description = "tenant | user | project | think-process. Default 'tenant' lands "
-                            + "in the tenant-wide _vance system project.",
-                    defaultValue = "tenant")
-            String scope,
-            @Option(longName = "ref", shortName = 'r',
-                    description = "user login / project name / think-process id; auto-filled for scope=tenant.")
-            @Nullable String ref,
-            @Option(longName = "dry-run",
-                    description = "Print what would happen, without writing.",
-                    defaultValue = "false")
-            boolean dryRun) {
+            @Option(
+                            longName = "file",
+                            shortName = 'f',
+                            required = true,
+                            description = "Path to the YAML file. Relative paths walk parent directories.")
+                    String fileArg,
+            @Option(
+                            longName = "tenant",
+                            shortName = 'T',
+                            description = "Tenant to import into. When set, must match the YAML top-level "
+                                    + "key (single-tenant files); when omitted, every tenant entry "
+                                    + "in the YAML is applied to its own tenant.")
+                    @Nullable
+                    String tenantFilter,
+            @Option(
+                            longName = "scope",
+                            shortName = 's',
+                            description = "tenant | user | project | think-process. Default 'tenant' lands "
+                                    + "in the tenant-wide _vance system project.",
+                            defaultValue = "tenant")
+                    String scope,
+            @Option(
+                            longName = "ref",
+                            shortName = 'r',
+                            description = "user login / project name / think-process id; auto-filled for scope=tenant.")
+                    @Nullable
+                    String ref,
+            @Option(
+                            longName = "dry-run",
+                            description = "Print what would happen, without writing.",
+                            defaultValue = "false")
+                    boolean dryRun) {
 
         // 1. Resolve scope/ref to storage early so a bad combination
         //    fails before we read the file.
@@ -295,8 +329,7 @@ public class SettingCommands {
                     continue;
                 }
                 try {
-                    Outcome outcome = applyOne(
-                            tenant, storage, key, spec, dryRun);
+                    Outcome outcome = applyOne(tenant, storage, key, spec, dryRun);
                     report.add(outcome.line());
                     if (outcome.applied()) applied++;
                     else skipped++;
@@ -313,7 +346,9 @@ public class SettingCommands {
                 scope,
                 ref == null || ref.isBlank() ? "" : " (ref=" + ref + ")",
                 root.size(),
-                applied, skipped, failed);
+                applied,
+                skipped,
+                failed);
         return header + "\n" + String.join("\n", report);
     }
 
@@ -325,41 +360,35 @@ public class SettingCommands {
      */
     // Package-private for SettingCommandsTest: the type dispatch here decides
     // whether a value is encrypted or lands in Mongo as plaintext.
-    Outcome applyOne(
-            String tenant, StorageRef storage,
-            String key, Map<?, ?> spec, boolean dryRun) {
+    Outcome applyOne(String tenant, StorageRef storage, String key, Map<?, ?> spec, boolean dryRun) {
         String typeStr = spec.get("type") == null ? "STRING" : spec.get("type").toString();
         SettingType type;
         try {
             type = SettingType.valueOf(typeStr.toUpperCase());
         } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Unknown setting type '" + typeStr + "'");
+            throw new IllegalArgumentException("Unknown setting type '" + typeStr + "'", ex);
         }
         Object rawValue = spec.get("value");
         String value = rawValue == null ? null : rawValue.toString();
         if (StringUtils.isBlank(value)) {
-            return new Outcome(false,
-                    "[skip-empty] " + tenant + "/" + key + " (" + type + ")");
+            return new Outcome(false, "[skip-empty] " + tenant + "/" + key + " (" + type + ")");
         }
-        String description = spec.get("description") == null
-                ? null : spec.get("description").toString();
+        String description =
+                spec.get("description") == null ? null : spec.get("description").toString();
         if (dryRun) {
             // Every encrypted type, not just PASSWORD — a dry-run that echoes a
             // HIDDEN plaintext to stdout defeats the point of the type.
             String valueRender = type.encrypted() ? "<encrypted>" : value;
-            return new Outcome(true,
-                    "[dry] " + tenant + "/" + key + " (" + type + ") = " + valueRender);
+            return new Outcome(true, "[dry] " + tenant + "/" + key + " (" + type + ") = " + valueRender);
         }
         if (type.encrypted()) {
             // The YAML's declared type is preserved: a HIDDEN entry must not be
             // promoted to PASSWORD (it would stop resolving through the
             // {{secret:…}} references the same file's tools rely on).
-            settingService.setEncryptedSecret(
-                    tenant, storage.type(), storage.id(), key, value, type);
+            settingService.setEncryptedSecret(tenant, storage.type(), storage.id(), key, value, type);
             return new Outcome(true, "[ok] " + tenant + "/" + key + " (" + type + ", encrypted)");
         }
-        settingService.set(
-                tenant, storage.type(), storage.id(), key, value, type, description);
+        settingService.set(tenant, storage.type(), storage.id(), key, value, type, description);
         return new Outcome(true, "[ok] " + tenant + "/" + key + " (" + type + ")");
     }
 
@@ -394,15 +423,16 @@ public class SettingCommands {
             if (loaded instanceof Map<?, ?> m) {
                 return (Map<String, Object>) m;
             }
-            throw new IllegalStateException(
-                    "Top level is not a map; got "
-                            + (loaded == null ? "null" : loaded.getClass().getSimpleName()));
+            throw new IllegalStateException("Top level is not a map; got "
+                    + (loaded == null ? "null" : loaded.getClass().getSimpleName()));
         } catch (IOException e) {
             throw new IllegalStateException("Read failed: " + e.getMessage(), e);
         }
     }
 
-    @Command(name = {"setting", "delete"}, description = "Delete a setting.")
+    @Command(
+            name = {"setting", "delete"},
+            description = "Delete a setting.")
     public String delete(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "scope", shortName = 's', required = true) String scope,
@@ -419,8 +449,7 @@ public class SettingCommands {
             return "Setting not found — nothing to delete.";
         }
         settingService.delete(tenant, storage.type(), storage.id(), key);
-        return "Deleted — tenant='" + tenant + "' scope='" + scope
-                + "' ref='" + storage.id() + "' key='" + key + "'.";
+        return "Deleted — tenant='" + tenant + "' scope='" + scope + "' ref='" + storage.id() + "' key='" + key + "'.";
     }
 
     // ─── Wire ↔ Storage mapping ─────────────────────────────────────────────
@@ -434,25 +463,24 @@ public class SettingCommands {
 
     static StorageRef mapToStorage(String wireScope, @Nullable String wireRef) {
         return switch (wireScope) {
-            case SettingService.SCOPE_TENANT -> new StorageRef(
-                    SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME);
+            case SettingService.SCOPE_TENANT ->
+                new StorageRef(SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME);
             case SettingService.SCOPE_USER -> {
                 if (StringUtils.isBlank(wireRef)) {
-                    throw new IllegalArgumentException(
-                            "scope=user requires --ref <login>.");
+                    throw new IllegalArgumentException("scope=user requires --ref <login>.");
                 }
-                yield new StorageRef(SettingService.SCOPE_PROJECT,
-                        HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + wireRef);
+                yield new StorageRef(
+                        SettingService.SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + wireRef);
             }
             case SettingService.SCOPE_PROJECT, SettingService.SCOPE_THINK_PROCESS -> {
                 if (StringUtils.isBlank(wireRef)) {
-                    throw new IllegalArgumentException(
-                            "scope=" + wireScope + " requires --ref.");
+                    throw new IllegalArgumentException("scope=" + wireScope + " requires --ref.");
                 }
                 yield new StorageRef(wireScope, wireRef);
             }
-            default -> throw new IllegalArgumentException(
-                    "Unknown scope '" + wireScope + "' — use tenant | user | project | think-process.");
+            default ->
+                throw new IllegalArgumentException(
+                        "Unknown scope '" + wireScope + "' — use tenant | user | project | think-process.");
         };
     }
 
@@ -461,9 +489,9 @@ public class SettingCommands {
             if (HomeBootstrapService.TENANT_PROJECT_NAME.equals(storedId)) {
                 return new StorageRef(SettingService.SCOPE_TENANT, "");
             }
-            if (storedId != null
-                    && storedId.startsWith(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX)) {
-                return new StorageRef(SettingService.SCOPE_USER,
+            if (storedId != null && storedId.startsWith(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX)) {
+                return new StorageRef(
+                        SettingService.SCOPE_USER,
                         storedId.substring(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX.length()));
             }
         }
@@ -476,8 +504,10 @@ public class SettingCommands {
         return Tables.render(
                 List.of("SCOPE", "REF", "KEY", "TYPE", "VALUE"),
                 List.<Function<SettingDocument, @Nullable Object>>of(
-                        d -> storageToWire(d.getReferenceType(), d.getReferenceId()).type(),
-                        d -> storageToWire(d.getReferenceType(), d.getReferenceId()).id(),
+                        d -> storageToWire(d.getReferenceType(), d.getReferenceId())
+                                .type(),
+                        d -> storageToWire(d.getReferenceType(), d.getReferenceId())
+                                .id(),
                         SettingDocument::getKey,
                         SettingDocument::getType,
                         SettingCommands::displayValue),
@@ -521,14 +551,20 @@ public class SettingCommands {
                 case DOUBLE -> Double.parseDouble(value.trim());
                 case BOOLEAN -> {
                     String n = value.trim().toLowerCase();
-                    if (!n.equals("true") && !n.equals("false")
-                            && !n.equals("1") && !n.equals("0")
-                            && !n.equals("yes") && !n.equals("no")
-                            && !n.equals("on") && !n.equals("off")) {
+                    if (!n.equals("true")
+                            && !n.equals("false")
+                            && !n.equals("1")
+                            && !n.equals("0")
+                            && !n.equals("yes")
+                            && !n.equals("no")
+                            && !n.equals("on")
+                            && !n.equals("off")) {
                         return false;
                     }
                 }
-                case STRING, PASSWORD, HIDDEN -> { /* always parseable */ }
+                case STRING, PASSWORD, HIDDEN -> {
+                    /* always parseable */
+                }
             }
             return true;
         } catch (NumberFormatException e) {

@@ -1,5 +1,10 @@
 package de.mhus.vance.brain.jaglan.protocols;
 
+import de.mhus.vance.api.documents.MountAccess;
+import de.mhus.vance.api.mount.MountedStat;
+import de.mhus.vance.toolpack.jaglan.JaglanCapabilities;
+import de.mhus.vance.toolpack.jaglan.JaglanInstance;
+import de.mhus.vance.toolpack.jaglan.JaglanProtocolException;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -10,12 +15,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-import de.mhus.vance.api.documents.MountAccess;
-import de.mhus.vance.api.mount.MountedStat;
-import de.mhus.vance.toolpack.jaglan.JaglanCapabilities;
-import de.mhus.vance.toolpack.jaglan.JaglanInstance;
-import de.mhus.vance.toolpack.jaglan.JaglanProtocolException;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 
@@ -68,6 +67,7 @@ public class DemoJaglanInstance implements JaglanInstance {
 
     /** Window used when nobody asked for one. */
     static final LocalDate DEFAULT_FROM = LocalDate.of(2026, 1, 1);
+
     static final LocalDate DEFAULT_TO = LocalDate.of(2026, 6, 30);
 
     /** The window {@link #REPORT} links to — deliberately not the default one,
@@ -115,16 +115,15 @@ public class DemoJaglanInstance implements JaglanInstance {
         }
         if (ANALYSIS.equals(path)) {
             return Optional.of(new MountedStat(
-                    path, false, body(DEFAULT_FROM, DEFAULT_TO).length,
-                    "text/yaml", null, null, MountAccess.RO));
+                    path, false, body(DEFAULT_FROM, DEFAULT_TO).length, "text/yaml", null, null, MountAccess.RO));
         }
         if (README.equals(path)) {
-            return Optional.of(new MountedStat(
-                    path, false, readme().length, "text/markdown", null, null, MountAccess.RO));
+            return Optional.of(
+                    new MountedStat(path, false, readme().length, "text/markdown", null, null, MountAccess.RO));
         }
         if (REPORT.equals(path)) {
-            return Optional.of(new MountedStat(
-                    path, false, report().length, "text/markdown", null, null, MountAccess.RO));
+            return Optional.of(
+                    new MountedStat(path, false, report().length, "text/markdown", null, null, MountAccess.RO));
         }
         // An answer, not a failure: the reader forgets the row for this path.
         return Optional.empty();
@@ -157,8 +156,7 @@ public class DemoJaglanInstance implements JaglanInstance {
                 // plain file is exactly the silent-wrong-answer this whole
                 // feature exists to prevent, and a demo that models it wrongly
                 // teaches the wrong thing.
-                throw new JaglanProtocolException(mount,
-                        "mount '" + mount + "': '" + path + "' takes no parameters");
+                throw new JaglanProtocolException(mount, "mount '" + mount + "': '" + path + "' takes no parameters");
             }
             return stream(README.equals(path) ? readme() : report());
         }
@@ -167,14 +165,12 @@ public class DemoJaglanInstance implements JaglanInstance {
             LocalDate from = date(params.get("from"), DEFAULT_FROM, "from");
             LocalDate to = date(params.get("to"), DEFAULT_TO, "to");
             if (!from.isBefore(to)) {
-                throw new JaglanProtocolException(mount,
-                        "mount '" + mount + "': 'from' (" + from + ") must be before 'to' ("
-                                + to + ")");
+                throw new JaglanProtocolException(
+                        mount, "mount '" + mount + "': 'from' (" + from + ") must be before 'to' (" + to + ")");
             }
             return stream(body(from, to));
         }
-        throw new JaglanProtocolException(mount,
-                "mount '" + mount + "' has no '" + path + "'");
+        throw new JaglanProtocolException(mount, "mount '" + mount + "' has no '" + path + "'");
     }
 
     // ── content ──────────────────────────────────────────────────────
@@ -194,7 +190,11 @@ public class DemoJaglanInstance implements JaglanInstance {
                 .append("  kind: chart\n")
                 .append("chart:\n")
                 .append("  chartType: line\n")
-                .append("  title: Demo trend ").append(from).append(" … ").append(to).append('\n')
+                .append("  title: Demo trend ")
+                .append(from)
+                .append(" … ")
+                .append(to)
+                .append('\n')
                 .append("xAxis:\n")
                 .append("  type: time\n")
                 .append("  label: Date\n")
@@ -206,8 +206,11 @@ public class DemoJaglanInstance implements JaglanInstance {
                 .append("    data:\n");
         for (int i = 0; i < POINTS; i++) {
             LocalDate at = from.plusDays(span * i / (POINTS - 1));
-            yaml.append("      - { x: ").append(at)
-                    .append(", y: ").append(value(at)).append(" }\n");
+            yaml.append("      - { x: ")
+                    .append(at)
+                    .append(", y: ")
+                    .append(value(at))
+                    .append(" }\n");
         }
         return yaml.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -305,11 +308,8 @@ public class DemoJaglanInstance implements JaglanInstance {
                 the default window (`%s … %s`) and looks entirely successful
                 doing it. The chart carries its window in the title, so the
                 two are told apart by looking.
-                """).formatted(
-                        ANALYSIS, LINKED_QUERY,
-                        ANALYSIS,
-                        ANALYSIS, ANALYSIS, ANALYSIS,
-                        DEFAULT_FROM, DEFAULT_TO)
+                """)
+                .formatted(ANALYSIS, LINKED_QUERY, ANALYSIS, ANALYSIS, ANALYSIS, ANALYSIS, DEFAULT_FROM, DEFAULT_TO)
                 .getBytes(StandardCharsets.UTF_8);
     }
 
@@ -324,8 +324,8 @@ public class DemoJaglanInstance implements JaglanInstance {
         } catch (DateTimeParseException e) {
             // Refused, not defaulted: silently substituting a window nobody
             // asked for is the failure mode with no visible symptom.
-            throw new JaglanProtocolException(mount,
-                    "mount '" + mount + "': '" + name + "' is not an ISO date: " + raw);
+            throw new JaglanProtocolException(
+                    mount, "mount '" + mount + "': '" + name + "' is not an ISO date: " + raw, e);
         }
     }
 

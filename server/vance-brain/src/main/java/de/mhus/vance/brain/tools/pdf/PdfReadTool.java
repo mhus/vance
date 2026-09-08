@@ -51,26 +51,36 @@ public class PdfReadTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name. "
-                                    + "Defaults to the active project."),
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Document path inside the "
-                                    + "project, e.g. 'papers/smith-2024.pdf'."),
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "Alternative: Mongo id of the "
-                                    + "PDF document. Use one of path/id."),
-                    "pages", Map.of(
-                            "type", "string",
-                            "description", "Optional 1-based page range, "
-                                    + "e.g. '1-5', '3', or '7-'. End "
-                                    + "omitted reads to the last page. "
-                                    + "Empty / missing extracts the whole "
-                                    + "PDF.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. " + "Defaults to the active project."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document path inside the " + "project, e.g. 'papers/smith-2024.pdf'."),
+                            "id",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Alternative: Mongo id of the " + "PDF document. Use one of path/id."),
+                            "pages",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional 1-based page range, "
+                                                    + "e.g. '1-5', '3', or '7-'. End "
+                                                    + "omitted reads to the last page. "
+                                                    + "Empty / missing extracts the whole "
+                                                    + "PDF.")),
             "required", List.of());
 
     private final EddieContext eddieContext;
@@ -122,7 +132,7 @@ public class PdfReadTool implements Tool {
         int pageCount;
         String pagesUsed;
         try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(bytes);
-             PDDocument pdf = Loader.loadPDF(source)) {
+                PDDocument pdf = Loader.loadPDF(source)) {
             pageCount = pdf.getNumberOfPages();
             PageRange range = parsePages(pagesRaw, pageCount);
 
@@ -134,16 +144,19 @@ public class PdfReadTool implements Tool {
             text = raw == null ? "" : raw;
             pagesUsed = range.formatLabel(pageCount);
         } catch (IOException e) {
-            throw new ToolException(
-                    "PDF text extraction failed: " + e.getMessage());
+            throw new ToolException("PDF text extraction failed: " + e.getMessage(), e);
         }
 
         int fullLength = text.length();
         boolean truncated = fullLength > MAX_BODY_CHARS;
         String body = truncated ? text.substring(0, MAX_BODY_CHARS) : text;
 
-        log.info("PdfReadTool tenant='{}' path='{}' pages='{}' bytes={}",
-                ctx.tenantId(), doc.getPath(), pagesUsed, fullLength);
+        log.info(
+                "PdfReadTool tenant='{}' path='{}' pages='{}' bytes={}",
+                ctx.tenantId(),
+                doc.getPath(),
+                pagesUsed,
+                fullLength);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", doc.getId());
@@ -157,37 +170,34 @@ public class PdfReadTool implements Tool {
         return out;
     }
 
-    private DocumentDocument resolveDocument(Map<String, Object> params,
-                                             ToolInvocationContext ctx) {
+    private DocumentDocument resolveDocument(Map<String, Object> params, ToolInvocationContext ctx) {
         String id = paramString(params, "id");
         String path = paramString(params, "path");
         if (id == null && path == null) {
             throw new ToolException("Provide either 'path' or 'id'");
         }
         if (id != null) {
-            DocumentDocument doc = documentService.findById(id)
-                    .orElseThrow(() -> new ToolException(
-                            "Document with id '" + id + "' not found"));
+            DocumentDocument doc = documentService
+                    .findById(id)
+                    .orElseThrow(() -> new ToolException("Document with id '" + id + "' not found"));
             if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException("Document with id '" + id
-                        + "' is not in your tenant");
+                throw new ToolException("Document with id '" + id + "' is not in your tenant");
             }
             return doc;
         }
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        return documentService.findByPath(ctx.tenantId(), project.getName(), path)
-                .orElseThrow(() -> new ToolException(
-                        "Document '" + path + "' not found in project '"
-                                + project.getName() + "'"));
+        return documentService
+                .findByPath(ctx.tenantId(), project.getName(), path)
+                .orElseThrow(() ->
+                        new ToolException("Document '" + path + "' not found in project '" + project.getName() + "'"));
     }
 
     private static void ensurePdfMime(DocumentDocument doc) {
         String mime = doc.getMimeType();
         if (mime == null || !mime.toLowerCase(Locale.ROOT).contains("pdf")) {
-            throw new ToolException(
-                    "Document '" + doc.getPath() + "' is not a PDF "
-                            + "(mime='" + mime + "'). Use doc_read for "
-                            + "text documents.");
+            throw new ToolException("Document '" + doc.getPath() + "' is not a PDF "
+                    + "(mime='" + mime + "'). Use doc_read for "
+                    + "text documents.");
         }
     }
 
@@ -195,9 +205,7 @@ public class PdfReadTool implements Tool {
         try (InputStream in = documentService.loadContent(doc)) {
             return in.readAllBytes();
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not load PDF bytes from storage: "
-                            + e.getMessage());
+            throw new ToolException("Could not load PDF bytes from storage: " + e.getMessage(), e);
         }
     }
 
@@ -225,18 +233,14 @@ public class PdfReadTool implements Tool {
             end = right.isEmpty() ? pageCount : parseInt(right, "pages end");
         }
         if (start < 1) {
-            throw new ToolException(
-                    "Invalid pages range '" + raw + "': start must be >= 1");
+            throw new ToolException("Invalid pages range '" + raw + "': start must be >= 1");
         }
         if (end < start) {
-            throw new ToolException(
-                    "Invalid pages range '" + raw
-                            + "': end (" + end + ") < start (" + start + ")");
+            throw new ToolException("Invalid pages range '" + raw + "': end (" + end + ") < start (" + start + ")");
         }
         if (start > pageCount) {
             throw new ToolException(
-                    "Pages range '" + raw + "' is beyond the PDF "
-                            + "(it has " + pageCount + " pages)");
+                    "Pages range '" + raw + "' is beyond the PDF " + "(it has " + pageCount + " pages)");
         }
         // Clamp end to actual page count silently — common case
         // ("1-100" on a 30-page paper) should not error.
@@ -248,8 +252,7 @@ public class PdfReadTool implements Tool {
         try {
             return Integer.parseInt(s);
         } catch (NumberFormatException e) {
-            throw new ToolException(
-                    "Invalid " + fieldHint + ": '" + s + "' is not an integer");
+            throw new ToolException("Invalid " + fieldHint + ": '" + s + "' is not an integer", e);
         }
     }
 

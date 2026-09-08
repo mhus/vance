@@ -61,8 +61,7 @@ public class BinderResolver {
     public Scan scan(String tenantId, String projectId, String folder) {
         String normalized = normaliseFolder(folder);
         String manifestPath = normalized + "/" + VanceApplication.APP_MANIFEST;
-        Optional<DocumentDocument> manifest =
-                documentService.findByPath(tenantId, projectId, manifestPath);
+        Optional<DocumentDocument> manifest = documentService.findByPath(tenantId, projectId, manifestPath);
         if (manifest.isEmpty()) {
             throw new ToolException("No binder manifest at '" + manifestPath + "'.");
         }
@@ -82,29 +81,34 @@ public class BinderResolver {
         Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectId, path);
         if (doc.isEmpty()) {
             String title = entry.title() != null ? entry.title() : leafStem(path);
-            return new ResolvedEntry(canonicalRef(path, null), null, path, title,
-                    null, null, entry.section(), false);
+            return new ResolvedEntry(canonicalRef(path, null), null, path, title, null, null, entry.section(), false);
         }
         DocumentDocument d = doc.get();
-        String docTitle = d.getTitle() != null && !d.getTitle().isBlank()
-                ? d.getTitle() : leafStem(path);
+        String docTitle = d.getTitle() != null && !d.getTitle().isBlank() ? d.getTitle() : leafStem(path);
         String title = entry.title() != null ? entry.title() : docTitle;
-        return new ResolvedEntry(canonicalRef(d.getPath(), d.getKind()), d.getId(), d.getPath(),
-                title, d.getKind(), d.getMimeType(), entry.section(), true);
+        return new ResolvedEntry(
+                canonicalRef(d.getPath(), d.getKind()),
+                d.getId(),
+                d.getPath(),
+                title,
+                d.getKind(),
+                d.getMimeType(),
+                entry.section(),
+                true);
     }
 
     private ApplicationDocument parseManifest(DocumentDocument manifest) {
         String mime = manifest.getMimeType();
         if (!ApplicationCodec.supports(mime)) {
-            throw new ToolException("Binder manifest '" + manifest.getPath()
-                    + "' has mime '" + mime + "' — must be YAML or JSON.");
+            throw new ToolException(
+                    "Binder manifest '" + manifest.getPath() + "' has mime '" + mime + "' — must be YAML or JSON.");
         }
         try (InputStream in = documentService.loadContent(manifest)) {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             return ApplicationCodec.parse(body, mime);
         } catch (IOException | RuntimeException e) {
-            throw new ToolException("Could not parse binder manifest '"
-                    + manifest.getPath() + "': " + e.getMessage());
+            throw new ToolException(
+                    "Could not parse binder manifest '" + manifest.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -138,8 +142,7 @@ public class BinderResolver {
     /** Build the canonical stored ref: {@code vance:/<encoded-path>?kind=<kind>}. */
     public static String canonicalRef(String path, @Nullable String kind) {
         String k = kind != null && !kind.isBlank() ? kind.toLowerCase() : "document";
-        return DocumentLinkBuilder.buildVanceUri(
-                null, path, k, DocumentLinkBuilder.defaultModeForKind(k));
+        return DocumentLinkBuilder.buildVanceUri(null, path, k, DocumentLinkBuilder.defaultModeForKind(k));
     }
 
     public static String normaliseFolder(String folder) {

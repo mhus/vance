@@ -46,18 +46,14 @@ public class BistromathStore {
     private final DocumentService documentService;
     private final SecurityContextFactory contextFactory;
 
-    public BistromathStore(DocumentService documentService,
-                           SecurityContextFactory contextFactory) {
+    public BistromathStore(DocumentService documentService, SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.contextFactory = contextFactory;
     }
 
     /** A loaded manifest: the document, its parsed form, and the config block. */
     public record Loaded(
-            String folder,
-            DocumentDocument manifest,
-            ApplicationDocument manifestDoc,
-            BistromathConfig config) {}
+            String folder, DocumentDocument manifest, ApplicationDocument manifestDoc, BistromathConfig config) {}
 
     /** What a folder scan found, plus what it had to refuse. */
     public record Discovered(List<ViewRef> views, List<String> problems) {}
@@ -75,9 +71,9 @@ public class BistromathStore {
     public Loaded load(String tenantId, String projectId, String folder) {
         String normalised = normaliseFolder(folder);
         String manifestPath = manifestPath(normalised);
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, manifestPath)
-                .orElseThrow(() -> new ToolException(
-                        "No app manifest at '" + manifestPath + "'."));
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, manifestPath)
+                .orElseThrow(() -> new ToolException("No app manifest at '" + manifestPath + "'."));
         ApplicationDocument parsed = parseManifest(doc);
         String app = parsed.app();
         if (!app.isBlank() && !BistromathConfig.BLOCK.equals(app)) {
@@ -90,14 +86,13 @@ public class BistromathStore {
     private ApplicationDocument parseManifest(DocumentDocument manifest) {
         String mime = manifest.getMimeType();
         if (!ApplicationCodec.supports(mime)) {
-            throw new ToolException("App manifest '" + manifest.getPath() + "' has mime '"
-                    + mime + "' — must be YAML or JSON.");
+            throw new ToolException(
+                    "App manifest '" + manifest.getPath() + "' has mime '" + mime + "' — must be YAML or JSON.");
         }
         try {
             return ApplicationCodec.parse(documentService.readContent(manifest), mime);
         } catch (RuntimeException e) {
-            throw new ToolException("Could not parse app manifest '" + manifest.getPath()
-                    + "': " + e.getMessage());
+            throw new ToolException("Could not parse app manifest '" + manifest.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -151,8 +146,8 @@ public class BistromathStore {
     }
 
     /** The app's program, or empty when it has none. */
-    public Optional<DocumentDocument> findProgram(String tenantId, String projectId,
-                                                 String folder, BistromathConfig config) {
+    public Optional<DocumentDocument> findProgram(
+            String tenantId, String projectId, String folder, BistromathConfig config) {
         String path = normaliseFolder(folder) + "/" + config.program();
         return documentService.findByPath(tenantId, projectId, path);
     }
@@ -161,9 +156,10 @@ public class BistromathStore {
 
     /** Read and parse a view document that {@link #discoverViews} found. */
     public ViewNode readView(String tenantId, String projectId, ViewRef view) {
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, view.path())
-                .orElseThrow(() -> new ToolException("View '" + view.handle()
-                        + "' is gone: '" + view.path() + "' no longer exists."));
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, view.path())
+                .orElseThrow(() -> new ToolException(
+                        "View '" + view.handle() + "' is gone: '" + view.path() + "' no longer exists."));
         return ViewParser.parse(documentService.readContent(doc), view.path());
     }
 
@@ -193,8 +189,7 @@ public class BistromathStore {
      * document opened in the Cortex is exactly the case
      * {@link BistromathViewService#viewByPath} exists for.
      */
-    public @Nullable String owningAppFolder(String tenantId, String projectId,
-                                            String documentPath) {
+    public @Nullable String owningAppFolder(String tenantId, String projectId, String documentPath) {
         String folder = documentPath;
         while (true) {
             int slash = folder.lastIndexOf('/');
@@ -206,44 +201,66 @@ public class BistromathStore {
     }
 
     /** Write a fresh manifest (create or replace). */
-    public DocumentDocument writeManifest(String tenantId, String projectId, String folder,
-                                          @Nullable String title,
-                                          @Nullable String description,
-                                          BistromathConfig config, @Nullable String userId) {
+    public DocumentDocument writeManifest(
+            String tenantId,
+            String projectId,
+            String folder,
+            @Nullable String title,
+            @Nullable String description,
+            BistromathConfig config,
+            @Nullable String userId) {
         String manifestPath = manifestPath(normaliseFolder(folder));
         Map<String, Object> configBlock = new LinkedHashMap<>();
         configBlock.put(BistromathConfig.BLOCK, config.toBlock());
         ApplicationDocument manifest = new ApplicationDocument(
-                "application", BistromathConfig.BLOCK, title, description,
-                configBlock, new LinkedHashMap<>());
+                "application", BistromathConfig.BLOCK, title, description, configBlock, new LinkedHashMap<>());
         String body = ApplicationCodec.serialize(manifest, YAML_MIME);
         String docTitle = title == null || title.isBlank() ? "App" : title;
-        return write(tenantId, projectId, manifestPath, docTitle, YAML_MIME, body,
-                MANIFEST_KINDS, userId);
+        return write(tenantId, projectId, manifestPath, docTitle, YAML_MIME, body, MANIFEST_KINDS, userId);
     }
 
     /** Write any document of the app (a view, the program). */
-    public DocumentDocument writeDocument(String tenantId, String projectId, String path,
-                                          String title, String mime, String body,
-                                          List<String> kinds, @Nullable String userId) {
+    public DocumentDocument writeDocument(
+            String tenantId,
+            String projectId,
+            String path,
+            String title,
+            String mime,
+            String body,
+            List<String> kinds,
+            @Nullable String userId) {
         return write(tenantId, projectId, path, title, mime, body, kinds, userId);
     }
 
-    private DocumentDocument write(String tenantId, String projectId, String path, String title,
-                                   String mime, String body, List<String> kinds,
-                                   @Nullable String userId) {
+    private DocumentDocument write(
+            String tenantId,
+            String projectId,
+            String path,
+            String title,
+            String mime,
+            String body,
+            List<String> kinds,
+            @Nullable String userId) {
         var actor = contextFactory.writeActor(tenantId, userId, path);
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectId, path);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
-            return documentService.update(existing.get().getId(), title, kinds, body,
-                    null, null, null, null, mime, DocumentService.TOOL_IDENTITY, actor);
+            return documentService.update(
+                    existing.get().getId(),
+                    title,
+                    kinds,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    mime,
+                    DocumentService.TOOL_IDENTITY,
+                    actor);
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
-            return documentService.create(tenantId, projectId, path, title, kinds, mime,
-                    in, userId, actor);
+            return documentService.create(tenantId, projectId, path, title, kinds, mime, in, userId, actor);
         } catch (IOException e) {
-            throw new ToolException("Could not write '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not write '" + path + "': " + e.getMessage(), e);
         }
     }
 

@@ -2,10 +2,10 @@ package de.mhus.vance.addon.brain.centauri.protocols;
 
 import de.mhus.vance.brain.centauri.protocols.CentauriHttpClient;
 import de.mhus.vance.toolpack.feed.FeedCapabilities;
+import de.mhus.vance.toolpack.feed.FeedContentPolicy;
 import de.mhus.vance.toolpack.feed.FeedDirection;
 import de.mhus.vance.toolpack.feed.FeedException;
 import de.mhus.vance.toolpack.feed.FeedFetch;
-import de.mhus.vance.toolpack.feed.FeedContentPolicy;
 import de.mhus.vance.toolpack.feed.FeedInstanceConfig;
 import de.mhus.vance.toolpack.feed.FeedItem;
 import de.mhus.vance.toolpack.feed.FeedPage;
@@ -129,7 +129,8 @@ class UsgsFeedInstance implements FeedSourceInstance {
         // endtime and starttime are inclusive bounds, so the anchor comes back
         // with the next page and is dropped below.
         String since = request.pushdown().since() == null
-                ? null : request.pushdown().since().toString();
+                ? null
+                : request.pushdown().since().toString();
         if (newer) {
             params.put("starttime", later(cursor == null ? null : cursor.position(), since));
         } else {
@@ -187,8 +188,10 @@ class UsgsFeedInstance implements FeedSourceInstance {
         try {
             return String.valueOf(Double.parseDouble(digits));
         } catch (NumberFormatException e) {
-            throw new FeedException("unknown USGS selector '" + selector
-                    + "' — expected one of " + SELECTORS.stream().map(FeedSelector::value).toList());
+            throw new FeedException(
+                    "unknown USGS selector '" + selector + "' — expected one of "
+                            + SELECTORS.stream().map(FeedSelector::value).toList(),
+                    e);
         }
     }
 
@@ -254,7 +257,8 @@ class UsgsFeedInstance implements FeedSourceInstance {
             parts.add(place);
         }
         if (coordinates.isArray() && coordinates.size() >= 3) {
-            parts.add(String.format(Locale.ROOT, "depth %.1f km", coordinates.get(2).asDouble()));
+            parts.add(String.format(
+                    Locale.ROOT, "depth %.1f km", coordinates.get(2).asDouble()));
         }
         return parts.isEmpty() ? null : String.join(" · ", parts);
     }

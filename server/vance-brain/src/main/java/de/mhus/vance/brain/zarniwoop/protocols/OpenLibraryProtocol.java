@@ -57,12 +57,21 @@ public class OpenLibraryProtocol implements SearchProtocol {
         this.http = http;
     }
 
-    @Override public String id() { return ID; }
-    @Override public String displayName() { return "OpenLibrary"; }
+    @Override
+    public String id() {
+        return ID;
+    }
+
+    @Override
+    public String displayName() {
+        return "OpenLibrary";
+    }
+
     @Override
     public Set<SearchModality> modalitiesSupported() {
         return Set.of(SearchModality.BOOK);
     }
+
     @Override
     public Set<SearchTier> tiersSupported() {
         return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
@@ -73,8 +82,7 @@ public class OpenLibraryProtocol implements SearchProtocol {
         if (cfg == null) throw new IllegalArgumentException("cfg is required");
         if (!ID.equals(cfg.protocolId())) {
             throw new IllegalArgumentException(
-                    "OpenLibraryProtocol cannot instantiate config with protocol '"
-                            + cfg.protocolId() + "'");
+                    "OpenLibraryProtocol cannot instantiate config with protocol '" + cfg.protocolId() + "'");
         }
         return new OpenLibraryInstance(cfg, objectMapper, http);
     }
@@ -91,19 +99,34 @@ public class OpenLibraryProtocol implements SearchProtocol {
         private final ObjectMapper objectMapper;
         private final SimpleHttpClient http;
 
-        OpenLibraryInstance(ProviderInstanceConfig cfg,
-                            ObjectMapper objectMapper,
-                            SimpleHttpClient http) {
+        OpenLibraryInstance(ProviderInstanceConfig cfg, ObjectMapper objectMapper, SimpleHttpClient http) {
             this.cfg = cfg;
             this.objectMapper = objectMapper;
             this.http = http;
         }
 
-        @Override public String id() { return cfg.instanceId(); }
-        @Override public String displayName() { return "OpenLibrary (" + cfg.instanceId() + ")"; }
-        @Override public Set<SearchModality> modalities() { return Set.of(SearchModality.BOOK); }
-        @Override public Set<SearchDomain> domains() { return Set.of(SearchDomain.BOOK); }
-        @Override public Set<SearchTier> tiers() {
+        @Override
+        public String id() {
+            return cfg.instanceId();
+        }
+
+        @Override
+        public String displayName() {
+            return "OpenLibrary (" + cfg.instanceId() + ")";
+        }
+
+        @Override
+        public Set<SearchModality> modalities() {
+            return Set.of(SearchModality.BOOK);
+        }
+
+        @Override
+        public Set<SearchDomain> domains() {
+            return Set.of(SearchDomain.BOOK);
+        }
+
+        @Override
+        public Set<SearchTier> tiers() {
             return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
         }
 
@@ -121,7 +144,8 @@ public class OpenLibraryProtocol implements SearchProtocol {
             return ProviderAvailability.READY;
         }
 
-        @Override public Optional<QuotaStatus> currentQuota(SearchScope scope) {
+        @Override
+        public Optional<QuotaStatus> currentQuota(SearchScope scope) {
             return Optional.empty();
         }
 
@@ -149,8 +173,8 @@ public class OpenLibraryProtocol implements SearchProtocol {
         @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             if (req.modality() != SearchModality.BOOK) {
-                return softFailure(req, "modality " + req.modality()
-                        + " not supported by OpenLibrary '" + cfg.instanceId() + "'");
+                return softFailure(
+                        req, "modality " + req.modality() + " not supported by OpenLibrary '" + cfg.instanceId() + "'");
             }
             int num = clampNum(req.maxResults());
             String url = SimpleHttpClient.buildQuery(
@@ -163,20 +187,26 @@ public class OpenLibraryProtocol implements SearchProtocol {
                 response = http.get(URI.create(url), USER_AGENT, TIMEOUT);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException(
-                        "Interrupted while calling OpenLibrary '" + cfg.instanceId() + "'");
+                throw new RuntimeException("Interrupted while calling OpenLibrary '" + cfg.instanceId() + "'", ie);
             } catch (Exception e) {
-                throw new RuntimeException(
-                        "OpenLibrary '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
+                throw new RuntimeException("OpenLibrary '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
             }
             if (response.statusCode() != 200) {
-                throw new RuntimeException("OpenLibrary '" + cfg.instanceId()
-                        + "' returned HTTP " + response.statusCode());
+                throw new RuntimeException(
+                        "OpenLibrary '" + cfg.instanceId() + "' returned HTTP " + response.statusCode());
             }
             List<SearchHit> hits = parseHits(response.body());
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    hits, hits.size(), 0, null, null, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    hits,
+                    hits.size(),
+                    0,
+                    null,
+                    null,
+                    Map.of());
         }
 
         List<SearchHit> parseHits(String json) {
@@ -205,8 +235,7 @@ public class OpenLibraryProtocol implements SearchProtocol {
                     if (!StringUtils.isBlank(isbn)) extras.put("isbn", isbn);
                     int coverId = item.path("cover_i").asInt(0);
                     if (coverId > 0) {
-                        extras.put("coverThumbnailUrl",
-                                "https://covers.openlibrary.org/b/id/" + coverId + "-M.jpg");
+                        extras.put("coverThumbnailUrl", "https://covers.openlibrary.org/b/id/" + coverId + "-M.jpg");
                     }
                     int editionCount = item.path("edition_count").asInt(0);
                     if (editionCount > 0) extras.put("editionCount", editionCount);
@@ -214,10 +243,13 @@ public class OpenLibraryProtocol implements SearchProtocol {
 
                     String snippet = composeSnippet(author, year, subtitle);
                     out.add(new SearchHit(
-                            title, url,
+                            title,
+                            url,
                             StringUtils.isBlank(snippet) ? null : snippet,
                             "OpenLibrary",
-                            SearchModality.BOOK, null, extras));
+                            SearchModality.BOOK,
+                            null,
+                            extras));
                 }
                 return out;
             } catch (Exception e) {
@@ -253,8 +285,16 @@ public class OpenLibraryProtocol implements SearchProtocol {
 
         private SearchResult softFailure(SearchRequest req, String message) {
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    List.of(), 0, 0, null, message, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    List.of(),
+                    0,
+                    0,
+                    null,
+                    message,
+                    Map.of());
         }
 
         private static int clampNum(int requested) {

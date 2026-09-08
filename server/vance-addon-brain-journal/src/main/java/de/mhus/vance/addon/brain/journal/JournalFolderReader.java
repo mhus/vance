@@ -36,6 +36,7 @@ public class JournalFolderReader {
 
     /** {@code YYYY-MM-DD} at the start of a filename stem. */
     private static final Pattern DATE_STEM = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2})");
+
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE;
 
     private final DocumentService documentService;
@@ -52,25 +53,19 @@ public class JournalFolderReader {
      * @param config   parsed {@code journal:} config
      * @param entries  content entries (generated files excluded), newest date first
      */
-    public record Scan(
-            String folder,
-            DocumentDocument manifest,
-            JournalConfig config,
-            List<JournalEntry> entries) {}
+    public record Scan(String folder, DocumentDocument manifest, JournalConfig config, List<JournalEntry> entries) {}
 
     public Scan scan(String tenantId, String projectId, String folder) {
         String normalized = normaliseFolder(folder);
         String manifestPath = normalized + "/" + APP_MANIFEST;
-        Optional<DocumentDocument> manifest = documentService.findByPath(
-                tenantId, projectId, manifestPath);
+        Optional<DocumentDocument> manifest = documentService.findByPath(tenantId, projectId, manifestPath);
         if (manifest.isEmpty()) {
             throw new ToolException("No journal manifest at '" + manifestPath + "'.");
         }
         JournalConfig config = parseConfig(manifest.get());
 
         String prefix = normalized + "/" + config.entriesDir() + "/";
-        List<DocumentDocument> all = documentService.listByKind(
-                tenantId, projectId, JournalEntryDocument.KIND);
+        List<DocumentDocument> all = documentService.listByKind(tenantId, projectId, JournalEntryDocument.KIND);
         List<JournalEntry> entries = new ArrayList<>();
         for (DocumentDocument doc : all) {
             String path = doc.getPath();
@@ -82,9 +77,7 @@ public class JournalFolderReader {
             if (date == null || date.isBlank()) date = dateFromLeaf(leaf);
             if (date == null) continue; // not a dated entry — skip defensively
 
-            String title = doc.getTitle() != null && !doc.getTitle().isBlank()
-                    ? doc.getTitle()
-                    : humaniseDate(date);
+            String title = doc.getTitle() != null && !doc.getTitle().isBlank() ? doc.getTitle() : humaniseDate(date);
             String mood = headerValue(doc, "mood");
             // Strip the internal "journal" marker tag that JournalService prepends
             // to native tags on write — it must not leak into user-facing tag
@@ -98,8 +91,7 @@ public class JournalFolderReader {
         }
 
         // Newest day first; stable on title for same-day (should not happen in v1).
-        entries.sort(Comparator
-                .comparing(JournalEntry::date, Comparator.reverseOrder())
+        entries.sort(Comparator.comparing(JournalEntry::date, Comparator.reverseOrder())
                 .thenComparing(e -> e.title().toLowerCase(Locale.ROOT)));
 
         return new Scan(normalized, manifest.get(), config, entries);
@@ -141,8 +133,7 @@ public class JournalFolderReader {
             return JournalConfig.parse(body);
         } catch (IOException | RuntimeException e) {
             throw new ToolException(
-                    "Could not parse journal manifest '" + manifest.getPath() + "': "
-                            + e.getMessage());
+                    "Could not parse journal manifest '" + manifest.getPath() + "': " + e.getMessage(), e);
         }
     }
 

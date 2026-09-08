@@ -40,10 +40,13 @@ public class ResearchInvestigateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "question", Map.of(
-                            "type", "string",
-                            "description",
+            "properties",
+                    Map.of(
+                            "question",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
                                     "The research question in natural language. The plan-recipe "
                                             + "may rewrite it into search queries internally — pass "
                                             + "the user's wording verbatim.")),
@@ -111,14 +114,13 @@ public class ResearchInvestigateTool implements Tool {
         if (StringUtils.isBlank(ctx.projectId())) {
             throw new ToolException("research tools require a project scope");
         }
-        SearchScope scope = new SearchScope(
-                ctx.tenantId(), ctx.projectId(), ctx.processId(), ctx.userId());
+        SearchScope scope = new SearchScope(ctx.tenantId(), ctx.projectId(), ctx.processId(), ctx.userId());
 
         RankedHitSet result;
         try {
             result = researchService.investigate(question, scope, ctx);
         } catch (ZarniwoopException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
         return shape(result);
     }
@@ -140,7 +142,8 @@ public class ResearchInvestigateTool implements Tool {
         out.put("results", hits);
 
         if (!result.droppedHits().isEmpty()) {
-            List<Map<String, Object>> dropped = new ArrayList<>(result.droppedHits().size());
+            List<Map<String, Object>> dropped =
+                    new ArrayList<>(result.droppedHits().size());
             for (DroppedHit d : result.droppedHits()) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("title", d.title());

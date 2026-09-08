@@ -58,10 +58,13 @@ public class HowDoITool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "intent", Map.of(
-                            "type", "string",
-                            "description",
+            "properties",
+                    Map.of(
+                            "intent",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
                                     "One-sentence description of what you want "
                                             + "to do, in natural language. "
                                             + "Example: 'show the user a "
@@ -114,8 +117,7 @@ public class HowDoITool implements Tool {
     }
 
     @Override
-    public Map<String, Object> invoke(
-            Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
+    public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
         // The discovery filter wants the calling engine's allow-set so
         // suggestions for non-callable tools / manuals don't surface.
         // The bus is a ContextToolsApi in the brain runtime; defensive
@@ -149,9 +151,8 @@ public class HowDoITool implements Tool {
             throw new ToolException("'intent' is required");
         }
         if (intent.length() > MAX_INTENT_LENGTH) {
-            throw new ToolException("'intent' must be at most "
-                    + MAX_INTENT_LENGTH + " characters (got "
-                    + intent.length() + ")");
+            throw new ToolException(
+                    "'intent' must be at most " + MAX_INTENT_LENGTH + " characters (got " + intent.length() + ")");
         }
 
         DiscoveryResult result;
@@ -161,15 +162,13 @@ public class HowDoITool implements Tool {
             // With one, the session's tools ARE the catalog's tool
             // section — see DiscoveryService#discover(…, processTools).
             result = allowedTools == null && processTools.isEmpty()
-                    ? discoveryService.discover(
-                            intent, ctx.tenantId(), ctx.projectId(), ctx.processId())
+                    ? discoveryService.discover(intent, ctx.tenantId(), ctx.projectId(), ctx.processId())
                     : discoveryService.discover(
-                            intent, ctx.tenantId(), ctx.projectId(), ctx.processId(),
-                            allowedTools, processTools);
+                            intent, ctx.tenantId(), ctx.projectId(), ctx.processId(), allowedTools, processTools);
         } catch (LightLlmException e) {
             // Surface light-LLM errors as a tool exception so the
             // caller can fall back to manual_list / manual_read.
-            throw new ToolException("how_do_i failed: " + e.getMessage());
+            throw new ToolException("how_do_i failed: " + e.getMessage(), e);
         }
 
         return toResponse(result);

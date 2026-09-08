@@ -68,11 +68,11 @@ public class SessionGroupController {
         String user = currentUser(request);
         authority.enforce(request, new Resource.Project(tenant, req.getProjectId()), Action.CREATE);
         try {
-            SessionGroupDocument saved = sessionGroupService.create(
-                    tenant, req.getProjectId(), user, req.getName(), req.getTitle());
+            SessionGroupDocument saved =
+                    sessionGroupService.create(tenant, req.getProjectId(), user, req.getName(), req.getTitle());
             return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
         } catch (SessionGroupService.SessionGroupAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         }
     }
 
@@ -102,7 +102,7 @@ public class SessionGroupController {
             sessionGroupService.assign(tenant, projectId, user, req.getSessionId(), req.getGroupName());
             return ResponseEntity.noContent().build();
         } catch (SessionGroupService.SessionGroupNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
@@ -116,11 +116,10 @@ public class SessionGroupController {
         String user = currentUser(request);
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         try {
-            SessionGroupDocument saved = sessionGroupService.rename(
-                    tenant, projectId, user, name, req.getTitle());
+            SessionGroupDocument saved = sessionGroupService.rename(tenant, projectId, user, name, req.getTitle());
             return toDto(saved);
         } catch (SessionGroupService.SessionGroupNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
@@ -136,7 +135,7 @@ public class SessionGroupController {
             sessionGroupService.delete(tenant, projectId, user, name);
             return ResponseEntity.noContent().build();
         } catch (SessionGroupService.SessionGroupNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 

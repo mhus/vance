@@ -53,41 +53,59 @@ public class ReportFromMarkdownTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "format", Map.of(
-                            "type", "string",
-                            "description", "Output format. One of: "
-                                    + "'pdf' (final, non-editable; "
-                                    + "best for final submission) or "
-                                    + "'docx' (Word, editable; for "
-                                    + "local polishing in Word / Pages "
-                                    + "/ LibreOffice)."),
-                    "markdown", Map.of(
-                            "type", "string",
-                            "description", "Inline markdown content. "
-                                    + "Provide this OR documentRef."),
-                    "documentRef", Map.of(
-                            "type", "string",
-                            "description", "Path (or Mongo id) of an "
-                                    + "existing markdown document to "
-                                    + "render. Provide this OR markdown."),
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name for "
-                                    + "documentRef resolution. Defaults "
-                                    + "to the active project."),
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Document title — appears on "
-                                    + "the first page and in the file's "
-                                    + "metadata. Falls back to a "
-                                    + "default."),
-                    "outputPath", Map.of(
-                            "type", "string",
-                            "description", "Optional path for the new "
-                                    + "Document. Default: "
-                                    + "'reports/<title-slug>-<timestamp>"
-                                    + ".<ext>'.")),
+            "properties",
+                    Map.of(
+                            "format",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Output format. One of: "
+                                                    + "'pdf' (final, non-editable; "
+                                                    + "best for final submission) or "
+                                                    + "'docx' (Word, editable; for "
+                                                    + "local polishing in Word / Pages "
+                                                    + "/ LibreOffice)."),
+                            "markdown",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Inline markdown content. " + "Provide this OR documentRef."),
+                            "documentRef",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Path (or Mongo id) of an "
+                                                    + "existing markdown document to "
+                                                    + "render. Provide this OR markdown."),
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name for "
+                                                    + "documentRef resolution. Defaults "
+                                                    + "to the active project."),
+                            "title",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document title — appears on "
+                                                    + "the first page and in the file's "
+                                                    + "metadata. Falls back to a "
+                                                    + "default."),
+                            "outputPath",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional path for the new "
+                                                    + "Document. Default: "
+                                                    + "'reports/<title-slug>-<timestamp>"
+                                                    + ".<ext>'.")),
             "required", List.of("format"));
 
     private final MarkdownReportService reportService;
@@ -98,13 +116,14 @@ public class ReportFromMarkdownTool implements Tool {
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
 
-    public ReportFromMarkdownTool(MarkdownReportService reportService,
-                                  EddieContext eddieContext,
-                                  DocumentService documentService,
-                                  DocumentLinkBuilder linkBuilder,
-                                  ThinkProcessService thinkProcessService,
-                                  ProgressEmitter progressEmitter,
-                                  de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public ReportFromMarkdownTool(
+            MarkdownReportService reportService,
+            EddieContext eddieContext,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            ThinkProcessService thinkProcessService,
+            ProgressEmitter progressEmitter,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.contextFactory = contextFactory;
         this.reportService = reportService;
         this.eddieContext = eddieContext;
@@ -152,15 +171,12 @@ public class ReportFromMarkdownTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String format = paramString(params, "format");
         if (format == null) {
-            throw new ToolException(
-                    "'format' is required — one of "
-                            + reportService.supportedFormats());
+            throw new ToolException("'format' is required — one of " + reportService.supportedFormats());
         }
         String markdown = paramString(params, "markdown");
         String documentRef = paramString(params, "documentRef");
         if ((markdown == null) == (documentRef == null)) {
-            throw new ToolException(
-                    "Provide exactly one of 'markdown' or 'documentRef'");
+            throw new ToolException("Provide exactly one of 'markdown' or 'documentRef'");
         }
         String title = paramString(params, "title");
         String outputPath = paramString(params, "outputPath");
@@ -191,7 +207,9 @@ public class ReportFromMarkdownTool implements Tool {
         ReportFrontMatter fm = ReportFrontMatter.parse(source);
         source = fm.body();
 
-        emit(process, StatusTag.INFO,
+        emit(
+                process,
+                StatusTag.INFO,
                 "Rendering " + format.toUpperCase(Locale.ROOT)
                         + " report ("
                         + (source.length() / 1024) + " KB markdown)…");
@@ -202,8 +220,13 @@ public class ReportFromMarkdownTool implements Tool {
         // caller. A headless worker yields SYSTEM, which is the same reach
         // it has everywhere else.
         MarkdownReportContext rctx = new MarkdownReportContext(
-                source, title, null, ctx.tenantId(), projectName,
-                fm.theme(), fm.css(),
+                source,
+                title,
+                null,
+                ctx.tenantId(),
+                projectName,
+                fm.theme(),
+                fm.css(),
                 contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
 
         MarkdownReportService.RenderedReport rendered;
@@ -213,15 +236,12 @@ public class ReportFromMarkdownTool implements Tool {
         } catch (ToolException e) {
             throw e;
         } catch (Exception e) {
-            throw new ToolException(
-                    "Report rendering failed: " + e.getMessage());
+            throw new ToolException("Report rendering failed: " + e.getMessage(), e);
         }
         long elapsedMs = System.currentTimeMillis() - started;
 
         // Compose output path
-        String finalPath = outputPath != null
-                ? outputPath
-                : defaultOutputPath(title, rendered.fileExtension());
+        String finalPath = outputPath != null ? outputPath : defaultOutputPath(title, rendered.fileExtension());
 
         // Import as Document
         DocumentDocument created;
@@ -237,21 +257,27 @@ public class ReportFromMarkdownTool implements Tool {
                     ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not store rendered report: " + e.getMessage());
+            throw new ToolException("Could not store rendered report: " + e.getMessage(), e);
         }
         String vanceUri = DocumentLinkBuilder.buildVanceUri(
-                null, created.getPath(),
+                null,
+                created.getPath(),
                 rendered.fileExtension(),
                 DocumentLinkBuilder.defaultModeForKind(rendered.fileExtension()));
         String markdownLink = linkBuilder.linkFor(created, projectName);
 
-        log.info("ReportFromMarkdownTool tenant='{}' format={} "
-                        + "bytes={} elapsedMs={} path='{}'",
-                ctx.tenantId(), format, rendered.bytes().length,
-                elapsedMs, finalPath);
-        emit(process, StatusTag.INFO,
-                String.format(Locale.ROOT,
+        log.info(
+                "ReportFromMarkdownTool tenant='{}' format={} " + "bytes={} elapsedMs={} path='{}'",
+                ctx.tenantId(),
+                format,
+                rendered.bytes().length,
+                elapsedMs,
+                finalPath);
+        emit(
+                process,
+                StatusTag.INFO,
+                String.format(
+                        Locale.ROOT,
                         "Report done — %d KB %s saved as '%s'.",
                         rendered.bytes().length / 1024,
                         format.toUpperCase(Locale.ROOT),
@@ -267,36 +293,28 @@ public class ReportFromMarkdownTool implements Tool {
         return out;
     }
 
-    private DocumentDocument resolveSourceDoc(String ref,
-                                              String projectName,
-                                              ToolInvocationContext ctx) {
+    private DocumentDocument resolveSourceDoc(String ref, String projectName, ToolInvocationContext ctx) {
         // If it looks like a path (contains '/' or '.'), try by path
         // first; otherwise treat as id. Both fall back to the other
         // path on miss for a forgiving UX.
         boolean pathLike = ref.contains("/") || ref.contains(".");
         if (pathLike) {
-            Optional<DocumentDocument> byPath = documentService.findByPath(
-                    ctx.tenantId(), projectName, ref);
+            Optional<DocumentDocument> byPath = documentService.findByPath(ctx.tenantId(), projectName, ref);
             if (byPath.isPresent()) return byPath.get();
         }
         Optional<DocumentDocument> byId = documentService.findById(ref);
         if (byId.isPresent()) {
             DocumentDocument doc = byId.get();
             if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException(
-                        "Source document with id '" + ref
-                                + "' is not in your tenant");
+                throw new ToolException("Source document with id '" + ref + "' is not in your tenant");
             }
             return doc;
         }
         if (!pathLike) {
-            Optional<DocumentDocument> byPath = documentService.findByPath(
-                    ctx.tenantId(), projectName, ref);
+            Optional<DocumentDocument> byPath = documentService.findByPath(ctx.tenantId(), projectName, ref);
             if (byPath.isPresent()) return byPath.get();
         }
-        throw new ToolException(
-                "Source document '" + ref + "' not found in project '"
-                        + projectName + "'");
+        throw new ToolException("Source document '" + ref + "' not found in project '" + projectName + "'");
     }
 
     private String loadAsText(DocumentDocument doc) {
@@ -304,19 +322,15 @@ public class ReportFromMarkdownTool implements Tool {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read source document: " + e.getMessage());
+            throw new ToolException("Could not read source document: " + e.getMessage(), e);
         }
     }
 
     static String defaultOutputPath(@Nullable String title, String extension) {
-        String stamp = DateTimeFormatter
-                .ofPattern("yyyy-MM-dd-HHmmss")
+        String stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
                 .withZone(ZoneOffset.UTC)
                 .format(Instant.now());
-        String slug = title == null || title.isBlank()
-                ? "report"
-                : slug(title);
+        String slug = title == null || title.isBlank() ? "report" : slug(title);
         return "reports/" + slug + "-" + stamp + "." + extension;
     }
 
@@ -327,8 +341,7 @@ public class ReportFromMarkdownTool implements Tool {
         boolean lastDash = false;
         for (int i = 0; i < title.length(); i++) {
             char c = title.charAt(i);
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-                    || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
                 sb.append(c);
                 lastDash = false;
             } else if (!lastDash) {
@@ -348,8 +361,7 @@ public class ReportFromMarkdownTool implements Tool {
         return opt.orElse(null);
     }
 
-    private void emit(@Nullable ThinkProcessDocument process,
-                      StatusTag tag, String text) {
+    private void emit(@Nullable ThinkProcessDocument process, StatusTag tag, String text) {
         if (process == null) return;
         progressEmitter.emitStatus(process, tag, text);
     }

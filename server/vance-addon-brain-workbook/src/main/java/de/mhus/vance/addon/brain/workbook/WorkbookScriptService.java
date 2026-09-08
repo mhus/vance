@@ -9,7 +9,6 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import org.jspecify.annotations.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -17,6 +16,7 @@ import java.time.Duration;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -38,33 +38,33 @@ public class WorkbookScriptService {
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
     /** Execute the {@code .js} document at {@code scriptPath}. */
-    public void run(String tenantId, String projectId, String scriptPath,
-                    @Nullable String editorId) {
+    public void run(String tenantId, String projectId, String scriptPath, @Nullable String editorId) {
         if (scriptPath == null || scriptPath.isBlank()) {
             throw new ToolException("button script path must not be empty");
         }
         if (!scriptPath.toLowerCase(Locale.ROOT).endsWith(".js")) {
-            throw new ToolException(
-                    "button script must be a .js document (got '" + scriptPath
-                            + "') — only in-JVM JavaScript is supported in v1");
+            throw new ToolException("button script must be a .js document (got '" + scriptPath
+                    + "') — only in-JVM JavaScript is supported in v1");
         }
-        DocumentDocument scriptDoc = documentService.findByPath(tenantId, projectId, scriptPath)
+        DocumentDocument scriptDoc = documentService
+                .findByPath(tenantId, projectId, scriptPath)
                 .orElseThrow(() -> new ToolException("button script not found: " + scriptPath));
         String code = readContent(scriptDoc);
 
-        ToolInvocationContext scope =
-                new ToolInvocationContext(tenantId, projectId, null, null, editorId);
+        ToolInvocationContext scope = new ToolInvocationContext(tenantId, projectId, null, null, editorId);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
-            scriptExecutor.run(new ScriptRequest(
-                    "js", code, "button:" + scriptPath, tools, TIMEOUT)
+            scriptExecutor.run(new ScriptRequest("js", code, "button:" + scriptPath, tools, TIMEOUT)
                     .withDocumentBasePath(WorkbookFormService.parentPath(scriptPath)));
             log.info("WorkbookScriptService.run tenant='{}' script='{}' ok", tenantId, scriptPath);
         } catch (ScriptExecutionException e) {
-            log.warn("WorkbookScriptService.run tenant='{}' script='{}' failed [{}]: {}",
-                    tenantId, scriptPath, e.errorClass(), e.getMessage());
-            throw new ToolException(
-                    "button script '" + scriptPath + "' failed: " + e.getMessage());
+            log.warn(
+                    "WorkbookScriptService.run tenant='{}' script='{}' failed [{}]: {}",
+                    tenantId,
+                    scriptPath,
+                    e.errorClass(),
+                    e.getMessage());
+            throw new ToolException("button script '" + scriptPath + "' failed: " + e.getMessage(), e);
         }
     }
 
@@ -72,7 +72,7 @@ public class WorkbookScriptService {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 }

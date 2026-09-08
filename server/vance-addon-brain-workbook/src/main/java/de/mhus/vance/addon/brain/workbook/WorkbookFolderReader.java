@@ -31,20 +31,14 @@ public class WorkbookFolderReader {
         this.documentService = documentService;
     }
 
-    public record Scan(
-            String folder,
-            DocumentDocument manifest,
-            WorkbookConfig config,
-            List<WorkbookPage> pages) {}
+    public record Scan(String folder, DocumentDocument manifest, WorkbookConfig config, List<WorkbookPage> pages) {}
 
     public Scan scan(String tenantId, String projectId, String folder) {
         String normalized = normaliseFolder(folder);
         String manifestPath = normalized + "/" + APP_MANIFEST;
-        Optional<DocumentDocument> manifest = documentService.findByPath(
-                tenantId, projectId, manifestPath);
+        Optional<DocumentDocument> manifest = documentService.findByPath(tenantId, projectId, manifestPath);
         if (manifest.isEmpty()) {
-            throw new ToolException(
-                    "No workbook manifest at '" + manifestPath + "'.");
+            throw new ToolException("No workbook manifest at '" + manifestPath + "'.");
         }
         WorkbookConfig config = parseConfig(manifest.get());
 
@@ -70,19 +64,14 @@ public class WorkbookFolderReader {
             }
 
             PageHeader hdr = readPageHeader(doc);
-            String title = hdr.title != null && !hdr.title.isBlank()
-                    ? hdr.title
-                    : stem(leaf);
+            String title = hdr.title != null && !hdr.title.isBlank() ? hdr.title : stem(leaf);
             pages.add(new WorkbookPage(
-                    doc, rel, section, title, hdr.description, hdr.icon, hdr.sortIndex,
-                    hdr.rebuildScripts));
+                    doc, rel, section, title, hdr.description, hdr.icon, hdr.sortIndex, hdr.rebuildScripts));
         }
 
         // sortIndex (null sorts last), then case-insensitive title.
-        pages.sort(Comparator
-                .comparing(WorkbookPage::section)
-                .thenComparing((p) -> p.sortIndex() == null
-                        ? Double.POSITIVE_INFINITY : p.sortIndex())
+        pages.sort(Comparator.comparing(WorkbookPage::section)
+                .thenComparing((p) -> p.sortIndex() == null ? Double.POSITIVE_INFINITY : p.sortIndex())
                 .thenComparing((p) -> p.title().toLowerCase(java.util.Locale.ROOT)));
 
         return new Scan(normalized, manifest.get(), config, pages);
@@ -107,13 +96,18 @@ public class WorkbookFolderReader {
             Object loaded = new Yaml().load(headerText);
             if (loaded instanceof Map<?, ?> m) {
                 String title = m.get("title") != null ? m.get("title").toString() : doc.getTitle();
-                String desc = m.get("description") != null ? m.get("description").toString() : null;
+                String desc =
+                        m.get("description") != null ? m.get("description").toString() : null;
                 String icon = m.get("icon") != null ? m.get("icon").toString() : null;
                 Double sortIdx = null;
                 Object si = m.get("sortIndex");
                 if (si instanceof Number n) sortIdx = n.doubleValue();
                 else if (si instanceof String s) {
-                    try { sortIdx = Double.parseDouble(s); } catch (NumberFormatException ignored) { /* leave null */ }
+                    try {
+                        sortIdx = Double.parseDouble(s);
+                    } catch (NumberFormatException ignored) {
+                        /* leave null */
+                    }
                 }
                 return new PageHeader(title, desc, icon, sortIdx, readRebuildScripts(m));
             }
@@ -151,8 +145,7 @@ public class WorkbookFolderReader {
             return WorkbookConfig.parse(body);
         } catch (IOException | RuntimeException e) {
             throw new ToolException(
-                    "Could not parse workbook manifest '" + manifest.getPath() + "': "
-                            + e.getMessage());
+                    "Could not parse workbook manifest '" + manifest.getPath() + "': " + e.getMessage(), e);
         }
     }
 

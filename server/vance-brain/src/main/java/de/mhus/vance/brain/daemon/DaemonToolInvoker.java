@@ -3,6 +3,7 @@ package de.mhus.vance.brain.daemon;
 import de.mhus.vance.api.tools.ClientToolInvokeRequest;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ws.WebSocketSender;
+import de.mhus.vance.toolpack.ToolException;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
@@ -12,7 +13,6 @@ import java.util.concurrent.TimeoutException;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
-import de.mhus.vance.toolpack.ToolException;
 
 /**
  * Single seam for invoking a tool on a named {@code profile=daemon}
@@ -54,19 +54,15 @@ public class DaemonToolInvoker {
      *         the daemon reports an error.
      */
     public Map<String, Object> invoke(
-            DaemonRegistry.DaemonKey key,
-            String toolName,
-            @Nullable Map<String, Object> params,
-            Duration timeout) {
+            DaemonRegistry.DaemonKey key, String toolName, @Nullable Map<String, Object> params, Duration timeout) {
         var refOpt = daemonRegistry.find(key);
         if (refOpt.isEmpty()) {
-            throw new ToolException("daemon '" + key.daemonName()
-                    + "' is offline in project '" + key.projectId() + "'");
+            throw new ToolException(
+                    "daemon '" + key.daemonName() + "' is offline in project '" + key.projectId() + "'");
         }
         var ref = refOpt.get();
         if (ref.stale()) {
-            String since = ref.disconnectedAt() == null
-                    ? "recently" : "since " + ref.disconnectedAt();
+            String since = ref.disconnectedAt() == null ? "recently" : "since " + ref.disconnectedAt();
             throw new ToolException("daemon '" + key.daemonName()
                     + "' is offline " + since
                     + " — still listed but unreachable until reconnect");
@@ -80,25 +76,22 @@ public class DaemonToolInvoker {
                     .build();
             sender.sendNotification(ref.wsSession(), MessageType.CLIENT_TOOL_INVOKE, invoke);
         } catch (IOException ioe) {
-            daemonRegistry.cancel(pending.correlationId(),
-                    "failed to write invoke envelope: " + ioe.getMessage());
+            daemonRegistry.cancel(pending.correlationId(), "failed to write invoke envelope: " + ioe.getMessage());
             throw new ToolException("daemon invoke send failed: " + ioe.getMessage(), ioe);
         }
         try {
             return pending.future().get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException te) {
-            daemonRegistry.cancel(pending.correlationId(),
-                    "daemon '" + key.daemonName() + "' timed out after " + timeout);
-            throw new ToolException("daemon '" + key.daemonName()
-                    + "' did not respond within " + timeout, te);
+            daemonRegistry.cancel(
+                    pending.correlationId(), "daemon '" + key.daemonName() + "' timed out after " + timeout);
+            throw new ToolException("daemon '" + key.daemonName() + "' did not respond within " + timeout, te);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             daemonRegistry.cancel(pending.correlationId(), "invoke interrupted");
             throw new ToolException("daemon invoke interrupted", ie);
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-            throw new ToolException(cause.getMessage() == null
-                    ? "daemon invoke failed" : cause.getMessage(), cause);
+            throw new ToolException(cause.getMessage() == null ? "daemon invoke failed" : cause.getMessage(), cause);
         }
     }
 }

@@ -64,38 +64,62 @@ public class IcsToCalendarTool implements Tool {
     private static final String YAML_MIME = "application/yaml";
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("icsBody", Map.of(
-                        "type", "string",
-                        "description", "Raw iCalendar (.ics) source. "
-                                + "Use this when the LLM has the text "
-                                + "in hand. Mutually exclusive with "
-                                + "'documentRef'."));
-                put("documentRef", Map.of(
-                        "type", "string",
-                        "description", "Path or id of an existing "
-                                + "Vance Document holding the .ics "
-                                + "body. Mutually exclusive with "
-                                + "'icsBody'."));
-                put("title", Map.of(
-                        "type", "string",
-                        "description", "Optional title for the imported "
-                                + "calendar — used in the document "
-                                + "header and to derive the filename. "
-                                + "Defaults to 'Imported calendar'."));
-                put("outputPath", Map.of(
-                        "type", "string",
-                        "description", "Optional path for the new "
-                                + "Calendar document. Default: "
-                                + "'calendars/<title-slug>-<timestamp>"
-                                + ".yaml'."));
-                put("projectId", Map.of(
-                        "type", "string",
-                        "description", "Optional project name; "
-                                + "defaults to the active project."));
-            }},
-            "required", List.of());
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "icsBody",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Raw iCalendar (.ics) source. "
+                                            + "Use this when the LLM has the text "
+                                            + "in hand. Mutually exclusive with "
+                                            + "'documentRef'."));
+                    put(
+                            "documentRef",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Path or id of an existing "
+                                            + "Vance Document holding the .ics "
+                                            + "body. Mutually exclusive with "
+                                            + "'icsBody'."));
+                    put(
+                            "title",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional title for the imported "
+                                            + "calendar — used in the document "
+                                            + "header and to derive the filename. "
+                                            + "Defaults to 'Imported calendar'."));
+                    put(
+                            "outputPath",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional path for the new "
+                                            + "Calendar document. Default: "
+                                            + "'calendars/<title-slug>-<timestamp>"
+                                            + ".yaml'."));
+                    put(
+                            "projectId",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional project name; " + "defaults to the active project."));
+                }
+            },
+            "required",
+            List.of());
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
@@ -104,12 +128,13 @@ public class IcsToCalendarTool implements Tool {
     private final ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public IcsToCalendarTool(EddieContext eddieContext,
-                             DocumentService documentService,
-                             DocumentLinkBuilder linkBuilder,
-                             ThinkProcessService thinkProcessService,
-                             ProgressEmitter progressEmitter,
-                             de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public IcsToCalendarTool(
+            EddieContext eddieContext,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            ThinkProcessService thinkProcessService,
+            ProgressEmitter progressEmitter,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
@@ -118,7 +143,10 @@ public class IcsToCalendarTool implements Tool {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String name() { return "ics_to_calendar"; }
+    @Override
+    public String name() {
+        return "ics_to_calendar";
+    }
 
     @Override
     public String description() {
@@ -131,7 +159,10 @@ public class IcsToCalendarTool implements Tool {
                 + "back into chat.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -148,12 +179,10 @@ public class IcsToCalendarTool implements Tool {
         String documentRef = paramString(params, "documentRef");
         String icsBody = paramString(params, "icsBody");
         if (documentRef != null && icsBody != null) {
-            throw new ToolException(
-                    "Provide either 'icsBody' OR 'documentRef', not both");
+            throw new ToolException("Provide either 'icsBody' OR 'documentRef', not both");
         }
         if (documentRef == null && icsBody == null) {
-            throw new ToolException(
-                    "Provide either 'icsBody' or 'documentRef'");
+            throw new ToolException("Provide either 'icsBody' or 'documentRef'");
         }
 
         String title = paramString(params, "title");
@@ -173,8 +202,7 @@ public class IcsToCalendarTool implements Tool {
             source = loadAsText(doc);
             sourceLabel = doc.getPath();
             if (title == null) {
-                title = doc.getTitle() != null
-                        ? doc.getTitle() : leafName(doc.getPath());
+                title = doc.getTitle() != null ? doc.getTitle() : leafName(doc.getPath());
             }
         }
         String effectiveTitle = title != null ? title : "Imported calendar";
@@ -186,20 +214,16 @@ public class IcsToCalendarTool implements Tool {
         long elapsedMs = System.currentTimeMillis() - started;
 
         if (events.isEmpty()) {
-            throw new ToolException(
-                    "No VEVENT blocks found in the iCalendar source — "
-                            + "is this really an .ics file? The first "
-                            + "non-blank line should be "
-                            + "'BEGIN:VCALENDAR'.");
+            throw new ToolException("No VEVENT blocks found in the iCalendar source — "
+                    + "is this really an .ics file? The first "
+                    + "non-blank line should be "
+                    + "'BEGIN:VCALENDAR'.");
         }
 
-        CalendarDocument cal = new CalendarDocument(
-                "calendar", events, new LinkedHashMap<>());
+        CalendarDocument cal = new CalendarDocument("calendar", events, new LinkedHashMap<>());
         String yaml = CalendarCodec.serialize(cal, YAML_MIME);
 
-        String finalPath = outputPath != null
-                ? outputPath
-                : defaultOutputPath(effectiveTitle);
+        String finalPath = outputPath != null ? outputPath : defaultOutputPath(effectiveTitle);
 
         DocumentDocument created;
         try (InputStream in = new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8))) {
@@ -214,23 +238,24 @@ public class IcsToCalendarTool implements Tool {
                     ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not store imported calendar: " + e.getMessage());
+            throw new ToolException("Could not store imported calendar: " + e.getMessage(), e);
         }
 
         String vanceUri = DocumentLinkBuilder.buildVanceUri(
-                null, created.getPath(), "calendar",
-                DocumentLinkBuilder.defaultModeForKind("calendar"));
+                null, created.getPath(), "calendar", DocumentLinkBuilder.defaultModeForKind("calendar"));
         String markdownLink = linkBuilder.linkFor(created, projectName);
 
-        log.info("IcsToCalendarTool tenant='{}' source='{}' events={} "
-                        + "elapsedMs={} path='{}'",
-                ctx.tenantId(), sourceLabel, events.size(),
-                elapsedMs, finalPath);
-        emit(process, StatusTag.INFO,
-                String.format(Locale.ROOT,
-                        "Imported %d events into '%s'.",
-                        events.size(), finalPath));
+        log.info(
+                "IcsToCalendarTool tenant='{}' source='{}' events={} " + "elapsedMs={} path='{}'",
+                ctx.tenantId(),
+                sourceLabel,
+                events.size(),
+                elapsedMs,
+                finalPath);
+        emit(
+                process,
+                StatusTag.INFO,
+                String.format(Locale.ROOT, "Imported %d events into '%s'.", events.size(), finalPath));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("path", created.getPath());
@@ -297,9 +322,8 @@ public class IcsToCalendarTool implements Tool {
             }
 
             switch (propName) {
-                case "UID", "SUMMARY", "LOCATION", "DESCRIPTION",
-                     "RRULE", "CATEGORIES", "ORGANIZER" ->
-                        current.put(propName, value);
+                case "UID", "SUMMARY", "LOCATION", "DESCRIPTION", "RRULE", "CATEGORIES", "ORGANIZER" ->
+                    current.put(propName, value);
                 case "DTSTART", "DTEND" -> {
                     // Carry the VALUE=DATE marker alongside the value
                     // so buildEvent can decide allDay correctly.
@@ -313,7 +337,9 @@ public class IcsToCalendarTool implements Tool {
                         if (pretty != null) currentAttendees.add(pretty);
                     }
                 }
-                default -> { /* ignored — unknown property */ }
+                default -> {
+                    /* ignored — unknown property */
+                }
             }
         }
         return events;
@@ -345,8 +371,7 @@ public class IcsToCalendarTool implements Tool {
         return out;
     }
 
-    private static @Nullable CalendarEvent buildEvent(
-            Map<String, String> props, List<String> attendees) {
+    private static @Nullable CalendarEvent buildEvent(Map<String, String> props, List<String> attendees) {
         String dtStartRaw = props.get("DTSTART");
         if (dtStartRaw == null) return null;
 
@@ -366,12 +391,9 @@ public class IcsToCalendarTool implements Tool {
         boolean allDay = dtStartAllDay || dtEndAllDay;
 
         String title = unescapeText(props.getOrDefault("SUMMARY", "Untitled event"));
-        String location = props.containsKey("LOCATION")
-                ? unescapeText(props.get("LOCATION")) : null;
-        String notes = props.containsKey("DESCRIPTION")
-                ? unescapeText(props.get("DESCRIPTION")) : null;
-        String rrule = props.containsKey("RRULE")
-                ? props.get("RRULE").trim() : null;
+        String location = props.containsKey("LOCATION") ? unescapeText(props.get("LOCATION")) : null;
+        String notes = props.containsKey("DESCRIPTION") ? unescapeText(props.get("DESCRIPTION")) : null;
+        String rrule = props.containsKey("RRULE") ? props.get("RRULE").trim() : null;
 
         List<String> tags = new ArrayList<>();
         if (props.containsKey("CATEGORIES")) {
@@ -470,10 +492,22 @@ public class IcsToCalendarTool implements Tool {
             if (c == '\\' && i + 1 < s.length()) {
                 char next = s.charAt(i + 1);
                 switch (next) {
-                    case 'n', 'N' -> { out.append('\n'); i++; }
-                    case ',' -> { out.append(','); i++; }
-                    case ';' -> { out.append(';'); i++; }
-                    case '\\' -> { out.append('\\'); i++; }
+                    case 'n', 'N' -> {
+                        out.append('\n');
+                        i++;
+                    }
+                    case ',' -> {
+                        out.append(',');
+                        i++;
+                    }
+                    case ';' -> {
+                        out.append(';');
+                        i++;
+                    }
+                    case '\\' -> {
+                        out.append('\\');
+                        i++;
+                    }
                     default -> out.append(c);
                 }
             } else {
@@ -485,33 +519,25 @@ public class IcsToCalendarTool implements Tool {
 
     // ── Helpers ───────────────────────────────────────────────────
 
-    private DocumentDocument resolveSourceDoc(String ref,
-                                              String projectName,
-                                              ToolInvocationContext ctx) {
+    private DocumentDocument resolveSourceDoc(String ref, String projectName, ToolInvocationContext ctx) {
         boolean pathLike = ref.contains("/") || ref.contains(".");
         if (pathLike) {
-            Optional<DocumentDocument> byPath = documentService.findByPath(
-                    ctx.tenantId(), projectName, ref);
+            Optional<DocumentDocument> byPath = documentService.findByPath(ctx.tenantId(), projectName, ref);
             if (byPath.isPresent()) return byPath.get();
         }
         Optional<DocumentDocument> byId = documentService.findById(ref);
         if (byId.isPresent()) {
             DocumentDocument doc = byId.get();
             if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException(
-                        "Source document with id '" + ref
-                                + "' is not in your tenant");
+                throw new ToolException("Source document with id '" + ref + "' is not in your tenant");
             }
             return doc;
         }
         if (!pathLike) {
-            Optional<DocumentDocument> byPath = documentService.findByPath(
-                    ctx.tenantId(), projectName, ref);
+            Optional<DocumentDocument> byPath = documentService.findByPath(ctx.tenantId(), projectName, ref);
             if (byPath.isPresent()) return byPath.get();
         }
-        throw new ToolException(
-                "Source document '" + ref + "' not found in project '"
-                        + projectName + "'");
+        throw new ToolException("Source document '" + ref + "' not found in project '" + projectName + "'");
     }
 
     private String loadAsText(DocumentDocument doc) {
@@ -519,8 +545,7 @@ public class IcsToCalendarTool implements Tool {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read source document content: " + e.getMessage());
+            throw new ToolException("Could not read source document content: " + e.getMessage(), e);
         }
     }
 
@@ -530,15 +555,13 @@ public class IcsToCalendarTool implements Tool {
         return opt.orElse(null);
     }
 
-    private void emit(@Nullable ThinkProcessDocument process,
-                      StatusTag tag, String text) {
+    private void emit(@Nullable ThinkProcessDocument process, StatusTag tag, String text) {
         if (process == null) return;
         progressEmitter.emitStatus(process, tag, text);
     }
 
     static String defaultOutputPath(@Nullable String title) {
-        String stamp = DateTimeFormatter
-                .ofPattern("yyyy-MM-dd-HHmmss")
+        String stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
                 .withZone(ZoneOffset.UTC)
                 .format(Instant.now());
         String slug = (title == null || title.isBlank()) ? "calendar" : slug(title);

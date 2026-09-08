@@ -39,10 +39,11 @@ public class WorkPageService {
     private final WorkPageSerializer serializer;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public WorkPageService(DocumentService documentService,
-                         WorkPageParser parser,
-                         WorkPageSerializer serializer,
-                         de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public WorkPageService(
+            DocumentService documentService,
+            WorkPageParser parser,
+            WorkPageSerializer serializer,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.parser = parser;
         this.serializer = serializer;
@@ -51,33 +52,37 @@ public class WorkPageService {
 
     // ── Create / read / write ─────────────────────────────────────
 
-    public DocumentDocument create(String tenantId, String projectId, String path,
-                                   @Nullable String title,
-                                   @Nullable String description,
-                                   List<Block> initialBlocks,
-                                   @Nullable String userId) {
+    public DocumentDocument create(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable String description,
+            List<Block> initialBlocks,
+            @Nullable String userId) {
         String normalisedPath = ensureExtension(path.trim());
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                tenantId, projectId, normalisedPath);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, normalisedPath);
         if (existing.isPresent()) {
-            throw new ToolException(
-                    "WorkPage already exists at '" + normalisedPath + "'.");
+            throw new ToolException("WorkPage already exists at '" + normalisedPath + "'.");
         }
-        WorkPageDocument doc = new WorkPageDocument(title, description,
-                initialBlocks == null ? new ArrayList<>() : initialBlocks);
+        WorkPageDocument doc =
+                new WorkPageDocument(title, description, initialBlocks == null ? new ArrayList<>() : initialBlocks);
         String body = serializer.serializeDocument(doc);
-        try (InputStream in = new java.io.ByteArrayInputStream(
-                body.getBytes(StandardCharsets.UTF_8))) {
+        try (InputStream in = new java.io.ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
-                    tenantId, projectId, normalisedPath,
-                    title, List.of("workpage"), MIME, in, userId,
+                    tenantId,
+                    projectId,
+                    normalisedPath,
+                    title,
+                    List.of("workpage"),
+                    MIME,
+                    in,
+                    userId,
                     contextFactory.writeActor(tenantId, userId, normalisedPath));
-            log.info("WorkPageService.create tenant='{}' project='{}' path='{}'",
-                    tenantId, projectId, normalisedPath);
+            log.info("WorkPageService.create tenant='{}' project='{}' path='{}'", tenantId, projectId, normalisedPath);
             return stored;
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write workpage '" + normalisedPath + "': " + e.getMessage());
+            throw new ToolException("Could not write workpage '" + normalisedPath + "': " + e.getMessage(), e);
         }
     }
 
@@ -91,7 +96,13 @@ public class WorkPageService {
         return documentService.update(
                 doc.getId(),
                 page.title() != null ? page.title() : doc.getTitle(),
-                null, body, null, null, null, null, MIME,
+                null,
+                body,
+                null,
+                null,
+                null,
+                null,
+                MIME,
                 DocumentService.TOOL_IDENTITY,
                 contextFactory.writeActor(doc.getTenantId(), null, doc.getPath()));
     }
@@ -100,8 +111,7 @@ public class WorkPageService {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not load workpage '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not load workpage '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -156,16 +166,12 @@ public class WorkPageService {
      * block-class name, e.g. {@code "Heading"}) and {@code textContains}
      * are AND-combined. Both may be {@code null}.
      */
-    public List<Block> query(DocumentDocument doc,
-                             @Nullable String typeFilter,
-                             @Nullable String textContains) {
+    public List<Block> query(DocumentDocument doc, @Nullable String typeFilter, @Nullable String textContains) {
         WorkPageDocument page = readDocument(doc);
-        String needle = textContains == null ? null
-                : textContains.toLowerCase(Locale.ROOT);
+        String needle = textContains == null ? null : textContains.toLowerCase(Locale.ROOT);
         List<Block> out = new ArrayList<>();
         for (Block b : page.blocks()) {
-            if (typeFilter != null
-                    && !b.getClass().getSimpleName().equalsIgnoreCase(typeFilter)) {
+            if (typeFilter != null && !b.getClass().getSimpleName().equalsIgnoreCase(typeFilter)) {
                 continue;
             }
             if (needle != null && !blockText(b).toLowerCase(Locale.ROOT).contains(needle)) {
@@ -203,9 +209,10 @@ public class WorkPageService {
             case Block.Callout co -> (co.title() == null ? "" : co.title()) + " " + co.body();
             case Block.Toggle tg -> tg.summary() + " " + tg.body();
             case Block.DataviewEmbed dv -> dv.source();
-            case Block.LinkCard lc -> lc.href()
-                    + (lc.title() == null ? "" : " " + lc.title())
-                    + (lc.description() == null ? "" : " " + lc.description());
+            case Block.LinkCard lc ->
+                lc.href()
+                        + (lc.title() == null ? "" : " " + lc.title())
+                        + (lc.description() == null ? "" : " " + lc.description());
             case Block.Embed em -> em.uri();
             case Block.Form fo -> fo.data();
             case Block.Input in -> in.data();
@@ -228,23 +235,26 @@ public class WorkPageService {
      * end) or {@code byHeading} (exact text match against any
      * {@link Block.Heading}; throws if not unique).
      */
-    public record BlockAnchor(@Nullable Integer index, @Nullable String heading) {
+    public record BlockAnchor(
+            @Nullable Integer index, @Nullable String heading) {
 
-        public static BlockAnchor at(int index) { return new BlockAnchor(index, null); }
+        public static BlockAnchor at(int index) {
+            return new BlockAnchor(index, null);
+        }
 
-        public static BlockAnchor heading(String text) { return new BlockAnchor(null, text); }
+        public static BlockAnchor heading(String text) {
+            return new BlockAnchor(null, text);
+        }
 
         public static BlockAnchor fromMap(@Nullable Map<String, Object> raw) {
             if (raw == null) {
-                throw new ToolException(
-                        "anchor required — pass `{ index: N }` or `{ heading: \"...\" }`.");
+                throw new ToolException("anchor required — pass `{ index: N }` or `{ heading: \"...\" }`.");
             }
             Object idx = raw.get("index");
             Object hd = raw.get("heading");
             if (idx instanceof Number n) return at(n.intValue());
             if (hd instanceof String s && !s.isBlank()) return heading(s);
-            throw new ToolException(
-                    "anchor must contain `index` (number) or `heading` (string).");
+            throw new ToolException("anchor must contain `index` (number) or `heading` (string).");
         }
 
         public int resolve(List<Block> blocks) {
@@ -266,8 +276,7 @@ public class WorkPageService {
                 if (blocks.get(i) instanceof Block.Heading h && h.text().equals(heading)) {
                     if (found >= 0) {
                         throw new ToolException(
-                                "Heading '" + heading + "' is not unique — use `index` "
-                                        + "anchor instead.");
+                                "Heading '" + heading + "' is not unique — use `index` " + "anchor instead.");
                     }
                     found = i;
                 }
@@ -278,7 +287,8 @@ public class WorkPageService {
             return found;
         }
 
-        @Override public String toString() {
+        @Override
+        public String toString() {
             if (index != null) return "index=" + index;
             return "heading='" + heading + "'";
         }
@@ -316,9 +326,7 @@ public class WorkPageService {
                 List<Map<String, Object>> items = mapList(raw.get("items"));
                 List<Block.TodoItem> out = new ArrayList<>();
                 for (Map<String, Object> i : items) {
-                    out.add(new Block.TodoItem(
-                            boolValue(i.get("checked"), false),
-                            strOrEmpty(i, "text")));
+                    out.add(new Block.TodoItem(boolValue(i.get("checked"), false), strOrEmpty(i, "text")));
                 }
                 yield new Block.TodoList(out);
             }
@@ -335,33 +343,30 @@ public class WorkPageService {
                 }
                 yield new Block.Table(headers, rows);
             }
-            case "callout" -> new Block.Callout(
-                    strOr(raw, "severity", "info"),
-                    str(raw, "title"),
-                    strOrEmpty(raw, "body"));
-            case "toggle" -> new Block.Toggle(
-                    strOrEmpty(raw, "summary"),
-                    strOrEmpty(raw, "body"));
+            case "callout" ->
+                new Block.Callout(strOr(raw, "severity", "info"), str(raw, "title"), strOrEmpty(raw, "body"));
+            case "toggle" -> new Block.Toggle(strOrEmpty(raw, "summary"), strOrEmpty(raw, "body"));
             case "dataview", "dataview-embed" -> new Block.DataviewEmbed(strOrEmpty(raw, "source"));
-            case "link", "link-card" -> new Block.LinkCard(
-                    strOrEmpty(raw, "href"),
-                    str(raw, "title"),
-                    str(raw, "description"));
+            case "link", "link-card" ->
+                new Block.LinkCard(strOrEmpty(raw, "href"), str(raw, "title"), str(raw, "description"));
             case "embed" -> new Block.Embed(strOrEmpty(raw, "uri"));
-            case "form" -> new Block.Form(
-                    strOrEmpty(raw, "data"),
-                    str(raw, "saveScript"),
-                    boolValue(raw.get("session"), false),
-                    mapVal(raw.get("form")));
-            case "input" -> new Block.Input(
-                    strOrEmpty(raw, "data"),
-                    boolValue(raw.get("multiline"), false),
-                    str(raw, "saveScript"),
-                    boolValue(raw.get("session"), false));
-            case "button" -> new Block.Button(
-                    raw.get("buttonType") != null ? raw.get("buttonType").toString() : "script",
-                    strOrEmpty(raw, "script"),
-                    str(raw, "title"));
+            case "form" ->
+                new Block.Form(
+                        strOrEmpty(raw, "data"),
+                        str(raw, "saveScript"),
+                        boolValue(raw.get("session"), false),
+                        mapVal(raw.get("form")));
+            case "input" ->
+                new Block.Input(
+                        strOrEmpty(raw, "data"),
+                        boolValue(raw.get("multiline"), false),
+                        str(raw, "saveScript"),
+                        boolValue(raw.get("session"), false));
+            case "button" ->
+                new Block.Button(
+                        raw.get("buttonType") != null ? raw.get("buttonType").toString() : "script",
+                        strOrEmpty(raw, "script"),
+                        str(raw, "title"));
             case "toc", "table-of-contents" -> new Block.Toc();
             case "columns" -> {
                 List<Block.Column> cols = new ArrayList<>();
@@ -382,10 +387,23 @@ public class WorkPageService {
     public static Map<String, Object> blockToMap(Block b) {
         Map<String, Object> m = new LinkedHashMap<>();
         switch (b) {
-            case Block.Paragraph p -> { m.put("type", "paragraph"); m.put("text", p.text()); }
-            case Block.Heading h -> { m.put("type", "heading"); m.put("level", h.level()); m.put("text", h.text()); }
-            case Block.BulletList l -> { m.put("type", "bullet-list"); m.put("items", l.items()); }
-            case Block.NumberedList n -> { m.put("type", "numbered-list"); m.put("items", n.items()); }
+            case Block.Paragraph p -> {
+                m.put("type", "paragraph");
+                m.put("text", p.text());
+            }
+            case Block.Heading h -> {
+                m.put("type", "heading");
+                m.put("level", h.level());
+                m.put("text", h.text());
+            }
+            case Block.BulletList l -> {
+                m.put("type", "bullet-list");
+                m.put("items", l.items());
+            }
+            case Block.NumberedList n -> {
+                m.put("type", "numbered-list");
+                m.put("items", n.items());
+            }
             case Block.TodoList t -> {
                 m.put("type", "todo");
                 List<Map<String, Object>> items = new ArrayList<>();
@@ -397,14 +415,21 @@ public class WorkPageService {
                 }
                 m.put("items", items);
             }
-            case Block.Quote q -> { m.put("type", "quote"); m.put("text", q.text()); }
+            case Block.Quote q -> {
+                m.put("type", "quote");
+                m.put("text", q.text());
+            }
             case Block.Code c -> {
                 m.put("type", "code");
                 if (c.lang() != null) m.put("lang", c.lang());
                 m.put("code", c.code());
             }
             case Block.Divider ignored -> m.put("type", "divider");
-            case Block.Image i -> { m.put("type", "image"); m.put("alt", i.alt()); m.put("src", i.src()); }
+            case Block.Image i -> {
+                m.put("type", "image");
+                m.put("alt", i.alt());
+                m.put("src", i.src());
+            }
             case Block.Table tbl -> {
                 m.put("type", "table");
                 m.put("headers", tbl.headers());
@@ -416,15 +441,25 @@ public class WorkPageService {
                 if (co.title() != null) m.put("title", co.title());
                 m.put("body", co.body());
             }
-            case Block.Toggle tg -> { m.put("type", "toggle"); m.put("summary", tg.summary()); m.put("body", tg.body()); }
-            case Block.DataviewEmbed dv -> { m.put("type", "dataview"); m.put("source", dv.source()); }
+            case Block.Toggle tg -> {
+                m.put("type", "toggle");
+                m.put("summary", tg.summary());
+                m.put("body", tg.body());
+            }
+            case Block.DataviewEmbed dv -> {
+                m.put("type", "dataview");
+                m.put("source", dv.source());
+            }
             case Block.LinkCard lc -> {
                 m.put("type", "link-card");
                 m.put("href", lc.href());
                 if (lc.title() != null) m.put("title", lc.title());
                 if (lc.description() != null) m.put("description", lc.description());
             }
-            case Block.Embed em -> { m.put("type", "embed"); m.put("uri", em.uri()); }
+            case Block.Embed em -> {
+                m.put("type", "embed");
+                m.put("uri", em.uri());
+            }
             case Block.Form fo -> {
                 m.put("type", "form");
                 m.put("data", fo.data());
@@ -471,7 +506,11 @@ public class WorkPageService {
     private static @Nullable Double doubleOrNull(@Nullable Object o) {
         if (o instanceof Number n) return n.doubleValue();
         if (o instanceof String s) {
-            try { return Double.parseDouble(s.trim()); } catch (NumberFormatException ignored) { /* skipped */ }
+            try {
+                return Double.parseDouble(s.trim());
+            } catch (NumberFormatException ignored) {
+                /* skipped */
+            }
         }
         return null;
     }
@@ -533,7 +572,11 @@ public class WorkPageService {
     private static int intValue(@Nullable Object o, int fallback) {
         if (o instanceof Number n) return n.intValue();
         if (o instanceof String s) {
-            try { return Integer.parseInt(s.trim()); } catch (NumberFormatException ignored) { /* skipped */ }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+                /* skipped */
+            }
         }
         return fallback;
     }

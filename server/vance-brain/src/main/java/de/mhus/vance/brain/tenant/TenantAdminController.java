@@ -39,13 +39,12 @@ public class TenantAdminController {
     private final RequestAuthority authority;
 
     @GetMapping
-    public TenantDto get(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+    public TenantDto get(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
-        TenantDocument doc = tenantService.findByName(tenant)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Tenant '" + tenant + "' not found"));
+        TenantDocument doc = tenantService
+                .findByName(tenant)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant '" + tenant + "' not found"));
         return toDto(doc);
     }
 
@@ -59,7 +58,7 @@ public class TenantAdminController {
             TenantDocument saved = tenantService.update(tenant, request.getTitle(), request.getEnabled());
             return toDto(saved);
         } catch (TenantService.TenantNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 

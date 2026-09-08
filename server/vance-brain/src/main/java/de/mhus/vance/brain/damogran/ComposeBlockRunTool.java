@@ -56,13 +56,14 @@ public class ComposeBlockRunTool implements Tool {
     private final SignalBroadcaster signalBroadcaster;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public ComposeBlockRunTool(DamogranComposeService composeService,
-                               DocumentService documentService,
-                               KindToolSupport support,
-                               ComposeFinishedNotifier finishedNotifier,
-                               CortexTurnSelectionHolder selectionHolder,
-                               SignalBroadcaster signalBroadcaster,
-                               de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public ComposeBlockRunTool(
+            DamogranComposeService composeService,
+            DocumentService documentService,
+            KindToolSupport support,
+            ComposeFinishedNotifier finishedNotifier,
+            CortexTurnSelectionHolder selectionHolder,
+            SignalBroadcaster signalBroadcaster,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.composeService = composeService;
         this.documentService = documentService;
         this.support = support;
@@ -133,10 +134,16 @@ public class ComposeBlockRunTool implements Tool {
 
         ComposeRun run;
         try {
-            run = composeService.runAsync(ctx.tenantId(), projectId, ctx.processId(), target.manifest(), baseDir,
-                    stateKey, contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+            run = composeService.runAsync(
+                    ctx.tenantId(),
+                    projectId,
+                    ctx.processId(),
+                    target.manifest(),
+                    baseDir,
+                    stateKey,
+                    contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
         } catch (DamogranException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
         String tenantId = ctx.tenantId();
         // Ephemeral "running" signal so an open editor reflects it immediately —
@@ -157,15 +164,18 @@ public class ComposeBlockRunTool implements Tool {
         // process on completion so it can sleep and resume on the event.
         String parked = target.fence() == null
                 ? ComposeBlockCodec.writeComposeRun(body, marker(run))
-                : ComposeFenceLocator.replaceYaml(body, target.fence(),
-                        ComposeBlockCodec.writeComposeRun(target.manifest(), marker(run)));
+                : ComposeFenceLocator.replaceYaml(
+                        body, target.fence(), ComposeBlockCodec.writeComposeRun(target.manifest(), marker(run)));
         support.writeBody(doc, parked, ctx);
         String ownerProcessId = ctx.processId();
         run.onDone(finished -> {
             if (finished.result() != null) {
                 writeResultBack(docId, target, finished.result(), ctx);
             }
-            emitSignal(tenantId, path, finished.runId(),
+            emitSignal(
+                    tenantId,
+                    path,
+                    finished.runId(),
                     finished.result() != null ? statusOf(finished.result()) : "failed",
                     finished.workspaceName());
             if (ownerProcessId != null && !ownerProcessId.isBlank()) {
@@ -178,8 +188,10 @@ public class ComposeBlockRunTool implements Tool {
         out.put("status", "running");
         out.put("workspace", run.workspaceName());
         out.put("documentId", docId);
-        out.put("note", "Compose is running in the background; end your turn — you will receive "
-                + "a COMPOSE_FINISHED event and the block's $output will be updated when it completes.");
+        out.put(
+                "note",
+                "Compose is running in the background; end your turn — you will receive "
+                        + "a COMPOSE_FINISHED event and the block's $output will be updated when it completes.");
         return out;
     }
 
@@ -192,16 +204,20 @@ public class ComposeBlockRunTool implements Tool {
     }
 
     /** Fire an ephemeral {@code compose-run} signal on the doc's path (no DB write). */
-    private void emitSignal(String tenantId, String path, String runId, String status,
-                            @Nullable String workspace) {
+    private void emitSignal(String tenantId, String path, String runId, String status, @Nullable String workspace) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("runId", runId);
         data.put("status", status);
         if (workspace != null) {
             data.put("workspace", workspace);
         }
-        signalBroadcaster.broadcast(tenantId,
-                SignalFrame.builder().path(path).signal("compose-run").data(data).build());
+        signalBroadcaster.broadcast(
+                tenantId,
+                SignalFrame.builder()
+                        .path(path)
+                        .signal("compose-run")
+                        .data(data)
+                        .build());
     }
 
     /**

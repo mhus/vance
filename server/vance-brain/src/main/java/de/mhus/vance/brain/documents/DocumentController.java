@@ -5,30 +5,30 @@ import de.mhus.vance.api.documents.DocumentArchiveCreateResponse;
 import de.mhus.vance.api.documents.DocumentArchiveDto;
 import de.mhus.vance.api.documents.DocumentArchiveListResponse;
 import de.mhus.vance.api.documents.DocumentArchiveSummary;
+import de.mhus.vance.api.documents.DocumentCopyChunkRequest;
+import de.mhus.vance.api.documents.DocumentCopyChunkResponse;
 import de.mhus.vance.api.documents.DocumentCreateRequest;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentExportRequest;
-import de.mhus.vance.api.documents.DocumentCopyChunkRequest;
-import de.mhus.vance.api.documents.DocumentCopyChunkResponse;
+import de.mhus.vance.api.documents.DocumentFolderListResponse;
+import de.mhus.vance.api.documents.DocumentFoldersResponse;
+import de.mhus.vance.api.documents.DocumentKindsResponse;
+import de.mhus.vance.api.documents.DocumentListResponse;
+import de.mhus.vance.api.documents.DocumentLockRequest;
 import de.mhus.vance.api.documents.DocumentMoveChunkRequest;
 import de.mhus.vance.api.documents.DocumentMoveChunkResponse;
 import de.mhus.vance.api.documents.DocumentRenameChunkRequest;
 import de.mhus.vance.api.documents.DocumentRenameChunkResponse;
 import de.mhus.vance.api.documents.DocumentSearchItem;
 import de.mhus.vance.api.documents.DocumentSearchResponse;
+import de.mhus.vance.api.documents.DocumentSummary;
+import de.mhus.vance.api.documents.DocumentSummaryRequest;
 import de.mhus.vance.api.documents.DocumentTrashChunkRequest;
 import de.mhus.vance.api.documents.DocumentTrashChunkResponse;
 import de.mhus.vance.api.documents.DocumentUnpackResponse;
-import de.mhus.vance.api.documents.DocumentFolderListResponse;
+import de.mhus.vance.api.documents.DocumentUpdateRequest;
 import de.mhus.vance.api.documents.MountDto;
 import de.mhus.vance.api.documents.MountListResponse;
-import de.mhus.vance.api.documents.DocumentFoldersResponse;
-import de.mhus.vance.api.documents.DocumentKindsResponse;
-import de.mhus.vance.api.documents.DocumentListResponse;
-import de.mhus.vance.api.documents.DocumentLockRequest;
-import de.mhus.vance.api.documents.DocumentSummary;
-import de.mhus.vance.api.documents.DocumentSummaryRequest;
-import de.mhus.vance.api.documents.DocumentUpdateRequest;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.tools.report.MarkdownReportContext;
 import de.mhus.vance.brain.tools.report.MarkdownReportService;
@@ -116,10 +116,12 @@ public class DocumentController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        Page<DocumentDocument> result = documentService.listByProjectPaged(
-                tenant, projectId, page, size, pathPrefix, kind);
+        Page<DocumentDocument> result =
+                documentService.listByProjectPaged(tenant, projectId, page, size, pathPrefix, kind);
         return DocumentListResponse.builder()
-                .items(result.getContent().stream().map(DocumentController::toSummary).toList())
+                .items(result.getContent().stream()
+                        .map(DocumentController::toSummary)
+                        .toList())
                 .page(result.getNumber())
                 .pageSize(result.getSize())
                 .totalCount(result.getTotalElements())
@@ -147,7 +149,9 @@ public class DocumentController {
                 documentService.listByFolder(tenant, projectId, path, search, page, size);
         return DocumentFolderListResponse.builder()
                 .folders(listing.folders())
-                .files(listing.files().stream().map(DocumentController::toSummary).toList())
+                .files(listing.files().stream()
+                        .map(DocumentController::toSummary)
+                        .toList())
                 .page(listing.page())
                 .pageSize(listing.pageSize())
                 .totalCount(listing.totalFiles())
@@ -261,8 +265,7 @@ public class DocumentController {
                 documentService.searchProjectDocuments(tenant, projectId, pathPrefix, query, size);
         List<DocumentSearchItem> items = new ArrayList<>(listing.items().size());
         for (DocumentService.DocumentMatch m : listing.items()) {
-            items.add(new DocumentSearchItem(
-                    m.id(), m.path(), m.title(), m.kind(), m.mimeType()));
+            items.add(new DocumentSearchItem(m.id(), m.path(), m.title(), m.kind(), m.mimeType()));
         }
         return new DocumentSearchResponse(items, listing.total());
     }
@@ -283,29 +286,26 @@ public class DocumentController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+        DocumentDocument doc = documentService
+                .findByPath(tenant, projectId, path)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        authority.enforce(httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
         return toDto(doc);
     }
 
     @GetMapping("/brain/{tenant}/documents/{id}")
     public DocumentDto findOne(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
 
-        DocumentDocument doc = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument doc =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(doc.getTenantId())) {
             // The filter ensures the JWT's tenant matches the path; this guards
             // against a caller fetching a document that lives in a different
             // tenant by guessing its id.
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        authority.enforce(httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
         return toDto(doc);
     }
 
@@ -343,9 +343,9 @@ public class DocumentController {
                     ragEnabledOverride,
                     actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(created));
     }
@@ -375,7 +375,8 @@ public class DocumentController {
         String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
         String resolvedPath = path == null || path.isBlank() ? file.getOriginalFilename() : path;
         if (resolvedPath == null || resolvedPath.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
                     "Cannot infer document path — neither `path` nor an upload filename was provided.");
         }
         String resolvedMime = mimeType == null || mimeType.isBlank() ? file.getContentType() : mimeType;
@@ -383,8 +384,9 @@ public class DocumentController {
         // uploaded .age file would carry no marker otherwise. Map it to the
         // armored-age mime so the row is typed from its start (an explicit
         // mimeType param still wins above).
-        if ((resolvedMime == null || resolvedMime.isBlank()
-                || "application/octet-stream".equalsIgnoreCase(resolvedMime))
+        if ((resolvedMime == null
+                        || resolvedMime.isBlank()
+                        || "application/octet-stream".equalsIgnoreCase(resolvedMime))
                 && AgeDocumentKind.hasAgeExtension(resolvedPath)) {
             resolvedMime = AgeDocumentKind.MIME_TYPE;
         }
@@ -403,12 +405,12 @@ public class DocumentController {
                     username,
                     actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         } catch (IOException e) {
             log.warn("Upload failed for tenant='{}' project='{}' path='{}'", tenant, projectId, resolvedPath, e);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read upload stream.");
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read upload stream.", e);
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(created));
     }
@@ -441,13 +443,12 @@ public class DocumentController {
             @RequestParam(value = "download", defaultValue = "false") boolean download,
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) @Nullable String ifNoneMatch,
             HttpServletRequest httpRequest) {
-        DocumentDocument doc = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument doc =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(doc.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        authority.enforce(httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
 
         // A mounted document has no content version we can state. Its row
         // carries no storageId by construction, so the storageId-or-id rule
@@ -491,7 +492,8 @@ public class DocumentController {
             // failure this feature exists to prevent — the caller asked for a
             // view and gets something that looks like one. Our own parameters
             // never reach here; MountQuery has already taken them out.
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
                     "document '" + doc.getPath() + "' is stored, not mounted — "
                             + "there is nothing to parameterise with a query");
         }
@@ -506,11 +508,9 @@ public class DocumentController {
         if (!mounted && doc.getSize() > 0) {
             headers.setContentLength(doc.getSize());
         }
-        String filename = doc.getName() == null || doc.getName().isBlank()
-                ? "document" : doc.getName();
+        String filename = doc.getName() == null || doc.getName().isBlank() ? "document" : doc.getName();
         String dispositionType = download ? "attachment" : "inline";
-        headers.set(HttpHeaders.CONTENT_DISPOSITION,
-                dispositionType + "; filename*=UTF-8''" + urlEncode(filename));
+        headers.set(HttpHeaders.CONTENT_DISPOSITION, dispositionType + "; filename*=UTF-8''" + urlEncode(filename));
         // no-cache (NOT no-store) = browser caches the bytes but must revalidate
         // with If-None-Match before reuse. Combined with the ETag above this
         // gives us fresh content on every save and a cheap 304 on no-op
@@ -628,17 +628,19 @@ public class DocumentController {
             @RequestHeader(value = HttpHeaders.CONTENT_TYPE, required = false) @Nullable String contentType,
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) @Nullable String ifMatch,
             @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
-            HttpServletRequest httpRequest) throws IOException {
+            HttpServletRequest httpRequest)
+            throws IOException {
 
-        DocumentDocument existing = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument existing =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        if (ifMatch != null && !DocumentService.isMounted(existing.getPath())
+        if (ifMatch != null
+                && !DocumentService.isMounted(existing.getPath())
                 && !etagsMatch(ifMatch, contentEtag(existing))) {
-            throw new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
-                    "Document changed since it was read: " + existing.getPath());
+            throw new ResponseStatusException(
+                    HttpStatus.PRECONDITION_FAILED, "Document changed since it was read: " + existing.getPath());
         }
         // Pull a clean mime out of the Content-Type header — strip the
         // optional ";charset=…" suffix the browser tacks on for text bodies.
@@ -654,14 +656,14 @@ public class DocumentController {
 
         DocumentDocument updated;
         try (InputStream body = httpRequest.getInputStream()) {
-            updated = documentService.replaceContent(id, body, mime,
-                    writerIdentity(httpRequest, editorId), actor(httpRequest));
+            updated = documentService.replaceContent(
+                    id, body, mime, writerIdentity(httpRequest, editorId), actor(httpRequest));
         } catch (DocumentService.AgeContentException e) {
             // The one named write-guard an editor can hit from here: storing
             // plaintext on an age-encrypted document would destroy the
             // ciphertext. 400, not 500 — the caller sent a body the document
             // refuses by contract (planning/age-encryption.md §4).
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
         // The new version travels back with the response: a caller doing
         // read-modify-write in a loop would otherwise have to re-read the
@@ -701,22 +703,20 @@ public class DocumentController {
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
             @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
-            HttpServletRequest httpRequest) throws IOException {
+            HttpServletRequest httpRequest)
+            throws IOException {
 
-        DocumentDocument source = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument source =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(source.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         // READ on the source — we are reading its body to render it.
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, source.getProjectId(), source.getPath()),
-                Action.READ);
+        authority.enforce(
+                httpRequest, new Resource.Document(tenant, source.getProjectId(), source.getPath()), Action.READ);
 
-        if (!DocumentService.isTextual(source.getMimeType())
-                || DocumentService.isMounted(source.getPath())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Only text documents can be exported as PDF.");
+        if (!DocumentService.isTextual(source.getMimeType()) || DocumentService.isMounted(source.getPath())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only text documents can be exported as PDF.");
         }
 
         // The export writes a document, so the write is authorised before
@@ -728,7 +728,8 @@ public class DocumentController {
         String targetPath = withExtension(source.getPath(), "pdf");
         java.util.Optional<DocumentDocument> existing =
                 documentService.findByPath(tenant, source.getProjectId(), targetPath);
-        authority.enforce(httpRequest,
+        authority.enforce(
+                httpRequest,
                 new Resource.Document(tenant, source.getProjectId(), targetPath),
                 existing.isPresent() ? Action.WRITE : Action.CREATE);
 
@@ -743,27 +744,31 @@ public class DocumentController {
         // not render the fence as a setext H2, and hand the keys to the
         // PDF theme resolver. Non-markdown text (YAML/JSON) has no Vance
         // front matter, so ReportFrontMatter returns it untouched.
-        de.mhus.vance.brain.tools.report.ReportFrontMatter fm =
-                ReportFrontMatter.parse(rawMarkdown);
+        de.mhus.vance.brain.tools.report.ReportFrontMatter fm = ReportFrontMatter.parse(rawMarkdown);
         String markdown = fm.body();
 
         MarkdownReportContext rctx = new MarkdownReportContext(
-                markdown, source.getTitle(), null, tenant, source.getProjectId(),
-                fm.theme(), fm.css(), authority.contextOf(httpRequest));
+                markdown,
+                source.getTitle(),
+                null,
+                tenant,
+                source.getProjectId(),
+                fm.theme(),
+                fm.css(),
+                authority.contextOf(httpRequest));
         MarkdownReportService.RenderedReport rendered;
         try {
             rendered = markdownReportService.render("pdf", rctx);
         } catch (de.mhus.vance.toolpack.ToolException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "PDF rendering failed: " + e.getMessage(), e);
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "PDF rendering failed: " + e.getMessage(), e);
         }
 
         String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
 
         DocumentDocument result;
         if (existing.isPresent()) {
-            try (java.io.InputStream in =
-                         new java.io.ByteArrayInputStream(rendered.bytes())) {
+            try (java.io.InputStream in = new java.io.ByteArrayInputStream(rendered.bytes())) {
                 result = documentService.replaceContent(
                         existing.get().getId(),
                         in,
@@ -772,8 +777,7 @@ public class DocumentController {
                         actor(httpRequest));
             }
         } else {
-            try (java.io.InputStream in =
-                         new java.io.ByteArrayInputStream(rendered.bytes())) {
+            try (java.io.InputStream in = new java.io.ByteArrayInputStream(rendered.bytes())) {
                 result = documentService.create(
                         tenant,
                         source.getProjectId(),
@@ -813,27 +817,25 @@ public class DocumentController {
      */
     @GetMapping("/brain/{tenant}/documents/{id}/theme-css")
     public ResponseEntity<String> themeCss(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
 
-        DocumentDocument source = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument source =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(source.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         // READ on the source — we are reading its body to parse the
         // theme / css front matter.
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, source.getProjectId(), source.getPath()),
-                Action.READ);
+        authority.enforce(
+                httpRequest, new Resource.Document(tenant, source.getProjectId(), source.getPath()), Action.READ);
 
         // Non-markdown documents have no theme — return empty CSS so the
         // client's <style> element is a no-op rather than an error state.
         if (!"text/markdown".equalsIgnoreCase(source.getMimeType())) {
             return ResponseEntity.ok()
                     .contentType(MediaType.valueOf("text/css;charset=utf-8"))
-                    .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(60)).cachePrivate())
+                    .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(60))
+                            .cachePrivate())
                     .body("");
         }
 
@@ -842,8 +844,8 @@ public class DocumentController {
             try (java.io.InputStream in = documentService.loadContent(source)) {
                 rawMarkdown = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
             } catch (java.io.IOException e) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Could not read document content: " + e.getMessage(), e);
+                throw new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR, "Could not read document content: " + e.getMessage(), e);
             }
         }
 
@@ -855,14 +857,14 @@ public class DocumentController {
                 de.mhus.vance.brain.tools.report.ReportFrontMatter.parse(rawMarkdown);
 
         String assembled = reportThemeResolver.resolveStylesheet(
-                tenant, source.getProjectId(), fm.theme(), fm.css(),
-                authority.contextOf(httpRequest));
+                tenant, source.getProjectId(), fm.theme(), fm.css(), authority.contextOf(httpRequest));
         String filtered = de.mhus.vance.brain.tools.report.CssSanitizer.sanitize(assembled);
         String scoped = de.mhus.vance.brain.tools.report.CssScopePrefixer.scope(filtered);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.valueOf("text/css;charset=utf-8"))
-                .cacheControl(CacheControl.maxAge(java.time.Duration.ofSeconds(60)).cachePrivate())
+                .cacheControl(
+                        CacheControl.maxAge(java.time.Duration.ofSeconds(60)).cachePrivate())
                 .body(scoped);
     }
 
@@ -874,8 +876,8 @@ public class DocumentController {
             @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
 
-        DocumentDocument existing = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument existing =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
@@ -911,9 +913,9 @@ public class DocumentController {
                     writerIdentity(httpRequest, editorId),
                     actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
         return ResponseEntity.ok(toDto(updated));
     }
@@ -936,8 +938,8 @@ public class DocumentController {
             @Valid @RequestBody DocumentLockRequest request,
             HttpServletRequest httpRequest) {
 
-        DocumentDocument existing = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument existing =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
@@ -952,15 +954,12 @@ public class DocumentController {
      * {@code document_locked} tool-error response.
      */
     @ExceptionHandler(DocumentService.DocumentLockedException.class)
-    public ResponseEntity<Map<String, Object>> handleDocumentLocked(
-            DocumentService.DocumentLockedException ex) {
+    public ResponseEntity<Map<String, Object>> handleDocumentLocked(DocumentService.DocumentLockedException ex) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "document_locked");
         body.put("blockedRole", ex.getBlockedRole().name());
-        body.put("lockedFor", ex.getLockedFor().stream()
-                .sorted()
-                .map(Enum::name)
-                .toList());
+        body.put(
+                "lockedFor", ex.getLockedFor().stream().sorted().map(Enum::name).toList());
         body.put("message", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
@@ -980,8 +979,7 @@ public class DocumentController {
      * {@code UserDocument} today, so the username doubles as both
      * {@code userId} and {@code displayName}.
      */
-    private DocumentService.WriterIdentity writerIdentity(
-            HttpServletRequest request, @Nullable String editorId) {
+    private DocumentService.WriterIdentity writerIdentity(HttpServletRequest request, @Nullable String editorId) {
         try {
             de.mhus.vance.shared.permission.SecurityContext ctx = authority.contextOf(request);
             String username = ctx.subjectId();
@@ -1029,8 +1027,8 @@ public class DocumentController {
             @Valid @RequestBody de.mhus.vance.api.documents.DocumentNoteCreateRequest request,
             @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
-        DocumentDocument existing = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument existing =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
@@ -1038,16 +1036,16 @@ public class DocumentController {
         try {
             userId = authority.contextOf(httpRequest).subjectId();
         } catch (RuntimeException e) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user", e);
         }
         try {
             de.mhus.vance.shared.document.DocumentNote note = documentService.addNote(
                     id, request.getText(), userId, request.getLine(), editorId, actor(httpRequest));
             return ResponseEntity.status(HttpStatus.CREATED).body(noteToDto(note));
         } catch (DocumentService.NotesLimitExceededException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
@@ -1059,16 +1057,23 @@ public class DocumentController {
             @Valid @RequestBody de.mhus.vance.api.documents.DocumentNoteUpdateRequest request,
             @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
-        DocumentDocument existing = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument existing =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        de.mhus.vance.shared.document.DocumentNote updated = documentService.updateNote(
-                id, noteId, request.getText(), request.getDone(), request.getLine(),
-                request.getOrder(), editorId, actor(httpRequest))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Unknown note id='" + noteId + "' on document id='" + id + "'"));
+        de.mhus.vance.shared.document.DocumentNote updated = documentService
+                .updateNote(
+                        id,
+                        noteId,
+                        request.getText(),
+                        request.getDone(),
+                        request.getLine(),
+                        request.getOrder(),
+                        editorId,
+                        actor(httpRequest))
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Unknown note id='" + noteId + "' on document id='" + id + "'"));
         return ResponseEntity.ok(noteToDto(updated));
     }
 
@@ -1079,8 +1084,8 @@ public class DocumentController {
             @PathVariable("noteId") String noteId,
             @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
-        DocumentDocument existing = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument existing =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
@@ -1115,14 +1120,14 @@ public class DocumentController {
             @Valid @RequestBody DocumentSummaryRequest request,
             HttpServletRequest httpRequest) {
 
-        DocumentDocument existing = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument existing =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         documentService.setSummary(id, request.getSummary(), actor(httpRequest));
-        DocumentDocument refreshed = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument refreshed =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return toDto(refreshed);
     }
 
@@ -1132,8 +1137,8 @@ public class DocumentController {
             @PathVariable("id") String id,
             @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
-        DocumentDocument existing = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument existing =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
@@ -1168,8 +1173,8 @@ public class DocumentController {
         List<String> ids = request.getIds() == null ? List.of() : request.getIds();
         List<String> folders = request.getFolders() == null ? List.of() : request.getFolders();
         if (ids.isEmpty() && folders.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Nothing to export — provide ids and/or folders.");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Nothing to export — provide ids and/or folders.");
         }
 
         // Union of explicit ids and folder expansions, de-duplicated by id and
@@ -1177,22 +1182,22 @@ public class DocumentController {
         // preserved for a stable archive layout.
         Map<String, DocumentDocument> byId = new LinkedHashMap<>();
         for (String id : ids) {
-            DocumentDocument doc = documentService.findById(id)
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.NOT_FOUND, "Document not found: " + id));
+            DocumentDocument doc = documentService
+                    .findById(id)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id));
             if (!tenant.equals(doc.getTenantId()) || !projectId.equals(doc.getProjectId())) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found: " + id);
             }
             if (byId.putIfAbsent(doc.getId(), doc) == null) {
-                authority.enforce(httpRequest,
-                        new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+                authority.enforce(
+                        httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
             }
         }
         for (String folder : folders) {
             for (DocumentDocument doc : documentService.listUnderFolder(tenant, projectId, folder)) {
                 if (byId.putIfAbsent(doc.getId(), doc) == null) {
-                    authority.enforce(httpRequest,
-                            new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+                    authority.enforce(
+                            httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
                 }
             }
         }
@@ -1208,8 +1213,7 @@ public class DocumentController {
                         // One unreadable document must not abort the whole
                         // archive: log and leave a (possibly empty) entry
                         // rather than corrupting the ZIP mid-stream.
-                        log.warn("export: failed to stream content for {} ({})",
-                                doc.getId(), e.toString());
+                        log.warn("export: failed to stream content for {} ({})", doc.getId(), e.toString());
                     }
                     zip.closeEntry();
                 }
@@ -1234,6 +1238,7 @@ public class DocumentController {
 
     /** Hard guards against pathological archives (zip bombs). */
     private static final int UNPACK_MAX_ENTRIES = 5000;
+
     private static final long UNPACK_MAX_TOTAL_BYTES = 512L * 1024 * 1024; // 512 MiB
 
     /**
@@ -1258,18 +1263,16 @@ public class DocumentController {
             @RequestParam("projectId") String projectId,
             HttpServletRequest httpRequest) {
 
-        DocumentDocument zip = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument zip =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(zip.getTenantId()) || !projectId.equals(zip.getProjectId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, zip.getProjectId(), zip.getPath()), Action.READ);
+        authority.enforce(httpRequest, new Resource.Document(tenant, zip.getProjectId(), zip.getPath()), Action.READ);
 
         String zipPath = zip.getPath();
         if (!looksLikeZip(zipPath, zip.getMimeType())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Not a ZIP archive: " + zipPath);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a ZIP archive: " + zipPath);
         }
         String targetFolder = unpackTargetFolder(zipPath);
         String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
@@ -1284,12 +1287,15 @@ public class DocumentController {
         long[] total = {0L};
         try (InputStream raw = documentService.loadContent(zip);
                 InputStream counting = new FilterInputStream(raw) {
-                    @Override public int read() throws IOException {
+                    @Override
+                    public int read() throws IOException {
                         int b = super.read();
                         if (b != -1) total[0]++;
                         return b;
                     }
-                    @Override public int read(byte[] b, int off, int len) throws IOException {
+
+                    @Override
+                    public int read(byte[] b, int off, int len) throws IOException {
                         int n = super.read(b, off, len);
                         if (n > 0) total[0] += n;
                         return n;
@@ -1314,14 +1320,13 @@ public class DocumentController {
                     continue;
                 }
                 try {
-                    documentService.create(tenant, projectId, safe, null, null, null,
-                            closeShield(zin), username, actor(httpRequest));
+                    documentService.create(
+                            tenant, projectId, safe, null, null, null, closeShield(zin), username, actor(httpRequest));
                     extracted++;
                 } catch (DocumentService.DocumentAlreadyExistsException e) {
                     skipped.add(safe);
                 } catch (RuntimeException e) {
-                    log.warn("unpack: failed to create {} from {} ({})",
-                            safe, zipPath, e.toString());
+                    log.warn("unpack: failed to create {} from {} ({})", safe, zipPath, e.toString());
                     failed.add(safe);
                 }
                 zin.closeEntry();
@@ -1331,8 +1336,8 @@ public class DocumentController {
                 }
             }
         } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Failed to read ZIP archive: " + e.getMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Failed to read ZIP archive: " + e.getMessage(), e);
         }
 
         return ResponseEntity.ok(DocumentUnpackResponse.builder()
@@ -1347,8 +1352,7 @@ public class DocumentController {
     private static boolean looksLikeZip(String path, @Nullable String mime) {
         if (path.toLowerCase().endsWith(".zip")) return true;
         return mime != null
-                && (mime.equalsIgnoreCase("application/zip")
-                        || mime.equalsIgnoreCase("application/x-zip-compressed"));
+                && (mime.equalsIgnoreCase("application/zip") || mime.equalsIgnoreCase("application/x-zip-compressed"));
     }
 
     /** {@code notes/archive.zip} → {@code notes/archive} (sibling folder). */
@@ -1386,7 +1390,10 @@ public class DocumentController {
      */
     private static InputStream closeShield(InputStream in) {
         return new FilterInputStream(in) {
-            @Override public void close() { /* keep the underlying ZipInputStream open */ }
+            @Override
+            public void close() {
+                /* keep the underlying ZipInputStream open */
+            }
         };
     }
 
@@ -1424,13 +1431,13 @@ public class DocumentController {
             @RequestParam("projectId") String projectId,
             HttpServletRequest httpRequest) {
 
-        DocumentDocument source = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument source =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(source.getTenantId()) || !projectId.equals(source.getProjectId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, source.getProjectId(), source.getPath()), Action.READ);
+        authority.enforce(
+                httpRequest, new Resource.Document(tenant, source.getProjectId(), source.getPath()), Action.READ);
 
         String basePath = stripDuplicateSuffix(source.getPath());
         String targetPath = null;
@@ -1444,9 +1451,9 @@ public class DocumentController {
             }
         }
         if (targetPath == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "No free copy name for '" + source.getPath()
-                            + "' — tried 1.." + DUPLICATE_MAX_INDEX + ".");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No free copy name for '" + source.getPath() + "' — tried 1.." + DUPLICATE_MAX_INDEX + ".");
         }
 
         String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
@@ -1466,14 +1473,12 @@ public class DocumentController {
                     actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             // Lost a race against a concurrent write to the same free name.
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         } catch (IOException e) {
-            log.warn("Duplicate failed for tenant='{}' project='{}' path='{}'",
-                    tenant, projectId, source.getPath(), e);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to read document content.");
+            log.warn("Duplicate failed for tenant='{}' project='{}' path='{}'", tenant, projectId, source.getPath(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read document content.", e);
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(created));
     }
@@ -1523,7 +1528,11 @@ public class DocumentController {
 
     private static final int MOVE_CHUNK_MAX = 1000;
 
-    private enum MoveOutcome { MOVED, SKIPPED, NOOP }
+    private enum MoveOutcome {
+        MOVED,
+        SKIPPED,
+        NOOP
+    }
 
     /**
      * Move one bounded chunk of the selection to {@code targetFolder}. The
@@ -1546,8 +1555,7 @@ public class DocumentController {
             HttpServletRequest httpRequest) {
 
         String target = normalizeMoveFolder(request.getTargetFolder());
-        int limit = Math.max(1, Math.min(
-                request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
+        int limit = Math.max(1, Math.min(request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
         // Selected folders, cycle-guarded: a folder whose target would land
         // inside itself is dropped entirely (its members are never scanned).
         List<String> folders = new ArrayList<>();
@@ -1602,16 +1610,20 @@ public class DocumentController {
                 .build();
     }
 
-    private MoveOutcome tryMoveDoc(String tenant, DocumentDocument doc, String newPath,
-            DocumentService.WriterIdentity writer, HttpServletRequest httpRequest) {
+    private MoveOutcome tryMoveDoc(
+            String tenant,
+            DocumentDocument doc,
+            String newPath,
+            DocumentService.WriterIdentity writer,
+            HttpServletRequest httpRequest) {
         if (newPath.equals(doc.getPath())) return MoveOutcome.NOOP;
-        if (!authority.check(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.WRITE)) {
+        if (!authority.check(
+                httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.WRITE)) {
             return MoveOutcome.SKIPPED;
         }
         try {
-            documentService.update(doc.getId(), null, null, null, newPath, null, null, null, null,
-                    writer, actor(httpRequest));
+            documentService.update(
+                    doc.getId(), null, null, null, newPath, null, null, null, null, writer, actor(httpRequest));
             return MoveOutcome.MOVED;
         } catch (DocumentService.DocumentAlreadyExistsException | IllegalArgumentException e) {
             return MoveOutcome.SKIPPED;
@@ -1697,11 +1709,11 @@ public class DocumentController {
             HttpServletRequest httpRequest) {
 
         String targetProject = (request.getTargetProjectId() == null
-                || request.getTargetProjectId().isBlank())
-                        ? projectId : request.getTargetProjectId();
+                        || request.getTargetProjectId().isBlank())
+                ? projectId
+                : request.getTargetProjectId();
         String target = normalizeMoveFolder(request.getTargetFolder());
-        int limit = Math.max(1, Math.min(
-                request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
+        int limit = Math.max(1, Math.min(request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
         List<String> folders = new ArrayList<>();
         if (request.getFolders() != null) {
             for (String f : request.getFolders()) {
@@ -1728,8 +1740,8 @@ public class DocumentController {
                         || isUnderAnyFolder(doc.getPath(), folders)) {
                     continue;
                 }
-                CopyOutcome o = tryCopyDoc(tenant, doc, targetProject,
-                        moveNewPath(doc, folders, target), overwrite, writer, httpRequest);
+                CopyOutcome o = tryCopyDoc(
+                        tenant, doc, targetProject, moveNewPath(doc, folders, target), overwrite, writer, httpRequest);
                 if (o == CopyOutcome.COPIED) copied++;
                 else if (o == CopyOutcome.OVERWRITTEN) overwritten++;
                 else if (o == CopyOutcome.SKIPPED) skipped++;
@@ -1744,8 +1756,8 @@ public class DocumentController {
                     documentService.listUnderFoldersAfter(tenant, projectId, folders, cursor, limit);
             for (DocumentDocument doc : batch) {
                 cursor = doc.getPath();
-                CopyOutcome o = tryCopyDoc(tenant, doc, targetProject,
-                        moveNewPath(doc, folders, target), overwrite, writer, httpRequest);
+                CopyOutcome o = tryCopyDoc(
+                        tenant, doc, targetProject, moveNewPath(doc, folders, target), overwrite, writer, httpRequest);
                 if (o == CopyOutcome.COPIED) copied++;
                 else if (o == CopyOutcome.OVERWRITTEN) overwritten++;
                 else if (o == CopyOutcome.SKIPPED) skipped++;
@@ -1774,12 +1786,17 @@ public class DocumentController {
      * The document lock is enforced by {@code replaceContent} and turns into a
      * skip here, so a chunk never dies on one protected target.
      */
-    private CopyOutcome tryCopyDoc(String tenant, DocumentDocument doc, String targetProjectId,
-            String newPath, boolean overwrite, DocumentService.WriterIdentity writer,
+    private CopyOutcome tryCopyDoc(
+            String tenant,
+            DocumentDocument doc,
+            String targetProjectId,
+            String newPath,
+            boolean overwrite,
+            DocumentService.WriterIdentity writer,
             HttpServletRequest httpRequest) {
         // READ on the source — the caller must be allowed to read what they copy.
-        if (!authority.check(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ)) {
+        if (!authority.check(
+                httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ)) {
             return CopyOutcome.SKIPPED;
         }
 
@@ -1793,16 +1810,14 @@ public class DocumentController {
             if (existing.getId() != null && existing.getId().equals(doc.getId())) {
                 return CopyOutcome.SKIPPED;
             }
-            if (!authority.check(httpRequest,
-                    new Resource.Document(tenant, targetProjectId, newPath), Action.WRITE)) {
+            if (!authority.check(httpRequest, new Resource.Document(tenant, targetProjectId, newPath), Action.WRITE)) {
                 return CopyOutcome.SKIPPED;
             }
             try {
                 String content = documentService.readContent(doc);
                 documentService.replaceContent(
                         existing.getId(),
-                        new java.io.ByteArrayInputStream(
-                                content.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                        new java.io.ByteArrayInputStream(content.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                         doc.getMimeType(),
                         writer,
                         actor(httpRequest));
@@ -1814,8 +1829,7 @@ public class DocumentController {
 
         // CREATE on the destination — the caller must be allowed to create in
         // the target project / path.
-        if (!authority.check(httpRequest,
-                new Resource.Document(tenant, targetProjectId, newPath), Action.CREATE)) {
+        if (!authority.check(httpRequest, new Resource.Document(tenant, targetProjectId, newPath), Action.CREATE)) {
             return CopyOutcome.SKIPPED;
         }
         try {
@@ -1827,8 +1841,7 @@ public class DocumentController {
                     doc.getTitle(),
                     doc.getTags(),
                     doc.getMimeType(),
-                    new java.io.ByteArrayInputStream(
-                            content.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                    new java.io.ByteArrayInputStream(content.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                     writer.userId(),
                     doc.isAutoSummary() ? Boolean.TRUE : Boolean.FALSE,
                     doc.getRagEnabled(),
@@ -1839,7 +1852,11 @@ public class DocumentController {
         }
     }
 
-    private enum CopyOutcome { COPIED, OVERWRITTEN, SKIPPED }
+    private enum CopyOutcome {
+        COPIED,
+        OVERWRITTEN,
+        SKIPPED
+    }
 
     // ──────────────────── Chunked trash ────────────────────
 
@@ -1861,8 +1878,7 @@ public class DocumentController {
             @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
             HttpServletRequest httpRequest) {
 
-        int limit = Math.max(1, Math.min(
-                request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
+        int limit = Math.max(1, Math.min(request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
         List<String> folders = new ArrayList<>();
         if (request.getFolders() != null) {
             for (String f : request.getFolders()) {
@@ -1933,15 +1949,15 @@ public class DocumentController {
 
         String newName = request.getNewName().trim();
         if (newName.isEmpty() || newName.contains("/") || newName.equals(".") || newName.equals("..")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Invalid new name: " + request.getNewName());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid new name: " + request.getNewName());
         }
         String path = request.getPath().trim();
         DocumentService.WriterIdentity writer = writerIdentity(httpRequest, editorId);
 
         // Single-document rename (path is not a folder prefix).
         if (!path.endsWith("/")) {
-            DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+            DocumentDocument doc = documentService
+                    .findByPath(tenant, projectId, path)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
             int slash = path.lastIndexOf('/');
             String parent = slash >= 0 ? path.substring(0, slash + 1) : "";
@@ -1961,15 +1977,14 @@ public class DocumentController {
         String parent = slash >= 0 ? trimmed.substring(0, slash + 1) : "";
         String newPrefix = parent + newName + "/";
 
-        int limit = Math.max(1, Math.min(
-                request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
+        int limit = Math.max(1, Math.min(request.getLimit() == null ? 25 : request.getLimit(), MOVE_CHUNK_MAX));
         int renamed = 0;
         int skipped = 0;
         String cursor = request.getCursor();
         boolean done = true;
         if (!newPrefix.equals(oldPrefix)) {
-            List<DocumentDocument> batch = documentService.listUnderFoldersAfter(
-                    tenant, projectId, List.of(oldPrefix), cursor, limit);
+            List<DocumentDocument> batch =
+                    documentService.listUnderFoldersAfter(tenant, projectId, List.of(oldPrefix), cursor, limit);
             for (DocumentDocument doc : batch) {
                 cursor = doc.getPath();
                 String newPath = newPrefix + doc.getPath().substring(oldPrefix.length());
@@ -1988,10 +2003,13 @@ public class DocumentController {
                 .build();
     }
 
-    private boolean tryTrashDoc(String tenant, DocumentDocument doc,
-            DocumentService.WriterIdentity writer, HttpServletRequest httpRequest) {
-        if (!authority.check(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.DELETE)) {
+    private boolean tryTrashDoc(
+            String tenant,
+            DocumentDocument doc,
+            DocumentService.WriterIdentity writer,
+            HttpServletRequest httpRequest) {
+        if (!authority.check(
+                httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.DELETE)) {
             return false;
         }
         try {
@@ -2014,22 +2032,18 @@ public class DocumentController {
      */
     @PostMapping("/brain/{tenant}/documents/{id}/archives")
     public DocumentArchiveCreateResponse createArchive(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
         loadDocumentForTenant(tenant, id);
         DocumentService.CreateVersionResult result;
         try {
             result = documentService.createVersionNow(id, actor(httpRequest));
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
         return DocumentArchiveCreateResponse.builder()
                 .created(result.created())
                 .reason(result.reason().name())
-                .archive(result.archive() == null
-                        ? null
-                        : toArchiveSummary(result.archive()))
+                .archive(result.archive() == null ? null : toArchiveSummary(result.archive()))
                 .build();
     }
 
@@ -2040,16 +2054,12 @@ public class DocumentController {
      */
     @GetMapping("/brain/{tenant}/documents/{id}/archives")
     public DocumentArchiveListResponse listArchives(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
         DocumentDocument doc = loadDocumentForTenant(tenant, id);
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        authority.enforce(httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
         List<DocumentArchiveDocument> archives = documentService.listArchives(doc);
-        List<DocumentArchiveSummary> items = archives.stream()
-                .map(DocumentController::toArchiveSummary)
-                .toList();
+        List<DocumentArchiveSummary> items =
+                archives.stream().map(DocumentController::toArchiveSummary).toList();
         return DocumentArchiveListResponse.builder()
                 .totalCount(items.size())
                 .items(items)
@@ -2069,8 +2079,7 @@ public class DocumentController {
             @PathVariable("archiveId") String archiveId,
             HttpServletRequest httpRequest) {
         DocumentDocument doc = loadDocumentForTenant(tenant, id);
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        authority.enforce(httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
         DocumentArchiveDocument archive = loadArchiveForLineage(doc, archiveId);
         return toArchiveDto(archive);
     }
@@ -2088,19 +2097,16 @@ public class DocumentController {
             @RequestParam(value = "download", defaultValue = "false") boolean download,
             HttpServletRequest httpRequest) {
         DocumentDocument doc = loadDocumentForTenant(tenant, id);
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        authority.enforce(httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
         DocumentArchiveDocument archive = loadArchiveForLineage(doc, archiveId);
         InputStream stream = documentService.loadArchiveContent(archive);
         MediaType contentType = parseMimeType(archive.getMimeType());
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(contentType);
         if (archive.getSize() > 0) headers.setContentLength(archive.getSize());
-        String filename = archive.getName() == null || archive.getName().isBlank()
-                ? "document" : archive.getName();
+        String filename = archive.getName() == null || archive.getName().isBlank() ? "document" : archive.getName();
         String dispositionType = download ? "attachment" : "inline";
-        headers.set(HttpHeaders.CONTENT_DISPOSITION,
-                dispositionType + "; filename*=UTF-8''" + urlEncode(filename));
+        headers.set(HttpHeaders.CONTENT_DISPOSITION, dispositionType + "; filename*=UTF-8''" + urlEncode(filename));
         headers.setCacheControl("private, max-age=300");
         return ResponseEntity.ok().headers(headers).body(new InputStreamResource(stream));
     }
@@ -2125,7 +2131,7 @@ public class DocumentController {
         try {
             restored = documentService.restoreArchive(id, archiveId, actor(httpRequest));
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
         return toDto(restored);
     }
@@ -2149,12 +2155,11 @@ public class DocumentController {
         loadArchiveForLineage(doc, archiveId);
         DocumentDocument created;
         try {
-            created = documentService.restoreArchiveToNewDocument(
-                    id, archiveId, path, actor(httpRequest));
+            created = documentService.restoreArchiveToNewDocument(id, archiveId, path, actor(httpRequest));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
         return toDto(created);
     }
@@ -2171,16 +2176,15 @@ public class DocumentController {
             @PathVariable("archiveId") String archiveId,
             HttpServletRequest httpRequest) {
         DocumentDocument doc = loadDocumentForTenant(tenant, id);
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.DELETE);
+        authority.enforce(httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.DELETE);
         loadArchiveForLineage(doc, archiveId);
         documentService.deleteArchive(archiveId);
         return ResponseEntity.noContent().build();
     }
 
     private DocumentDocument loadDocumentForTenant(String tenant, String id) {
-        DocumentDocument doc = documentService.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        DocumentDocument doc =
+                documentService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(doc.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
@@ -2188,7 +2192,8 @@ public class DocumentController {
     }
 
     private DocumentArchiveDocument loadArchiveForLineage(DocumentDocument doc, String archiveId) {
-        DocumentArchiveDocument archive = documentService.findArchive(archiveId)
+        DocumentArchiveDocument archive = documentService
+                .findArchive(archiveId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!archive.getLineageId().equals(doc.getLineageId())
                 || !archive.getTenantId().equals(doc.getTenantId())) {
@@ -2212,9 +2217,10 @@ public class DocumentController {
                 .tags(archive.getTags())
                 .kind(archive.getKind())
                 .createdBy(archive.getCreatedBy())
-                .archivedAtMs(archive.getArchivedAt() == null
-                        ? 0L
-                        : archive.getArchivedAt().toEpochMilli())
+                .archivedAtMs(
+                        archive.getArchivedAt() == null
+                                ? 0L
+                                : archive.getArchivedAt().toEpochMilli())
                 .build();
     }
 
@@ -2230,9 +2236,10 @@ public class DocumentController {
                 .tags(archive.getTags())
                 .kind(archive.getKind())
                 .createdBy(archive.getCreatedBy())
-                .archivedAtMs(archive.getArchivedAt() == null
-                        ? 0L
-                        : archive.getArchivedAt().toEpochMilli())
+                .archivedAtMs(
+                        archive.getArchivedAt() == null
+                                ? 0L
+                                : archive.getArchivedAt().toEpochMilli())
                 .build();
     }
 
@@ -2267,9 +2274,10 @@ public class DocumentController {
                 .createdAtMs(toEpochMillis(doc.getCreatedAt()))
                 .createdBy(doc.getCreatedBy())
                 .kind(doc.getKind())
-                .headers(doc.getHeaders() == null
-                        ? new java.util.LinkedHashMap<>()
-                        : new java.util.LinkedHashMap<>(doc.getHeaders()))
+                .headers(
+                        doc.getHeaders() == null
+                                ? new java.util.LinkedHashMap<>()
+                                : new java.util.LinkedHashMap<>(doc.getHeaders()))
                 .autoSummary(doc.isAutoSummary())
                 .summaryDirty(doc.isSummaryDirty())
                 .summary(doc.getSummary())
@@ -2277,9 +2285,10 @@ public class DocumentController {
                 .ragEnabled(doc.getRagEnabled())
                 .expiresAtMs(toEpochMillis(doc.getExpiresAt()))
                 .notes(notesToDto(doc.getNotes()))
-                .lockedFor(doc.getLockedFor() == null || doc.getLockedFor().isEmpty()
-                        ? java.util.EnumSet.noneOf(de.mhus.vance.api.documents.WriterRole.class)
-                        : java.util.EnumSet.copyOf(doc.getLockedFor()))
+                .lockedFor(
+                        doc.getLockedFor() == null || doc.getLockedFor().isEmpty()
+                                ? java.util.EnumSet.noneOf(de.mhus.vance.api.documents.WriterRole.class)
+                                : java.util.EnumSet.copyOf(doc.getLockedFor()))
                 .mountAccess(doc.getMountAccess())
                 .build();
     }
@@ -2289,30 +2298,37 @@ public class DocumentController {
      * counterpart. Instants are folded into epoch-ms; insertion order is
      * preserved by funneling through {@link java.util.LinkedHashMap}.
      */
-    private static Map<String, de.mhus.vance.api.documents.DocumentNoteDto>
-            notesToDto(@Nullable Map<String, de.mhus.vance.shared.document.DocumentNote> src) {
+    private static Map<String, de.mhus.vance.api.documents.DocumentNoteDto> notesToDto(
+            @Nullable Map<String, de.mhus.vance.shared.document.DocumentNote> src) {
         Map<String, de.mhus.vance.api.documents.DocumentNoteDto> out = new LinkedHashMap<>();
         if (src == null) return out;
         for (Map.Entry<String, de.mhus.vance.shared.document.DocumentNote> e : src.entrySet()) {
             de.mhus.vance.shared.document.DocumentNote n = e.getValue();
             if (n == null) continue;
-            out.put(e.getKey(), de.mhus.vance.api.documents.DocumentNoteDto.builder()
-                    .id(n.getId())
-                    .text(n.getText())
-                    .userId(n.getUserId())
-                    .createdAtMs(n.getCreatedAt() == null ? 0L : n.getCreatedAt().toEpochMilli())
-                    .updatedAtMs(n.getUpdatedAt() == null ? 0L : n.getUpdatedAt().toEpochMilli())
-                    .done(n.isDone())
-                    .line(n.getLine())
-                    .order(n.getOrder())
-                    .build());
+            out.put(
+                    e.getKey(),
+                    de.mhus.vance.api.documents.DocumentNoteDto.builder()
+                            .id(n.getId())
+                            .text(n.getText())
+                            .userId(n.getUserId())
+                            .createdAtMs(
+                                    n.getCreatedAt() == null
+                                            ? 0L
+                                            : n.getCreatedAt().toEpochMilli())
+                            .updatedAtMs(
+                                    n.getUpdatedAt() == null
+                                            ? 0L
+                                            : n.getUpdatedAt().toEpochMilli())
+                            .done(n.isDone())
+                            .line(n.getLine())
+                            .order(n.getOrder())
+                            .build());
         }
         return out;
     }
 
     /** Same projection as {@link #notesToDto} but for a single note — used by the CRUD endpoints. */
-    private static de.mhus.vance.api.documents.DocumentNoteDto noteToDto(
-            de.mhus.vance.shared.document.DocumentNote n) {
+    private static de.mhus.vance.api.documents.DocumentNoteDto noteToDto(de.mhus.vance.shared.document.DocumentNote n) {
         return de.mhus.vance.api.documents.DocumentNoteDto.builder()
                 .id(n.getId())
                 .text(n.getText())
@@ -2330,8 +2346,8 @@ public class DocumentController {
      * request. Absent or blank input is a no-op (leaves the current
      * setting untouched); a present {@code "auto"} clears the override.
      */
-    private void applyRagEnabledOverride(String docId, @Nullable String raw,
-            de.mhus.vance.shared.permission.WriteActor actor) {
+    private void applyRagEnabledOverride(
+            String docId, @Nullable String raw, de.mhus.vance.shared.permission.WriteActor actor) {
         if (raw == null || raw.trim().isEmpty()) return;
         documentService.setRagEnabledOverride(docId, parseRagEnabledTriState(raw), actor);
     }
@@ -2355,8 +2371,8 @@ public class DocumentController {
             case "auto" -> null;
             case "on", "true" -> Boolean.TRUE;
             case "off", "false" -> Boolean.FALSE;
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "ragEnabled must be one of: auto, on, off");
+            default ->
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ragEnabled must be one of: auto, on, off");
         };
     }
 

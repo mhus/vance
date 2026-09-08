@@ -14,9 +14,20 @@ public class SkillArgumentException extends IllegalArgumentException {
         super("Skill '" + skillName + "' requires argument '" + argumentName + "'");
     }
 
+    public SkillArgumentException(String skillName, String argumentName, String type, String value) {
+        super("Skill '" + skillName + "' argument '" + argumentName + "' expects type " + type + " — got '" + value
+                + "'");
+    }
+
     public SkillArgumentException(
-            String skillName, String argumentName, String type, String value) {
-        super("Skill '" + skillName + "' argument '" + argumentName
-                + "' expects type " + type + " — got '" + value + "'");
+            String skillName,
+            String argumentName,
+            String type,
+            String value,
+            @org.jspecify.annotations.Nullable Throwable cause) {
+        super(
+                "Skill '" + skillName + "' argument '" + argumentName + "' expects type " + type + " — got '" + value
+                        + "'",
+                cause);
     }
 }

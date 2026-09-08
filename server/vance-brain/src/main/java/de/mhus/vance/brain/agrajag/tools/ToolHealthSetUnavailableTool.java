@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.agrajag.tools;
 
-import de.mhus.vance.api.tools.ToolSafety;
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
+import de.mhus.vance.api.tools.ToolSafety;
 import de.mhus.vance.shared.toolhealth.ToolHealthDocument;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.toolpack.Tool;
@@ -24,57 +24,104 @@ public class ToolHealthSetUnavailableTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "scope", Map.of(
-                            "type", "string",
-                            "enum", List.of("SESSION", "USER", "PROJECT", "TENANT", "GLOBAL"), "description", "Scope level the health record applies to (SESSION, USER, PROJECT, TENANT, or GLOBAL)."),
-                    "scopeId", Map.of("type", "string", "description", "Id within `scope` (session/user/project/tenant id). Omit to use the caller's current scope id."),
-                    "toolName", Map.of("type", "string", "description", "Name of the tool this record is about, e.g. `web_fetch`."),
-                    "classification", Map.of(
-                            "type", "string",
-                            "enum", List.of(
-                                    "TECHNICALLY_BROKEN",
-                                    "USER_SPECIFIC_TECHNICAL",
-                                    "INTERMITTENT"), "description", "Why the tool is failing/unavailable — its failure classification."),
-                    "expectedRecoveryAt", Map.of(
-                            "type", "string",
-                            "description",
-                            "ISO-8601 instant, e.g. 2026-05-23T15:00:00Z. Optional."),
-                    "note", Map.of("type", "string", "description", "Optional free-text operator note stored with the record.")),
+            "properties",
+                    Map.of(
+                            "scope",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("SESSION", "USER", "PROJECT", "TENANT", "GLOBAL"),
+                                            "description",
+                                            "Scope level the health record applies to (SESSION, USER, PROJECT, TENANT, or GLOBAL)."),
+                            "scopeId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Id within `scope` (session/user/project/tenant id). Omit to use the caller's current scope id."),
+                            "toolName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Name of the tool this record is about, e.g. `web_fetch`."),
+                            "classification",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("TECHNICALLY_BROKEN", "USER_SPECIFIC_TECHNICAL", "INTERMITTENT"),
+                                            "description",
+                                            "Why the tool is failing/unavailable — its failure classification."),
+                            "expectedRecoveryAt",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "ISO-8601 instant, e.g. 2026-05-23T15:00:00Z. Optional."),
+                            "note",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional free-text operator note stored with the record.")),
             "required", List.of("scope", "toolName", "classification"));
 
     private final ToolHealthService toolHealthService;
 
-    @Override public String name() { return "tool_health_set_unavailable"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "tool_health_set_unavailable";
+    }
+
+    @Override
+    public String description() {
         return "Mark a tool as DOWN in the tool-health document. Used by "
                 + "Agrajag to record a technical-broken or "
                 + "user-specific-technical diagnosis with an estimated "
                 + "recovery window.";
     }
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public ToolSafety safety() { return ToolSafety.SAFE_PROBE; }
-    @Override public Set<String> requiresEngineRoles() {
+
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public ToolSafety safety() {
+        return ToolSafety.SAFE_PROBE;
+    }
+
+    @Override
+    public Set<String> requiresEngineRoles() {
         return Set.of("tool-health-writer");
     }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        ToolHealthScope scope = ToolHealthReadTool.parseScope(
-                ToolHealthReadTool.stringParam(params, "scope"));
+        ToolHealthScope scope = ToolHealthReadTool.parseScope(ToolHealthReadTool.stringParam(params, "scope"));
         String scopeId = ToolHealthReadTool.stringParamOrNull(params, "scopeId");
         String toolName = ToolHealthReadTool.stringParam(params, "toolName");
-        ToolHealthClassification classification = parseClassification(
-                ToolHealthReadTool.stringParam(params, "classification"));
+        ToolHealthClassification classification =
+                parseClassification(ToolHealthReadTool.stringParam(params, "classification"));
         String note = ToolHealthReadTool.stringParamOrNull(params, "note");
         String eta = ToolHealthReadTool.stringParamOrNull(params, "expectedRecoveryAt");
         Instant expectedRecoveryAt = eta == null ? null : Instant.parse(eta);
 
         ToolHealthDocument doc = toolHealthService.markUnavailable(
-                ctx.tenantId(), scope,
+                ctx.tenantId(),
+                scope,
                 scopeId == null ? defaultScopeId(scope, ctx) : scopeId,
-                toolName, classification, expectedRecoveryAt, note,
+                toolName,
+                classification,
+                expectedRecoveryAt,
+                note,
                 callerLabel(ctx));
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -104,7 +151,7 @@ public class ToolHealthSetUnavailableTool implements Tool {
         try {
             return ToolHealthClassification.valueOf(s.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new ToolException("Invalid classification: " + s);
+            throw new ToolException("Invalid classification: " + s, e);
         }
     }
 

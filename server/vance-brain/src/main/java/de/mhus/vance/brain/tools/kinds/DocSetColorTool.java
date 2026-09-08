@@ -31,24 +31,43 @@ public class DocSetColorTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("color", Map.of(
-                "type", "string",
-                "description", "Accent color from the 12-value palette ("
-                        + PALETTE + "). Pass '' or 'none' to clear."));
+        p.put(
+                "color",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Accent color from the 12-value palette (" + PALETTE + "). Pass '' or 'none' to clear."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_set_color"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_set_color";
+    }
+
+    @Override
+    public String description() {
         return "Set or clear the accent color of a document. Color palette is "
                 + "case-insensitive; pass an empty string or 'none' to clear.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("color", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("color", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -79,7 +98,7 @@ public class DocSetColorTool implements Tool {
             return AccentColor.valueOf(t.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new ToolException(
-                    "Unknown color '" + raw + "'. Allowed: " + PALETTE + " — or '' / 'none' to clear.");
+                    "Unknown color '" + raw + "'. Allowed: " + PALETTE + " — or '' / 'none' to clear.", e);
         }
     }
 }

@@ -45,21 +45,22 @@ public class CanvasService {
     private final DocumentService documentService;
     private final SecurityContextFactory contextFactory;
 
-    public CanvasService(DocumentService documentService,
-                         SecurityContextFactory contextFactory) {
+    public CanvasService(DocumentService documentService, SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.contextFactory = contextFactory;
     }
 
     // ── Create / read / write ─────────────────────────────────────
 
-    public DocumentDocument create(String tenantId, String projectId, String path,
-                                   @Nullable String title,
-                                   @Nullable String description,
-                                   @Nullable String userId) {
+    public DocumentDocument create(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable String description,
+            @Nullable String userId) {
         String normalisedPath = ensureExtension(path.trim());
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectId, normalisedPath);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, normalisedPath);
         if (existing.isPresent()) {
             throw new ToolException("Canvas already exists at '" + normalisedPath + "'.");
         }
@@ -68,15 +69,19 @@ public class CanvasService {
         String body = CanvasCodec.serialize(canvas, mime);
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
-                    tenantId, projectId, normalisedPath,
-                    title, List.of("canvas"), mime, in, userId,
+                    tenantId,
+                    projectId,
+                    normalisedPath,
+                    title,
+                    List.of("canvas"),
+                    mime,
+                    in,
+                    userId,
                     contextFactory.writeActor(tenantId, userId, normalisedPath));
-            log.info("CanvasService.create tenant='{}' project='{}' path='{}'",
-                    tenantId, projectId, normalisedPath);
+            log.info("CanvasService.create tenant='{}' project='{}' path='{}'", tenantId, projectId, normalisedPath);
             return stored;
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write canvas '" + normalisedPath + "': " + e.getMessage());
+            throw new ToolException("Could not write canvas '" + normalisedPath + "': " + e.getMessage(), e);
         }
     }
 
@@ -86,8 +91,7 @@ public class CanvasService {
         return CanvasCodec.parse(body, mime);
     }
 
-    public DocumentDocument writeDocument(DocumentDocument doc, CanvasDocument canvas,
-                                          @Nullable String userId) {
+    public DocumentDocument writeDocument(DocumentDocument doc, CanvasDocument canvas, @Nullable String userId) {
         String mime = CanvasCodec.supports(doc.getMimeType()) ? doc.getMimeType() : DEFAULT_MIME;
         String body = CanvasCodec.serialize(canvas, mime);
         // A canvas edit is user-initiated, so the write must carry the acting
@@ -97,7 +101,13 @@ public class CanvasService {
         return documentService.update(
                 doc.getId(),
                 canvas.title() != null ? canvas.title() : doc.getTitle(),
-                null, body, null, null, null, null, mime,
+                null,
+                body,
+                null,
+                null,
+                null,
+                null,
+                mime,
                 DocumentService.TOOL_IDENTITY,
                 contextFactory.writeActor(doc.getTenantId(), userId, doc.getPath()));
     }
@@ -106,8 +116,7 @@ public class CanvasService {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not load canvas '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not load canvas '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -116,8 +125,7 @@ public class CanvasService {
     /** Result of a node/edge mutation: the created/affected id + updated doc. */
     public record MutationResult(String id, DocumentDocument doc) {}
 
-    public MutationResult addNode(DocumentDocument doc, Map<String, Object> raw,
-                                  @Nullable String userId) {
+    public MutationResult addNode(DocumentDocument doc, Map<String, Object> raw, @Nullable String userId) {
         CanvasDocument canvas = readDocument(doc);
         List<CanvasNode> nodes = new ArrayList<>(canvas.graph().nodes());
 
@@ -132,13 +140,13 @@ public class CanvasService {
 
         CanvasNode node = CanvasCodec.nodeFromMap(spec);
         nodes.add(node);
-        DocumentDocument updated = writeDocument(doc,
-                canvas.withGraph(new CanvasGraph(nodes, canvas.graph().edges())), userId);
+        DocumentDocument updated = writeDocument(
+                doc, canvas.withGraph(new CanvasGraph(nodes, canvas.graph().edges())), userId);
         return new MutationResult(id, updated);
     }
 
-    public MutationResult updateNode(DocumentDocument doc, String nodeId,
-                                     Map<String, Object> patch, @Nullable String userId) {
+    public MutationResult updateNode(
+            DocumentDocument doc, String nodeId, Map<String, Object> patch, @Nullable String userId) {
         CanvasDocument canvas = readDocument(doc);
         List<CanvasNode> nodes = new ArrayList<>(canvas.graph().nodes());
         int pos = indexOfNode(nodes, nodeId);
@@ -150,13 +158,12 @@ public class CanvasService {
         CanvasNode updatedNode = CanvasCodec.nodeFromMap(merged);
         nodes.set(pos, updatedNode);
 
-        DocumentDocument updated = writeDocument(doc,
-                canvas.withGraph(new CanvasGraph(nodes, canvas.graph().edges())), userId);
+        DocumentDocument updated = writeDocument(
+                doc, canvas.withGraph(new CanvasGraph(nodes, canvas.graph().edges())), userId);
         return new MutationResult(nodeId, updated);
     }
 
-    public MutationResult deleteNode(DocumentDocument doc, String nodeId,
-                                     @Nullable String userId) {
+    public MutationResult deleteNode(DocumentDocument doc, String nodeId, @Nullable String userId) {
         CanvasDocument canvas = readDocument(doc);
         List<CanvasNode> nodes = new ArrayList<>(canvas.graph().nodes());
         int pos = indexOfNode(nodes, nodeId);
@@ -168,15 +175,13 @@ public class CanvasService {
         for (CanvasEdge e : canvas.graph().edges()) {
             if (!e.from().equals(nodeId) && !e.to().equals(nodeId)) edges.add(e);
         }
-        DocumentDocument updated = writeDocument(doc,
-                canvas.withGraph(new CanvasGraph(nodes, edges)), userId);
+        DocumentDocument updated = writeDocument(doc, canvas.withGraph(new CanvasGraph(nodes, edges)), userId);
         return new MutationResult(nodeId, updated);
     }
 
     // ── Edge operations ───────────────────────────────────────────
 
-    public MutationResult addEdge(DocumentDocument doc, Map<String, Object> raw,
-                                  @Nullable String userId) {
+    public MutationResult addEdge(DocumentDocument doc, Map<String, Object> raw, @Nullable String userId) {
         CanvasDocument canvas = readDocument(doc);
         List<CanvasNode> nodes = canvas.graph().nodes();
         List<CanvasEdge> edges = new ArrayList<>(canvas.graph().edges());
@@ -198,19 +203,17 @@ public class CanvasService {
             throw new ToolException("Edge `to` node '" + edge.to() + "' does not exist.");
         }
         edges.add(edge);
-        DocumentDocument updated = writeDocument(doc,
-                canvas.withGraph(new CanvasGraph(nodes, edges)), userId);
+        DocumentDocument updated = writeDocument(doc, canvas.withGraph(new CanvasGraph(nodes, edges)), userId);
         return new MutationResult(id, updated);
     }
 
-    public MutationResult deleteEdge(DocumentDocument doc, String edgeId,
-                                     @Nullable String userId) {
+    public MutationResult deleteEdge(DocumentDocument doc, String edgeId, @Nullable String userId) {
         CanvasDocument canvas = readDocument(doc);
         List<CanvasEdge> edges = new ArrayList<>(canvas.graph().edges());
         boolean removed = edges.removeIf(e -> e.id().equals(edgeId));
         if (!removed) throw new ToolException("No edge with id '" + edgeId + "'.");
-        DocumentDocument updated = writeDocument(doc,
-                canvas.withGraph(new CanvasGraph(canvas.graph().nodes(), edges)), userId);
+        DocumentDocument updated = writeDocument(
+                doc, canvas.withGraph(new CanvasGraph(canvas.graph().nodes(), edges)), userId);
         return new MutationResult(edgeId, updated);
     }
 
@@ -222,9 +225,8 @@ public class CanvasService {
      * {@code textContains} are AND-combined; both may be {@code null}.
      * Returns node maps in {@link CanvasCodec#nodeToMap} shape.
      */
-    public List<Map<String, Object>> query(DocumentDocument doc,
-                                            @Nullable String typeFilter,
-                                            @Nullable String textContains) {
+    public List<Map<String, Object>> query(
+            DocumentDocument doc, @Nullable String typeFilter, @Nullable String textContains) {
         CanvasDocument canvas = readDocument(doc);
         String needle = textContains == null ? null : textContains.toLowerCase(Locale.ROOT);
         List<Map<String, Object>> out = new ArrayList<>();

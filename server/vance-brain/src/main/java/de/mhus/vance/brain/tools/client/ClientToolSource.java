@@ -2,10 +2,10 @@ package de.mhus.vance.brain.tools.client;
 
 import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
+import de.mhus.vance.brain.tools.ToolSource;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.brain.tools.ToolSource;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -39,9 +39,7 @@ public class ClientToolSource implements ToolSource {
     private final ExecutionRegistryService executionRegistry;
 
     public ClientToolSource(
-            ClientToolRegistry registry,
-            ClientToolChannel channel,
-            ExecutionRegistryService executionRegistry) {
+            ClientToolRegistry registry, ClientToolChannel channel, ExecutionRegistryService executionRegistry) {
         this.registry = registry;
         this.channel = channel;
         this.executionRegistry = executionRegistry;
@@ -103,9 +101,7 @@ public class ClientToolSource implements ToolSource {
         public java.util.Set<String> labels() {
             // Reflect the client-pushed labels so server-side selectors
             // (recipes, Plan-Mode read-only filter) can find them.
-            return spec.getLabels() == null
-                    ? java.util.Set.of()
-                    : java.util.Set.copyOf(spec.getLabels());
+            return spec.getLabels() == null ? java.util.Set.of() : java.util.Set.copyOf(spec.getLabels());
         }
 
         @Override
@@ -132,43 +128,36 @@ public class ClientToolSource implements ToolSource {
         public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
             String sessionId = ctx.sessionId();
             if (sessionId == null) {
-                throw new ToolException(
-                        "Client tool '" + name() + "' requires a session scope");
+                throw new ToolException("Client tool '" + name() + "' requires a session scope");
             }
-            ClientToolRegistry.Entry entry = registry.entry(sessionId).orElseThrow(
-                    () -> new ToolException(
-                            "Client tool '" + name()
-                                    + "' unavailable: no client registration for session '"
-                                    + sessionId + "'"));
+            ClientToolRegistry.Entry entry = registry.entry(sessionId)
+                    .orElseThrow(() -> new ToolException("Client tool '" + name()
+                            + "' unavailable: no client registration for session '"
+                            + sessionId + "'"));
             ClientToolRegistry.Pending pending = registry.beginInvocation(sessionId, name());
             try {
                 channel.sendInvoke(entry.wsSession(), pending.correlationId(), name(), params);
-                Map<String, Object> result = pending.future().get(
-                        INVOCATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                Map<String, Object> result = pending.future().get(INVOCATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 maybeAttachOwnerProcessId(name(), result, ctx.processId());
                 return result;
             } catch (TimeoutException e) {
-                registry.cancel(pending.correlationId(),
-                        "Client tool '" + name() + "' timed out after "
-                                + INVOCATION_TIMEOUT_SECONDS + "s");
-                throw new ToolException(
-                        "Client tool '" + name() + "' timed out");
+                registry.cancel(
+                        pending.correlationId(),
+                        "Client tool '" + name() + "' timed out after " + INVOCATION_TIMEOUT_SECONDS + "s");
+                throw new ToolException("Client tool '" + name() + "' timed out", e);
             } catch (InterruptedException e) {
                 registry.cancel(pending.correlationId(), "interrupted");
                 Thread.currentThread().interrupt();
-                throw new ToolException("Interrupted waiting for client tool '" + name() + "'");
+                throw new ToolException("Interrupted waiting for client tool '" + name() + "'", e);
             } catch (ExecutionException e) {
                 Throwable cause = e.getCause() == null ? e : e.getCause();
-                throw new ToolException(
-                        "Client tool '" + name() + "' failed: " + cause.getMessage(), cause);
+                throw new ToolException("Client tool '" + name() + "' failed: " + cause.getMessage(), cause);
             } catch (IOException e) {
                 registry.cancel(pending.correlationId(), e.getMessage());
-                throw new ToolException(
-                        "Client tool '" + name() + "' dispatch failed: " + e.getMessage(), e);
+                throw new ToolException("Client tool '" + name() + "' dispatch failed: " + e.getMessage(), e);
             } catch (RuntimeException e) {
                 registry.cancel(pending.correlationId(), e.getMessage());
-                throw new ToolException(
-                        "Client tool '" + name() + "' dispatch failed: " + e.getMessage(), e);
+                throw new ToolException("Client tool '" + name() + "' dispatch failed: " + e.getMessage(), e);
             }
         }
     }
@@ -186,8 +175,7 @@ public class ClientToolSource implements ToolSource {
      * On the unlikely race (entry already dropped, e.g. instant
      * finish + foot disconnect) the attach silently does nothing.
      */
-    private void maybeAttachOwnerProcessId(
-            String toolName, Map<String, Object> result, @Nullable String processId) {
+    private void maybeAttachOwnerProcessId(String toolName, Map<String, Object> result, @Nullable String processId) {
         if (processId == null || processId.isBlank()) return;
         if (!"client_exec_run".equals(toolName)) return;
         if (result == null) return;

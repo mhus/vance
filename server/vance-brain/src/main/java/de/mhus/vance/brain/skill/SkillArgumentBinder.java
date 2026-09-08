@@ -60,9 +60,7 @@ public final class SkillArgumentBinder {
             return Map.of();
         }
         String text = rawArgs == null ? "" : rawArgs.strip();
-        List<String> words = text.isEmpty()
-                ? List.of()
-                : List.of(text.split("\\s+"));
+        List<String> words = text.isEmpty() ? List.of() : List.of(text.split("\\s+"));
 
         Map<String, Object> args = new LinkedHashMap<>();
         args.put("text", text);
@@ -109,8 +107,7 @@ public final class SkillArgumentBinder {
      * parse is a caller error, not an author error — it fails the
      * activation with a message naming both the argument and the value.
      */
-    private static Object coerce(
-            String skillName, ResolvedSkill.Argument spec, String token) {
+    private static Object coerce(String skillName, ResolvedSkill.Argument spec, String token) {
         String type = spec.type() == null || spec.type().isBlank() ? "string" : spec.type();
         try {
             return switch (type) {
@@ -123,7 +120,7 @@ public final class SkillArgumentBinder {
                 default -> token;
             };
         } catch (NumberFormatException e) {
-            throw new SkillArgumentException(skillName, spec.name(), type, token);
+            throw new SkillArgumentException(skillName, spec.name(), type, token, e);
         }
     }
 

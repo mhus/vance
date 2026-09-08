@@ -19,9 +19,20 @@ public class MarkdownToPdfTransformer implements DocumentTransformer {
     private final DocumentService documentService;
     private final PdfReportRenderer renderer;
 
-    @Override public String targetFormat() { return "pdf"; }
-    @Override public String targetMimeType() { return renderer.mimeType(); }
-    @Override public String targetExtension() { return renderer.fileExtension(); }
+    @Override
+    public String targetFormat() {
+        return "pdf";
+    }
+
+    @Override
+    public String targetMimeType() {
+        return renderer.mimeType();
+    }
+
+    @Override
+    public String targetExtension() {
+        return renderer.fileExtension();
+    }
 
     @Override
     public boolean canTransform(DocumentDocument source) {
@@ -34,9 +45,8 @@ public class MarkdownToPdfTransformer implements DocumentTransformer {
     @Override
     public Result transform(DocumentDocument source, String title) {
         String md = loadAsText(source);
-        MarkdownReportContext ctx = new MarkdownReportContext(
-                md, title, null,
-                source.getTenantId(), source.getProjectId());
+        MarkdownReportContext ctx =
+                new MarkdownReportContext(md, title, null, source.getTenantId(), source.getProjectId());
         byte[] bytes = renderer.render(ctx);
         return new Result(bytes, title);
     }
@@ -46,9 +56,7 @@ public class MarkdownToPdfTransformer implements DocumentTransformer {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read source document content: "
-                            + e.getMessage());
+            throw new ToolException("Could not read source document content: " + e.getMessage(), e);
         }
     }
 }

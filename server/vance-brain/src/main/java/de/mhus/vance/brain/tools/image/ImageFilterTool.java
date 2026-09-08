@@ -37,34 +37,50 @@ public class ImageFilterTool implements Tool {
     private final ImageManipulationService imageService;
 
     private static final List<String> FILTER_NAMES = List.of(
-            "blur_gaussian", "sharpen", "grayscale", "sepia", "invert",
-            "edge", "emboss", "posterize", "solarize", "threshold");
+            "blur_gaussian",
+            "sharpen",
+            "grayscale",
+            "sepia",
+            "invert",
+            "edge",
+            "emboss",
+            "posterize",
+            "solarize",
+            "threshold");
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Source image path."),
-                    "targetPath", Map.of(
-                            "type", "string",
-                            "description", "Optional destination path; default = overwrite source."),
-                    "filter", Map.of(
-                            "type", "string",
-                            "enum", FILTER_NAMES,
-                            "description",
-                                    "Effect to apply. See `params` table for per-filter knobs."),
-                    "params", Map.of(
-                            "type", "object",
-                            "description",
-                                    "Filter-specific parameters. `blur_gaussian`: `radius` "
-                                            + "(int 1-50, default 5). `posterize`: `levels` "
-                                            + "(int 2-8, default 4). `threshold`: `threshold` "
-                                            + "(int 0-255, default 128). All other filters take "
-                                            + "no params.")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Source image path."),
+                            "targetPath",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional destination path; default = overwrite source."),
+                            "filter",
+                                    Map.of(
+                                            "type", "string",
+                                            "enum", FILTER_NAMES,
+                                            "description", "Effect to apply. See `params` table for per-filter knobs."),
+                            "params",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Filter-specific parameters. `blur_gaussian`: `radius` "
+                                                    + "(int 1-50, default 5). `posterize`: `levels` "
+                                                    + "(int 2-8, default 4). `threshold`: `threshold` "
+                                                    + "(int 0-255, default 128). All other filters take "
+                                                    + "no params.")),
             "required", List.of("path", "filter"));
 
-    @Override public String name() { return "image_filter"; }
+    @Override
+    public String name() {
+        return "image_filter";
+    }
 
     @Override
     public String description() {
@@ -75,17 +91,27 @@ public class ImageFilterTool implements Tool {
                 + "{radius: 12}}`). Output preserves source MIME.";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
             throw new ToolException("image_filter requires a tenant scope");
         }
-        Map<String, Object> filterParams = new LinkedHashMap<>(
-                readMap(params, "params"));
+        Map<String, Object> filterParams = new LinkedHashMap<>(readMap(params, "params"));
         FilterRequest.FilterRequestBuilder builder = FilterRequest.builder()
                 .tenantId(ctx.tenantId())
                 .userId(ctx.userId())
@@ -103,7 +129,7 @@ public class ImageFilterTool implements Tool {
             log.info("image_filter failed: reason={} msg={}", e.getReason(), e.getMessage());
             return errorResponse(e);
         } catch (IllegalArgumentException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
     }
 }

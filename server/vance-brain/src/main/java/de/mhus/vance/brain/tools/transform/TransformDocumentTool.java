@@ -51,42 +51,56 @@ public class TransformDocumentTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "fromDocument", Map.of(
-                            "type", "string",
-                            "description", "Path or id of the source "
-                                    + "document to convert."),
-                    "toDocument", Map.of(
-                            "type", "string",
-                            "description", "Path for the new "
-                                    + "document. The extension is "
-                                    + "used to infer `format` when "
-                                    + "that isn't passed (e.g. "
-                                    + "'reports/sales.xlsx' → "
-                                    + "format='xlsx'). When omitted, "
-                                    + "an auto-generated path under "
-                                    + "'reports/' is used."),
-                    "format", Map.of(
-                            "type", "string",
-                            "description", "Optional explicit target "
-                                    + "format key. Currently "
-                                    + "supported: 'pdf', 'docx', "
-                                    + "'xlsx'. Inferred from "
-                                    + "toDocument's extension when "
-                                    + "omitted."),
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name; "
-                                    + "defaults to the active project."),
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Optional title — passed "
-                                    + "to the renderer (used as "
-                                    + "sheet name / cover-page "
-                                    + "title) and as the new "
-                                    + "document's title. Falls back "
-                                    + "to the source document's "
-                                    + "title.")),
+            "properties",
+                    Map.of(
+                            "fromDocument",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Path or id of the source " + "document to convert."),
+                            "toDocument",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Path for the new "
+                                                    + "document. The extension is "
+                                                    + "used to infer `format` when "
+                                                    + "that isn't passed (e.g. "
+                                                    + "'reports/sales.xlsx' → "
+                                                    + "format='xlsx'). When omitted, "
+                                                    + "an auto-generated path under "
+                                                    + "'reports/' is used."),
+                            "format",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional explicit target "
+                                                    + "format key. Currently "
+                                                    + "supported: 'pdf', 'docx', "
+                                                    + "'xlsx'. Inferred from "
+                                                    + "toDocument's extension when "
+                                                    + "omitted."),
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name; " + "defaults to the active project."),
+                            "title",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional title — passed "
+                                                    + "to the renderer (used as "
+                                                    + "sheet name / cover-page "
+                                                    + "title) and as the new "
+                                                    + "document's title. Falls back "
+                                                    + "to the source document's "
+                                                    + "title.")),
             "required", List.of("fromDocument"));
 
     private final EddieContext eddieContext;
@@ -97,13 +111,14 @@ public class TransformDocumentTool implements Tool {
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
 
-    public TransformDocumentTool(EddieContext eddieContext,
-                                 DocumentService documentService,
-                                 DocumentLinkBuilder linkBuilder,
-                                 DocumentTransformService transformService,
-                                 ThinkProcessService thinkProcessService,
-                                 ProgressEmitter progressEmitter,
-                                 de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public TransformDocumentTool(
+            EddieContext eddieContext,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            DocumentTransformService transformService,
+            ThinkProcessService thinkProcessService,
+            ProgressEmitter progressEmitter,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.contextFactory = contextFactory;
         this.eddieContext = eddieContext;
         this.documentService = documentService;
@@ -160,35 +175,29 @@ public class TransformDocumentTool implements Tool {
         ThinkProcessDocument process = loadProcess(ctx);
 
         DocumentDocument source = resolveSourceDoc(fromDocument, projectName, ctx);
-        String effectiveTitle = title != null ? title
-                : (source.getTitle() != null ? source.getTitle()
-                        : leafName(source.getPath()));
+        String effectiveTitle =
+                title != null ? title : (source.getTitle() != null ? source.getTitle() : leafName(source.getPath()));
 
         // Format resolution: explicit > inferred-from-toDocument-ext.
-        String effectiveFormat = format != null
-                ? format.toLowerCase(Locale.ROOT)
-                : transformService.inferFormat(toDocument);
+        String effectiveFormat =
+                format != null ? format.toLowerCase(Locale.ROOT) : transformService.inferFormat(toDocument);
         if (effectiveFormat == null) {
-            throw new ToolException(
-                    "Cannot determine target format. Pass `format` "
-                            + "explicitly or use a `toDocument` path "
-                            + "with a recognised extension. Supported: "
-                            + transformService.supportedFormats());
+            throw new ToolException("Cannot determine target format. Pass `format` "
+                    + "explicitly or use a `toDocument` path "
+                    + "with a recognised extension. Supported: "
+                    + transformService.supportedFormats());
         }
 
         DocumentTransformer transformer = transformService.dispatch(source, effectiveFormat);
 
-        emit(process, StatusTag.INFO,
-                "Transforming '" + source.getPath()
-                        + "' → " + effectiveFormat + "…");
+        emit(process, StatusTag.INFO, "Transforming '" + source.getPath() + "' → " + effectiveFormat + "…");
 
         long started = System.currentTimeMillis();
         DocumentTransformer.Result rendered = transformer.transform(source, effectiveTitle);
         long elapsedMs = System.currentTimeMillis() - started;
 
-        String finalPath = toDocument != null
-                ? toDocument
-                : defaultOutputPath(effectiveTitle, transformer.targetExtension());
+        String finalPath =
+                toDocument != null ? toDocument : defaultOutputPath(effectiveTitle, transformer.targetExtension());
 
         DocumentDocument created;
         try (InputStream in = new ByteArrayInputStream(rendered.bytes())) {
@@ -196,30 +205,36 @@ public class TransformDocumentTool implements Tool {
                     ctx.tenantId(),
                     projectName,
                     finalPath,
-                    rendered.suggestedTitle() != null
-                            ? rendered.suggestedTitle() : effectiveTitle,
+                    rendered.suggestedTitle() != null ? rendered.suggestedTitle() : effectiveTitle,
                     List.of("transform", effectiveFormat),
                     transformer.targetMimeType(),
                     in,
                     ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not store transformed document: "
-                            + e.getMessage());
+            throw new ToolException("Could not store transformed document: " + e.getMessage(), e);
         }
 
         String vanceUri = DocumentLinkBuilder.buildVanceUri(
-                null, created.getPath(), transformer.targetExtension(),
+                null,
+                created.getPath(),
+                transformer.targetExtension(),
                 DocumentLinkBuilder.defaultModeForKind(transformer.targetExtension()));
         String markdownLink = linkBuilder.linkFor(created, projectName);
 
-        log.info("TransformDocumentTool tenant='{}' from='{}' "
-                        + "format={} bytes={} elapsedMs={} to='{}'",
-                ctx.tenantId(), source.getPath(), effectiveFormat,
-                rendered.bytes().length, elapsedMs, finalPath);
-        emit(process, StatusTag.INFO,
-                String.format(Locale.ROOT,
+        log.info(
+                "TransformDocumentTool tenant='{}' from='{}' " + "format={} bytes={} elapsedMs={} to='{}'",
+                ctx.tenantId(),
+                source.getPath(),
+                effectiveFormat,
+                rendered.bytes().length,
+                elapsedMs,
+                finalPath);
+        emit(
+                process,
+                StatusTag.INFO,
+                String.format(
+                        Locale.ROOT,
                         "Done — %d KB %s saved as '%s'.",
                         rendered.bytes().length / 1024,
                         effectiveFormat.toUpperCase(Locale.ROOT),
@@ -238,43 +253,32 @@ public class TransformDocumentTool implements Tool {
 
     // ── Helpers ───────────────────────────────────────────────────
 
-    private DocumentDocument resolveSourceDoc(String ref,
-                                              String projectName,
-                                              ToolInvocationContext ctx) {
+    private DocumentDocument resolveSourceDoc(String ref, String projectName, ToolInvocationContext ctx) {
         boolean pathLike = ref.contains("/") || ref.contains(".");
         if (pathLike) {
-            Optional<DocumentDocument> byPath = documentService.findByPath(
-                    ctx.tenantId(), projectName, ref);
+            Optional<DocumentDocument> byPath = documentService.findByPath(ctx.tenantId(), projectName, ref);
             if (byPath.isPresent()) return byPath.get();
         }
         Optional<DocumentDocument> byId = documentService.findById(ref);
         if (byId.isPresent()) {
             DocumentDocument doc = byId.get();
             if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException(
-                        "Source document with id '" + ref
-                                + "' is not in your tenant");
+                throw new ToolException("Source document with id '" + ref + "' is not in your tenant");
             }
             return doc;
         }
         if (!pathLike) {
-            Optional<DocumentDocument> byPath = documentService.findByPath(
-                    ctx.tenantId(), projectName, ref);
+            Optional<DocumentDocument> byPath = documentService.findByPath(ctx.tenantId(), projectName, ref);
             if (byPath.isPresent()) return byPath.get();
         }
-        throw new ToolException(
-                "Source document '" + ref + "' not found in project '"
-                        + projectName + "'");
+        throw new ToolException("Source document '" + ref + "' not found in project '" + projectName + "'");
     }
 
     static String defaultOutputPath(@Nullable String title, String extension) {
-        String stamp = DateTimeFormatter
-                .ofPattern("yyyy-MM-dd-HHmmss")
+        String stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
                 .withZone(ZoneOffset.UTC)
                 .format(Instant.now());
-        String slug = title == null || title.isBlank()
-                ? "document"
-                : slug(title);
+        String slug = title == null || title.isBlank() ? "document" : slug(title);
         return "reports/" + slug + "-" + stamp + "." + extension;
     }
 
@@ -285,8 +289,7 @@ public class TransformDocumentTool implements Tool {
         boolean lastDash = false;
         for (int i = 0; i < title.length(); i++) {
             char c = title.charAt(i);
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-                    || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
                 sb.append(c);
                 lastDash = false;
             } else if (!lastDash) {
@@ -313,8 +316,7 @@ public class TransformDocumentTool implements Tool {
         return opt.orElse(null);
     }
 
-    private void emit(@Nullable ThinkProcessDocument process,
-                      StatusTag tag, String text) {
+    private void emit(@Nullable ThinkProcessDocument process, StatusTag tag, String text) {
         if (process == null) return;
         progressEmitter.emitStatus(process, tag, text);
     }

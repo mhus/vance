@@ -1,18 +1,18 @@
 package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.api.documents.AgeDocumentKind;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.project.ProjectDocument;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -41,45 +41,81 @@ public class DocGrepPathTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>();
-        p.put("projectId", Map.of("type", "string",
-                "description", "Optional project name. Defaults to the active project."));
-        p.put("pathPrefix", Map.of("type", "string",
-                "description", "Path-prefix scope. Omitted/blank → defaults to 'documents/' "
-                        + "(excludes trash, kit config, chat attachments, engine scratch, "
-                        + "and other system folders). Pass '*' to search the entire "
-                        + "project. Pass any specific prefix (e.g. 'documents/notes/', "
-                        + "'_vance/trash/') to narrow further or address a system folder explicitly."));
-        p.put("pattern", Map.of("type", "string",
-                "description", "Java regex pattern. Use plain substrings for literal match."));
-        p.put("caseInsensitive", Map.of("type", "boolean",
-                "description", "Match case-insensitively. Default: false."));
-        p.put("contextBefore", Map.of("type", "integer",
-                "description", "Number of lines to include before each match. Default: 0."));
-        p.put("contextAfter", Map.of("type", "integer",
-                "description", "Number of lines to include after each match. Default: 0."));
-        p.put("outputMode", Map.of("type", "string", "enum", List.of("content", "files_with_matches"),
-                "description", "`content` returns matching lines with line numbers; "
-                        + "`files_with_matches` returns just the document paths. Default: content."));
-        p.put("limit", Map.of("type", "integer",
-                "description", "Cap on total matches across all documents. Default: " + DEFAULT_LIMIT
-                        + ", max: " + MAX_LIMIT + "."));
+        p.put(
+                "projectId",
+                Map.of("type", "string", "description", "Optional project name. Defaults to the active project."));
+        p.put(
+                "pathPrefix",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Path-prefix scope. Omitted/blank → defaults to 'documents/' "
+                                + "(excludes trash, kit config, chat attachments, engine scratch, "
+                                + "and other system folders). Pass '*' to search the entire "
+                                + "project. Pass any specific prefix (e.g. 'documents/notes/', "
+                                + "'_vance/trash/') to narrow further or address a system folder explicitly."));
+        p.put(
+                "pattern",
+                Map.of("type", "string", "description", "Java regex pattern. Use plain substrings for literal match."));
+        p.put("caseInsensitive", Map.of("type", "boolean", "description", "Match case-insensitively. Default: false."));
+        p.put(
+                "contextBefore",
+                Map.of("type", "integer", "description", "Number of lines to include before each match. Default: 0."));
+        p.put(
+                "contextAfter",
+                Map.of("type", "integer", "description", "Number of lines to include after each match. Default: 0."));
+        p.put(
+                "outputMode",
+                Map.of(
+                        "type",
+                        "string",
+                        "enum",
+                        List.of("content", "files_with_matches"),
+                        "description",
+                        "`content` returns matching lines with line numbers; "
+                                + "`files_with_matches` returns just the document paths. Default: content."));
+        p.put(
+                "limit",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "Cap on total matches across all documents. Default: " + DEFAULT_LIMIT + ", max: " + MAX_LIMIT
+                                + "."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_grep_path"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_grep_path";
+    }
+
+    @Override
+    public String description() {
         return "Search every inline document under a path prefix for lines matching a regex. "
                 + "Returns either matching lines (with documentId, path, line number, optionally "
                 + "context lines before/after) or just the list of files containing at least one "
                 + "match. Age-encrypted documents are skipped — their bodies are ciphertext. "
                 + "Capped at " + MAX_LIMIT + " matches.";
     }
-    @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("text-search", "eddie", "read-only"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("text-search", "eddie", "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -100,7 +136,7 @@ public class DocGrepPathTool implements Tool {
         try {
             pattern = Pattern.compile(patternStr, ci ? Pattern.CASE_INSENSITIVE : 0);
         } catch (PatternSyntaxException e) {
-            throw new ToolException("Invalid regex: " + e.getMessage());
+            throw new ToolException("Invalid regex: " + e.getMessage(), e);
         }
         // Shared wall-clock budget for the whole grep — the (untrusted) regex is
         // matched against every line of every scanned doc; a catastrophic-
@@ -108,8 +144,7 @@ public class DocGrepPathTool implements Tool {
         long deadline = System.nanoTime() + REGEX_BUDGET_NANOS;
 
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
-        List<DocumentDocument> all = support.documentService()
-                .listByProject(ctx.tenantId(), project.getName());
+        List<DocumentDocument> all = support.documentService().listByProject(ctx.tenantId(), project.getName());
 
         if ("files_with_matches".equals(outputMode)) {
             List<Map<String, Object>> hits = new ArrayList<>();
@@ -149,7 +184,10 @@ public class DocGrepPathTool implements Tool {
             String[] lines = support.readBody(d, ctx).split("\\R", -1);
             for (int i = 0; i < lines.length; i++) {
                 if (!matchGuarded(pattern, lines[i], deadline)) continue;
-                if (hits.size() >= limit) { truncated = true; break outer; }
+                if (hits.size() >= limit) {
+                    truncated = true;
+                    break outer;
+                }
                 Map<String, Object> hit = new LinkedHashMap<>();
                 hit.put("documentId", d.getId());
                 hit.put("path", d.getPath());
@@ -199,8 +237,10 @@ public class DocGrepPathTool implements Tool {
         try {
             return RegexGuard.find(pattern, line, deadline);
         } catch (RegexGuard.RegexBudgetExceeded e) {
-            throw new ToolException("regex too slow — possible catastrophic backtracking; "
-                    + "simplify the pattern (avoid nested quantifiers like (a+)+).");
+            throw new ToolException(
+                    "regex too slow — possible catastrophic backtracking; "
+                            + "simplify the pattern (avoid nested quantifiers like (a+)+).",
+                    e);
         }
     }
 }

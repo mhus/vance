@@ -38,50 +38,66 @@ public class KanbanCardCreateTool implements Tool {
     private static final String MD_MIME = "text/markdown";
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "Kanban app folder (contains _app.yaml)."));
-                put("column", Map.of("type", "string",
-                        "description", "Target column name. Becomes the "
-                                + "sub-folder under `folder`. Defaults "
-                                + "to 'backlog' when omitted."));
-                put("title", Map.of("type", "string",
-                        "description", "Card title. Required."));
-                put("priority", Map.of("type", "string"));
-                put("assignee", Map.of("type", "string"));
-                put("labels", Map.of("type", "array",
-                        "items", Map.of("type", "string")));
-                put("dueDate", Map.of("type", "string",
-                        "description", "ISO date e.g. 2026-07-15."));
-                put("estimate", Map.of("type", "number"));
-                put("blocked", Map.of("type", "boolean"));
-                put("body", Map.of("type", "string",
-                        "description", "Markdown body."));
-                put("filename", Map.of("type", "string",
-                        "description", "Optional explicit filename "
-                                + "(without extension). Defaults to "
-                                + "slugged title."));
-                put("overwrite", Map.of("type", "boolean",
-                        "description", "Replace existing card at that path. "
-                                + "Default false — fails if present."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder", "title"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "Kanban app folder (contains _app.yaml)."));
+                    put(
+                            "column",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Target column name. Becomes the "
+                                            + "sub-folder under `folder`. Defaults "
+                                            + "to 'backlog' when omitted."));
+                    put("title", Map.of("type", "string", "description", "Card title. Required."));
+                    put("priority", Map.of("type", "string"));
+                    put("assignee", Map.of("type", "string"));
+                    put("labels", Map.of("type", "array", "items", Map.of("type", "string")));
+                    put("dueDate", Map.of("type", "string", "description", "ISO date e.g. 2026-07-15."));
+                    put("estimate", Map.of("type", "number"));
+                    put("blocked", Map.of("type", "boolean"));
+                    put("body", Map.of("type", "string", "description", "Markdown body."));
+                    put(
+                            "filename",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional explicit filename "
+                                            + "(without extension). Defaults to "
+                                            + "slugged title."));
+                    put(
+                            "overwrite",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Replace existing card at that path. " + "Default false — fails if present."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder", "title"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
     private final SecurityContextFactory contextFactory;
 
-    public KanbanCardCreateTool(EddieContext eddieContext,
-                                DocumentService documentService,
-                                SecurityContextFactory contextFactory) {
+    public KanbanCardCreateTool(
+            EddieContext eddieContext, DocumentService documentService, SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.contextFactory = contextFactory;
     }
 
-    @Override public String name() { return "kanban_card_create"; }
+    @Override
+    public String name() {
+        return "kanban_card_create";
+    }
 
     @Override
     public String description() {
@@ -93,7 +109,10 @@ public class KanbanCardCreateTool implements Tool {
                 + "automatically — call app_rebuild when done.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -124,17 +143,16 @@ public class KanbanCardCreateTool implements Tool {
         String path = normaliseFolder(folder) + "/" + column + "/" + slug + ".md";
 
         boolean overwrite = paramBoolean(params, "overwrite");
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                tenantId, projectName, path);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectName, path);
         if (existing.isPresent() && !overwrite) {
-            throw new ToolException(
-                    "Card already exists at '" + path + "'. Pass "
-                            + "overwrite=true or pick a different "
-                            + "filename to replace it.");
+            throw new ToolException("Card already exists at '" + path + "'. Pass "
+                    + "overwrite=true or pick a different "
+                    + "filename to replace it.");
         }
 
         CardDocument card = new CardDocument(
-                "card", title,
+                "card",
+                title,
                 paramString(params, "priority"),
                 paramString(params, "assignee"),
                 paramStringList(params, "labels"),
@@ -149,33 +167,49 @@ public class KanbanCardCreateTool implements Tool {
         if (existing.isPresent()) {
             stored = documentService.update(
                     existing.get().getId(),
-                    title, List.of("card"),
-                    body, null, null, null, null, MD_MIME,
+                    title,
+                    List.of("card"),
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    MD_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
         } else {
-            try (ByteArrayInputStream in = new ByteArrayInputStream(
-                    body.getBytes(StandardCharsets.UTF_8))) {
+            try (ByteArrayInputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
-                        tenantId, projectName, path, title,
-                        List.of("card"), MD_MIME, in, ctx.userId(),
+                        tenantId,
+                        projectName,
+                        path,
+                        title,
+                        List.of("card"),
+                        MD_MIME,
+                        in,
+                        ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not write card '" + path + "': " + e.getMessage());
+                throw new ToolException("Could not write card '" + path + "': " + e.getMessage(), e);
             }
         }
 
-        log.info("KanbanCardCreateTool tenant='{}' folder='{}' column='{}' path='{}'",
-                tenantId, folder, column, stored.getPath());
+        log.info(
+                "KanbanCardCreateTool tenant='{}' folder='{}' column='{}' path='{}'",
+                tenantId,
+                folder,
+                column,
+                stored.getPath());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", stored.getPath());
         result.put("column", column);
         result.put("title", title);
-        result.put("nextStep", "Card created. Call "
-                + "`app_rebuild('" + normaliseFolder(folder) + "')` "
-                + "to refresh _board.md + _stats.yaml.");
+        result.put(
+                "nextStep",
+                "Card created. Call "
+                        + "`app_rebuild('" + normaliseFolder(folder) + "')` "
+                        + "to refresh _board.md + _stats.yaml.");
         return result;
     }
 
@@ -221,8 +255,11 @@ public class KanbanCardCreateTool implements Tool {
         Object v = params.get(key);
         if (v instanceof Number n) return n.doubleValue();
         if (v instanceof String s && !s.isBlank()) {
-            try { return Double.parseDouble(s.trim()); }
-            catch (NumberFormatException e) { return null; }
+            try {
+                return Double.parseDouble(s.trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
         }
         return null;
     }

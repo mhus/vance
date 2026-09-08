@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -35,18 +34,15 @@ public class CalendarFolderReader {
     public static final String APP_MANIFEST = "_app.yaml";
 
     /** Generated artefacts that should never show up as calendars. */
-    private static final List<String> GENERATED_LEAF_NAMES = List.of(
-            "_gantt.md", "_conflicts.yaml", "_app.yaml", "_info.yaml");
+    private static final List<String> GENERATED_LEAF_NAMES =
+            List.of("_gantt.md", "_conflicts.yaml", "_app.yaml", "_info.yaml");
 
     /** Default lane for calendar files that sit directly in the root
      *  folder (no sub-folder = no explicit lane). */
     public static final String DEFAULT_LANE = "default";
 
     /** A calendar file plus its resolved lane name and parsed body. */
-    public record CalendarFile(
-            DocumentDocument doc,
-            String lane,
-            CalendarDocument calendar) { }
+    public record CalendarFile(DocumentDocument doc, String lane, CalendarDocument calendar) {}
 
     /** Bundle of everything a tool needs after scanning the folder. */
     public record Scan(
@@ -72,7 +68,7 @@ public class CalendarFolderReader {
     }
 
     /** A single event together with where it came from. */
-    public record EventRef(CalendarEvent event, String lane, String sourcePath) { }
+    public record EventRef(CalendarEvent event, String lane, String sourcePath) {}
 
     private final DocumentService documentService;
 
@@ -92,19 +88,16 @@ public class CalendarFolderReader {
         DocumentDocument manifestDoc = loadManifest(tenantId, projectName, normalisedFolder);
         ApplicationDocument manifest = parseManifest(manifestDoc);
         if (!CalendarsAppConfig.APP_NAME.equalsIgnoreCase(manifest.app())) {
-            throw new ToolException(
-                    "Folder '" + normalisedFolder + "' is an "
-                            + (manifest.app().isBlank() ? "untyped" : manifest.app())
-                            + " application — expected 'calendar'. "
-                            + "Edit '" + normalisedFolder + "/_app.yaml' "
-                            + "and set `$meta.app: calendar`.");
+            throw new ToolException("Folder '" + normalisedFolder + "' is an "
+                    + (manifest.app().isBlank() ? "untyped" : manifest.app())
+                    + " application — expected 'calendar'. "
+                    + "Edit '" + normalisedFolder + "/_app.yaml' "
+                    + "and set `$meta.app: calendar`.");
         }
         CalendarsAppConfig calendarConfig = CalendarsAppConfig.from(manifest);
 
-        List<CalendarFile> calendars = loadCalendars(
-                tenantId, projectName, normalisedFolder);
-        return new Scan(normalisedFolder, manifestDoc, manifest,
-                calendarConfig, calendars);
+        List<CalendarFile> calendars = loadCalendars(tenantId, projectName, normalisedFolder);
+        return new Scan(normalisedFolder, manifestDoc, manifest, calendarConfig, calendars);
     }
 
     /** Test/CLI escape hatch: scan a folder where the manifest is
@@ -112,8 +105,8 @@ public class CalendarFolderReader {
      *  manifest is present but for a non-calendar app. */
     public Scan scanOptional(String tenantId, String projectName, String folder) {
         String normalisedFolder = normaliseFolder(folder);
-        Optional<DocumentDocument> manifestOpt = documentService.findByPath(
-                tenantId, projectName, normalisedFolder + "/" + APP_MANIFEST);
+        Optional<DocumentDocument> manifestOpt =
+                documentService.findByPath(tenantId, projectName, normalisedFolder + "/" + APP_MANIFEST);
         DocumentDocument manifestDoc;
         ApplicationDocument manifest;
         CalendarsAppConfig calendarConfig;
@@ -122,8 +115,7 @@ public class CalendarFolderReader {
             manifest = parseManifest(manifestDoc);
             if (!CalendarsAppConfig.APP_NAME.equalsIgnoreCase(manifest.app())) {
                 throw new ToolException(
-                        "Folder '" + normalisedFolder + "' is an "
-                                + manifest.app() + " app, expected 'calendar'.");
+                        "Folder '" + normalisedFolder + "' is an " + manifest.app() + " app, expected 'calendar'.");
             }
             calendarConfig = CalendarsAppConfig.from(manifest);
         } else {
@@ -131,40 +123,34 @@ public class CalendarFolderReader {
             manifest = ApplicationDocument.empty(CalendarsAppConfig.APP_NAME);
             calendarConfig = CalendarsAppConfig.from(new LinkedHashMap<>());
         }
-        List<CalendarFile> calendars = loadCalendars(
-                tenantId, projectName, normalisedFolder);
-        return new Scan(normalisedFolder, manifestDoc, manifest,
-                calendarConfig, calendars);
+        List<CalendarFile> calendars = loadCalendars(tenantId, projectName, normalisedFolder);
+        return new Scan(normalisedFolder, manifestDoc, manifest, calendarConfig, calendars);
     }
 
     // ── Manifest ──────────────────────────────────────────────────
 
     private DocumentDocument loadManifest(String tenantId, String projectName, String folder) {
         String path = folder + "/" + APP_MANIFEST;
-        return documentService.findByPath(tenantId, projectName, path)
-                .orElseThrow(() -> new ToolException(
-                        "No _app.yaml manifest found at '" + path
-                                + "'. Use `calendar_app_create` to "
-                                + "bootstrap a new calendar app — "
-                                + "writing the manifest by hand is "
-                                + "error-prone."));
+        return documentService
+                .findByPath(tenantId, projectName, path)
+                .orElseThrow(() -> new ToolException("No _app.yaml manifest found at '" + path
+                        + "'. Use `calendar_app_create` to "
+                        + "bootstrap a new calendar app — "
+                        + "writing the manifest by hand is "
+                        + "error-prone."));
     }
 
     private ApplicationDocument parseManifest(DocumentDocument doc) {
         String body = loadAsText(doc);
         String mime = doc.getMimeType();
         if (!ApplicationCodec.supports(mime)) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' has mime '"
-                            + mime + "' — must be JSON or YAML.");
+            throw new ToolException("Manifest '" + doc.getPath() + "' has mime '" + mime + "' — must be JSON or YAML.");
         }
         ApplicationDocument parsed;
         try {
             parsed = ApplicationCodec.parse(body, mime);
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse manifest '" + doc.getPath()
-                            + "': " + e.getMessage());
+            throw new ToolException("Could not parse manifest '" + doc.getPath() + "': " + e.getMessage(), e);
         }
 
         // Reject manifests that don't actually carry a $meta.kind of
@@ -175,31 +161,28 @@ public class CalendarFolderReader {
         // as the authoritative signal.
         String dbKind = doc.getKind();
         if (dbKind == null || dbKind.isBlank()) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' is missing "
-                            + "`$meta.kind: application`. Without it "
-                            + "the file is treated as plain YAML, "
-                            + "not as an app manifest. Recreate the "
-                            + "app via `calendar_app_create` or add "
-                            + "the `$meta` header manually:\n"
-                            + "  $meta:\n"
-                            + "    kind: application\n"
-                            + "    app:  calendar");
+            throw new ToolException("Manifest '" + doc.getPath() + "' is missing "
+                    + "`$meta.kind: application`. Without it "
+                    + "the file is treated as plain YAML, "
+                    + "not as an app manifest. Recreate the "
+                    + "app via `calendar_app_create` or add "
+                    + "the `$meta` header manually:\n"
+                    + "  $meta:\n"
+                    + "    kind: application\n"
+                    + "    app:  calendar");
         }
         if (!"application".equalsIgnoreCase(dbKind)) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' has "
-                            + "`$meta.kind: " + dbKind + "`, expected "
-                            + "'application'. This document is not "
-                            + "an app manifest.");
+            throw new ToolException("Manifest '" + doc.getPath() + "' has "
+                    + "`$meta.kind: " + dbKind + "`, expected "
+                    + "'application'. This document is not "
+                    + "an app manifest.");
         }
         if (parsed.app() == null || parsed.app().isBlank()) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' is missing "
-                            + "`$meta.app`. The discriminator is "
-                            + "required so app-specific tools know "
-                            + "which service to dispatch to (e.g. "
-                            + "`app: calendar` for a calendar suite).");
+            throw new ToolException("Manifest '" + doc.getPath() + "' is missing "
+                    + "`$meta.app`. The discriminator is "
+                    + "required so app-specific tools know "
+                    + "which service to dispatch to (e.g. "
+                    + "`app: calendar` for a calendar suite).");
         }
         return parsed;
     }
@@ -212,8 +195,7 @@ public class CalendarFolderReader {
         // Generated artefacts (_gantt.md, _conflicts.yaml, _app.yaml)
         // are excluded by leaf-name so the scan stays idempotent
         // even when they live under the same prefix.
-        List<DocumentDocument> all = documentService.listByKind(
-                tenantId, projectName, "calendar");
+        List<DocumentDocument> all = documentService.listByKind(tenantId, projectName, "calendar");
         List<CalendarFile> out = new ArrayList<>();
         String prefix = folder + "/";
         for (DocumentDocument d : all) {
@@ -232,15 +214,12 @@ public class CalendarFolderReader {
         String mime = doc.getMimeType();
         if (!CalendarCodec.supports(mime)) {
             throw new ToolException(
-                    "Calendar file '" + doc.getPath() + "' has mime '"
-                            + mime + "' — must be JSON or YAML.");
+                    "Calendar file '" + doc.getPath() + "' has mime '" + mime + "' — must be JSON or YAML.");
         }
         try {
             return CalendarCodec.parse(body, mime);
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse calendar '" + doc.getPath()
-                            + "': " + e.getMessage());
+            throw new ToolException("Could not parse calendar '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -249,8 +228,7 @@ public class CalendarFolderReader {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 

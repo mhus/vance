@@ -18,6 +18,12 @@ public class FormValidationException extends RuntimeException {
         this.errors = List.copyOf(errors);
     }
 
+    public FormValidationException(
+            List<FormValidationError> errors, @org.jspecify.annotations.Nullable Throwable cause) {
+        super(formatMessage(errors), cause);
+        this.errors = List.copyOf(errors);
+    }
+
     public List<FormValidationError> getErrors() {
         return errors;
     }

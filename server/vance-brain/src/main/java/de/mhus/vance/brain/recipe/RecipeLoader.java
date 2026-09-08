@@ -582,7 +582,7 @@ public class RecipeLoader {
             return Enum.valueOf(type, s.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
-                    "unknown " + type.getSimpleName() + " value '" + s + "' for '" + fieldName + "'");
+                    "unknown " + type.getSimpleName() + " value '" + s + "' for '" + fieldName + "'", e);
         }
     }
 
@@ -592,7 +592,7 @@ public class RecipeLoader {
             try {
                 return Long.parseLong(s.trim());
             } catch (NumberFormatException e) {
-                throw new IllegalStateException("'" + fieldName + "' is not a number: " + s);
+                throw new IllegalStateException("'" + fieldName + "' is not a number: " + s, e);
             }
         }
         throw new IllegalStateException("'" + fieldName + "' must be a number");
@@ -682,7 +682,7 @@ public class RecipeLoader {
         try {
             return PromptMode.valueOf(s.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalStateException("unknown promptMode '" + s + "' — expected APPEND or OVERWRITE");
+            throw new IllegalStateException("unknown promptMode '" + s + "' — expected APPEND or OVERWRITE", e);
         }
     }
 

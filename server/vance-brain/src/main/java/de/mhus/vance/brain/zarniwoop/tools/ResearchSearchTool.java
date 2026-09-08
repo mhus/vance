@@ -44,30 +44,41 @@ public class ResearchSearchTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "query", Map.of(
-                            "type", "string",
-                            "description", "Natural-language search query."),
-                    "modality", Map.of(
-                            "type", "string",
-                            "enum", MODALITY_ENUM,
-                            "description", "Result kind — defaults to 'web'. "
-                                    + "Run research_providers to see which modalities "
-                                    + "have a provider instance configured in this project."),
-                    "num", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Maximum results to return (1–" + MAX_NUM
-                                            + ", default " + DEFAULT_NUM + ")."),
-                    "facets", Map.of(
-                            "type", "object",
-                            "description", "Restrict to a provider's declared dimensions, "
-                                    + "e.g. {\"origin-place\": [\"m49:142\"]} for Asian "
-                                    + "publishers. Keys and values come from "
-                                    + "research_providers. A provider that does not declare "
-                                    + "a selected key is skipped for this search, so never "
-                                    + "guess one — an invented key can leave no provider at "
-                                    + "all.")),
+            "properties",
+                    Map.of(
+                            "query",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Natural-language search query."),
+                            "modality",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            MODALITY_ENUM,
+                                            "description",
+                                            "Result kind — defaults to 'web'. "
+                                                    + "Run research_providers to see which modalities "
+                                                    + "have a provider instance configured in this project."),
+                            "num",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Maximum results to return (1–" + MAX_NUM + ", default " + DEFAULT_NUM
+                                                    + ")."),
+                            "facets",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Restrict to a provider's declared dimensions, "
+                                                    + "e.g. {\"origin-place\": [\"m49:142\"]} for Asian "
+                                                    + "publishers. Keys and values come from "
+                                                    + "research_providers. A provider that does not declare "
+                                                    + "a selected key is skipped for this search, so never "
+                                                    + "guess one — an invented key can leave no provider at "
+                                                    + "all.")),
             "required", List.of("query"));
 
     private final ZarniwoopService zarniwoopService;
@@ -98,7 +109,7 @@ public class ResearchSearchTool implements Tool {
                         }
                     }
                 }
-                default -> { }
+                default -> {}
             }
             if (!values.isEmpty()) {
                 out.put(key.trim(), List.copyOf(values));
@@ -170,21 +181,19 @@ public class ResearchSearchTool implements Tool {
         SearchModality modality = parseModality(params.get("modality"));
         int num = clampNum(params.get("num"));
 
-        SearchScope scope = new SearchScope(
-                ctx.tenantId(), ctx.projectId(), ctx.processId(), ctx.userId());
+        SearchScope scope = new SearchScope(ctx.tenantId(), ctx.projectId(), ctx.processId(), ctx.userId());
         if (StringUtils.isBlank(scope.projectId())) {
             throw new ToolException("research tools require a project scope");
         }
 
-        SearchRequest req = new SearchRequest(
-                query, modality, SearchTier.NORMAL, num,
-                null, null, Map.of(), facets(params));
+        SearchRequest req =
+                new SearchRequest(query, modality, SearchTier.NORMAL, num, null, null, Map.of(), facets(params));
 
         SearchResult result;
         try {
             result = zarniwoopService.search(req, scope, ctx);
         } catch (ZarniwoopException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
         return shape(result);
     }
@@ -198,8 +207,7 @@ public class ResearchSearchTool implements Tool {
         for (SearchModality m : SearchModality.values()) {
             if (m.name().equals(upper)) return m;
         }
-        throw new ToolException("Unknown modality '" + s + "'. "
-                + "Allowed: " + MODALITY_ENUM);
+        throw new ToolException("Unknown modality '" + s + "'. " + "Allowed: " + MODALITY_ENUM);
     }
 
     static int clampNum(Object raw) {

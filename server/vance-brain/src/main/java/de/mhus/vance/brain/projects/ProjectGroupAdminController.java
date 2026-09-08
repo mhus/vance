@@ -43,9 +43,7 @@ public class ProjectGroupAdminController {
     private final RequestAuthority authority;
 
     @GetMapping
-    public List<ProjectGroupSummary> list(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+    public List<ProjectGroupSummary> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         return projectGroupService.all(tenant).stream()
                 .sorted(Comparator.comparing(ProjectGroupDocument::getName))
@@ -60,11 +58,10 @@ public class ProjectGroupAdminController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
-            ProjectGroupDocument saved = projectGroupService.create(
-                    tenant, request.getName(), request.getTitle());
+            ProjectGroupDocument saved = projectGroupService.create(tenant, request.getName(), request.getTitle());
             return ResponseEntity.status(HttpStatus.CREATED).body(toSummary(saved));
         } catch (ProjectGroupService.ProjectGroupAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         }
     }
 
@@ -76,27 +73,25 @@ public class ProjectGroupAdminController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
-            ProjectGroupDocument saved = projectGroupService.update(
-                    tenant, name, request.getTitle(), request.getEnabled());
+            ProjectGroupDocument saved =
+                    projectGroupService.update(tenant, name, request.getTitle(), request.getEnabled());
             return toSummary(saved);
         } catch (ProjectGroupService.ProjectGroupNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
     @DeleteMapping("/{name}")
     public ResponseEntity<Void> delete(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
             projectGroupService.delete(tenant, name);
             return ResponseEntity.noContent().build();
         } catch (ProjectGroupService.ProjectGroupNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (ProjectGroupService.ProjectGroupNotEmptyException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         }
     }
 

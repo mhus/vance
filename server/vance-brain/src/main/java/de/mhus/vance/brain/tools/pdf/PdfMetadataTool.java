@@ -41,19 +41,26 @@ public class PdfMetadataTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name. "
-                                    + "Defaults to the active project."),
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Document path inside the "
-                                    + "project, e.g. 'papers/smith-2024.pdf'."),
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "Alternative: Mongo id. "
-                                    + "Use one of path/id.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. " + "Defaults to the active project."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document path inside the " + "project, e.g. 'papers/smith-2024.pdf'."),
+                            "id",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Alternative: Mongo id. " + "Use one of path/id.")),
             "required", List.of());
 
     private final EddieContext eddieContext;
@@ -101,7 +108,7 @@ public class PdfMetadataTool implements Tool {
         out.put("sizeBytes", bytes.length);
 
         try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(bytes);
-             PDDocument pdf = Loader.loadPDF(source)) {
+                PDDocument pdf = Loader.loadPDF(source)) {
             out.put("pageCount", pdf.getNumberOfPages());
             PDDocumentInformation info = pdf.getDocumentInformation();
             if (info != null) {
@@ -115,45 +122,43 @@ public class PdfMetadataTool implements Tool {
                 putIfPresent(out, "modificationDate", formatDate(info.getModificationDate()));
             }
         } catch (IOException e) {
-            throw new ToolException(
-                    "PDF metadata read failed: " + e.getMessage());
+            throw new ToolException("PDF metadata read failed: " + e.getMessage(), e);
         }
 
-        log.info("PdfMetadataTool tenant='{}' path='{}' pageCount={}",
-                ctx.tenantId(), doc.getPath(), out.get("pageCount"));
+        log.info(
+                "PdfMetadataTool tenant='{}' path='{}' pageCount={}",
+                ctx.tenantId(),
+                doc.getPath(),
+                out.get("pageCount"));
         return out;
     }
 
-    private DocumentDocument resolveDocument(Map<String, Object> params,
-                                             ToolInvocationContext ctx) {
+    private DocumentDocument resolveDocument(Map<String, Object> params, ToolInvocationContext ctx) {
         String id = paramString(params, "id");
         String path = paramString(params, "path");
         if (id == null && path == null) {
             throw new ToolException("Provide either 'path' or 'id'");
         }
         if (id != null) {
-            DocumentDocument doc = documentService.findById(id)
-                    .orElseThrow(() -> new ToolException(
-                            "Document with id '" + id + "' not found"));
+            DocumentDocument doc = documentService
+                    .findById(id)
+                    .orElseThrow(() -> new ToolException("Document with id '" + id + "' not found"));
             if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException("Document with id '" + id
-                        + "' is not in your tenant");
+                throw new ToolException("Document with id '" + id + "' is not in your tenant");
             }
             return doc;
         }
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        return documentService.findByPath(ctx.tenantId(), project.getName(), path)
-                .orElseThrow(() -> new ToolException(
-                        "Document '" + path + "' not found in project '"
-                                + project.getName() + "'"));
+        return documentService
+                .findByPath(ctx.tenantId(), project.getName(), path)
+                .orElseThrow(() ->
+                        new ToolException("Document '" + path + "' not found in project '" + project.getName() + "'"));
     }
 
     private static void ensurePdfMime(DocumentDocument doc) {
         String mime = doc.getMimeType();
         if (mime == null || !mime.toLowerCase(Locale.ROOT).contains("pdf")) {
-            throw new ToolException(
-                    "Document '" + doc.getPath() + "' is not a PDF "
-                            + "(mime='" + mime + "').");
+            throw new ToolException("Document '" + doc.getPath() + "' is not a PDF " + "(mime='" + mime + "').");
         }
     }
 
@@ -161,14 +166,11 @@ public class PdfMetadataTool implements Tool {
         try (InputStream in = documentService.loadContent(doc)) {
             return in.readAllBytes();
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not load PDF bytes from storage: "
-                            + e.getMessage());
+            throw new ToolException("Could not load PDF bytes from storage: " + e.getMessage(), e);
         }
     }
 
-    private static void putIfPresent(Map<String, Object> out,
-                                     String key, @Nullable String value) {
+    private static void putIfPresent(Map<String, Object> out, String key, @Nullable String value) {
         if (value != null && !value.isBlank()) out.put(key, value.trim());
     }
 

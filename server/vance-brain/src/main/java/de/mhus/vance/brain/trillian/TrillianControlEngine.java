@@ -15,8 +15,8 @@ import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.memory.CompactionResult;
-import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
+import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
@@ -26,13 +26,13 @@ import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.brain.tools.ToolErrorPayload;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import de.mhus.vance.brain.tools.ToolErrorPayload;
 import de.mhus.vance.toolpack.ToolException;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -109,6 +109,7 @@ public class TrillianControlEngine implements ThinkEngine {
      * recipe still lists them for documentation + classification.
      */
     private static final Set<String> ENGINE_DEFAULT_TOOLS;
+
     static {
         java.util.LinkedHashSet<String> base = new java.util.LinkedHashSet<>();
         // Basics
@@ -136,8 +137,7 @@ public class TrillianControlEngine implements ThinkEngine {
         ENGINE_DEFAULT_TOOLS = java.util.Collections.unmodifiableSet(base);
     }
 
-    private static final String DEFAULT_PROMPT_PATH =
-            "_vance/prompts/trillian-control-prompt.md";
+    private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/trillian-control-prompt.md";
 
     /**
      * Failsafe prompt used only when the document cascade can't
@@ -156,12 +156,11 @@ public class TrillianControlEngine implements ThinkEngine {
      * user to "rephrase" when the request was truncated at the token cap
      * sends them in circles.
      */
-    private static final String MODEL_COLLAPSE_MESSAGE =
-            "_The model returned an empty response — "
-                    + "likely context too large, a provider timeout, "
-                    + "or a model-side collapse. Rephrase the "
-                    + "question, or switch the model. The brain log "
-                    + "shows details._";
+    private static final String MODEL_COLLAPSE_MESSAGE = "_The model returned an empty response — "
+            + "likely context too large, a provider timeout, "
+            + "or a model-side collapse. Rephrase the "
+            + "question, or switch the model. The brain log "
+            + "shows details._";
 
     /**
      * Cap on tool-loop iterations within one turn. The chat host
@@ -231,8 +230,11 @@ public class TrillianControlEngine implements ThinkEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("TrillianControl.start tenant='{}' session='{}' id='{}'",
-                process.getTenantId(), process.getSessionId(), process.getId());
+        log.info(
+                "TrillianControl.start tenant='{}' session='{}' id='{}'",
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
@@ -281,46 +283,53 @@ public class TrillianControlEngine implements ThinkEngine {
             nature.beforeControlTurn(process, ctx);
             ChatMessageService chatLog = ctx.chatMessageService();
             List<SteerMessage> drained = ctx.drainPending();
-            List<SteerMessage> extras = persistUserInputAndCollectExtras(
-                    process, chatLog, drained);
+            List<SteerMessage> extras = persistUserInputAndCollectExtras(process, chatLog, drained);
 
-            log.debug("TrillianControl.runTurn id='{}' drained={} (uci={}, extras={})",
-                    process.getId(), drained.size(),
-                    drained.size() - extras.size(), extras.size());
+            log.debug(
+                    "TrillianControl.runTurn id='{}' drained={} (uci={}, extras={})",
+                    process.getId(),
+                    drained.size(),
+                    drained.size() - extras.size(),
+                    extras.size());
 
-            EngineChatFactory.EngineChatBundle bundle =
-                    engineChatFactory.forProcess(process, ctx, NAME);
+            EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, NAME);
             AiChat aiChat = bundle.chat();
-            String modelAlias =
-                    bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
+            String modelAlias = bundle.primaryConfig().provider() + ":"
+                    + bundle.primaryConfig().modelName();
 
             ContextToolsApi tools = ctx.tools();
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                    process.getTenantId(), process.getProjectId(),
+                    process.getTenantId(),
+                    process.getProjectId(),
                     bundle.primaryConfig().providerInstance(),
                     bundle.primaryConfig().provider(),
                     bundle.primaryConfig().modelName());
-            List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, extras, nature, modelInfo);
+            List<ChatMessage> messages = buildPromptMessages(process, chatLog, extras, nature, modelInfo);
 
             // Turn-start compaction: identical hook to Arthur/Eddie/Ford/Frankie.
             // The Trillian-Control loop pairs with a Trillian-User and can
             // run for many turns; without compaction the Control session
             // would also hit the context-window limit. See
             // planning/memory-compaction.md §7.
-            CompactionResult cr = memoryCompactionService.compactIfNeeded(
-                    process, bundle.primaryConfig(), messages, modelInfo);
+            CompactionResult cr =
+                    memoryCompactionService.compactIfNeeded(process, bundle.primaryConfig(), messages, modelInfo);
             if (cr.compacted()) {
-                log.info("TrillianControl.runTurn id='{}' compaction (turn-start) ok: {} msgs → {} chars (memory='{}')",
-                        process.getId(), cr.messagesCompacted(),
-                        cr.summaryChars(), cr.memoryId());
-                messages = buildPromptMessages(
-                        process, chatLog, extras, nature, modelInfo);
+                log.info(
+                        "TrillianControl.runTurn id='{}' compaction (turn-start) ok: {} msgs → {} chars (memory='{}')",
+                        process.getId(),
+                        cr.messagesCompacted(),
+                        cr.summaryChars(),
+                        cr.memoryId());
+                messages = buildPromptMessages(process, chatLog, extras, nature, modelInfo);
             }
 
-            log.debug("TrillianControl id='{}' model='{}' tools={} historyMsgs={}",
-                    process.getId(), modelAlias, toolSpecs.size(), messages.size());
+            log.debug(
+                    "TrillianControl id='{}' model='{}' tools={} historyMsgs={}",
+                    process.getId(),
+                    modelAlias,
+                    toolSpecs.size(),
+                    messages.size());
 
             boolean emptyRetryUsed = false;
             for (int iter = 0; iter < MAX_TOOL_LOOP_ITERATIONS; iter++) {
@@ -333,15 +342,16 @@ public class TrillianControlEngine implements ThinkEngine {
                 OrchestratorInterrupt.Kind interrupt =
                         OrchestratorInterrupt.probe(thinkProcessService, process.getId());
                 if (interrupt == OrchestratorInterrupt.Kind.HALT) {
-                    log.info("TrillianControl id='{}' halt requested — exiting turn (PAUSED)",
-                            process.getId());
+                    log.info("TrillianControl id='{}' halt requested — exiting turn (PAUSED)", process.getId());
                     thinkProcessService.clearHalt(process.getId());
                     exitStatus = ThinkProcessStatus.PAUSED;
                     return;
                 }
                 if (interrupt == OrchestratorInterrupt.Kind.STATUS) {
-                    log.info("TrillianControl id='{}' external interrupt (status={}) — exiting",
-                            process.getId(), readCurrentStatus(process));
+                    log.info(
+                            "TrillianControl id='{}' external interrupt (status={}) — exiting",
+                            process.getId(),
+                            readCurrentStatus(process));
                     exitStatus = null;
                     return;
                 }
@@ -350,19 +360,28 @@ public class TrillianControlEngine implements ThinkEngine {
                 if (!toolSpecs.isEmpty()) {
                     req.toolSpecifications(toolSpecs);
                 }
-                log.trace("TrillianControl id='{}' iter={} ▶ LLM call (model='{}', messages={}, toolSpecs={})",
-                        process.getId(), iter, modelAlias, messages.size(), toolSpecs.size());
+                log.trace(
+                        "TrillianControl id='{}' iter={} ▶ LLM call (model='{}', messages={}, toolSpecs={})",
+                        process.getId(),
+                        iter,
+                        modelAlias,
+                        messages.size(),
+                        toolSpecs.size());
                 long callStartMs = System.currentTimeMillis();
-                StreamedReply streamed = streamOneIteration(
-                        aiChat, req.build(), ctx, process, modelAlias);
+                StreamedReply streamed = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
                 AiMessage reply = streamed.message();
                 if (log.isTraceEnabled()) {
                     int textLen = reply.text() == null ? 0 : reply.text().length();
                     int toolCalls = reply.hasToolExecutionRequests()
-                            ? reply.toolExecutionRequests().size() : 0;
-                    log.trace("TrillianControl id='{}' iter={} ◀ LLM reply in {}ms text={}chars toolCalls={}",
-                            process.getId(), iter, System.currentTimeMillis() - callStartMs,
-                            textLen, toolCalls);
+                            ? reply.toolExecutionRequests().size()
+                            : 0;
+                    log.trace(
+                            "TrillianControl id='{}' iter={} ◀ LLM reply in {}ms text={}chars toolCalls={}",
+                            process.getId(),
+                            iter,
+                            System.currentTimeMillis() - callStartMs,
+                            textLen,
+                            toolCalls);
                 }
 
                 if (!reply.hasToolExecutionRequests()) {
@@ -382,23 +401,34 @@ public class TrillianControlEngine implements ThinkEngine {
                         // tokens. Skip straight to surfacing it.
                         if (!emptyRetryUsed && !streamed.atOutputCap()) {
                             emptyRetryUsed = true;
-                            log.warn("TrillianControl id='{}' iter={} empty LLM response — retrying once (model='{}')",
-                                    process.getId(), iter, modelAlias);
+                            log.warn(
+                                    "TrillianControl id='{}' iter={} empty LLM response — retrying once (model='{}')",
+                                    process.getId(),
+                                    iter,
+                                    modelAlias);
                             continue;
                         }
-                        log.warn("TrillianControl id='{}' empty LLM response — surfacing "
+                        log.warn(
+                                "TrillianControl id='{}' empty LLM response — surfacing "
                                         + "(model='{}', finish={}, maxOutputTokens={})",
-                                process.getId(), modelAlias, streamed.finishReason(),
+                                process.getId(),
+                                modelAlias,
+                                streamed.finishReason(),
                                 streamed.maxOutputTokens());
-                        persistAssistantReply(process, chatLog, ctx,
+                        persistAssistantReply(
+                                process,
+                                chatLog,
+                                ctx,
                                 streamed.emptyReplyMessage(MODEL_COLLAPSE_MESSAGE, null),
                                 drained);
                         exitStatus = ThinkProcessStatus.IDLE;
                         return;
                     }
                     persistAssistantReply(process, chatLog, ctx, finalText, drained);
-                    log.info("TrillianControl id='{}' reply ({} chars, {}ms) — IDLE",
-                            process.getId(), finalText.length(),
+                    log.info(
+                            "TrillianControl id='{}' reply ({} chars, {}ms) — IDLE",
+                            process.getId(),
+                            finalText.length(),
                             System.currentTimeMillis() - turnStartMs);
                     exitStatus = ThinkProcessStatus.IDLE;
                     return;
@@ -407,19 +437,26 @@ public class TrillianControlEngine implements ThinkEngine {
                 messages.add(reply);
                 if (log.isTraceEnabled()) {
                     for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
-                        log.trace("TrillianControl id='{}' iter={} ▶ tool '{}' args={}",
-                                process.getId(), iter, call.name(),
+                        log.trace(
+                                "TrillianControl id='{}' iter={} ▶ tool '{}' args={}",
+                                process.getId(),
+                                iter,
+                                call.name(),
                                 shortenArgs(call.arguments()));
                     }
                 }
-                executeToolBatch(reply.toolExecutionRequests(),
-                        tools, messages, process.getId());
+                executeToolBatch(reply.toolExecutionRequests(), tools, messages, process.getId());
                 // Tool-call success resets the retry budget.
                 emptyRetryUsed = false;
             }
-            log.warn("TrillianControl id='{}' exceeded {} tool-loop iterations — surfacing IDLE",
-                    process.getId(), MAX_TOOL_LOOP_ITERATIONS);
-            persistAssistantReply(process, chatLog, ctx,
+            log.warn(
+                    "TrillianControl id='{}' exceeded {} tool-loop iterations — surfacing IDLE",
+                    process.getId(),
+                    MAX_TOOL_LOOP_ITERATIONS);
+            persistAssistantReply(
+                    process,
+                    chatLog,
+                    ctx,
                     "_Tool loop ran past " + MAX_TOOL_LOOP_ITERATIONS
                             + " iterations without a natural reply — bailing out._",
                     drained);
@@ -432,8 +469,10 @@ public class TrillianControlEngine implements ThinkEngine {
             try {
                 nature.afterControlTurn(process, ctx);
             } catch (RuntimeException natureEx) {
-                log.warn("TrillianControl id='{}' nature.afterControlTurn failed: {}",
-                        process.getId(), natureEx.toString());
+                log.warn(
+                        "TrillianControl id='{}' nature.afterControlTurn failed: {}",
+                        process.getId(),
+                        natureEx.toString());
             }
             if (exitStatus != null) {
                 thinkProcessService.updateStatus(process.getId(), exitStatus);
@@ -460,9 +499,7 @@ public class TrillianControlEngine implements ThinkEngine {
     // ──────────────────── Inbox + history ────────────────────
 
     private List<SteerMessage> persistUserInputAndCollectExtras(
-            ThinkProcessDocument process,
-            ChatMessageService chatLog,
-            List<SteerMessage> inbox) {
+            ThinkProcessDocument process, ChatMessageService chatLog, List<SteerMessage> inbox) {
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci) {
                 if (uci.content() != null && !uci.content().isBlank()) {
@@ -475,8 +512,7 @@ public class TrillianControlEngine implements ThinkEngine {
                             // What this message pointed at, if anything — the
                             // control session is a human one. See
                             // SelectionReferenceIngest.
-                            .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest
-                                    .metaFor(uci.activeApp()))
+                            .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest.metaFor(uci.activeApp()))
                             .build());
                 }
                 continue;
@@ -539,8 +575,7 @@ public class TrillianControlEngine implements ThinkEngine {
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour). DYNAMIC — date rollover stays behind the
         // cache marker. See PromptDateBlock.
-        promptDateContextResolver.appendDynamicMessage(
-                messages, process, modelInfo == null ? null : modelInfo.size());
+        promptDateContextResolver.appendDynamicMessage(messages, process, modelInfo == null ? null : modelInfo.size());
         // Client environment (os/shell/cwd/sandbox) — tells the LLM which
         // command dialect its client_exec_run calls run on. DYNAMIC, no-op
         // when no CLIENT connection is bound. See PromptEnvironmentBlock.
@@ -548,8 +583,8 @@ public class TrillianControlEngine implements ThinkEngine {
         // Scratchpad slot inventory — DYNAMIC, no-op for a process that
         // took no notes. See ScratchpadPromptBlock.
         scratchpadPromptContributor.appendDynamicMessage(messages, process);
-        for (ChatMessageDocument msg : chatLog.activeHistory(
-                process.getTenantId(), process.getSessionId(), process.getId())) {
+        for (ChatMessageDocument msg :
+                chatLog.activeHistory(process.getTenantId(), process.getSessionId(), process.getId())) {
             messages.add(toLangchain(msg));
         }
         for (SteerMessage m : inboxExtras) {
@@ -562,12 +597,9 @@ public class TrillianControlEngine implements ThinkEngine {
     }
 
     private String composeSystemPrompt(
-            ThinkProcessDocument process,
-            TrillianNature nature,
-            @Nullable ModelInfo modelInfo) {
+            ThinkProcessDocument process, TrillianNature nature, @Nullable ModelInfo modelInfo) {
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
-        String engineDefault = enginePromptResolver.resolve(
-                process, basePath, ENGINE_FALLBACK_PROMPT);
+        String engineDefault = enginePromptResolver.resolve(process, basePath, ENGINE_FALLBACK_PROMPT);
         // Nature overlay — appended at the end of the engine-default
         // prompt. Empty for Nature void; personality / reflexion priming
         // for Nature-A+.
@@ -575,14 +607,12 @@ public class TrillianControlEngine implements ThinkEngine {
         if (addendum != null && !addendum.isBlank()) {
             engineDefault = engineDefault + "\n\n" + addendum;
         }
-        PromptContextBuilder ctxBuilder = PromptContextBuilder
-                .forProcess(process, modelInfo)
-                .engine(NAME);
+        PromptContextBuilder ctxBuilder =
+                PromptContextBuilder.forProcess(process, modelInfo).engine(NAME);
         return systemPromptComposer.compose(process, engineDefault, ctxBuilder);
     }
 
-    private static @Nullable String paramString(
-            ThinkProcessDocument process, String key, @Nullable String fallback) {
+    private static @Nullable String paramString(ThinkProcessDocument process, String key, @Nullable String fallback) {
         Map<String, Object> params = process.getEngineParams();
         if (params == null) return fallback;
         Object v = params.get(key);
@@ -594,8 +624,7 @@ public class TrillianControlEngine implements ThinkEngine {
             case USER -> UserMessage.from(msg.getContent());
             // Same failed-tool-call replay as every other engine —
             // see ChatHistoryRenderer.renderAssistant.
-            case ASSISTANT -> AiMessage.from(
-                    de.mhus.vance.brain.chat.ChatHistoryRenderer.renderAssistant(msg));
+            case ASSISTANT -> AiMessage.from(de.mhus.vance.brain.chat.ChatHistoryRenderer.renderAssistant(msg));
             // DYNAMIC, not a plain SystemMessage: the mapper hoists every
             // SystemMessage into the system array and puts cache_control on
             // the LAST static one. A compaction marker (MemoryCompactionService
@@ -606,7 +635,6 @@ public class TrillianControlEngine implements ThinkEngine {
             case SYSTEM -> de.mhus.vance.brain.ai.VanceSystemMessage.dynamic(msg.getContent());
         };
     }
-
 
     /**
      * A string value out of a process-event payload, or {@code null} when
@@ -707,9 +735,7 @@ public class TrillianControlEngine implements ThinkEngine {
         long startMs = System.currentTimeMillis();
 
         ChunkBatcher batcher = new ChunkBatcher(
-                streamingProperties.getChunkCharThreshold(),
-                streamingProperties.getChunkFlushMs(),
-                chunk -> {
+                streamingProperties.getChunkCharThreshold(), streamingProperties.getChunkFlushMs(), chunk -> {
                     ChatMessageChunkData data = ChatMessageChunkData.builder()
                             .thinkProcessId(process.getId())
                             .processName(process.getName())
@@ -745,9 +771,7 @@ public class TrillianControlEngine implements ThinkEngine {
 
         try {
             ChatResponse response = done.get();
-            llmCallTracker.record(
-                    process, request, response,
-                    System.currentTimeMillis() - startMs, modelAlias);
+            llmCallTracker.record(process, request, response, System.currentTimeMillis() - startMs, modelAlias);
             return StreamedReply.of(response, request);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -761,10 +785,7 @@ public class TrillianControlEngine implements ThinkEngine {
     // ──────────────────── Tool dispatch ────────────────────
 
     private void executeToolBatch(
-            List<ToolExecutionRequest> calls,
-            ContextToolsApi tools,
-            List<ChatMessage> messages,
-            String processId) {
+            List<ToolExecutionRequest> calls, ContextToolsApi tools, List<ChatMessage> messages, String processId) {
         for (ToolExecutionRequest call : calls) {
             String serialized = invokeOne(tools, call, processId);
             messages.add(ToolExecutionResultMessage.from(call, serialized));
@@ -776,20 +797,17 @@ public class TrillianControlEngine implements ThinkEngine {
         try {
             params = parseArgs(call.arguments());
         } catch (RuntimeException e) {
-            log.warn("TrillianControl id='{}' tool='{}' bad arguments: {}",
-                    processId, call.name(), e.getMessage());
+            log.warn("TrillianControl id='{}' tool='{}' bad arguments: {}", processId, call.name(), e.getMessage());
             return errorJson("Invalid tool arguments: " + e.getMessage());
         }
         try {
             Map<String, Object> result = tools.invoke(call.name(), params);
             return objectMapper.writeValueAsString(result);
         } catch (ToolException e) {
-            log.info("TrillianControl id='{}' tool='{}' returned error: {}",
-                    processId, call.name(), e.getMessage());
+            log.info("TrillianControl id='{}' tool='{}' returned error: {}", processId, call.name(), e.getMessage());
             return errorJson(e);
         } catch (RuntimeException e) {
-            log.warn("TrillianControl id='{}' tool='{}' unexpected failure: {}",
-                    processId, call.name(), e.toString());
+            log.warn("TrillianControl id='{}' tool='{}' unexpected failure: {}", processId, call.name(), e.toString());
             return errorJson("Tool failed: " + e.getMessage());
         }
     }
@@ -817,7 +835,8 @@ public class TrillianControlEngine implements ThinkEngine {
     // ──────────────────── Helpers ────────────────────
 
     private ThinkProcessStatus readCurrentStatus(ThinkProcessDocument process) {
-        return thinkProcessService.findById(process.getId())
+        return thinkProcessService
+                .findById(process.getId())
                 .map(ThinkProcessDocument::getStatus)
                 .orElse(process.getStatus());
     }

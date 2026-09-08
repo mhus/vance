@@ -3,8 +3,8 @@ package de.mhus.vance.brain.ursahooks;
 import de.mhus.vance.api.megadodo.MegadodoEventDto;
 import de.mhus.vance.api.megadodo.MegadodoRefType;
 import de.mhus.vance.api.ursahooks.*;
-import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.megadodo.MegadodoMapper;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.megadodo.MegadodoEventDocument;
 import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.permission.Action;
@@ -63,9 +63,7 @@ public class UrsaHookController {
         for (UrsaHookDef def : defs) {
             out.add(toSummary(tenant, project, def));
         }
-        out.sort(Comparator
-                .comparing(UrsaHookSummary::getEvent)
-                .thenComparing(UrsaHookSummary::getName));
+        out.sort(Comparator.comparing(UrsaHookSummary::getEvent).thenComparing(UrsaHookSummary::getName));
         return out;
     }
 
@@ -98,9 +96,10 @@ public class UrsaHookController {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         UrsaHookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
-        UrsaHookDef def = ursaHookService.findOne(tenant, project, event, norm)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Hook '" + event.wireName() + "/" + norm + "' not found"));
+        UrsaHookDef def = ursaHookService
+                .findOne(tenant, project, event, norm)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Hook '" + event.wireName() + "/" + norm + "' not found"));
         return toDto(def);
     }
 
@@ -120,29 +119,31 @@ public class UrsaHookController {
         UrsaHookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
         if (body.getYaml() == null || body.getYaml().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "'yaml' must be a non-empty string");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'yaml' must be a non-empty string");
         }
         // Validate before write so the call is rejected without
         // touching the document store.
         try {
             parser.parse(body.getYaml(), event, UrsaHookSource.PROJECT, norm);
         } catch (UrsaHookParseException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }
         boolean created = ursaHookService.findOne(tenant, project, event, norm).isEmpty();
         de.mhus.vance.shared.permission.SecurityContext context = authority.contextOf(request);
         UrsaHookDef saved;
         try {
             saved = ursaHookService.save(
-                    tenant, project, event, norm, body.getYaml(),
+                    tenant,
+                    project,
+                    event,
+                    norm,
+                    body.getYaml(),
                     context.subjectId(),
                     de.mhus.vance.shared.permission.WriteActor.system(context));
         } catch (UrsaHookParseException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }
-        return ResponseEntity
-                .status(created ? HttpStatus.CREATED : HttpStatus.OK)
+        return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK)
                 .body(toDto(saved));
     }
 
@@ -160,7 +161,11 @@ public class UrsaHookController {
         authority.enforce(request, new Resource.Project(tenant, project), Action.ADMIN);
         UrsaHookEventName event = parseEvent(eventName);
         String norm = normalizeName(name);
-        boolean removed = ursaHookService.delete(tenant, project, event, norm,
+        boolean removed = ursaHookService.delete(
+                tenant,
+                project,
+                event,
+                norm,
                 de.mhus.vance.shared.permission.WriteActor.system(authority.contextOf(request)));
         return removed
                 ? ResponseEntity.noContent().build()
@@ -192,9 +197,7 @@ public class UrsaHookController {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         parseEvent(eventName);
         String norm = normalizeName(name);
-        return megadodoService
-                .listForRef(tenant, project, MegadodoRefType.HOOK, norm, limit)
-                .stream()
+        return megadodoService.listForRef(tenant, project, MegadodoRefType.HOOK, norm, limit).stream()
                 .map(MegadodoMapper::toDto)
                 .toList();
     }
@@ -202,8 +205,8 @@ public class UrsaHookController {
     // ─── Mappers ───────────────────────────────────────────────────────
 
     private UrsaHookSummary toSummary(String tenantId, String projectId, UrsaHookDef def) {
-        Optional<MegadodoEventDocument> last = megadodoService.latestForRef(
-                tenantId, projectId, MegadodoRefType.HOOK, def.name());
+        Optional<MegadodoEventDocument> last =
+                megadodoService.latestForRef(tenantId, projectId, MegadodoRefType.HOOK, def.name());
         return UrsaHookSummary.builder()
                 .name(def.name())
                 .event(def.event().wireName())
@@ -250,8 +253,7 @@ public class UrsaHookController {
 
     private static UrsaHookEventName parseEvent(String raw) {
         if (raw == null || !UrsaHookEventName.isKnown(raw)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Unknown hook event '" + raw + "'");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown hook event '" + raw + "'");
         }
         return UrsaHookEventName.ofWire(raw);
     }
@@ -259,8 +261,7 @@ public class UrsaHookController {
     private static String normalizeName(String raw) {
         String n = raw == null ? "" : raw.trim().toLowerCase(java.util.Locale.ROOT);
         if (n.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "hook name must not be blank");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "hook name must not be blank");
         }
         return n;
     }

@@ -10,4 +10,8 @@ public class ShareUnavailableException extends ShareException {
     public ShareUnavailableException(String message) {
         super(message);
     }
+
+    public ShareUnavailableException(String message, @org.jspecify.annotations.Nullable Throwable cause) {
+        super(message, cause);
+    }
 }

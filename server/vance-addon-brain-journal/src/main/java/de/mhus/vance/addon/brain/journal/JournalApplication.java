@@ -45,13 +45,14 @@ public class JournalApplication implements VanceApplication {
     private final DocumentLinkBuilder linkBuilder;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public JournalApplication(JournalFolderReader folderReader,
-                              JournalStatsBuilder statsBuilder,
-                              JournalIndexRenderer indexRenderer,
-                              JournalStatsRenderer statsRenderer,
-                              DocumentService documentService,
-                              DocumentLinkBuilder linkBuilder,
-                              de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public JournalApplication(
+            JournalFolderReader folderReader,
+            JournalStatsBuilder statsBuilder,
+            JournalIndexRenderer indexRenderer,
+            JournalStatsRenderer statsRenderer,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.statsBuilder = statsBuilder;
         this.indexRenderer = indexRenderer;
@@ -61,7 +62,10 @@ public class JournalApplication implements VanceApplication {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String appName() { return APP_NAME; }
+    @Override
+    public String appName() {
+        return APP_NAME;
+    }
 
     @Override
     public String promptInject(PromptInjectContext ctx) {
@@ -85,12 +89,11 @@ public class JournalApplication implements VanceApplication {
         Map<String, Object> params = ctx.params() != null ? ctx.params() : new LinkedHashMap<>();
         String manifestPath = folder + "/" + JournalFolderReader.APP_MANIFEST;
 
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), manifestPath);
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
             throw new ToolException(
-                    "Manifest already exists at '" + manifestPath
-                            + "'. Pass overwrite=true to replace it.");
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -99,12 +102,14 @@ public class JournalApplication implements VanceApplication {
         StringBuilder mb = new StringBuilder();
         mb.append("$meta:\n  kind: application\n  app: journal\n");
         if (title != null) mb.append("title: \"").append(escape(title)).append("\"\n");
-        if (description != null) mb.append("description: \"").append(escape(description)).append("\"\n");
+        if (description != null)
+            mb.append("description: \"").append(escape(description)).append("\"\n");
         mb.append("journal:\n");
         mb.append("  entriesDir: ").append(JournalConfig.DEFAULT_ENTRIES_DIR).append('\n');
         mb.append("  indexLimit: ").append(JournalConfig.DEFAULT_INDEX_LIMIT).append('\n');
         mb.append("  moodPresets: [")
-                .append(String.join(", ", JournalConfig.DEFAULT_MOODS)).append("]\n");
+                .append(String.join(", ", JournalConfig.DEFAULT_MOODS))
+                .append("]\n");
         String manifestBody = mb.toString();
 
         DocumentDocument stored;
@@ -113,26 +118,33 @@ public class JournalApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Journal",
                     List.of("application", "journal"),
-                    manifestBody, null, null, null, null, YAML_MIME,
+                    manifestBody,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
-            try (InputStream in = new ByteArrayInputStream(
-                    manifestBody.getBytes(StandardCharsets.UTF_8))) {
+            try (InputStream in = new ByteArrayInputStream(manifestBody.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
-                        ctx.tenantId(), ctx.projectName(), manifestPath,
+                        ctx.tenantId(),
+                        ctx.projectName(),
+                        manifestPath,
                         title != null ? title : "Journal",
                         List.of("application", "journal"),
-                        YAML_MIME, in, ctx.userId(),
+                        YAML_MIME,
+                        in,
+                        ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not write manifest '" + manifestPath + "': " + e.getMessage());
+                throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
         }
 
-        RefreshContext rc = new RefreshContext(
-                ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
+        RefreshContext rc =
+                new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
         RefreshResult refresh = refresh(rc);
 
         log.info("JournalApplication.create tenant='{}' folder='{}'", ctx.tenantId(), folder);
@@ -146,18 +158,20 @@ public class JournalApplication implements VanceApplication {
                 + "then `app_rebuild('" + folder + "')` to refresh the index + stats.";
 
         return new CreateResult(
-                APP_NAME, folder, stored.getPath(),
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
                 List.of(),
                 refresh.artefacts(),
-                nextStep, stats);
+                nextStep,
+                stats);
     }
 
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
         String folder = JournalFolderReader.normaliseFolder(ctx.folder());
-        JournalFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), folder);
+        JournalFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
 
         String title = scan.config().title();
         if (title == null || title.isBlank()) title = leafFolderName(folder);
@@ -167,49 +181,73 @@ public class JournalApplication implements VanceApplication {
         List<ArtefactResult> artefacts = new ArrayList<>();
 
         String indexBody = indexRenderer.render(scan, title, scan.config().indexLimit());
-        DocumentDocument index = writeArtefact(ctx, folder + "/" + INDEX_FILE, indexBody,
-                "Index — " + title, MD_MIME, List.of("journal", "generated", "index"));
+        DocumentDocument index = writeArtefact(
+                ctx,
+                folder + "/" + INDEX_FILE,
+                indexBody,
+                "Index — " + title,
+                MD_MIME,
+                List.of("journal", "generated", "index"));
         Map<String, Object> indexStats = new LinkedHashMap<>();
         indexStats.put("entryCount", scan.entries().size());
-        artefacts.add(new ArtefactResult("index", index.getPath(),
-                linkBuilder.linkFor(index, ctx.projectName()), indexStats));
+        artefacts.add(new ArtefactResult(
+                "index", index.getPath(), linkBuilder.linkFor(index, ctx.projectName()), indexStats));
 
         String statsBody = statsRenderer.render(folder, stats);
-        DocumentDocument statsDoc = writeArtefact(ctx, folder + "/" + STATS_FILE, statsBody,
-                "Stats — " + title, YAML_MIME, List.of("journal", "generated", "stats"));
+        DocumentDocument statsDoc = writeArtefact(
+                ctx,
+                folder + "/" + STATS_FILE,
+                statsBody,
+                "Stats — " + title,
+                YAML_MIME,
+                List.of("journal", "generated", "stats"));
         Map<String, Object> statStats = new LinkedHashMap<>();
         statStats.put("totalEntries", stats.totalEntries());
         statStats.put("currentStreak", stats.currentStreak());
         statStats.put("longestStreak", stats.longestStreak());
-        artefacts.add(new ArtefactResult("stats", statsDoc.getPath(),
-                linkBuilder.linkFor(statsDoc, ctx.projectName()), statStats));
+        artefacts.add(new ArtefactResult(
+                "stats", statsDoc.getPath(), linkBuilder.linkFor(statsDoc, ctx.projectName()), statStats));
 
-        log.info("JournalApplication.refresh tenant='{}' folder='{}' entries={} streak={}",
-                ctx.tenantId(), folder, scan.entries().size(), stats.currentStreak());
+        log.info(
+                "JournalApplication.refresh tenant='{}' folder='{}' entries={} streak={}",
+                ctx.tenantId(),
+                folder,
+                scan.entries().size(),
+                stats.currentStreak());
 
         return new RefreshResult(APP_NAME, folder, artefacts);
     }
 
-    private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath,
-                                           String body, String title, String mime,
-                                           List<String> tags) {
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), outputPath);
+    private DocumentDocument writeArtefact(
+            RefreshContext ctx, String outputPath, String body, String title, String mime, List<String> tags) {
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
         if (existing.isPresent()) {
             return documentService.update(
-                    existing.get().getId(), title, tags,
-                    body, null, null, null, null, mime,
+                    existing.get().getId(),
+                    title,
+                    tags,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    mime,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
-                    ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, tags, mime, in, ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    outputPath,
+                    title,
+                    tags,
+                    mime,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write artefact '" + outputPath + "': " + e.getMessage());
+            throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }
     }
 

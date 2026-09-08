@@ -20,11 +20,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -60,27 +58,29 @@ public class CalendarsApplication implements VanceApplication {
     private static final String YAML_MIME = "application/yaml";
     private static final String MD_MIME = "text/markdown";
 
-    private static final List<String> CONFLICTS_SCHEMA = List.of(
-            "title_a", "lane_a", "source_a",
-            "title_b", "lane_b", "source_b",
-            "overlap_start", "overlap_end");
+    private static final List<String> CONFLICTS_SCHEMA =
+            List.of("title_a", "lane_a", "source_a", "title_b", "lane_b", "source_b", "overlap_start", "overlap_end");
 
     private final CalendarFolderReader folderReader;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public CalendarsApplication(CalendarFolderReader folderReader,
-                                DocumentService documentService,
-                                DocumentLinkBuilder linkBuilder,
-                                de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public CalendarsApplication(
+            CalendarFolderReader folderReader,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
         this.contextFactory = contextFactory;
     }
 
-    @Override public String appName() { return APP_NAME; }
+    @Override
+    public String appName() {
+        return APP_NAME;
+    }
 
     /**
      * Short markdown chunk inserted into the engine prompt while the
@@ -137,12 +137,11 @@ public class CalendarsApplication implements VanceApplication {
         Map<String, Object> params = ctx.params() != null ? ctx.params() : new LinkedHashMap<>();
         String manifestPath = folder + "/" + CalendarFolderReader.APP_MANIFEST;
 
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), manifestPath);
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
             throw new ToolException(
-                    "Manifest already exists at '" + manifestPath
-                            + "'. Pass overwrite=true to replace it.");
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -170,9 +169,7 @@ public class CalendarsApplication implements VanceApplication {
             laneBody.put("order", order);
             lanes.put(name, laneBody);
 
-            laneResults.add(new CreateLane(
-                    name, laneTitle, laneColor,
-                    folder + "/" + name + "/work.yaml"));
+            laneResults.add(new CreateLane(name, laneTitle, laneColor, folder + "/" + name + "/work.yaml"));
             autoOrder = order + 1;
         }
 
@@ -183,21 +180,17 @@ public class CalendarsApplication implements VanceApplication {
         Map<String, List<Map<String, Object>>> eventsByLane = new LinkedHashMap<>();
         for (Map<String, Object> raw : eventInputs) {
             String laneRaw = asString(raw.get("lane"));
-            String lane = (laneRaw == null || laneRaw.isBlank())
-                    ? COMMON_LANE : sanitiseLaneName(laneRaw);
+            String lane = (laneRaw == null || laneRaw.isBlank()) ? COMMON_LANE : sanitiseLaneName(laneRaw);
             Map<String, Object> stripped = new LinkedHashMap<>(raw);
             stripped.remove("lane");
-            eventsByLane.computeIfAbsent(lane, k -> new java.util.ArrayList<>())
-                    .add(stripped);
+            eventsByLane.computeIfAbsent(lane, k -> new java.util.ArrayList<>()).add(stripped);
         }
         for (String laneName : eventsByLane.keySet()) {
             if (lanes.containsKey(laneName)) continue;
             Map<String, Object> laneBody = new LinkedHashMap<>();
             laneBody.put("order", autoOrder);
             lanes.put(laneName, laneBody);
-            laneResults.add(new CreateLane(
-                    laneName, null, null,
-                    folder + "/" + laneName + "/work.yaml"));
+            laneResults.add(new CreateLane(laneName, null, null, folder + "/" + laneName + "/work.yaml"));
             autoOrder++;
         }
 
@@ -212,18 +205,14 @@ public class CalendarsApplication implements VanceApplication {
             if (!window.isEmpty()) calendarBlock.put("window", window);
         }
         if (!lanes.isEmpty()) calendarBlock.put("lanes", lanes);
-        calendarBlock.put("gantt", Map.of(
-                "outputPath", "_gantt.md",
-                "includeRecurring", false));
-        calendarBlock.put("conflicts", Map.of(
-                "outputPath", "_conflicts.yaml"));
+        calendarBlock.put("gantt", Map.of("outputPath", "_gantt.md", "includeRecurring", false));
+        calendarBlock.put("conflicts", Map.of("outputPath", "_conflicts.yaml"));
 
         // Assemble ApplicationDocument and serialise.
         Map<String, Object> appConfig = new LinkedHashMap<>();
         appConfig.put(CalendarsAppConfig.APP_NAME, calendarBlock);
-        ApplicationDocument manifest = new ApplicationDocument(
-                "application", APP_NAME, title, description,
-                appConfig, new LinkedHashMap<>());
+        ApplicationDocument manifest =
+                new ApplicationDocument("application", APP_NAME, title, description, appConfig, new LinkedHashMap<>());
         String body = ApplicationCodec.serialize(manifest, YAML_MIME);
 
         DocumentDocument stored;
@@ -232,23 +221,29 @@ public class CalendarsApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Calendar app",
                     List.of("application", "calendar"),
-                    body, null, null, null, null, YAML_MIME,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), existing.get().getPath()));
+                    contextFactory.writeActor(
+                            ctx.tenantId(), ctx.userId(), existing.get().getPath()));
         } else {
-            try (var in = new java.io.ByteArrayInputStream(
-                    body.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
+            try (var in = new java.io.ByteArrayInputStream(body.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
                 stored = documentService.create(
-                        ctx.tenantId(), ctx.projectName(),
+                        ctx.tenantId(),
+                        ctx.projectName(),
                         manifestPath,
                         title != null ? title : "Calendar app",
                         List.of("application", "calendar"),
-                        YAML_MIME, in, ctx.userId(),
+                        YAML_MIME,
+                        in,
+                        ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (java.io.IOException e) {
-                throw new ToolException(
-                        "Could not write manifest '" + manifestPath
-                                + "': " + e.getMessage());
+                throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
         }
 
@@ -263,23 +258,24 @@ public class CalendarsApplication implements VanceApplication {
             String laneFilePath = folder + "/" + lane + "/work.yaml";
             CalendarDocument calDoc = buildCalendarDocument(rawEvents);
             String calBody = CalendarCodec.serialize(calDoc, YAML_MIME);
-            writeOrUpdateCalendar(ctx, laneFilePath, calBody,
-                    "Calendar — " + lane);
+            writeOrUpdateCalendar(ctx, laneFilePath, calBody, "Calendar — " + lane);
             eventCountWritten += calDoc.events().size();
         }
 
-        log.info("CalendarsApplication.create tenant='{}' folder='{}' "
-                        + "lanes={} events={} manifestPath='{}'",
-                ctx.tenantId(), folder, laneResults.size(),
-                eventCountWritten, manifestPath);
+        log.info(
+                "CalendarsApplication.create tenant='{}' folder='{}' " + "lanes={} events={} manifestPath='{}'",
+                ctx.tenantId(),
+                folder,
+                laneResults.size(),
+                eventCountWritten,
+                manifestPath);
 
         // Auto-refresh when inline events were dispatched — saves
         // the caller from doing app_rebuild() in a second tool call.
         List<ArtefactResult> artefacts;
         if (eventCountWritten > 0) {
-            RefreshContext rc = new RefreshContext(
-                    ctx.tenantId(), ctx.projectName(), folder,
-                    ctx.userId(), ctx.processId());
+            RefreshContext rc =
+                    new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
             RefreshResult refresh = refresh(rc);
             artefacts = refresh.artefacts();
         } else {
@@ -312,9 +308,14 @@ public class CalendarsApplication implements VanceApplication {
         }
 
         return new CreateResult(
-                APP_NAME, folder, stored.getPath(),
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
-                laneResults, artefacts, nextStep, stats);
+                laneResults,
+                artefacts,
+                nextStep,
+                stats);
     }
 
     /**
@@ -330,13 +331,11 @@ public class CalendarsApplication implements VanceApplication {
             Map<String, Object> raw = raws.get(i);
             String evTitle = asString(raw.get("title"));
             if (evTitle == null) {
-                throw new ToolException(
-                        "events[" + i + "] missing 'title'");
+                throw new ToolException("events[" + i + "] missing 'title'");
             }
             String evStart = asString(raw.get("start"));
             if (evStart == null) {
-                throw new ToolException(
-                        "events[" + i + "] ('" + evTitle + "') missing 'start'");
+                throw new ToolException("events[" + i + "] ('" + evTitle + "') missing 'start'");
             }
             String evId = asString(raw.get("id"));
             if (evId == null) evId = UUID.randomUUID().toString();
@@ -349,55 +348,72 @@ public class CalendarsApplication implements VanceApplication {
             List<String> attendees = asStringList(raw.get("attendees"));
             List<String> tags = asStringList(raw.get("tags"));
             events.add(new CalendarEvent(
-                    evId, evTitle, evStart, end, allDay, location,
-                    attendees, recurrence, color, tags, notes,
+                    evId,
+                    evTitle,
+                    evStart,
+                    end,
+                    allDay,
+                    location,
+                    attendees,
+                    recurrence,
+                    color,
+                    tags,
+                    notes,
                     new LinkedHashMap<>()));
         }
         return new CalendarDocument("calendar", events, new LinkedHashMap<>());
     }
 
     /** Idempotent write of a calendar source file inside a suite folder. */
-    private void writeOrUpdateCalendar(CreateContext ctx, String path,
-                                       String body, String title) {
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), path);
+    private void writeOrUpdateCalendar(CreateContext ctx, String path, String body, String title) {
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), path);
         if (existing.isPresent()) {
             documentService.update(
                     existing.get().getId(),
-                    title, List.of("calendar"),
-                    body, null, null, null, null, YAML_MIME,
+                    title,
+                    List.of("calendar"),
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), existing.get().getPath()));
+                    contextFactory.writeActor(
+                            ctx.tenantId(), ctx.userId(), existing.get().getPath()));
             return;
         }
-        try (ByteArrayInputStream in = new ByteArrayInputStream(
-                body.getBytes(StandardCharsets.UTF_8))) {
+        try (ByteArrayInputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             documentService.create(
-                    ctx.tenantId(), ctx.projectName(),
-                    path, title, List.of("calendar"),
-                    YAML_MIME, in, ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    path,
+                    title,
+                    List.of("calendar"),
+                    YAML_MIME,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write calendar '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not write calendar '" + path + "': " + e.getMessage(), e);
         }
     }
 
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
-        CalendarFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), ctx.folder());
+        CalendarFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), ctx.folder());
 
         ArtefactResult conflicts = doRefreshConflicts(scan, ctx, null, null);
         ArtefactResult gantt = doRefreshGantt(scan, ctx, null, null);
 
-        log.info("CalendarsApplication.refresh tenant='{}' folder='{}' "
-                        + "→ {} + {}",
-                ctx.tenantId(), scan.folder(),
-                conflicts.path(), gantt.path());
+        log.info(
+                "CalendarsApplication.refresh tenant='{}' folder='{}' " + "→ {} + {}",
+                ctx.tenantId(),
+                scan.folder(),
+                conflicts.path(),
+                gantt.path());
 
-        return new RefreshResult(APP_NAME, scan.folder(),
-                List.of(conflicts, gantt));
+        return new RefreshResult(APP_NAME, scan.folder(), List.of(conflicts, gantt));
     }
 
     // ── Single-artefact refresh paths ─────────────────────────────
@@ -413,11 +429,8 @@ public class CalendarsApplication implements VanceApplication {
      *             manifest defaults should apply.
      * @param to   null = 180 days from today.
      */
-    public ArtefactResult refreshConflicts(RefreshContext ctx,
-                                           @Nullable LocalDate from,
-                                           @Nullable LocalDate to) {
-        CalendarFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), ctx.folder());
+    public ArtefactResult refreshConflicts(RefreshContext ctx, @Nullable LocalDate from, @Nullable LocalDate to) {
+        CalendarFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), ctx.folder());
         return doRefreshConflicts(scan, ctx, from, to);
     }
 
@@ -425,28 +438,23 @@ public class CalendarsApplication implements VanceApplication {
      * Regenerate only the Gantt artefact. Used by the
      * {@code gantt_from_calendars} tool.
      */
-    public ArtefactResult refreshGantt(RefreshContext ctx,
-                                       @Nullable LocalDate from,
-                                       @Nullable LocalDate to) {
-        CalendarFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), ctx.folder());
+    public ArtefactResult refreshGantt(RefreshContext ctx, @Nullable LocalDate from, @Nullable LocalDate to) {
+        CalendarFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), ctx.folder());
         return doRefreshGantt(scan, ctx, from, to);
     }
 
     // ── Internal: conflicts ───────────────────────────────────────
 
-    private ArtefactResult doRefreshConflicts(CalendarFolderReader.Scan scan,
-                                              RefreshContext ctx,
-                                              @Nullable LocalDate fromOverride,
-                                              @Nullable LocalDate toOverride) {
+    private ArtefactResult doRefreshConflicts(
+            CalendarFolderReader.Scan scan,
+            RefreshContext ctx,
+            @Nullable LocalDate fromOverride,
+            @Nullable LocalDate toOverride) {
         LocalDate today = LocalDate.now();
         LocalDate from = fromOverride != null ? fromOverride : today;
-        LocalDate to = toOverride != null
-                ? toOverride
-                : manifestUntil(scan).orElse(today.plusDays(180));
+        LocalDate to = toOverride != null ? toOverride : manifestUntil(scan).orElse(today.plusDays(180));
         if (from.isAfter(to)) {
-            throw new ToolException(
-                    "Conflict scan window 'from' (" + from + ") is after 'to' (" + to + ").");
+            throw new ToolException("Conflict scan window 'from' (" + from + ") is after 'to' (" + to + ").");
         }
         LocalDateTime rangeStart = from.atStartOfDay();
         LocalDateTime rangeEnd = to.atTime(23, 59, 59);
@@ -455,15 +463,14 @@ public class CalendarsApplication implements VanceApplication {
         List<ConflictDetector.LocatedOccurrence> occs = new ArrayList<>();
         for (CalendarFolderReader.CalendarFile cf : scan.calendars()) {
             for (CalendarEvent ev : cf.calendar().events()) {
-                for (RecurrenceExpander.Occurrence occ :
-                        RecurrenceExpander.expand(ev, rangeStart, rangeEnd)) {
+                for (RecurrenceExpander.Occurrence occ : RecurrenceExpander.expand(ev, rangeStart, rangeEnd)) {
                     occs.add(new ConflictDetector.LocatedOccurrence(
                             occ, cf.lane(), cf.doc().getPath()));
                 }
             }
         }
-        List<ConflictDetector.Conflict> conflicts = ConflictDetector.detect(
-                occs, scan.calendarConfig().conflicts());
+        List<ConflictDetector.Conflict> conflicts =
+                ConflictDetector.detect(occs, scan.calendarConfig().conflicts());
 
         // Render as kind: records body.
         List<RecordsItem> items = new ArrayList<>(conflicts.size());
@@ -475,22 +482,18 @@ public class CalendarsApplication implements VanceApplication {
             values.put("title_b", c.b().occurrence().event().title());
             values.put("lane_b", c.b().lane());
             values.put("source_b", c.b().sourcePath());
-            values.put("overlap_start", c.overlapStart()
-                    .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-            values.put("overlap_end", c.overlapEnd()
-                    .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            values.put("overlap_start", c.overlapStart().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            values.put("overlap_end", c.overlapEnd().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             items.add(new RecordsItem(values, new LinkedHashMap<>(), new ArrayList<>()));
         }
-        RecordsDocument records = new RecordsDocument(
-                "records", CONFLICTS_SCHEMA, items, new LinkedHashMap<>());
+        RecordsDocument records = new RecordsDocument("records", CONFLICTS_SCHEMA, items, new LinkedHashMap<>());
         String body = RecordsCodec.serialize(records, YAML_MIME);
 
         String outputPath = CalendarFolderReader.resolveOutputPath(
                 scan.folder(), scan.calendarConfig().conflicts().outputPath());
         String title = "Calendar conflicts (" + scan.folder() + ")";
-        DocumentDocument stored = writeArtefact(
-                ctx, outputPath, body, title, YAML_MIME,
-                List.of("calendar", "generated", "conflicts"));
+        DocumentDocument stored =
+                writeArtefact(ctx, outputPath, body, title, YAML_MIME, List.of("calendar", "generated", "conflicts"));
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("conflictCount", conflicts.size());
@@ -498,18 +501,16 @@ public class CalendarsApplication implements VanceApplication {
         stats.put("from", from.toString());
         stats.put("to", to.toString());
 
-        return new ArtefactResult(
-                "conflicts", stored.getPath(),
-                linkBuilder.linkFor(stored, ctx.projectName()),
-                stats);
+        return new ArtefactResult("conflicts", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), stats);
     }
 
     // ── Internal: gantt ───────────────────────────────────────────
 
-    private ArtefactResult doRefreshGantt(CalendarFolderReader.Scan scan,
-                                          RefreshContext ctx,
-                                          @Nullable LocalDate fromOverride,
-                                          @Nullable LocalDate toOverride) {
+    private ArtefactResult doRefreshGantt(
+            CalendarFolderReader.Scan scan,
+            RefreshContext ctx,
+            @Nullable LocalDate fromOverride,
+            @Nullable LocalDate toOverride) {
         LocalDate from = fromOverride != null
                 ? fromOverride
                 : GanttRenderer.parseDate(scan.calendarConfig().window().from());
@@ -519,15 +520,13 @@ public class CalendarsApplication implements VanceApplication {
 
         String fallbackTitle = leafFolderName(scan.folder());
         String mermaidSource = GanttRenderer.render(scan, fallbackTitle, from, to);
-        String title = scan.manifest().title() != null
-                ? scan.manifest().title() : fallbackTitle;
+        String title = scan.manifest().title() != null ? scan.manifest().title() : fallbackTitle;
         String body = GanttRenderer.wrapAsDiagramMarkdown(mermaidSource, title);
 
         String outputPath = CalendarFolderReader.resolveOutputPath(
                 scan.folder(), scan.calendarConfig().gantt().outputPath());
         DocumentDocument stored = writeArtefact(
-                ctx, outputPath, body, "Gantt — " + title, MD_MIME,
-                List.of("calendar", "generated", "gantt"));
+                ctx, outputPath, body, "Gantt — " + title, MD_MIME, List.of("calendar", "generated", "gantt"));
 
         // laneCount = lanes actually rendered (= sub-folders that
         // carry calendar files), not the count of declared lanes in
@@ -546,37 +545,42 @@ public class CalendarsApplication implements VanceApplication {
         if (from != null) stats.put("from", from.toString());
         if (to != null) stats.put("to", to.toString());
 
-        return new ArtefactResult(
-                "gantt", stored.getPath(),
-                linkBuilder.linkFor(stored, ctx.projectName()),
-                stats);
+        return new ArtefactResult("gantt", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), stats);
     }
 
     // ── Common write path ─────────────────────────────────────────
 
-    private DocumentDocument writeArtefact(RefreshContext ctx,
-                                           String outputPath,
-                                           String body,
-                                           String title,
-                                           String mime,
-                                           List<String> tags) {
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), outputPath);
+    private DocumentDocument writeArtefact(
+            RefreshContext ctx, String outputPath, String body, String title, String mime, List<String> tags) {
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
         if (existing.isPresent()) {
             return documentService.update(
                     existing.get().getId(),
-                    title, tags, body, null, null, null, null, mime,
+                    title,
+                    tags,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    mime,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), existing.get().getPath()));
+                    contextFactory.writeActor(
+                            ctx.tenantId(), ctx.userId(), existing.get().getPath()));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
-                    ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, tags, mime, in, ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    outputPath,
+                    title,
+                    tags,
+                    mime,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write artefact '" + outputPath + "': " + e.getMessage());
+            throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }
     }
 
@@ -593,12 +597,16 @@ public class CalendarsApplication implements VanceApplication {
         List<String> tagFilter = scan.calendarConfig().gantt().tagFilter();
         for (CalendarFolderReader.CalendarFile cf : scan.calendars()) {
             for (CalendarEvent ev : cf.calendar().events()) {
-                if (!includeRecurring && ev.recurrence() != null
+                if (!includeRecurring
+                        && ev.recurrence() != null
                         && !ev.recurrence().isBlank()) continue;
                 if (!tagFilter.isEmpty()) {
                     boolean any = false;
                     for (String t : tagFilter) {
-                        if (ev.tags().contains(t)) { any = true; break; }
+                        if (ev.tags().contains(t)) {
+                            any = true;
+                            break;
+                        }
                     }
                     if (!any) continue;
                 }

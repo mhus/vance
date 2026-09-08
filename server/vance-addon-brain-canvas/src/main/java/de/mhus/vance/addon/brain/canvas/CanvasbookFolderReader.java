@@ -50,8 +50,7 @@ public class CanvasbookFolderReader {
     public Scan scan(String tenantId, String projectId, String folder) {
         String normalized = normaliseFolder(folder);
         String manifestPath = normalized + "/" + APP_MANIFEST;
-        Optional<DocumentDocument> manifest =
-                documentService.findByPath(tenantId, projectId, manifestPath);
+        Optional<DocumentDocument> manifest = documentService.findByPath(tenantId, projectId, manifestPath);
         if (manifest.isEmpty()) {
             throw new ToolException("No canvasbook manifest at '" + manifestPath + "'.");
         }
@@ -59,8 +58,7 @@ public class CanvasbookFolderReader {
         String landingPage = readLandingPage(config);
 
         String prefix = normalized + "/";
-        List<DocumentDocument> all =
-                documentService.listByKind(tenantId, projectId, CanvasService.KIND);
+        List<DocumentDocument> all = documentService.listByKind(tenantId, projectId, CanvasService.KIND);
         List<Page> pages = new ArrayList<>();
         for (DocumentDocument doc : all) {
             String path = doc.getPath();
@@ -68,8 +66,7 @@ public class CanvasbookFolderReader {
             String rel = path.substring(prefix.length());
             String leaf = rel.contains("/") ? rel.substring(rel.lastIndexOf('/') + 1) : rel;
             if (leaf.startsWith("_")) continue;
-            String title = doc.getTitle() != null && !doc.getTitle().isBlank()
-                    ? doc.getTitle() : stem(leaf);
+            String title = doc.getTitle() != null && !doc.getTitle().isBlank() ? doc.getTitle() : stem(leaf);
             pages.add(new Page(doc, rel, title, null));
         }
         pages.sort(Comparator.comparing(p -> p.title().toLowerCase(Locale.ROOT)));
@@ -80,15 +77,15 @@ public class CanvasbookFolderReader {
     private ApplicationDocument parseManifest(DocumentDocument manifest) {
         String mime = manifest.getMimeType();
         if (!ApplicationCodec.supports(mime)) {
-            throw new ToolException("Canvasbook manifest '" + manifest.getPath()
-                    + "' has mime '" + mime + "' — must be YAML or JSON.");
+            throw new ToolException(
+                    "Canvasbook manifest '" + manifest.getPath() + "' has mime '" + mime + "' — must be YAML or JSON.");
         }
         try (InputStream in = documentService.loadContent(manifest)) {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             return ApplicationCodec.parse(body, mime);
         } catch (IOException | RuntimeException e) {
-            throw new ToolException("Could not parse canvasbook manifest '"
-                    + manifest.getPath() + "': " + e.getMessage());
+            throw new ToolException(
+                    "Could not parse canvasbook manifest '" + manifest.getPath() + "': " + e.getMessage(), e);
         }
     }
 

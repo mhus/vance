@@ -72,9 +72,13 @@ public class RagAdminController {
             long queued = projectRagService.reindex(tenant, project, rebuild);
             return new ReindexResponse(rebuild, queued);
         } catch (RuntimeException e) {
-            log.warn("RAG reindex failed tenant='{}' project='{}' rebuild={}: {}",
-                    tenant, project, rebuild, e.toString());
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+            log.warn(
+                    "RAG reindex failed tenant='{}' project='{}' rebuild={}: {}",
+                    tenant,
+                    project,
+                    rebuild,
+                    e.toString());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage(), e);
         }
     }
 
@@ -88,8 +92,7 @@ public class RagAdminController {
         boolean enabled = ragService.isEmbeddingEnabled(tenant, project);
         Optional<RagDocument> opt = projectRagService.findDefaultRag(tenant, project);
         if (opt.isEmpty()) {
-            return new StatusResponse(false, null, null, null, 0L, null,
-                    effectiveProvider, enabled);
+            return new StatusResponse(false, null, null, null, 0L, null, effectiveProvider, enabled);
         }
         RagDocument rag = ragCatalog.refreshChunkCount(opt.get());
         return new StatusResponse(
@@ -136,9 +139,8 @@ public class RagAdminController {
                     .toList();
             return new SearchResponse(out);
         } catch (RuntimeException e) {
-            log.warn("RAG search failed tenant='{}' project='{}': {}",
-                    tenant, project, e.toString());
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+            log.warn("RAG search failed tenant='{}' project='{}': {}", tenant, project, e.toString());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage(), e);
         }
     }
 
@@ -148,11 +150,7 @@ public class RagAdminController {
 
     public record SearchResponse(List<SearchHitDto> hits) {}
 
-    public record SearchHitDto(
-            @Nullable String sourceRef,
-            int position,
-            String content,
-            double score) {}
+    public record SearchHitDto(@Nullable String sourceRef, int position, String content, double score) {}
 
     /**
      * @param exists              whether a {@code _documents}-RAG row currently

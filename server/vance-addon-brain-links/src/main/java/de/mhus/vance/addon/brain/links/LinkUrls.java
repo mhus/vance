@@ -85,8 +85,7 @@ public final class LinkUrls {
         int sep = s.indexOf("://");
         String scheme = s.substring(0, sep).toLowerCase(Locale.ROOT);
         if (!scheme.equals("http") && !scheme.equals("https")) {
-            throw new ToolException("Only http(s) links can be stored — got scheme '"
-                    + scheme + "'");
+            throw new ToolException("Only http(s) links can be stored — got scheme '" + scheme + "'");
         }
         String rest = s.substring(sep + 3);
         int cut = indexOfAny(rest, 0);
@@ -98,12 +97,11 @@ public final class LinkUrls {
         try {
             uri = new URI(scheme + "://" + rendered + tail);
         } catch (URISyntaxException e) {
-            throw new ToolException("'" + raw + "' is not a usable URL: " + e.getReason());
+            throw new ToolException("'" + raw + "' is not a usable URL: " + e.getReason(), e);
         }
 
         StringBuilder sb = new StringBuilder(scheme).append("://").append(rendered);
-        String path = uri.getRawPath() == null || uri.getRawPath().isEmpty()
-                ? "/" : uri.getRawPath();
+        String path = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
         sb.append(path);
         if (uri.getRawQuery() != null && !uri.getRawQuery().isEmpty()) {
             sb.append('?').append(uri.getRawQuery());
@@ -261,7 +259,7 @@ public final class LinkUrls {
                 try {
                     port = Integer.parseInt(portText);
                 } catch (NumberFormatException e) {
-                    throw new ToolException("'" + raw + "' has no usable port");
+                    throw new ToolException("'" + raw + "' has no usable port", e);
                 }
                 if (port < 1 || port > 65535) {
                     throw new ToolException("'" + raw + "' has no usable port");
@@ -272,7 +270,7 @@ public final class LinkUrls {
                 try {
                     host = IDN.toASCII(host, IDN.ALLOW_UNASSIGNED);
                 } catch (IllegalArgumentException e) {
-                    throw new ToolException("'" + raw + "' has no usable host: " + e.getMessage());
+                    throw new ToolException("'" + raw + "' has no usable host: " + e.getMessage(), e);
                 }
             }
             return new Authority(userInfo, host.toLowerCase(Locale.ROOT), port);

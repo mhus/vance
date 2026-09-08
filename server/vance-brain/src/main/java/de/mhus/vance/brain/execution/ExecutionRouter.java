@@ -38,40 +38,55 @@ public class ExecutionRouter {
     private final ClientToolRegistry clientToolRegistry;
     private final ClientToolChannel clientToolChannel;
 
-    public Map<String, Object> stat(String executionId, String tenantId,
-            @org.jspecify.annotations.Nullable String projectId) {
+    public Map<String, Object> stat(
+            String executionId, String tenantId, @org.jspecify.annotations.Nullable String projectId) {
         ExecutionRegistryEntry entry = require(executionId, tenantId, projectId);
         return switch (entry.owner()) {
-            case ExecutionOwner.Brain brain -> ExecStatTool.render(
-                    execManager.stat(tenantId, entry.projectId(), executionId)
-                            .orElseThrow(() -> new ToolException(
-                                    "Brain-side job vanished: '" + executionId + "'")));
-            case ExecutionOwner.Foot foot -> invokeOnFoot(
-                    foot.clientId(), "client_exec_stat",
-                    Map.of("id", executionId));
+            case ExecutionOwner.Brain brain ->
+                ExecStatTool.render(execManager
+                        .stat(tenantId, entry.projectId(), executionId)
+                        .orElseThrow(() -> new ToolException("Brain-side job vanished: '" + executionId + "'")));
+            case ExecutionOwner.Foot foot ->
+                invokeOnFoot(foot.clientId(), "client_exec_stat", Map.of("id", executionId));
         };
     }
 
     public Map<String, Object> tail(
-            String executionId, String tenantId,
-            @org.jspecify.annotations.Nullable String projectId, int n, String streamName) {
+            String executionId,
+            String tenantId,
+            @org.jspecify.annotations.Nullable String projectId,
+            int n,
+            String streamName) {
         ExecutionRegistryEntry entry = require(executionId, tenantId, projectId);
         return switch (entry.owner()) {
-            case ExecutionOwner.Brain brain -> renderTail(executionId,
-                    execManager.tail(tenantId, entry.projectId(), executionId, n,
-                            "stderr".equalsIgnoreCase(streamName)
-                                    ? ExecManager.Stream.STDERR
-                                    : ExecManager.Stream.STDOUT),
-                    streamName);
-            case ExecutionOwner.Foot foot -> invokeOnFoot(
-                    foot.clientId(), "client_exec_tail",
-                    Map.of("id", executionId, "n", n, "stream",
-                            "stderr".equalsIgnoreCase(streamName) ? "stderr" : "stdout"));
+            case ExecutionOwner.Brain brain ->
+                renderTail(
+                        executionId,
+                        execManager.tail(
+                                tenantId,
+                                entry.projectId(),
+                                executionId,
+                                n,
+                                "stderr".equalsIgnoreCase(streamName)
+                                        ? ExecManager.Stream.STDERR
+                                        : ExecManager.Stream.STDOUT),
+                        streamName);
+            case ExecutionOwner.Foot foot ->
+                invokeOnFoot(
+                        foot.clientId(),
+                        "client_exec_tail",
+                        Map.of(
+                                "id",
+                                executionId,
+                                "n",
+                                n,
+                                "stream",
+                                "stderr".equalsIgnoreCase(streamName) ? "stderr" : "stdout"));
         };
     }
 
-    public Map<String, Object> kill(String executionId, String tenantId,
-            @org.jspecify.annotations.Nullable String projectId) {
+    public Map<String, Object> kill(
+            String executionId, String tenantId, @org.jspecify.annotations.Nullable String projectId) {
         ExecutionRegistryEntry entry = require(executionId, tenantId, projectId);
         return switch (entry.owner()) {
             case ExecutionOwner.Brain brain -> {
@@ -81,55 +96,48 @@ public class ExecutionRouter {
                 out.put("killed", killed);
                 yield out;
             }
-            case ExecutionOwner.Foot foot -> invokeOnFoot(
-                    foot.clientId(), "client_exec_kill",
-                    Map.of("id", executionId));
+            case ExecutionOwner.Foot foot ->
+                invokeOnFoot(foot.clientId(), "client_exec_kill", Map.of("id", executionId));
         };
     }
 
-    private ExecutionRegistryEntry require(String executionId, String tenantId,
-            @org.jspecify.annotations.Nullable String projectId) {
+    private ExecutionRegistryEntry require(
+            String executionId, String tenantId, @org.jspecify.annotations.Nullable String projectId) {
         if (executionId == null || executionId.isBlank()) {
             throw new ToolException("'id' is required");
         }
-        ExecutionRegistryEntry entry = registry.find(executionId).orElseThrow(() ->
-                new ToolException("Unknown execution: '" + executionId + "'"));
+        ExecutionRegistryEntry entry = registry.find(executionId)
+                .orElseThrow(() -> new ToolException("Unknown execution: '" + executionId + "'"));
         if (entry.tenantId() != null && !entry.tenantId().equals(tenantId)) {
-            throw new ToolException(
-                    "Execution '" + executionId + "' belongs to a different tenant");
+            throw new ToolException("Execution '" + executionId + "' belongs to a different tenant");
         }
         // Cross-project scoping: a caller authorized for one project must not
         // stat/tail/kill an execution owned by another project of the same
         // tenant. Enforced here (not just per-controller) so every entry point
         // — the exec_* LLM tools and both controllers — shares the guard.
-        if (projectId != null && entry.projectId() != null
-                && !entry.projectId().equals(projectId)) {
-            throw new ToolException(
-                    "Execution '" + executionId + "' belongs to a different project");
+        if (projectId != null && entry.projectId() != null && !entry.projectId().equals(projectId)) {
+            throw new ToolException("Execution '" + executionId + "' belongs to a different project");
         }
         return entry;
     }
 
-    private Map<String, Object> invokeOnFoot(
-            String clientId, String toolName, Map<String, Object> params) {
-        ClientToolRegistry.Entry entry = clientToolRegistry.entryByEditor(clientId)
+    private Map<String, Object> invokeOnFoot(String clientId, String toolName, Map<String, Object> params) {
+        ClientToolRegistry.Entry entry = clientToolRegistry
+                .entryByEditor(clientId)
                 .orElseThrow(() -> new ToolException(
-                        "Foot client '" + clientId + "' is not connected — "
-                                + "cannot route '" + toolName + "'"));
-        ClientToolRegistry.Pending pending = clientToolRegistry.beginInvocation(
-                resolveSessionId(entry), toolName);
+                        "Foot client '" + clientId + "' is not connected — " + "cannot route '" + toolName + "'"));
+        ClientToolRegistry.Pending pending = clientToolRegistry.beginInvocation(resolveSessionId(entry), toolName);
         try {
-            clientToolChannel.sendInvoke(
-                    entry.wsSession(), pending.correlationId(), toolName, params);
+            clientToolChannel.sendInvoke(entry.wsSession(), pending.correlationId(), toolName, params);
             return pending.future().get(FOOT_INVOCATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
-            clientToolRegistry.cancel(pending.correlationId(),
-                    toolName + " timed out after " + FOOT_INVOCATION_TIMEOUT_SECONDS + "s");
-            throw new ToolException(toolName + " timed out");
+            clientToolRegistry.cancel(
+                    pending.correlationId(), toolName + " timed out after " + FOOT_INVOCATION_TIMEOUT_SECONDS + "s");
+            throw new ToolException(toolName + " timed out", e);
         } catch (InterruptedException e) {
             clientToolRegistry.cancel(pending.correlationId(), "interrupted");
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted waiting for " + toolName);
+            throw new ToolException("Interrupted waiting for " + toolName, e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             throw new ToolException(toolName + " failed: " + cause.getMessage(), cause);
@@ -150,8 +158,7 @@ public class ExecutionRouter {
         return entry.editorId();
     }
 
-    private static Map<String, Object> renderTail(
-            String id, java.util.List<String> lines, String streamName) {
+    private static Map<String, Object> renderTail(String id, java.util.List<String> lines, String streamName) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", id);
         out.put("stream", "stderr".equalsIgnoreCase(streamName) ? "stderr" : "stdout");

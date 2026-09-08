@@ -33,7 +33,6 @@ public class ClientFileFindTool implements ClientTool {
         this.security = security;
     }
 
-
     private static final int DEFAULT_LIMIT = 200;
     private static final int MAX_LIMIT = 2_000;
     private static final int DEFAULT_MAX_DEPTH = 12;
@@ -45,48 +44,89 @@ public class ClientFileFindTool implements ClientTool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>();
-        p.put("path", Map.of("type", "string",
-                "description", "Directory to walk. Default: current working directory."));
-        p.put("pathGlob", Map.of("type", "string",
-                "description",
+        p.put(
+                "path",
+                Map.of("type", "string", "description", "Directory to walk. Default: current working directory."));
+        p.put(
+                "pathGlob",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
                         "Glob pattern matched against the relative path under "
                                 + "'path', e.g. '**/*.md'. Default: all files."));
-        p.put("minSizeBytes", Map.of("type", "integer",
-                "description", "Skip files smaller than this. Default: no lower bound."));
-        p.put("maxSizeBytes", Map.of("type", "integer",
-                "description", "Skip files larger than this. Default: no upper bound."));
-        p.put("modifiedAfter", Map.of("type", "string",
-                "description",
-                        "ISO-8601 instant — only files modified strictly after. "
-                                + "Default: no lower bound."));
-        p.put("modifiedBefore", Map.of("type", "string",
-                "description", "ISO-8601 instant — only files modified strictly before. Default: no upper bound."));
-        p.put("sortBy", Map.of("type", "string",
-                "enum", List.of("path", "mtime", "size"),
-                "description", "Sort key. 'path' (default), 'mtime' (descending), 'size' (descending)."));
-        p.put("maxDepth", Map.of("type", "integer",
-                "description",
-                        "Recursion depth cap. Default: " + DEFAULT_MAX_DEPTH
-                                + ". Use 1 to scan a flat directory."));
-        p.put("limit", Map.of("type", "integer",
-                "description", "Cap on entries returned. Default: " + DEFAULT_LIMIT
-                        + ", max: " + MAX_LIMIT + "."));
-        p.put("includeGenerated", Map.of("type", "boolean",
-                "description",
+        p.put(
+                "minSizeBytes",
+                Map.of("type", "integer", "description", "Skip files smaller than this. Default: no lower bound."));
+        p.put(
+                "maxSizeBytes",
+                Map.of("type", "integer", "description", "Skip files larger than this. Default: no upper bound."));
+        p.put(
+                "modifiedAfter",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "ISO-8601 instant — only files modified strictly after. " + "Default: no lower bound."));
+        p.put(
+                "modifiedBefore",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "ISO-8601 instant — only files modified strictly before. Default: no upper bound."));
+        p.put(
+                "sortBy",
+                Map.of(
+                        "type",
+                        "string",
+                        "enum",
+                        List.of("path", "mtime", "size"),
+                        "description",
+                        "Sort key. 'path' (default), 'mtime' (descending), 'size' (descending)."));
+        p.put(
+                "maxDepth",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "Recursion depth cap. Default: " + DEFAULT_MAX_DEPTH + ". Use 1 to scan a flat directory."));
+        p.put(
+                "limit",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "Cap on entries returned. Default: " + DEFAULT_LIMIT + ", max: " + MAX_LIMIT + "."));
+        p.put(
+                "includeGenerated",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
                         "Also walk dependency and build directories "
                                 + "(node_modules, target, dist, .git, …), which are "
                                 + "skipped by default."));
         return p;
     }
 
-    @Override public String name() { return "client_file_find"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "client_file_find";
+    }
+
+    @Override
+    public String description() {
         return "Find files on the user's machine by path glob, size range, and "
                 + "modification-time range. Recursive walk under 'path'. Returns "
                 + "size + mtime per hit, with paths that can be passed straight "
                 + "to the other file tools.";
     }
-    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public boolean deferred() {
@@ -97,7 +137,11 @@ public class ClientFileFindTool implements ClientTool {
     public String searchHint() {
         return "Explicit CLIENT variant of file_find — targets the user's machine (foot host) regardless of the work target. Prefer file_find.";
     }
-    @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
+
+    @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("read-only");
+    }
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
@@ -109,7 +153,10 @@ public class ClientFileFindTool implements ClientTool {
         return java.util.Set.of("filesystem", "client", "search");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params) {
@@ -122,8 +169,7 @@ public class ClientFileFindTool implements ClientTool {
         String sortBy = stringOrNull(params, "sortBy");
         int maxDepth = clampDepth(intOrNull(params, "maxDepth"));
         int limit = clampLimit(intOrNull(params, "limit"));
-        boolean includeGenerated =
-                Boolean.TRUE.equals(params == null ? null : params.get("includeGenerated"));
+        boolean includeGenerated = Boolean.TRUE.equals(params == null ? null : params.get("includeGenerated"));
 
         Path root = pathRaw == null ? Path.of(".") : ClientFilePaths.resolve(pathRaw);
         if (!Files.isDirectory(root)) {
@@ -151,8 +197,11 @@ public class ClientFileFindTool implements ClientTool {
                 Path rel = root.relativize(file);
                 if (matcher != null && !matcher.matches(rel)) continue;
                 BasicFileAttributes attrs;
-                try { attrs = Files.readAttributes(file, BasicFileAttributes.class); }
-                catch (IOException ignored) { continue; }
+                try {
+                    attrs = Files.readAttributes(file, BasicFileAttributes.class);
+                } catch (IOException ignored) {
+                    continue;
+                }
                 long size = attrs.size();
                 Instant mtime = attrs.lastModifiedTime().toInstant();
                 if (minSize != null && size < minSize) continue;
@@ -188,7 +237,8 @@ public class ClientFileFindTool implements ClientTool {
         // caller read the result as a complete sweep.
         if (generatedSkipped > 0) {
             out.put("generatedFilesSkipped", generatedSkipped);
-            out.put("generatedFilesHint",
+            out.put(
+                    "generatedFilesHint",
                     "Dependency/build directories were skipped — pass includeGenerated=true to walk them.");
         }
         out.put("matchCount", entries.size());
@@ -231,7 +281,7 @@ public class ClientFileFindTool implements ClientTool {
             return Instant.parse(raw);
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException(
-                    "'" + paramName + "' must be ISO-8601 (e.g. 2026-01-01T00:00:00Z); got: " + raw);
+                    "'" + paramName + "' must be ISO-8601 (e.g. 2026-01-01T00:00:00Z); got: " + raw, e);
         }
     }
 }

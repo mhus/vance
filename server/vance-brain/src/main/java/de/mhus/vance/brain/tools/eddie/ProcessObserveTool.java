@@ -5,13 +5,13 @@ import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.eddie.connection.EddieFrameRouter;
 import de.mhus.vance.brain.eddie.connection.EddieWorkerConnection;
 import de.mhus.vance.brain.eddie.connection.EddieWorkerConnectionPool;
-import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -66,25 +66,33 @@ public class ProcessObserveTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "processId", Map.of(
-                            "type", "string",
-                            "description", "Worker ThinkProcess id (the value "
-                                    + "you got back from project_create or saw "
-                                    + "in process_list)."),
-                    "channelMode", Map.of(
-                            "type", "string",
-                            "enum", List.of(
-                                    ChannelMode.VERBATIM.name(),
-                                    ChannelMode.MILESTONES.name(),
-                                    ChannelMode.SUMMARY.name(),
-                                    ChannelMode.INBOX.name()),
-                            "description", "How worker output should reach the "
-                                    + "user. Default: MILESTONES (status "
-                                    + "transitions only). Use VERBATIM for "
-                                    + "debug, SUMMARY for long reports, INBOX "
-                                    + "for things the user wants to read at "
-                                    + "leisure.")),
+            "properties",
+                    Map.of(
+                            "processId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Worker ThinkProcess id (the value "
+                                                    + "you got back from project_create or saw "
+                                                    + "in process_list)."),
+                            "channelMode",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of(
+                                                    ChannelMode.VERBATIM.name(),
+                                                    ChannelMode.MILESTONES.name(),
+                                                    ChannelMode.SUMMARY.name(),
+                                                    ChannelMode.INBOX.name()),
+                                            "description",
+                                            "How worker output should reach the "
+                                                    + "user. Default: MILESTONES (status "
+                                                    + "transitions only). Use VERBATIM for "
+                                                    + "debug, SUMMARY for long reports, INBOX "
+                                                    + "for things the user wants to read at "
+                                                    + "leisure.")),
             "required", List.of("processId"));
 
     private final ThinkProcessService thinkProcessService;
@@ -129,31 +137,27 @@ public class ProcessObserveTool implements Tool {
         String workerProcessId = stringOrThrow(params, "processId");
         ChannelMode mode = parseChannelMode(params.get("channelMode"));
 
-        ThinkProcessDocument worker = thinkProcessService.findById(workerProcessId)
-                .orElseThrow(() -> new ToolException(
-                        "Worker process '" + workerProcessId + "' not found"));
+        ThinkProcessDocument worker = thinkProcessService
+                .findById(workerProcessId)
+                .orElseThrow(() -> new ToolException("Worker process '" + workerProcessId + "' not found"));
         if (!worker.getTenantId().equals(ctx.tenantId())) {
             // Cross-tenant observation is not supported. The pool would
             // happily open the WS, but the JWT we issue is signed with
             // the caller's tenant key — the worker pod would reject it.
-            throw new ToolException(
-                    "Cross-tenant observation is not allowed (worker tenant differs from caller)");
+            throw new ToolException("Cross-tenant observation is not allowed (worker tenant differs from caller)");
         }
 
-        ProjectDocument workerProject = projectService.findByTenantAndName(
-                worker.getTenantId(), worker.getProjectId())
-                .orElseThrow(() -> new ToolException(
-                        "Worker project '" + worker.getProjectId() + "' not found"));
-        String holderPodId = ProjectOwnership
-                .liveOwnerPodId(workerProject, Instant.now(), clusterService.leaseTtl())
-                .orElseThrow(() -> new ToolException(
-                        "Worker project '" + workerProject.getName()
-                                + "' is not held by any live pod — cannot observe"));
-        String podAddress = clusterService.resolveEndpointByPodId(holderPodId)
-                .orElseThrow(() -> new ToolException(
-                        "Worker project '" + workerProject.getName()
-                                + "' is leased by pod '" + workerProject.getHomeNode()
-                                + "' but the cluster registry has no endpoint for it"));
+        ProjectDocument workerProject = projectService
+                .findByTenantAndName(worker.getTenantId(), worker.getProjectId())
+                .orElseThrow(() -> new ToolException("Worker project '" + worker.getProjectId() + "' not found"));
+        String holderPodId = ProjectOwnership.liveOwnerPodId(workerProject, Instant.now(), clusterService.leaseTtl())
+                .orElseThrow(() -> new ToolException("Worker project '" + workerProject.getName()
+                        + "' is not held by any live pod — cannot observe"));
+        String podAddress = clusterService
+                .resolveEndpointByPodId(holderPodId)
+                .orElseThrow(() -> new ToolException("Worker project '" + workerProject.getName()
+                        + "' is leased by pod '" + workerProject.getHomeNode()
+                        + "' but the cluster registry has no endpoint for it"));
 
         WorkerLinkSnapshot snapshot = WorkerLinkSnapshot.builder()
                 .workerProcessId(worker.getId())
@@ -170,31 +174,36 @@ public class ProcessObserveTool implements Tool {
         // tenant's signing key. Worker validates exactly the same way as
         // for a direct user connection.
         String userJwt = jwtService.createToken(
-                ctx.tenantId(),
-                ctx.userId(),
-                Instant.now().plus(JWT_TTL));
+                ctx.tenantId(), ctx.userId(), Instant.now().plus(JWT_TTL));
 
         EddieWorkerConnection conn;
         try {
-            conn = connectionPool.openOrReuse(
-                    ctx.processId(), snapshot, userJwt, frameRouter);
+            conn = connectionPool.openOrReuse(ctx.processId(), snapshot, userJwt, frameRouter);
         } catch (RuntimeException e) {
-            log.warn("process_observe failed to open WS to worker={} pod={}: {}",
-                    worker.getId(), podAddress, e.toString());
-            throw new ToolException(
-                    "Failed to open observation channel to worker: " + e.getMessage());
+            log.warn(
+                    "process_observe failed to open WS to worker={} pod={}: {}",
+                    worker.getId(),
+                    podAddress,
+                    e.toString());
+            throw new ToolException("Failed to open observation channel to worker: " + e.getMessage(), e);
         }
 
         // Persist (or update) the snapshot on the Eddie process so a
         // future pod resume can reconstruct the connection.
         boolean changed = thinkProcessService.upsertWorkerLink(ctx.processId(), snapshot);
         if (!changed) {
-            log.debug("process_observe: snapshot upsert returned no-change for caller={} worker={}",
-                    ctx.processId(), worker.getId());
+            log.debug(
+                    "process_observe: snapshot upsert returned no-change for caller={} worker={}",
+                    ctx.processId(),
+                    worker.getId());
         }
 
-        log.info("process_observe: caller={} worker={} mode={} podAddress={}",
-                ctx.processId(), worker.getId(), mode, podAddress);
+        log.info(
+                "process_observe: caller={} worker={} mode={} podAddress={}",
+                ctx.processId(),
+                worker.getId(),
+                mode,
+                podAddress);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("workerProcessId", worker.getId());
@@ -219,8 +228,8 @@ public class ProcessObserveTool implements Tool {
             try {
                 return ChannelMode.valueOf(s.trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                throw new ToolException("Unknown channelMode '" + s
-                        + "' — use VERBATIM / MILESTONES / SUMMARY / INBOX");
+                throw new ToolException(
+                        "Unknown channelMode '" + s + "' — use VERBATIM / MILESTONES / SUMMARY / INBOX", e);
             }
         }
         throw new ToolException("channelMode must be a string");

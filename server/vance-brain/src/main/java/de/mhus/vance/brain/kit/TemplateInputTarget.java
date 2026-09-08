@@ -42,9 +42,9 @@ public record TemplateInputTarget(
 
     /** Setting-storage scope. Mirrors {@code SettingService} reference types. */
     public enum Scope {
-        TENANT,    // _tenant project
-        PROJECT,   // the project the kit is applied to
-        USER;      // current user (only when ctx.userId is known)
+        TENANT, // _tenant project
+        PROJECT, // the project the kit is applied to
+        USER; // current user (only when ctx.userId is known)
 
         public static Scope parse(String raw, String fieldLabel) {
             if (raw == null || raw.isBlank()) {
@@ -56,7 +56,8 @@ public record TemplateInputTarget(
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException(
                         "template input '" + fieldLabel + "': unknown target.scope '" + raw
-                                + "' — expected tenant | project | user");
+                                + "' — expected tenant | project | user",
+                        e);
             }
         }
     }

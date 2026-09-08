@@ -36,38 +36,50 @@ public class ImageCropTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Document path of the source image. Must point to "
-                                            + "an existing PNG, JPEG, GIF or BMP."),
-                    "targetPath", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional destination path. When omitted or equal "
-                                            + "to `path` the source is overwritten and "
-                                            + "the prior version is archived by "
-                                            + "document-versioning."),
-                    "x", Map.of(
-                            "type", "integer",
-                            "minimum", 0,
-                            "description", "Left edge of the crop rectangle, 0-based."),
-                    "y", Map.of(
-                            "type", "integer",
-                            "minimum", 0,
-                            "description", "Top edge of the crop rectangle, 0-based."),
-                    "width", Map.of(
-                            "type", "integer",
-                            "minimum", 1,
-                            "description", "Crop width in pixels (must fit inside the image)."),
-                    "height", Map.of(
-                            "type", "integer",
-                            "minimum", 1,
-                            "description", "Crop height in pixels (must fit inside the image).")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document path of the source image. Must point to "
+                                                    + "an existing PNG, JPEG, GIF or BMP."),
+                            "targetPath",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional destination path. When omitted or equal "
+                                                    + "to `path` the source is overwritten and "
+                                                    + "the prior version is archived by "
+                                                    + "document-versioning."),
+                            "x",
+                                    Map.of(
+                                            "type", "integer",
+                                            "minimum", 0,
+                                            "description", "Left edge of the crop rectangle, 0-based."),
+                            "y",
+                                    Map.of(
+                                            "type", "integer",
+                                            "minimum", 0,
+                                            "description", "Top edge of the crop rectangle, 0-based."),
+                            "width",
+                                    Map.of(
+                                            "type", "integer",
+                                            "minimum", 1,
+                                            "description", "Crop width in pixels (must fit inside the image)."),
+                            "height",
+                                    Map.of(
+                                            "type", "integer",
+                                            "minimum", 1,
+                                            "description", "Crop height in pixels (must fit inside the image).")),
             "required", List.of("path", "x", "y", "width", "height"));
 
-    @Override public String name() { return "image_crop"; }
+    @Override
+    public String name() {
+        return "image_crop";
+    }
 
     @Override
     public String description() {
@@ -79,9 +91,20 @@ public class ImageCropTool implements Tool {
                 + "Synchronous, returns once the new bytes are committed.";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -105,12 +128,10 @@ public class ImageCropTool implements Tool {
             ImageOpResult result = imageService.crop(request);
             return successResponse(result);
         } catch (ImageManipulationException e) {
-            log.info("image_crop failed: reason={} msg={}",
-                    e.getReason(), e.getMessage());
+            log.info("image_crop failed: reason={} msg={}", e.getReason(), e.getMessage());
             return errorResponse(e);
         } catch (IllegalArgumentException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
     }
-
 }

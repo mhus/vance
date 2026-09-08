@@ -48,8 +48,7 @@ public class FinanceService {
     private final DocumentService documentService;
     private final SecurityContextFactory contextFactory;
 
-    public FinanceService(DocumentService documentService,
-                          SecurityContextFactory contextFactory) {
+    public FinanceService(DocumentService documentService, SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.contextFactory = contextFactory;
     }
@@ -57,12 +56,15 @@ public class FinanceService {
     // ── Create ────────────────────────────────────────────────────
 
     /** Create a new empty {@code finance-tree} document (no root yet). */
-    public DocumentDocument create(String tenantId, String projectId, String path,
-                                   @Nullable String title, @Nullable String description,
-                                   @Nullable String userId) {
+    public DocumentDocument create(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable String description,
+            @Nullable String userId) {
         String normalised = ensureExtension(path.trim());
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectId, normalised);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, normalised);
         if (existing.isPresent()) {
             throw new ToolException("A finance-tree already exists at '" + normalised + "'.");
         }
@@ -70,52 +72,60 @@ public class FinanceService {
         String body = FinanceTreeCodec.serialize(FinanceTreeDocument.empty(title, description), mime);
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
-                    tenantId, projectId, normalised, title, List.of(KIND), mime, in, userId,
+                    tenantId,
+                    projectId,
+                    normalised,
+                    title,
+                    List.of(KIND),
+                    mime,
+                    in,
+                    userId,
                     contextFactory.writeActor(tenantId, userId, normalised));
             log.info("FinanceService.create path='{}'", normalised);
             return stored;
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write finance-tree '" + normalised + "': " + e.getMessage());
+            throw new ToolException("Could not write finance-tree '" + normalised + "': " + e.getMessage(), e);
         }
     }
 
     /** Persist a generated report as a new document (its kind lives in the body). */
-    public DocumentDocument createReport(String tenantId, String projectId, String path,
-                                         FinanceReport report, @Nullable String userId) {
-        try (InputStream in = new ByteArrayInputStream(
-                report.body().getBytes(StandardCharsets.UTF_8))) {
+    public DocumentDocument createReport(
+            String tenantId, String projectId, String path, FinanceReport report, @Nullable String userId) {
+        try (InputStream in = new ByteArrayInputStream(report.body().getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
-                    tenantId, projectId, path.trim(), null, List.of(report.outputKind()),
-                    report.mimeType(), in, userId,
+                    tenantId,
+                    projectId,
+                    path.trim(),
+                    null,
+                    List.of(report.outputKind()),
+                    report.mimeType(),
+                    in,
+                    userId,
                     contextFactory.writeActor(tenantId, userId, path.trim()));
         } catch (IOException e) {
-            throw new ToolException("Could not write report '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not write report '" + path + "': " + e.getMessage(), e);
         }
     }
 
     // ── Node / value mutations (read-modify-write) ────────────────
 
-    public DocumentDocument addNode(DocumentDocument doc, @Nullable String parentName,
-                                    FinanceNode child, @Nullable String userId) {
-        return writeDocument(doc, FinanceTreeOps.addChild(readDocument(doc), parentName, child),
-                null, userId);
+    public DocumentDocument addNode(
+            DocumentDocument doc, @Nullable String parentName, FinanceNode child, @Nullable String userId) {
+        return writeDocument(doc, FinanceTreeOps.addChild(readDocument(doc), parentName, child), null, userId);
     }
 
-    public DocumentDocument updateNode(DocumentDocument doc, String name,
-                                       Map<String, Object> patch, @Nullable String userId) {
-        return writeDocument(doc, FinanceTreeOps.updateNode(readDocument(doc), name, patch),
-                null, userId);
+    public DocumentDocument updateNode(
+            DocumentDocument doc, String name, Map<String, Object> patch, @Nullable String userId) {
+        return writeDocument(doc, FinanceTreeOps.updateNode(readDocument(doc), name, patch), null, userId);
     }
 
     public DocumentDocument removeNode(DocumentDocument doc, String name, @Nullable String userId) {
         return writeDocument(doc, FinanceTreeOps.removeNode(readDocument(doc), name), null, userId);
     }
 
-    public DocumentDocument setValues(DocumentDocument doc, String name,
-                                      List<FinanceValue> values, @Nullable String userId) {
-        return writeDocument(doc, FinanceTreeOps.setValues(readDocument(doc), name, values),
-                null, userId);
+    public DocumentDocument setValues(
+            DocumentDocument doc, String name, List<FinanceValue> values, @Nullable String userId) {
+        return writeDocument(doc, FinanceTreeOps.setValues(readDocument(doc), name, values), null, userId);
     }
 
     // ── Read / write ──────────────────────────────────────────────
@@ -125,15 +135,23 @@ public class FinanceService {
         return FinanceTreeCodec.parse(readBody(doc), mime);
     }
 
-    public DocumentDocument writeDocument(DocumentDocument doc, FinanceTreeDocument tree,
-                                          @Nullable FinanceComputed computed,
-                                          @Nullable String userId) {
+    public DocumentDocument writeDocument(
+            DocumentDocument doc,
+            FinanceTreeDocument tree,
+            @Nullable FinanceComputed computed,
+            @Nullable String userId) {
         String mime = FinanceTreeCodec.supports(doc.getMimeType()) ? doc.getMimeType() : DEFAULT_MIME;
         String body = FinanceTreeCodec.serialize(tree, computed, mime);
         return documentService.update(
                 doc.getId(),
                 tree.title() != null ? tree.title() : doc.getTitle(),
-                null, body, null, null, null, null, mime,
+                null,
+                body,
+                null,
+                null,
+                null,
+                null,
+                mime,
                 DocumentService.TOOL_IDENTITY,
                 contextFactory.writeActor(doc.getTenantId(), userId, doc.getPath()));
     }
@@ -152,17 +170,15 @@ public class FinanceService {
      */
     public FinanceComputed snapshot(DocumentDocument doc) {
         FinanceTreeDocument tree = readDocument(doc);
-        List<NodeSnapshot> nodes = tree.root() == null
-                ? List.of()
-                : FinanceCalculator.compute(tree.root(), LocalDate.now(ZoneOffset.UTC));
+        List<NodeSnapshot> nodes =
+                tree.root() == null ? List.of() : FinanceCalculator.compute(tree.root(), LocalDate.now(ZoneOffset.UTC));
         return new FinanceComputed(Instant.now().toString(), nodes);
     }
 
     public FinanceComputed recalculate(DocumentDocument doc, @Nullable String userId) {
         FinanceTreeDocument tree = readDocument(doc);
-        List<NodeSnapshot> nodes = tree.root() == null
-                ? List.of()
-                : FinanceCalculator.compute(tree.root(), LocalDate.now(ZoneOffset.UTC));
+        List<NodeSnapshot> nodes =
+                tree.root() == null ? List.of() : FinanceCalculator.compute(tree.root(), LocalDate.now(ZoneOffset.UTC));
         FinanceComputed computed = new FinanceComputed(Instant.now().toString(), nodes);
         writeDocument(doc, tree, computed, userId);
         log.debug("FinanceService.recalculate path='{}' nodes={}", doc.getPath(), nodes.size());
@@ -176,8 +192,7 @@ public class FinanceService {
      * read — never writes the document; the result feeds the editor preview,
      * the {@code /project} REST endpoint and the report processors.
      */
-    public FinanceProjection project(DocumentDocument doc, LocalDate from, LocalDate to,
-                                     PeriodUnit granularity) {
+    public FinanceProjection project(DocumentDocument doc, LocalDate from, LocalDate to, PeriodUnit granularity) {
         FinanceTreeDocument tree = readDocument(doc);
         if (tree.root() == null) {
             return new FinanceProjection(List.of(), List.of());
@@ -191,8 +206,7 @@ public class FinanceService {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not load finance-tree '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not load finance-tree '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 

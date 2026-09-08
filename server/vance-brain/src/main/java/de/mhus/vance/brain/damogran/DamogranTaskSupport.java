@@ -62,8 +62,7 @@ final class DamogranTaskSupport {
     static String requireString(TaskSpec spec, String key) {
         String value = string(spec, key);
         if (value == null) {
-            throw new DamogranException(
-                    "task '" + spec.type() + "' requires parameter '" + key + "'");
+            throw new DamogranException("task '" + spec.type() + "' requires parameter '" + key + "'");
         }
         return value;
     }
@@ -77,8 +76,7 @@ final class DamogranTaskSupport {
             try {
                 return Integer.parseInt(raw.toString().trim());
             } catch (NumberFormatException e) {
-                throw new DamogranException(
-                        "task '" + spec.type() + "' parameter '" + key + "' must be an integer");
+                throw new DamogranException("task '" + spec.type() + "' parameter '" + key + "' must be an integer", e);
             }
         }
         return fallback;
@@ -99,11 +97,9 @@ final class DamogranTaskSupport {
      * The values are also handed to {@link #toResult} so an accidental echo is
      * masked out of the returned log.
      */
-    static DamogranTaskResult runExecTask(
-            DamogranContext ctx, TaskSpec spec, Map<String, String> secretEnv) {
+    static DamogranTaskResult runExecTask(DamogranContext ctx, TaskSpec spec, Map<String, String> secretEnv) {
         String command = requireString(spec, "command");
-        ComposeExec.Result result =
-                runWithEnv(ctx.requireExec("exec"), command, secretEnv, execDeadlineSeconds(spec));
+        ComposeExec.Result result = runWithEnv(ctx.requireExec("exec"), command, secretEnv, execDeadlineSeconds(spec));
         return toResult(result, command, outputsFor(ctx, spec), secretEnv.values());
     }
 
@@ -114,13 +110,10 @@ final class DamogranTaskSupport {
      */
     static ComposeExec.Result runWithEnv(
             ComposeExec exec, String command, Map<String, String> env, int deadlineSeconds) {
-        return env.isEmpty()
-                ? exec.run(command, deadlineSeconds)
-                : exec.run(command, env, deadlineSeconds);
+        return env.isEmpty() ? exec.run(command, deadlineSeconds) : exec.run(command, env, deadlineSeconds);
     }
 
-    static DamogranTaskResult toResult(
-            ComposeExec.Result result, String command, List<OutputArtifact> outputs) {
+    static DamogranTaskResult toResult(ComposeExec.Result result, String command, List<OutputArtifact> outputs) {
         return toResult(result, command, outputs, List.of());
     }
 
@@ -131,12 +124,10 @@ final class DamogranTaskSupport {
      * for this task are masked out of the log/detail before they reach the caller.
      */
     static DamogranTaskResult toResult(
-            ComposeExec.Result result, String command, List<OutputArtifact> outputs,
-            Collection<String> secretValues) {
+            ComposeExec.Result result, String command, List<OutputArtifact> outputs, Collection<String> secretValues) {
         String stdout = result.stdout();
         String stderr = result.stderr();
-        String rawLog = stdout.isBlank() ? stderr
-                : (stderr.isBlank() ? stdout : stdout + "\n" + stderr);
+        String rawLog = stdout.isBlank() ? stderr : (stderr.isBlank() ? stdout : stdout + "\n" + stderr);
         String log = SecretMasker.mask(rawLog, secretValues);
         if (result.ok()) {
             return DamogranTaskResult.success(outputs, log);
@@ -166,8 +157,7 @@ final class DamogranTaskSupport {
         List<OutputArtifact> result = new ArrayList<>();
         for (OutputSpec out : spec.declaredOutputs()) {
             String kind = out.kind() != null ? out.kind() : DamogranMime.kindForPath(out.path());
-            result.add(new OutputArtifact(
-                    out.path(), kind, DamogranMime.mimeForPath(out.path()), out.title()));
+            result.add(new OutputArtifact(out.path(), kind, DamogranMime.mimeForPath(out.path()), out.title()));
         }
         return List.copyOf(result);
     }

@@ -50,17 +50,21 @@ public class SlideshowApplication implements VanceApplication {
     private final DocumentLinkBuilder linkBuilder;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public SlideshowApplication(SlideshowFolderReader folderReader,
-                                DocumentService documentService,
-                                DocumentLinkBuilder linkBuilder,
-                                de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public SlideshowApplication(
+            SlideshowFolderReader folderReader,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
         this.contextFactory = contextFactory;
     }
 
-    @Override public String appName() { return APP_NAME; }
+    @Override
+    public String appName() {
+        return APP_NAME;
+    }
 
     /**
      * Short markdown chunk inserted into the engine prompt while the
@@ -92,12 +96,11 @@ public class SlideshowApplication implements VanceApplication {
         Map<String, Object> params = ctx.params() != null ? ctx.params() : new LinkedHashMap<>();
         String manifestPath = folder + "/" + SlideshowFolderReader.APP_MANIFEST;
 
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), manifestPath);
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
             throw new ToolException(
-                    "Manifest already exists at '" + manifestPath
-                            + "'. Pass overwrite=true to replace it.");
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -116,9 +119,8 @@ public class SlideshowApplication implements VanceApplication {
 
         Map<String, Object> appConfig = new LinkedHashMap<>();
         appConfig.put(SlideshowAppConfig.APP_NAME, slideshowBlock);
-        ApplicationDocument manifest = new ApplicationDocument(
-                "application", APP_NAME, title, description,
-                appConfig, new LinkedHashMap<>());
+        ApplicationDocument manifest =
+                new ApplicationDocument("application", APP_NAME, title, description, appConfig, new LinkedHashMap<>());
         String body = ApplicationCodec.serialize(manifest, YAML_MIME);
 
         DocumentDocument stored;
@@ -127,37 +129,43 @@ public class SlideshowApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Slideshow",
                     List.of("application", "slideshow"),
-                    body, null, null, null, null, YAML_MIME,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     de.mhus.vance.shared.document.DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
-            try (InputStream in = new ByteArrayInputStream(
-                    body.getBytes(StandardCharsets.UTF_8))) {
+            try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
-                        ctx.tenantId(), ctx.projectName(),
+                        ctx.tenantId(),
+                        ctx.projectName(),
                         manifestPath,
                         title != null ? title : "Slideshow",
                         List.of("application", "slideshow"),
-                        YAML_MIME, in, ctx.userId(),
+                        YAML_MIME,
+                        in,
+                        ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not write manifest '" + manifestPath
-                                + "': " + e.getMessage());
+                throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
         }
 
         // Run refresh so the index is ready immediately. Slideshow
         // apps almost always have images already in the folder when
         // the manifest is created.
-        RefreshContext rc = new RefreshContext(
-                ctx.tenantId(), ctx.projectName(), folder,
-                ctx.userId(), ctx.processId());
+        RefreshContext rc =
+                new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
         RefreshResult refresh = refresh(rc);
 
-        log.info("SlideshowApplication.create tenant='{}' folder='{}' "
-                        + "manifestPath='{}'",
-                ctx.tenantId(), folder, manifestPath);
+        log.info(
+                "SlideshowApplication.create tenant='{}' folder='{}' " + "manifestPath='{}'",
+                ctx.tenantId(),
+                folder,
+                manifestPath);
 
         // Slide count from the refresh — drives the nextStep branch
         // below. With zero slides the LLM tends to retry
@@ -194,15 +202,19 @@ public class SlideshowApplication implements VanceApplication {
         }
 
         return new CreateResult(
-                APP_NAME, folder, stored.getPath(),
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
-                new ArrayList<>(), refresh.artefacts(), nextStep, stats);
+                new ArrayList<>(),
+                refresh.artefacts(),
+                nextStep,
+                stats);
     }
 
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
-        SlideshowFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), ctx.folder());
+        SlideshowFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), ctx.folder());
 
         // Build the index body — straight list of slides preserving
         // the resolved order.
@@ -235,11 +247,13 @@ public class SlideshowApplication implements VanceApplication {
 
         String outputPath = SlideshowFolderReader.resolveOutputPath(
                 scan.folder(), scan.slideshowConfig().index().outputPath());
-        String title = scan.manifest().title() != null
-                ? scan.manifest().title() : leafFolderName(scan.folder());
+        String title = scan.manifest().title() != null ? scan.manifest().title() : leafFolderName(scan.folder());
         DocumentDocument stored = writeArtefact(
-                ctx, outputPath, yaml,
-                "Slideshow index — " + title, YAML_MIME,
+                ctx,
+                outputPath,
+                yaml,
+                "Slideshow index — " + title,
+                YAML_MIME,
                 List.of("slideshow", "generated", "index"));
 
         Map<String, Object> stats = new LinkedHashMap<>();
@@ -253,13 +267,13 @@ public class SlideshowApplication implements VanceApplication {
         stats.put("dimensionsKnown", withDim);
         stats.put("totalBytes", totalBytes);
 
-        ArtefactResult index = new ArtefactResult(
-                "index", stored.getPath(),
-                linkBuilder.linkFor(stored, ctx.projectName()),
-                stats);
+        ArtefactResult index =
+                new ArtefactResult("index", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), stats);
 
-        log.info("SlideshowApplication.refresh tenant='{}' folder='{}' "
-                        + "→ {} slides", ctx.tenantId(), scan.folder(),
+        log.info(
+                "SlideshowApplication.refresh tenant='{}' folder='{}' " + "→ {} slides",
+                ctx.tenantId(),
+                scan.folder(),
                 slidesList.size());
 
         return new RefreshResult(APP_NAME, scan.folder(), List.of(index));
@@ -267,29 +281,36 @@ public class SlideshowApplication implements VanceApplication {
 
     // ── Common write path ─────────────────────────────────────────
 
-    private DocumentDocument writeArtefact(RefreshContext ctx,
-                                           String outputPath,
-                                           String body,
-                                           String title,
-                                           String mime,
-                                           List<String> tags) {
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), outputPath);
+    private DocumentDocument writeArtefact(
+            RefreshContext ctx, String outputPath, String body, String title, String mime, List<String> tags) {
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
         if (existing.isPresent()) {
             return documentService.update(
                     existing.get().getId(),
-                    title, tags, body, null, null, null, null, mime,
+                    title,
+                    tags,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    mime,
                     de.mhus.vance.shared.document.DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
-                    ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, tags, mime, in, ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    outputPath,
+                    title,
+                    tags,
+                    mime,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write artefact '" + outputPath + "': " + e.getMessage());
+            throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }
     }
 
@@ -309,8 +330,11 @@ public class SlideshowApplication implements VanceApplication {
     private static Integer asInt(Object v) {
         if (v instanceof Number n) return n.intValue();
         if (v instanceof String s && !s.isBlank()) {
-            try { return Integer.parseInt(s.trim()); }
-            catch (NumberFormatException e) { return null; }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
         }
         return null;
     }

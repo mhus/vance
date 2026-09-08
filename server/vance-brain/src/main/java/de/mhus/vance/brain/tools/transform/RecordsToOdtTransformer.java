@@ -26,14 +26,24 @@ public class RecordsToOdtTransformer implements DocumentTransformer {
     private final DocumentService documentService;
     private final OdtReportRenderer odtRenderer;
 
-    @Override public String targetFormat()    { return "odt"; }
-    @Override public String targetMimeType()  { return odtRenderer.mimeType(); }
-    @Override public String targetExtension() { return odtRenderer.fileExtension(); }
+    @Override
+    public String targetFormat() {
+        return "odt";
+    }
+
+    @Override
+    public String targetMimeType() {
+        return odtRenderer.mimeType();
+    }
+
+    @Override
+    public String targetExtension() {
+        return odtRenderer.fileExtension();
+    }
 
     @Override
     public boolean canTransform(DocumentDocument source) {
-        return RecordsCodec.supports(source.getMimeType())
-                && "records".equalsIgnoreCase(source.getKind());
+        return RecordsCodec.supports(source.getMimeType()) && "records".equalsIgnoreCase(source.getKind());
     }
 
     @Override
@@ -42,19 +52,14 @@ public class RecordsToOdtTransformer implements DocumentTransformer {
         try {
             records = RecordsCodec.parse(loadAsText(source), source.getMimeType());
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse source records document: "
-                            + e.getMessage());
+            throw new ToolException("Could not parse source records document: " + e.getMessage(), e);
         }
         if (records.schema().isEmpty()) {
-            throw new ToolException(
-                    "Source records document has no schema — "
-                            + "nothing to render.");
+            throw new ToolException("Source records document has no schema — " + "nothing to render.");
         }
         String md = RecordsToMarkdownTable.render(records, title);
-        MarkdownReportContext ctx = new MarkdownReportContext(
-                md, title, null,
-                source.getTenantId(), source.getProjectId());
+        MarkdownReportContext ctx =
+                new MarkdownReportContext(md, title, null, source.getTenantId(), source.getProjectId());
         byte[] bytes = odtRenderer.render(ctx);
         return new Result(bytes, title);
     }
@@ -64,9 +69,7 @@ public class RecordsToOdtTransformer implements DocumentTransformer {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read source document content: "
-                            + e.getMessage());
+            throw new ToolException("Could not read source document content: " + e.getMessage(), e);
         }
     }
 }

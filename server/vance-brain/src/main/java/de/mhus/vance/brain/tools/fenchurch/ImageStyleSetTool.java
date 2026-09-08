@@ -32,29 +32,38 @@ public class ImageStyleSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "prefix", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Style prefix to set. Non-blank, max 500 "
-                                            + "characters. Use the literal "
-                                            + "string '__none__' to suppress "
-                                            + "every outer style layer for this "
-                                            + "scope."),
-                    "scope", Map.of(
-                            "type", "string",
-                            "enum", List.of("session", "project", "user", "tenant"),
-                            "description",
-                                    "Cascade scope to write into. Defaults to "
-                                            + "'session' — persistent only for "
-                                            + "the current chat. Use 'user' for "
-                                            + "the calling user's persona, "
-                                            + "'project' for a project-wide "
-                                            + "preference, 'tenant' only if the "
-                                            + "user is an administrator.")),
+            "properties",
+                    Map.of(
+                            "prefix",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Style prefix to set. Non-blank, max 500 "
+                                                    + "characters. Use the literal "
+                                                    + "string '__none__' to suppress "
+                                                    + "every outer style layer for this "
+                                                    + "scope."),
+                            "scope",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("session", "project", "user", "tenant"),
+                                            "description",
+                                            "Cascade scope to write into. Defaults to "
+                                                    + "'session' — persistent only for "
+                                                    + "the current chat. Use 'user' for "
+                                                    + "the calling user's persona, "
+                                                    + "'project' for a project-wide "
+                                                    + "preference, 'tenant' only if the "
+                                                    + "user is an administrator.")),
             "required", List.of("prefix"));
 
-    @Override public String name() { return "image_style_set"; }
+    @Override
+    public String name() {
+        return "image_style_set";
+    }
 
     @Override
     public String description() {
@@ -67,9 +76,20 @@ public class ImageStyleSetTool implements Tool {
                 + "ask the user before writing to a broader scope.";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -80,14 +100,11 @@ public class ImageStyleSetTool implements Tool {
         FenchurchStyleService.Scope scope = parseScope(readString(params, "scope"));
 
         try {
-            styleService.writeScope(
-                    ctx.tenantId(), scope, prefix,
-                    ctx.userId(), ctx.projectId(), ctx.processId());
+            styleService.writeScope(ctx.tenantId(), scope, prefix, ctx.userId(), ctx.projectId(), ctx.processId());
         } catch (IllegalArgumentException e) {
             return error("invalid_argument", e.getMessage(), false);
         } catch (RuntimeException e) {
-            log.info("image_style_set permission/IO failure on scope {}: {}",
-                    scope, e.toString());
+            log.info("image_style_set permission/IO failure on scope {}: {}", scope, e.toString());
             return error("permission_denied", e.getMessage(), false);
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -103,9 +120,7 @@ public class ImageStyleSetTool implements Tool {
         try {
             return FenchurchStyleService.Scope.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new ToolException(
-                    "'scope' must be one of session/project/user/tenant — got '"
-                            + raw + "'");
+            throw new ToolException("'scope' must be one of session/project/user/tenant — got '" + raw + "'", e);
         }
     }
 

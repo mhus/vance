@@ -35,8 +35,7 @@ import org.yaml.snakeyaml.Yaml;
 public class WorkbookValidationService {
 
     /** Fence types this validator covers — used to flag malformed ones. */
-    private static final Set<String> KNOWN_FENCES = Set.of(
-            "vance-form", "vance-input", "vance-button", "vance-embed");
+    private static final Set<String> KNOWN_FENCES = Set.of("vance-form", "vance-input", "vance-button", "vance-embed");
 
     private final DocumentService documentService;
     private final WorkbookFolderReader folderReader;
@@ -58,18 +57,16 @@ public class WorkbookValidationService {
     }
 
     /** Aggregated validation result for one workbook/page. */
-    public record Result(
-            String target,
-            List<Finding> findings,
-            int pagesChecked,
-            int blocksChecked) {
+    public record Result(String target, List<Finding> findings, int pagesChecked, int blocksChecked) {
 
         public boolean ok() {
             return findings.stream().noneMatch(f -> f.level() == Finding.Level.ERROR);
         }
 
         public Map<String, Object> toMap() {
-            long errors = findings.stream().filter(f -> f.level() == Finding.Level.ERROR).count();
+            long errors = findings.stream()
+                    .filter(f -> f.level() == Finding.Level.ERROR)
+                    .count();
             long warnings = findings.size() - errors;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("target", target);
@@ -101,14 +98,14 @@ public class WorkbookValidationService {
             return new Result(p, findings, 1, blocks);
         }
 
-        if (documentService.findByPath(tenantId, projectId, p + "/" + WorkbookFolderReader.APP_MANIFEST)
+        if (documentService
+                .findByPath(tenantId, projectId, p + "/" + WorkbookFolderReader.APP_MANIFEST)
                 .isPresent()) {
             return validateFolder(tenantId, projectId, p, docs);
         }
 
         throw new ToolException(
-                "'" + path + "' is neither a workbook folder (no _app.yaml) nor a "
-                        + "kind: workpage document.");
+                "'" + path + "' is neither a workbook folder (no _app.yaml) nor a " + "kind: workpage document.");
     }
 
     /**
@@ -141,12 +138,11 @@ public class WorkbookValidationService {
 
     private int walkContent(String content, String docPath, DocRefs docs, List<Finding> findings) {
         List<Block> blocks = workPageParser.parseDocument(content).blocks();
-        return walk(blocks, docPath, docs, findings, new int[]{0});
+        return walk(blocks, docPath, docs, findings, new int[] {0});
     }
 
     /** Depth-first walk (descends into columns); returns count of checked fences. */
-    private int walk(List<Block> blocks, String docPath, DocRefs docs,
-                     List<Finding> findings, int[] fenceCount) {
+    private int walk(List<Block> blocks, String docPath, DocRefs docs, List<Finding> findings, int[] fenceCount) {
         int checked = 0;
         for (Block b : blocks) {
             if (b instanceof Block.Columns cols) {
@@ -156,13 +152,14 @@ public class WorkbookValidationService {
                 continue;
             }
             if (b instanceof Block.UnknownFence uf && KNOWN_FENCES.contains(uf.infoString())) {
-                findings.add(Finding.warning(docPath + " (" + uf.infoString() + ")",
+                findings.add(Finding.warning(
+                        docPath + " (" + uf.infoString() + ")",
                         "fence-unparsed",
                         "could not parse the " + uf.infoString() + " fence — malformed YAML?"));
                 continue;
             }
-            List<BlockValidator> matching = blockValidators.stream()
-                    .filter(v -> v.supports(b)).toList();
+            List<BlockValidator> matching =
+                    blockValidators.stream().filter(v -> v.supports(b)).toList();
             if (matching.isEmpty()) continue;
             String location = docPath + " (" + fenceTag(b) + " #" + (++fenceCount[0]) + ")";
             ValidationContext ctx = new ValidationContext(docPath, location, docs);
@@ -188,7 +185,7 @@ public class WorkbookValidationService {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -209,8 +206,10 @@ public class WorkbookValidationService {
 
         @Override
         public @Nullable String kindOf(String path) {
-            return documentService.findByPath(tenantId, projectId, path)
-                    .map(DocumentDocument::getKind).orElse(null);
+            return documentService
+                    .findByPath(tenantId, projectId, path)
+                    .map(DocumentDocument::getKind)
+                    .orElse(null);
         }
 
         @Override

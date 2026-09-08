@@ -62,6 +62,7 @@ public class ApplicationsController {
 
     /** Kind discriminator of an app manifest, as {@code DocumentService} indexes it. */
     private static final String APPLICATION_KIND = "application";
+
     private static final String MANIFEST_SUFFIX = "/" + VanceApplication.APP_MANIFEST;
 
     private final DocumentService documentService;
@@ -105,8 +106,12 @@ public class ApplicationsController {
         }
         project.sort(Comparator.comparing(ApplicationEntryDto::path));
 
-        log.debug("applications list tenant='{}' project='{}' → {} starred, {} in project",
-                tenant, projectId, starred.size(), project.size());
+        log.debug(
+                "applications list tenant='{}' project='{}' → {} starred, {} in project",
+                tenant,
+                projectId,
+                starred.size(),
+                project.size());
         return new ApplicationListResponse(List.copyOf(starred), List.copyOf(project));
     }
 
@@ -134,30 +139,30 @@ public class ApplicationsController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         String user = authority.contextOf(httpRequest).subjectId();
 
-        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "No application manifest at '" + path + "'"));
+        DocumentDocument doc = documentService
+                .findByPath(tenant, projectId, path)
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "No application manifest at '" + path + "'"));
         ApplicationDocument manifest = parseQuietly(doc);
         String appType = manifest == null ? null : manifest.app();
         if (appType == null || appType.isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "Not an application manifest: '" + path + "'");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Not an application manifest: '" + path + "'");
         }
-        VanceApplication app = registry.find(appType).orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Unknown application type '" + appType + "'"));
+        VanceApplication app = registry.find(appType)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Unknown application type '" + appType + "'"));
 
         TargetPurpose parsed = parsePurpose(purpose);
         String folder = folderOf(path);
         List<AppTarget> targets;
         try {
-            targets = app.targets(new TargetsContext(
-                    tenant, projectId, folder, user, parsed, configBlock(manifest, appType)));
+            targets = app.targets(
+                    new TargetsContext(tenant, projectId, folder, user, parsed, configBlock(manifest, appType)));
         } catch (RuntimeException e) {
             // A broken folder is the app's problem to report where it is edited.
             // Here it must not take down the picker: no places is a usable answer,
             // "link to the app itself" still works.
-            log.warn("applications targets: app='{}' folder='{}' failed: {}",
-                    appType, folder, e.toString());
+            log.warn("applications targets: app='{}' folder='{}' failed: {}", appType, folder, e.toString());
             return new ApplicationTargetsResponse(List.of());
         }
         List<ApplicationTargetDto> out = new ArrayList<>(targets.size());
@@ -184,27 +189,22 @@ public class ApplicationsController {
                 .toList();
         List<ApplicationEntryDto> out = new ArrayList<>(items.size());
         for (StarredItem item : items) {
-            if (!permissionService.check(
-                    ctx, new Resource.Project(tenant, item.project()), Action.READ)) {
+            if (!permissionService.check(ctx, new Resource.Project(tenant, item.project()), Action.READ)) {
                 continue;
             }
-            Optional<DocumentDocument> doc =
-                    documentService.findByPath(tenant, item.project(), item.path());
+            Optional<DocumentDocument> doc = documentService.findByPath(tenant, item.project(), item.path());
             if (doc.isEmpty()) continue;
             ApplicationEntryDto entry = entryOf(tenant, item.project(), doc.get());
             if (entry == null) continue;
             // The user's own label for the entry wins over the manifest title.
-            String title = item.title() != null && !item.title().isBlank()
-                    ? item.title() : entry.title();
-            out.add(new ApplicationEntryDto(
-                    entry.project(), entry.path(), entry.app(), title, entry.icon()));
+            String title = item.title() != null && !item.title().isBlank() ? item.title() : entry.title();
+            out.add(new ApplicationEntryDto(entry.project(), entry.path(), entry.app(), title, entry.icon()));
         }
         return out;
     }
 
     /** {@code null} when the document is not a usable app manifest. */
-    private @Nullable ApplicationEntryDto entryOf(
-            String tenant, String project, DocumentDocument doc) {
+    private @Nullable ApplicationEntryDto entryOf(String tenant, String project, DocumentDocument doc) {
 
         String path = doc.getPath();
         if (path == null) return null;
@@ -213,10 +213,9 @@ public class ApplicationsController {
         if (appType == null || appType.isBlank()) return null;
 
         String folder = folderOf(path);
-        String title = manifest.title() != null && !manifest.title().isBlank()
-                ? manifest.title() : leaf(folder);
-        return new ApplicationEntryDto(project, path, appType, title,
-                iconOf(tenant, project, folder, appType, manifest));
+        String title = manifest.title() != null && !manifest.title().isBlank() ? manifest.title() : leaf(folder);
+        return new ApplicationEntryDto(
+                project, path, appType, title, iconOf(tenant, project, folder, appType, manifest));
     }
 
     /**
@@ -224,16 +223,17 @@ public class ApplicationsController {
      * (manifest-level reads, no folder scan), which is what makes it usable in
      * a listing at all; an app that throws anyway just loses its icon.
      */
-    private @Nullable String iconOf(String tenant, String project, String folder,
-                                    String appType, ApplicationDocument manifest) {
+    private @Nullable String iconOf(
+            String tenant, String project, String folder, String appType, ApplicationDocument manifest) {
         Optional<VanceApplication> app = registry.find(appType);
         if (app.isEmpty()) return null;
         try {
-            return app.get().describe(new DescribeContext(
-                    tenant, project, folder, null, configBlock(manifest, appType))).icon();
+            return app.get()
+                    .describe(new DescribeContext(tenant, project, folder, null, configBlock(manifest, appType)))
+                    .icon();
         } catch (RuntimeException e) {
-            log.debug("applications list: describe() failed for app='{}' folder='{}': {}",
-                    appType, folder, e.toString());
+            log.debug(
+                    "applications list: describe() failed for app='{}' folder='{}': {}", appType, folder, e.toString());
             return null;
         }
     }
@@ -242,8 +242,7 @@ public class ApplicationsController {
         try {
             return TargetPurpose.valueOf(raw.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "Unknown purpose '" + raw + "'");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown purpose '" + raw + "'", e);
         }
     }
 
@@ -260,8 +259,7 @@ public class ApplicationsController {
         try {
             return ApplicationCodec.parse(loadAsText(doc), mime);
         } catch (RuntimeException e) {
-            log.warn("applications: could not parse manifest '{}': {}",
-                    doc.getPath(), e.toString());
+            log.warn("applications: could not parse manifest '{}': {}", doc.getPath(), e.toString());
             return null;
         }
     }
@@ -272,16 +270,13 @@ public class ApplicationsController {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new IllegalStateException(
-                    "Could not read manifest '" + doc.getPath() + "'", e);
+            throw new IllegalStateException("Could not read manifest '" + doc.getPath() + "'", e);
         }
     }
 
     /** {@code <folder>/_app.yaml} → {@code <folder>}. */
     private static String folderOf(String path) {
-        return path.endsWith(MANIFEST_SUFFIX)
-                ? path.substring(0, path.length() - MANIFEST_SUFFIX.length())
-                : path;
+        return path.endsWith(MANIFEST_SUFFIX) ? path.substring(0, path.length() - MANIFEST_SUFFIX.length()) : path;
     }
 
     private static String leaf(String folder) {

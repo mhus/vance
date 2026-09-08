@@ -41,29 +41,38 @@ public class ResearchDocumentTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "question", Map.of(
-                            "type", "string",
-                            "description",
-                                    "The research question in natural language. Pass the "
-                                            + "user's wording verbatim; the pipeline plans its "
-                                            + "own search queries internally."),
-                    "path", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional target document path inside the project, e.g. "
-                                            + "'research/tokamak-cooling.md'. Defaults to "
-                                            + "'research/<slug-of-question>.md'. A name clash is "
-                                            + "resolved by appending '-2', '-3', …"),
-                    "tags", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description",
-                                    "Optional extra tags, merged with the 'research' marker "
-                                            + "tag and the topical tags the synthesizer proposes."),
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name. Defaults to the active project.")),
+            "properties",
+                    Map.of(
+                            "question",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "The research question in natural language. Pass the "
+                                                    + "user's wording verbatim; the pipeline plans its "
+                                                    + "own search queries internally."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional target document path inside the project, e.g. "
+                                                    + "'research/tokamak-cooling.md'. Defaults to "
+                                                    + "'research/<slug-of-question>.md'. A name clash is "
+                                                    + "resolved by appending '-2', '-3', …"),
+                            "tags",
+                                    Map.of(
+                                            "type",
+                                            "array",
+                                            "items",
+                                            Map.of("type", "string"),
+                                            "description",
+                                            "Optional extra tags, merged with the 'research' marker "
+                                                    + "tag and the topical tags the synthesizer proposes."),
+                            "projectId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional project name. Defaults to the active project.")),
             "required", List.of("question"));
 
     private final ResearchDocumentService service;
@@ -139,9 +148,7 @@ public class ResearchDocumentTool implements Tool {
         String projectName = project.getName();
 
         String requestedPath = KindToolSupport.paramString(params, "path");
-        String basePath = requestedPath != null
-                ? requestedPath
-                : ResearchDocumentService.deriveDefaultPath(question);
+        String basePath = requestedPath != null ? requestedPath : ResearchDocumentService.deriveDefaultPath(question);
 
         // Fail fast before the expensive research/LLM work if the caller may
         // not create documents here. uniquePath() may land on a '-N' variant
@@ -149,16 +156,18 @@ public class ResearchDocumentTool implements Tool {
         support.enforceDocWrite(ctx, projectName, basePath, Action.CREATE);
 
         List<String> tags = params.get("tags") instanceof List<?> l
-                ? l.stream().filter(String.class::isInstance).map(String.class::cast).toList()
+                ? l.stream()
+                        .filter(String.class::isInstance)
+                        .map(String.class::cast)
+                        .toList()
                 : List.of();
 
         ResearchDocumentResult result;
         try {
             result = service.createDocument(
-                    question, basePath, tags, projectName, ctx,
-                    support.writeActor(ctx, basePath));
+                    question, basePath, tags, projectName, ctx, support.writeActor(ctx, basePath));
         } catch (ZarniwoopException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
         return shape(result);
     }
@@ -177,10 +186,12 @@ public class ResearchDocumentTool implements Tool {
         if (!r.gaps().isEmpty()) {
             out.put("gaps", r.gaps());
         }
-        out.put("hint", "Document saved. The summary above is a cheap stand-in "
-                + "for the full body — read the body with doc_read (path='"
-                + r.path() + "') only when you need detail; the source URLs are "
-                + "attached as notes (doc_note_list).");
+        out.put(
+                "hint",
+                "Document saved. The summary above is a cheap stand-in "
+                        + "for the full body — read the body with doc_read (path='"
+                        + r.path() + "') only when you need detail; the source URLs are "
+                        + "attached as notes (doc_note_list).");
         return out;
     }
 }

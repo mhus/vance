@@ -91,37 +91,42 @@ public class DocumentExpander {
             @Nullable String parentGoal,
             boolean strictMissing) {
         DocumentDocument doc = resolveDocument(tenantId, projectId, documentRef)
-                .orElseThrow(() -> new ExpandError(
-                        "document not found: " + describeRef(documentRef)));
+                .orElseThrow(() -> new ExpandError("document not found: " + describeRef(documentRef)));
 
         String body = readBody(doc);
         String kind = doc.getKind() == null ? "" : doc.getKind().toLowerCase();
         Map<String, String> rootVars = rootVariables(doc);
 
         return switch (kind) {
-            case "list" -> expandList(body, doc.getMimeType(),
-                    childTemplate, parentGoal, rootVars, strictMissing);
-            case "tree" -> expandTree(body, doc.getMimeType(),
-                    childTemplate, parentGoal, rootVars,
-                    !"FLAT".equalsIgnoreCase(treeMode), strictMissing);
-            case "records" -> expandRecords(body, doc.getMimeType(),
-                    childTemplate, parentGoal, rootVars, strictMissing);
-            case "graph" -> throw new ExpandError(
-                    "kind: graph is not supported by EXPAND_FROM_DOC "
-                            + "(no canonical traversal order)");
-            case "" -> throw new ExpandError(
-                    "document has no kind header — needs kind: list / tree / records");
-            default -> throw new ExpandError(
-                    "unsupported kind for EXPAND_FROM_DOC: " + kind);
+            case "list" -> expandList(body, doc.getMimeType(), childTemplate, parentGoal, rootVars, strictMissing);
+            case "tree" ->
+                expandTree(
+                        body,
+                        doc.getMimeType(),
+                        childTemplate,
+                        parentGoal,
+                        rootVars,
+                        !"FLAT".equalsIgnoreCase(treeMode),
+                        strictMissing);
+            case "records" ->
+                expandRecords(body, doc.getMimeType(), childTemplate, parentGoal, rootVars, strictMissing);
+            case "graph" ->
+                throw new ExpandError(
+                        "kind: graph is not supported by EXPAND_FROM_DOC " + "(no canonical traversal order)");
+            case "" -> throw new ExpandError("document has no kind header — needs kind: list / tree / records");
+            default -> throw new ExpandError("unsupported kind for EXPAND_FROM_DOC: " + kind);
         };
     }
 
     // ─────────────────────── kind dispatch ───────────────────────
 
     private ExpansionPlan expandList(
-            String body, @Nullable String mime,
-            Map<String, Object> childTemplate, @Nullable String parentGoal,
-            Map<String, String> rootVars, boolean strictMissing) {
+            String body,
+            @Nullable String mime,
+            Map<String, Object> childTemplate,
+            @Nullable String parentGoal,
+            Map<String, String> rootVars,
+            boolean strictMissing) {
         ListDocument list;
         try {
             list = ListCodec.parse(body, effectiveMime(mime));
@@ -139,9 +144,13 @@ public class DocumentExpander {
     }
 
     private ExpansionPlan expandTree(
-            String body, @Nullable String mime,
-            Map<String, Object> childTemplate, @Nullable String parentGoal,
-            Map<String, String> rootVars, boolean recursive, boolean strictMissing) {
+            String body,
+            @Nullable String mime,
+            Map<String, Object> childTemplate,
+            @Nullable String parentGoal,
+            Map<String, String> rootVars,
+            boolean recursive,
+            boolean strictMissing) {
         TreeDocument tree;
         try {
             tree = TreeCodec.parse(body, effectiveMime(mime));
@@ -151,17 +160,20 @@ public class DocumentExpander {
         List<TemplatedNode> nodes = new ArrayList<>();
         int i = 0;
         for (TreeItem item : tree.items()) {
-            nodes.add(materializeTreeItem(item, i, childTemplate, parentGoal,
-                    rootVars, recursive, strictMissing));
+            nodes.add(materializeTreeItem(item, i, childTemplate, parentGoal, rootVars, recursive, strictMissing));
             i++;
         }
         return new ExpansionPlan(nodes);
     }
 
     private TemplatedNode materializeTreeItem(
-            TreeItem item, int index,
-            Map<String, Object> childTemplate, @Nullable String parentGoal,
-            Map<String, String> rootVars, boolean recursive, boolean strictMissing) {
+            TreeItem item,
+            int index,
+            Map<String, Object> childTemplate,
+            @Nullable String parentGoal,
+            Map<String, String> rootVars,
+            boolean recursive,
+            boolean strictMissing) {
         Map<String, String> vars = treeItemVariables(item, index, parentGoal, rootVars);
         NodeSpec spec = materialize(childTemplate, vars, strictMissing);
         if (!recursive || item.children().isEmpty()) {
@@ -170,17 +182,19 @@ public class DocumentExpander {
         List<TemplatedNode> kids = new ArrayList<>(item.children().size());
         int j = 0;
         for (TreeItem child : item.children()) {
-            kids.add(materializeTreeItem(child, j, childTemplate, parentGoal,
-                    rootVars, true, strictMissing));
+            kids.add(materializeTreeItem(child, j, childTemplate, parentGoal, rootVars, true, strictMissing));
             j++;
         }
         return new TemplatedNode(spec, kids);
     }
 
     private ExpansionPlan expandRecords(
-            String body, @Nullable String mime,
-            Map<String, Object> childTemplate, @Nullable String parentGoal,
-            Map<String, String> rootVars, boolean strictMissing) {
+            String body,
+            @Nullable String mime,
+            Map<String, Object> childTemplate,
+            @Nullable String parentGoal,
+            Map<String, String> rootVars,
+            boolean strictMissing) {
         RecordsDocument records;
         try {
             records = RecordsCodec.parse(body, effectiveMime(mime));
@@ -206,21 +220,16 @@ public class DocumentExpander {
      */
     @SuppressWarnings("unchecked")
     private static NodeSpec materialize(
-            Map<String, Object> childTemplate,
-            Map<String, String> vars,
-            boolean strictMissing) {
+            Map<String, Object> childTemplate, Map<String, String> vars, boolean strictMissing) {
         Object goalRaw = childTemplate.get("goal");
-        String goal = goalRaw instanceof String s
-                ? substitute(s, vars, strictMissing)
-                : "";
+        String goal = goalRaw instanceof String s ? substitute(s, vars, strictMissing) : "";
         TaskKind taskKind = TaskKind.WORKER;
         Object kindRaw = childTemplate.get("taskKind");
         if (kindRaw instanceof String ks && !ks.isBlank()) {
             try {
                 taskKind = TaskKind.valueOf(ks.trim().toUpperCase());
             } catch (IllegalArgumentException e) {
-                throw new ExpandError(
-                        "childTemplate.taskKind '" + ks + "' is not a valid TaskKind");
+                throw new ExpandError("childTemplate.taskKind '" + ks + "' is not a valid TaskKind", e);
             }
         }
         Map<String, Object> taskSpec = new LinkedHashMap<>();
@@ -251,8 +260,7 @@ public class DocumentExpander {
             // Don't clobber values already supplied via the explicit
             // taskSpec block — that one wins.
             if (!taskSpec.containsKey(mappedKey)) {
-                taskSpec.put(mappedKey,
-                        substituteAny(e.getValue(), vars, strictMissing));
+                taskSpec.put(mappedKey, substituteAny(e.getValue(), vars, strictMissing));
             }
         }
         return new NodeSpec(goal, taskKind, taskSpec);
@@ -282,8 +290,7 @@ public class DocumentExpander {
      * from {@code vars}. Missing keys resolve to an empty string in
      * lenient mode and throw in strict mode.
      */
-    private static String substitute(
-            String template, Map<String, String> vars, boolean strictMissing) {
+    private static String substitute(String template, Map<String, String> vars, boolean strictMissing) {
         if (template.indexOf("{{") < 0) return template;
         StringBuilder out = new StringBuilder(template.length());
         int cursor = 0;
@@ -303,9 +310,7 @@ public class DocumentExpander {
             String resolved = vars.get(key);
             if (resolved == null) {
                 if (strictMissing) {
-                    throw new ExpandError(
-                            "template references missing variable '" + key
-                                    + "' (strict mode)");
+                    throw new ExpandError("template references missing variable '" + key + "' (strict mode)");
                 }
                 resolved = "";
             }
@@ -326,8 +331,7 @@ public class DocumentExpander {
     }
 
     private static Map<String, String> listItemVariables(
-            ListItem item, int index,
-            @Nullable String parentGoal, Map<String, String> rootVars) {
+            ListItem item, int index, @Nullable String parentGoal, Map<String, String> rootVars) {
         Map<String, String> vars = new LinkedHashMap<>(rootVars);
         vars.put("index", Integer.toString(index));
         vars.put("index1", Integer.toString(index + 1));
@@ -340,8 +344,7 @@ public class DocumentExpander {
     }
 
     private static Map<String, String> treeItemVariables(
-            TreeItem item, int index,
-            @Nullable String parentGoal, Map<String, String> rootVars) {
+            TreeItem item, int index, @Nullable String parentGoal, Map<String, String> rootVars) {
         Map<String, String> vars = new LinkedHashMap<>(rootVars);
         vars.put("index", Integer.toString(index));
         vars.put("index1", Integer.toString(index + 1));
@@ -354,8 +357,7 @@ public class DocumentExpander {
     }
 
     private static Map<String, String> recordVariables(
-            RecordsItem rec, int index,
-            @Nullable String parentGoal, Map<String, String> rootVars) {
+            RecordsItem rec, int index, @Nullable String parentGoal, Map<String, String> rootVars) {
         Map<String, String> vars = new LinkedHashMap<>(rootVars);
         vars.put("index", Integer.toString(index));
         vars.put("index1", Integer.toString(index + 1));
@@ -380,8 +382,7 @@ public class DocumentExpander {
      * Accepts {@code id}, {@code path} or {@code name}; for {@code name}
      * the document is found via project listing (path basename match).
      */
-    private Optional<DocumentDocument> resolveDocument(
-            String tenantId, String projectId, Map<String, Object> ref) {
+    private Optional<DocumentDocument> resolveDocument(String tenantId, String projectId, Map<String, Object> ref) {
         Object id = ref.get("id");
         if (id instanceof String s && !s.isBlank()) {
             // findById is unscoped; confine the result to the process's own
@@ -390,9 +391,9 @@ public class DocumentExpander {
             // into this process's goals/plan/report (cross-scope leak). The
             // path/name variants below are already project-scoped via findByPath/
             // listByProject.
-            return documentService.findById(s)
-                    .filter(d -> tenantId.equals(d.getTenantId())
-                            && projectId.equals(d.getProjectId()));
+            return documentService
+                    .findById(s)
+                    .filter(d -> tenantId.equals(d.getTenantId()) && projectId.equals(d.getProjectId()));
         }
         Object path = ref.get("path");
         if (path instanceof String p && !p.isBlank()) {
@@ -426,8 +427,7 @@ public class DocumentExpander {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ExpandError("failed to read document '" + doc.getPath() + "': "
-                    + e.getMessage(), e);
+            throw new ExpandError("failed to read document '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -445,7 +445,12 @@ public class DocumentExpander {
     /** Thrown for any unrecoverable problem while expanding — caller
      *  marks the EXPAND node FAILED with the message. */
     public static class ExpandError extends RuntimeException {
-        public ExpandError(String message) { super(message); }
-        public ExpandError(String message, Throwable cause) { super(message, cause); }
+        public ExpandError(String message) {
+            super(message);
+        }
+
+        public ExpandError(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

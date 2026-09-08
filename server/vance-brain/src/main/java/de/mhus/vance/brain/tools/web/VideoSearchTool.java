@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.tools.web;
 
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.settings.SettingService;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -48,22 +48,27 @@ public class VideoSearchTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "query", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Natural-language video search query, "
-                                            + "e.g. 'Lisbon tram 28 ride', "
-                                            + "'how to make sourdough starter'."),
-                    "num", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Maximum results to return (1–"
-                                            + MAX_NUM + ", default "
-                                            + DEFAULT_NUM + "). Validator may "
-                                            + "drop entries whose YouTube embed "
-                                            + "is disabled — final count can be "
-                                            + "lower than requested.")),
+            "properties",
+                    Map.of(
+                            "query",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Natural-language video search query, "
+                                                    + "e.g. 'Lisbon tram 28 ride', "
+                                                    + "'how to make sourdough starter'."),
+                            "num",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Maximum results to return (1–"
+                                                    + MAX_NUM + ", default "
+                                                    + DEFAULT_NUM + "). Validator may "
+                                                    + "drop entries whose YouTube embed "
+                                                    + "is disabled — final count can be "
+                                                    + "lower than requested.")),
             "required", List.of("query"));
 
     private final SettingService settings;
@@ -128,10 +133,9 @@ public class VideoSearchTool implements Tool {
         String apiKey = settings.getDecryptedPasswordCascade(
                 tenantId, ctx.projectId(), ctx.processId(), WebSearchTool.SETTING_KEY);
         if (apiKey == null || apiKey.isBlank()) {
-            return errorResult(
-                    "Serper API key not configured (setting '" + WebSearchTool.SETTING_KEY
-                            + "' in _vance / project / think-process). "
-                            + "Ask the operator to set it.");
+            return errorResult("Serper API key not configured (setting '" + WebSearchTool.SETTING_KEY
+                    + "' in _vance / project / think-process). "
+                    + "Ask the operator to set it.");
         }
 
         List<RawResult> raw;
@@ -141,10 +145,9 @@ public class VideoSearchTool implements Tool {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted while searching videos");
+            throw new ToolException("Interrupted while searching videos", e);
         } catch (Exception e) {
-            log.warn("VideoSearchTool tenant='{}' query='{}' failed: {}",
-                    tenantId, truncate(query, 80), e.toString());
+            log.warn("VideoSearchTool tenant='{}' query='{}' failed: {}", tenantId, truncate(query, 80), e.toString());
             return errorResult("Video search failed: " + e.getMessage());
         }
 
@@ -154,14 +157,19 @@ public class VideoSearchTool implements Tool {
             String videoId = YouTubeValidatorService.extractVideoId(r.videoLink);
             if (videoId == null) {
                 dropped++;
-                log.debug("VideoSearchTool query='{}' dropped non-YouTube link='{}'",
-                        truncate(query, 60), truncate(r.videoLink, 120));
+                log.debug(
+                        "VideoSearchTool query='{}' dropped non-YouTube link='{}'",
+                        truncate(query, 60),
+                        truncate(r.videoLink, 120));
                 continue;
             }
             if (!validator.isEmbeddable(videoId)) {
                 dropped++;
-                log.debug("VideoSearchTool query='{}' dropped non-embeddable id='{}' link='{}'",
-                        truncate(query, 60), videoId, truncate(r.videoLink, 120));
+                log.debug(
+                        "VideoSearchTool query='{}' dropped non-embeddable id='{}' link='{}'",
+                        truncate(query, 60),
+                        videoId,
+                        truncate(r.videoLink, 120));
                 continue;
             }
             Map<String, Object> row = new LinkedHashMap<>();
@@ -174,13 +182,16 @@ public class VideoSearchTool implements Tool {
             if (r.duration != null && !r.duration.isBlank()) row.put("duration", r.duration);
             if (r.channel != null && !r.channel.isBlank()) row.put("channel", r.channel);
             if (r.date != null && !r.date.isBlank()) row.put("date", r.date);
-            row.put("embedFence",
-                    "```youtube\nhttps://youtu.be/" + videoId + "\n```");
+            row.put("embedFence", "```youtube\nhttps://youtu.be/" + videoId + "\n```");
             validRows.add(row);
         }
 
-        log.info("VideoSearchTool query='{}' total={} valid={} dropped={}",
-                truncate(query, 80), raw.size(), validRows.size(), dropped);
+        log.info(
+                "VideoSearchTool query='{}' total={} valid={} dropped={}",
+                truncate(query, 80),
+                raw.size(),
+                validRows.size(),
+                dropped);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("query", query);
         out.put("results", validRows);
@@ -188,17 +199,17 @@ public class VideoSearchTool implements Tool {
         out.put("dropped_count", dropped);
         out.put("total_count", raw.size());
         if (validRows.isEmpty() && dropped > 0) {
-            out.put("note", "All " + dropped + " video URLs failed validation "
-                    + "(non-YouTube host or embed disabled). Search returned "
-                    + "results but none are inline-playable.");
+            out.put(
+                    "note",
+                    "All " + dropped + " video URLs failed validation "
+                            + "(non-YouTube host or embed disabled). Search returned "
+                            + "results but none are inline-playable.");
         }
         return out;
     }
 
-    private List<RawResult> callSerper(String query, int num, String apiKey, String tenantId)
-            throws Exception {
-        String requestBody = objectMapper.writeValueAsString(
-                Map.of("q", query, "num", num));
+    private List<RawResult> callSerper(String query, int num, String apiKey, String tenantId) throws Exception {
+        String requestBody = objectMapper.writeValueAsString(Map.of("q", query, "num", num));
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(SERPER_VIDEOS_URL))
                 .header("X-API-KEY", apiKey)
@@ -208,8 +219,11 @@ public class VideoSearchTool implements Tool {
                 .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) {
-            log.warn("Serper /videos returned status {} for tenant='{}': {}",
-                    response.statusCode(), tenantId, truncate(response.body(), 200));
+            log.warn(
+                    "Serper /videos returned status {} for tenant='{}': {}",
+                    response.statusCode(),
+                    tenantId,
+                    truncate(response.body(), 200));
             throw new ToolException("Video search returned status " + response.statusCode());
         }
         return parseSerper(response.body());

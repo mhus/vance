@@ -52,92 +52,149 @@ public class CalendarCreateTool implements Tool {
     private static final String YAML_MIME = "application/yaml";
 
     private static final Map<String, Object> EVENT_PROPS;
+
     static {
         EVENT_PROPS = new LinkedHashMap<>();
-        EVENT_PROPS.put("id", Map.of(
-                "type", "string",
-                "description", "Stable identifier (UUID). Optional — "
-                        + "a fresh UUID is generated when missing."));
-        EVENT_PROPS.put("title", Map.of(
-                "type", "string",
-                "description", "Display title. Required."));
-        EVENT_PROPS.put("start", Map.of(
-                "type", "string",
-                "description", "ISO-8601 date or date-time. Examples: "
-                        + "'2026-06-12T09:00' (local time), "
-                        + "'2026-06-12T09:00+02:00' (with offset), "
-                        + "'2026-06-12' (all-day). Required."));
-        EVENT_PROPS.put("end", Map.of(
-                "type", "string",
-                "description", "ISO-8601 end. Same format as 'start'. "
-                        + "Omit for zero-duration point events."));
-        EVENT_PROPS.put("allDay", Map.of(
-                "type", "boolean",
-                "description", "True for full-day events. start/end "
-                        + "should then be date-only strings."));
-        EVENT_PROPS.put("location", Map.of(
-                "type", "string",
-                "description", "Free-form (room, address, Zoom link)."));
-        EVENT_PROPS.put("attendees", Map.of(
-                "type", "array",
-                "items", Map.of("type", "string"),
-                "description", "Names / emails / handles."));
-        EVENT_PROPS.put("recurrence", Map.of(
-                "type", "string",
-                "description", "RFC 5545 RRULE, e.g. "
-                        + "'FREQ=WEEKLY;BYDAY=MO,WE;UNTIL=20261231T000000Z'. "
-                        + "Renderer supports FREQ (DAILY/WEEKLY/"
-                        + "MONTHLY/YEARLY), INTERVAL, BYDAY (WEEKLY "
-                        + "only), UNTIL, COUNT. Provide UNTIL or "
-                        + "COUNT — otherwise the view caps at 500 "
-                        + "occurrences."));
-        EVENT_PROPS.put("color", Map.of(
-                "type", "string",
-                "description", "Palette name (blue/green/red/orange/"
-                        + "yellow/purple/pink/teal/gray) or CSS color."));
-        EVENT_PROPS.put("tags", Map.of(
-                "type", "array",
-                "items", Map.of("type", "string"),
-                "description", "Free-form filtering tags."));
-        EVENT_PROPS.put("notes", Map.of(
-                "type", "string",
-                "description", "Multi-line description."));
+        EVENT_PROPS.put(
+                "id",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Stable identifier (UUID). Optional — " + "a fresh UUID is generated when missing."));
+        EVENT_PROPS.put(
+                "title",
+                Map.of(
+                        "type", "string",
+                        "description", "Display title. Required."));
+        EVENT_PROPS.put(
+                "start",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "ISO-8601 date or date-time. Examples: "
+                                + "'2026-06-12T09:00' (local time), "
+                                + "'2026-06-12T09:00+02:00' (with offset), "
+                                + "'2026-06-12' (all-day). Required."));
+        EVENT_PROPS.put(
+                "end",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "ISO-8601 end. Same format as 'start'. " + "Omit for zero-duration point events."));
+        EVENT_PROPS.put(
+                "allDay",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "True for full-day events. start/end " + "should then be date-only strings."));
+        EVENT_PROPS.put(
+                "location",
+                Map.of(
+                        "type", "string",
+                        "description", "Free-form (room, address, Zoom link)."));
+        EVENT_PROPS.put(
+                "attendees",
+                Map.of(
+                        "type", "array",
+                        "items", Map.of("type", "string"),
+                        "description", "Names / emails / handles."));
+        EVENT_PROPS.put(
+                "recurrence",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "RFC 5545 RRULE, e.g. "
+                                + "'FREQ=WEEKLY;BYDAY=MO,WE;UNTIL=20261231T000000Z'. "
+                                + "Renderer supports FREQ (DAILY/WEEKLY/"
+                                + "MONTHLY/YEARLY), INTERVAL, BYDAY (WEEKLY "
+                                + "only), UNTIL, COUNT. Provide UNTIL or "
+                                + "COUNT — otherwise the view caps at 500 "
+                                + "occurrences."));
+        EVENT_PROPS.put(
+                "color",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Palette name (blue/green/red/orange/" + "yellow/purple/pink/teal/gray) or CSS color."));
+        EVENT_PROPS.put(
+                "tags",
+                Map.of(
+                        "type", "array",
+                        "items", Map.of("type", "string"),
+                        "description", "Free-form filtering tags."));
+        EVENT_PROPS.put(
+                "notes",
+                Map.of(
+                        "type", "string",
+                        "description", "Multi-line description."));
     }
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("events", Map.of(
-                        "type", "array",
-                        "items", Map.of(
-                                "type", "object",
-                                "properties", EVENT_PROPS,
-                                "required", List.of("title", "start")),
-                        "description", "Event objects to put into the "
-                                + "calendar. At least one. Order is "
-                                + "preserved round-trip but not "
-                                + "semantically meaningful."));
-                put("title", Map.of(
-                        "type", "string",
-                        "description", "Document title. Default: "
-                                + "'Calendar' (or derived from the "
-                                + "first event for unnamed calendars)."));
-                put("outputPath", Map.of(
-                        "type", "string",
-                        "description", "Storage path. Default: "
-                                + "'calendars/<title-slug>-<timestamp>"
-                                + ".yaml'."));
-                put("projectId", Map.of(
-                        "type", "string",
-                        "description", "Optional project name; "
-                                + "defaults to the active project."));
-                put("overwrite", Map.of(
-                        "type", "boolean",
-                        "description", "When true and outputPath "
-                                + "exists, replace the body instead "
-                                + "of failing. Default false."));
-            }},
-            "required", List.of("events"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "events",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "properties",
+                                            EVENT_PROPS,
+                                            "required",
+                                            List.of("title", "start")),
+                                    "description",
+                                    "Event objects to put into the "
+                                            + "calendar. At least one. Order is "
+                                            + "preserved round-trip but not "
+                                            + "semantically meaningful."));
+                    put(
+                            "title",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Document title. Default: "
+                                            + "'Calendar' (or derived from the "
+                                            + "first event for unnamed calendars)."));
+                    put(
+                            "outputPath",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Storage path. Default: " + "'calendars/<title-slug>-<timestamp>" + ".yaml'."));
+                    put(
+                            "projectId",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional project name; " + "defaults to the active project."));
+                    put(
+                            "overwrite",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "When true and outputPath "
+                                            + "exists, replace the body instead "
+                                            + "of failing. Default false."));
+                }
+            },
+            "required",
+            List.of("events"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
@@ -146,12 +203,13 @@ public class CalendarCreateTool implements Tool {
     private final ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public CalendarCreateTool(EddieContext eddieContext,
-                              DocumentService documentService,
-                              DocumentLinkBuilder linkBuilder,
-                              ThinkProcessService thinkProcessService,
-                              ProgressEmitter progressEmitter,
-                              de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public CalendarCreateTool(
+            EddieContext eddieContext,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            ThinkProcessService thinkProcessService,
+            ProgressEmitter progressEmitter,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
@@ -160,7 +218,10 @@ public class CalendarCreateTool implements Tool {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String name() { return "calendar_create"; }
+    @Override
+    public String name() {
+        return "calendar_create";
+    }
 
     @Override
     public String description() {
@@ -177,7 +238,10 @@ public class CalendarCreateTool implements Tool {
                 + "invites.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -201,12 +265,14 @@ public class CalendarCreateTool implements Tool {
             // LLM can move on.
             Map<String, Object> skipped = new LinkedHashMap<>();
             skipped.put("skipped", true);
-            skipped.put("reason", "Empty events array — no file written. "
-                    + "Lanes are declared in _app.yaml; you don't need "
-                    + "to pre-create an empty calendar file per lane. "
-                    + "Add events to this call when you have them, or "
-                    + "use calendar_app_create(folder, lanes=[…], events=[…]) "
-                    + "for one-shot setup.");
+            skipped.put(
+                    "reason",
+                    "Empty events array — no file written. "
+                            + "Lanes are declared in _app.yaml; you don't need "
+                            + "to pre-create an empty calendar file per lane. "
+                            + "Add events to this call when you have them, or "
+                            + "use calendar_app_create(folder, lanes=[…], events=[…]) "
+                            + "for one-shot setup.");
             return skipped;
         }
 
@@ -227,28 +293,24 @@ public class CalendarCreateTool implements Tool {
         }
 
         String effectiveTitle = title != null ? title : deriveTitle(events);
-        String finalPath = outputPath != null
-                ? outputPath : defaultOutputPath(effectiveTitle);
+        String finalPath = outputPath != null ? outputPath : defaultOutputPath(effectiveTitle);
 
-        CalendarDocument cal = new CalendarDocument(
-                "calendar", events, new LinkedHashMap<>());
+        CalendarDocument cal = new CalendarDocument("calendar", events, new LinkedHashMap<>());
         String yaml = CalendarCodec.serialize(cal, YAML_MIME);
         byte[] bytes = yaml.getBytes(StandardCharsets.UTF_8);
 
-        emit(process, StatusTag.INFO,
-                String.format(Locale.ROOT,
-                        "Writing calendar with %d events to '%s'…",
-                        events.size(), finalPath));
+        emit(
+                process,
+                StatusTag.INFO,
+                String.format(Locale.ROOT, "Writing calendar with %d events to '%s'…", events.size(), finalPath));
 
         DocumentDocument stored;
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), projectName, finalPath);
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), projectName, finalPath);
         if (existing.isPresent()) {
             if (!overwrite) {
-                throw new ToolException(
-                        "A document already exists at '" + finalPath
-                                + "'. Pass overwrite=true to replace "
-                                + "it or pick a different outputPath.");
+                throw new ToolException("A document already exists at '" + finalPath
+                        + "'. Pass overwrite=true to replace "
+                        + "it or pick a different outputPath.");
             }
             stored = documentService.update(
                     existing.get().getId(),
@@ -261,7 +323,8 @@ public class CalendarCreateTool implements Tool {
                     null,
                     YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), existing.get().getPath()));
+                    contextFactory.writeActor(
+                            ctx.tenantId(), ctx.userId(), existing.get().getPath()));
         } else {
             try (InputStream in = new ByteArrayInputStream(bytes)) {
                 stored = documentService.create(
@@ -275,18 +338,20 @@ public class CalendarCreateTool implements Tool {
                         ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not store calendar: " + e.getMessage());
+                throw new ToolException("Could not store calendar: " + e.getMessage(), e);
             }
         }
 
         String vanceUri = DocumentLinkBuilder.buildVanceUri(
-                null, stored.getPath(), "calendar",
-                DocumentLinkBuilder.defaultModeForKind("calendar"));
+                null, stored.getPath(), "calendar", DocumentLinkBuilder.defaultModeForKind("calendar"));
         String markdownLink = linkBuilder.linkFor(stored, projectName);
 
-        log.info("CalendarCreateTool tenant='{}' events={} path='{}' overwrite={}",
-                ctx.tenantId(), events.size(), finalPath, existing.isPresent());
+        log.info(
+                "CalendarCreateTool tenant='{}' events={} path='{}' overwrite={}",
+                ctx.tenantId(),
+                events.size(),
+                finalPath,
+                existing.isPresent());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("path", stored.getPath());
@@ -331,15 +396,13 @@ public class CalendarCreateTool implements Tool {
         String title = stringOrNull(raw.get("title"));
         if (title == null) {
             throw new ToolException(
-                    "events[" + (rowIndex - 1) + "] is missing "
-                            + "'title' — required for every event.");
+                    "events[" + (rowIndex - 1) + "] is missing " + "'title' — required for every event.");
         }
         String start = stringOrNull(raw.get("start"));
         if (start == null) {
-            throw new ToolException(
-                    "events[" + (rowIndex - 1) + "] ('" + title
-                            + "') is missing 'start' — every event "
-                            + "needs an ISO-8601 anchor date/time.");
+            throw new ToolException("events[" + (rowIndex - 1) + "] ('" + title
+                    + "') is missing 'start' — every event "
+                    + "needs an ISO-8601 anchor date/time.");
         }
         String idStr = stringOrNull(raw.get("id"));
         String id = idStr != null ? idStr : UUID.randomUUID().toString();
@@ -353,8 +416,17 @@ public class CalendarCreateTool implements Tool {
         List<String> tags = stringList(raw.get("tags"));
 
         return new CalendarEvent(
-                id, title, start, end, allDay,
-                location, attendees, recurrence, color, tags, notes,
+                id,
+                title,
+                start,
+                end,
+                allDay,
+                location,
+                attendees,
+                recurrence,
+                color,
+                tags,
+                notes,
                 new LinkedHashMap<>());
     }
 
@@ -387,12 +459,10 @@ public class CalendarCreateTool implements Tool {
     }
 
     static String defaultOutputPath(@Nullable String title) {
-        String stamp = DateTimeFormatter
-                .ofPattern("yyyy-MM-dd-HHmmss")
+        String stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
                 .withZone(ZoneOffset.UTC)
                 .format(Instant.now());
-        String slug = (title == null || title.isBlank())
-                ? "calendar" : IcsToCalendarTool.slug(title);
+        String slug = (title == null || title.isBlank()) ? "calendar" : IcsToCalendarTool.slug(title);
         return "calendars/" + slug + "-" + stamp + ".yaml";
     }
 
@@ -404,8 +474,7 @@ public class CalendarCreateTool implements Tool {
         return opt.orElse(null);
     }
 
-    private void emit(@Nullable ThinkProcessDocument process,
-                      StatusTag tag, String text) {
+    private void emit(@Nullable ThinkProcessDocument process, StatusTag tag, String text) {
         if (process == null) return;
         progressEmitter.emitStatus(process, tag, text);
     }
@@ -423,8 +492,7 @@ public class CalendarCreateTool implements Tool {
     }
 
     @SuppressWarnings("unchecked")
-    private static @Nullable List<Map<String, Object>> paramMapList(
-            @Nullable Map<String, Object> params, String key) {
+    private static @Nullable List<Map<String, Object>> paramMapList(@Nullable Map<String, Object> params, String key) {
         if (params == null) return null;
         Object v = params.get(key);
         if (!(v instanceof List<?> list)) return null;

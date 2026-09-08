@@ -51,17 +51,21 @@ public class DesktopApplication implements VanceApplication {
     private final DocumentLinkBuilder linkBuilder;
     private final SecurityContextFactory contextFactory;
 
-    public DesktopApplication(DesktopStatusService statusService,
-                              DocumentService documentService,
-                              DocumentLinkBuilder linkBuilder,
-                              SecurityContextFactory contextFactory) {
+    public DesktopApplication(
+            DesktopStatusService statusService,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            SecurityContextFactory contextFactory) {
         this.statusService = statusService;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
         this.contextFactory = contextFactory;
     }
 
-    @Override public String appName() { return APP_NAME; }
+    @Override
+    public String appName() {
+        return APP_NAME;
+    }
 
     @Override
     public AppCard describe(DescribeContext ctx) {
@@ -84,23 +88,23 @@ public class DesktopApplication implements VanceApplication {
 
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
-        DesktopView view = statusService.aggregate(
-                ctx.tenantId(), ctx.projectName(), ctx.folder(), ctx.userId());
+        DesktopView view = statusService.aggregate(ctx.tenantId(), ctx.projectName(), ctx.folder(), ctx.userId());
 
         String body = renderSnapshot(view);
         String outputPath = ctx.folder() + "/" + SNAPSHOT_FILE;
-        DocumentDocument stored = writeArtefact(ctx, outputPath, body,
-                "Desktop — " + leaf(ctx.folder()));
+        DocumentDocument stored = writeArtefact(ctx, outputPath, body, "Desktop — " + leaf(ctx.folder()));
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("appCount", view.getCards().size());
 
-        ArtefactResult art = new ArtefactResult(
-                "desktop", stored.getPath(),
-                linkBuilder.linkFor(stored, ctx.projectName()), stats);
+        ArtefactResult art =
+                new ArtefactResult("desktop", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), stats);
 
-        log.info("DesktopApplication.refresh tenant='{}' folder='{}' → {} apps",
-                ctx.tenantId(), ctx.folder(), view.getCards().size());
+        log.info(
+                "DesktopApplication.refresh tenant='{}' folder='{}' → {} apps",
+                ctx.tenantId(),
+                ctx.folder(),
+                view.getCards().size());
         return new RefreshResult(APP_NAME, ctx.folder(), List.of(art));
     }
 
@@ -118,10 +122,14 @@ public class DesktopApplication implements VanceApplication {
             if (c.getStatus() != null && c.getStatus().getHeadline() != null) {
                 statusCell = escapeCell(c.getStatus().getHeadline());
             }
-            sb.append("| ").append(c.getIcon()).append(' ')
+            sb.append("| ")
+                    .append(c.getIcon())
+                    .append(' ')
                     .append(escapeCell(c.getTitle()))
-                    .append(" | ").append(escapeCell(c.getApp()))
-                    .append(" | ").append(statusCell)
+                    .append(" | ")
+                    .append(escapeCell(c.getApp()))
+                    .append(" | ")
+                    .append(statusCell)
                     .append(" |\n");
         }
         return sb.toString();
@@ -131,26 +139,36 @@ public class DesktopApplication implements VanceApplication {
         return s.replace("|", "\\|").replace("\n", " ");
     }
 
-    private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath,
-                                           String body, String title) {
+    private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath, String body, String title) {
         List<String> tags = List.of("common-desktop", "generated", "desktop");
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), outputPath);
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
         if (existing.isPresent()) {
             return documentService.update(
-                    existing.get().getId(), title, tags, body,
-                    null, null, null, null, MD_MIME,
+                    existing.get().getId(),
+                    title,
+                    tags,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    MD_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
-                    ctx.tenantId(), ctx.projectName(), outputPath, title,
-                    tags, MD_MIME, in, ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    outputPath,
+                    title,
+                    tags,
+                    MD_MIME,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write artefact '" + outputPath + "': " + e.getMessage());
+            throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }
     }
 
@@ -162,12 +180,11 @@ public class DesktopApplication implements VanceApplication {
         Map<String, Object> params = ctx.params() != null ? ctx.params() : new LinkedHashMap<>();
         String manifestPath = folder + "/" + APP_MANIFEST;
 
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), manifestPath);
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
             throw new ToolException(
-                    "Manifest already exists at '" + manifestPath
-                            + "'. Pass overwrite=true to replace it.");
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -186,9 +203,8 @@ public class DesktopApplication implements VanceApplication {
 
         Map<String, Object> appConfig = new LinkedHashMap<>();
         appConfig.put(APP_NAME, block);
-        ApplicationDocument manifest = new ApplicationDocument(
-                "application", APP_NAME, title, description,
-                appConfig, new LinkedHashMap<>());
+        ApplicationDocument manifest =
+                new ApplicationDocument("application", APP_NAME, title, description, appConfig, new LinkedHashMap<>());
         String manifestBody = ApplicationCodec.serialize(manifest, YAML_MIME);
 
         DocumentDocument stored;
@@ -196,39 +212,55 @@ public class DesktopApplication implements VanceApplication {
         String docTitle = title != null ? title : "Desktop";
         if (existing.isPresent()) {
             stored = documentService.update(
-                    existing.get().getId(), docTitle, tags,
-                    manifestBody, null, null, null, null, YAML_MIME,
+                    existing.get().getId(),
+                    docTitle,
+                    tags,
+                    manifestBody,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
-            try (InputStream in = new ByteArrayInputStream(
-                    manifestBody.getBytes(StandardCharsets.UTF_8))) {
+            try (InputStream in = new ByteArrayInputStream(manifestBody.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
-                        ctx.tenantId(), ctx.projectName(), manifestPath,
-                        docTitle, tags, YAML_MIME, in, ctx.userId(),
+                        ctx.tenantId(),
+                        ctx.projectName(),
+                        manifestPath,
+                        docTitle,
+                        tags,
+                        YAML_MIME,
+                        in,
+                        ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not write manifest '" + manifestPath
-                                + "': " + e.getMessage());
+                throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
         }
 
         // Produce the first snapshot so the desktop is immediately usable.
-        RefreshContext rc = new RefreshContext(
-                ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
+        RefreshContext rc =
+                new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
         List<ArtefactResult> artefacts = refresh(rc).artefacts();
 
         Map<String, Object> stats = new LinkedHashMap<>();
         if (title != null) stats.put("title", title);
 
-        log.info("DesktopApplication.create tenant='{}' folder='{}' manifestPath='{}'",
-                ctx.tenantId(), folder, manifestPath);
+        log.info(
+                "DesktopApplication.create tenant='{}' folder='{}' manifestPath='{}'",
+                ctx.tenantId(),
+                folder,
+                manifestPath);
 
         return new CreateResult(
-                APP_NAME, folder, stored.getPath(),
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
-                List.of(), artefacts,
+                List.of(),
+                artefacts,
                 "Desktop ready — open it, or add apps under this folder "
                         + "and re-run app_rebuild to refresh the board.",
                 stats);

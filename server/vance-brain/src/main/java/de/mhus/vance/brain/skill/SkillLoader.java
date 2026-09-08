@@ -60,8 +60,7 @@ public class SkillLoader {
 
     private static final String FRONTMATTER_FENCE = "---";
     private static final String BUNDLED_LISTING_PATTERN =
-            "classpath*:" + DocumentService.RESOURCE_PREFIX
-                    + SKILL_PATH_PREFIX + "*/" + SKILL_ENTRY_FILE;
+            "classpath*:" + DocumentService.RESOURCE_PREFIX + SKILL_PATH_PREFIX + "*/" + SKILL_ENTRY_FILE;
 
     private final DocumentService documentService;
     private final PathMatchingResourcePatternResolver resourcePatternResolver =
@@ -75,10 +74,7 @@ public class SkillLoader {
      * tier has the skill marked {@code enabled: false}.
      */
     public Optional<ResolvedSkill> load(
-            String tenantId,
-            @Nullable String userId,
-            @Nullable String projectId,
-            String name) {
+            String tenantId, @Nullable String userId, @Nullable String projectId, String name) {
         if (name == null || name.isBlank()) {
             return Optional.empty();
         }
@@ -88,29 +84,27 @@ public class SkillLoader {
         // 1. USER layer (own user only — caller filters / enforces this).
         if (userId != null && !userId.isBlank()) {
             String userProject = HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId;
-            Optional<DocumentDocument> userDoc =
-                    documentService.findByPath(tenantId, userProject, entryPath);
+            Optional<DocumentDocument> userDoc = documentService.findByPath(tenantId, userProject, entryPath);
             if (userDoc.isPresent()) {
-                return Optional.of(parse(stem, userDoc.get(), SkillScope.USER,
-                        new ProjectSiblingReader(tenantId, userProject)));
+                return Optional.of(
+                        parse(stem, userDoc.get(), SkillScope.USER, new ProjectSiblingReader(tenantId, userProject)));
             }
         }
 
         // 2. PROJECT → VANCE → RESOURCE via DocumentService cascade.
-        String effectiveProjectId = (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                tenantId, effectiveProjectId, entryPath);
+        String effectiveProjectId =
+                (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
+        Optional<LookupResult> hit = documentService.lookupCascade(tenantId, effectiveProjectId, entryPath);
         if (hit.isEmpty()) return Optional.empty();
         LookupResult result = hit.get();
 
         SkillScope scope = mapScope(result.source());
-        SiblingReader siblingReader = switch (result.source()) {
-            case PROJECT -> new ProjectSiblingReader(tenantId, effectiveProjectId);
-            case VANCE -> new ProjectSiblingReader(
-                    tenantId, HomeBootstrapService.TENANT_PROJECT_NAME);
-            case RESOURCE -> new ResourceSiblingReader();
-        };
+        SiblingReader siblingReader =
+                switch (result.source()) {
+                    case PROJECT -> new ProjectSiblingReader(tenantId, effectiveProjectId);
+                    case VANCE -> new ProjectSiblingReader(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME);
+                    case RESOURCE -> new ResourceSiblingReader();
+                };
         return Optional.of(parse(stem, result, scope, siblingReader));
     }
 
@@ -121,10 +115,7 @@ public class SkillLoader {
      * cascade-deduplication by name (most specific scope wins).
      * Disabled skills are skipped.
      */
-    public List<ResolvedSkill> listAvailable(
-            String tenantId,
-            @Nullable String userId,
-            @Nullable String projectId) {
+    public List<ResolvedSkill> listAvailable(String tenantId, @Nullable String userId, @Nullable String projectId) {
         Map<String, ResolvedSkill> byName = new LinkedHashMap<>();
 
         // Outer-to-inner so inner layers overwrite outer entries.
@@ -132,25 +123,18 @@ public class SkillLoader {
             if (r.enabled()) byName.put(r.name(), r);
         }
         addProjectLayer(byName, tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, SkillScope.VANCE);
-        if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             addProjectLayer(byName, tenantId, projectId, SkillScope.PROJECT);
         }
         if (userId != null && !userId.isBlank()) {
-            addProjectLayer(byName, tenantId,
-                    HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId,
-                    SkillScope.USER);
+            addProjectLayer(byName, tenantId, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, SkillScope.USER);
         }
         return new ArrayList<>(byName.values());
     }
 
     // ─── Layer helpers ─────────────────────────────────────────────────────
 
-    private void addProjectLayer(
-            Map<String, ResolvedSkill> acc,
-            String tenantId,
-            String projectId,
-            SkillScope scope) {
+    private void addProjectLayer(Map<String, ResolvedSkill> acc, String tenantId, String projectId, SkillScope scope) {
         SiblingReader siblings = new ProjectSiblingReader(tenantId, projectId);
         for (DocumentDocument doc : documentService.listByProject(tenantId, projectId)) {
             String path = doc.getPath();
@@ -165,8 +149,12 @@ public class SkillLoader {
                     acc.remove(parsed.name());
                 }
             } catch (RuntimeException e) {
-                log.warn("SkillLoader: skipping malformed skill tenant='{}' project='{}' path='{}': {}",
-                        tenantId, projectId, path, e.getMessage());
+                log.warn(
+                        "SkillLoader: skipping malformed skill tenant='{}' project='{}' path='{}': {}",
+                        tenantId,
+                        projectId,
+                        path,
+                        e.getMessage());
             }
         }
     }
@@ -176,8 +164,7 @@ public class SkillLoader {
         try {
             resources = resourcePatternResolver.getResources(BUNDLED_LISTING_PATTERN);
         } catch (IOException e) {
-            log.warn("Failed to scan bundled skills under '{}': {}",
-                    BUNDLED_LISTING_PATTERN, e.toString());
+            log.warn("Failed to scan bundled skills under '{}': {}", BUNDLED_LISTING_PATTERN, e.toString());
             return List.of();
         }
         List<ResolvedSkill> out = new ArrayList<>(resources.length);
@@ -190,8 +177,7 @@ public class SkillLoader {
                 String raw = new String(in.readAllBytes(), StandardCharsets.UTF_8);
                 out.add(parse(stem, raw, SkillScope.RESOURCE, siblings, stem));
             } catch (RuntimeException | IOException e) {
-                log.warn("SkillLoader: skipping malformed bundled skill '{}': {}",
-                        stem, e.getMessage());
+                log.warn("SkillLoader: skipping malformed bundled skill '{}': {}", stem, e.getMessage());
             }
         }
         return out;
@@ -211,8 +197,7 @@ public class SkillLoader {
         if (path == null) return null;
         if (!path.startsWith(SKILL_PATH_PREFIX)) return null;
         if (!path.endsWith("/" + SKILL_ENTRY_FILE)) return null;
-        String inner = path.substring(SKILL_PATH_PREFIX.length(),
-                path.length() - ("/" + SKILL_ENTRY_FILE).length());
+        String inner = path.substring(SKILL_PATH_PREFIX.length(), path.length() - ("/" + SKILL_ENTRY_FILE).length());
         if (inner.isBlank() || inner.contains("/")) return null;
         return inner;
     }
@@ -238,20 +223,12 @@ public class SkillLoader {
         };
     }
 
-    private ResolvedSkill parse(
-            String stem,
-            DocumentDocument doc,
-            SkillScope scope,
-            SiblingReader siblings) {
+    private ResolvedSkill parse(String stem, DocumentDocument doc, SkillScope scope, SiblingReader siblings) {
         String content = readDocAsString(doc);
         return parse(stem, content, scope, siblings, stem);
     }
 
-    private ResolvedSkill parse(
-            String stem,
-            LookupResult result,
-            SkillScope scope,
-            SiblingReader siblings) {
+    private ResolvedSkill parse(String stem, LookupResult result, SkillScope scope, SiblingReader siblings) {
         String content = result.content() == null ? "" : result.content();
         return parse(stem, content, scope, siblings, stem);
     }
@@ -274,11 +251,7 @@ public class SkillLoader {
      * classpath round-trip.
      */
     static ResolvedSkill parse(
-            String stem,
-            String raw,
-            SkillScope scope,
-            SiblingReader siblings,
-            String skillFolderStem) {
+            String stem, String raw, SkillScope scope, SiblingReader siblings, String skillFolderStem) {
         Frontmatter fm = splitFrontmatter(raw, stem);
         Yaml yaml = new Yaml();
         Object parsed = yaml.load(fm.frontmatter);
@@ -286,8 +259,7 @@ public class SkillLoader {
             throw new IllegalStateException("skill '" + stem + "': empty frontmatter");
         }
         if (!(parsed instanceof Map<?, ?> m)) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "': frontmatter must be a YAML map");
+            throw new IllegalStateException("skill '" + stem + "': frontmatter must be a YAML map");
         }
         Map<String, Object> spec = (Map<String, Object>) m;
 
@@ -295,8 +267,7 @@ public class SkillLoader {
         String name = declaredName == null ? stem : declaredName.toLowerCase().trim();
         if (declaredName != null && !declaredName.equalsIgnoreCase(stem)) {
             throw new IllegalStateException(
-                    "skill folder '" + stem + "' does not match declared name '"
-                            + declaredName + "'");
+                    "skill folder '" + stem + "' does not match declared name '" + declaredName + "'");
         }
         String title = requireString(spec, "title", stem);
         String description = requireString(spec, "description", stem);
@@ -310,8 +281,7 @@ public class SkillLoader {
         String promptExtension = fm.body.isBlank() ? null : fm.body.strip();
         List<ResolvedSkill.ReferenceDoc> refDocs =
                 parseReferenceDocs(spec.get("referenceDocs"), stem, skillFolderStem, siblings);
-        List<ResolvedSkill.Script> scripts =
-                parseScripts(spec.get("scripts"), stem, skillFolderStem, siblings);
+        List<ResolvedSkill.Script> scripts = parseScripts(spec.get("scripts"), stem, skillFolderStem, siblings);
         List<EngineCommand> activate = parseCommandList(spec.get("activate"), stem, "activate");
         List<EngineCommand> deactivate = parseCommandList(spec.get("deactivate"), stem, "deactivate");
         SkillLifecycle lifecycle = parseLifecycle(spec.get("lifecycle"), stem);
@@ -325,18 +295,35 @@ public class SkillLoader {
         // running). A shot skill with triggers but no commands is
         // therefore a no-op on that path; warn instead of failing, the
         // explicit /skill route still works.
-        if (lifecycle == SkillLifecycle.SHOT
-                && !triggers.isEmpty() && activate.isEmpty()) {
-            log.warn("skill '{}': lifecycle=shot with triggers but no activate: commands — "
-                    + "auto-trigger will be a no-op (use lifecycle: sticky, or invoke "
-                    + "explicitly via /skill)", stem);
+        if (lifecycle == SkillLifecycle.SHOT && !triggers.isEmpty() && activate.isEmpty()) {
+            log.warn(
+                    "skill '{}': lifecycle=shot with triggers but no activate: commands — "
+                            + "auto-trigger will be a no-op (use lifecycle: sticky, or invoke "
+                            + "explicitly via /skill)",
+                    stem);
         }
 
         return new ResolvedSkill(
-                name, title, description, version,
-                triggers, promptExtension, tools, manualPaths, refDocs, scripts,
-                tags, enabled, scope, activate, deactivate, lifecycle,
-                args.consumes(), args.declared(), action, run);
+                name,
+                title,
+                description,
+                version,
+                triggers,
+                promptExtension,
+                tools,
+                manualPaths,
+                refDocs,
+                scripts,
+                tags,
+                enabled,
+                scope,
+                activate,
+                deactivate,
+                lifecycle,
+                args.consumes(),
+                args.declared(),
+                action,
+                run);
     }
 
     /**
@@ -389,45 +376,42 @@ public class SkillLoader {
                 : switch (targetRaw.trim().toLowerCase(Locale.ROOT)) {
                     case "inline" -> SkillRun.Target.INLINE;
                     case "spawn" -> SkillRun.Target.SPAWN;
-                    default -> throw new IllegalStateException(
-                            "skill '" + stem + "': unknown run.target '" + targetRaw
-                                    + "' (expected inline|spawn)");
+                    default ->
+                        throw new IllegalStateException(
+                                "skill '" + stem + "': unknown run.target '" + targetRaw + "' (expected inline|spawn)");
                 };
 
         if (target == SkillRun.Target.INLINE) {
             if (recipe != null || inherit != null) {
-                log.warn("skill '{}': run.recipe / run.inherit are ignored without "
-                        + "run.target: spawn", stem);
+                log.warn("skill '{}': run.recipe / run.inherit are ignored without " + "run.target: spawn", stem);
             }
             return SkillRun.INLINE;
         }
 
         if (recipe == null || recipe.isBlank()) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "': run.target: spawn requires run.recipe");
+            throw new IllegalStateException("skill '" + stem + "': run.target: spawn requires run.recipe");
         }
         if (action == null || action.isBlank()) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "': run.target: spawn requires an 'action:' prompt — "
-                            + "without it the spawned worker would idle (the body is the "
-                            + "child's system prompt, not its task)");
+            throw new IllegalStateException("skill '" + stem + "': run.target: spawn requires an 'action:' prompt — "
+                    + "without it the spawned worker would idle (the body is the "
+                    + "child's system prompt, not its task)");
         }
         if (lifecycle == SkillLifecycle.SHOT) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "': run.target: spawn cannot combine with "
-                            + "lifecycle: shot — spawn registers the skill sticky in the "
-                            + "child, shot registers it nowhere");
+            throw new IllegalStateException("skill '" + stem + "': run.target: spawn cannot combine with "
+                    + "lifecycle: shot — spawn registers the skill sticky in the "
+                    + "child, shot registers it nowhere");
         }
         if (!triggers.isEmpty()) {
-            log.warn("skill '{}': run.target: spawn with triggers — the auto-trigger path "
-                    + "never spawns (a turn is already running); triggers are a no-op here, "
-                    + "invoke explicitly via /skill", stem);
+            log.warn(
+                    "skill '{}': run.target: spawn with triggers — the auto-trigger path "
+                            + "never spawns (a turn is already running); triggers are a no-op here, "
+                            + "invoke explicitly via /skill",
+                    stem);
         }
         return new SkillRun(
                 SkillRun.Target.SPAWN,
                 recipe.trim(),
-                inherit == null || inherit.isBlank()
-                        ? SkillRun.DEFAULT_INHERIT : inherit.trim());
+                inherit == null || inherit.isBlank() ? SkillRun.DEFAULT_INHERIT : inherit.trim());
     }
 
     /** Outcome of {@link #parseArguments} — the two {@code arguments:} facets. */
@@ -462,28 +446,26 @@ public class SkillLoader {
             return b ? new ParsedArguments(true, List.of()) : ParsedArguments.NONE;
         }
         if (!(raw instanceof List<?> list)) {
-            throw new IllegalStateException("skill '" + stem
-                    + "': 'arguments' must be true or a list of argument declarations");
+            throw new IllegalStateException(
+                    "skill '" + stem + "': 'arguments' must be true or a list of argument declarations");
         }
         List<ResolvedSkill.Argument> out = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
             if (!(list.get(i) instanceof Map<?, ?> rawSpec)) {
-                throw new IllegalStateException("skill '" + stem + "': arguments[" + i
-                        + "] must be a map");
+                throw new IllegalStateException("skill '" + stem + "': arguments[" + i + "] must be a map");
             }
             Map<String, Object> argSpec = (Map<String, Object>) rawSpec;
             String argName = stringOrNull(argSpec.get("name"));
             if (argName == null || argName.isBlank()) {
-                throw new IllegalStateException("skill '" + stem + "': arguments[" + i
-                        + "].name is required");
+                throw new IllegalStateException("skill '" + stem + "': arguments[" + i + "].name is required");
             }
             String type = stringOrNull(argSpec.get("type"));
             if (type == null || type.isBlank()) {
                 type = "string";
             }
             if (!SCRIPT_PARAM_TYPES.contains(type)) {
-                throw new IllegalStateException("skill '" + stem + "': arguments[" + i
-                        + "].type '" + type + "' must be one of " + SCRIPT_PARAM_TYPES);
+                throw new IllegalStateException("skill '" + stem + "': arguments[" + i + "].type '" + type
+                        + "' must be one of " + SCRIPT_PARAM_TYPES);
             }
             String description = stringOrNull(argSpec.get("description"));
             boolean required = argSpec.get("required") instanceof Boolean r && r;
@@ -502,21 +484,20 @@ public class SkillLoader {
             return List.of();
         }
         if (!(raw instanceof List<?> list)) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "': '" + field + "' must be a list of command strings");
+            throw new IllegalStateException("skill '" + stem + "': '" + field + "' must be a list of command strings");
         }
         List<EngineCommand> out = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
             Object item = list.get(i);
             if (!(item instanceof String str) || str.isBlank()) {
-                throw new IllegalStateException("skill '" + stem + "': " + field + "[" + i
-                        + "] must be a non-blank command string");
+                throw new IllegalStateException(
+                        "skill '" + stem + "': " + field + "[" + i + "] must be a non-blank command string");
             }
             try {
                 out.add(EngineCommand.parse(str));
             } catch (IllegalArgumentException e) {
-                throw new IllegalStateException("skill '" + stem + "': " + field + "[" + i
-                        + "] invalid command: " + e.getMessage());
+                throw new IllegalStateException(
+                        "skill '" + stem + "': " + field + "[" + i + "] invalid command: " + e.getMessage(), e);
             }
         }
         return List.copyOf(out);
@@ -533,8 +514,7 @@ public class SkillLoader {
             return null;
         }
         if (!(raw instanceof String s)) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "': 'action' must be a string");
+            throw new IllegalStateException("skill '" + stem + "': 'action' must be a string");
         }
         String stripped = s.strip();
         return stripped.isEmpty() ? null : stripped;
@@ -550,8 +530,9 @@ public class SkillLoader {
         return switch (s.trim().toLowerCase(Locale.ROOT)) {
             case "sticky" -> SkillLifecycle.STICKY;
             case "shot" -> SkillLifecycle.SHOT;
-            default -> throw new IllegalStateException(
-                    "skill '" + stem + "': unknown lifecycle '" + s + "' (expected sticky|shot)");
+            default ->
+                throw new IllegalStateException(
+                        "skill '" + stem + "': unknown lifecycle '" + s + "' (expected sticky|shot)");
         };
     }
 
@@ -576,8 +557,7 @@ public class SkillLoader {
         for (String p : rawList) {
             String norm = p.replace('\\', '/').trim();
             if (norm.contains("..") || norm.startsWith("/")) {
-                throw new IllegalStateException(
-                        "skill '" + stem + "': invalid manualPaths entry '" + p + "'");
+                throw new IllegalStateException("skill '" + stem + "': invalid manualPaths entry '" + p + "'");
             }
             out.add(norm);
         }
@@ -589,18 +569,15 @@ public class SkillLoader {
     private static Frontmatter splitFrontmatter(String raw, String stem) {
         String text = raw.replace("\r\n", "\n");
         if (!text.startsWith(FRONTMATTER_FENCE)) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "' must start with a YAML frontmatter fence '---'");
+            throw new IllegalStateException("skill '" + stem + "' must start with a YAML frontmatter fence '---'");
         }
         int firstFenceEnd = text.indexOf('\n');
         if (firstFenceEnd < 0) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "' has no body after the opening fence");
+            throw new IllegalStateException("skill '" + stem + "' has no body after the opening fence");
         }
         int closingFence = text.indexOf("\n" + FRONTMATTER_FENCE, firstFenceEnd);
         if (closingFence < 0) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "' is missing a closing '---' fence");
+            throw new IllegalStateException("skill '" + stem + "' is missing a closing '---' fence");
         }
         String frontmatter = text.substring(firstFenceEnd + 1, closingFence);
         int afterClosing = closingFence + ("\n" + FRONTMATTER_FENCE).length();
@@ -613,15 +590,13 @@ public class SkillLoader {
     private static List<ResolvedSkill.Trigger> parseTriggers(Object raw, String stem) {
         if (raw == null) return List.of();
         if (!(raw instanceof List<?> list)) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "': 'triggers' must be a list");
+            throw new IllegalStateException("skill '" + stem + "': 'triggers' must be a list");
         }
         List<ResolvedSkill.Trigger> out = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
             Object item = list.get(i);
             if (!(item instanceof Map<?, ?> mm)) {
-                throw new IllegalStateException(
-                        "skill '" + stem + "': triggers[" + i + "] must be a map");
+                throw new IllegalStateException("skill '" + stem + "': triggers[" + i + "] must be a map");
             }
             Map<String, Object> spec = (Map<String, Object>) mm;
             String typeRaw = requireString(spec, "type", stem + " triggers[" + i + "]");
@@ -629,23 +604,19 @@ public class SkillLoader {
             try {
                 type = SkillTriggerType.valueOf(typeRaw.trim().toUpperCase());
             } catch (IllegalArgumentException e) {
-                throw new IllegalStateException(
-                        "skill '" + stem + "': unknown trigger type '" + typeRaw + "'");
+                throw new IllegalStateException("skill '" + stem + "': unknown trigger type '" + typeRaw + "'", e);
             }
             String pattern = stringOrNull(spec.get("pattern"));
-            List<String> keywords = stringList(
-                    spec.get("keywords"), stem, "triggers[" + i + "].keywords");
+            List<String> keywords = stringList(spec.get("keywords"), stem, "triggers[" + i + "].keywords");
             switch (type) {
                 case PATTERN -> {
                     if (pattern == null) {
-                        throw new IllegalStateException(
-                                "skill '" + stem + "': PATTERN trigger needs 'pattern'");
+                        throw new IllegalStateException("skill '" + stem + "': PATTERN trigger needs 'pattern'");
                     }
                 }
                 case KEYWORDS -> {
                     if (keywords.isEmpty()) {
-                        throw new IllegalStateException(
-                                "skill '" + stem + "': KEYWORDS trigger needs 'keywords'");
+                        throw new IllegalStateException("skill '" + stem + "': KEYWORDS trigger needs 'keywords'");
                     }
                 }
             }
@@ -679,46 +650,42 @@ public class SkillLoader {
             Object raw, String stem, String skillFolderStem, SiblingReader siblings) {
         if (raw == null) return List.of();
         if (!(raw instanceof List<?> list)) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "': 'scripts' must be a list");
+            throw new IllegalStateException("skill '" + stem + "': 'scripts' must be a list");
         }
         List<ResolvedSkill.Script> out = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
             Object item = list.get(i);
             if (!(item instanceof Map<?, ?> mm)) {
-                throw new IllegalStateException(
-                        "skill '" + stem + "': scripts[" + i + "] must be a map");
+                throw new IllegalStateException("skill '" + stem + "': scripts[" + i + "] must be a map");
             }
             @SuppressWarnings("unchecked")
             Map<String, Object> spec = (Map<String, Object>) mm;
-            String name = requireString(spec, "name",
-                    stem + " scripts[" + i + "]");
-            String targetRaw = requireString(spec, "target",
-                    stem + " scripts[" + i + "]");
+            String name = requireString(spec, "name", stem + " scripts[" + i + "]");
+            String targetRaw = requireString(spec, "target", stem + " scripts[" + i + "]");
             de.mhus.vance.api.skills.ScriptTarget target;
             try {
-                target = de.mhus.vance.api.skills.ScriptTarget
-                        .valueOf(targetRaw.trim().toUpperCase());
+                target = de.mhus.vance.api.skills.ScriptTarget.valueOf(
+                        targetRaw.trim().toUpperCase());
             } catch (IllegalArgumentException e) {
                 throw new IllegalStateException(
-                        "skill '" + stem + "' scripts[" + i + "]: unknown target '"
-                                + targetRaw + "' (expected BRAIN or FOOT)");
+                        "skill '" + stem + "' scripts[" + i + "]: unknown target '" + targetRaw
+                                + "' (expected BRAIN or FOOT)",
+                        e);
             }
             if (target == de.mhus.vance.api.skills.ScriptTarget.FOOT) {
-                log.warn("Skill '{}' script '{}' targets FOOT — not implemented in v1, "
+                log.warn(
+                        "Skill '{}' script '{}' targets FOOT — not implemented in v1, "
                                 + "dropping declaration. Phase-4 of skills.md §13 is open.",
-                        stem, name);
+                        stem,
+                        name);
                 continue;
             }
-            String relativePath = requireString(spec, "file",
-                    stem + " scripts[" + i + "]");
+            String relativePath = requireString(spec, "file", stem + " scripts[" + i + "]");
             String body = siblings.read(skillFolderStem, relativePath)
                     .orElseThrow(() -> new IllegalStateException(
-                            "skill '" + stem + "': script file '" + relativePath
-                                    + "' not found in this layer"));
+                            "skill '" + stem + "': script file '" + relativePath + "' not found in this layer"));
             String description = stringOrNull(spec.get("description"));
-            List<ResolvedSkill.Script.ScriptParam> params =
-                    parseScriptParams(spec.get("params"), stem, i);
+            List<ResolvedSkill.Script.ScriptParam> params = parseScriptParams(spec.get("params"), stem, i);
             out.add(new ResolvedSkill.Script(name, target, description, params, body));
         }
         return List.copyOf(out);
@@ -726,8 +693,8 @@ public class SkillLoader {
 
     /** Accepted JSON-Schema primitive types for a declared script param.
      *  Kept deliberately small — scripts do their own deep validation. */
-    private static final java.util.Set<String> SCRIPT_PARAM_TYPES = java.util.Set.of(
-            "string", "number", "integer", "boolean", "object", "array");
+    private static final java.util.Set<String> SCRIPT_PARAM_TYPES =
+            java.util.Set.of("string", "number", "integer", "boolean", "object", "array");
 
     /**
      * Parses the optional {@code params} list of a script entry into
@@ -738,21 +705,18 @@ public class SkillLoader {
      * {@code required} (default {@code false}) are optional.
      */
     @SuppressWarnings("unchecked")
-    private static List<ResolvedSkill.Script.ScriptParam> parseScriptParams(
-            Object raw, String stem, int scriptIndex) {
+    private static List<ResolvedSkill.Script.ScriptParam> parseScriptParams(Object raw, String stem, int scriptIndex) {
         if (raw == null) return List.of();
         if (!(raw instanceof List<?> list)) {
             throw new IllegalStateException(
-                    "skill '" + stem + "' scripts[" + scriptIndex
-                            + "]: 'params' must be a list");
+                    "skill '" + stem + "' scripts[" + scriptIndex + "]: 'params' must be a list");
         }
         List<ResolvedSkill.Script.ScriptParam> out = new ArrayList<>(list.size());
         for (int j = 0; j < list.size(); j++) {
             Object item = list.get(j);
             if (!(item instanceof Map<?, ?> mm)) {
                 throw new IllegalStateException(
-                        "skill '" + stem + "' scripts[" + scriptIndex
-                                + "].params[" + j + "] must be a map");
+                        "skill '" + stem + "' scripts[" + scriptIndex + "].params[" + j + "] must be a map");
             }
             Map<String, Object> spec = (Map<String, Object>) mm;
             String ctx = stem + " scripts[" + scriptIndex + "].params[" + j + "]";
@@ -760,8 +724,7 @@ public class SkillLoader {
             String type = requireString(spec, "type", ctx).toLowerCase();
             if (!SCRIPT_PARAM_TYPES.contains(type)) {
                 throw new IllegalStateException(
-                        ctx + ": unknown param type '" + type + "' (expected one of "
-                                + SCRIPT_PARAM_TYPES + ")");
+                        ctx + ": unknown param type '" + type + "' (expected one of " + SCRIPT_PARAM_TYPES + ")");
             }
             String description = stringOrNull(spec.get("description"));
             boolean required = spec.get("required") instanceof Boolean b && b;
@@ -774,15 +737,13 @@ public class SkillLoader {
             Object raw, String stem, String skillFolderStem, SiblingReader siblings) {
         if (raw == null) return List.of();
         if (!(raw instanceof List<?> list)) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "': 'referenceDocs' must be a list");
+            throw new IllegalStateException("skill '" + stem + "': 'referenceDocs' must be a list");
         }
         List<ResolvedSkill.ReferenceDoc> out = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
             Object item = list.get(i);
             if (!(item instanceof Map<?, ?> mm)) {
-                throw new IllegalStateException(
-                        "skill '" + stem + "': referenceDocs[" + i + "] must be a map");
+                throw new IllegalStateException("skill '" + stem + "': referenceDocs[" + i + "] must be a map");
             }
             Map<String, Object> spec = (Map<String, Object>) mm;
             String title = requireString(spec, "title", stem + " referenceDocs[" + i + "]");
@@ -793,14 +754,12 @@ public class SkillLoader {
                 try {
                     loadMode = SkillReferenceDocLoadMode.valueOf(s.trim().toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    throw new IllegalStateException(
-                            "skill '" + stem + "': unknown loadMode '" + s + "'");
+                    throw new IllegalStateException("skill '" + stem + "': unknown loadMode '" + s + "'", e);
                 }
             }
             String content = siblings.read(skillFolderStem, relativePath)
                     .orElseThrow(() -> new IllegalStateException(
-                            "skill '" + stem + "': reference file '" + relativePath
-                                    + "' not found in this layer"));
+                            "skill '" + stem + "': reference file '" + relativePath + "' not found in this layer"));
             String summary = stringOrNull(spec.get("summary"));
             out.add(new ResolvedSkill.ReferenceDoc(title, content, loadMode, summary));
         }
@@ -810,8 +769,7 @@ public class SkillLoader {
     private static String requireString(Map<String, Object> spec, String key, String context) {
         Object raw = spec.get(key);
         if (!(raw instanceof String s) || s.isBlank()) {
-            throw new IllegalStateException(
-                    context + ": missing required string '" + key + "'");
+            throw new IllegalStateException(context + ": missing required string '" + key + "'");
         }
         return s.trim();
     }
@@ -824,15 +782,13 @@ public class SkillLoader {
     private static List<String> stringList(Object raw, String stem, String fieldName) {
         if (raw == null) return List.of();
         if (!(raw instanceof List<?> list)) {
-            throw new IllegalStateException(
-                    "skill '" + stem + "': '" + fieldName + "' must be a list");
+            throw new IllegalStateException("skill '" + stem + "': '" + fieldName + "' must be a list");
         }
         List<String> out = new ArrayList<>(list.size());
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
                 throw new IllegalStateException(
-                        "skill '" + stem + "': '" + fieldName
-                                + "' contains a non-string or blank entry");
+                        "skill '" + stem + "': '" + fieldName + "' contains a non-string or blank entry");
             }
             out.add(s);
         }
@@ -858,16 +814,15 @@ public class SkillLoader {
         @Override
         public Optional<String> read(String skillFolderStem, String relativePath) {
             String path = siblingPathFor(skillFolderStem, relativePath);
-            return documentService.findByPath(tenantId, projectId, path)
-                    .map(SkillLoader.this::readDocAsString);
+            return documentService.findByPath(tenantId, projectId, path).map(SkillLoader.this::readDocAsString);
         }
     }
 
     private final class ResourceSiblingReader implements SiblingReader {
         @Override
         public Optional<String> read(String skillFolderStem, String relativePath) {
-            String resourcePath = "classpath:" + DocumentService.RESOURCE_PREFIX
-                    + siblingPathFor(skillFolderStem, relativePath);
+            String resourcePath =
+                    "classpath:" + DocumentService.RESOURCE_PREFIX + siblingPathFor(skillFolderStem, relativePath);
             Resource resource = resourcePatternResolver.getResource(resourcePath);
             if (!resource.exists() || !resource.isReadable()) {
                 return Optional.empty();

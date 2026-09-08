@@ -43,7 +43,7 @@ final class ImageToolArgs {
         try {
             return Integer.parseInt(raw.toString().trim());
         } catch (NumberFormatException e) {
-            throw new ToolException("'" + key + "' must be an integer, got '" + raw + "'");
+            throw new ToolException("'" + key + "' must be an integer, got '" + raw + "'", e);
         }
     }
 
@@ -56,7 +56,7 @@ final class ImageToolArgs {
         try {
             return Integer.parseInt(s);
         } catch (NumberFormatException e) {
-            throw new ToolException("'" + key + "' must be an integer, got '" + raw + "'");
+            throw new ToolException("'" + key + "' must be an integer, got '" + raw + "'", e);
         }
     }
 
@@ -71,7 +71,7 @@ final class ImageToolArgs {
         try {
             return Double.parseDouble(raw.toString().trim());
         } catch (NumberFormatException e) {
-            throw new ToolException("'" + key + "' must be a number, got '" + raw + "'");
+            throw new ToolException("'" + key + "' must be a number, got '" + raw + "'", e);
         }
     }
 
@@ -84,7 +84,7 @@ final class ImageToolArgs {
         try {
             return Double.parseDouble(s);
         } catch (NumberFormatException e) {
-            throw new ToolException("'" + key + "' must be a number, got '" + raw + "'");
+            throw new ToolException("'" + key + "' must be a number, got '" + raw + "'", e);
         }
     }
 

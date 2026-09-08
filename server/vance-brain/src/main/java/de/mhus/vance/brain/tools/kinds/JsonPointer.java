@@ -52,8 +52,8 @@ public final class JsonPointer {
      *  via the {@code rootSetter}. Returns the previous value at the
      *  position, or {@code null}. */
     @SuppressWarnings("unchecked")
-    public static @Nullable Object set(Object root, String[] path, @Nullable Object value,
-                                       java.util.function.Consumer<Object> rootSetter) {
+    public static @Nullable Object set(
+            Object root, String[] path, @Nullable Object value, java.util.function.Consumer<Object> rootSetter) {
         if (path.length == 0) {
             rootSetter.accept(value);
             return root;
@@ -124,8 +124,8 @@ public final class JsonPointer {
                 List<Object> list = (List<Object>) rawList;
                 int idx = parseIndex(token);
                 if (idx < 0 || idx >= list.size()) {
-                    throw new ToolException("Cannot auto-create list index " + token
-                            + " at " + format(java.util.Arrays.copyOfRange(path, 0, i + 1)));
+                    throw new ToolException("Cannot auto-create list index " + token + " at "
+                            + format(java.util.Arrays.copyOfRange(path, 0, i + 1)));
                 }
                 cur = list.get(idx);
                 if (cur == null) {
@@ -133,8 +133,8 @@ public final class JsonPointer {
                     list.set(idx, cur);
                 }
             } else {
-                throw new ToolException("Path token '" + token + "' at depth " + i
-                        + " runs into a non-container value");
+                throw new ToolException(
+                        "Path token '" + token + "' at depth " + i + " runs into a non-container value");
             }
         }
         return cur;
@@ -144,7 +144,7 @@ public final class JsonPointer {
         try {
             return Integer.parseInt(token);
         } catch (NumberFormatException e) {
-            throw new ToolException("Expected array index, got '" + token + "'");
+            throw new ToolException("Expected array index, got '" + token + "'", e);
         }
     }
 

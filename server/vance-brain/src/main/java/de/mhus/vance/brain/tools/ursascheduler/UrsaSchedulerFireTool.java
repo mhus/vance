@@ -33,22 +33,26 @@ import org.springframework.stereotype.Component;
 public class UrsaSchedulerFireTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("name", Map.of(
-                "type", "string",
-                "description", "Scheduler name (without .yaml suffix)."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", props,
-                "required", List.of("name"));
+        props.put(
+                "name",
+                Map.of(
+                        "type", "string",
+                        "description", "Scheduler name (without .yaml suffix)."));
+        SCHEMA = Map.of("type", "object", "properties", props, "required", List.of("name"));
     }
 
     private final UrsaSchedulerService schedulerService;
 
-    @Override public String name() { return "scheduler_fire"; }
+    @Override
+    public String name() {
+        return "scheduler_fire";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Trigger a scheduler immediately, bypassing its cron schedule. "
                 + "Returns the correlationId and the path of the scheduler-log "
                 + "document — read it with doc_read to see whether the run "
@@ -56,9 +60,20 @@ public class UrsaSchedulerFireTool implements Tool {
                 + "as for a cron tick; the run is marked trigger=manual.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("admin", "scheduler"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("admin", "scheduler");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -70,16 +85,19 @@ public class UrsaSchedulerFireTool implements Tool {
         try {
             outcome = schedulerService.fireNow(ctx.tenantId(), ctx.projectId(), name);
         } catch (IllegalArgumentException ex) {
-            throw new ToolException(ex.getMessage());
+            throw new ToolException(ex.getMessage(), ex);
         }
         // Path is computed from the same firedAt the writer uses, so
         // the document is guaranteed to exist at exactly this path
         // (no second-boundary race between the two Instant.now() calls).
         String logPath = SchedulerLogService.pathFor(name, outcome.firedAt(), outcome.correlationId());
         return Map.of(
-                "correlationId", outcome.correlationId(),
-                "logPath", logPath,
-                "note", "Run started. Read '" + logPath + "' via doc_read for status/outcome.");
+                "correlationId",
+                outcome.correlationId(),
+                "logPath",
+                logPath,
+                "note",
+                "Run started. Read '" + logPath + "' via doc_read for status/outcome.");
     }
 
     private static String stringOrThrow(Map<String, Object> params, String key) {

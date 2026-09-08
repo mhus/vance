@@ -160,7 +160,9 @@ public record BistromathConfig(
             // the logical path `config.custom` — the reader has the file open.
             throw new ToolException("Manifest block `" + BLOCK + "` is not a mapping.");
         }
-        return new BistromathConfig(optional(map.get("landing")), optional(map.get("init")),
+        return new BistromathConfig(
+                optional(map.get("landing")),
+                optional(map.get("init")),
                 stringList(map.get("required"), "required"),
                 map.containsKey("rest") ? stringList(map.get("rest"), "rest") : null,
                 refreshSeconds(map.get("refresh")));
@@ -196,20 +198,17 @@ public record BistromathConfig(
         if (raw instanceof Number n) {
             // A fractional interval is a sub-second poll asked for indirectly.
             if (n.doubleValue() != Math.floor(n.doubleValue())) {
-                throw new ToolException("Manifest key `refresh` is whole seconds, not `"
-                        + raw + "`.");
+                throw new ToolException("Manifest key `refresh` is whole seconds, not `" + raw + "`.");
             }
             seconds = n.intValue();
         } else if (raw instanceof String str) {
             try {
                 seconds = Integer.parseInt(str.trim());
             } catch (NumberFormatException e) {
-                throw new ToolException("Manifest key `refresh` is a number of seconds, not `"
-                        + raw + "`.");
+                throw new ToolException("Manifest key `refresh` is a number of seconds, not `" + raw + "`.", e);
             }
         } else {
-            throw new ToolException("Manifest key `refresh` is a number of seconds, not `"
-                    + raw + "`.");
+            throw new ToolException("Manifest key `refresh` is a number of seconds, not `" + raw + "`.");
         }
         if (seconds < MIN_REFRESH_SECONDS) {
             throw new ToolException("Manifest key `refresh` is " + seconds

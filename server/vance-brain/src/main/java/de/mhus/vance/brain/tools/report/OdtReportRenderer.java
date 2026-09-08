@@ -100,7 +100,7 @@ public class OdtReportRenderer implements MarkdownReportRenderer {
             doc.save(out);
             return out.toByteArray();
         } catch (Exception e) {
-            throw new ToolException("ODT rendering failed: " + e.getMessage());
+            throw new ToolException("ODT rendering failed: " + e.getMessage(), e);
         }
     }
 

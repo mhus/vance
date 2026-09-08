@@ -28,19 +28,28 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RecordsToCsvTransformer implements DocumentTransformer {
 
-    private static final byte[] UTF8_BOM = new byte[]{
-            (byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+    private static final byte[] UTF8_BOM = new byte[] {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
 
     private final DocumentService documentService;
 
-    @Override public String targetFormat()    { return "csv"; }
-    @Override public String targetMimeType()  { return "text/csv"; }
-    @Override public String targetExtension() { return "csv"; }
+    @Override
+    public String targetFormat() {
+        return "csv";
+    }
+
+    @Override
+    public String targetMimeType() {
+        return "text/csv";
+    }
+
+    @Override
+    public String targetExtension() {
+        return "csv";
+    }
 
     @Override
     public boolean canTransform(DocumentDocument source) {
-        return RecordsCodec.supports(source.getMimeType())
-                && "records".equalsIgnoreCase(source.getKind());
+        return RecordsCodec.supports(source.getMimeType()) && "records".equalsIgnoreCase(source.getKind());
     }
 
     @Override
@@ -49,14 +58,10 @@ public class RecordsToCsvTransformer implements DocumentTransformer {
         try {
             records = RecordsCodec.parse(loadAsText(source), source.getMimeType());
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse source records document: "
-                            + e.getMessage());
+            throw new ToolException("Could not parse source records document: " + e.getMessage(), e);
         }
         if (records.schema().isEmpty()) {
-            throw new ToolException(
-                    "Source records document has no schema — "
-                            + "nothing to export.");
+            throw new ToolException("Source records document has no schema — " + "nothing to export.");
         }
         byte[] body = render(records).getBytes(StandardCharsets.UTF_8);
         byte[] out = new byte[UTF8_BOM.length + body.length];
@@ -79,8 +84,7 @@ public class RecordsToCsvTransformer implements DocumentTransformer {
         for (RecordsItem item : records.items()) {
             for (int i = 0; i < schema.size(); i++) {
                 if (i > 0) sb.append(',');
-                sb.append(quoteIfNeeded(
-                        item.values().getOrDefault(schema.get(i), "")));
+                sb.append(quoteIfNeeded(item.values().getOrDefault(schema.get(i), "")));
             }
             sb.append("\r\n");
         }
@@ -104,8 +108,7 @@ public class RecordsToCsvTransformer implements DocumentTransformer {
         // before RFC-4180 quoting — matching the typed-cell safety on the
         // XLSX/ODT paths.
         char first = v.charAt(0);
-        if (first == '=' || first == '+' || first == '-' || first == '@'
-                || first == '\t' || first == '\r') {
+        if (first == '=' || first == '+' || first == '-' || first == '@' || first == '\t' || first == '\r') {
             v = "'" + v;
         }
         boolean needsQuote = false;
@@ -116,8 +119,7 @@ public class RecordsToCsvTransformer implements DocumentTransformer {
                 break;
             }
         }
-        if (!needsQuote && (v.charAt(0) == ' '
-                || v.charAt(v.length() - 1) == ' ')) {
+        if (!needsQuote && (v.charAt(0) == ' ' || v.charAt(v.length() - 1) == ' ')) {
             needsQuote = true;
         }
         if (!needsQuote) return v;
@@ -129,9 +131,7 @@ public class RecordsToCsvTransformer implements DocumentTransformer {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read source document content: "
-                            + e.getMessage());
+            throw new ToolException("Could not read source document content: " + e.getMessage(), e);
         }
     }
 }

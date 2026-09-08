@@ -12,7 +12,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -35,56 +34,89 @@ import org.springframework.stereotype.Component;
 public class CalendarAggregateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of(
-                        "type", "string",
-                        "description", "Suite folder containing _app.yaml "
-                                + "(app: calendar) and the per-lane "
-                                + "calendar files."));
-                put("from", Map.of(
-                        "type", "string",
-                        "description", "ISO date (yyyy-MM-dd) — earliest "
-                                + "occurrence. Default: 7 days before "
-                                + "today."));
-                put("to", Map.of(
-                        "type", "string",
-                        "description", "ISO date (yyyy-MM-dd) — latest "
-                                + "occurrence. Default: 30 days after "
-                                + "today."));
-                put("lanes", Map.of(
-                        "type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "Restrict to these lanes. Empty "
-                                + "= all."));
-                put("tags", Map.of(
-                        "type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "Only events carrying at least "
-                                + "one of these tags. Empty = all."));
-                put("expandRecurring", Map.of(
-                        "type", "boolean",
-                        "description", "Expand RRULEs into concrete "
-                                + "occurrences. Default true — when "
-                                + "the user asks 'what's next week' "
-                                + "they mean every standup, not the "
-                                + "recurrence-rule head."));
-                put("projectId", Map.of(
-                        "type", "string",
-                        "description", "Default: active project."));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Suite folder containing _app.yaml "
+                                            + "(app: calendar) and the per-lane "
+                                            + "calendar files."));
+                    put(
+                            "from",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "ISO date (yyyy-MM-dd) — earliest "
+                                            + "occurrence. Default: 7 days before "
+                                            + "today."));
+                    put(
+                            "to",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "ISO date (yyyy-MM-dd) — latest "
+                                            + "occurrence. Default: 30 days after "
+                                            + "today."));
+                    put(
+                            "lanes",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "Restrict to these lanes. Empty " + "= all."));
+                    put(
+                            "tags",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "Only events carrying at least " + "one of these tags. Empty = all."));
+                    put(
+                            "expandRecurring",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Expand RRULEs into concrete "
+                                            + "occurrences. Default true — when "
+                                            + "the user asks 'what's next week' "
+                                            + "they mean every standup, not the "
+                                            + "recurrence-rule head."));
+                    put(
+                            "projectId",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Default: active project."));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final CalendarFolderReader folderReader;
 
-    public CalendarAggregateTool(EddieContext eddieContext,
-                                 CalendarFolderReader folderReader) {
+    public CalendarAggregateTool(EddieContext eddieContext, CalendarFolderReader folderReader) {
         this.eddieContext = eddieContext;
         this.folderReader = folderReader;
     }
 
-    @Override public String name() { return "calendar_aggregate"; }
+    @Override
+    public String name() {
+        return "calendar_aggregate";
+    }
 
     @Override
     public String description() {
@@ -97,7 +129,10 @@ public class CalendarAggregateTool implements Tool {
                 + "write any file.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -117,8 +152,7 @@ public class CalendarAggregateTool implements Tool {
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         String projectName = project.getName();
 
-        CalendarFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), projectName, folder);
+        CalendarFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), projectName, folder);
 
         // Default window: last 7 days, next 30 days. Covers both
         // 'was hatte ich letzte Woche?' (small backward look) and
@@ -182,10 +216,14 @@ public class CalendarAggregateTool implements Tool {
         result.put("lanes", lanes);
         result.put("events", output);
 
-        log.info("CalendarAggregateTool tenant='{}' folder='{}' "
-                        + "events={} window={}..{} lanes={}",
-                ctx.tenantId(), scan.folder(), output.size(),
-                fromDate, toDate, lanes.size());
+        log.info(
+                "CalendarAggregateTool tenant='{}' folder='{}' " + "events={} window={}..{} lanes={}",
+                ctx.tenantId(),
+                scan.folder(),
+                output.size(),
+                fromDate,
+                toDate,
+                lanes.size());
 
         return result;
     }
@@ -199,8 +237,7 @@ public class CalendarAggregateTool implements Tool {
         if (anchor.start().isBefore(rangeStart) || anchor.start().isAfter(rangeEnd)) {
             return Collections.emptyList();
         }
-        return List.of(new RecurrenceExpander.Occurrence(
-                ev, anchor.start(), anchor.end(), anchor.allDay()));
+        return List.of(new RecurrenceExpander.Occurrence(ev, anchor.start(), anchor.end(), anchor.allDay()));
     }
 
     private static boolean matchesTags(CalendarEvent ev, List<String> tagFilter) {
@@ -216,8 +253,7 @@ public class CalendarAggregateTool implements Tool {
         try {
             return LocalDate.parse(iso);
         } catch (java.time.format.DateTimeParseException e) {
-            throw new ToolException(
-                    "Could not parse date '" + iso + "' — expected ISO yyyy-MM-dd.");
+            throw new ToolException("Could not parse date '" + iso + "' — expected ISO yyyy-MM-dd.", e);
         }
     }
 

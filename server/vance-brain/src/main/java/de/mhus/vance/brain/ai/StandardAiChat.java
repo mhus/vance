@@ -96,9 +96,7 @@ public class StandardAiChat implements AiChat {
             @Nullable MessageParser messageParser) {
         this.name = name;
         this.providerType = providerType;
-        this.modelCapabilities = modelCapabilities == null
-                ? Set.of()
-                : Set.copyOf(modelCapabilities);
+        this.modelCapabilities = modelCapabilities == null ? Set.of() : Set.copyOf(modelCapabilities);
         // Decorator stack — innermost first:
         //   provider ChatModel  (raw)
         //     ↑
@@ -118,12 +116,10 @@ public class StandardAiChat implements AiChat {
         // which is how a provider without a sync side stayed invisible
         // until it was put into a multi-entry chain.
         if (sync == null) {
-            throw new IllegalArgumentException(
-                    "sync ChatModel is null for '" + name + "' — an AiChat must carry "
-                            + "both a sync and a streaming model");
+            throw new IllegalArgumentException("sync ChatModel is null for '" + name + "' — an AiChat must carry "
+                    + "both a sync and a streaming model");
         }
-        this.sync = maybeSanitize(wrapSync(name, sync, options),
-                sanitizer, stripThinkTags, messageParser);
+        this.sync = maybeSanitize(wrapSync(name, sync, options), sanitizer, stripThinkTags, messageParser);
         this.streaming = wrapStreaming(name, streaming, options, messageParser);
         this.options = options;
     }
@@ -140,8 +136,7 @@ public class StandardAiChat implements AiChat {
      * layer only ever retries the model it wraps.
      */
     private static ChatModel wrapSync(String name, ChatModel raw, AiChatOptions options) {
-        ChatModel logged = new LoggingChatModel(
-                name, raw, options.getLlmTraceWriter(), options.getMetricService());
+        ChatModel logged = new LoggingChatModel(name, raw, options.getLlmTraceWriter(), options.getMetricService());
         return new ResilientChatModel(
                 List.of(new SyncChainEntry(logged, name, RetryPolicy.DEFAULT)),
                 options.getUserNotifier(),
@@ -189,8 +184,8 @@ public class StandardAiChat implements AiChat {
         if (raw == null) {
             return null;
         }
-        StreamingChatModel logged = new LoggingStreamingChatModel(
-                name, raw, options.getLlmTraceWriter(), options.getMetricService());
+        StreamingChatModel logged =
+                new LoggingStreamingChatModel(name, raw, options.getLlmTraceWriter(), options.getMetricService());
         StreamingChatModel resilient = new ResilientStreamingChatModel(
                 List.of(new ChainEntry(logged, name, RetryPolicy.DEFAULT)),
                 options.getUserNotifier(),
@@ -217,16 +212,12 @@ public class StandardAiChat implements AiChat {
             ChatResponse response = sync.chat(buildRequest(question, attachments));
             return response.aiMessage().text();
         } catch (RuntimeException e) {
-            throw new AiChatException(
-                    "Sync call failed for '" + name + "': " + e.getMessage(), e);
+            throw new AiChatException("Sync call failed for '" + name + "': " + e.getMessage(), e);
         }
     }
 
     @Override
-    public String askStream(
-            String question,
-            Consumer<String> tokenConsumer,
-            List<ResolvedAttachment> attachments) {
+    public String askStream(String question, Consumer<String> tokenConsumer, List<ResolvedAttachment> attachments) {
         if (question == null || question.isBlank()) {
             throw new AiChatException("question is blank");
         }
@@ -268,14 +259,12 @@ public class StandardAiChat implements AiChat {
             return result.get();
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            throw new AiChatException(
-                    "Stream failed for '" + name + "': " + cause.getMessage(), cause);
+            throw new AiChatException("Stream failed for '" + name + "': " + cause.getMessage(), cause);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new AiChatException("Stream interrupted for '" + name + "'", e);
         } catch (RuntimeException e) {
-            throw new AiChatException(
-                    "Stream failed for '" + name + "': " + e.getMessage(), e);
+            throw new AiChatException("Stream failed for '" + name + "': " + e.getMessage(), e);
         }
     }
 
@@ -296,8 +285,7 @@ public class StandardAiChat implements AiChat {
         return streaming != null;
     }
 
-    private ChatRequest buildRequest(
-            String question, @Nullable List<ResolvedAttachment> attachments) {
+    private ChatRequest buildRequest(String question, @Nullable List<ResolvedAttachment> attachments) {
         List<ChatMessage> messages = new ArrayList<>();
         String system = options.getSystemMessage();
         if (system != null && !system.isBlank()) {
@@ -319,8 +307,7 @@ public class StandardAiChat implements AiChat {
      * cache) reward this ordering — the static prefix stays stable
      * across turns.
      */
-    private UserMessage buildUserMessage(
-            String question, @Nullable List<ResolvedAttachment> attachments) {
+    private UserMessage buildUserMessage(String question, @Nullable List<ResolvedAttachment> attachments) {
         if (attachments == null || attachments.isEmpty()) {
             return UserMessage.from(question);
         }
@@ -361,35 +348,33 @@ public class StandardAiChat implements AiChat {
             Set<ModelCapability> modelCapabilities) {
         if (att.isImage()) {
             if (!modelCapabilities.contains(ModelCapability.VISION)) {
-                throw new AttachmentException(
-                        "Model '" + chatName + "' has no VISION capability — cannot send image '"
-                                + att.originalFilename() + "'");
+                throw new AttachmentException("Model '" + chatName + "' has no VISION capability — cannot send image '"
+                        + att.originalFilename() + "'");
             }
             String base64 = Base64.getEncoder().encodeToString(att.data());
             return ImageContent.from(base64, att.mimeType());
         }
         if (att.isPdf()) {
-            boolean nativePdf = NATIVE_PDF_PROVIDERS.contains(providerType)
-                    && modelCapabilities.contains(ModelCapability.PDF);
+            boolean nativePdf =
+                    NATIVE_PDF_PROVIDERS.contains(providerType) && modelCapabilities.contains(ModelCapability.PDF);
             if (nativePdf) {
                 String base64 = Base64.getEncoder().encodeToString(att.data());
                 return PdfFileContent.from(base64, att.mimeType());
             }
             // Fallback: PDFBox text extract rides as a TextContent block.
-            log.debug("PDF fallback: extracting text for attachment '{}' "
-                            + "(provider={}, modelCaps={})",
-                    att.originalFilename(), providerType, modelCapabilities);
+            log.debug(
+                    "PDF fallback: extracting text for attachment '{}' " + "(provider={}, modelCaps={})",
+                    att.originalFilename(),
+                    providerType,
+                    modelCapabilities);
             String text = PdfTextExtractor.extract(att.data());
-            return TextContent.from(
-                    "[Attachment: " + att.originalFilename() + " — PDF text extract]\n" + text);
+            return TextContent.from("[Attachment: " + att.originalFilename() + " — PDF text extract]\n" + text);
         }
         if (att.isText()) {
             String text = new String(att.data(), StandardCharsets.UTF_8);
-            return TextContent.from(
-                    "[Attachment: " + att.originalFilename() + "]\n" + text);
+            return TextContent.from("[Attachment: " + att.originalFilename() + "]\n" + text);
         }
-        throw new AttachmentException(
-                "Unsupported attachment MIME for content block: '" + att.mimeType()
-                        + "' (filename=" + att.originalFilename() + ")");
+        throw new AttachmentException("Unsupported attachment MIME for content block: '" + att.mimeType()
+                + "' (filename=" + att.originalFilename() + ")");
     }
 }

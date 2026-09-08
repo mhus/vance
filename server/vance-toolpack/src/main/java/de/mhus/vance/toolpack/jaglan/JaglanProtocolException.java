@@ -24,8 +24,11 @@ public class JaglanProtocolException extends RuntimeException {
         this(mount, message, true, null);
     }
 
-    public JaglanProtocolException(
-            @Nullable String mount, String message, boolean refused, @Nullable Throwable cause) {
+    public JaglanProtocolException(@Nullable String mount, String message, @Nullable Throwable cause) {
+        this(mount, message, true, cause);
+    }
+
+    public JaglanProtocolException(@Nullable String mount, String message, boolean refused, @Nullable Throwable cause) {
         super(message, cause);
         this.mount = mount;
         this.refused = refused;

@@ -33,14 +33,16 @@ final class ColorParser {
             return switch (body.length()) {
                 case 6 -> new Color(Integer.parseInt(body, 16), false);
                 case 8 -> new Color((int) Long.parseLong(body, 16), true);
-                default -> throw new ImageManipulationException(
-                        ImageManipulationException.Reason.PARAMETER_INVALID,
-                        "background must be #rrggbb or #aarrggbb, got '" + hex + "'");
+                default ->
+                    throw new ImageManipulationException(
+                            ImageManipulationException.Reason.PARAMETER_INVALID,
+                            "background must be #rrggbb or #aarrggbb, got '" + hex + "'");
             };
         } catch (NumberFormatException e) {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.PARAMETER_INVALID,
-                    "background '" + hex + "' is not a valid hex colour");
+                    "background '" + hex + "' is not a valid hex colour",
+                    e);
         }
     }
 }

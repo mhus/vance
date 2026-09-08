@@ -328,7 +328,7 @@ public class PubMedProtocol implements SearchProtocol {
                 return r;
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted while calling PubMed '" + cfg.instanceId() + "'");
+                throw new RuntimeException("Interrupted while calling PubMed '" + cfg.instanceId() + "'", ie);
             } catch (RuntimeException re) {
                 throw re;
             } catch (Exception e) {

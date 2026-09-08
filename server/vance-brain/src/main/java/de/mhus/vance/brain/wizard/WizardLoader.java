@@ -57,10 +57,7 @@ public class WizardLoader {
      * empty when no layer carries the wizard.
      */
     public Optional<ResolvedWizard> load(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String userId,
-            String name) {
+            String tenantId, @Nullable String projectId, @Nullable String userId, String name) {
         if (name == null || name.isBlank()) {
             return Optional.empty();
         }
@@ -68,9 +65,7 @@ public class WizardLoader {
         String normalizedName = name.toLowerCase().trim();
 
         // 1. Project layer (skipped when projectId is the tenant project itself).
-        if (projectId != null
-                && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             Optional<ResolvedWizard> projectHit =
                     tryParseLayer(tenantId, projectId, path, normalizedName, WizardSource.PROJECT);
             if (projectHit.isPresent()) return projectHit;
@@ -86,8 +81,8 @@ public class WizardLoader {
 
         // 3-4. _tenant + classpath fallback via the standard cascade
         // (passing TENANT_PROJECT_NAME forces the PROJECT layer to be skipped).
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, path);
+        Optional<LookupResult> hit =
+                documentService.lookupCascade(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, path);
         if (hit.isEmpty()) {
             return Optional.empty();
         }
@@ -96,8 +91,9 @@ public class WizardLoader {
             return Optional.of(parse(normalizedName, result.content(), mapVanceOrResource(result.source())));
         } catch (RuntimeException e) {
             throw new WizardParseException(
-                    "Failed to parse wizard '" + name + "' from "
-                            + result.source() + " at '" + result.path() + "': " + e.getMessage(), e);
+                    "Failed to parse wizard '" + name + "' from " + result.source() + " at '" + result.path() + "': "
+                            + e.getMessage(),
+                    e);
         }
     }
 
@@ -106,10 +102,7 @@ public class WizardLoader {
      * wizard name. Parse failures on individual entries are skipped
      * with a WARN log.
      */
-    public List<ResolvedWizard> listAll(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String userId) {
+    public List<ResolvedWizard> listAll(String tenantId, @Nullable String projectId, @Nullable String userId) {
         Map<String, ResolvedWizard> byName = new LinkedHashMap<>();
 
         // Outer-to-inner so later puts override earlier ones.
@@ -117,32 +110,28 @@ public class WizardLoader {
         // 1. _tenant + classpath, via standard cascade.
         Map<String, LookupResult> vanceTier = documentService.listByPrefixCascade(
                 tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, WIZARD_PATH_PREFIX);
-        applyTier(byName, vanceTier, /*onlyProjectSource=*/false, /*projectSourceLabel=*/null);
+        applyTier(byName, vanceTier, /*onlyProjectSource=*/ false, /*projectSourceLabel=*/ null);
 
         // 2. _user_<userId>: only the PROJECT-source hits (those that actually
         // live in the user namespace, not the _tenant + classpath fall-throughs
         // that listByPrefixCascade also returns).
         if (userId != null && !userId.isBlank()) {
-            Map<String, LookupResult> userTier = documentService.listByPrefixCascade(
-                    tenantId, USER_PROJECT_PREFIX + userId, WIZARD_PATH_PREFIX);
-            applyTier(byName, userTier, /*onlyProjectSource=*/true, WizardSource.USER);
+            Map<String, LookupResult> userTier =
+                    documentService.listByPrefixCascade(tenantId, USER_PROJECT_PREFIX + userId, WIZARD_PATH_PREFIX);
+            applyTier(byName, userTier, /*onlyProjectSource=*/ true, WizardSource.USER);
         }
 
         // 3. Project: same idea — PROJECT-source hits only.
-        if (projectId != null
-                && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
-            Map<String, LookupResult> projectTier = documentService.listByPrefixCascade(
-                    tenantId, projectId, WIZARD_PATH_PREFIX);
-            applyTier(byName, projectTier, /*onlyProjectSource=*/true, WizardSource.PROJECT);
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+            Map<String, LookupResult> projectTier =
+                    documentService.listByPrefixCascade(tenantId, projectId, WIZARD_PATH_PREFIX);
+            applyTier(byName, projectTier, /*onlyProjectSource=*/ true, WizardSource.PROJECT);
         }
 
         // Apply the availableIn glob filter against the requested projectId.
         // Listing without a project context is treated as the tenant project.
         String effectiveProjectId =
-                (projectId == null || projectId.isBlank())
-                        ? HomeBootstrapService.TENANT_PROJECT_NAME
-                        : projectId;
+                (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
         List<ResolvedWizard> filtered = new ArrayList<>(byName.size());
         for (ResolvedWizard w : byName.values()) {
             if (isAvailableIn(w.availableIn(), effectiveProjectId)) {
@@ -224,25 +213,22 @@ public class WizardLoader {
             }
             String name = nameFromPath(path);
             if (name == null) continue;
-            WizardSource source = onlyProjectSource
-                    ? projectSourceLabel
-                    : mapVanceOrResource(result.source());
+            WizardSource source = onlyProjectSource ? projectSourceLabel : mapVanceOrResource(result.source());
             if (source == null) continue;
             try {
                 acc.put(name, parse(name, result.content(), source));
             } catch (RuntimeException ex) {
-                log.warn("WizardLoader: skipping malformed wizard path='{}' source={}: {}",
-                        path, result.source(), ex.getMessage());
+                log.warn(
+                        "WizardLoader: skipping malformed wizard path='{}' source={}: {}",
+                        path,
+                        result.source(),
+                        ex.getMessage());
             }
         }
     }
 
     private Optional<ResolvedWizard> tryParseLayer(
-            String tenantId,
-            String projectId,
-            String path,
-            String name,
-            WizardSource source) {
+            String tenantId, String projectId, String path, String name, WizardSource source) {
         Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectId, path);
         if (doc.isEmpty() || doc.get().getStatus() != DocumentStatus.ACTIVE) {
             return Optional.empty();
@@ -252,8 +238,8 @@ public class WizardLoader {
             return Optional.of(parse(name, content, source));
         } catch (RuntimeException e) {
             throw new WizardParseException(
-                    "Failed to parse wizard '" + name + "' from " + source + " at '" + path + "': "
-                            + e.getMessage(), e);
+                    "Failed to parse wizard '" + name + "' from " + source + " at '" + path + "': " + e.getMessage(),
+                    e);
         }
     }
 
@@ -264,9 +250,7 @@ public class WizardLoader {
     private static @Nullable String nameFromPath(String path) {
         if (!path.startsWith(WIZARD_PATH_PREFIX)) return null;
         if (!path.endsWith(WIZARD_PATH_SUFFIX)) return null;
-        String stem = path.substring(
-                WIZARD_PATH_PREFIX.length(),
-                path.length() - WIZARD_PATH_SUFFIX.length());
+        String stem = path.substring(WIZARD_PATH_PREFIX.length(), path.length() - WIZARD_PATH_SUFFIX.length());
         if (stem.isBlank()) return null;
         // The wizard name is the first dot-segment of the filename.
         // Further segments are qualifiers (e.g. a target-engine hint
@@ -323,8 +307,17 @@ public class WizardLoader {
         List<String> availableIn = parseAvailableIn(spec.get("availableIn"));
 
         return new ResolvedWizard(
-                name, title, description, icon, category, fields,
-                promptTemplate, validatorPrompt, followUps, availableIn, source);
+                name,
+                title,
+                description,
+                icon,
+                category,
+                fields,
+                promptTemplate,
+                validatorPrompt,
+                followUps,
+                availableIn,
+                source);
     }
 
     /**
@@ -350,8 +343,7 @@ public class WizardLoader {
         for (int i = 0; i < list.size(); i++) {
             Object entry = list.get(i);
             if (!(entry instanceof String s)) {
-                throw new IllegalStateException(
-                        "'availableIn[" + i + "]' must be a string");
+                throw new IllegalStateException("'availableIn[" + i + "]' must be a string");
             }
             String trimmed = s.trim();
             if (trimmed.isEmpty()) {
@@ -372,30 +364,24 @@ public class WizardLoader {
         for (int i = 0; i < list.size(); i++) {
             Object entry = list.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new IllegalStateException(
-                        "'suggestedFollowUps[" + i + "]' must be a map");
+                throw new IllegalStateException("'suggestedFollowUps[" + i + "]' must be a map");
             }
             Map<String, Object> m = (Map<String, Object>) entryMap;
             String wizard = optionalString(m.get("wizard"));
             if (wizard == null) {
-                throw new IllegalStateException(
-                        "'suggestedFollowUps[" + i + "].wizard' is required");
+                throw new IllegalStateException("'suggestedFollowUps[" + i + "].wizard' is required");
             }
-            Map<String, String> label = requiredLocalizedText(
-                    m.get("label"), "suggestedFollowUps[" + i + "].label");
-            Map<String, String> prefill = parsePrefill(
-                    m.get("prefill"), "suggestedFollowUps[" + i + "].prefill");
+            Map<String, String> label = requiredLocalizedText(m.get("label"), "suggestedFollowUps[" + i + "].label");
+            Map<String, String> prefill = parsePrefill(m.get("prefill"), "suggestedFollowUps[" + i + "].prefill");
             // Each prefill value is itself a small Pebble template — compile to surface
             // errors at load time, the same way the main promptTemplate is checked.
             for (Map.Entry<String, String> p : prefill.entrySet()) {
-                compileTemplate(p.getValue(),
-                        "suggestedFollowUps[" + i + "].prefill." + p.getKey());
+                compileTemplate(p.getValue(), "suggestedFollowUps[" + i + "].prefill." + p.getKey());
             }
             String condition = optionalString(m.get("condition"));
             if (condition != null) {
                 // Wrap so Pebble parses the expression in a statement context.
-                compileTemplate("{% if " + condition + " %}1{% endif %}",
-                        "suggestedFollowUps[" + i + "].condition");
+                compileTemplate("{% if " + condition + " %}1{% endif %}", "suggestedFollowUps[" + i + "].condition");
             }
             out.add(new WizardFollowUp(wizard, label, prefill, condition));
         }
@@ -431,8 +417,7 @@ public class WizardLoader {
         for (int i = 0; i < list.size(); i++) {
             Object entry = list.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new IllegalStateException(
-                        "'" + parentPath + "[" + i + "]' must be a map");
+                throw new IllegalStateException("'" + parentPath + "[" + i + "]' must be a map");
             }
             out.add(parseField((Map<String, Object>) entryMap, parentPath + "[" + i + "]"));
         }
@@ -452,9 +437,7 @@ public class WizardLoader {
         Map<String, String> label = requiredLocalizedText(raw.get("label"), path + ".label");
         Map<String, String> help = optionalLocalizedText(raw.get("help"), path + ".help");
         boolean required = raw.get("required") instanceof Boolean b && b;
-        String defaultValue = raw.get("defaultValue") == null
-                ? null
-                : String.valueOf(raw.get("defaultValue"));
+        String defaultValue = raw.get("defaultValue") == null ? null : String.valueOf(raw.get("defaultValue"));
         List<FormChoiceDto> choices = parseChoices(raw.get("choices"), path + ".choices");
         Integer rows = optionalInt(raw.get("rows"), path + ".rows");
         Integer integerMin = optionalInt(raw.get("integerMin"), path + ".integerMin");
@@ -502,16 +485,14 @@ public class WizardLoader {
                 continue;
             }
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new IllegalStateException(
-                        "'" + path + "[" + i + "]' must be a string or a map");
+                throw new IllegalStateException("'" + path + "[" + i + "]' must be a string or a map");
             }
             Map<String, Object> m = (Map<String, Object>) entryMap;
             String value = optionalString(m.get("value"));
             if (value == null) {
                 throw new IllegalStateException("'" + path + "[" + i + "].value' is required");
             }
-            Map<String, String> label = optionalLocalizedText(
-                    m.get("label"), path + "[" + i + "].label");
+            Map<String, String> label = optionalLocalizedText(m.get("label"), path + "[" + i + "].label");
             boolean def = (m.get("default") instanceof Boolean b && b)
                     || (m.get("defaultSelected") instanceof Boolean b2 && b2);
             out.add(FormChoiceDto.builder()
@@ -547,8 +528,7 @@ public class WizardLoader {
             return Map.of("en", s);
         }
         if (!(raw instanceof Map<?, ?> rawMap)) {
-            throw new IllegalStateException(
-                    "'" + path + "' must be a string or a map of language → text");
+            throw new IllegalStateException("'" + path + "' must be a string or a map of language → text");
         }
         Map<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : rawMap.entrySet()) {
@@ -559,8 +539,7 @@ public class WizardLoader {
             Object v = e.getValue();
             if (v == null) continue;
             if (!(v instanceof String s)) {
-                throw new IllegalStateException(
-                        "'" + path + "." + lang + "' must be a string");
+                throw new IllegalStateException("'" + path + "." + lang + "' must be a string");
             }
             if (s.isBlank()) continue;
             out.put(lang, s);
@@ -581,7 +560,7 @@ public class WizardLoader {
             try {
                 return Integer.parseInt(s.trim());
             } catch (NumberFormatException e) {
-                throw new IllegalStateException("'" + path + "' is not an integer: " + s);
+                throw new IllegalStateException("'" + path + "' is not an integer: " + s, e);
             }
         }
         throw new IllegalStateException("'" + path + "' must be an integer");
@@ -591,8 +570,7 @@ public class WizardLoader {
         try {
             templateRenderer.compile(template);
         } catch (PromptTemplateException e) {
-            throw new IllegalStateException(
-                    "'" + fieldName + "' is not a valid Pebble template: " + e.getMessage(), e);
+            throw new IllegalStateException("'" + fieldName + "' is not a valid Pebble template: " + e.getMessage(), e);
         }
     }
 }

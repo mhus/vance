@@ -68,9 +68,8 @@ public class HactarArgsResolver {
      * (e.g. {@code vance.params.foo} only — not the substring of
      * {@code vance.params.foobar}).
      */
-    private static final Pattern PARAMS_REF = Pattern.compile(
-            "\\bvance\\s*\\.\\s*params\\s*\\.\\s*"
-                    + "([A-Za-z_$][A-Za-z0-9_$]*)\\b");
+    private static final Pattern PARAMS_REF =
+            Pattern.compile("\\bvance\\s*\\.\\s*params\\s*\\.\\s*" + "([A-Za-z_$][A-Za-z0-9_$]*)\\b");
 
     private final LightLlmService lightLlm;
 
@@ -145,13 +144,17 @@ public class HactarArgsResolver {
 
         // Anything still missing — try LLM extraction from intent.
         if (intent == null || intent.isBlank()) {
-            log.warn("HactarArgsResolver: script needs {} but caller "
+            log.warn(
+                    "HactarArgsResolver: script needs {} but caller "
                             + "supplied only {} and no intent text — "
                             + "throwing MissingParamException",
-                    required, supplied_);
-            throw new MissingParamException(required, supplied_, missing,
-                    "No process.goal / intent text available to extract "
-                            + "the missing parameters from.");
+                    required,
+                    supplied_);
+            throw new MissingParamException(
+                    required,
+                    supplied_,
+                    missing,
+                    "No process.goal / intent text available to extract " + "the missing parameters from.");
         }
 
         Map<String, Object> pebbleVars = new LinkedHashMap<>();
@@ -175,8 +178,8 @@ public class HactarArgsResolver {
                     .build());
         } catch (RuntimeException e) {
             log.warn("HactarArgsResolver: LightLlm call failed: {}", e.toString());
-            throw new MissingParamException(required, supplied_, missing,
-                    "LightLlm extraction failed: " + e.getMessage());
+            throw new MissingParamException(
+                    required, supplied_, missing, "LightLlm extraction failed: " + e.getMessage(), e);
         }
 
         Map<String, Object> extracted = readMap(reply.get("params"));
@@ -200,20 +203,24 @@ public class HactarArgsResolver {
             if (!merged.containsKey(k)) stillMissing.add(k);
         }
         if (!stillMissing.isEmpty()) {
-            log.warn("HactarArgsResolver: LLM left {} unresolved "
-                            + "(reported unresolved={}); throwing.",
-                    stillMissing, unresolved);
-            throw new MissingParamException(required, merged.keySet(),
+            log.warn(
+                    "HactarArgsResolver: LLM left {} unresolved " + "(reported unresolved={}); throwing.",
+                    stillMissing,
+                    unresolved);
+            throw new MissingParamException(
+                    required,
+                    merged.keySet(),
                     stillMissing,
                     unresolved.isEmpty()
                             ? "LLM extraction returned no value for these keys."
-                            : "LLM explicitly marked these as unresolved: "
-                                    + unresolved);
+                            : "LLM explicitly marked these as unresolved: " + unresolved);
         }
 
-        log.info("HactarArgsResolver: resolved {} param(s) from intent "
-                        + "(caller-supplied={}, llm-extracted={})",
-                required.size(), supplied_.size(), extracted.size());
+        log.info(
+                "HactarArgsResolver: resolved {} param(s) from intent " + "(caller-supplied={}, llm-extracted={})",
+                required.size(),
+                supplied_.size(),
+                extracted.size());
         return java.util.Collections.unmodifiableMap(merged);
     }
 
@@ -240,8 +247,7 @@ public class HactarArgsResolver {
 
     /** Permissive top-level schema; the recipe prompt enforces the
      *  actual shape via its JSON contract. */
-    private static final Map<String, Object> EXTRACT_SCHEMA = Map.of(
-            "type", "object");
+    private static final Map<String, Object> EXTRACT_SCHEMA = Map.of("type", "object");
 
     /**
      * JavaScript built-in property names that aren't real script
@@ -250,8 +256,13 @@ public class HactarArgsResolver {
      * {@code toString}.
      */
     private static final Set<String> RESERVED_MAP_METHODS = Set.of(
-            "hasOwnProperty", "toString", "valueOf", "constructor",
-            "isPrototypeOf", "propertyIsEnumerable", "toLocaleString",
+            "hasOwnProperty",
+            "toString",
+            "valueOf",
+            "constructor",
+            "isPrototypeOf",
+            "propertyIsEnumerable",
+            "toLocaleString",
             "__proto__");
 
     /**
@@ -265,9 +276,7 @@ public class HactarArgsResolver {
         private final Set<String> available;
         private final List<String> missing;
 
-        public MissingParamException(
-                Set<String> required, Set<String> available,
-                List<String> missing, String detail) {
+        public MissingParamException(Set<String> required, Set<String> available, List<String> missing, String detail) {
             super("Hactar args resolution failed — missing "
                     + missing + " (required " + required
                     + ", available " + available + "). " + detail);
@@ -276,8 +285,26 @@ public class HactarArgsResolver {
             this.missing = List.copyOf(missing);
         }
 
-        public Set<String> required() { return required; }
-        public Set<String> available() { return available; }
-        public List<String> missing() { return missing; }
+        public MissingParamException(
+                Set<String> required,
+                Set<String> available,
+                List<String> missing,
+                String detail,
+                @org.jspecify.annotations.Nullable Throwable cause) {
+            this(required, available, missing, detail);
+            initCause(cause);
+        }
+
+        public Set<String> required() {
+            return required;
+        }
+
+        public Set<String> available() {
+            return available;
+        }
+
+        public List<String> missing() {
+            return missing;
+        }
     }
 }

@@ -1,11 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentNote;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,26 +34,52 @@ public class DocNoteAddTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("text", Map.of("type", "string",
-                "description", "Free-form note text. Markdown is allowed; the UI will render it."));
-        p.put("line", Map.of("type", "integer",
-                "description", "Optional 1-based line number the note anchors to. Omit for a "
-                        + "file-level (unanchored) note. The line reference is static — it does "
-                        + "not follow content edits."));
+        p.put(
+                "text",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Free-form note text. Markdown is allowed; the UI will render it."));
+        p.put(
+                "line",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "Optional 1-based line number the note anchors to. Omit for a "
+                                + "file-level (unanchored) note. The line reference is static — it does "
+                                + "not follow content edits."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_note_add"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_note_add";
+    }
+
+    @Override
+    public String description() {
         return "Attach a sticky-note to a document. Notes are separate from the body and survive "
                 + "edits. Returns the noteId you need for later doc_note_update / doc_note_delete.";
     }
-    @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("text-edit", "write", "document", "note"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("text-edit", "write", "document", "note");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -64,12 +90,14 @@ public class DocNoteAddTool implements Tool {
 
         DocumentNote note;
         try {
-            note = support.documentService().addNote(doc.getId(), text, userId, line, null,
-                    support.writeActor(ctx, doc));
+            note = support.documentService()
+                    .addNote(doc.getId(), text, userId, line, null, support.writeActor(ctx, doc));
         } catch (DocumentService.NotesLimitExceededException e) {
-            throw new ToolException("Document already has the maximum number of notes ("
-                    + DocumentService.NOTES_MAX
-                    + "). Delete or merge older notes before adding new ones.");
+            throw new ToolException(
+                    "Document already has the maximum number of notes ("
+                            + DocumentService.NOTES_MAX
+                            + "). Delete or merge older notes before adding new ones.",
+                    e);
         }
         support.emitNotesInvalidate(doc, ctx);
 

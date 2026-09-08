@@ -36,10 +36,11 @@ public class ComposeRunTool implements Tool {
     private final ComposeFinishedNotifier finishedNotifier;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public ComposeRunTool(DamogranComposeService composeService,
-                          DocumentService documentService,
-                          ComposeFinishedNotifier finishedNotifier,
-                          de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public ComposeRunTool(
+            DamogranComposeService composeService,
+            DocumentService documentService,
+            ComposeFinishedNotifier finishedNotifier,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.composeService = composeService;
         this.documentService = documentService;
         this.finishedNotifier = finishedNotifier;
@@ -47,14 +48,18 @@ public class ComposeRunTool implements Tool {
     }
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of(
-                    "composePath", Map.of(
-                            "type", "string",
-                            "description", "Path to a compose document (YAML manifest) to run."),
-                    "composeYaml", Map.of(
-                            "type", "string",
-                            "description", "Inline compose manifest (YAML) to run instead of a document.")));
+            "type",
+            "object",
+            "properties",
+            Map.of(
+                    "composePath",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Path to a compose document (YAML manifest) to run."),
+                    "composeYaml",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Inline compose manifest (YAML) to run instead of a document.")));
 
     @Override
     public String name() {
@@ -105,10 +110,16 @@ public class ComposeRunTool implements Tool {
 
         ComposeRun run;
         try {
-            run = composeService.runAsync(ctx.tenantId(), projectId, ctx.processId(), yaml, baseDir,
-                    stateKey, contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
+            run = composeService.runAsync(
+                    ctx.tenantId(),
+                    projectId,
+                    ctx.processId(),
+                    yaml,
+                    baseDir,
+                    stateKey,
+                    contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()));
         } catch (DamogranException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
         try {
             run.awaitDone(FAST_PATH_WAIT_MS);
@@ -128,8 +139,10 @@ public class ComposeRunTool implements Tool {
         out.put("running", true);
         out.put("status", "running");
         out.put("workspace", run.workspaceName());
-        out.put("note", "Compose is running in the background; end your turn — you will "
-                + "receive a COMPOSE_FINISHED event with the result when it completes.");
+        out.put(
+                "note",
+                "Compose is running in the background; end your turn — you will "
+                        + "receive a COMPOSE_FINISHED event with the result when it completes.");
         return out;
     }
 
@@ -142,12 +155,13 @@ public class ComposeRunTool implements Tool {
         if (composePath == null) {
             throw new ToolException("compose_run requires 'composePath' or 'composeYaml'");
         }
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, composePath)
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, composePath)
                 .orElseThrow(() -> new ToolException("compose document not found: " + composePath));
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException("failed to read compose document " + composePath + ": " + e.getMessage());
+            throw new ToolException("failed to read compose document " + composePath + ": " + e.getMessage(), e);
         }
     }
 

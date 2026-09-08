@@ -335,7 +335,7 @@ public class SettingFormPlanBuilder {
                 return SettingType.valueOf(binding.getSettingType().trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
                 throw new IllegalStateException(
-                        "fields[" + field.getName() + "].bindsTo.settingType invalid: " + binding.getSettingType());
+                        "fields[" + field.getName() + "].bindsTo.settingType invalid: " + binding.getSettingType(), e);
             }
         }
         return switch (field.getType()) {
@@ -363,14 +363,14 @@ public class SettingFormPlanBuilder {
                 try {
                     yield Long.toString(Long.parseLong(s));
                 } catch (NumberFormatException e) {
-                    throw new IllegalStateException("fields[" + field.getName() + "] is not an integer: " + s);
+                    throw new IllegalStateException("fields[" + field.getName() + "] is not an integer: " + s, e);
                 }
             }
             case DOUBLE -> {
                 try {
                     yield Double.toString(Double.parseDouble(s));
                 } catch (NumberFormatException e) {
-                    throw new IllegalStateException("fields[" + field.getName() + "] is not a number: " + s);
+                    throw new IllegalStateException("fields[" + field.getName() + "] is not a number: " + s, e);
                 }
             }
             case BOOLEAN -> {
@@ -449,14 +449,14 @@ public class SettingFormPlanBuilder {
                 try {
                     yield Long.toString(Long.parseLong(trimmed));
                 } catch (NumberFormatException e) {
-                    throw new IllegalStateException(sourceLabel + ".value did not render to an integer: " + trimmed);
+                    throw new IllegalStateException(sourceLabel + ".value did not render to an integer: " + trimmed, e);
                 }
             }
             case DOUBLE -> {
                 try {
                     yield Double.toString(Double.parseDouble(trimmed));
                 } catch (NumberFormatException e) {
-                    throw new IllegalStateException(sourceLabel + ".value did not render to a number: " + trimmed);
+                    throw new IllegalStateException(sourceLabel + ".value did not render to a number: " + trimmed, e);
                 }
             }
             case BOOLEAN -> {

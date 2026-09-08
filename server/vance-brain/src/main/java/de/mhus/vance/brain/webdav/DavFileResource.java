@@ -31,8 +31,7 @@ import org.springframework.dao.OptimisticLockingFailureException;
  * rules all apply. See {@code planning/webdav-support.md}.
  */
 class DavFileResource extends AbstractDavResource
-        implements GetableResource, ReplaceableResource, DeletableResource,
-        MoveableResource, CopyableResource {
+        implements GetableResource, ReplaceableResource, DeletableResource, MoveableResource, CopyableResource {
 
     private final DocumentDocument doc;
 
@@ -69,8 +68,8 @@ class DavFileResource extends AbstractDavResource
     }
 
     @Override
-    public void sendContent(OutputStream out, @Nullable Range range,
-            Map<String, String> params, @Nullable String contentType)
+    public void sendContent(
+            OutputStream out, @Nullable Range range, Map<String, String> params, @Nullable String contentType)
             throws IOException, NotAuthorizedException, BadRequestException {
         try (InputStream in = factory.documentService().loadContent(doc)) {
             if (range != null) {
@@ -104,8 +103,8 @@ class DavFileResource extends AbstractDavResource
         try {
             // MIME stays derived from the (unchanged) extension — pass null to
             // leave it untouched. See planning/webdav-support.md §8.5.
-            factory.documentService().replaceContent(doc.getId(), in, null,
-                    factory.currentWriter(), factory.currentActor());
+            factory.documentService()
+                    .replaceContent(doc.getId(), in, null, factory.currentWriter(), factory.currentActor());
         } catch (DocumentService.DocumentLockedException e) {
             throw new ConflictException(this, e.getMessage());
         } catch (OptimisticLockingFailureException e) {
@@ -130,9 +129,19 @@ class DavFileResource extends AbstractDavResource
         WebDavPaths.Coords destCoords = requireSameProject(dest);
         String newPath = childPath(destCoords.path(), name);
         try {
-            factory.documentService().update(
-                    doc.getId(), null, null, null, newPath,
-                    null, null, null, null, factory.currentWriter(), factory.currentActor());
+            factory.documentService()
+                    .update(
+                            doc.getId(),
+                            null,
+                            null,
+                            null,
+                            newPath,
+                            null,
+                            null,
+                            null,
+                            null,
+                            factory.currentWriter(),
+                            factory.currentActor());
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ConflictException(this, e.getMessage());
         } catch (DocumentService.DocumentLockedException e) {
@@ -154,10 +163,17 @@ class DavFileResource extends AbstractDavResource
         try {
             // create(...) mints a fresh lineageId — a copy is a genuinely new
             // document, not a version of the source. See §8.4.
-            factory.documentService().create(
-                    coords().tenantId(), destCoords.project(), newPath,
-                    doc.getTitle(), doc.getTags(), doc.getMimeType(),
-                    new ByteArrayInputStream(bytes), factory.currentUser(), factory.currentActor());
+            factory.documentService()
+                    .create(
+                            coords().tenantId(),
+                            destCoords.project(),
+                            newPath,
+                            doc.getTitle(),
+                            doc.getTags(),
+                            doc.getMimeType(),
+                            new ByteArrayInputStream(bytes),
+                            factory.currentUser(),
+                            factory.currentActor());
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ConflictException(this, e.getMessage());
         }
@@ -166,7 +182,8 @@ class DavFileResource extends AbstractDavResource
     private WebDavPaths.Coords requireSameProject(CollectionResource dest) throws ConflictException {
         if (!(dest instanceof AbstractDavResource davDest)
                 || !coords().tenantId().equals(davDest.coords().tenantId())
-                || !java.util.Objects.equals(coords().project(), davDest.coords().project())) {
+                || !java.util.Objects.equals(
+                        coords().project(), davDest.coords().project())) {
             // Cross-project move/copy isn't representable through the
             // single-project update path in v1.
             throw new ConflictException(this, "Cross-project move/copy is not supported");

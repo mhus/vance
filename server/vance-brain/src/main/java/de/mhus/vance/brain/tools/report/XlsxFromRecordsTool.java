@@ -72,55 +72,84 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class XlsxFromRecordsTool implements Tool {
 
-    private static final String XLSX_MIME =
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    private static final String XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("schema", Map.of(
-                        "type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "Inline column names — use "
-                                + "this PLUS `items` to render an "
-                                + "XLSX directly without first "
-                                + "creating a records document. "
-                                + "Mutually exclusive with `documentRef`."));
-                put("items", Map.of(
-                        "type", "array",
-                        "items", Map.of("type", "object"),
-                        "description", "Inline row data, one object "
-                                + "per record. Keys are schema field "
-                                + "names, values are cell strings. "
-                                + "Missing keys land as blank cells. "
-                                + "Mutually exclusive with `documentRef`."));
-                put("documentRef", Map.of(
-                        "type", "string",
-                        "description", "Path or id of an existing "
-                                + "kind:records document to export. "
-                                + "Use this only when the records "
-                                + "already live as a Vance document; "
-                                + "for fresh data prefer the inline "
-                                + "`schema` + `items` form."));
-                put("projectId", Map.of(
-                        "type", "string",
-                        "description", "Optional project name; "
-                                + "defaults to the active project."));
-                put("title", Map.of(
-                        "type", "string",
-                        "description", "Optional title — used as the "
-                                + "sheet name and the file's "
-                                + "core-property title. Truncated to "
-                                + "31 chars for the sheet name "
-                                + "(Excel hard limit)."));
-                put("outputPath", Map.of(
-                        "type", "string",
-                        "description", "Optional path for the new "
-                                + "Document. Default: "
-                                + "'reports/<title-slug>-<timestamp>"
-                                + ".xlsx'."));
-            }},
-            "required", List.of());
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "schema",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "Inline column names — use "
+                                            + "this PLUS `items` to render an "
+                                            + "XLSX directly without first "
+                                            + "creating a records document. "
+                                            + "Mutually exclusive with `documentRef`."));
+                    put(
+                            "items",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "object"),
+                                    "description",
+                                    "Inline row data, one object "
+                                            + "per record. Keys are schema field "
+                                            + "names, values are cell strings. "
+                                            + "Missing keys land as blank cells. "
+                                            + "Mutually exclusive with `documentRef`."));
+                    put(
+                            "documentRef",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Path or id of an existing "
+                                            + "kind:records document to export. "
+                                            + "Use this only when the records "
+                                            + "already live as a Vance document; "
+                                            + "for fresh data prefer the inline "
+                                            + "`schema` + `items` form."));
+                    put(
+                            "projectId",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional project name; " + "defaults to the active project."));
+                    put(
+                            "title",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional title — used as the "
+                                            + "sheet name and the file's "
+                                            + "core-property title. Truncated to "
+                                            + "31 chars for the sheet name "
+                                            + "(Excel hard limit)."));
+                    put(
+                            "outputPath",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional path for the new "
+                                            + "Document. Default: "
+                                            + "'reports/<title-slug>-<timestamp>"
+                                            + ".xlsx'."));
+                }
+            },
+            "required",
+            List.of());
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
@@ -129,12 +158,13 @@ public class XlsxFromRecordsTool implements Tool {
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
 
-    public XlsxFromRecordsTool(EddieContext eddieContext,
-                               DocumentService documentService,
-                               DocumentLinkBuilder linkBuilder,
-                               ThinkProcessService thinkProcessService,
-                               ProgressEmitter progressEmitter,
-                               de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public XlsxFromRecordsTool(
+            EddieContext eddieContext,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            ThinkProcessService thinkProcessService,
+            ProgressEmitter progressEmitter,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.contextFactory = contextFactory;
         this.eddieContext = eddieContext;
         this.documentService = documentService;
@@ -182,18 +212,13 @@ public class XlsxFromRecordsTool implements Tool {
         List<Map<String, Object>> inlineItems = paramMapList(params, "items");
         boolean hasInline = inlineSchema != null || inlineItems != null;
         if (hasInline && documentRef != null) {
-            throw new ToolException(
-                    "Provide either inline 'schema'/'items' OR "
-                            + "'documentRef', not both");
+            throw new ToolException("Provide either inline 'schema'/'items' OR " + "'documentRef', not both");
         }
         if (!hasInline && documentRef == null) {
-            throw new ToolException(
-                    "Provide either inline 'schema'+'items' or "
-                            + "'documentRef'");
+            throw new ToolException("Provide either inline 'schema'+'items' or " + "'documentRef'");
         }
         if (hasInline && inlineSchema == null) {
-            throw new ToolException(
-                    "Inline mode requires 'schema' alongside 'items'");
+            throw new ToolException("Inline mode requires 'schema' alongside 'items'");
         }
 
         String title = paramString(params, "title");
@@ -214,20 +239,20 @@ public class XlsxFromRecordsTool implements Tool {
             records = parseRecords(source);
             sourceLabel = source.getPath();
             if (title == null) {
-                title = source.getTitle() != null
-                        ? source.getTitle() : leafName(source.getPath());
+                title = source.getTitle() != null ? source.getTitle() : leafName(source.getPath());
             }
         }
         if (records.schema().isEmpty()) {
-            throw new ToolException(
-                    "Records source has no schema — cannot render an "
-                            + "empty header row. Pass a non-empty "
-                            + "'schema' (inline) or add a schema to "
-                            + "the source document first.");
+            throw new ToolException("Records source has no schema — cannot render an "
+                    + "empty header row. Pass a non-empty "
+                    + "'schema' (inline) or add a schema to "
+                    + "the source document first.");
         }
         String effectiveTitle = title != null ? title : "Records";
 
-        emit(process, StatusTag.INFO,
+        emit(
+                process,
+                StatusTag.INFO,
                 "Rendering XLSX from records ("
                         + records.schema().size() + " columns, "
                         + records.items().size() + " rows)…");
@@ -236,9 +261,7 @@ public class XlsxFromRecordsTool implements Tool {
         byte[] bytes = render(records, effectiveTitle);
         long elapsedMs = System.currentTimeMillis() - started;
 
-        String finalPath = outputPath != null
-                ? outputPath
-                : defaultOutputPath(effectiveTitle);
+        String finalPath = outputPath != null ? outputPath : defaultOutputPath(effectiveTitle);
 
         DocumentDocument created;
         try (InputStream in = new ByteArrayInputStream(bytes)) {
@@ -253,31 +276,34 @@ public class XlsxFromRecordsTool implements Tool {
                     ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not store rendered XLSX: " + e.getMessage());
+            throw new ToolException("Could not store rendered XLSX: " + e.getMessage(), e);
         }
 
         String vanceUri = DocumentLinkBuilder.buildVanceUri(
-                null, created.getPath(), "xlsx",
-                DocumentLinkBuilder.defaultModeForKind("xlsx"));
+                null, created.getPath(), "xlsx", DocumentLinkBuilder.defaultModeForKind("xlsx"));
         String markdownLink = linkBuilder.linkFor(created, projectName);
 
-        log.info("XlsxFromRecordsTool tenant='{}' source='{}' "
-                        + "rows={} cols={} bytes={} elapsedMs={} path='{}'",
-                ctx.tenantId(), sourceLabel,
-                records.items().size(), records.schema().size(),
-                bytes.length, elapsedMs, finalPath);
+        log.info(
+                "XlsxFromRecordsTool tenant='{}' source='{}' " + "rows={} cols={} bytes={} elapsedMs={} path='{}'",
+                ctx.tenantId(),
+                sourceLabel,
+                records.items().size(),
+                records.schema().size(),
+                bytes.length,
+                elapsedMs,
+                finalPath);
         if (records.items().isEmpty()) {
-            log.warn("XlsxFromRecordsTool: source '{}' had 0 records — "
-                    + "exported an empty sheet. Did the caller forget "
-                    + "to pass 'items' inline (or populate the "
-                    + "records document via records_add_row)?",
+            log.warn(
+                    "XlsxFromRecordsTool: source '{}' had 0 records — "
+                            + "exported an empty sheet. Did the caller forget "
+                            + "to pass 'items' inline (or populate the "
+                            + "records document via records_add_row)?",
                     sourceLabel);
         }
-        emit(process, StatusTag.INFO,
-                String.format(Locale.ROOT,
-                        "XLSX done — %d KB saved as '%s'.",
-                        bytes.length / 1024, finalPath));
+        emit(
+                process,
+                StatusTag.INFO,
+                String.format(Locale.ROOT, "XLSX done — %d KB saved as '%s'.", bytes.length / 1024, finalPath));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("path", created.getPath());
@@ -292,7 +318,8 @@ public class XlsxFromRecordsTool implements Tool {
             // download link for an empty sheet — typical mistake is
             // creating a kind:records stub and exporting it without
             // first adding rows via records_add_row.
-            out.put("warning",
+            out.put(
+                    "warning",
                     "The records source has 0 rows, so the XLSX "
                             + "contains only the header. Did you "
                             + "forget to pass 'items' inline (or to "
@@ -308,8 +335,7 @@ public class XlsxFromRecordsTool implements Tool {
      * schema field name; values get string-coerced (numbers,
      * booleans → {@code String.valueOf}; {@code null} → empty).
      */
-    static RecordsDocument fromInline(List<String> schema,
-                                      @Nullable List<Map<String, Object>> items) {
+    static RecordsDocument fromInline(List<String> schema, @Nullable List<Map<String, Object>> items) {
         List<RecordsItem> records = new java.util.ArrayList<>();
         if (items != null) {
             for (Map<String, Object> raw : items) {
@@ -329,8 +355,7 @@ public class XlsxFromRecordsTool implements Tool {
                 records.add(new RecordsItem(values, extra, new java.util.ArrayList<>()));
             }
         }
-        return new RecordsDocument("records",
-                List.copyOf(schema), records, new LinkedHashMap<>());
+        return new RecordsDocument("records", List.copyOf(schema), records, new LinkedHashMap<>());
     }
 
     private static String coerceCell(@Nullable Object v) {
@@ -350,7 +375,7 @@ public class XlsxFromRecordsTool implements Tool {
      */
     public static byte[] render(RecordsDocument records, String title) {
         try (Workbook wb = new XSSFWorkbook();
-             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet(sanitizeSheetName(title));
             CellStyle headerStyle = wb.createCellStyle();
             Font headerFont = wb.createFont();
@@ -360,7 +385,8 @@ public class XlsxFromRecordsTool implements Tool {
             List<String> schema = records.schema();
             int overflowMax = records.items().stream()
                     .mapToInt(item -> item.overflow().size())
-                    .max().orElse(0);
+                    .max()
+                    .orElse(0);
             int totalCols = schema.size() + overflowMax;
 
             Row header = sheet.createRow(0);
@@ -393,9 +419,8 @@ public class XlsxFromRecordsTool implements Tool {
 
             sheet.createFreezePane(0, 1);
             if (totalCols > 0) {
-                sheet.setAutoFilter(new CellRangeAddress(
-                        0, Math.max(0, records.items().size()),
-                        0, totalCols - 1));
+                sheet.setAutoFilter(
+                        new CellRangeAddress(0, Math.max(0, records.items().size()), 0, totalCols - 1));
                 for (int c = 0; c < totalCols; c++) {
                     sheet.autoSizeColumn(c);
                     // Cap auto-size so a single 200-char string
@@ -412,8 +437,7 @@ public class XlsxFromRecordsTool implements Tool {
             wb.write(out);
             return out.toByteArray();
         } catch (IOException e) {
-            throw new ToolException(
-                    "XLSX rendering failed: " + e.getMessage());
+            throw new ToolException("XLSX rendering failed: " + e.getMessage(), e);
         }
     }
 
@@ -439,8 +463,7 @@ public class XlsxFromRecordsTool implements Tool {
         if (raw == null || raw.isBlank()) return "Sheet1";
         StringBuilder sb = new StringBuilder();
         for (char c : raw.toCharArray()) {
-            if (c == ':' || c == '\\' || c == '/' || c == '?'
-                    || c == '*' || c == '[' || c == ']') {
+            if (c == ':' || c == '\\' || c == '/' || c == '?' || c == '*' || c == '[' || c == ']') {
                 sb.append('-');
             } else {
                 sb.append(c);
@@ -453,52 +476,41 @@ public class XlsxFromRecordsTool implements Tool {
 
     // ── Source document resolution ────────────────────────────────
 
-    private DocumentDocument resolveSourceDoc(String ref,
-                                              String projectName,
-                                              ToolInvocationContext ctx) {
+    private DocumentDocument resolveSourceDoc(String ref, String projectName, ToolInvocationContext ctx) {
         boolean pathLike = ref.contains("/") || ref.contains(".");
         if (pathLike) {
-            Optional<DocumentDocument> byPath = documentService.findByPath(
-                    ctx.tenantId(), projectName, ref);
+            Optional<DocumentDocument> byPath = documentService.findByPath(ctx.tenantId(), projectName, ref);
             if (byPath.isPresent()) return byPath.get();
         }
         Optional<DocumentDocument> byId = documentService.findById(ref);
         if (byId.isPresent()) {
             DocumentDocument doc = byId.get();
             if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException(
-                        "Source document with id '" + ref
-                                + "' is not in your tenant");
+                throw new ToolException("Source document with id '" + ref + "' is not in your tenant");
             }
             return doc;
         }
         if (!pathLike) {
-            Optional<DocumentDocument> byPath = documentService.findByPath(
-                    ctx.tenantId(), projectName, ref);
+            Optional<DocumentDocument> byPath = documentService.findByPath(ctx.tenantId(), projectName, ref);
             if (byPath.isPresent()) return byPath.get();
         }
-        throw new ToolException(
-                "Source document '" + ref + "' not found in project '"
-                        + projectName + "'");
+        throw new ToolException("Source document '" + ref + "' not found in project '" + projectName + "'");
     }
 
     private RecordsDocument parseRecords(DocumentDocument doc) {
         String body = loadAsText(doc);
         String mime = doc.getMimeType();
         if (!RecordsCodec.supports(mime)) {
-            throw new ToolException(
-                    "Source document '" + doc.getPath()
-                            + "' has mime '" + mime
-                            + "' which the records codec doesn't "
-                            + "support. Use a markdown / json / yaml "
-                            + "records document.");
+            throw new ToolException("Source document '" + doc.getPath()
+                    + "' has mime '" + mime
+                    + "' which the records codec doesn't "
+                    + "support. Use a markdown / json / yaml "
+                    + "records document.");
         }
         try {
             return RecordsCodec.parse(body, mime);
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse source records document: "
-                            + e.getMessage());
+            throw new ToolException("Could not parse source records document: " + e.getMessage(), e);
         }
     }
 
@@ -507,9 +519,7 @@ public class XlsxFromRecordsTool implements Tool {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read source document content: "
-                            + e.getMessage());
+            throw new ToolException("Could not read source document content: " + e.getMessage(), e);
         }
     }
 
@@ -521,20 +531,16 @@ public class XlsxFromRecordsTool implements Tool {
         return opt.orElse(null);
     }
 
-    private void emit(@Nullable ThinkProcessDocument process,
-                      StatusTag tag, String text) {
+    private void emit(@Nullable ThinkProcessDocument process, StatusTag tag, String text) {
         if (process == null) return;
         progressEmitter.emitStatus(process, tag, text);
     }
 
     static String defaultOutputPath(@Nullable String title) {
-        String stamp = DateTimeFormatter
-                .ofPattern("yyyy-MM-dd-HHmmss")
+        String stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
                 .withZone(ZoneOffset.UTC)
                 .format(Instant.now());
-        String slug = title == null || title.isBlank()
-                ? "records"
-                : ReportFromMarkdownTool.slug(title);
+        String slug = title == null || title.isBlank() ? "records" : ReportFromMarkdownTool.slug(title);
         return "reports/" + slug + "-" + stamp + ".xlsx";
     }
 
@@ -553,8 +559,7 @@ public class XlsxFromRecordsTool implements Tool {
     }
 
     @SuppressWarnings("unchecked")
-    private static @Nullable List<String> paramStringList(
-            @Nullable Map<String, Object> params, String key) {
+    private static @Nullable List<String> paramStringList(@Nullable Map<String, Object> params, String key) {
         if (params == null) return null;
         Object v = params.get(key);
         if (!(v instanceof List<?> list)) return null;
@@ -567,8 +572,7 @@ public class XlsxFromRecordsTool implements Tool {
     }
 
     @SuppressWarnings("unchecked")
-    private static @Nullable List<Map<String, Object>> paramMapList(
-            @Nullable Map<String, Object> params, String key) {
+    private static @Nullable List<Map<String, Object>> paramMapList(@Nullable Map<String, Object> params, String key) {
         if (params == null) return null;
         Object v = params.get(key);
         if (!(v instanceof List<?> list)) return null;

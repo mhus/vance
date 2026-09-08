@@ -78,46 +78,52 @@ public class WebFetchTool implements Tool {
      * defaulted on, never set by the engine on its own initiative.
      */
     static final String FLAG_INSECURE = "insecure";
-    private static final Set<String> KNOWN_FLAGS =
-            Set.of(FLAG_NO_LLMS, FLAG_TEXT, FLAG_RAW, FLAG_INSECURE);
+
+    private static final Set<String> KNOWN_FLAGS = Set.of(FLAG_NO_LLMS, FLAG_TEXT, FLAG_RAW, FLAG_INSECURE);
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "url", Map.of(
-                            "type", "string",
-                            "description", "Absolute http:// or https:// URL to fetch."),
-                    "accept", Map.of(
-                            "type", "string",
-                            "description", "Optional Accept header (e.g. "
-                                    + "'application/json'). Defaults to '*/*'."),
-                    "flags", Map.of(
-                            "type", "string",
-                            "description", "Optional comma- or space-separated tokens. "
-                                    + "Recognised: 'raw' returns the original markup "
-                                    + "verbatim instead of the default extracted body "
-                                    + "text (use only when you need tag structure, "
-                                    + "scripts, or meta-data); 'no-llms' skips the "
-                                    + "per-origin llms.txt overview probe; 'insecure' "
-                                    + "skips TLS certificate verification for this "
-                                    + "call only — use sparingly, only when the user "
-                                    + "explicitly asks for it on a site with a known-"
-                                    + "broken certificate chain; 'text' is a legacy "
-                                    + "no-op (text extraction is now the default for "
-                                    + "HTML pages). Unknown tokens are ignored.")),
+            "properties",
+                    Map.of(
+                            "url",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Absolute http:// or https:// URL to fetch."),
+                            "accept",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional Accept header (e.g. "
+                                                    + "'application/json'). Defaults to '*/*'."),
+                            "flags",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional comma- or space-separated tokens. "
+                                                    + "Recognised: 'raw' returns the original markup "
+                                                    + "verbatim instead of the default extracted body "
+                                                    + "text (use only when you need tag structure, "
+                                                    + "scripts, or meta-data); 'no-llms' skips the "
+                                                    + "per-origin llms.txt overview probe; 'insecure' "
+                                                    + "skips TLS certificate verification for this "
+                                                    + "call only — use sparingly, only when the user "
+                                                    + "explicitly asks for it on a site with a known-"
+                                                    + "broken certificate chain; 'text' is a legacy "
+                                                    + "no-op (text extraction is now the default for "
+                                                    + "HTML pages). Unknown tokens are ignored.")),
             "required", List.of("url"));
 
     // Redirect.NEVER so SsrfGuard.sendGuarded — not the JDK — follows
     // redirects and re-checks every hop against the egress policy (F2).
-    private final HttpClient http = SsrfGuard.guardedClientBuilder()
-            .connectTimeout(REQUEST_TIMEOUT)
-            .build();
+    private final HttpClient http =
+            SsrfGuard.guardedClientBuilder().connectTimeout(REQUEST_TIMEOUT).build();
 
     private final LlmsTxtProbeService llmsTxtProbe;
     private final WebToolLogService webToolLogService;
 
-    public WebFetchTool(LlmsTxtProbeService llmsTxtProbe,
-                        WebToolLogService webToolLogService) {
+    public WebFetchTool(LlmsTxtProbeService llmsTxtProbe, WebToolLogService webToolLogService) {
         this.llmsTxtProbe = llmsTxtProbe;
         this.webToolLogService = webToolLogService;
     }
@@ -187,15 +193,11 @@ public class WebFetchTool implements Tool {
         try {
             uri = new URI(rawUrl);
         } catch (URISyntaxException e) {
-            throw new ToolException("Invalid URL: " + e.getMessage());
+            throw new ToolException("Invalid URL: " + e.getMessage(), e);
         }
         String scheme = uri.getScheme();
-        if (scheme == null
-                || (!scheme.equalsIgnoreCase("http")
-                        && !scheme.equalsIgnoreCase("https"))) {
-            throw new ToolException(
-                    "Only http:// and https:// URLs are supported (got '"
-                            + scheme + "')");
+        if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
+            throw new ToolException("Only http:// and https:// URLs are supported (got '" + scheme + "')");
         }
 
         String accept = params == null ? null : (String) params.get("accept");
@@ -215,24 +217,23 @@ public class WebFetchTool implements Tool {
                     .timeout(REQUEST_TIMEOUT)
                     .GET()
                     .build();
-            HttpClient client = flags.contains(FLAG_INSECURE)
-                    ? InsecureHttpClientFactory.client()
-                    : http;
+            HttpClient client = flags.contains(FLAG_INSECURE) ? InsecureHttpClientFactory.client() : http;
             if (flags.contains(FLAG_INSECURE)) {
-                log.warn("WebFetchTool tenant='{}' url='{}' — TLS verification disabled (insecure flag)",
-                        ctx.tenantId(), truncate(rawUrl, 120));
+                log.warn(
+                        "WebFetchTool tenant='{}' url='{}' — TLS verification disabled (insecure flag)",
+                        ctx.tenantId(),
+                        truncate(rawUrl, 120));
             }
             HttpResponse<String> response;
             try {
-                response = SsrfGuard.sendGuarded(
-                        client, request, SsrfGuard.capped(HttpResponse.BodyHandlers.ofString()));
+                response =
+                        SsrfGuard.sendGuarded(client, request, SsrfGuard.capped(HttpResponse.BodyHandlers.ofString()));
             } catch (SsrfGuard.SsrfException e) {
-                throw new ToolException(e.getMessage());
+                throw new ToolException(e.getMessage(), e);
             }
 
             String body = response.body() == null ? "" : response.body();
-            String contentType = response.headers()
-                    .firstValue("content-type").orElse("");
+            String contentType = response.headers().firstValue("content-type").orElse("");
 
             // HTML pages are parsed to extracted body text by default —
             // raw markup costs an order of magnitude more tokens and
@@ -249,12 +250,15 @@ public class WebFetchTool implements Tool {
 
             int fullLength = effectiveBody.length();
             boolean truncated = fullLength > MAX_BODY_CHARS;
-            String content = truncated
-                    ? effectiveBody.substring(0, MAX_BODY_CHARS) : effectiveBody;
+            String content = truncated ? effectiveBody.substring(0, MAX_BODY_CHARS) : effectiveBody;
 
-            log.info("WebFetchTool tenant='{}' url='{}' status={} bytes={} flags={}",
-                    ctx.tenantId(), truncate(rawUrl, 120),
-                    response.statusCode(), body.length(), flags);
+            log.info(
+                    "WebFetchTool tenant='{}' url='{}' status={} bytes={} flags={}",
+                    ctx.tenantId(),
+                    truncate(rawUrl, 120),
+                    response.statusCode(),
+                    body.length(),
+                    flags);
 
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("url", uri.toString());
@@ -274,9 +278,8 @@ public class WebFetchTool implements Tool {
 
             if (!flags.contains(FLAG_NO_LLMS)) {
                 Optional<String> overview = llmsTxtProbe.probe(uri, ctx);
-                overview.ifPresent(overviewBody -> out.put("originOverview", Map.of(
-                        "source", "llms.txt",
-                        "content", overviewBody)));
+                overview.ifPresent(overviewBody ->
+                        out.put("originOverview", Map.of("source", "llms.txt", "content", overviewBody)));
             }
 
             long durationMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
@@ -299,11 +302,14 @@ public class WebFetchTool implements Tool {
             return out;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted while fetching '" + rawUrl + "'");
+            throw new ToolException("Interrupted while fetching '" + rawUrl + "'", e);
         } catch (Exception e) {
-            log.warn("WebFetchTool tenant='{}' url='{}' failed: {}",
-                    ctx.tenantId(), truncate(rawUrl, 120), e.toString());
-            throw new ToolException("Fetch failed: " + e.getMessage());
+            log.warn(
+                    "WebFetchTool tenant='{}' url='{}' failed: {}",
+                    ctx.tenantId(),
+                    truncate(rawUrl, 120),
+                    e.toString());
+            throw new ToolException("Fetch failed: " + e.getMessage(), e);
         }
     }
 
@@ -375,8 +381,8 @@ public class WebFetchTool implements Tool {
         for (var br : doc.select("br")) {
             br.append("\\n");
         }
-        for (var block : doc.select("p, div, section, article, header, footer, "
-                + "li, tr, h1, h2, h3, h4, h5, h6, blockquote, pre")) {
+        for (var block : doc.select(
+                "p, div, section, article, header, footer, " + "li, tr, h1, h2, h3, h4, h5, h6, blockquote, pre")) {
             block.prepend("\\n");
             block.append("\\n");
         }
@@ -384,9 +390,6 @@ public class WebFetchTool implements Tool {
         // Replace our literal "\n" markers with real newlines, then collapse
         // runs of blank lines to at most two for readability.
         text = text.replace("\\n", "\n");
-        return text.replaceAll("\n[ \t]+", "\n")
-                .replaceAll("\n{3,}", "\n\n")
-                .trim();
+        return text.replaceAll("\n[ \t]+", "\n").replaceAll("\n{3,}", "\n\n").trim();
     }
-
 }

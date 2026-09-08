@@ -47,8 +47,7 @@ import org.springframework.stereotype.Component;
 public class RserveDaemonManager {
 
     /** Logger receiving Rserve stdout/stderr line-by-line. */
-    private static final Logger RSERVE_LOG = LoggerFactory.getLogger(
-            "de.mhus.vance.addon.brain.rlang.rserve");
+    private static final Logger RSERVE_LOG = LoggerFactory.getLogger("de.mhus.vance.addon.brain.rlang.rserve");
 
     /** Poll interval while waiting for the daemon to come online. */
     private static final long POLL_INTERVAL_MS = 200L;
@@ -81,11 +80,16 @@ public class RserveDaemonManager {
             return;
         }
         if (!props.isAutostart() || !isLoopback(props.getHost())) {
-            log.info("rlang addon active; daemon expected to be reachable at {}:{} (autostart={})",
-                    props.getHost(), props.getPort(), props.isAutostart());
+            log.info(
+                    "rlang addon active; daemon expected to be reachable at {}:{} (autostart={})",
+                    props.getHost(),
+                    props.getPort(),
+                    props.isAutostart());
         } else {
-            log.info("rlang addon active; Rserve daemon will start on first tool call ({}:{})",
-                    props.getHost(), props.getPort());
+            log.info(
+                    "rlang addon active; Rserve daemon will start on first tool call ({}:{})",
+                    props.getHost(),
+                    props.getPort());
         }
     }
 
@@ -96,8 +100,7 @@ public class RserveDaemonManager {
      */
     public void ensureRunning() {
         if (!props.isEnabled()) {
-            throw new ToolException(
-                    "r_script disabled (vance.rserve.enabled=false)");
+            throw new ToolException("r_script disabled (vance.rserve.enabled=false)");
         }
 
         // Fast path — daemon already up.
@@ -116,22 +119,19 @@ public class RserveDaemonManager {
             // We can only spawn a local daemon. If host is remote
             // and unreachable, fail with a clear hint.
             if (!props.isAutostart()) {
-                throw new ToolException(
-                        "Rserve not reachable at " + props.getHost() + ":" + props.getPort()
-                                + " and vance.rserve.autostart=false. "
-                                + "Start the daemon externally or enable autostart.");
+                throw new ToolException("Rserve not reachable at " + props.getHost() + ":" + props.getPort()
+                        + " and vance.rserve.autostart=false. "
+                        + "Start the daemon externally or enable autostart.");
             }
             if (!isLoopback(props.getHost())) {
-                throw new ToolException(
-                        "Rserve not reachable at " + props.getHost() + ":" + props.getPort()
-                                + " and host is not loopback — cannot autostart a remote daemon.");
+                throw new ToolException("Rserve not reachable at " + props.getHost() + ":" + props.getPort()
+                        + " and host is not loopback — cannot autostart a remote daemon.");
             }
 
             // If we previously spawned a process and it has died,
             // clear the reference so we spawn afresh.
             if (process != null && !process.isAlive()) {
-                log.warn("Previously spawned Rserve died (exitValue={}); respawning",
-                        safeExitValue(process));
+                log.warn("Previously spawned Rserve died (exitValue={}); respawning", safeExitValue(process));
                 process = null;
             }
 
@@ -172,10 +172,14 @@ public class RserveDaemonManager {
     private void startDaemon() {
         log.info("Starting Rserve daemon on port {}…", props.getPort());
         ProcessBuilder pb = new ProcessBuilder(List.of(
-                "R", "CMD", "Rserve",
-                "--no-save",
-                "--RS-conf", "/dev/null",
-                "--RS-port", String.valueOf(props.getPort())))
+                        "R",
+                        "CMD",
+                        "Rserve",
+                        "--no-save",
+                        "--RS-conf",
+                        "/dev/null",
+                        "--RS-port",
+                        String.valueOf(props.getPort())))
                 .redirectErrorStream(true);
         try {
             process = pb.start();
@@ -185,32 +189,29 @@ public class RserveDaemonManager {
                 throw new ToolException(
                         "Cannot start Rserve: R is not on PATH. Install R "
                                 + "(macOS: `brew install r`; Linux: apt-get install r-base) "
-                                + "and run `R -e \"install.packages('Rserve')\"` once.");
+                                + "and run `R -e \"install.packages('Rserve')\"` once.",
+                        e);
             }
-            throw new ToolException("Cannot start Rserve: " + e.getMessage());
+            throw new ToolException("Cannot start Rserve: " + e.getMessage(), e);
         }
 
-        pumpThread = new Thread(
-                () -> pumpOutput(process.getInputStream()),
-                "rserve-output");
+        pumpThread = new Thread(() -> pumpOutput(process.getInputStream()), "rserve-output");
         pumpThread.setDaemon(true);
         pumpThread.start();
     }
 
     private void waitForReachable() {
-        long deadline = System.currentTimeMillis()
-                + TimeUnit.SECONDS.toMillis(props.getStartupTimeoutSec());
+        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(props.getStartupTimeoutSec());
         while (System.currentTimeMillis() < deadline) {
             // If the process died during startup, surface that
             // immediately rather than waiting for the timeout.
             if (process != null && !process.isAlive()) {
                 int exit = safeExitValue(process);
                 process = null;
-                throw new ToolException(
-                        "Rserve startup failed (process exited with " + exit
-                                + "). Check that the Rserve R package is installed "
-                                + "(`R -e \"install.packages('Rserve')\"`) and that "
-                                + "port " + props.getPort() + " is free.");
+                throw new ToolException("Rserve startup failed (process exited with " + exit
+                        + "). Check that the Rserve R package is installed "
+                        + "(`R -e \"install.packages('Rserve')\"`) and that "
+                        + "port " + props.getPort() + " is free.");
             }
             if (health.isReachable()) {
                 log.info("Rserve daemon ready on port {}", props.getPort());
@@ -220,7 +221,7 @@ public class RserveDaemonManager {
                 Thread.sleep(POLL_INTERVAL_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new ToolException("Interrupted while waiting for Rserve startup");
+                throw new ToolException("Interrupted while waiting for Rserve startup", e);
             }
         }
         // Timeout — kill the spawn so we don't leave it dangling.
@@ -228,14 +229,12 @@ public class RserveDaemonManager {
             process.destroyForcibly();
             process = null;
         }
-        throw new ToolException(
-                "Rserve did not become reachable on port " + props.getPort()
-                        + " within " + props.getStartupTimeoutSec() + "s");
+        throw new ToolException("Rserve did not become reachable on port " + props.getPort() + " within "
+                + props.getStartupTimeoutSec() + "s");
     }
 
     private static void pumpOutput(InputStream in) {
-        try (BufferedReader r = new BufferedReader(
-                new InputStreamReader(in, StandardCharsets.UTF_8))) {
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
             String line;
             while ((line = r.readLine()) != null) {
                 RSERVE_LOG.info(line);
@@ -250,7 +249,11 @@ public class RserveDaemonManager {
     }
 
     private static int safeExitValue(Process p) {
-        try { return p.exitValue(); } catch (IllegalThreadStateException e) { return Integer.MIN_VALUE; }
+        try {
+            return p.exitValue();
+        } catch (IllegalThreadStateException e) {
+            return Integer.MIN_VALUE;
+        }
     }
 
     @PreDestroy
@@ -258,8 +261,7 @@ public class RserveDaemonManager {
         synchronized (lock) {
             if (process == null) return;
             if (process.isAlive()) {
-                log.info("Stopping Rserve daemon (pid={})",
-                        process.toHandle().pid());
+                log.info("Stopping Rserve daemon (pid={})", process.toHandle().pid());
                 process.destroy();
                 try {
                     if (!process.waitFor(2, TimeUnit.SECONDS)) {

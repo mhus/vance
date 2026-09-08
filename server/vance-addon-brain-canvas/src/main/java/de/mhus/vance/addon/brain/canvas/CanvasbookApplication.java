@@ -12,7 +12,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -42,11 +41,12 @@ public class CanvasbookApplication implements VanceApplication {
     private final DocumentLinkBuilder linkBuilder;
     private final SecurityContextFactory contextFactory;
 
-    public CanvasbookApplication(CanvasbookFolderReader folderReader,
-                                 CanvasService canvasService,
-                                 DocumentService documentService,
-                                 DocumentLinkBuilder linkBuilder,
-                                 SecurityContextFactory contextFactory) {
+    public CanvasbookApplication(
+            CanvasbookFolderReader folderReader,
+            CanvasService canvasService,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.canvasService = canvasService;
         this.documentService = documentService;
@@ -54,7 +54,10 @@ public class CanvasbookApplication implements VanceApplication {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String appName() { return APP_NAME; }
+    @Override
+    public String appName() {
+        return APP_NAME;
+    }
 
     @Override
     public String promptInject(PromptInjectContext ctx) {
@@ -86,8 +89,8 @@ public class CanvasbookApplication implements VanceApplication {
         Optional<DocumentDocument> existing =
                 documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
-            throw new ToolException("Manifest already exists at '" + manifestPath
-                    + "'. Pass overwrite=true to replace it.");
+            throw new ToolException(
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -102,29 +105,38 @@ public class CanvasbookApplication implements VanceApplication {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put(APP_NAME, block);
 
-        ApplicationDocument manifest = new ApplicationDocument(
-                "application", APP_NAME, title, description, config, new LinkedHashMap<>());
+        ApplicationDocument manifest =
+                new ApplicationDocument("application", APP_NAME, title, description, config, new LinkedHashMap<>());
         String manifestBody = ApplicationCodec.serialize(manifest, YAML_MIME);
 
         DocumentDocument stored;
         if (existing.isPresent()) {
-            stored = documentService.update(existing.get().getId(),
+            stored = documentService.update(
+                    existing.get().getId(),
                     title != null ? title : "Canvasbook",
                     List.of("application", "canvasbook"),
-                    manifestBody, null, null, null, null, YAML_MIME,
+                    manifestBody,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
-            try (InputStream in = new ByteArrayInputStream(
-                    manifestBody.getBytes(StandardCharsets.UTF_8))) {
-                stored = documentService.create(ctx.tenantId(), ctx.projectName(), manifestPath,
+            try (InputStream in = new ByteArrayInputStream(manifestBody.getBytes(StandardCharsets.UTF_8))) {
+                stored = documentService.create(
+                        ctx.tenantId(),
+                        ctx.projectName(),
+                        manifestPath,
                         title != null ? title : "Canvasbook",
                         List.of("application", "canvasbook"),
-                        YAML_MIME, in, ctx.userId(),
+                        YAML_MIME,
+                        in,
+                        ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not write manifest '" + manifestPath + "': " + e.getMessage());
+                throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
         }
 
@@ -137,17 +149,20 @@ public class CanvasbookApplication implements VanceApplication {
                 String pTitle = asString(pm.get("title"));
                 String slug = asString(pm.get("slug"));
                 if (slug == null) slug = slugify(pTitle != null ? pTitle : "canvas");
-                canvasService.create(ctx.tenantId(), ctx.projectName(),
-                        folder + "/" + slug, pTitle, null, ctx.userId());
+                canvasService.create(
+                        ctx.tenantId(), ctx.projectName(), folder + "/" + slug, pTitle, null, ctx.userId());
                 created++;
             }
         }
 
-        RefreshResult refresh = refresh(new RefreshContext(
-                ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId()));
+        RefreshResult refresh =
+                refresh(new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId()));
 
-        log.info("CanvasbookApplication.create tenant='{}' folder='{}' initialPages={}",
-                ctx.tenantId(), folder, created);
+        log.info(
+                "CanvasbookApplication.create tenant='{}' folder='{}' initialPages={}",
+                ctx.tenantId(),
+                folder,
+                created);
 
         Map<String, Object> stats = new LinkedHashMap<>();
         if (title != null) stats.put("title", title);
@@ -157,16 +172,21 @@ public class CanvasbookApplication implements VanceApplication {
                 + "`canvasbook_page_create(folder=\"" + folder + "\", title=\"...\")`, then "
                 + "`canvas_node_add` / `canvas_edge_add` to fill them.";
 
-        return new CreateResult(APP_NAME, folder, stored.getPath(),
+        return new CreateResult(
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
-                List.of(), refresh.artefacts(), nextStep, stats);
+                List.of(),
+                refresh.artefacts(),
+                nextStep,
+                stats);
     }
 
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
         String folder = CanvasbookFolderReader.normaliseFolder(ctx.folder());
-        CanvasbookFolderReader.Scan scan =
-                folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
+        CanvasbookFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
 
         String title = scan.config().title();
         if (title == null || title.isBlank()) title = leafFolderName(folder);
@@ -177,11 +197,14 @@ public class CanvasbookApplication implements VanceApplication {
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("pageCount", scan.pages().size());
-        ArtefactResult index = new ArtefactResult(
-                "index", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), stats);
+        ArtefactResult index =
+                new ArtefactResult("index", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), stats);
 
-        log.info("CanvasbookApplication.refresh tenant='{}' folder='{}' pages={}",
-                ctx.tenantId(), folder, scan.pages().size());
+        log.info(
+                "CanvasbookApplication.refresh tenant='{}' folder='{}' pages={}",
+                ctx.tenantId(),
+                folder,
+                scan.pages().size());
         return new RefreshResult(APP_NAME, folder, List.of(index));
     }
 
@@ -201,30 +224,44 @@ public class CanvasbookApplication implements VanceApplication {
         }
         sb.append("## Canvases\n\n");
         for (CanvasbookFolderReader.Page p : scan.pages()) {
-            sb.append("- [").append(p.title()).append("](").append(p.relativePath()).append(")\n");
+            sb.append("- [")
+                    .append(p.title())
+                    .append("](")
+                    .append(p.relativePath())
+                    .append(")\n");
         }
         return sb.toString();
     }
 
-    private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath,
-                                           String body, String title) {
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
+    private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath, String body, String title) {
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
         if (existing.isPresent()) {
-            return documentService.update(existing.get().getId(),
-                    title, List.of("canvasbook", "generated", "index"),
-                    body, null, null, null, null, MD_MIME,
+            return documentService.update(
+                    existing.get().getId(),
+                    title,
+                    List.of("canvasbook", "generated", "index"),
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    MD_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
-            return documentService.create(ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, List.of("canvasbook", "generated", "index"),
-                    MD_MIME, in, ctx.userId(),
+            return documentService.create(
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    outputPath,
+                    title,
+                    List.of("canvasbook", "generated", "index"),
+                    MD_MIME,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write artefact '" + outputPath + "': " + e.getMessage());
+            throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }
     }
 
@@ -234,9 +271,8 @@ public class CanvasbookApplication implements VanceApplication {
     }
 
     public static String slugify(String s) {
-        String base = s.toLowerCase(Locale.ROOT).trim()
-                .replaceAll("[^a-z0-9]+", "-")
-                .replaceAll("(^-+|-+$)", "");
+        String base =
+                s.toLowerCase(Locale.ROOT).trim().replaceAll("[^a-z0-9]+", "-").replaceAll("(^-+|-+$)", "");
         return base.isEmpty() ? "canvas" : base;
     }
 

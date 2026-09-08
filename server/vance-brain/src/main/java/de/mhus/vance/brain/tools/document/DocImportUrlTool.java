@@ -2,13 +2,13 @@ package de.mhus.vance.brain.tools.document;
 
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.brain.tools.web.InsecureHttpClientFactory;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.net.SsrfGuard;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.project.ProjectDocument;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -55,76 +55,99 @@ public class DocImportUrlTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name. Defaults "
-                                    + "to the active project."),
-                    "url", Map.of(
-                            "type", "string",
-                            "description", "Absolute http:// or https:// URL "
-                                    + "to fetch and import."),
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Optional document path inside the project, "
-                                    + "e.g. 'documents/imports/apollo-13.html'. "
-                                    + "Must be unique per project. Omitted → auto-"
-                                    + "generated under 'documents/' from the URL's "
-                                    + "last path segment (or title slug)."),
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Optional human title (defaults to the URL)."),
-                    "tags", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description", "Optional tags. 'imported' is "
-                                    + "added automatically."),
-                    "summary", Map.of(
-                            "type", "string",
-                            "description", "Optional summary / caption to "
-                                    + "store on the document. Especially "
-                                    + "useful for binary content (images, "
-                                    + "PDFs) where the auto-summary "
-                                    + "scheduler doesn't run. Slideshows "
-                                    + "fall back to this when no caption "
-                                    + "is set in the manifest."),
-                    "insecure", Map.of(
-                            "type", "boolean",
-                            "description", "Skip TLS certificate "
-                                    + "verification for this single fetch. "
-                                    + "Opt-in escape hatch for sites with "
-                                    + "broken cert chains — e.g. a leaf-"
-                                    + "only certificate without the "
-                                    + "intermediate, where AIA chasing "
-                                    + "also fails. Only set when the user "
-                                    + "explicitly asks; the call is logged "
-                                    + "as a warning."),
-                    "ifExists", Map.of(
-                            "type", "string",
-                            "enum", List.of("reuse", "update", "error"),
-                            "description", "What to do when a document "
-                                    + "already exists at the target path. "
-                                    + "'reuse' (default): return the existing "
-                                    + "doc without re-fetching — idempotent, "
-                                    + "use this when the URL may have been "
-                                    + "imported before. 'update': fetch the "
-                                    + "URL and replace the existing body and "
-                                    + "mime-type (title and tags are kept). "
-                                    + "'error': fail with an error.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults " + "to the active project."),
+                            "url",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Absolute http:// or https:// URL " + "to fetch and import."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional document path inside the project, "
+                                                    + "e.g. 'documents/imports/apollo-13.html'. "
+                                                    + "Must be unique per project. Omitted → auto-"
+                                                    + "generated under 'documents/' from the URL's "
+                                                    + "last path segment (or title slug)."),
+                            "title",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional human title (defaults to the URL)."),
+                            "tags",
+                                    Map.of(
+                                            "type",
+                                            "array",
+                                            "items",
+                                            Map.of("type", "string"),
+                                            "description",
+                                            "Optional tags. 'imported' is " + "added automatically."),
+                            "summary",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional summary / caption to "
+                                                    + "store on the document. Especially "
+                                                    + "useful for binary content (images, "
+                                                    + "PDFs) where the auto-summary "
+                                                    + "scheduler doesn't run. Slideshows "
+                                                    + "fall back to this when no caption "
+                                                    + "is set in the manifest."),
+                            "insecure",
+                                    Map.of(
+                                            "type",
+                                            "boolean",
+                                            "description",
+                                            "Skip TLS certificate "
+                                                    + "verification for this single fetch. "
+                                                    + "Opt-in escape hatch for sites with "
+                                                    + "broken cert chains — e.g. a leaf-"
+                                                    + "only certificate without the "
+                                                    + "intermediate, where AIA chasing "
+                                                    + "also fails. Only set when the user "
+                                                    + "explicitly asks; the call is logged "
+                                                    + "as a warning."),
+                            "ifExists",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("reuse", "update", "error"),
+                                            "description",
+                                            "What to do when a document "
+                                                    + "already exists at the target path. "
+                                                    + "'reuse' (default): return the existing "
+                                                    + "doc without re-fetching — idempotent, "
+                                                    + "use this when the URL may have been "
+                                                    + "imported before. 'update': fetch the "
+                                                    + "URL and replace the existing body and "
+                                                    + "mime-type (title and tags are kept). "
+                                                    + "'error': fail with an error.")),
             "required", List.of("url"));
 
     private static final Set<String> VALID_IF_EXISTS = Set.of("reuse", "update", "error");
 
     // Redirect.NEVER so SsrfGuard.sendGuarded re-checks every hop (F2).
-    private final HttpClient http = SsrfGuard.guardedClientBuilder()
-            .connectTimeout(REQUEST_TIMEOUT)
-            .build();
+    private final HttpClient http =
+            SsrfGuard.guardedClientBuilder().connectTimeout(REQUEST_TIMEOUT).build();
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public DocImportUrlTool(EddieContext eddieContext, DocumentService documentService,
+    public DocImportUrlTool(
+            EddieContext eddieContext,
+            DocumentService documentService,
             de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
@@ -171,14 +194,11 @@ public class DocImportUrlTool implements Tool {
         try {
             uri = new URI(rawUrl);
         } catch (URISyntaxException e) {
-            throw new ToolException("Invalid URL: " + e.getMessage());
+            throw new ToolException("Invalid URL: " + e.getMessage(), e);
         }
         String scheme = uri.getScheme();
-        if (scheme == null
-                || (!scheme.equalsIgnoreCase("http")
-                        && !scheme.equalsIgnoreCase("https"))) {
-            throw new ToolException(
-                    "Only http:// and https:// URLs are supported");
+        if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
+            throw new ToolException("Only http:// and https:// URLs are supported");
         }
 
         String title = paramString(params, "title");
@@ -200,28 +220,33 @@ public class DocImportUrlTool implements Tool {
         } else {
             ifExists = ifExists.toLowerCase(java.util.Locale.ROOT);
             if (!VALID_IF_EXISTS.contains(ifExists)) {
-                throw new ToolException("'ifExists' must be one of "
-                        + VALID_IF_EXISTS + ", got '" + ifExists + "'");
+                throw new ToolException("'ifExists' must be one of " + VALID_IF_EXISTS + ", got '" + ifExists + "'");
             }
         }
 
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), project.getName(), path);
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), project.getName(), path);
         if (existing.isPresent()) {
             DocumentDocument doc = existing.get();
             switch (ifExists) {
                 case "reuse" -> {
-                    log.info("DocImportUrl reuse tenant='{}' project='{}' path='{}' from='{}' id='{}'",
-                            ctx.tenantId(), project.getName(), doc.getPath(), rawUrl, doc.getId());
+                    log.info(
+                            "DocImportUrl reuse tenant='{}' project='{}' path='{}' from='{}' id='{}'",
+                            ctx.tenantId(),
+                            project.getName(),
+                            doc.getPath(),
+                            rawUrl,
+                            doc.getId());
                     return reuseResponse(doc, rawUrl);
                 }
-                case "error" -> throw new ToolException(
-                        "Document '" + doc.getPath() + "' already exists in "
-                                + ctx.tenantId() + "/" + project.getName()
-                                + " — set ifExists='reuse' to use the existing "
-                                + "doc, or ifExists='update' to overwrite it.");
+                case "error" ->
+                    throw new ToolException("Document '" + doc.getPath() + "' already exists in "
+                            + ctx.tenantId() + "/" + project.getName()
+                            + " — set ifExists='reuse' to use the existing "
+                            + "doc, or ifExists='update' to overwrite it.");
                 // 'update' falls through to fetch + replaceContent below.
-                default -> { /* update — fall through */ }
+                default -> {
+                    /* update — fall through */
+                }
             }
         }
 
@@ -239,38 +264,36 @@ public class DocImportUrlTool implements Tool {
                     .build();
             HttpClient client = insecure ? InsecureHttpClientFactory.client() : http;
             if (insecure) {
-                log.warn("DocImportUrlTool tenant='{}' url='{}' — TLS verification disabled (insecure=true)",
-                        ctx.tenantId(), rawUrl);
+                log.warn(
+                        "DocImportUrlTool tenant='{}' url='{}' — TLS verification disabled (insecure=true)",
+                        ctx.tenantId(),
+                        rawUrl);
             }
             HttpResponse<byte[]> response;
             try {
                 response = SsrfGuard.sendGuarded(
                         client, request, SsrfGuard.capped(HttpResponse.BodyHandlers.ofByteArray()));
             } catch (SsrfGuard.SsrfException e) {
-                throw new ToolException(e.getMessage());
+                throw new ToolException(e.getMessage(), e);
             }
             status = response.statusCode();
             if (status < 200 || status >= 300) {
-                throw new ToolException(
-                        "Fetch returned HTTP " + status + " for " + rawUrl);
+                throw new ToolException("Fetch returned HTTP " + status + " for " + rawUrl);
             }
             body = response.body() == null ? new byte[0] : response.body();
             if (body.length > MAX_IMPORT_BYTES) {
-                throw new ToolException(
-                        "Body too large (" + body.length + " bytes, limit "
-                                + MAX_IMPORT_BYTES + "). Use a smaller "
-                                + "source or summarise first.");
+                throw new ToolException("Body too large (" + body.length + " bytes, limit "
+                        + MAX_IMPORT_BYTES + "). Use a smaller "
+                        + "source or summarise first.");
             }
-            contentType = response.headers()
-                    .firstValue("content-type").orElse("application/octet-stream");
+            contentType = response.headers().firstValue("content-type").orElse("application/octet-stream");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted fetching '" + rawUrl + "'");
+            throw new ToolException("Interrupted fetching '" + rawUrl + "'", e);
         } catch (ToolException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("DocImportUrlTool tenant='{}' url='{}' failed: {}",
-                    ctx.tenantId(), rawUrl, e.toString());
+            log.warn("DocImportUrlTool tenant='{}' url='{}' failed: {}", ctx.tenantId(), rawUrl, e.toString());
             throw new ToolException("Fetch failed: " + e.getMessage(), e);
         }
 
@@ -286,7 +309,8 @@ public class DocImportUrlTool implements Tool {
                     new ByteArrayInputStream(body),
                     contentType,
                     DocumentService.TOOL_IDENTITY,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), existing.get().getPath()));
+                    contextFactory.writeActor(
+                            ctx.tenantId(), ctx.userId(), existing.get().getPath()));
             updated = true;
         } else {
             try {
@@ -305,11 +329,15 @@ public class DocImportUrlTool implements Tool {
                 // fetched body is discarded — falling back to reuse is
                 // friendlier to the caller than failing the call, since
                 // the LLM would otherwise spin on the same retry.
-                DocumentDocument doc = documentService.findByPath(
-                        ctx.tenantId(), project.getName(), path)
+                DocumentDocument doc = documentService
+                        .findByPath(ctx.tenantId(), project.getName(), path)
                         .orElseThrow(() -> new ToolException(e.getMessage(), e));
-                log.info("DocImportUrl race-recovered tenant='{}' project='{}' path='{}' id='{}'",
-                        ctx.tenantId(), project.getName(), doc.getPath(), doc.getId());
+                log.info(
+                        "DocImportUrl race-recovered tenant='{}' project='{}' path='{}' id='{}'",
+                        ctx.tenantId(),
+                        project.getName(),
+                        doc.getPath(),
+                        doc.getId());
                 return reuseResponse(doc, rawUrl);
             }
         }
@@ -318,14 +346,19 @@ public class DocImportUrlTool implements Tool {
         // (images, PDFs) where the auto-summary scheduler doesn't run.
         String summary = paramString(params, "summary");
         if (summary != null) {
-            documentService.setSummary(result.getId(), summary,
-                    contextFactory.writeActor(ctx.tenantId(), ctx.userId(), result.getPath()));
+            documentService.setSummary(
+                    result.getId(), summary, contextFactory.writeActor(ctx.tenantId(), ctx.userId(), result.getPath()));
         }
 
-        log.info("DocImportUrl {} tenant='{}' project='{}' path='{}' from='{}' bytes={} summary={}",
+        log.info(
+                "DocImportUrl {} tenant='{}' project='{}' path='{}' from='{}' bytes={} summary={}",
                 updated ? "update" : "create",
-                ctx.tenantId(), project.getName(), result.getPath(), rawUrl,
-                body.length, summary != null);
+                ctx.tenantId(),
+                project.getName(),
+                result.getPath(),
+                rawUrl,
+                body.length,
+                summary != null);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", result.getId());
@@ -371,30 +404,26 @@ public class DocImportUrlTool implements Tool {
         String tail = "";
         String uriPath = uri.getPath();
         if (uriPath != null && !uriPath.isBlank()) {
-            String trimmed = uriPath.endsWith("/")
-                    ? uriPath.substring(0, uriPath.length() - 1)
-                    : uriPath;
+            String trimmed = uriPath.endsWith("/") ? uriPath.substring(0, uriPath.length() - 1) : uriPath;
             int slash = trimmed.lastIndexOf('/');
             tail = slash >= 0 ? trimmed.substring(slash + 1) : trimmed;
         }
         String slug = slugify(tail.isEmpty() ? title : tail);
-        String filename = slug.isEmpty()
-                ? java.util.UUID.randomUUID().toString().substring(0, 8)
-                : slug;
-        return de.mhus.vance.shared.document.DocumentService.DOCUMENTS_FOLDER_PREFIX
-                + filename;
+        String filename =
+                slug.isEmpty() ? java.util.UUID.randomUUID().toString().substring(0, 8) : slug;
+        return de.mhus.vance.shared.document.DocumentService.DOCUMENTS_FOLDER_PREFIX + filename;
     }
 
     private static String slugify(@org.jspecify.annotations.Nullable String s) {
         if (s == null) return "";
-        String slug = s.trim().toLowerCase(java.util.Locale.ROOT)
+        String slug = s.trim()
+                .toLowerCase(java.util.Locale.ROOT)
                 .replaceAll("[^a-z0-9.]+", "-")
                 .replaceAll("^-+|-+$", "");
         return slug.length() > 50 ? slug.substring(0, 50) : slug;
     }
 
-    private static @org.jspecify.annotations.Nullable String paramString(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String paramString(Map<String, Object> params, String key) {
         if (params == null) return null;
         Object v = params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;

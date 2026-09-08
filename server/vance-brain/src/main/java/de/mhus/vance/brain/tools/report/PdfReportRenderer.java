@@ -27,8 +27,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class PdfReportRenderer implements MarkdownReportRenderer {
 
-    private static final List<Extension> EXTENSIONS = List.of(
-            TablesExtension.create());
+    private static final List<Extension> EXTENSIONS = List.of(TablesExtension.create());
 
     private final ReportThemeResolver themeResolver;
 
@@ -60,8 +59,7 @@ public class PdfReportRenderer implements MarkdownReportRenderer {
         if (u.regionMatches(true, 0, "data:", 0, 5)) {
             return u; // embedded — safe
         }
-        if (u.regionMatches(true, 0, "http://", 0, 7)
-                || u.regionMatches(true, 0, "https://", 0, 8)) {
+        if (u.regionMatches(true, 0, "http://", 0, 7) || u.regionMatches(true, 0, "https://", 0, 8)) {
             try {
                 de.mhus.vance.shared.net.SsrfGuard.assertAllowed(u);
                 return u;
@@ -72,13 +70,9 @@ public class PdfReportRenderer implements MarkdownReportRenderer {
         return null; // file:, jar:, ftp:, relative, … → never fetched
     }
 
-    private final Parser parser = Parser.builder()
-            .extensions(EXTENSIONS)
-            .build();
-    private final HtmlRenderer htmlRenderer = HtmlRenderer.builder()
-            .extensions(EXTENSIONS)
-            .escapeHtml(true)
-            .build();
+    private final Parser parser = Parser.builder().extensions(EXTENSIONS).build();
+    private final HtmlRenderer htmlRenderer =
+            HtmlRenderer.builder().extensions(EXTENSIONS).escapeHtml(true).build();
 
     @Override
     public String format() {
@@ -120,8 +114,7 @@ public class PdfReportRenderer implements MarkdownReportRenderer {
             builder.run();
             return out.toByteArray();
         } catch (Exception e) {
-            throw new ToolException(
-                    "PDF rendering failed: " + e.getMessage());
+            throw new ToolException("PDF rendering failed: " + e.getMessage(), e);
         }
     }
 
@@ -138,11 +131,7 @@ public class PdfReportRenderer implements MarkdownReportRenderer {
     String buildHtmlDocument(MarkdownReportContext context, String body) {
         String safeTitle = htmlEscape(context.title() != null ? context.title() : "Report");
         String css = themeResolver.resolveStylesheet(
-                context.tenantId(),
-                context.projectName(),
-                context.theme(),
-                context.css(),
-                context.subject());
+                context.tenantId(), context.projectName(), context.theme(), context.css(), context.subject());
         StringBuilder html = new StringBuilder();
         html.append("<!DOCTYPE html>\n");
         html.append("<html><head>\n");
@@ -164,8 +153,7 @@ public class PdfReportRenderer implements MarkdownReportRenderer {
      *  on body text (commonmark-java already escapes the body). */
     static String htmlEscape(String s) {
         if (s == null) return "";
-        return s
-                .replace("&", "&amp;")
+        return s.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")

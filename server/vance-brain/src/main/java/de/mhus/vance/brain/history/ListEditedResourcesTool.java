@@ -43,35 +43,45 @@ public class ListEditedResourcesTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "scope", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Process scope. 'process' (default) = only this process; "
-                                            + "'children' = this process plus every descendant "
-                                            + "via parentProcessId; 'session' = every process "
-                                            + "in this session."),
-                    "since", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional ISO-8601 timestamp — return only resources "
-                                            + "touched at or after this moment. Overridden by "
-                                            + "sinceTag when both resolve."),
-                    "sinceTag", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional marker tag whose latest occurrence acts as the "
-                                            + "time floor. Examples: PLAN_STEP_STARTED:cleanup, "
-                                            + "MODE:execute, FILE_EDIT, ERROR. Resolved against "
-                                            + "the same scope. When the tag is not found in "
-                                            + "history, falls through to 'since' if set, else "
-                                            + "to the start of the process.")),
+            "properties",
+                    Map.of(
+                            "scope",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Process scope. 'process' (default) = only this process; "
+                                                    + "'children' = this process plus every descendant "
+                                                    + "via parentProcessId; 'session' = every process "
+                                                    + "in this session."),
+                            "since",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional ISO-8601 timestamp — return only resources "
+                                                    + "touched at or after this moment. Overridden by "
+                                                    + "sinceTag when both resolve."),
+                            "sinceTag",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional marker tag whose latest occurrence acts as the "
+                                                    + "time floor. Examples: PLAN_STEP_STARTED:cleanup, "
+                                                    + "MODE:execute, FILE_EDIT, ERROR. Resolved against "
+                                                    + "the same scope. When the tag is not found in "
+                                                    + "history, falls through to 'since' if set, else "
+                                                    + "to the start of the process.")),
             "required", List.of());
 
     private final ChatMessageService chatMessageService;
     private final ThinkProcessService thinkProcessService;
 
-    @Override public String name() { return "list_edited_resources"; }
+    @Override
+    public String name() {
+        return "list_edited_resources";
+    }
 
     @Override
     public String description() {
@@ -82,8 +92,15 @@ public class ListEditedResourcesTool implements Tool {
                 + "use sinceTag to anchor on a marker like a plan-step start.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
 
     @Override
     public String searchHint() {
@@ -91,8 +108,15 @@ public class ListEditedResourcesTool implements Tool {
                 + "changed files this session, files changed since plan step";
     }
 
-    @Override public Set<String> labels() { return Set.of("read-only"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of("read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -103,8 +127,7 @@ public class ListEditedResourcesTool implements Tool {
         Instant since = parseSince(params);
         String sinceTag = stringOrNull(params, "sinceTag");
 
-        Set<String> allowedProcessIds = HistoryScopeResolver.resolve(
-                scope, ctx, thinkProcessService);
+        Set<String> allowedProcessIds = HistoryScopeResolver.resolve(scope, ctx, thinkProcessService);
 
         // sinceTag wins when it resolves to a real marker. Falling back
         // to the literal `since` (or to no floor at all) keeps the LLM's
@@ -112,16 +135,15 @@ public class ListEditedResourcesTool implements Tool {
         Instant effectiveSince = since;
         String resolvedFrom = since == null ? null : "since";
         if (sinceTag != null) {
-            var markerTime = chatMessageService.findLatestCreatedAtForTag(
-                    ctx.tenantId(), allowedProcessIds, sinceTag);
+            var markerTime = chatMessageService.findLatestCreatedAtForTag(ctx.tenantId(), allowedProcessIds, sinceTag);
             if (markerTime.isPresent()) {
                 effectiveSince = markerTime.get();
                 resolvedFrom = "sinceTag:" + sinceTag;
             }
         }
 
-        List<String> typedKeys = chatMessageService.distinctResourceKeys(
-                ctx.tenantId(), allowedProcessIds, effectiveSince);
+        List<String> typedKeys =
+                chatMessageService.distinctResourceKeys(ctx.tenantId(), allowedProcessIds, effectiveSince);
 
         List<Map<String, Object>> resources = new ArrayList<>(typedKeys.size());
         for (String typed : typedKeys) {
@@ -157,25 +179,22 @@ public class ListEditedResourcesTool implements Tool {
         if (!trimmed.equals(HistorySearchTool.SCOPE_PROCESS)
                 && !trimmed.equals(HistorySearchTool.SCOPE_CHILDREN)
                 && !trimmed.equals(HistorySearchTool.SCOPE_SESSION)) {
-            throw new ToolException("'scope' must be one of: process, children, session "
-                    + "(got '" + s + "')");
+            throw new ToolException("'scope' must be one of: process, children, session " + "(got '" + s + "')");
         }
         return trimmed;
     }
 
-    private static @org.jspecify.annotations.Nullable Instant parseSince(
-            Map<String, Object> params) {
+    private static @org.jspecify.annotations.Nullable Instant parseSince(Map<String, Object> params) {
         String raw = stringOrNull(params, "since");
         if (raw == null) return null;
         try {
             return Instant.parse(raw);
         } catch (DateTimeParseException e) {
-            throw new ToolException("'since' must be an ISO-8601 timestamp: " + raw);
+            throw new ToolException("'since' must be an ISO-8601 timestamp: " + raw, e);
         }
     }
 
-    private static @org.jspecify.annotations.Nullable String stringOrNull(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String stringOrNull(Map<String, Object> params, String key) {
         Object v = params == null ? null : params.get(key);
         if (v == null) return null;
         if (!(v instanceof String s)) {

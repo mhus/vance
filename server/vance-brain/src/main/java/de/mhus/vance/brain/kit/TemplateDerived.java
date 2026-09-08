@@ -38,27 +38,23 @@ import java.util.Map;
  *                  (entries for unselected choices are skipped at apply)
  */
 public record TemplateDerived(
-        String name,
-        Kind kind,
-        String from,
-        List<String> base,
-        Map<String, List<String>> perChoice) {
+        String name, Kind kind, String from, List<String> base, Map<String, List<String>> perChoice) {
 
     public enum Kind {
         UNION;
 
         public static Kind parse(String raw, String fieldLabel) {
             if (raw == null || raw.isBlank()) {
-                throw new IllegalArgumentException(
-                        "derived '" + fieldLabel + "': 'kind' is required");
+                throw new IllegalArgumentException("derived '" + fieldLabel + "': 'kind' is required");
             }
             String token = raw.trim().toUpperCase().replace('-', '_');
             try {
                 return Kind.valueOf(token);
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException(
-                        "derived '" + fieldLabel + "': unknown kind '" + raw
-                                + "' — expected one of " + java.util.Arrays.toString(values()).toLowerCase());
+                        "derived '" + fieldLabel + "': unknown kind '" + raw + "' — expected one of "
+                                + java.util.Arrays.toString(values()).toLowerCase(),
+                        e);
             }
         }
     }
@@ -71,8 +67,7 @@ public record TemplateDerived(
             throw new IllegalArgumentException("derived '" + name + "': 'kind' is required");
         }
         if (from == null || from.isBlank()) {
-            throw new IllegalArgumentException(
-                    "derived '" + name + "': 'from' (multi-select input name) is required");
+            throw new IllegalArgumentException("derived '" + name + "': 'from' (multi-select input name) is required");
         }
         base = base == null ? List.of() : List.copyOf(base);
         if (perChoice == null) {
@@ -80,8 +75,7 @@ public record TemplateDerived(
         } else {
             Map<String, List<String>> copy = new LinkedHashMap<>();
             for (Map.Entry<String, List<String>> e : perChoice.entrySet()) {
-                copy.put(e.getKey(),
-                        e.getValue() == null ? List.of() : List.copyOf(e.getValue()));
+                copy.put(e.getKey(), e.getValue() == null ? List.of() : List.copyOf(e.getValue()));
             }
             perChoice = Map.copyOf(copy);
         }

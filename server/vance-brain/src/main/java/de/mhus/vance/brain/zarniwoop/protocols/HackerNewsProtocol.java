@@ -58,12 +58,21 @@ public class HackerNewsProtocol implements SearchProtocol {
         this.http = http;
     }
 
-    @Override public String id() { return ID; }
-    @Override public String displayName() { return "HackerNews (Algolia)"; }
+    @Override
+    public String id() {
+        return ID;
+    }
+
+    @Override
+    public String displayName() {
+        return "HackerNews (Algolia)";
+    }
+
     @Override
     public Set<SearchModality> modalitiesSupported() {
         return Set.of(SearchModality.NEWS, SearchModality.WEB);
     }
+
     @Override
     public Set<SearchTier> tiersSupported() {
         return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
@@ -74,8 +83,7 @@ public class HackerNewsProtocol implements SearchProtocol {
         if (cfg == null) throw new IllegalArgumentException("cfg is required");
         if (!ID.equals(cfg.protocolId())) {
             throw new IllegalArgumentException(
-                    "HackerNewsProtocol cannot instantiate config with protocol '"
-                            + cfg.protocolId() + "'");
+                    "HackerNewsProtocol cannot instantiate config with protocol '" + cfg.protocolId() + "'");
         }
         return new HackerNewsInstance(cfg, objectMapper, http);
     }
@@ -92,23 +100,34 @@ public class HackerNewsProtocol implements SearchProtocol {
         private final ObjectMapper objectMapper;
         private final SimpleHttpClient http;
 
-        HackerNewsInstance(ProviderInstanceConfig cfg,
-                           ObjectMapper objectMapper,
-                           SimpleHttpClient http) {
+        HackerNewsInstance(ProviderInstanceConfig cfg, ObjectMapper objectMapper, SimpleHttpClient http) {
             this.cfg = cfg;
             this.objectMapper = objectMapper;
             this.http = http;
         }
 
-        @Override public String id() { return cfg.instanceId(); }
-        @Override public String displayName() { return "HackerNews (" + cfg.instanceId() + ")"; }
-        @Override public Set<SearchModality> modalities() {
+        @Override
+        public String id() {
+            return cfg.instanceId();
+        }
+
+        @Override
+        public String displayName() {
+            return "HackerNews (" + cfg.instanceId() + ")";
+        }
+
+        @Override
+        public Set<SearchModality> modalities() {
             return Set.of(SearchModality.NEWS, SearchModality.WEB);
         }
-        @Override public Set<SearchDomain> domains() {
+
+        @Override
+        public Set<SearchDomain> domains() {
             return Set.of(SearchDomain.NEWS, SearchDomain.GENERAL, SearchDomain.CODE);
         }
-        @Override public Set<SearchTier> tiers() {
+
+        @Override
+        public Set<SearchTier> tiers() {
             return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
         }
 
@@ -126,7 +145,8 @@ public class HackerNewsProtocol implements SearchProtocol {
             return ProviderAvailability.READY;
         }
 
-        @Override public Optional<QuotaStatus> currentQuota(SearchScope scope) {
+        @Override
+        public Optional<QuotaStatus> currentQuota(SearchScope scope) {
             // Algolia HN API is unmetered for normal use; nothing to surface.
             return Optional.empty();
         }
@@ -181,20 +201,25 @@ public class HackerNewsProtocol implements SearchProtocol {
                 response = http.get(URI.create(url), USER_AGENT, TIMEOUT);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException(
-                        "Interrupted while calling HN '" + cfg.instanceId() + "'");
+                throw new RuntimeException("Interrupted while calling HN '" + cfg.instanceId() + "'", ie);
             } catch (Exception e) {
-                throw new RuntimeException(
-                        "HN '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
+                throw new RuntimeException("HN '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
             }
             if (response.statusCode() != 200) {
-                throw new RuntimeException("HN '" + cfg.instanceId() + "' returned HTTP "
-                        + response.statusCode());
+                throw new RuntimeException("HN '" + cfg.instanceId() + "' returned HTTP " + response.statusCode());
             }
             List<SearchHit> hits = parseHits(response.body(), req.modality());
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    hits, hits.size(), 0, null, null, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    hits,
+                    hits.size(),
+                    0,
+                    null,
+                    null,
+                    Map.of());
         }
 
         /**
@@ -282,8 +307,7 @@ public class HackerNewsProtocol implements SearchProtocol {
             if (comments > 0) extras.put("comments", comments);
             String createdAt = item.path("created_at").asText("");
             if (!StringUtils.isBlank(createdAt)) extras.put("createdAt", createdAt);
-            extras.put("hnDiscussion",
-                    "https://news.ycombinator.com/item?id=" + objectId);
+            extras.put("hnDiscussion", "https://news.ycombinator.com/item?id=" + objectId);
 
             return new SearchHit(title, url, snippet, "HackerNews", modality, null, extras);
         }
@@ -310,6 +334,5 @@ public class HackerNewsProtocol implements SearchProtocol {
             if (requested > MAX_NUM) return MAX_NUM;
             return requested;
         }
-
     }
 }

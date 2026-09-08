@@ -65,23 +65,30 @@ public class RScriptTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "script", Map.of(
-                            "type", "string",
-                            "description", "R code to evaluate. May "
-                                    + "be multi-line. Quote your "
-                                    + "strings normally — the script "
-                                    + "is shipped verbatim, no escape "
-                                    + "tricks needed."),
-                    "workingDir", Map.of(
-                            "type", "string",
-                            "description", "Optional absolute path "
-                                    + "for the R session's working "
-                                    + "directory. If set, the tool "
-                                    + "runs setwd() before your "
-                                    + "script. Use for ggsave() "
-                                    + "outputs, read.csv() of local "
-                                    + "files, etc.")),
+            "properties",
+                    Map.of(
+                            "script",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "R code to evaluate. May "
+                                                    + "be multi-line. Quote your "
+                                                    + "strings normally — the script "
+                                                    + "is shipped verbatim, no escape "
+                                                    + "tricks needed."),
+                            "workingDir",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional absolute path "
+                                                    + "for the R session's working "
+                                                    + "directory. If set, the tool "
+                                                    + "runs setwd() before your "
+                                                    + "script. Use for ggsave() "
+                                                    + "outputs, read.csv() of local "
+                                                    + "files, etc.")),
             "required", List.of("script"));
 
     private final RserveHealth health;
@@ -92,13 +99,14 @@ public class RScriptTool implements Tool {
     private final DocumentLinkBuilder linkBuilder;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public RScriptTool(RserveHealth health,
-                       RExecutionService rExecutionService,
-                       ThinkProcessService thinkProcessService,
-                       ProgressEmitter progressEmitter,
-                       DocumentService documentService,
-                       DocumentLinkBuilder linkBuilder,
-                       de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public RScriptTool(
+            RserveHealth health,
+            RExecutionService rExecutionService,
+            ThinkProcessService thinkProcessService,
+            ProgressEmitter progressEmitter,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.health = health;
         this.rExecutionService = rExecutionService;
         this.thinkProcessService = thinkProcessService;
@@ -168,7 +176,9 @@ public class RScriptTool implements Tool {
         String workingDir = asString(params == null ? null : params.get("workingDir"));
 
         ThinkProcessDocument process = loadProcess(ctx);
-        emit(process, StatusTag.FETCH,
+        emit(
+                process,
+                StatusTag.FETCH,
                 "Evaluating R script on Rserve "
                         + health.properties().getHost() + ":"
                         + health.properties().getPort() + "…");
@@ -184,8 +194,7 @@ public class RScriptTool implements Tool {
             try {
                 effectiveDir = Files.createTempDirectory("vance-r-");
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not create temp working dir: " + e.getMessage());
+                throw new ToolException("Could not create temp working dir: " + e.getMessage(), e);
             }
         } else {
             effectiveDir = Path.of(workingDir);
@@ -198,14 +207,17 @@ public class RScriptTool implements Tool {
                 throw new ToolException(res.errorMessage());
             }
 
-            log.info("RScriptTool tenant='{}' workingDir='{}' "
-                            + "outputBytes={} elapsedSec={}",
-                    ctx.tenantId(), workingDir == null ? "(default)" : workingDir,
-                    res.contentLength(), res.elapsedSec());
-            emit(process, StatusTag.INFO,
-                    String.format(Locale.ROOT,
-                            "R script done in %.2fs (%d chars).",
-                            res.elapsedSec(), res.contentLength()));
+            log.info(
+                    "RScriptTool tenant='{}' workingDir='{}' " + "outputBytes={} elapsedSec={}",
+                    ctx.tenantId(),
+                    workingDir == null ? "(default)" : workingDir,
+                    res.contentLength(),
+                    res.elapsedSec());
+            emit(
+                    process,
+                    StatusTag.INFO,
+                    String.format(
+                            Locale.ROOT, "R script done in %.2fs (%d chars).", res.elapsedSec(), res.contentLength()));
 
             // ── Import the run's new files as Documents ──
             List<Map<String, Object>> outputs = importOutputs(res.newFiles(), ctx, process);
@@ -238,17 +250,16 @@ public class RScriptTool implements Tool {
      * {@code localPath} so the caller can at least see what was produced.
      */
     private List<Map<String, Object>> importOutputs(
-            List<Path> newFiles,
-            ToolInvocationContext ctx,
-            @Nullable ThinkProcessDocument process) {
+            List<Path> newFiles, ToolInvocationContext ctx, @Nullable ThinkProcessDocument process) {
         if (newFiles.isEmpty()) return List.of();
 
         String projectId = ctx.projectId();
         if (projectId == null) {
             // No project context — return only local file info so the
             // caller sees something happened, but skip the import.
-            log.warn("RScriptTool produced {} output(s) but ctx has no "
-                    + "projectId — skipping document import", newFiles.size());
+            log.warn(
+                    "RScriptTool produced {} output(s) but ctx has no " + "projectId — skipping document import",
+                    newFiles.size());
             List<Map<String, Object>> minimal = new ArrayList<>();
             for (Path f : newFiles) {
                 Map<String, Object> entry = new LinkedHashMap<>();
@@ -260,8 +271,7 @@ public class RScriptTool implements Tool {
             return minimal;
         }
 
-        String stamp = DateTimeFormatter
-                .ofPattern("yyyy-MM-dd-HHmmss")
+        String stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
                 .withZone(ZoneOffset.UTC)
                 .format(Instant.now());
 
@@ -276,15 +286,14 @@ public class RScriptTool implements Tool {
                         ctx.tenantId(),
                         projectId,
                         docPath,
-                        null,                 // title
-                        List.of("r-output"),  // tags
+                        null, // title
+                        List.of("r-output"), // tags
                         mime,
                         in,
                         ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), docPath));
                 String vanceUri = DocumentLinkBuilder.buildVanceUri(
-                        null, created.getPath(), kind,
-                        DocumentLinkBuilder.defaultModeForKind(kind));
+                        null, created.getPath(), kind, DocumentLinkBuilder.defaultModeForKind(kind));
                 String markdownLink = linkBuilder.linkFor(created, null);
                 Map<String, Object> entry = new LinkedHashMap<>();
                 entry.put("kind", kind);
@@ -293,8 +302,7 @@ public class RScriptTool implements Tool {
                 entry.put("markdownLink", markdownLink);
                 entry.put("size", created.getSize());
                 results.add(entry);
-                emit(process, StatusTag.INFO,
-                        "Imported R output '" + fileName + "' as " + kind + " document.");
+                emit(process, StatusTag.INFO, "Imported R output '" + fileName + "' as " + kind + " document.");
             } catch (Exception e) {
                 log.warn("Could not import R output {}: {}", f, e.getMessage());
             }
@@ -326,25 +334,29 @@ public class RScriptTool implements Tool {
         int dot = lower.lastIndexOf('.');
         String ext = dot >= 0 ? lower.substring(dot + 1) : "";
         return switch (ext) {
-            case "png"  -> "image/png";
+            case "png" -> "image/png";
             case "jpg", "jpeg" -> "image/jpeg";
             case "webp" -> "image/webp";
-            case "gif"  -> "image/gif";
-            case "bmp"  -> "image/bmp";
-            case "svg"  -> "image/svg+xml";
-            case "pdf"  -> "application/pdf";
-            case "csv"  -> "text/csv";
-            case "tsv"  -> "text/tab-separated-values";
+            case "gif" -> "image/gif";
+            case "bmp" -> "image/bmp";
+            case "svg" -> "image/svg+xml";
+            case "pdf" -> "application/pdf";
+            case "csv" -> "text/csv";
+            case "tsv" -> "text/tab-separated-values";
             case "json" -> "application/json";
             case "md", "markdown" -> "text/markdown";
             case "txt", "log" -> "text/plain";
             case "html", "htm" -> "text/html";
-            default     -> "application/octet-stream";
+            default -> "application/octet-stream";
         };
     }
 
     private static long sizeQuiet(Path p) {
-        try { return Files.size(p); } catch (IOException e) { return -1L; }
+        try {
+            return Files.size(p);
+        } catch (IOException e) {
+            return -1L;
+        }
     }
 
     /** Recursive cleanup — temp dir might contain R-side garbage
@@ -352,14 +364,13 @@ public class RScriptTool implements Tool {
     private static void cleanupTempDir(Path dir) {
         if (dir == null || !Files.exists(dir)) return;
         try (Stream<Path> stream = Files.walk(dir)) {
-            stream
-                    .sorted(Comparator.reverseOrder())
-                    .forEach(p -> {
-                        try { Files.deleteIfExists(p); }
-                        catch (IOException e) {
-                            log.warn("Could not delete {}: {}", p, e.getMessage());
-                        }
-                    });
+            stream.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException e) {
+                    log.warn("Could not delete {}: {}", p, e.getMessage());
+                }
+            });
         } catch (IOException e) {
             log.warn("Could not walk temp dir {}: {}", dir, e.getMessage());
         }
@@ -371,8 +382,7 @@ public class RScriptTool implements Tool {
         return opt.orElse(null);
     }
 
-    private void emit(@Nullable ThinkProcessDocument process,
-                      StatusTag tag, String text) {
+    private void emit(@Nullable ThinkProcessDocument process, StatusTag tag, String text) {
         if (process == null) return;
         progressEmitter.emitStatus(process, tag, text);
     }

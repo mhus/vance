@@ -35,26 +35,36 @@ public class ImageRotateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Source image path."),
-                    "targetPath", Map.of(
-                            "type", "string",
-                            "description", "Optional destination path; default = overwrite source."),
-                    "degrees", Map.of(
-                            "type", "number",
-                            "description",
-                                    "Clockwise rotation in degrees. Negative = counter-clockwise. "
-                                            + "Any real number; 90, 180, 270 are common."),
-                    "background", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Hex color filling corners exposed by the rotation. "
-                                            + "Default transparent on PNG/GIF, white on JPEG/BMP.")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Source image path."),
+                            "targetPath",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional destination path; default = overwrite source."),
+                            "degrees",
+                                    Map.of(
+                                            "type",
+                                            "number",
+                                            "description",
+                                            "Clockwise rotation in degrees. Negative = counter-clockwise. "
+                                                    + "Any real number; 90, 180, 270 are common."),
+                            "background",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Hex color filling corners exposed by the rotation. "
+                                                    + "Default transparent on PNG/GIF, white on JPEG/BMP.")),
             "required", List.of("path", "degrees"));
 
-    @Override public String name() { return "image_rotate"; }
+    @Override
+    public String name() {
+        return "image_rotate";
+    }
 
     @Override
     public String description() {
@@ -64,9 +74,20 @@ public class ImageRotateTool implements Tool {
                 + "Output preserves source MIME.";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -91,7 +112,7 @@ public class ImageRotateTool implements Tool {
             log.info("image_rotate failed: reason={} msg={}", e.getReason(), e.getMessage());
             return errorResponse(e);
         } catch (IllegalArgumentException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
     }
 }

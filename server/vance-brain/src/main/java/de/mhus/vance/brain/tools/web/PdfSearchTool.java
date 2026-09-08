@@ -1,10 +1,10 @@
 package de.mhus.vance.brain.tools.web;
 
+import de.mhus.vance.shared.net.SsrfGuard;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.net.SsrfGuard;
-import de.mhus.vance.shared.settings.SettingService;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -22,7 +22,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import lombok.RequiredArgsConstructor;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -67,32 +66,36 @@ public class PdfSearchTool implements Tool {
     private static final int DEFAULT_TOTAL_BUDGET_MS = 5000;
     private static final int DEFAULT_MAX_CONCURRENT = 10;
 
-    private static final String BROWSER_USER_AGENT =
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    + "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    + "Chrome/124.0.0.0 Safari/537.36";
+    private static final String BROWSER_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            + "AppleWebKit/537.36 (KHTML, like Gecko) "
+            + "Chrome/124.0.0.0 Safari/537.36";
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "query", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Natural-language search query. The tool "
-                                            + "appends 'filetype:pdf' to the "
-                                            + "Serper request — pass the topic, "
-                                            + "not the modifier (e.g. "
-                                            + "'EU AI Act final text', "
-                                            + "'Linux kernel networking guide')."),
-                    "num", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Maximum results to return (1–"
-                                            + MAX_NUM + ", default "
-                                            + DEFAULT_NUM + "). Validator may "
-                                            + "drop entries whose HEAD doesn't "
-                                            + "advertise application/pdf — final "
-                                            + "count can be lower than requested.")),
+            "properties",
+                    Map.of(
+                            "query",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Natural-language search query. The tool "
+                                                    + "appends 'filetype:pdf' to the "
+                                                    + "Serper request — pass the topic, "
+                                                    + "not the modifier (e.g. "
+                                                    + "'EU AI Act final text', "
+                                                    + "'Linux kernel networking guide')."),
+                            "num",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Maximum results to return (1–"
+                                                    + MAX_NUM + ", default "
+                                                    + DEFAULT_NUM + "). Validator may "
+                                                    + "drop entries whose HEAD doesn't "
+                                                    + "advertise application/pdf — final "
+                                                    + "count can be lower than requested.")),
             "required", List.of("query"));
 
     private final SettingService settings;
@@ -106,8 +109,7 @@ public class PdfSearchTool implements Tool {
     }
 
     /** Test-seam constructor. */
-    PdfSearchTool(SettingService settings, ObjectMapper objectMapper,
-                  PdfHttp http, HttpClient serperHttp) {
+    PdfSearchTool(SettingService settings, ObjectMapper objectMapper, PdfHttp http, HttpClient serperHttp) {
         this.settings = settings;
         this.objectMapper = objectMapper;
         this.http = http;
@@ -170,10 +172,9 @@ public class PdfSearchTool implements Tool {
         String apiKey = settings.getDecryptedPasswordCascade(
                 tenantId, ctx.projectId(), ctx.processId(), WebSearchTool.SETTING_KEY);
         if (apiKey == null || apiKey.isBlank()) {
-            return errorResult(
-                    "Serper API key not configured (setting '"
-                            + WebSearchTool.SETTING_KEY
-                            + "' in _vance / project / think-process).");
+            return errorResult("Serper API key not configured (setting '"
+                    + WebSearchTool.SETTING_KEY
+                    + "' in _vance / project / think-process).");
         }
 
         List<RawResult> raw;
@@ -183,10 +184,9 @@ public class PdfSearchTool implements Tool {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted while searching PDFs");
+            throw new ToolException("Interrupted while searching PDFs", e);
         } catch (Exception e) {
-            log.warn("PdfSearchTool tenant='{}' query='{}' failed: {}",
-                    tenantId, truncate(query, 80), e.toString());
+            log.warn("PdfSearchTool tenant='{}' query='{}' failed: {}", tenantId, truncate(query, 80), e.toString());
             return errorResult("PDF search failed: " + e.getMessage());
         }
 
@@ -199,8 +199,10 @@ public class PdfSearchTool implements Tool {
             ValidationVerdict v = verdicts.get(r.url);
             if (v == null || !v.ok) {
                 dropped++;
-                log.debug("PdfSearchTool query='{}' dropped url='{}' reason='{}'",
-                        truncate(query, 60), truncate(r.url, 120),
+                log.debug(
+                        "PdfSearchTool query='{}' dropped url='{}' reason='{}'",
+                        truncate(query, 60),
+                        truncate(r.url, 120),
                         v == null ? "no_verdict" : v.reason);
                 continue;
             }
@@ -213,8 +215,12 @@ public class PdfSearchTool implements Tool {
             validRows.add(row);
         }
 
-        log.info("PdfSearchTool query='{}' total={} valid={} dropped={}",
-                truncate(query, 80), raw.size(), validRows.size(), dropped);
+        log.info(
+                "PdfSearchTool query='{}' total={} valid={} dropped={}",
+                truncate(query, 80),
+                raw.size(),
+                validRows.size(),
+                dropped);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("query", query);
         out.put("results", validRows);
@@ -222,23 +228,23 @@ public class PdfSearchTool implements Tool {
         out.put("dropped_count", dropped);
         out.put("total_count", raw.size());
         if (validRows.isEmpty() && dropped > 0) {
-            out.put("note", "All " + dropped + " hits failed the PDF "
-                    + "content-type check. The links may still load in a "
-                    + "browser (sometimes hosts serve PDFs as html-with-"
-                    + "embed); you can fall back to web_search if the "
-                    + "user needs the source pages.");
+            out.put(
+                    "note",
+                    "All " + dropped + " hits failed the PDF "
+                            + "content-type check. The links may still load in a "
+                            + "browser (sometimes hosts serve PDFs as html-with-"
+                            + "embed); you can fall back to web_search if the "
+                            + "user needs the source pages.");
         }
         return out;
     }
 
-    private List<RawResult> callSerper(String query, int num, String apiKey, String tenantId)
-            throws Exception {
+    private List<RawResult> callSerper(String query, int num, String apiKey, String tenantId) throws Exception {
         // Serper takes the modifier inline in the q parameter — same
         // shape Google search uses. The LLM passes the raw topic; we
         // own the syntax so the modifier can't drift.
         String pdfQuery = query + " filetype:pdf";
-        String requestBody = objectMapper.writeValueAsString(
-                Map.of("q", pdfQuery, "num", num));
+        String requestBody = objectMapper.writeValueAsString(Map.of("q", pdfQuery, "num", num));
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(SERPER_SEARCH_URL))
                 .header("X-API-KEY", apiKey)
@@ -246,11 +252,13 @@ public class PdfSearchTool implements Tool {
                 .timeout(SERPER_TIMEOUT)
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                 .build();
-        HttpResponse<String> response = serperHttp.send(
-                request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = serperHttp.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) {
-            log.warn("Serper /search (pdf) returned status {} for tenant='{}': {}",
-                    response.statusCode(), tenantId, truncate(response.body(), 200));
+            log.warn(
+                    "Serper /search (pdf) returned status {} for tenant='{}': {}",
+                    response.statusCode(),
+                    tenantId,
+                    truncate(response.body(), 200));
             throw new ToolException("PDF search returned status " + response.statusCode());
         }
         return parseSerper(response.body());
@@ -274,27 +282,24 @@ public class PdfSearchTool implements Tool {
         return rows;
     }
 
-    private Map<String, ValidationVerdict> validateAll(
-            List<RawResult> raw, PdfConfig cfg) {
+    private Map<String, ValidationVerdict> validateAll(List<RawResult> raw, PdfConfig cfg) {
         Map<String, ValidationVerdict> out = new HashMap<>();
         if (raw.isEmpty()) return out;
-        ExecutorService pool = Executors.newFixedThreadPool(
-                Math.max(1, Math.min(cfg.maxConcurrent, raw.size())));
+        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, Math.min(cfg.maxConcurrent, raw.size())));
         try {
             Map<String, CompletableFuture<ValidationVerdict>> futures = new LinkedHashMap<>();
             for (RawResult r : raw) {
                 if (futures.containsKey(r.url)) continue;
                 String url = r.url;
-                futures.put(url, CompletableFuture.supplyAsync(
-                        () -> probe(url, cfg), pool));
+                futures.put(url, CompletableFuture.supplyAsync(() -> probe(url, cfg), pool));
             }
-            CompletableFuture<Void> all = CompletableFuture.allOf(
-                    futures.values().toArray(new CompletableFuture[0]));
+            CompletableFuture<Void> all =
+                    CompletableFuture.allOf(futures.values().toArray(new CompletableFuture[0]));
             try {
                 all.get(cfg.totalBudgetMs, TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
-                log.warn("PdfSearchTool: total budget {}ms exhausted, "
-                        + "{} of {} URLs incomplete",
+                log.warn(
+                        "PdfSearchTool: total budget {}ms exhausted, " + "{} of {} URLs incomplete",
                         cfg.totalBudgetMs,
                         futures.values().stream().filter(f -> !f.isDone()).count(),
                         futures.size());
@@ -306,8 +311,7 @@ public class PdfSearchTool implements Tool {
                     try {
                         out.put(e.getKey(), e.getValue().get());
                     } catch (Exception inner) {
-                        out.put(e.getKey(),
-                                ValidationVerdict.fail("future_failed: " + inner.getMessage()));
+                        out.put(e.getKey(), ValidationVerdict.fail("future_failed: " + inner.getMessage()));
                     }
                 } else {
                     e.getValue().cancel(true);
@@ -328,8 +332,7 @@ public class PdfSearchTool implements Tool {
             return ValidationVerdict.fail("invalid_uri");
         }
         if (uri.getScheme() == null
-                || !(uri.getScheme().equalsIgnoreCase("http")
-                        || uri.getScheme().equalsIgnoreCase("https"))) {
+                || !(uri.getScheme().equalsIgnoreCase("http") || uri.getScheme().equalsIgnoreCase("https"))) {
             return ValidationVerdict.fail("scheme_not_http");
         }
         try {
@@ -355,21 +358,22 @@ public class PdfSearchTool implements Tool {
         return n;
     }
 
-    private PdfConfig configFor(
-            @Nullable String tenantId, @Nullable String projectId, @Nullable String processId) {
+    private PdfConfig configFor(@Nullable String tenantId, @Nullable String projectId, @Nullable String processId) {
         return PdfConfig.builder()
-                .timeoutMs(intSetting(tenantId, projectId, processId,
-                        SETTING_TIMEOUT_MS, DEFAULT_TIMEOUT_MS))
-                .totalBudgetMs(intSetting(tenantId, projectId, processId,
-                        SETTING_TOTAL_BUDGET_MS, DEFAULT_TOTAL_BUDGET_MS))
-                .maxConcurrent(intSetting(tenantId, projectId, processId,
-                        SETTING_MAX_CONCURRENT, DEFAULT_MAX_CONCURRENT))
+                .timeoutMs(intSetting(tenantId, projectId, processId, SETTING_TIMEOUT_MS, DEFAULT_TIMEOUT_MS))
+                .totalBudgetMs(
+                        intSetting(tenantId, projectId, processId, SETTING_TOTAL_BUDGET_MS, DEFAULT_TOTAL_BUDGET_MS))
+                .maxConcurrent(
+                        intSetting(tenantId, projectId, processId, SETTING_MAX_CONCURRENT, DEFAULT_MAX_CONCURRENT))
                 .build();
     }
 
     private int intSetting(
-            @Nullable String tenantId, @Nullable String projectId, @Nullable String processId,
-            String key, int defaultValue) {
+            @Nullable String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            String key,
+            int defaultValue) {
         if (tenantId == null || tenantId.isBlank()) return defaultValue;
         String raw = settings.getStringValueCascade(tenantId, projectId, processId, key);
         if (raw == null || raw.isBlank()) return defaultValue;
@@ -414,9 +418,16 @@ public class PdfSearchTool implements Tool {
     @Value
     static class ValidationVerdict {
         boolean ok;
-        @Nullable String reason;
-        @Nullable String finalUrl;
-        @Nullable String contentType;
+
+        @Nullable
+        String reason;
+
+        @Nullable
+        String finalUrl;
+
+        @Nullable
+        String contentType;
+
         long contentLength;
 
         static ValidationVerdict ok(String finalUrl, String contentType, long contentLength) {
@@ -451,8 +462,7 @@ public class PdfSearchTool implements Tool {
                     .header("Accept", "application/pdf,*/*;q=0.5")
                     .timeout(timeout)
                     .build();
-            HttpResponse<Void> response = SsrfGuard.sendGuarded(
-                    http, request, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = SsrfGuard.sendGuarded(http, request, HttpResponse.BodyHandlers.discarding());
             int status = response.statusCode();
             String contentType = response.headers().firstValue("content-type").orElse("");
             String finalUrl = response.uri().toString();

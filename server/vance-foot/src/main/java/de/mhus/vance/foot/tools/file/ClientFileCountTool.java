@@ -34,7 +34,6 @@ public class ClientFileCountTool implements ClientTool {
         this.security = security;
     }
 
-
     private static final long MAX_FILE_BYTES = 8L * 1024 * 1024;
     private static final int DEFAULT_MAX_DEPTH = 12;
 
@@ -45,40 +44,68 @@ public class ClientFileCountTool implements ClientTool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>();
-        p.put("path", Map.of("type", "string",
-                "description",
+        p.put(
+                "path",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
                         "File or directory on the foot host. Directories are walked "
                                 + "recursively. Default: current working directory. "
                                 + "Supports a leading '~/' for home."));
-        p.put("pathGlob", Map.of("type", "string",
-                "description",
-                        "Glob filter on file paths under 'path' (directories only). "
-                                + "Default: all files."));
-        p.put("pattern", Map.of("type", "string",
-                "description",
+        p.put(
+                "pathGlob",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Glob filter on file paths under 'path' (directories only). " + "Default: all files."));
+        p.put(
+                "pattern",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
                         "Optional regex. When set, 'lines' counts only matching lines "
                                 + "and 'chars' aggregates the matched line text."));
-        p.put("caseInsensitive", Map.of("type", "boolean",
-                "description", "Match the regex case-insensitively. Default: false."));
-        p.put("maxDepth", Map.of("type", "integer",
-                "description",
-                        "Recursion depth cap when 'path' is a directory. Default: "
-                                + DEFAULT_MAX_DEPTH + "."));
-        p.put("includeGenerated", Map.of("type", "boolean",
-                "description",
+        p.put(
+                "caseInsensitive",
+                Map.of("type", "boolean", "description", "Match the regex case-insensitively. Default: false."));
+        p.put(
+                "maxDepth",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "Recursion depth cap when 'path' is a directory. Default: " + DEFAULT_MAX_DEPTH + "."));
+        p.put(
+                "includeGenerated",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
                         "Also count dependency and build directories "
                                 + "(node_modules, target, dist, .git, …), which are "
                                 + "skipped by default."));
         return p;
     }
 
-    @Override public String name() { return "client_file_count"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "client_file_count";
+    }
+
+    @Override
+    public String description() {
         return "Count lines, characters, and bytes for a file or — when 'path' is "
                 + "a directory — across every file matching a glob. Optional regex "
                 + "narrows the line-count to matches (wc-style line/char/byte stats).";
     }
-    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public boolean deferred() {
@@ -89,8 +116,16 @@ public class ClientFileCountTool implements ClientTool {
     public String searchHint() {
         return "Explicit CLIENT variant of file_count — targets the user's machine (foot host) regardless of the work target. Prefer file_count.";
     }
-    @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+
+    @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params) {
@@ -102,16 +137,13 @@ public class ClientFileCountTool implements ClientTool {
         String patternStr = stringOrNull(params, "pattern");
         boolean ci = Boolean.TRUE.equals(params == null ? null : params.get("caseInsensitive"));
         int maxDepth = clampDepth(intOrNull(params, "maxDepth"));
-        boolean includeGenerated =
-                Boolean.TRUE.equals(params == null ? null : params.get("includeGenerated"));
+        boolean includeGenerated = Boolean.TRUE.equals(params == null ? null : params.get("includeGenerated"));
 
         Pattern pattern;
         try {
-            pattern = patternStr == null
-                    ? null
-                    : Pattern.compile(patternStr, ci ? Pattern.CASE_INSENSITIVE : 0);
+            pattern = patternStr == null ? null : Pattern.compile(patternStr, ci ? Pattern.CASE_INSENSITIVE : 0);
         } catch (PatternSyntaxException e) {
-            throw new IllegalArgumentException("Invalid regex: " + e.getMessage());
+            throw new IllegalArgumentException("Invalid regex: " + e.getMessage(), e);
         }
 
         Path target = pathRaw == null ? Path.of(".") : ClientFilePaths.resolve(pathRaw);
@@ -119,9 +151,8 @@ public class ClientFileCountTool implements ClientTool {
             throw new IllegalArgumentException("Not found: " + target.toAbsolutePath());
         }
         boolean isDir = Files.isDirectory(target);
-        PathMatcher matcher = (isDir && pathGlob != null)
-                ? FileSystems.getDefault().getPathMatcher("glob:" + pathGlob)
-                : null;
+        PathMatcher matcher =
+                (isDir && pathGlob != null) ? FileSystems.getDefault().getPathMatcher("glob:" + pathGlob) : null;
 
         Counter counter = new Counter();
         int generatedSkipped = 0;
@@ -157,7 +188,8 @@ public class ClientFileCountTool implements ClientTool {
         // caller read the totals as covering everything under 'path'.
         if (generatedSkipped > 0) {
             out.put("generatedFilesSkipped", generatedSkipped);
-            out.put("generatedFilesHint",
+            out.put(
+                    "generatedFilesHint",
                     "Dependency/build directories were skipped — pass includeGenerated=true to count them.");
         }
         out.put("lines", pattern == null ? counter.lines : counter.matchingLines);
@@ -177,8 +209,11 @@ public class ClientFileCountTool implements ClientTool {
 
         void consume(Path file, Path relativeOrSelf, Pattern pattern) {
             long size;
-            try { size = Files.size(file); } catch (IOException ignored) {
-                filesSkipped++; return;
+            try {
+                size = Files.size(file);
+            } catch (IOException ignored) {
+                filesSkipped++;
+                return;
             }
             if (size > MAX_FILE_BYTES && pattern == null) {
                 try (Stream<String> stream = Files.lines(file, StandardCharsets.UTF_8)) {
@@ -193,10 +228,17 @@ public class ClientFileCountTool implements ClientTool {
                     return;
                 }
             }
-            if (size > MAX_FILE_BYTES) { filesSkipped++; return; }
+            if (size > MAX_FILE_BYTES) {
+                filesSkipped++;
+                return;
+            }
             String content;
-            try { content = Files.readString(file, StandardCharsets.UTF_8); }
-            catch (IOException ignored) { filesSkipped++; return; }
+            try {
+                content = Files.readString(file, StandardCharsets.UTF_8);
+            } catch (IOException ignored) {
+                filesSkipped++;
+                return;
+            }
             // String.lines() matches Files.readAllLines / wc -l semantics:
             // a trailing newline is a line terminator, not an empty line.
             List<String> lineList = content.lines().toList();

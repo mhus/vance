@@ -55,50 +55,87 @@ public class FeedReadTool implements Tool {
     static final int SUMMARY_LIMIT = 300;
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "Folder of an existing feed app — reads its stored "
-                                + "streams and filter. Either this or 'streams'."));
-                put("streams", Map.of("type", "array",
-                        "description", "Read these streams instead of a stored feed, each "
-                                + "`{ source, selector? }`. Source ids come from "
-                                + "feed_sources — never guess one.",
-                        "items", Map.of("type", "object")));
-                put("since", Map.of("type", "string",
-                        "description", "Only entries newer than this: relative ('-24h', "
-                                + "'-7d', '-30m') or an ISO instant. Overrides a stored "
-                                + "filter's window."));
-                put("languages", Map.of("type", "array",
-                        "description", "Restrict to these language codes, e.g. ['de','en']. "
-                                + "Entries whose source declares no language always pass.",
-                        "items", Map.of("type", "string")));
-                put("facets", Map.of("type", "object",
-                        "description", "Filter by a source's declared dimensions, e.g. "
-                                + "{\"origin-place\": [\"m49:142\"]} for Asian publishers. "
-                                + "Keys and values come from feed_sources — a source that "
-                                + "does not declare a selected key is left out of the page "
-                                + "and reported under 'unavailable', so never guess one."));
-                put("limit", Map.of("type", "integer",
-                        "description", "Entries to return, default " + DEFAULT_LIMIT
-                                + ", max " + MAX_LIMIT + "."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of());
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Folder of an existing feed app — reads its stored "
+                                            + "streams and filter. Either this or 'streams'."));
+                    put(
+                            "streams",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "description",
+                                    "Read these streams instead of a stored feed, each "
+                                            + "`{ source, selector? }`. Source ids come from "
+                                            + "feed_sources — never guess one.",
+                                    "items",
+                                    Map.of("type", "object")));
+                    put(
+                            "since",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Only entries newer than this: relative ('-24h', "
+                                            + "'-7d', '-30m') or an ISO instant. Overrides a stored "
+                                            + "filter's window."));
+                    put(
+                            "languages",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "description",
+                                    "Restrict to these language codes, e.g. ['de','en']. "
+                                            + "Entries whose source declares no language always pass.",
+                                    "items",
+                                    Map.of("type", "string")));
+                    put(
+                            "facets",
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "description",
+                                    "Filter by a source's declared dimensions, e.g. "
+                                            + "{\"origin-place\": [\"m49:142\"]} for Asian publishers. "
+                                            + "Keys and values come from feed_sources — a source that "
+                                            + "does not declare a selected key is left out of the page "
+                                            + "and reported under 'unavailable', so never guess one."));
+                    put(
+                            "limit",
+                            Map.of(
+                                    "type",
+                                    "integer",
+                                    "description",
+                                    "Entries to return, default " + DEFAULT_LIMIT + ", max " + MAX_LIMIT + "."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of());
 
     private final EddieContext eddieContext;
     private final CentauriService centauriService;
     private final FeedsApplication application;
 
-    public FeedReadTool(EddieContext eddieContext,
-                        CentauriService centauriService,
-                        FeedsApplication application) {
+    public FeedReadTool(EddieContext eddieContext, CentauriService centauriService, FeedsApplication application) {
         this.eddieContext = eddieContext;
         this.centauriService = centauriService;
         this.application = application;
     }
 
-    @Override public String name() { return "feed_read"; }
+    @Override
+    public String name() {
+        return "feed_read";
+    }
 
     @Override
     public String description() {
@@ -109,40 +146,55 @@ public class FeedReadTool implements Tool {
                 + "research_search).";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public boolean deferred() { return true; }
+    @Override
+    public boolean deferred() {
+        return true;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public String searchHint() {
         return "read recent entries of a news/wiki/data feed, build a digest";
     }
 
-    @Override public Set<String> labels() {
+    @Override
+    public Set<String> labels() {
         return Set.of("eddie", "read-only", "feeds");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        FeedScope scope = new FeedScope(
-                ctx.tenantId(), project.getName(), ctx.processId(), ctx.userId());
+        FeedScope scope = new FeedScope(ctx.tenantId(), project.getName(), ctx.processId(), ctx.userId());
         Instant now = Instant.now();
 
         String folder = asString(params.get("folder"));
         List<FeedStream> explicit = toStreams(params.get("streams"));
         if (folder == null && explicit.isEmpty()) {
-            throw new ToolException("either folder or streams is required — "
-                    + "call feed_sources to see which source ids exist");
+            throw new ToolException(
+                    "either folder or streams is required — " + "call feed_sources to see which source ids exist");
         }
 
         List<FeedStream> streams;
         FeedFilter filter;
         if (!explicit.isEmpty()) {
             streams = explicit;
-            filter = new FeedFilter(null, languages(params), List.of(), List.of(),
-                    resolveSince(asString(params.get("since")), now), facets(params));
+            filter = new FeedFilter(
+                    null,
+                    languages(params),
+                    List.of(),
+                    List.of(),
+                    resolveSince(asString(params.get("since")), now),
+                    facets(params));
         } else {
             FeedsConfig stored = application.readConfig(ctx.tenantId(), project.getName(), folder);
             if (stored.streams().isEmpty()) {
@@ -154,8 +206,7 @@ public class FeedReadTool implements Tool {
 
         int limit = Math.min(intValue(params.get("limit"), DEFAULT_LIMIT), MAX_LIMIT);
         CentauriPage page = centauriService.fetchPage(
-                new CentauriPageRequest(streams, filter, limit, FeedDirection.OLDER, null),
-                scope);
+                new CentauriPageRequest(streams, filter, limit, FeedDirection.OLDER, null), scope);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("project", project.getName());
@@ -164,19 +215,24 @@ public class FeedReadTool implements Tool {
         if (!page.notes().isEmpty()) {
             List<String> notes = new ArrayList<>();
             for (CentauriNote note : page.notes()) {
-                notes.add(note.sourceId() + (note.selector().isEmpty() ? "" : "/" + note.selector())
-                        + ": " + note.kind().name().toLowerCase(java.util.Locale.ROOT));
+                notes.add(note.sourceId() + (note.selector().isEmpty() ? "" : "/" + note.selector()) + ": "
+                        + note.kind().name().toLowerCase(java.util.Locale.ROOT));
             }
             // Surfaced, not swallowed: a silently missing source reads as a source
             // with no news, and a digest would then omit it without saying so.
             out.put("unavailable", notes);
         }
         if (page.items().isEmpty()) {
-            out.put("hint", "No entries in this window. Widen 'since' or check "
-                    + "'unavailable' — an empty result is not proof that nothing happened.");
+            out.put(
+                    "hint",
+                    "No entries in this window. Widen 'since' or check "
+                            + "'unavailable' — an empty result is not proof that nothing happened.");
         }
-        log.debug("FeedReadTool project='{}' streams={} returned={}",
-                project.getName(), streams.size(), page.items().size());
+        log.debug(
+                "FeedReadTool project='{}' streams={} returned={}",
+                project.getName(),
+                streams.size(),
+                page.items().size());
         return out;
     }
 
@@ -211,8 +267,7 @@ public class FeedReadTool implements Tool {
         String summary = item.summary();
         if (summary != null && !summary.isBlank()) {
             String flat = UntrustedContent.collapseWhitespace(summary);
-            map.put("summary", flat.length() <= SUMMARY_LIMIT
-                    ? flat : flat.substring(0, SUMMARY_LIMIT) + "…");
+            map.put("summary", flat.length() <= SUMMARY_LIMIT ? flat : flat.substring(0, SUMMARY_LIMIT) + "…");
         }
         return map;
     }
@@ -260,7 +315,7 @@ public class FeedReadTool implements Tool {
                         }
                     }
                 }
-                default -> { }
+                default -> {}
             }
             if (!values.isEmpty()) {
                 out.put(key.trim(), List.copyOf(values));
@@ -286,15 +341,14 @@ public class FeedReadTool implements Tool {
                     default -> null;
                 };
             } catch (NumberFormatException e) {
-                throw new ToolException("since must be like '-24h', '-7d' or an ISO instant, "
-                        + "was '" + raw + "'");
+                throw new ToolException(
+                        "since must be like '-24h', '-7d' or an ISO instant, " + "was '" + raw + "'", e);
             }
         }
         try {
             return Instant.parse(raw.trim());
         } catch (RuntimeException e) {
-            throw new ToolException("since must be like '-24h', '-7d' or an ISO instant, "
-                    + "was '" + raw + "'");
+            throw new ToolException("since must be like '-24h', '-7d' or an ISO instant, " + "was '" + raw + "'", e);
         }
     }
 

@@ -59,14 +59,12 @@ public class SettingFormLoader {
     public static final String DEFAULT_SCOPE_FALLBACK = SettingService.SCOPE_PROJECT;
 
     /** Allowed values for {@code defaultScope} / per-binding {@code scope}. */
-    public static final Set<String> ALLOWED_SCOPES = Set.of(
-            SettingService.SCOPE_PROJECT,
-            SettingService.SCOPE_USER,
-            SettingService.SCOPE_TENANT);
+    public static final Set<String> ALLOWED_SCOPES =
+            Set.of(SettingService.SCOPE_PROJECT, SettingService.SCOPE_USER, SettingService.SCOPE_TENANT);
 
     /** Form-field types that may carry a {@code bindsTo}. Other types must route through {@code settings:}. */
-    private static final Set<String> SCALAR_BINDABLE_TYPES = Set.of(
-            "string", "textarea", "password", "integer", "boolean", "select");
+    private static final Set<String> SCALAR_BINDABLE_TYPES =
+            Set.of("string", "textarea", "password", "integer", "boolean", "select");
 
     private final DocumentService documentService;
     private final PromptTemplateRenderer templateRenderer;
@@ -78,32 +76,27 @@ public class SettingFormLoader {
      * @throws SettingFormParseException when a hit exists but its YAML is malformed.
      */
     public Optional<ResolvedSettingForm> load(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String userId,
-            String name) {
+            String tenantId, @Nullable String projectId, @Nullable String userId, String name) {
         if (name == null || name.isBlank()) {
             return Optional.empty();
         }
         String path = pathFor(name);
         String normalized = name.toLowerCase(Locale.ROOT).trim();
 
-        if (projectId != null
-                && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
-            Optional<ResolvedSettingForm> hit = tryParseLayer(
-                    tenantId, projectId, path, normalized, SettingFormSource.PROJECT);
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+            Optional<ResolvedSettingForm> hit =
+                    tryParseLayer(tenantId, projectId, path, normalized, SettingFormSource.PROJECT);
             if (hit.isPresent()) return hit;
         }
 
         if (userId != null && !userId.isBlank()) {
-            Optional<ResolvedSettingForm> hit = tryParseLayer(
-                    tenantId, USER_PROJECT_PREFIX + userId, path, normalized, SettingFormSource.USER);
+            Optional<ResolvedSettingForm> hit =
+                    tryParseLayer(tenantId, USER_PROJECT_PREFIX + userId, path, normalized, SettingFormSource.USER);
             if (hit.isPresent()) return hit;
         }
 
-        Optional<LookupResult> tenantOrResource = documentService.lookupCascade(
-                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, path);
+        Optional<LookupResult> tenantOrResource =
+                documentService.lookupCascade(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, path);
         if (tenantOrResource.isEmpty()) {
             return Optional.empty();
         }
@@ -114,8 +107,9 @@ public class SettingFormLoader {
             throw e;
         } catch (RuntimeException e) {
             throw new SettingFormParseException(
-                    "Failed to parse setting form '" + name + "' from "
-                            + result.source() + " at '" + result.path() + "': " + e.getMessage(), e);
+                    "Failed to parse setting form '" + name + "' from " + result.source() + " at '" + result.path()
+                            + "': " + e.getMessage(),
+                    e);
         }
     }
 
@@ -125,34 +119,27 @@ public class SettingFormLoader {
      * {@code effectiveProjectId}. Parse failures on individual entries
      * are logged WARN and skipped.
      */
-    public List<ResolvedSettingForm> listAll(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String userId) {
+    public List<ResolvedSettingForm> listAll(String tenantId, @Nullable String projectId, @Nullable String userId) {
         Map<String, ResolvedSettingForm> byName = new LinkedHashMap<>();
 
         Map<String, LookupResult> vanceTier = documentService.listByPrefixCascade(
                 tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, SETTING_FORM_PATH_PREFIX);
-        applyTier(byName, vanceTier, /*onlyProjectSource=*/false, /*projectSourceLabel=*/null);
+        applyTier(byName, vanceTier, /*onlyProjectSource=*/ false, /*projectSourceLabel=*/ null);
 
         if (userId != null && !userId.isBlank()) {
             Map<String, LookupResult> userTier = documentService.listByPrefixCascade(
                     tenantId, USER_PROJECT_PREFIX + userId, SETTING_FORM_PATH_PREFIX);
-            applyTier(byName, userTier, /*onlyProjectSource=*/true, SettingFormSource.USER);
+            applyTier(byName, userTier, /*onlyProjectSource=*/ true, SettingFormSource.USER);
         }
 
-        if (projectId != null
-                && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
-            Map<String, LookupResult> projectTier = documentService.listByPrefixCascade(
-                    tenantId, projectId, SETTING_FORM_PATH_PREFIX);
-            applyTier(byName, projectTier, /*onlyProjectSource=*/true, SettingFormSource.PROJECT);
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+            Map<String, LookupResult> projectTier =
+                    documentService.listByPrefixCascade(tenantId, projectId, SETTING_FORM_PATH_PREFIX);
+            applyTier(byName, projectTier, /*onlyProjectSource=*/ true, SettingFormSource.PROJECT);
         }
 
         String effectiveProjectId =
-                (projectId == null || projectId.isBlank())
-                        ? HomeBootstrapService.TENANT_PROJECT_NAME
-                        : projectId;
+                (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
         List<ResolvedSettingForm> filtered = new ArrayList<>(byName.size());
         for (ResolvedSettingForm f : byName.values()) {
             if (isAvailableIn(f.availableIn(), effectiveProjectId)) {
@@ -224,25 +211,22 @@ public class SettingFormLoader {
             }
             String name = nameFromPath(path);
             if (name == null) continue;
-            SettingFormSource source = onlyProjectSource
-                    ? projectSourceLabel
-                    : mapVanceOrResource(result.source());
+            SettingFormSource source = onlyProjectSource ? projectSourceLabel : mapVanceOrResource(result.source());
             if (source == null) continue;
             try {
                 acc.put(name, parse(name, result.content(), source));
             } catch (RuntimeException ex) {
-                log.warn("SettingFormLoader: skipping malformed form path='{}' source={}: {}",
-                        path, result.source(), ex.getMessage());
+                log.warn(
+                        "SettingFormLoader: skipping malformed form path='{}' source={}: {}",
+                        path,
+                        result.source(),
+                        ex.getMessage());
             }
         }
     }
 
     private Optional<ResolvedSettingForm> tryParseLayer(
-            String tenantId,
-            String projectId,
-            String path,
-            String name,
-            SettingFormSource source) {
+            String tenantId, String projectId, String path, String name, SettingFormSource source) {
         Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectId, path);
         if (doc.isEmpty() || doc.get().getStatus() != DocumentStatus.ACTIVE) {
             return Optional.empty();
@@ -252,22 +236,21 @@ public class SettingFormLoader {
             return Optional.of(parse(name, content, source));
         } catch (RuntimeException e) {
             throw new SettingFormParseException(
-                    "Failed to parse setting form '" + name + "' from " + source + " at '"
-                            + path + "': " + e.getMessage(), e);
+                    "Failed to parse setting form '" + name + "' from " + source + " at '" + path + "': "
+                            + e.getMessage(),
+                    e);
         }
     }
 
     private static String pathFor(String name) {
-        return SETTING_FORM_PATH_PREFIX + name.toLowerCase(Locale.ROOT).trim()
-                + SETTING_FORM_PATH_SUFFIX;
+        return SETTING_FORM_PATH_PREFIX + name.toLowerCase(Locale.ROOT).trim() + SETTING_FORM_PATH_SUFFIX;
     }
 
     private static @Nullable String nameFromPath(String path) {
         if (!path.startsWith(SETTING_FORM_PATH_PREFIX)) return null;
         if (!path.endsWith(SETTING_FORM_PATH_SUFFIX)) return null;
-        String stem = path.substring(
-                SETTING_FORM_PATH_PREFIX.length(),
-                path.length() - SETTING_FORM_PATH_SUFFIX.length());
+        String stem =
+                path.substring(SETTING_FORM_PATH_PREFIX.length(), path.length() - SETTING_FORM_PATH_SUFFIX.length());
         return stem.isBlank() ? null : stem;
     }
 
@@ -294,17 +277,15 @@ public class SettingFormLoader {
         String icon = optionalString(spec.get("icon"));
         String category = optionalString(spec.get("category"));
 
-        String defaultScope = parseScope(
-                optionalString(spec.get("defaultScope")), "defaultScope", DEFAULT_SCOPE_FALLBACK);
+        String defaultScope =
+                parseScope(optionalString(spec.get("defaultScope")), "defaultScope", DEFAULT_SCOPE_FALLBACK);
 
         List<FormFieldDto> fields = parseFields(spec.get("fields"), "fields");
         // Note: an empty fields list is allowed when the form drives purely computed settings,
         // but at least one field OR one computed setting must exist.
-        List<ResolvedComputedSetting> computed = parseComputedSettings(
-                spec.get("settings"), "settings");
+        List<ResolvedComputedSetting> computed = parseComputedSettings(spec.get("settings"), "settings");
         if (fields.isEmpty() && computed.isEmpty()) {
-            throw new IllegalStateException(
-                    "setting form must declare at least one field or one computed setting");
+            throw new IllegalStateException("setting form must declare at least one field or one computed setting");
         }
 
         boolean clearable = !(spec.get("clearable") instanceof Boolean b) || b;
@@ -324,14 +305,21 @@ public class SettingFormLoader {
         detectUnconditionalKeyConflicts(fields, computed, defaultScope);
 
         return new ResolvedSettingForm(
-                name, title, description, icon, category,
-                defaultScope, fields, computed, clearable, availableIn, source);
+                name,
+                title,
+                description,
+                icon,
+                category,
+                defaultScope,
+                fields,
+                computed,
+                clearable,
+                availableIn,
+                source);
     }
 
     private static void detectUnconditionalKeyConflicts(
-            List<FormFieldDto> fields,
-            List<ResolvedComputedSetting> computed,
-            String defaultScope) {
+            List<FormFieldDto> fields, List<ResolvedComputedSetting> computed, String defaultScope) {
         Map<String, String> seenUnconditional = new LinkedHashMap<>();
         for (FormFieldDto f : fields) {
             BindsToDto b = f.getBindsTo();
@@ -345,8 +333,7 @@ public class SettingFormLoader {
             String prior = seenUnconditional.put(tuple, "fields[" + f.getName() + "]");
             if (prior != null) {
                 throw new IllegalStateException(
-                        "duplicate unconditional setting target '" + tuple
-                                + "' — already declared at " + prior);
+                        "duplicate unconditional setting target '" + tuple + "' — already declared at " + prior);
             }
         }
         for (int i = 0; i < computed.size(); i++) {
@@ -357,8 +344,7 @@ public class SettingFormLoader {
             String prior = seenUnconditional.put(tuple, "settings[" + i + "]");
             if (prior != null) {
                 throw new IllegalStateException(
-                        "duplicate unconditional setting target '" + tuple
-                                + "' — already declared at " + prior);
+                        "duplicate unconditional setting target '" + tuple + "' — already declared at " + prior);
             }
         }
     }
@@ -373,8 +359,7 @@ public class SettingFormLoader {
         for (int i = 0; i < list.size(); i++) {
             Object entry = list.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new IllegalStateException(
-                        "'" + parentPath + "[" + i + "]' must be a map");
+                throw new IllegalStateException("'" + parentPath + "[" + i + "]' must be a map");
             }
             out.add(parseField((Map<String, Object>) entryMap, parentPath + "[" + i + "]"));
         }
@@ -394,9 +379,7 @@ public class SettingFormLoader {
         Map<String, String> label = requiredLocalizedText(raw.get("label"), path + ".label");
         Map<String, String> help = optionalLocalizedText(raw.get("help"), path + ".help");
         boolean required = raw.get("required") instanceof Boolean b && b;
-        String defaultValue = raw.get("defaultValue") == null
-                ? null
-                : String.valueOf(raw.get("defaultValue"));
+        String defaultValue = raw.get("defaultValue") == null ? null : String.valueOf(raw.get("defaultValue"));
         List<FormChoiceDto> choices = parseChoices(raw.get("choices"), path + ".choices");
         Integer rows = optionalInt(raw.get("rows"), path + ".rows");
         Integer integerMin = optionalInt(raw.get("integerMin"), path + ".integerMin");
@@ -407,8 +390,7 @@ public class SettingFormLoader {
         if ("repeat".equals(type)) {
             item = parseFields(raw.get("item"), path + ".item");
             if (item.isEmpty()) {
-                throw new IllegalStateException(
-                        "'" + path + ".item' must declare at least one nested field");
+                throw new IllegalStateException("'" + path + ".item' must declare at least one nested field");
             }
         }
 
@@ -418,20 +400,16 @@ public class SettingFormLoader {
         String writeIf = optionalString(raw.get("writeIf"));
         String choicesFrom = optionalString(raw.get("choicesFrom"));
         if (choicesFrom != null) {
-            if (!"ai-models".equals(choicesFrom)
-                    && !"ai-image-models".equals(choicesFrom)) {
-                throw new IllegalStateException(
-                        "'" + path + ".choicesFrom' unknown source: '" + choicesFrom
-                                + "' (known: 'ai-models', 'ai-image-models')");
+            if (!"ai-models".equals(choicesFrom) && !"ai-image-models".equals(choicesFrom)) {
+                throw new IllegalStateException("'" + path + ".choicesFrom' unknown source: '" + choicesFrom
+                        + "' (known: 'ai-models', 'ai-image-models')");
             }
             if (!choices.isEmpty()) {
-                throw new IllegalStateException(
-                        "'" + path + "' declares both 'choices' and 'choicesFrom' — pick one");
+                throw new IllegalStateException("'" + path + "' declares both 'choices' and 'choicesFrom' — pick one");
             }
             if (!"select".equals(type) && !"multi_select".equals(type)) {
                 throw new IllegalStateException(
-                        "'" + path + ".choicesFrom' only applies to select / multi_select, "
-                                + "got '" + type + "'");
+                        "'" + path + ".choicesFrom' only applies to select / multi_select, " + "got '" + type + "'");
             }
         }
 
@@ -474,9 +452,8 @@ public class SettingFormLoader {
             parseSettingTypeName(settingType, path + ".settingType");
         }
         if (!SCALAR_BINDABLE_TYPES.contains(fieldType)) {
-            throw new IllegalStateException(
-                    "'" + path + "' is not allowed on field-type '" + fieldType
-                            + "'. Use a `settings:` entry for derived values.");
+            throw new IllegalStateException("'" + path + "' is not allowed on field-type '" + fieldType
+                    + "'. Use a `settings:` entry for derived values.");
         }
         return BindsToDto.builder()
                 .key(key)
@@ -486,8 +463,7 @@ public class SettingFormLoader {
     }
 
     @SuppressWarnings("unchecked")
-    private List<ResolvedComputedSetting> parseComputedSettings(
-            @Nullable Object raw, String parentPath) {
+    private List<ResolvedComputedSetting> parseComputedSettings(@Nullable Object raw, String parentPath) {
         if (raw == null) return List.of();
         if (!(raw instanceof List<?> list)) {
             throw new IllegalStateException("'" + parentPath + "' must be a list");
@@ -496,11 +472,9 @@ public class SettingFormLoader {
         for (int i = 0; i < list.size(); i++) {
             Object entry = list.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new IllegalStateException(
-                        "'" + parentPath + "[" + i + "]' must be a map");
+                throw new IllegalStateException("'" + parentPath + "[" + i + "]' must be a map");
             }
-            out.add(parseComputedSetting(
-                    (Map<String, Object>) entryMap, parentPath + "[" + i + "]"));
+            out.add(parseComputedSetting((Map<String, Object>) entryMap, parentPath + "[" + i + "]"));
         }
         return List.copyOf(out);
     }
@@ -522,10 +496,8 @@ public class SettingFormLoader {
         compileTemplate(valueTemplate, path + ".value");
         String writeIfExpression = optionalString(raw.get("writeIf"));
         compileExpression(writeIfExpression, path + ".writeIf");
-        Map<String, String> description = optionalLocalizedText(
-                raw.get("description"), path + ".description");
-        return new ResolvedComputedSetting(
-                key, scope, settingType, valueTemplate, writeIfExpression, description);
+        Map<String, String> description = optionalLocalizedText(raw.get("description"), path + ".description");
+        return new ResolvedComputedSetting(key, scope, settingType, valueTemplate, writeIfExpression, description);
     }
 
     private static SettingType parseSettingTypeName(String raw, String path) {
@@ -533,7 +505,7 @@ public class SettingFormLoader {
             return SettingType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
-                    "'" + path + "' must be one of STRING/INT/LONG/DOUBLE/BOOLEAN/PASSWORD, got: " + raw);
+                    "'" + path + "' must be one of STRING/INT/LONG/DOUBLE/BOOLEAN/PASSWORD, got: " + raw, e);
         }
     }
 
@@ -541,8 +513,7 @@ public class SettingFormLoader {
         if (raw == null) return fallback;
         String normalized = raw.trim().toLowerCase(Locale.ROOT);
         if (!ALLOWED_SCOPES.contains(normalized)) {
-            throw new IllegalStateException(
-                    "'" + path + "' must be one of " + ALLOWED_SCOPES + ", got: " + raw);
+            throw new IllegalStateException("'" + path + "' must be one of " + ALLOWED_SCOPES + ", got: " + raw);
         }
         return normalized;
     }
@@ -551,8 +522,7 @@ public class SettingFormLoader {
         if (raw == null) return null;
         String normalized = raw.trim().toLowerCase(Locale.ROOT);
         if (!ALLOWED_SCOPES.contains(normalized)) {
-            throw new IllegalStateException(
-                    "'" + path + "' must be one of " + ALLOWED_SCOPES + ", got: " + raw);
+            throw new IllegalStateException("'" + path + "' must be one of " + ALLOWED_SCOPES + ", got: " + raw);
         }
         return normalized;
     }
@@ -599,16 +569,14 @@ public class SettingFormLoader {
                 continue;
             }
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new IllegalStateException(
-                        "'" + path + "[" + i + "]' must be a string or a map");
+                throw new IllegalStateException("'" + path + "[" + i + "]' must be a string or a map");
             }
             Map<String, Object> m = (Map<String, Object>) entryMap;
             String value = optionalString(m.get("value"));
             if (value == null) {
                 throw new IllegalStateException("'" + path + "[" + i + "].value' is required");
             }
-            Map<String, String> label = optionalLocalizedText(
-                    m.get("label"), path + "[" + i + "].label");
+            Map<String, String> label = optionalLocalizedText(m.get("label"), path + "[" + i + "].label");
             boolean def = (m.get("default") instanceof Boolean b && b)
                     || (m.get("defaultSelected") instanceof Boolean b2 && b2);
             out.add(FormChoiceDto.builder()
@@ -636,8 +604,7 @@ public class SettingFormLoader {
             return Map.of("en", s);
         }
         if (!(raw instanceof Map<?, ?> rawMap)) {
-            throw new IllegalStateException(
-                    "'" + path + "' must be a string or a map of language → text");
+            throw new IllegalStateException("'" + path + "' must be a string or a map of language → text");
         }
         Map<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : rawMap.entrySet()) {
@@ -648,8 +615,7 @@ public class SettingFormLoader {
             Object v = e.getValue();
             if (v == null) continue;
             if (!(v instanceof String s)) {
-                throw new IllegalStateException(
-                        "'" + path + "." + lang + "' must be a string");
+                throw new IllegalStateException("'" + path + "." + lang + "' must be a string");
             }
             if (s.isBlank()) continue;
             out.put(lang, s);
@@ -670,7 +636,7 @@ public class SettingFormLoader {
             try {
                 return Integer.parseInt(s.trim());
             } catch (NumberFormatException e) {
-                throw new IllegalStateException("'" + path + "' is not an integer: " + s);
+                throw new IllegalStateException("'" + path + "' is not an integer: " + s, e);
             }
         }
         throw new IllegalStateException("'" + path + "' must be an integer");
@@ -681,8 +647,7 @@ public class SettingFormLoader {
         try {
             templateRenderer.compile(template);
         } catch (PromptTemplateException e) {
-            throw new IllegalStateException(
-                    "'" + fieldName + "' is not a valid Pebble template: " + e.getMessage(), e);
+            throw new IllegalStateException("'" + fieldName + "' is not a valid Pebble template: " + e.getMessage(), e);
         }
     }
 

@@ -14,7 +14,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -36,18 +35,15 @@ public class KanbanFolderReader {
 
     public static final String APP_MANIFEST = "_app.yaml";
 
-    private static final List<String> GENERATED_LEAF_NAMES = List.of(
-            "_board.md", "_stats.yaml", "_app.yaml", "_info.yaml");
+    private static final List<String> GENERATED_LEAF_NAMES =
+            List.of("_board.md", "_stats.yaml", "_app.yaml", "_info.yaml");
 
     /** Default column for cards that sit directly in the suite root
      *  (no sub-folder = no explicit column). */
     public static final String DEFAULT_COLUMN = "backlog";
 
     /** A card file plus its resolved column name and parsed body. */
-    public record CardFile(
-            DocumentDocument doc,
-            String column,
-            CardDocument card) { }
+    public record CardFile(DocumentDocument doc, String column, CardDocument card) {}
 
     /** Bundle of everything a tool needs after scanning the folder. */
     public record Scan(
@@ -55,7 +51,7 @@ public class KanbanFolderReader {
             DocumentDocument manifestDoc,
             ApplicationDocument manifest,
             KanbanAppConfig kanbanConfig,
-            List<CardFile> cards) { }
+            List<CardFile> cards) {}
 
     private final DocumentService documentService;
 
@@ -75,12 +71,11 @@ public class KanbanFolderReader {
         DocumentDocument manifestDoc = loadManifest(tenantId, projectName, normalised);
         ApplicationDocument manifest = parseManifest(manifestDoc);
         if (!KanbanAppConfig.APP_NAME.equalsIgnoreCase(manifest.app())) {
-            throw new ToolException(
-                    "Folder '" + normalised + "' is an "
-                            + (manifest.app().isBlank() ? "untyped" : manifest.app())
-                            + " application — expected 'kanban'. "
-                            + "Edit '" + normalised + "/_app.yaml' "
-                            + "and set `$meta.app: kanban`.");
+            throw new ToolException("Folder '" + normalised + "' is an "
+                    + (manifest.app().isBlank() ? "untyped" : manifest.app())
+                    + " application — expected 'kanban'. "
+                    + "Edit '" + normalised + "/_app.yaml' "
+                    + "and set `$meta.app: kanban`.");
         }
         KanbanAppConfig kanbanConfig = KanbanAppConfig.from(manifest);
         List<CardFile> cards = loadCards(tenantId, projectName, normalised);
@@ -91,8 +86,8 @@ public class KanbanFolderReader {
      *  unbootstrapped folders too. */
     public Scan scanOptional(String tenantId, String projectName, String folder) {
         String normalised = normaliseFolder(folder);
-        Optional<DocumentDocument> manifestOpt = documentService.findByPath(
-                tenantId, projectName, normalised + "/" + APP_MANIFEST);
+        Optional<DocumentDocument> manifestOpt =
+                documentService.findByPath(tenantId, projectName, normalised + "/" + APP_MANIFEST);
         DocumentDocument manifestDoc;
         ApplicationDocument manifest;
         KanbanAppConfig kanbanConfig;
@@ -101,8 +96,7 @@ public class KanbanFolderReader {
             manifest = parseManifest(manifestDoc);
             if (!KanbanAppConfig.APP_NAME.equalsIgnoreCase(manifest.app())) {
                 throw new ToolException(
-                        "Folder '" + normalised + "' is an "
-                                + manifest.app() + " app, expected 'kanban'.");
+                        "Folder '" + normalised + "' is an " + manifest.app() + " app, expected 'kanban'.");
             }
             kanbanConfig = KanbanAppConfig.from(manifest);
         } else {
@@ -118,54 +112,47 @@ public class KanbanFolderReader {
 
     private DocumentDocument loadManifest(String tenantId, String projectName, String folder) {
         String path = folder + "/" + APP_MANIFEST;
-        return documentService.findByPath(tenantId, projectName, path)
-                .orElseThrow(() -> new ToolException(
-                        "No _app.yaml manifest found at '" + path
-                                + "'. Use `kanban_app_create` to "
-                                + "bootstrap a new kanban app — "
-                                + "writing the manifest by hand is "
-                                + "error-prone."));
+        return documentService
+                .findByPath(tenantId, projectName, path)
+                .orElseThrow(() -> new ToolException("No _app.yaml manifest found at '" + path
+                        + "'. Use `kanban_app_create` to "
+                        + "bootstrap a new kanban app — "
+                        + "writing the manifest by hand is "
+                        + "error-prone."));
     }
 
     private ApplicationDocument parseManifest(DocumentDocument doc) {
         String body = loadAsText(doc);
         String mime = doc.getMimeType();
         if (!ApplicationCodec.supports(mime)) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' has mime '"
-                            + mime + "' — must be JSON or YAML.");
+            throw new ToolException("Manifest '" + doc.getPath() + "' has mime '" + mime + "' — must be JSON or YAML.");
         }
         ApplicationDocument parsed;
         try {
             parsed = ApplicationCodec.parse(body, mime);
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse manifest '" + doc.getPath()
-                            + "': " + e.getMessage());
+            throw new ToolException("Could not parse manifest '" + doc.getPath() + "': " + e.getMessage(), e);
         }
         String dbKind = doc.getKind();
         if (dbKind == null || dbKind.isBlank()) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' is missing "
-                            + "`$meta.kind: application`. Recreate "
-                            + "the app via `kanban_app_create` or add "
-                            + "the `$meta` header manually:\n"
-                            + "  $meta:\n"
-                            + "    kind: application\n"
-                            + "    app:  kanban");
+            throw new ToolException("Manifest '" + doc.getPath() + "' is missing "
+                    + "`$meta.kind: application`. Recreate "
+                    + "the app via `kanban_app_create` or add "
+                    + "the `$meta` header manually:\n"
+                    + "  $meta:\n"
+                    + "    kind: application\n"
+                    + "    app:  kanban");
         }
         if (!"application".equalsIgnoreCase(dbKind)) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' has "
-                            + "`$meta.kind: " + dbKind + "`, expected "
-                            + "'application'. This document is not "
-                            + "an app manifest.");
+            throw new ToolException("Manifest '" + doc.getPath() + "' has "
+                    + "`$meta.kind: " + dbKind + "`, expected "
+                    + "'application'. This document is not "
+                    + "an app manifest.");
         }
         if (parsed.app() == null || parsed.app().isBlank()) {
-            throw new ToolException(
-                    "Manifest '" + doc.getPath() + "' is missing "
-                            + "`$meta.app`. Set `app: kanban` so the "
-                            + "registry can dispatch the right service.");
+            throw new ToolException("Manifest '" + doc.getPath() + "' is missing "
+                    + "`$meta.app`. Set `app: kanban` so the "
+                    + "registry can dispatch the right service.");
         }
         return parsed;
     }
@@ -173,8 +160,7 @@ public class KanbanFolderReader {
     // ── Cards ─────────────────────────────────────────────────────
 
     private List<CardFile> loadCards(String tenantId, String projectName, String folder) {
-        List<DocumentDocument> all = documentService.listByKind(
-                tenantId, projectName, "card");
+        List<DocumentDocument> all = documentService.listByKind(tenantId, projectName, "card");
         List<CardFile> out = new ArrayList<>();
         String prefix = folder + "/";
         for (DocumentDocument d : all) {
@@ -193,15 +179,12 @@ public class KanbanFolderReader {
         String mime = doc.getMimeType();
         if (!CardCodec.supports(mime)) {
             throw new ToolException(
-                    "Card '" + doc.getPath() + "' has mime '"
-                            + mime + "' — must be Markdown, JSON, or YAML.");
+                    "Card '" + doc.getPath() + "' has mime '" + mime + "' — must be Markdown, JSON, or YAML.");
         }
         try {
             return CardCodec.parse(body, mime);
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse card '" + doc.getPath()
-                            + "': " + e.getMessage());
+            throw new ToolException("Could not parse card '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -210,8 +193,7 @@ public class KanbanFolderReader {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 

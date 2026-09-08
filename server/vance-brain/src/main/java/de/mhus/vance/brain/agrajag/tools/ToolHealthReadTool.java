@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.agrajag.tools;
 
-import de.mhus.vance.api.tools.ToolSafety;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
+import de.mhus.vance.api.tools.ToolSafety;
 import de.mhus.vance.shared.toolhealth.ToolHealthDocument;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.toolpack.Tool;
@@ -23,32 +23,60 @@ public class ToolHealthReadTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "toolName", Map.of(
-                            "type", "string",
-                            "description", "Tool name to look up."),
-                    "scope", Map.of(
-                            "type", "string",
-                            "enum", List.of("SESSION", "USER", "PROJECT", "TENANT", "GLOBAL"),
-                            "description",
-                            "Optional explicit scope. Omit to use the cascade.")),
+            "properties",
+                    Map.of(
+                            "toolName",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Tool name to look up."),
+                            "scope",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("SESSION", "USER", "PROJECT", "TENANT", "GLOBAL"),
+                                            "description",
+                                            "Optional explicit scope. Omit to use the cascade.")),
             "required", List.of("toolName"));
 
     private final ToolHealthService toolHealthService;
 
-    @Override public String name() { return "tool_health_read"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "tool_health_read";
+    }
+
+    @Override
+    public String description() {
         return "Read the current tool-health document and its history for "
                 + "a tool. Uses the scope cascade by default; pass `scope` "
                 + "to force a particular layer.";
     }
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public ToolSafety safety() { return ToolSafety.SAFE_PROBE; }
-    @Override public Set<String> requiresEngineRoles() {
+
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public ToolSafety safety() {
+        return ToolSafety.SAFE_PROBE;
+    }
+
+    @Override
+    public Set<String> requiresEngineRoles() {
         return Set.of("tool-health-reader");
     }
-    @Override public Set<String> labels() { return Set.of("read-only"); }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("read-only");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -57,9 +85,7 @@ public class ToolHealthReadTool implements Tool {
 
         Optional<ToolHealthDocument> doc;
         if (scopeStr == null) {
-            doc = toolHealthService.lookup(
-                    ctx.tenantId(), ctx.sessionId(), ctx.userId(),
-                    ctx.projectId(), toolName);
+            doc = toolHealthService.lookup(ctx.tenantId(), ctx.sessionId(), ctx.userId(), ctx.projectId(), toolName);
         } else {
             // Explicit-scope lookup is currently implemented as a
             // single-scope cascade input; passing only one matching id
@@ -88,8 +114,11 @@ public class ToolHealthReadTool implements Tool {
         out.put("since", d.getSince());
         out.put("expectedRecoveryAt", d.getExpectedRecoveryAt());
         out.put("lastNote", d.getLastNote());
-        out.put("lastClassification",
-                d.getLastClassification() == null ? null : d.getLastClassification().name());
+        out.put(
+                "lastClassification",
+                d.getLastClassification() == null
+                        ? null
+                        : d.getLastClassification().name());
         out.put("cooldowns", d.getCooldowns());
         out.put("history", d.getHistory());
         return out;
@@ -101,8 +130,7 @@ public class ToolHealthReadTool implements Tool {
         return v.toString();
     }
 
-    static @org.jspecify.annotations.Nullable String stringParamOrNull(
-            Map<String, Object> p, String key) {
+    static @org.jspecify.annotations.Nullable String stringParamOrNull(Map<String, Object> p, String key) {
         Object v = p.get(key);
         return v == null ? null : v.toString();
     }
@@ -111,7 +139,7 @@ public class ToolHealthReadTool implements Tool {
         try {
             return ToolHealthScope.valueOf(s.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new ToolException("Invalid scope: " + s);
+            throw new ToolException("Invalid scope: " + s, e);
         }
     }
 }

@@ -31,7 +31,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
@@ -136,6 +135,7 @@ final class OdeSearchInstance implements SearchProviderInstance {
 
     /** Last successfully fetched declaration, or null while none has arrived. */
     private volatile @Nullable Caps caps;
+
     private volatile Instant capsFetchedAt = Instant.EPOCH;
 
     /**
@@ -179,9 +179,12 @@ final class OdeSearchInstance implements SearchProviderInstance {
             long seconds = Long.parseLong(String.valueOf(raw).trim());
             return seconds < 0 ? null : Duration.ofSeconds(seconds);
         } catch (NumberFormatException e) {
-            log.warn("Ode endpoint '{}': {}='{}' is not a number, ignoring it and following "
+            log.warn(
+                    "Ode endpoint '{}': {}='{}' is not a number, ignoring it and following "
                             + "the source's declared cacheTtl",
-                    cfg.instanceId(), EXTRA_CAPS_TTL_SECONDS, raw);
+                    cfg.instanceId(),
+                    EXTRA_CAPS_TTL_SECONDS,
+                    raw);
             return null;
         }
     }
@@ -194,9 +197,7 @@ final class OdeSearchInstance implements SearchProviderInstance {
         if (capsTtlOverride != null) {
             return capsTtlOverride;
         }
-        return current == null || current.cacheTtl() == null
-                ? DEFAULT_CAPS_TTL
-                : current.cacheTtl();
+        return current == null || current.cacheTtl() == null ? DEFAULT_CAPS_TTL : current.cacheTtl();
     }
 
     @Override
@@ -243,9 +244,7 @@ final class OdeSearchInstance implements SearchProviderInstance {
      */
     @Override
     public ProviderAvailability availability(SearchScope scope) {
-        return StringUtils.isBlank(cfg.baseUrl())
-                ? ProviderAvailability.DISABLED
-                : ProviderAvailability.READY;
+        return StringUtils.isBlank(cfg.baseUrl()) ? ProviderAvailability.DISABLED : ProviderAvailability.READY;
     }
 
     @Override
@@ -281,9 +280,13 @@ final class OdeSearchInstance implements SearchProviderInstance {
                     + "currently unusable.";
         }
         StringBuilder sb = new StringBuilder()
-                .append("Foreign search endpoint '").append(cfg.instanceId())
-                .append("' (Ode), serving ").append(names(c.modalities()))
-                .append(". Subject areas: ").append(names(c.domains())).append('.');
+                .append("Foreign search endpoint '")
+                .append(cfg.instanceId())
+                .append("' (Ode), serving ")
+                .append(names(c.modalities()))
+                .append(". Subject areas: ")
+                .append(names(c.domains()))
+                .append('.');
         // The declared parameter names are the one part of this sentence we do
         // not author, and it is rendered into the plan recipe's system prompt
         // for every research_investigate in the project — then cached for half
@@ -291,22 +294,20 @@ final class OdeSearchInstance implements SearchProviderInstance {
         // quoted, and their number is capped: a remote value that is not a
         // name is prose, and prose from the far end is exactly what the Ode
         // contract has no field for.
-        List<String> declared = ForeignPromptText.identifiers(
-                c.expertParams(), MAX_HINTED_EXPERT_PARAMS);
+        List<String> declared = ForeignPromptText.identifiers(c.expertParams(), MAX_HINTED_EXPERT_PARAMS);
         if (!declared.isEmpty()) {
-            sb.append(" Expert filters it understands: ")
-                    .append(String.join(", ", declared));
+            sb.append(" Expert filters it understands: ").append(String.join(", ", declared));
             int more = c.expertParams().size() - declared.size();
             if (more > 0) {
                 sb.append(" (and ").append(more).append(" more)");
             }
             sb.append('.');
         } else if (!c.expertParams().isEmpty()) {
-            sb.append(" It declares ").append(c.expertParams().size())
+            sb.append(" It declares ")
+                    .append(c.expertParams().size())
                     .append(" expert filter(s), none of them a usable name.");
         }
-        sb.append(" What it indexes is defined by the operating application, "
-                + "not by Vancetope.");
+        sb.append(" What it indexes is defined by the operating application, " + "not by Vancetope.");
         return sb.toString();
     }
 
@@ -322,13 +323,15 @@ final class OdeSearchInstance implements SearchProviderInstance {
             // Not a throw: the dispatcher would set a cooldown on a source we
             // may simply not have reached yet, and this path is also hit by a
             // brand-new endpoint on its first call.
-            return softFailure(req, "Ode endpoint '" + cfg.instanceId()
-                    + "' capabilities unavailable"
-                    + (lastError == null ? "" : ": " + lastError));
+            return softFailure(
+                    req,
+                    "Ode endpoint '" + cfg.instanceId()
+                            + "' capabilities unavailable"
+                            + (lastError == null ? "" : ": " + lastError));
         }
         if (!c.modalities().contains(req.modality())) {
-            return softFailure(req, "modality " + req.modality()
-                    + " not served by Ode endpoint '" + cfg.instanceId() + "'");
+            return softFailure(
+                    req, "modality " + req.modality() + " not served by Ode endpoint '" + cfg.instanceId() + "'");
         }
 
         SearchTier tier = c.tiers().contains(req.tier()) ? req.tier() : SearchTier.NORMAL;
@@ -338,15 +341,12 @@ final class OdeSearchInstance implements SearchProviderInstance {
 
         OdeSearchProtocol.OdeSearchHttp.Response response;
         try {
-            response = http.post(
-                    URI.create(baseUrl() + "/search"), apiKey(scope), body, REQUEST_TIMEOUT);
+            response = http.post(URI.create(baseUrl() + "/search"), apiKey(scope), body, REQUEST_TIMEOUT);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException(
-                    "Interrupted while calling Ode endpoint '" + cfg.instanceId() + "'");
+            throw new RuntimeException("Interrupted while calling Ode endpoint '" + cfg.instanceId() + "'", ie);
         } catch (Exception e) {
-            throw new RuntimeException("Ode endpoint '" + cfg.instanceId()
-                    + "' call failed: " + e.getMessage(), e);
+            throw new RuntimeException("Ode endpoint '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
         }
         if (response.statusCode() != 200) {
             // The status goes in the message on purpose: the failure tracker
@@ -380,30 +380,26 @@ final class OdeSearchInstance implements SearchProviderInstance {
         // space becomes '+' — a literal plus in a path, addressing something
         // else. Content ids are usually opaque tokens, which is why the
         // difference would be found late.
-        URI uri = URI.create(baseUrl() + "/content/"
-                + UriUtils.encodePathSegment(remoteId, StandardCharsets.UTF_8));
+        URI uri = URI.create(baseUrl() + "/content/" + UriUtils.encodePathSegment(remoteId, StandardCharsets.UTF_8));
         OdeSearchProtocol.OdeSearchHttp.BinaryResponse response;
         try {
             response = http.getBytes(uri, apiKey(scope), REQUEST_TIMEOUT);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException(
-                    "Interrupted while loading content from '" + cfg.instanceId() + "'");
+            throw new RuntimeException("Interrupted while loading content from '" + cfg.instanceId() + "'", ie);
         } catch (Exception e) {
-            throw new RuntimeException("Ode endpoint '" + cfg.instanceId()
-                    + "' content fetch failed: " + e.getMessage(), e);
+            throw new RuntimeException(
+                    "Ode endpoint '" + cfg.instanceId() + "' content fetch failed: " + e.getMessage(), e);
         }
         if (response.statusCode() != 200) {
-            throw new RuntimeException("Ode endpoint '" + cfg.instanceId()
-                    + "' content fetch returned HTTP " + response.statusCode());
+            throw new RuntimeException(
+                    "Ode endpoint '" + cfg.instanceId() + "' content fetch returned HTTP " + response.statusCode());
         }
         String mime = StringUtils.isBlank(response.contentType())
                 ? StringUtils.defaultIfBlank(ref.mimeType(), "application/octet-stream")
                 : stripCharset(response.contentType());
         Path stashed = contentStore.stash(scope, remoteId, response.body(), mime);
-        String text = mime.startsWith("text/")
-                ? new String(response.body(), StandardCharsets.UTF_8)
-                : null;
+        String text = mime.startsWith("text/") ? new String(response.body(), StandardCharsets.UTF_8) : null;
         return new LoadedContent(mime, stashed, text);
     }
 
@@ -419,7 +415,8 @@ final class OdeSearchInstance implements SearchProviderInstance {
         Caps current = caps;
         Duration ttl = capsTtl(current);
         Instant now = Instant.now();
-        if (current != null && !ttl.isZero()
+        if (current != null
+                && !ttl.isZero()
                 && Duration.between(capsFetchedAt, now).compareTo(ttl) < 0) {
             return current;
         }
@@ -427,17 +424,16 @@ final class OdeSearchInstance implements SearchProviderInstance {
         // applied when a declaration is still being served — there the TTL above
         // already bounds the retries, and holding a stale answer back would take
         // a working source out of dispatch.
-        if (current == null && !FAILED_CAPS_TTL.isZero()
+        if (current == null
+                && !FAILED_CAPS_TTL.isZero()
                 && Duration.between(capsFailedAt, now).compareTo(FAILED_CAPS_TTL) < 0) {
             return null;
         }
         try {
-            OdeSearchProtocol.OdeSearchHttp.Response response = http.get(
-                    URI.create(baseUrl() + "/capabilities"), apiKeyForCapabilities(),
-                    REQUEST_TIMEOUT);
+            OdeSearchProtocol.OdeSearchHttp.Response response =
+                    http.get(URI.create(baseUrl() + "/capabilities"), apiKeyForCapabilities(), REQUEST_TIMEOUT);
             if (response.statusCode() != 200) {
-                return failedCaps(current, "capabilities returned HTTP "
-                        + response.statusCode());
+                return failedCaps(current, "capabilities returned HTTP " + response.statusCode());
             }
             Caps parsed = parseCaps(response.body());
             caps = parsed;
@@ -448,9 +444,7 @@ final class OdeSearchInstance implements SearchProviderInstance {
             // the provider panel says READY, no tab appears anywhere, and the
             // operator has nothing to go on. The one thing worse than a missing
             // row is a row that says the wrong thing.
-            lastError = parsed.modalities().isEmpty()
-                    ? "endpoint declares no modality this version understands"
-                    : null;
+            lastError = parsed.modalities().isEmpty() ? "endpoint declares no modality this version understands" : null;
             return parsed;
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
@@ -477,10 +471,8 @@ final class OdeSearchInstance implements SearchProviderInstance {
 
     Caps parseCaps(String json) {
         JsonNode root = objectMapper.readTree(json);
-        Set<SearchModality> modalities = parseEnums(
-                root.path("modalities"), SearchModality.class, "modality");
-        Set<SearchDomain> domains = parseEnums(
-                root.path("domains"), SearchDomain.class, "domain");
+        Set<SearchModality> modalities = parseEnums(root.path("modalities"), SearchModality.class, "modality");
+        Set<SearchDomain> domains = parseEnums(root.path("domains"), SearchDomain.class, "domain");
         Set<SearchTier> tiers = parseEnums(root.path("tiers"), SearchTier.class, "tier");
         if (tiers.isEmpty()) {
             tiers = Set.of(SearchTier.NORMAL);
@@ -500,7 +492,9 @@ final class OdeSearchInstance implements SearchProviderInstance {
             }
         }
         return new Caps(
-                modalities, domains, tiers,
+                modalities,
+                domains,
+                tiers,
                 maxResults <= 0 ? DEFAULT_MAX_RESULTS : maxResults,
                 List.copyOf(expertParams),
                 root.path("servesContent").asBoolean(false),
@@ -535,8 +529,7 @@ final class OdeSearchInstance implements SearchProviderInstance {
                         facetValues(entry.path("values")),
                         entry.path("lazyChildren").asBoolean(false)));
             } catch (IllegalArgumentException e) {
-                log.warn("An Ode endpoint declares unusable facet '{}': {}",
-                        key, e.getMessage());
+                log.warn("An Ode endpoint declares unusable facet '{}': {}", key, e.getMessage());
             }
         }
         return List.copyOf(out);
@@ -573,8 +566,11 @@ final class OdeSearchInstance implements SearchProviderInstance {
             }
             return parsed;
         } catch (RuntimeException e) {
-            log.warn("Ode endpoint '{}': cacheTtl '{}' is not an ISO-8601 duration — using {}",
-                    cfg.instanceId(), raw, DEFAULT_CAPS_TTL);
+            log.warn(
+                    "Ode endpoint '{}': cacheTtl '{}' is not an ISO-8601 duration — using {}",
+                    cfg.instanceId(),
+                    raw,
+                    DEFAULT_CAPS_TTL);
             return null;
         }
     }
@@ -600,9 +596,12 @@ final class OdeSearchInstance implements SearchProviderInstance {
             try {
                 out.add(Enum.valueOf(type, raw.trim().toUpperCase(Locale.ROOT)));
             } catch (IllegalArgumentException e) {
-                log.warn("Ode endpoint '{}' declares unknown {} '{}' — ignored. "
+                log.warn(
+                        "Ode endpoint '{}' declares unknown {} '{}' — ignored. "
                                 + "The vocabulary is closed; this end may be older.",
-                        cfg.instanceId(), what, raw);
+                        cfg.instanceId(),
+                        what,
+                        raw);
             }
         }
         return Set.copyOf(out);
@@ -635,8 +634,7 @@ final class OdeSearchInstance implements SearchProviderInstance {
         return objectMapper.writeValueAsString(body);
     }
 
-    SearchResult parseResult(
-            String json, SearchRequest req, SearchTier tier, int maxResults) {
+    SearchResult parseResult(String json, SearchRequest req, SearchTier tier, int maxResults) {
         JsonNode root;
         try {
             root = objectMapper.readTree(json);
@@ -644,8 +642,8 @@ final class OdeSearchInstance implements SearchProviderInstance {
             // Unparseable body is a protocol break, and a throw here is right:
             // unlike a missing field this is not something we can work around,
             // and the failure tracker should see it.
-            throw new RuntimeException("Ode endpoint '" + cfg.instanceId()
-                    + "' returned unparseable JSON: " + e.getMessage(), e);
+            throw new RuntimeException(
+                    "Ode endpoint '" + cfg.instanceId() + "' returned unparseable JSON: " + e.getMessage(), e);
         }
         List<SearchHit> hits = new ArrayList<>();
         int skipped = 0;
@@ -661,8 +659,11 @@ final class OdeSearchInstance implements SearchProviderInstance {
             }
         }
         if (skipped > 0) {
-            log.warn("Ode endpoint '{}': skipped {} unusable hit(s) — a hit needs "
-                    + "a title and a url to be shown at all", cfg.instanceId(), skipped);
+            log.warn(
+                    "Ode endpoint '{}': skipped {} unusable hit(s) — a hit needs "
+                            + "a title and a url to be shown at all",
+                    cfg.instanceId(),
+                    skipped);
         }
         // Truncate rather than complain: the source was told the limit and the
         // caller cannot use more than it asked for. Measured against the number
@@ -671,8 +672,11 @@ final class OdeSearchInstance implements SearchProviderInstance {
         // never given would log a broken promise it did not make.
         int truncated = 0;
         if (hits.size() > maxResults) {
-            log.warn("Ode endpoint '{}' returned {} hits for maxResults={} — truncating",
-                    cfg.instanceId(), hits.size(), maxResults);
+            log.warn(
+                    "Ode endpoint '{}' returned {} hits for maxResults={} — truncating",
+                    cfg.instanceId(),
+                    hits.size(),
+                    maxResults);
             truncated = hits.size() - maxResults;
             hits = hits.subList(0, maxResults);
         }
@@ -682,10 +686,16 @@ final class OdeSearchInstance implements SearchProviderInstance {
         // and nothing in the answer — the DTO is what a caller can see.
         int dropped = root.path("droppedCount").asInt(0) + skipped + truncated;
         return new SearchResult(
-                req.query(), req.modality(), cfg.instanceId(), tier,
-                List.copyOf(hits), hits.size(), dropped,
+                req.query(),
+                req.modality(),
+                cfg.instanceId(),
+                tier,
+                List.copyOf(hits),
+                hits.size(),
+                dropped,
                 StringUtils.isBlank(note) ? null : note,
-                null, Map.of());
+                null,
+                Map.of());
     }
 
     private @Nullable SearchHit parseHit(JsonNode node, SearchModality fallbackModality) {
@@ -700,8 +710,10 @@ final class OdeSearchInstance implements SearchProviderInstance {
             try {
                 modality = SearchModality.valueOf(rawModality.trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                log.debug("Ode endpoint '{}': hit declares unknown modality '{}', "
-                        + "using the queried one", cfg.instanceId(), rawModality);
+                log.debug(
+                        "Ode endpoint '{}': hit declares unknown modality '{}', " + "using the queried one",
+                        cfg.instanceId(),
+                        rawModality);
             }
         }
         String snippet = node.path("snippet").asString(null);
@@ -714,7 +726,8 @@ final class OdeSearchInstance implements SearchProviderInstance {
             }
         }
         return new SearchHit(
-                title, url,
+                title,
+                url,
                 StringUtils.isBlank(snippet) ? null : snippet,
                 StringUtils.isBlank(source) ? null : source,
                 modality,
@@ -730,22 +743,22 @@ final class OdeSearchInstance implements SearchProviderInstance {
         if (StringUtils.isBlank(contentId)) {
             return null;
         }
-        boolean embedded = !"STASH_ON_DEMAND".equalsIgnoreCase(
-                node.path("inline").asString("EMBED_TEXT"));
+        boolean embedded =
+                !"STASH_ON_DEMAND".equalsIgnoreCase(node.path("inline").asString("EMBED_TEXT"));
         String text = node.path("text").asString(null);
         if (embedded && StringUtils.isBlank(text)) {
             // An embedded body with no text is an empty promise; dropping the
             // reference is better than handing the model a body it cannot read.
             return null;
         }
-        String mime = StringUtils.defaultIfBlank(
-                node.path("mimeType").asString(""), "text/plain");
+        String mime = StringUtils.defaultIfBlank(node.path("mimeType").asString(""), "text/plain");
         long size = node.path("sizeBytes").asLong(text == null ? 0L : text.length());
         return new ContentReference(
                 // Prefixed with the endpoint so two sources cannot collide on a
                 // content id, and stripped again before the id goes back out.
                 cfg.instanceId() + ":" + contentId,
-                mime, size,
+                mime,
+                size,
                 embedded ? ContentInline.EMBED_TEXT : ContentInline.STASH_ON_DEMAND,
                 embedded ? text : null,
                 null);
@@ -840,8 +853,7 @@ final class OdeSearchInstance implements SearchProviderInstance {
     private SearchResult softFailure(SearchRequest req, String message) {
         log.debug("Ode endpoint '{}': {}", cfg.instanceId(), message);
         return new SearchResult(
-                req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                List.of(), 0, 0, null, message, Map.of());
+                req.query(), req.modality(), cfg.instanceId(), req.tier(), List.of(), 0, 0, null, message, Map.of());
     }
 
     /**
@@ -859,5 +871,5 @@ final class OdeSearchInstance implements SearchProviderInstance {
             List<String> expertParams,
             boolean servesContent,
             @Nullable Duration cacheTtl,
-            List<Facet> facets) { }
+            List<Facet> facets) {}
 }

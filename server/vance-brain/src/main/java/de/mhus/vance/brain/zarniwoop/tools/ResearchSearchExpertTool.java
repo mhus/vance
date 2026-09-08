@@ -61,53 +61,86 @@ public class ResearchSearchExpertTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.ofEntries(
-                    Map.entry("query", Map.of(
-                            "type", "string",
-                            "description", "Natural-language search query.")),
-                    Map.entry("modality", Map.of(
-                            "type", "string",
-                            "description", "Result kind — web / image / video / pdf / news / "
-                                    + "academic / book / encyclopedia / internal_doc.")),
-                    Map.entry("instance", Map.of(
-                            "type", "string",
-                            "description", "Pin a specific endpoint id (e.g. 'wiki-de', "
-                                    + "'serper-eu'). Run research_providers to discover ids.")),
-                    Map.entry("domain", Map.of(
-                            "type", "string",
-                            "description", "Subject area hint (academic / news / encyclopedia / …).")),
-                    Map.entry("locale", Map.of(
-                            "type", "string",
-                            "description", "BCP-47 language tag (de, en, fr-CA …).")),
-                    Map.entry("dateFrom", Map.of(
-                            "type", "string",
-                            "description", "Restrict to results dated on or after (ISO yyyy-MM-dd).")),
-                    Map.entry("dateTo", Map.of(
-                            "type", "string",
-                            "description", "Restrict to results dated on or before (ISO yyyy-MM-dd).")),
-                    Map.entry("site", Map.of(
-                            "type", "string",
-                            "description", "Restrict to a host (e.g. 'arxiv.org').")),
-                    Map.entry("filetype", Map.of(
-                            "type", "string",
-                            "description", "Restrict to a file type (e.g. 'pdf', 'csv').")),
-                    Map.entry("num", Map.of(
-                            "type", "integer",
-                            "description", "Maximum results (1–10).")),
-                    Map.entry("facets", Map.of(
-                            "type", "object",
-                            "description", "Structured filter by an endpoint's declared "
-                                    + "dimensions, e.g. {\"origin-place\": [\"m49:142\"]}. "
-                                    + "Distinct from 'params': an endpoint that does not "
-                                    + "declare a selected key is skipped rather than "
-                                    + "ignoring it. Keys and values come from "
-                                    + "research_providers.")),
-                    Map.entry("params", Map.of(
-                            "type", "object",
-                            "description", "Endpoint-specific filters, by the exact names the "
-                                    + "endpoint declares. Run research_providers first — an "
-                                    + "endpoint lists the expert filters it understands, and "
-                                    + "only those do anything. Values must be scalars."))),
+            "properties",
+                    Map.ofEntries(
+                            Map.entry(
+                                    "query",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Natural-language search query.")),
+                            Map.entry(
+                                    "modality",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Result kind — web / image / video / pdf / news / "
+                                                    + "academic / book / encyclopedia / internal_doc.")),
+                            Map.entry(
+                                    "instance",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Pin a specific endpoint id (e.g. 'wiki-de', "
+                                                    + "'serper-eu'). Run research_providers to discover ids.")),
+                            Map.entry(
+                                    "domain",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Subject area hint (academic / news / encyclopedia / …).")),
+                            Map.entry(
+                                    "locale",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "BCP-47 language tag (de, en, fr-CA …).")),
+                            Map.entry(
+                                    "dateFrom",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Restrict to results dated on or after (ISO yyyy-MM-dd).")),
+                            Map.entry(
+                                    "dateTo",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Restrict to results dated on or before (ISO yyyy-MM-dd).")),
+                            Map.entry(
+                                    "site",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Restrict to a host (e.g. 'arxiv.org').")),
+                            Map.entry(
+                                    "filetype",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Restrict to a file type (e.g. 'pdf', 'csv').")),
+                            Map.entry(
+                                    "num",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Maximum results (1–10).")),
+                            Map.entry(
+                                    "facets",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Structured filter by an endpoint's declared "
+                                                    + "dimensions, e.g. {\"origin-place\": [\"m49:142\"]}. "
+                                                    + "Distinct from 'params': an endpoint that does not "
+                                                    + "declare a selected key is skipped rather than "
+                                                    + "ignoring it. Keys and values come from "
+                                                    + "research_providers.")),
+                            Map.entry(
+                                    "params",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Endpoint-specific filters, by the exact names the "
+                                                    + "endpoint declares. Run research_providers first — an "
+                                                    + "endpoint lists the expert filters it understands, and "
+                                                    + "only those do anything. Values must be scalars."))),
             "required", List.of("query", "modality"));
 
     private final ZarniwoopService zarniwoopService;
@@ -178,13 +211,10 @@ public class ResearchSearchExpertTool implements Tool {
         if (StringUtils.isBlank(ctx.projectId())) {
             throw new ToolException("research tools require a project scope");
         }
-        SearchScope scope = new SearchScope(
-                ctx.tenantId(), ctx.projectId(), ctx.processId(), ctx.userId());
+        SearchScope scope = new SearchScope(ctx.tenantId(), ctx.projectId(), ctx.processId(), ctx.userId());
 
         Object instanceRaw = params.get("instance");
-        String pinnedInstance = instanceRaw instanceof String s && !StringUtils.isBlank(s)
-                ? s.trim()
-                : null;
+        String pinnedInstance = instanceRaw instanceof String s && !StringUtils.isBlank(s) ? s.trim() : null;
 
         Map<String, Object> expertParams = new LinkedHashMap<>();
         copyDeclaredParams(params.get("params"), expertParams);
@@ -200,21 +230,27 @@ public class ResearchSearchExpertTool implements Tool {
             try {
                 locale = java.util.Locale.forLanguageTag(ls.trim());
             } catch (RuntimeException e) {
-                throw new ToolException("Invalid locale '" + ls + "': " + e.getMessage());
+                throw new ToolException("Invalid locale '" + ls + "': " + e.getMessage(), e);
             }
         }
 
         int num = ResearchSearchTool.clampNum(params.get("num"));
 
         SearchRequest req = new SearchRequest(
-                query, modality, SearchTier.EXPERT, num,
-                locale, pinnedInstance, expertParams, ResearchSearchTool.facets(params));
+                query,
+                modality,
+                SearchTier.EXPERT,
+                num,
+                locale,
+                pinnedInstance,
+                expertParams,
+                ResearchSearchTool.facets(params));
 
         SearchResult result;
         try {
             result = zarniwoopService.search(req, scope, ctx);
         } catch (ZarniwoopException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -234,8 +270,7 @@ public class ResearchSearchExpertTool implements Tool {
         return out;
     }
 
-    private static void copyIfString(Map<String, Object> from, String key,
-                                     Map<String, Object> to) {
+    private static void copyIfString(Map<String, Object> from, String key, Map<String, Object> to) {
         Object v = from.get(key);
         if (v instanceof String s && !StringUtils.isBlank(s)) {
             to.put(key, s.trim());
@@ -252,8 +287,7 @@ public class ResearchSearchExpertTool implements Tool {
      * else is skipped with a warning rather than refused: a malformed filter
      * should cost the filter, not the search.
      */
-    private static void copyDeclaredParams(@org.jspecify.annotations.Nullable Object raw,
-                                           Map<String, Object> to) {
+    private static void copyDeclaredParams(@org.jspecify.annotations.Nullable Object raw, Map<String, Object> to) {
         if (!(raw instanceof Map<?, ?> map)) {
             return;
         }
@@ -266,10 +300,12 @@ public class ResearchSearchExpertTool implements Tool {
                 case String s when !StringUtils.isBlank(s) -> to.put(key.trim(), s.trim());
                 case Number n -> to.put(key.trim(), n);
                 case Boolean b -> to.put(key.trim(), b);
-                case null -> { }
-                default -> log.warn(
-                        "research_search_expert: dropping non-scalar expert parameter '{}' ({})",
-                        key, value.getClass().getSimpleName());
+                case null -> {}
+                default ->
+                    log.warn(
+                            "research_search_expert: dropping non-scalar expert parameter '{}' ({})",
+                            key,
+                            value.getClass().getSimpleName());
             }
         }
     }

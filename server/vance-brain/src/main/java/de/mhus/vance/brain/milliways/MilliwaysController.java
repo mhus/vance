@@ -52,8 +52,8 @@ public class MilliwaysController {
             @PathVariable("tenant") String tenant,
             @Valid @RequestBody ShareContextRequest body,
             HttpServletRequest request) {
-        return call(() -> milliwaysService.listHandlers(
-                target(tenant, body.getProjectId(), body.getSubject(), request)));
+        return call(
+                () -> milliwaysService.listHandlers(target(tenant, body.getProjectId(), body.getSubject(), request)));
     }
 
     @PostMapping("/handlers/{handlerId}/form")
@@ -62,8 +62,8 @@ public class MilliwaysController {
             @PathVariable("handlerId") String handlerId,
             @Valid @RequestBody ShareContextRequest body,
             HttpServletRequest request) {
-        return call(() -> milliwaysService.form(
-                handlerId, target(tenant, body.getProjectId(), body.getSubject(), request)));
+        return call(() ->
+                milliwaysService.form(handlerId, target(tenant, body.getProjectId(), body.getSubject(), request)));
     }
 
     @PostMapping("/handlers/{handlerId}")
@@ -73,17 +73,13 @@ public class MilliwaysController {
             @Valid @RequestBody ShareSubmitRequest body,
             HttpServletRequest request) {
         return call(() -> milliwaysService.share(
-                handlerId,
-                target(tenant, body.getProjectId(), body.getSubject(), request),
-                body.getValues()));
+                handlerId, target(tenant, body.getProjectId(), body.getSubject(), request), body.getValues()));
     }
 
     // ──────────────────── internals ────────────────────
 
-    private ShareTarget target(
-            String tenant, String projectId, ShareSubjectDto subject, HttpServletRequest request) {
-        return new ShareTarget(
-                authority.contextOf(request), tenant, projectId, subjectOf(projectId, subject));
+    private ShareTarget target(String tenant, String projectId, ShareSubjectDto subject, HttpServletRequest request) {
+        return new ShareTarget(authority.contextOf(request), tenant, projectId, subjectOf(projectId, subject));
     }
 
     /**
@@ -122,13 +118,13 @@ public class MilliwaysController {
         try {
             return body.get();
         } catch (ShareNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (ShareUnavailableException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (ShareException e) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage(), e);
         } catch (ShareTransportException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage(), e);
         }
     }
 }

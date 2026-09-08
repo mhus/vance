@@ -2,6 +2,7 @@ package de.mhus.vance.brain.magrathea;
 
 import de.mhus.vance.api.action.ScriptSource;
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.magrathea.MagratheaErrorKind;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.brain.action.ActionInvocation;
@@ -9,7 +10,6 @@ import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.ScriptActionExecutor;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.script.ScriptWorkflowRun;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import java.util.Locale;
@@ -51,10 +51,7 @@ import tools.jackson.databind.ObjectMapper;
  * surface. {@code specification/trigger-actions.md} §8.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class ScriptTaskExecutor implements MagratheaTypeExecutor {
@@ -79,8 +76,7 @@ public class ScriptTaskExecutor implements MagratheaTypeExecutor {
         try {
             action = buildAction(state);
         } catch (IllegalStateException ex) {
-            return Optional.of(TaskOutcome.failure(
-                    "script_task '" + state.name() + "': " + ex.getMessage()));
+            return Optional.of(TaskOutcome.failure("script_task '" + state.name() + "': " + ex.getMessage()));
         }
         TriggerContext triggerContext = TriggerContext.standalone(
                 context.tenantId(),
@@ -90,8 +86,7 @@ public class ScriptTaskExecutor implements MagratheaTypeExecutor {
                 "workflow:" + context.workflowRunId() + ":" + state.name(),
                 /*parentProcessId*/ null);
         ActionResult result = scriptActionExecutor.execute(
-                new ActionInvocation<>(action, triggerContext, TriggerKind.WORKFLOW),
-                runView(context));
+                new ActionInvocation<>(action, triggerContext, TriggerKind.WORKFLOW), runView(context));
         return Optional.of(mapOutcome(state, result));
     }
 
@@ -122,7 +117,7 @@ public class ScriptTaskExecutor implements MagratheaTypeExecutor {
             source = ScriptSource.valueOf(sourceRaw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
             throw new IllegalStateException(
-                    "unknown 'source' '" + sourceRaw + "' (expected: document | workspace)");
+                    "unknown 'source' '" + sourceRaw + "' (expected: document | workspace)", ex);
         }
         String path = state.specString(SPEC_PATH);
         if (path == null) {
@@ -130,12 +125,10 @@ public class ScriptTaskExecutor implements MagratheaTypeExecutor {
         }
         String dirName = state.specString(SPEC_DIRNAME);
         if (source == ScriptSource.WORKSPACE && dirName == null) {
-            throw new IllegalStateException(
-                    "'dirName' is required when source=workspace");
+            throw new IllegalStateException("'dirName' is required when source=workspace");
         }
         if (source == ScriptSource.DOCUMENT && dirName != null) {
-            throw new IllegalStateException(
-                    "'dirName' must be omitted when source=document");
+            throw new IllegalStateException("'dirName' must be omitted when source=document");
         }
         Integer timeoutSeconds = state.timeoutSeconds();
         Object rawParams = state.specField(SPEC_PARAMS);
@@ -147,46 +140,43 @@ public class ScriptTaskExecutor implements MagratheaTypeExecutor {
             }
             params = p;
         }
-        return new TriggerAction.Script(
-                source, dirName, path, timeoutSeconds, params, null);
+        return new TriggerAction.Script(source, dirName, path, timeoutSeconds, params, null);
     }
 
     private TaskOutcome mapOutcome(MagratheaStateSpec state, ActionResult result) {
         Map<String, Object> output = result.output();
-        tools.jackson.databind.JsonNode outputJson =
-                output == null ? null : objectMapper.valueToTree(output);
+        tools.jackson.databind.JsonNode outputJson = output == null ? null : objectMapper.valueToTree(output);
 
         return switch (result.outcome()) {
             case SUCCESS -> TaskOutcome.successWith(outputJson);
-            case BUSINESS_ERROR -> new TaskOutcome(
-                    errorKindName(MagratheaErrorKind.BUSINESS_ERROR),
-                    outputJson,
-                    result.errorMessage(),
-                    null);
-            case TIMEOUT -> new TaskOutcome(
-                    errorKindName(MagratheaErrorKind.TIMEOUT),
-                    outputJson,
-                    result.errorMessage() == null
-                            ? "script_task '" + state.name() + "' timed out"
-                            : result.errorMessage(),
-                    null);
-            case PERMISSION_ERROR -> new TaskOutcome(
-                    errorKindName(MagratheaErrorKind.PERMISSION_ERROR),
-                    outputJson,
-                    result.errorMessage(),
-                    null);
-            case CANCELLED -> new TaskOutcome(
-                    errorKindName(MagratheaErrorKind.TECHNICAL_ERROR),
-                    outputJson,
-                    result.errorMessage() == null ? "cancelled" : result.errorMessage(),
-                    null);
-            case TECHNICAL_ERROR, SCHEDULED -> new TaskOutcome(
-                    errorKindName(MagratheaErrorKind.TECHNICAL_ERROR),
-                    outputJson,
-                    result.errorMessage() == null
-                            ? "script_task '" + state.name() + "' failed"
-                            : result.errorMessage(),
-                    null);
+            case BUSINESS_ERROR ->
+                new TaskOutcome(
+                        errorKindName(MagratheaErrorKind.BUSINESS_ERROR), outputJson, result.errorMessage(), null);
+            case TIMEOUT ->
+                new TaskOutcome(
+                        errorKindName(MagratheaErrorKind.TIMEOUT),
+                        outputJson,
+                        result.errorMessage() == null
+                                ? "script_task '" + state.name() + "' timed out"
+                                : result.errorMessage(),
+                        null);
+            case PERMISSION_ERROR ->
+                new TaskOutcome(
+                        errorKindName(MagratheaErrorKind.PERMISSION_ERROR), outputJson, result.errorMessage(), null);
+            case CANCELLED ->
+                new TaskOutcome(
+                        errorKindName(MagratheaErrorKind.TECHNICAL_ERROR),
+                        outputJson,
+                        result.errorMessage() == null ? "cancelled" : result.errorMessage(),
+                        null);
+            case TECHNICAL_ERROR, SCHEDULED ->
+                new TaskOutcome(
+                        errorKindName(MagratheaErrorKind.TECHNICAL_ERROR),
+                        outputJson,
+                        result.errorMessage() == null
+                                ? "script_task '" + state.name() + "' failed"
+                                : result.errorMessage(),
+                        null);
         };
     }
 

@@ -44,9 +44,7 @@ public class TeamAdminController {
     private final RequestAuthority authority;
 
     @GetMapping
-    public List<TeamDto> list(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+    public List<TeamDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         return teamService.all(tenant).stream()
                 .sorted(Comparator.comparing(TeamDocument::getName))
@@ -56,14 +54,12 @@ public class TeamAdminController {
 
     @GetMapping("/{name}")
     public TeamDto get(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Team(tenant, name), Action.ADMIN);
-        return teamService.findByTenantAndName(tenant, name)
+        return teamService
+                .findByTenantAndName(tenant, name)
                 .map(TeamAdminController::toDto)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Team '" + name + "' not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Team '" + name + "' not found"));
     }
 
     @PostMapping
@@ -73,11 +69,11 @@ public class TeamAdminController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
-            TeamDocument saved = teamService.create(
-                    tenant, request.getName(), request.getTitle(), request.getMembers());
+            TeamDocument saved =
+                    teamService.create(tenant, request.getName(), request.getTitle(), request.getMembers());
             return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
         } catch (TeamService.TeamAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         }
     }
 
@@ -89,29 +85,23 @@ public class TeamAdminController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Team(tenant, name), Action.ADMIN);
         try {
-            TeamDocument saved = teamService.update(
-                    tenant,
-                    name,
-                    request.getTitle(),
-                    request.getEnabled(),
-                    request.getMembers());
+            TeamDocument saved =
+                    teamService.update(tenant, name, request.getTitle(), request.getEnabled(), request.getMembers());
             return toDto(saved);
         } catch (TeamService.TeamNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
     @DeleteMapping("/{name}")
     public ResponseEntity<Void> delete(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Team(tenant, name), Action.ADMIN);
         try {
             teamService.delete(tenant, name);
             return ResponseEntity.noContent().build();
         } catch (TeamService.TeamNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 

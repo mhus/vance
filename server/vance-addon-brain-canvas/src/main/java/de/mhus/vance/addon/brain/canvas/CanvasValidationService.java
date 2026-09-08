@@ -35,7 +35,10 @@ public class CanvasValidationService {
         this.documentService = documentService;
     }
 
-    public enum Level { ERROR, WARNING }
+    public enum Level {
+        ERROR,
+        WARNING
+    }
 
     public record Finding(Level level, String message) {
         public Map<String, Object> toMap() {
@@ -48,7 +51,8 @@ public class CanvasValidationService {
 
     public record Result(String target, boolean ok, List<Finding> findings) {
         public Map<String, Object> toMap() {
-            long errors = findings.stream().filter(f -> f.level() == Level.ERROR).count();
+            long errors =
+                    findings.stream().filter(f -> f.level() == Level.ERROR).count();
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("target", target);
             m.put("ok", ok);
@@ -60,17 +64,17 @@ public class CanvasValidationService {
     }
 
     public Result validate(String tenantId, String projectId, String path) {
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException("No canvas at '" + path + "'."));
         if (!CanvasService.KIND.equals(doc.getKind())) {
-            throw new ToolException("Document '" + path + "' is not a canvas (kind="
-                    + doc.getKind() + ").");
+            throw new ToolException("Document '" + path + "' is not a canvas (kind=" + doc.getKind() + ").");
         }
         String body;
         try (InputStream in = documentService.loadContent(doc)) {
             body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException("Could not read '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not read '" + path + "': " + e.getMessage(), e);
         }
         String mime = CanvasCodec.supports(doc.getMimeType()) ? doc.getMimeType() : DEFAULT_MIME;
 
@@ -108,12 +112,12 @@ public class CanvasValidationService {
                 out.add(new Finding(Level.ERROR, "Duplicate edge id '" + e.id() + "'."));
             }
             if (!nodeIds.contains(e.from())) {
-                out.add(new Finding(Level.ERROR,
-                        "Edge '" + e.id() + "' references unknown source node '" + e.from() + "'."));
+                out.add(new Finding(
+                        Level.ERROR, "Edge '" + e.id() + "' references unknown source node '" + e.from() + "'."));
             }
             if (!nodeIds.contains(e.to())) {
-                out.add(new Finding(Level.ERROR,
-                        "Edge '" + e.id() + "' references unknown target node '" + e.to() + "'."));
+                out.add(new Finding(
+                        Level.ERROR, "Edge '" + e.id() + "' references unknown target node '" + e.to() + "'."));
             }
         }
 
@@ -123,15 +127,14 @@ public class CanvasValidationService {
                 if (p.equals(n.id())) {
                     out.add(new Finding(Level.ERROR, "Node '" + n.id() + "' is its own parent."));
                 } else if (!nodeIds.contains(p)) {
-                    out.add(new Finding(Level.ERROR,
-                            "Node '" + n.id() + "' has unknown parent '" + p + "'."));
+                    out.add(new Finding(Level.ERROR, "Node '" + n.id() + "' has unknown parent '" + p + "'."));
                 } else if (!groupIds.contains(p)) {
-                    out.add(new Finding(Level.ERROR,
-                            "Node '" + n.id() + "' parent '" + p + "' is not a group."));
+                    out.add(new Finding(Level.ERROR, "Node '" + n.id() + "' parent '" + p + "' is not a group."));
                 }
                 if (n instanceof CanvasNode.Group) {
-                    out.add(new Finding(Level.WARNING, "Group '" + n.id()
-                            + "' is nested inside another group — v1 groups should be top-level."));
+                    out.add(new Finding(
+                            Level.WARNING,
+                            "Group '" + n.id() + "' is nested inside another group — v1 groups should be top-level."));
                 }
             }
             if (n instanceof CanvasNode.Text t && t.text().isBlank()) {

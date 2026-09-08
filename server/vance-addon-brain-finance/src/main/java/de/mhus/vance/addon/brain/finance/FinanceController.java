@@ -45,17 +45,22 @@ public class FinanceController {
     private final DocumentService documentService;
     private final RequestAuthority authority;
 
-    public record ProcessorInfo(String type, String title, String outputKind,
-                                @Nullable String paramForm) {}
+    public record ProcessorInfo(
+            String type,
+            String title,
+            String outputKind,
+            @Nullable String paramForm) {}
 
-    public record ReportResult(String outputKind, String mimeType,
-                               @Nullable String body, @Nullable String path,
-                               @Nullable String id) {}
+    public record ReportResult(
+            String outputKind,
+            String mimeType,
+            @Nullable String body,
+            @Nullable String path,
+            @Nullable String id) {}
 
     @GetMapping("/brain/{tenant}/addon/finance/processors")
-    public List<ProcessorInfo> processors(@PathVariable String tenant,
-                                          @RequestParam String projectId,
-                                          HttpServletRequest request) {
+    public List<ProcessorInfo> processors(
+            @PathVariable String tenant, @RequestParam String projectId, HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         List<ProcessorInfo> out = new ArrayList<>();
         for (FinanceReportProcessor p : registry.list()) {
@@ -65,21 +70,22 @@ public class FinanceController {
     }
 
     @GetMapping("/brain/{tenant}/addon/finance/tree")
-    public FinanceTreeDto getTree(@PathVariable String tenant,
-                                  @RequestParam String projectId,
-                                  @RequestParam String path,
-                                  HttpServletRequest request) {
+    public FinanceTreeDto getTree(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
-        return FinanceDtoMapper.toDto(
-                financeService.readDocument(requireDoc(tenant, projectId, path)));
+        return FinanceDtoMapper.toDto(financeService.readDocument(requireDoc(tenant, projectId, path)));
     }
 
     @PutMapping("/brain/{tenant}/addon/finance/tree")
-    public FinanceTreeDto putTree(@PathVariable String tenant,
-                                  @RequestParam String projectId,
-                                  @RequestParam String path,
-                                  @RequestBody FinanceTreeDto dto,
-                                  HttpServletRequest request) {
+    public FinanceTreeDto putTree(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            @RequestBody FinanceTreeDto dto,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         DocumentDocument doc = requireDoc(tenant, projectId, path);
         financeService.writeDocument(doc, FinanceDtoMapper.fromDto(dto), null, currentUser(request));
@@ -87,61 +93,64 @@ public class FinanceController {
     }
 
     @PostMapping("/brain/{tenant}/addon/finance/create")
-    public FinanceTreeDto create(@PathVariable String tenant,
-                                 @RequestParam String projectId,
-                                 @RequestParam String path,
-                                 @RequestParam(required = false) @Nullable String title,
-                                 HttpServletRequest request) {
+    public FinanceTreeDto create(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            @RequestParam(required = false) @Nullable String title,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.CREATE);
-        DocumentDocument stored =
-                financeService.create(tenant, projectId, path, title, null, currentUser(request));
+        DocumentDocument stored = financeService.create(tenant, projectId, path, title, null, currentUser(request));
         return FinanceDtoMapper.toDto(financeService.readDocument(stored));
     }
 
     @PostMapping("/brain/{tenant}/addon/finance/calc")
-    public FinanceComputed calc(@PathVariable String tenant,
-                                @RequestParam String projectId,
-                                @RequestParam String path,
-                                HttpServletRequest request) {
+    public FinanceComputed calc(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         return financeService.recalculate(requireDoc(tenant, projectId, path), currentUser(request));
     }
 
     @GetMapping("/brain/{tenant}/addon/finance/snapshot")
-    public FinanceComputed snapshot(@PathVariable String tenant,
-                                    @RequestParam String projectId,
-                                    @RequestParam String path,
-                                    HttpServletRequest request) {
+    public FinanceComputed snapshot(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         return financeService.snapshot(requireDoc(tenant, projectId, path));
     }
 
     @GetMapping("/brain/{tenant}/addon/finance/project")
-    public FinanceProjection project(@PathVariable String tenant,
-                                     @RequestParam String projectId,
-                                     @RequestParam String path,
-                                     @RequestParam String from,
-                                     @RequestParam String to,
-                                     @RequestParam(defaultValue = "month") String granularity,
-                                     HttpServletRequest request) {
+    public FinanceProjection project(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            @RequestParam String from,
+            @RequestParam String to,
+            @RequestParam(defaultValue = "month") String granularity,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         PeriodUnit g = PeriodUnit.parse(granularity);
         if (g == null) throw new ToolException("Unknown granularity '" + granularity + "'.");
-        return financeService.project(requireDoc(tenant, projectId, path),
-                parseDate(from, "from"), parseDate(to, "to"), g);
+        return financeService.project(
+                requireDoc(tenant, projectId, path), parseDate(from, "from"), parseDate(to, "to"), g);
     }
 
     @PostMapping("/brain/{tenant}/addon/finance/report")
-    public ReportResult report(@PathVariable String tenant,
-                               @RequestParam String projectId,
-                               @RequestParam String path,
-                               @RequestParam String processor,
-                               @RequestParam(defaultValue = "false") boolean persist,
-                               @RequestParam(required = false) @Nullable String outputPath,
-                               @RequestBody(required = false) @Nullable Map<String, Object> params,
-                               HttpServletRequest request) {
-        authority.enforce(request, new Resource.Project(tenant, projectId),
-                persist ? Action.CREATE : Action.READ);
+    public ReportResult report(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            @RequestParam String processor,
+            @RequestParam(defaultValue = "false") boolean persist,
+            @RequestParam(required = false) @Nullable String outputPath,
+            @RequestBody(required = false) @Nullable Map<String, Object> params,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), persist ? Action.CREATE : Action.READ);
         FinanceReportProcessor proc = registry.find(processor);
         if (proc == null) throw new ToolException("Unknown report processor '" + processor + "'.");
 
@@ -154,10 +163,9 @@ public class FinanceController {
             if (outputPath == null || outputPath.isBlank()) {
                 throw new ToolException("outputPath is required when persist=true");
             }
-            DocumentDocument stored = financeService.createReport(
-                    tenant, projectId, outputPath, rep, currentUser(request));
-            return new ReportResult(rep.outputKind(), rep.mimeType(), null,
-                    stored.getPath(), stored.getId());
+            DocumentDocument stored =
+                    financeService.createReport(tenant, projectId, outputPath, rep, currentUser(request));
+            return new ReportResult(rep.outputKind(), rep.mimeType(), null, stored.getPath(), stored.getId());
         }
         return new ReportResult(rep.outputKind(), rep.mimeType(), rep.body(), null, null);
     }
@@ -165,7 +173,8 @@ public class FinanceController {
     // ── Helpers ───────────────────────────────────────────────────
 
     private DocumentDocument requireDoc(String tenant, String projectId, String path) {
-        return documentService.findByPath(tenant, projectId, path)
+        return documentService
+                .findByPath(tenant, projectId, path)
                 .orElseThrow(() -> new ToolException("No finance-tree at '" + path + "'."));
     }
 
@@ -173,7 +182,7 @@ public class FinanceController {
         try {
             return LocalDate.parse(iso.trim());
         } catch (DateTimeParseException e) {
-            throw new ToolException("Invalid '" + field + "' date '" + iso + "' (expect yyyy-MM-dd).");
+            throw new ToolException("Invalid '" + field + "' date '" + iso + "' (expect yyyy-MM-dd).", e);
         }
     }
 

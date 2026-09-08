@@ -52,8 +52,7 @@ public class KitProvisioningLoader {
      * provisioning document — which is the normal case.
      */
     public List<KitProvisioningEntry> load(String tenantId, String projectId) {
-        Optional<DocumentDocument> doc =
-                documentService.findByPath(tenantId, projectId, PROVISIONING_PATH);
+        Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectId, PROVISIONING_PATH);
         if (doc.isEmpty()) return List.of();
         String content = readText(doc.get());
         if (content == null || content.isBlank()) return List.of();
@@ -73,7 +72,8 @@ public class KitProvisioningLoader {
      * common „nothing diverged" tick pays nothing for it.
      */
     public @Nullable String declaredBy(String tenantId, String projectId) {
-        return documentService.findByPath(tenantId, projectId, PROVISIONING_PATH)
+        return documentService
+                .findByPath(tenantId, projectId, PROVISIONING_PATH)
                 .map(DocumentDocument::getCreatedBy)
                 .orElse(null);
     }
@@ -88,8 +88,8 @@ public class KitProvisioningLoader {
         }
         if (loaded == null) return List.of();
         if (!(loaded instanceof Map<?, ?> root)) {
-            throw new KitException(PROVISIONING_PATH + " must be a map with a"
-                    + " 'provisioning:' list at the top level");
+            throw new KitException(
+                    PROVISIONING_PATH + " must be a map with a" + " 'provisioning:' list at the top level");
         }
         Object list = ((Map<String, Object>) root).get("provisioning");
         if (list == null) return List.of();
@@ -99,8 +99,7 @@ public class KitProvisioningLoader {
 
         // One context for the whole document: secret references resolve in this
         // project's cascade, which is where an operator would put the token.
-        ToolInvocationContext ctx =
-                new ToolInvocationContext(tenantId, projectId, null, null, null);
+        ToolInvocationContext ctx = new ToolInvocationContext(tenantId, projectId, null, null, null);
 
         List<KitProvisioningEntry> result = new ArrayList<>(entries.size());
         for (int i = 0; i < entries.size(); i++) {
@@ -133,8 +132,8 @@ public class KitProvisioningLoader {
             // Not defaulted to NOTIFY: a typo in `manage` would silently give
             // the opposite of what was written, and the writer would find out
             // by nothing happening.
-            throw new KitException(label + " has an unknown authority '" + text
-                    + "' — one of notify, update, manage");
+            throw new KitException(
+                    label + " has an unknown authority '" + text + "' — one of notify, update, manage", e);
         }
     }
 

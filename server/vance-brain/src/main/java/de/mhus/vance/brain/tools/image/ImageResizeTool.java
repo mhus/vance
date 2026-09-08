@@ -35,37 +35,56 @@ public class ImageResizeTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Source image path."),
-                    "targetPath", Map.of(
-                            "type", "string",
-                            "description", "Optional destination path; default = overwrite source."),
-                    "mode", Map.of(
-                            "type", "string",
-                            "enum", List.of("exact", "width", "height", "cover", "contain"),
-                            "description",
-                                    "Resize strategy. `exact` distorts if aspect-ratio differs. "
-                                            + "`width`/`height` scale proportionally. `cover` fills "
-                                            + "and crops excess. `contain` fits and pads with "
-                                            + "`background`. Default: exact."),
-                    "width", Map.of(
-                            "type", "integer", "minimum", 1,
-                            "description",
-                                    "Target width (required for exact, width, cover, contain)."),
-                    "height", Map.of(
-                            "type", "integer", "minimum", 1,
-                            "description",
-                                    "Target height (required for exact, height, cover, contain)."),
-                    "background", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Padding color for `contain`. Hex `#rrggbb` or `#aarrggbb`. "
-                                            + "Default transparent on PNG/GIF, white on JPEG/BMP.")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Source image path."),
+                            "targetPath",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional destination path; default = overwrite source."),
+                            "mode",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("exact", "width", "height", "cover", "contain"),
+                                            "description",
+                                            "Resize strategy. `exact` distorts if aspect-ratio differs. "
+                                                    + "`width`/`height` scale proportionally. `cover` fills "
+                                                    + "and crops excess. `contain` fits and pads with "
+                                                    + "`background`. Default: exact."),
+                            "width",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "minimum",
+                                            1,
+                                            "description",
+                                            "Target width (required for exact, width, cover, contain)."),
+                            "height",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "minimum",
+                                            1,
+                                            "description",
+                                            "Target height (required for exact, height, cover, contain)."),
+                            "background",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Padding color for `contain`. Hex `#rrggbb` or `#aarrggbb`. "
+                                                    + "Default transparent on PNG/GIF, white on JPEG/BMP.")),
             "required", List.of("path"));
 
-    @Override public String name() { return "image_resize"; }
+    @Override
+    public String name() {
+        return "image_resize";
+    }
 
     @Override
     public String description() {
@@ -75,9 +94,20 @@ public class ImageResizeTool implements Tool {
                 + "Overwrites source unless `targetPath` is given.";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -104,7 +134,7 @@ public class ImageResizeTool implements Tool {
             log.info("image_resize failed: reason={} msg={}", e.getReason(), e.getMessage());
             return errorResponse(e);
         } catch (IllegalArgumentException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
     }
 }

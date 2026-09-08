@@ -93,8 +93,7 @@ public class SettingFormController {
 
         ResolvedSettingForm form = loadOrThrow(tenant, projectId, userId, name);
 
-        List<FormFieldDto> fields = settingFormService.withLiveCascadeValues(
-                form, tenant, projectId, userId);
+        List<FormFieldDto> fields = settingFormService.withLiveCascadeValues(form, tenant, projectId, userId);
         List<ComputedSettingDto> computed = toComputedSummaries(form);
 
         return SettingFormDto.builder()
@@ -136,8 +135,7 @@ public class SettingFormController {
             log.warn("Setting form '{}' apply failed: {}", name, e.getMessage(), e);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
-        log.info("Setting form '{}' applied tenant='{}' project='{}' actions={}",
-                name, tenant, projectId, plan.size());
+        log.info("Setting form '{}' applied tenant='{}' project='{}' actions={}", name, tenant, projectId, plan.size());
         return toApplyResponse(plan);
     }
 
@@ -181,8 +179,7 @@ public class SettingFormController {
 
         ResolvedSettingForm form = loadOrThrow(tenant, projectId, userId, name);
         if (!form.clearable()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Setting form '" + name + "' is not clearable");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Setting form '" + name + "' is not clearable");
         }
         enforceWriteForScopes(request, tenant, form, projectId, userId);
 
@@ -193,15 +190,13 @@ public class SettingFormController {
             log.warn("Setting form '{}' reset failed: {}", name, e.getMessage(), e);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
-        log.info("Setting form '{}' reset tenant='{}' project='{}' actions={}",
-                name, tenant, projectId, plan.size());
+        log.info("Setting form '{}' reset tenant='{}' project='{}' actions={}", name, tenant, projectId, plan.size());
         return toApplyResponse(plan);
     }
 
     // ──────────────────── Auth helpers ────────────────────
 
-    private SecurityContext enforceRead(
-            HttpServletRequest request, String tenant, @Nullable String projectId) {
+    private SecurityContext enforceRead(HttpServletRequest request, String tenant, @Nullable String projectId) {
         Resource resource = (projectId == null || projectId.isBlank())
                 ? new Resource.Tenant(tenant)
                 : new Resource.Project(tenant, projectId);
@@ -227,17 +222,22 @@ public class SettingFormController {
                 // server.error.include-message=never — no message in the body.
                 // Log it and route through FormValidationExceptionAdvice so the
                 // Web-UI receives a structured, human-readable reason.
-                log.warn("Setting form '{}' scope resolution failed (scope='{}', projectId='{}'): {}",
-                        form.name(), wireScope, projectId, e.getMessage());
-                throw new FormValidationException(List.of(
-                        new FormValidationException.FormValidationError("_scope", e.getMessage())));
+                log.warn(
+                        "Setting form '{}' scope resolution failed (scope='{}', projectId='{}'): {}",
+                        form.name(),
+                        wireScope,
+                        projectId,
+                        e.getMessage());
+                throw new FormValidationException(
+                        List.of(new FormValidationException.FormValidationError("_scope", e.getMessage())), e);
             }
             // Per-form-scope check on the synthetic Resource.Setting; the key
             // is intentionally blank — the permission resolver treats this as
             // "may write any key in this scope". Concrete-key checks would
             // mean N round-trips per form for typical use; coarse scope is
             // the right grain for Setting Forms.
-            authority.enforce(request,
+            authority.enforce(
+                    request,
                     new Resource.Setting(tenant, scope.referenceType(), scope.referenceId(), ""),
                     Action.ADMIN);
         }
@@ -252,8 +252,8 @@ public class SettingFormController {
             hit = loader.load(tenant, projectId, userId, name);
         } catch (SettingFormParseException e) {
             log.warn("Setting form '{}' parse error: {}", name, e.getMessage());
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Setting form parse error: " + e.getMessage(), e);
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Setting form parse error: " + e.getMessage(), e);
         }
         if (hit.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Setting form not found: " + name);
@@ -300,7 +300,8 @@ public class SettingFormController {
                     .key(a.key())
                     .scope(a.wireScope())
                     .action(a.action().name().toLowerCase(java.util.Locale.ROOT))
-                    .settingType(a.settingType() == null ? null : a.settingType().name())
+                    .settingType(
+                            a.settingType() == null ? null : a.settingType().name())
                     .valueMasked(a.masked())
                     .build());
         }

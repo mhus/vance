@@ -6,7 +6,6 @@ import de.mhus.vance.brain.applications.VanceApplication.CreateContext;
 import de.mhus.vance.brain.applications.VanceApplication.CreateResult;
 import de.mhus.vance.brain.applications.VanceApplication.RefreshContext;
 import de.mhus.vance.brain.applications.VanceApplication.RefreshResult;
-
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -67,17 +66,21 @@ public class KanbanApplication implements VanceApplication {
     private final DocumentLinkBuilder linkBuilder;
     private final SecurityContextFactory contextFactory;
 
-    public KanbanApplication(KanbanFolderReader folderReader,
-                             DocumentService documentService,
-                             DocumentLinkBuilder linkBuilder,
-                             SecurityContextFactory contextFactory) {
+    public KanbanApplication(
+            KanbanFolderReader folderReader,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
         this.contextFactory = contextFactory;
     }
 
-    @Override public String appName() { return APP_NAME; }
+    @Override
+    public String appName() {
+        return APP_NAME;
+    }
 
     /**
      * Short markdown chunk inserted into the engine prompt while the
@@ -112,8 +115,7 @@ public class KanbanApplication implements VanceApplication {
      */
     @Override
     public Optional<AppStatus> status(StatusContext ctx) {
-        KanbanFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), ctx.folder());
+        KanbanFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), ctx.folder());
         KanbanAppConfig config = scan.kanbanConfig();
         KanbanAppConfig.DesktopStatus statusCfg = config.desktopStatus();
 
@@ -121,8 +123,7 @@ public class KanbanApplication implements VanceApplication {
         if (column == null) return Optional.empty();
 
         KanbanAppConfig.Column colCfg = config.columns().get(column);
-        String colTitle = (colCfg != null && colCfg.title() != null)
-                ? colCfg.title() : column;
+        String colTitle = (colCfg != null && colCfg.title() != null) ? colCfg.title() : column;
 
         List<StatusItem> items = new ArrayList<>();
         int count = 0;
@@ -134,10 +135,7 @@ public class KanbanApplication implements VanceApplication {
             if (blocked) anyBlocked = true;
             if (items.size() < statusCfg.max()) {
                 items.add(new StatusItem(
-                        cf.card().title(),
-                        cf.card().assignee(),
-                        blocked ? StatusSeverity.BLOCKED : null,
-                        null));
+                        cf.card().title(), cf.card().assignee(), blocked ? StatusSeverity.BLOCKED : null, null));
             }
         }
 
@@ -150,8 +148,7 @@ public class KanbanApplication implements VanceApplication {
         }
 
         String headline = count + " in " + colTitle;
-        List<StatusMetric> metrics = List.of(
-                new StatusMetric(colTitle, Integer.toString(count)));
+        List<StatusMetric> metrics = List.of(new StatusMetric(colTitle, Integer.toString(count)));
         return Optional.of(new AppStatus(headline, severity, metrics, items, null));
     }
 
@@ -198,12 +195,11 @@ public class KanbanApplication implements VanceApplication {
         Map<String, Object> params = ctx.params() != null ? ctx.params() : new LinkedHashMap<>();
         String manifestPath = folder + "/" + KanbanFolderReader.APP_MANIFEST;
 
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), manifestPath);
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
             throw new ToolException(
-                    "Manifest already exists at '" + manifestPath
-                            + "'. Pass overwrite=true to replace it.");
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -232,9 +228,7 @@ public class KanbanApplication implements VanceApplication {
             if (wipLimit != null) body.put("wipLimit", wipLimit);
             columns.put(name, body);
 
-            columnResults.add(new CreateLane(
-                    name, colTitle, colColor,
-                    folder + "/" + name + "/"));
+            columnResults.add(new CreateLane(name, colTitle, colColor, folder + "/" + name + "/"));
             autoOrder = order + 1;
         }
 
@@ -243,21 +237,18 @@ public class KanbanApplication implements VanceApplication {
         Map<String, List<Map<String, Object>>> cardsByColumn = new LinkedHashMap<>();
         for (Map<String, Object> raw : cardInputs) {
             String colRaw = asString(raw.get("column"));
-            String column = (colRaw == null || colRaw.isBlank())
-                    ? KanbanFolderReader.DEFAULT_COLUMN
-                    : sanitiseName(colRaw);
+            String column =
+                    (colRaw == null || colRaw.isBlank()) ? KanbanFolderReader.DEFAULT_COLUMN : sanitiseName(colRaw);
             Map<String, Object> stripped = new LinkedHashMap<>(raw);
             stripped.remove("column");
-            cardsByColumn.computeIfAbsent(column, k -> new ArrayList<>())
-                    .add(stripped);
+            cardsByColumn.computeIfAbsent(column, k -> new ArrayList<>()).add(stripped);
         }
         for (String col : cardsByColumn.keySet()) {
             if (columns.containsKey(col)) continue;
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("order", autoOrder);
             columns.put(col, body);
-            columnResults.add(new CreateLane(
-                    col, null, null, folder + "/" + col + "/"));
+            columnResults.add(new CreateLane(col, null, null, folder + "/" + col + "/"));
             autoOrder++;
         }
 
@@ -273,8 +264,7 @@ public class KanbanApplication implements VanceApplication {
                 body.put("title", dc.title());
                 body.put("order", dc.order());
                 columns.put(dc.name(), body);
-                columnResults.add(new CreateLane(
-                        dc.name(), dc.title(), null, folder + "/" + dc.name() + "/"));
+                columnResults.add(new CreateLane(dc.name(), dc.title(), null, folder + "/" + dc.name() + "/"));
             }
         }
 
@@ -285,10 +275,12 @@ public class KanbanApplication implements VanceApplication {
         boardSection.put("outputPath", "_board.md");
         boardSection.put("style", boardStyle != null ? boardStyle.toLowerCase(Locale.ROOT) : "mermaid");
         kanbanBlock.put("board", boardSection);
-        kanbanBlock.put("stats", Map.of(
-                "outputPath", "_stats.yaml",
-                "blockedLabel", "blocked",
-                "staleThresholdDays", 14));
+        kanbanBlock.put(
+                "stats",
+                Map.of(
+                        "outputPath", "_stats.yaml",
+                        "blockedLabel", "blocked",
+                        "staleThresholdDays", 14));
         if (wipEnforce != null) {
             kanbanBlock.put("wipEnforce", wipEnforce.toLowerCase(Locale.ROOT));
         }
@@ -296,9 +288,8 @@ public class KanbanApplication implements VanceApplication {
         // Assemble + persist manifest.
         Map<String, Object> appConfig = new LinkedHashMap<>();
         appConfig.put(KanbanAppConfig.APP_NAME, kanbanBlock);
-        ApplicationDocument manifest = new ApplicationDocument(
-                "application", APP_NAME, title, description,
-                appConfig, new LinkedHashMap<>());
+        ApplicationDocument manifest =
+                new ApplicationDocument("application", APP_NAME, title, description, appConfig, new LinkedHashMap<>());
         String manifestBody = ApplicationCodec.serialize(manifest, YAML_MIME);
 
         DocumentDocument stored;
@@ -307,23 +298,28 @@ public class KanbanApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Kanban app",
                     List.of("application", "kanban"),
-                    manifestBody, null, null, null, null, YAML_MIME,
+                    manifestBody,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
-            try (InputStream in = new ByteArrayInputStream(
-                    manifestBody.getBytes(StandardCharsets.UTF_8))) {
+            try (InputStream in = new ByteArrayInputStream(manifestBody.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
-                        ctx.tenantId(), ctx.projectName(),
+                        ctx.tenantId(),
+                        ctx.projectName(),
                         manifestPath,
                         title != null ? title : "Kanban app",
                         List.of("application", "kanban"),
-                        YAML_MIME, in, ctx.userId(),
+                        YAML_MIME,
+                        in,
+                        ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not write manifest '" + manifestPath
-                                + "': " + e.getMessage());
+                throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
         }
 
@@ -344,16 +340,18 @@ public class KanbanApplication implements VanceApplication {
             }
         }
 
-        log.info("KanbanApplication.create tenant='{}' folder='{}' "
-                        + "columns={} cards={} manifestPath='{}'",
-                ctx.tenantId(), folder, columnResults.size(),
-                cardCountWritten, manifestPath);
+        log.info(
+                "KanbanApplication.create tenant='{}' folder='{}' " + "columns={} cards={} manifestPath='{}'",
+                ctx.tenantId(),
+                folder,
+                columnResults.size(),
+                cardCountWritten,
+                manifestPath);
 
         List<ArtefactResult> artefacts;
         if (cardCountWritten > 0) {
-            RefreshContext rc = new RefreshContext(
-                    ctx.tenantId(), ctx.projectName(), folder,
-                    ctx.userId(), ctx.processId());
+            RefreshContext rc =
+                    new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
             RefreshResult refresh = refresh(rc);
             artefacts = refresh.artefacts();
         } else {
@@ -381,9 +379,14 @@ public class KanbanApplication implements VanceApplication {
         }
 
         return new CreateResult(
-                APP_NAME, folder, stored.getPath(),
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
-                columnResults, artefacts, nextStep, stats);
+                columnResults,
+                artefacts,
+                nextStep,
+                stats);
     }
 
     /**
@@ -426,19 +429,15 @@ public class KanbanApplication implements VanceApplication {
      *                      or sanitised title.
      * @param toColumnRaw   target column (sanitised internally).
      */
-    public MoveResult moveCard(RefreshContext ctx,
-                               String folder,
-                               String cardRef,
-                               String toColumnRaw) {
+    public MoveResult moveCard(RefreshContext ctx, String folder, String cardRef, String toColumnRaw) {
         String toColumn = sanitiseColumnName(toColumnRaw);
-        KanbanFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), folder);
+        KanbanFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
         DocumentDocument cardDoc = resolveCard(scan, folder, cardRef);
         String fromColumn = KanbanFolderReader.columnFor(folder, cardDoc.getPath());
 
         if (fromColumn.equals(toColumn)) {
-            return new MoveResult(cardDoc.getPath(), fromColumn, toColumn,
-                    List.of(), true, "Card already in target column.");
+            return new MoveResult(
+                    cardDoc.getPath(), fromColumn, toColumn, List.of(), true, "Card already in target column.");
         }
 
         // WIP-limit check.
@@ -452,13 +451,11 @@ public class KanbanApplication implements VanceApplication {
             }
             if (currentCount >= wipLimit) {
                 if (scan.kanbanConfig().wipEnforce() == KanbanAppConfig.WipEnforce.HARD) {
-                    throw new ToolException(
-                            "Column '" + toColumn + "' is at WIP limit ("
-                                    + currentCount + "/" + wipLimit + "). "
-                                    + "wipEnforce=hard blocks this move.");
+                    throw new ToolException("Column '" + toColumn + "' is at WIP limit ("
+                            + currentCount + "/" + wipLimit + "). "
+                            + "wipEnforce=hard blocks this move.");
                 }
-                warnings.add("wip-exceeded:" + toColumn + ":" + (currentCount + 1)
-                        + "/" + wipLimit);
+                warnings.add("wip-exceeded:" + toColumn + ":" + (currentCount + 1) + "/" + wipLimit);
             }
         }
 
@@ -468,35 +465,37 @@ public class KanbanApplication implements VanceApplication {
         String filename = slash < 0 ? oldPath : oldPath.substring(slash + 1);
         String newPath = folder + "/" + toColumn + "/" + filename;
 
-        Optional<DocumentDocument> collision = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), newPath);
+        Optional<DocumentDocument> collision = documentService.findByPath(ctx.tenantId(), ctx.projectName(), newPath);
         if (collision.isPresent() && !collision.get().getId().equals(cardDoc.getId())) {
             throw new ToolException(
-                    "Target path '" + newPath + "' is already occupied "
-                            + "by another card. Rename the card first.");
+                    "Target path '" + newPath + "' is already occupied " + "by another card. Rename the card first.");
         }
 
         DocumentDocument moved = documentService.update(
-                cardDoc.getId(), null, null, null, newPath,
+                cardDoc.getId(),
+                null,
+                null,
+                null,
+                newPath,
                 contextFactory.writeActor(ctx.tenantId(), ctx.userId(), newPath));
 
-        log.info("KanbanApplication.moveCard tenant='{}' folder='{}' "
-                        + "card='{}' {}→{} warnings={}",
-                ctx.tenantId(), folder, filename,
-                fromColumn, toColumn, warnings);
+        log.info(
+                "KanbanApplication.moveCard tenant='{}' folder='{}' " + "card='{}' {}→{} warnings={}",
+                ctx.tenantId(),
+                folder,
+                filename,
+                fromColumn,
+                toColumn,
+                warnings);
 
-        return new MoveResult(moved.getPath(), fromColumn, toColumn,
-                warnings, false, null);
+        return new MoveResult(moved.getPath(), fromColumn, toColumn, warnings, false, null);
     }
 
-    private static DocumentDocument resolveCard(KanbanFolderReader.Scan scan,
-                                                String folder, String ref) {
+    private static DocumentDocument resolveCard(KanbanFolderReader.Scan scan, String folder, String ref) {
         for (KanbanFolderReader.CardFile cf : scan.cards()) {
             if (cf.doc().getPath().equals(ref)) return cf.doc();
         }
-        String wantedLeaf = ref.contains("/")
-                ? ref.substring(ref.lastIndexOf('/') + 1)
-                : ref;
+        String wantedLeaf = ref.contains("/") ? ref.substring(ref.lastIndexOf('/') + 1) : ref;
         if (!wantedLeaf.endsWith(".md")) wantedLeaf = wantedLeaf + ".md";
         for (KanbanFolderReader.CardFile cf : scan.cards()) {
             String path = cf.doc().getPath();
@@ -507,8 +506,7 @@ public class KanbanApplication implements VanceApplication {
         for (KanbanFolderReader.CardFile cf : scan.cards()) {
             if (sanitiseColumnName(cf.card().title()).equals(titleSlug)) return cf.doc();
         }
-        throw new ToolException(
-                "No card matching '" + ref + "' found in '" + folder + "'.");
+        throw new ToolException("No card matching '" + ref + "' found in '" + folder + "'.");
     }
 
     private static String sanitiseColumnName(String raw) {
@@ -526,51 +524,44 @@ public class KanbanApplication implements VanceApplication {
 
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
-        KanbanFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), ctx.folder());
+        KanbanFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), ctx.folder());
 
         ArtefactResult board = doRefreshBoard(scan, ctx);
         ArtefactResult stats = doRefreshStats(scan, ctx);
 
-        log.info("KanbanApplication.refresh tenant='{}' folder='{}' "
-                        + "→ {} + {}",
-                ctx.tenantId(), scan.folder(),
-                board.path(), stats.path());
+        log.info(
+                "KanbanApplication.refresh tenant='{}' folder='{}' " + "→ {} + {}",
+                ctx.tenantId(),
+                scan.folder(),
+                board.path(),
+                stats.path());
 
-        return new RefreshResult(APP_NAME, scan.folder(),
-                List.of(board, stats));
+        return new RefreshResult(APP_NAME, scan.folder(), List.of(board, stats));
     }
 
     // ── Internal: board ───────────────────────────────────────────
 
-    private ArtefactResult doRefreshBoard(KanbanFolderReader.Scan scan,
-                                          RefreshContext ctx) {
+    private ArtefactResult doRefreshBoard(KanbanFolderReader.Scan scan, RefreshContext ctx) {
         String fallbackTitle = leafFolderName(scan.folder());
         String body = KanbanBoardRenderer.render(scan, fallbackTitle);
-        String title = scan.manifest().title() != null
-                ? scan.manifest().title() : fallbackTitle;
+        String title = scan.manifest().title() != null ? scan.manifest().title() : fallbackTitle;
 
         String outputPath = KanbanFolderReader.resolveOutputPath(
                 scan.folder(), scan.kanbanConfig().board().outputPath());
         DocumentDocument stored = writeArtefact(
-                ctx, outputPath, body, "Board — " + title, MD_MIME,
-                List.of("kanban", "generated", "board"));
+                ctx, outputPath, body, "Board — " + title, MD_MIME, List.of("kanban", "generated", "board"));
 
         Map<String, Object> bodyStats = new LinkedHashMap<>();
         bodyStats.put("cardCount", scan.cards().size());
         bodyStats.put("columnCount", countDistinctColumns(scan));
         bodyStats.put("style", scan.kanbanConfig().board().style().wireName());
 
-        return new ArtefactResult(
-                "board", stored.getPath(),
-                linkBuilder.linkFor(stored, ctx.projectName()),
-                bodyStats);
+        return new ArtefactResult("board", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), bodyStats);
     }
 
     // ── Internal: stats ───────────────────────────────────────────
 
-    private ArtefactResult doRefreshStats(KanbanFolderReader.Scan scan,
-                                          RefreshContext ctx) {
+    private ArtefactResult doRefreshStats(KanbanFolderReader.Scan scan, RefreshContext ctx) {
         Map<String, Object> body = KanbanStatsBuilder.build(scan);
         DataDocument data = new DataDocument("data", body, new LinkedHashMap<>());
         String yaml = DataCodec.serialize(data, YAML_MIME);
@@ -578,7 +569,11 @@ public class KanbanApplication implements VanceApplication {
         String outputPath = KanbanFolderReader.resolveOutputPath(
                 scan.folder(), scan.kanbanConfig().stats().outputPath());
         DocumentDocument stored = writeArtefact(
-                ctx, outputPath, yaml, "Kanban stats (" + scan.folder() + ")", YAML_MIME,
+                ctx,
+                outputPath,
+                yaml,
+                "Kanban stats (" + scan.folder() + ")",
+                YAML_MIME,
                 List.of("kanban", "generated", "stats"));
 
         Map<String, Object> outStats = new LinkedHashMap<>();
@@ -594,10 +589,7 @@ public class KanbanApplication implements VanceApplication {
         int wipExceeded = countWipExceeded(scan);
         if (wipExceeded > 0) outStats.put("wipExceeded", wipExceeded);
 
-        return new ArtefactResult(
-                "stats", stored.getPath(),
-                linkBuilder.linkFor(stored, ctx.projectName()),
-                outStats);
+        return new ArtefactResult("stats", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), outStats);
     }
 
     private static int countWipExceeded(KanbanFolderReader.Scan scan) {
@@ -624,55 +616,69 @@ public class KanbanApplication implements VanceApplication {
 
     // ── Common write path ─────────────────────────────────────────
 
-    private DocumentDocument writeArtefact(RefreshContext ctx,
-                                           String outputPath,
-                                           String body,
-                                           String title,
-                                           String mime,
-                                           List<String> tags) {
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), outputPath);
+    private DocumentDocument writeArtefact(
+            RefreshContext ctx, String outputPath, String body, String title, String mime, List<String> tags) {
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
         if (existing.isPresent()) {
             return documentService.update(
                     existing.get().getId(),
-                    title, tags, body, null, null, null, null, mime,
+                    title,
+                    tags,
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    mime,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
-                    ctx.tenantId(), ctx.projectName(),
-                    outputPath, title, tags, mime, in, ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    outputPath,
+                    title,
+                    tags,
+                    mime,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write artefact '" + outputPath + "': " + e.getMessage());
+            throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }
     }
 
-    private void writeOrUpdateCard(CreateContext ctx, String path,
-                                   String body, String title) {
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), path);
+    private void writeOrUpdateCard(CreateContext ctx, String path, String body, String title) {
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), path);
         if (existing.isPresent()) {
             documentService.update(
                     existing.get().getId(),
-                    title, List.of("card"),
-                    body, null, null, null, null, MD_MIME,
+                    title,
+                    List.of("card"),
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    MD_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
             return;
         }
-        try (ByteArrayInputStream in = new ByteArrayInputStream(
-                body.getBytes(StandardCharsets.UTF_8))) {
+        try (ByteArrayInputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             documentService.create(
-                    ctx.tenantId(), ctx.projectName(),
-                    path, title, List.of("card"),
-                    MD_MIME, in, ctx.userId(),
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    path,
+                    title,
+                    List.of("card"),
+                    MD_MIME,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write card '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not write card '" + path + "': " + e.getMessage(), e);
         }
     }
 
@@ -691,15 +697,17 @@ public class KanbanApplication implements VanceApplication {
         Object eRaw = raw.get("estimate");
         if (eRaw instanceof Number n) estimate = n.doubleValue();
         else if (eRaw instanceof String s && !s.isBlank()) {
-            try { estimate = Double.parseDouble(s.trim()); }
-            catch (NumberFormatException ignored) { /* skipped */ }
+            try {
+                estimate = Double.parseDouble(s.trim());
+            } catch (NumberFormatException ignored) {
+                /* skipped */
+            }
         }
         boolean blocked = raw.get("blocked") instanceof Boolean b && b;
         String body = asString(raw.get("body"));
         if (body == null) body = "";
         return new CardDocument(
-                "card", title, priority, assignee, labels, dueDate,
-                estimate, blocked, body, new LinkedHashMap<>());
+                "card", title, priority, assignee, labels, dueDate, estimate, blocked, body, new LinkedHashMap<>());
     }
 
     // ── Helpers ───────────────────────────────────────────────────
@@ -727,8 +735,7 @@ public class KanbanApplication implements VanceApplication {
         return sanitiseName(raw);
     }
 
-    private static String uniquePath(String folder, String slug, String ext,
-                                     java.util.Set<String> used) {
+    private static String uniquePath(String folder, String slug, String ext, java.util.Set<String> used) {
         String base = folder + "/" + slug + ext;
         if (!used.contains(base)) return base;
         int n = 2;

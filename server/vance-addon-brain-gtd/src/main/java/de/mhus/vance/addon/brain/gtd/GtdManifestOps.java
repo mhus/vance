@@ -65,10 +65,11 @@ public class GtdManifestOps {
     private final GtdService gtdService;
     private final SecurityContextFactory contextFactory;
 
-    public GtdManifestOps(DocumentService documentService,
-                          GtdFolderReader folderReader,
-                          GtdService gtdService,
-                          SecurityContextFactory contextFactory) {
+    public GtdManifestOps(
+            DocumentService documentService,
+            GtdFolderReader folderReader,
+            GtdService gtdService,
+            SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.folderReader = folderReader;
         this.gtdService = gtdService;
@@ -88,20 +89,28 @@ public class GtdManifestOps {
      *                     bucket when a filter narrowed the list; see
      *                     {@link GtdService#resyncBucketOrder}.
      */
-    public GtdFolderReader.Scan reorderBucket(String tenantId, String projectId, String folder,
-                                              GtdBucket bucket, List<String> requestedIds,
-                                              LocalDate today, @Nullable String userId) {
+    public GtdFolderReader.Scan reorderBucket(
+            String tenantId,
+            String projectId,
+            String folder,
+            GtdBucket bucket,
+            List<String> requestedIds,
+            LocalDate today,
+            @Nullable String userId) {
         ReentrantLock lock = lockFor(tenantId, projectId, folder);
         lock.lock();
         try {
             GtdFolderReader.Scan scan = folderReader.scan(tenantId, projectId, folder);
             List<GtdAction> bucketed = gtdService.computeBuckets(scan, today).get(bucket);
-            List<String> resynced = gtdService.resyncBucketOrder(bucket, bucketed,
-                    scan.config().bucketOrder().getOrDefault(bucket, List.of()),
-                    requestedIds);
+            List<String> resynced = gtdService.resyncBucketOrder(
+                    bucket, bucketed, scan.config().bucketOrder().getOrDefault(bucket, List.of()), requestedIds);
             writeBucketOrder(scan.manifest(), bucket, resynced, userId);
-            log.info("GtdManifestOps.reorderBucket tenant='{}' folder='{}' bucket={} ids={}",
-                    tenantId, folder, bucket.wireName(), resynced.size());
+            log.info(
+                    "GtdManifestOps.reorderBucket tenant='{}' folder='{}' bucket={} ids={}",
+                    tenantId,
+                    folder,
+                    bucket.wireName(),
+                    resynced.size());
             return folderReader.scan(tenantId, projectId, folder);
         } finally {
             lock.unlock();
@@ -120,8 +129,8 @@ public class GtdManifestOps {
      * and does not preserve comments; a manifest is a manifest, not a config
      * file somebody annotates.
      */
-    private void writeBucketOrder(DocumentDocument manifest, GtdBucket bucket,
-                                  List<String> order, @Nullable String userId) {
+    private void writeBucketOrder(
+            DocumentDocument manifest, GtdBucket bucket, List<String> order, @Nullable String userId) {
         ApplicationDocument parsed = parse(manifest);
         Map<String, Object> config = new LinkedHashMap<>(parsed.config());
         Map<String, Object> block = blockOf(config);
@@ -131,14 +140,24 @@ public class GtdManifestOps {
         config.put(GtdConfig.APP_NAME, block);
 
         ApplicationDocument next = new ApplicationDocument(
-                "application", GtdConfig.APP_NAME, parsed.title(), parsed.description(),
-                config, new LinkedHashMap<>(parsed.extra()));
-        documentService.update(manifest.getId(), manifest.getTitle(), KINDS,
+                "application",
+                GtdConfig.APP_NAME,
+                parsed.title(),
+                parsed.description(),
+                config,
+                new LinkedHashMap<>(parsed.extra()));
+        documentService.update(
+                manifest.getId(),
+                manifest.getTitle(),
+                KINDS,
                 ApplicationCodec.serialize(next, YAML_MIME),
-                null, null, null, null, YAML_MIME,
+                null,
+                null,
+                null,
+                null,
+                YAML_MIME,
                 DocumentService.TOOL_IDENTITY,
-                contextFactory.writeActor(
-                        manifest.getTenantId(), userId, manifest.getPath()));
+                contextFactory.writeActor(manifest.getTenantId(), userId, manifest.getPath()));
     }
 
     /** The manifest key holding a bucket's manual order. */
@@ -162,15 +181,14 @@ public class GtdManifestOps {
     private ApplicationDocument parse(DocumentDocument manifest) {
         String mime = manifest.getMimeType();
         if (!ApplicationCodec.supports(mime)) {
-            throw new ToolException("GTD manifest '" + manifest.getPath()
-                    + "' has mime '" + mime + "' — must be YAML or JSON.");
+            throw new ToolException(
+                    "GTD manifest '" + manifest.getPath() + "' has mime '" + mime + "' — must be YAML or JSON.");
         }
         ApplicationDocument parsed;
         try {
             parsed = ApplicationCodec.parse(documentService.readContent(manifest), mime);
         } catch (RuntimeException e) {
-            throw new ToolException("Could not parse GTD manifest '"
-                    + manifest.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not parse GTD manifest '" + manifest.getPath() + "': " + e.getMessage(), e);
         }
         String app = parsed.app();
         if (!app.isBlank() && !GtdConfig.APP_NAME.equals(app)) {

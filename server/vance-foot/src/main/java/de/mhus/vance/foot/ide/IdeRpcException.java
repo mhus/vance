@@ -20,6 +20,12 @@ public class IdeRpcException extends RuntimeException {
         this.data = data;
     }
 
+    public IdeRpcException(int code, String message, @Nullable JsonNode data, @Nullable Throwable cause) {
+        super(message, cause);
+        this.code = code;
+        this.data = data;
+    }
+
     public int code() {
         return code;
     }

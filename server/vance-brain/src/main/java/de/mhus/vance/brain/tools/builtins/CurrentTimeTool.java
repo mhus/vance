@@ -24,10 +24,13 @@ public class CurrentTimeTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "zone", Map.of(
-                            "type", "string",
-                            "description",
+            "properties",
+                    Map.of(
+                            "zone",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
                                     "IANA zone id (e.g. 'Europe/Berlin'). "
                                             + "Defaults to the user's configured "
                                             + "timezone (UTC if none is set).")),
@@ -88,19 +91,16 @@ public class CurrentTimeTool implements Tool {
             try {
                 zone = ZoneId.of(zoneParam);
             } catch (RuntimeException e) {
-                throw new ToolException("Unknown zone: '" + zoneParam + "'");
+                throw new ToolException("Unknown zone: '" + zoneParam + "'", e);
             }
         } else {
             // No explicit zone → the caller's configured display timezone
             // (user → tenant cascade), defaulting to UTC.
-            zone = timezoneResolver == null
-                    ? ZoneId.of("UTC")
-                    : timezoneResolver.zoneId(ctx.tenantId(), ctx.userId());
+            zone = timezoneResolver == null ? ZoneId.of("UTC") : timezoneResolver.zoneId(ctx.tenantId(), ctx.userId());
         }
         Instant now = clock.instant();
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("iso", DateTimeFormatter.ISO_OFFSET_DATE_TIME
-                .format(now.atZone(zone)));
+        out.put("iso", DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(now.atZone(zone)));
         out.put("epochSeconds", now.getEpochSecond());
         out.put("zone", zone.getId());
         return out;

@@ -60,79 +60,111 @@ public class ProcessHistoryTextTool implements Tool {
     private static final int MAX_CHARS_HARD_CAP = 200_000;
     private static final int CONTENT_TRIM = 4_000;
     private static final DateTimeFormatter STAMP =
-            DateTimeFormatter.ofPattern("HH:mm:ss").withLocale(Locale.ROOT)
-                    .withZone(java.time.ZoneId.systemDefault());
-    private static final DateTimeFormatter DAY_STAMP =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withLocale(Locale.ROOT)
-                    .withZone(java.time.ZoneId.systemDefault());
+            DateTimeFormatter.ofPattern("HH:mm:ss").withLocale(Locale.ROOT).withZone(java.time.ZoneId.systemDefault());
+    private static final DateTimeFormatter DAY_STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            .withLocale(Locale.ROOT)
+            .withZone(java.time.ZoneId.systemDefault());
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("name", Map.of(
-                        "type", "string",
-                        "description",
-                        "Process name within the current session — the same string "
-                                + "you see as `sourceProcessName` in a <process-event> "
-                                + "marker. Either `name` or `id` is required."));
-                put("id", Map.of(
-                        "type", "string",
-                        "description",
-                        "Mongo id (`sourceProcessId`) — alternative to `name` when "
-                                + "the name is ambiguous across sessions."));
-                put("roles", Map.of(
-                        "type", "array",
-                        "items", Map.of("type", "string",
-                                "enum", List.of("USER", "ASSISTANT", "SYSTEM")),
-                        "description",
-                        "Optional role filter. Default: USER + ASSISTANT (no system "
-                                + "prompt noise). Set explicitly to include SYSTEM."));
-                put("since", Map.of(
-                        "type", "string",
-                        "description",
-                        "ISO-8601 timestamp — drop messages older than this. "
-                                + "Useful when the transcript is long and only the "
-                                + "tail matters."));
-                put("includeArchived", Map.of(
-                        "type", "boolean",
-                        "description",
-                        "When true, also include messages that have been rolled "
-                                + "into a memory compaction (active+archived). "
-                                + "Default false — only the live history is "
-                                + "returned; compacted material lives under the "
-                                + "process's ARCHIVED_CHAT memories."));
-                put("includeActiveSummary", Map.of(
-                        "type", "boolean",
-                        "description",
-                        "When true (default), prepend the process's active "
-                                + "ARCHIVED_CHAT memory summary (if any) before the "
-                                + "transcript. Gives you the compacted context the "
-                                + "process itself sees alongside the live turns. "
-                                + "Set false when you only want the raw active "
-                                + "history without the summary preamble."));
-                put("minStrength", Map.of(
-                        "type", "string",
-                        "enum", List.of("weak", "normal", "strong", "pinned"),
-                        "description",
-                        "Filter active history by minimum strength tag. Messages "
-                                + "with NO STRENGTH tag are KEPT (OR-untagged), so "
-                                + "the filter degrades gracefully on sessions where "
-                                + "prak hasn't yet evaluated content. Combine with "
-                                + "lastN for a tight slice."));
-                put("lastN", Map.of(
-                        "type", "integer",
-                        "description",
-                        "Keep only the last N filtered messages. Useful when you "
-                                + "want the recent tail without scanning the full "
-                                + "history. Applied AFTER role/since/minStrength."));
-                put("maxChars", Map.of(
-                        "type", "integer",
-                        "description",
-                        "Soft cap on the rendered transcript length. Older messages "
-                                + "are dropped first when exceeded, with a truncation "
-                                + "marker at the top. Default 30000, max 200000."));
-            }},
-            "required", List.of());
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "name",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Process name within the current session — the same string "
+                                            + "you see as `sourceProcessName` in a <process-event> "
+                                            + "marker. Either `name` or `id` is required."));
+                    put(
+                            "id",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Mongo id (`sourceProcessId`) — alternative to `name` when "
+                                            + "the name is ambiguous across sessions."));
+                    put(
+                            "roles",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string", "enum", List.of("USER", "ASSISTANT", "SYSTEM")),
+                                    "description",
+                                    "Optional role filter. Default: USER + ASSISTANT (no system "
+                                            + "prompt noise). Set explicitly to include SYSTEM."));
+                    put(
+                            "since",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "ISO-8601 timestamp — drop messages older than this. "
+                                            + "Useful when the transcript is long and only the "
+                                            + "tail matters."));
+                    put(
+                            "includeArchived",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "When true, also include messages that have been rolled "
+                                            + "into a memory compaction (active+archived). "
+                                            + "Default false — only the live history is "
+                                            + "returned; compacted material lives under the "
+                                            + "process's ARCHIVED_CHAT memories."));
+                    put(
+                            "includeActiveSummary",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "When true (default), prepend the process's active "
+                                            + "ARCHIVED_CHAT memory summary (if any) before the "
+                                            + "transcript. Gives you the compacted context the "
+                                            + "process itself sees alongside the live turns. "
+                                            + "Set false when you only want the raw active "
+                                            + "history without the summary preamble."));
+                    put(
+                            "minStrength",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "enum",
+                                    List.of("weak", "normal", "strong", "pinned"),
+                                    "description",
+                                    "Filter active history by minimum strength tag. Messages "
+                                            + "with NO STRENGTH tag are KEPT (OR-untagged), so "
+                                            + "the filter degrades gracefully on sessions where "
+                                            + "prak hasn't yet evaluated content. Combine with "
+                                            + "lastN for a tight slice."));
+                    put(
+                            "lastN",
+                            Map.of(
+                                    "type",
+                                    "integer",
+                                    "description",
+                                    "Keep only the last N filtered messages. Useful when you "
+                                            + "want the recent tail without scanning the full "
+                                            + "history. Applied AFTER role/since/minStrength."));
+                    put(
+                            "maxChars",
+                            Map.of(
+                                    "type",
+                                    "integer",
+                                    "description",
+                                    "Soft cap on the rendered transcript length. Older messages "
+                                            + "are dropped first when exceeded, with a truncation "
+                                            + "marker at the top. Default 30000, max 200000."));
+                }
+            },
+            "required",
+            List.of());
 
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
@@ -185,10 +217,8 @@ public class ProcessHistoryTextTool implements Tool {
         Set<ChatRole> roleFilter = parseRoles(params.get("roles"));
         Instant since = parseInstant(params.get("since"));
         boolean includeArchived = Boolean.TRUE.equals(params.get("includeArchived"));
-        boolean includeActiveSummary = !Boolean.FALSE.equals(
-                params.get("includeActiveSummary"));
-        de.mhus.vance.shared.prak.@Nullable SpanStrength minStrength =
-                parseStrength(params.get("minStrength"));
+        boolean includeActiveSummary = !Boolean.FALSE.equals(params.get("includeActiveSummary"));
+        de.mhus.vance.shared.prak.@Nullable SpanStrength minStrength = parseStrength(params.get("minStrength"));
         int lastN = parseLastN(params.get("lastN"));
         int maxChars = clampMaxChars(params.get("maxChars"));
 
@@ -199,8 +229,7 @@ public class ProcessHistoryTextTool implements Tool {
         List<ChatMessageDocument> filtered = new java.util.ArrayList<>(history.size());
         for (ChatMessageDocument m : history) {
             if (!roleFilter.isEmpty() && !roleFilter.contains(m.getRole())) continue;
-            if (since != null && (m.getCreatedAt() == null
-                    || m.getCreatedAt().isBefore(since))) continue;
+            if (since != null && (m.getCreatedAt() == null || m.getCreatedAt().isBefore(since))) continue;
             if (minStrength != null && !passesStrength(m, minStrength)) continue;
             filtered.add(m);
         }
@@ -210,9 +239,8 @@ public class ProcessHistoryTextTool implements Tool {
 
         @Nullable String summary = null;
         if (includeActiveSummary) {
-            List<de.mhus.vance.shared.memory.MemoryDocument> summaries =
-                    memoryService.activeByProcessAndKind(ctx.tenantId(), doc.getId(),
-                            de.mhus.vance.shared.memory.MemoryKind.ARCHIVED_CHAT);
+            List<de.mhus.vance.shared.memory.MemoryDocument> summaries = memoryService.activeByProcessAndKind(
+                    ctx.tenantId(), doc.getId(), de.mhus.vance.shared.memory.MemoryKind.ARCHIVED_CHAT);
             if (!summaries.isEmpty()) {
                 summary = summaries.get(summaries.size() - 1).getContent();
             }
@@ -231,14 +259,12 @@ public class ProcessHistoryTextTool implements Tool {
         return out;
     }
 
-    private static de.mhus.vance.shared.prak.@Nullable SpanStrength parseStrength(
-            @Nullable Object raw) {
+    private static de.mhus.vance.shared.prak.@Nullable SpanStrength parseStrength(@Nullable Object raw) {
         if (!(raw instanceof String s) || s.isBlank()) return null;
         try {
-            return de.mhus.vance.shared.prak.SpanStrength.valueOf(
-                    s.trim().toUpperCase(Locale.ROOT));
+            return de.mhus.vance.shared.prak.SpanStrength.valueOf(s.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new ToolException("'minStrength' must be one of: weak, normal, strong, pinned");
+            throw new ToolException("'minStrength' must be one of: weak, normal, strong, pinned", e);
         }
     }
 
@@ -261,16 +287,16 @@ public class ProcessHistoryTextTool implements Tool {
      * not have evaluated them yet. Same semantic as the spawn-time
      * {@link de.mhus.vance.brain.inherit.ParentContextRenderer}.
      */
-    private static boolean passesStrength(
-            ChatMessageDocument m,
-            de.mhus.vance.shared.prak.SpanStrength min) {
+    private static boolean passesStrength(ChatMessageDocument m, de.mhus.vance.shared.prak.SpanStrength min) {
         Set<String> tags = m.getTags();
         if (tags == null || tags.isEmpty()) return true;
         de.mhus.vance.shared.prak.SpanStrength found = null;
         for (String t : tags) {
-            de.mhus.vance.shared.prak.SpanStrength s =
-                    de.mhus.vance.shared.prak.SpanStrength.fromTag(t);
-            if (s != null) { found = s; break; }
+            de.mhus.vance.shared.prak.SpanStrength s = de.mhus.vance.shared.prak.SpanStrength.fromTag(t);
+            if (s != null) {
+                found = s;
+                break;
+            }
         }
         if (found == null) return true;
         return found.ordinal() >= min.ordinal();
@@ -278,23 +304,22 @@ public class ProcessHistoryTextTool implements Tool {
 
     // ───────────────────── helpers ─────────────────────
 
-    private ThinkProcessDocument resolve(String tenantId, String sessionId,
-                                         @Nullable String name, @Nullable String id) {
+    private ThinkProcessDocument resolve(
+            String tenantId, String sessionId, @Nullable String name, @Nullable String id) {
         if (id != null && !id.isBlank()) {
-            return thinkProcessService.findById(id)
-                    .filter(p -> tenantId.equals(p.getTenantId())
-                            && sessionId.equals(p.getSessionId()))
-                    .orElseThrow(() -> new ToolException(
-                            "Process id '" + id + "' not found in current session"));
+            return thinkProcessService
+                    .findById(id)
+                    .filter(p -> tenantId.equals(p.getTenantId()) && sessionId.equals(p.getSessionId()))
+                    .orElseThrow(() -> new ToolException("Process id '" + id + "' not found in current session"));
         }
         // Fallback to name + id-as-name (the LLM sometimes passes the
         // Mongo id in the `name` slot when it copied from sourceProcessId).
-        return thinkProcessService.findByName(tenantId, sessionId, name)
-                .or(() -> thinkProcessService.findById(name)
-                        .filter(p -> tenantId.equals(p.getTenantId())
-                                && sessionId.equals(p.getSessionId())))
-                .orElseThrow(() -> new ToolException(
-                        "Process '" + name + "' not found in current session"));
+        return thinkProcessService
+                .findByName(tenantId, sessionId, name)
+                .or(() -> thinkProcessService
+                        .findById(name)
+                        .filter(p -> tenantId.equals(p.getTenantId()) && sessionId.equals(p.getSessionId())))
+                .orElseThrow(() -> new ToolException("Process '" + name + "' not found in current session"));
     }
 
     private static @Nullable String stringParam(Map<String, Object> params, String key) {
@@ -326,7 +351,7 @@ public class ProcessHistoryTextTool implements Tool {
         try {
             return Instant.parse(s);
         } catch (RuntimeException e) {
-            throw new ToolException("'since' must be ISO-8601 (e.g. 2026-06-15T08:00:00Z)");
+            throw new ToolException("'since' must be ISO-8601 (e.g. 2026-06-15T08:00:00Z)", e);
         }
     }
 
@@ -351,11 +376,12 @@ public class ProcessHistoryTextTool implements Tool {
      * truncated …]} marker, because the recent trail is usually what
      * the caller actually wants.
      */
-    private static String render(ThinkProcessDocument doc,
-                                 List<ChatMessageDocument> msgs,
-                                 @Nullable String activeSummary,
-                                 int maxChars,
-                                 boolean includeArchived) {
+    private static String render(
+            ThinkProcessDocument doc,
+            List<ChatMessageDocument> msgs,
+            @Nullable String activeSummary,
+            int maxChars,
+            boolean includeArchived) {
         StringBuilder header = new StringBuilder();
         header.append("=== ").append(doc.getName());
         if (doc.getThinkEngine() != null && !doc.getThinkEngine().isBlank()) {
@@ -397,8 +423,8 @@ public class ProcessHistoryTextTool implements Tool {
         List<String> blocks = new java.util.ArrayList<>(msgs.size());
         for (ChatMessageDocument m : msgs) blocks.add(renderMessage(m));
 
-        int budget = Math.max(0, maxChars - header.length() - summaryBlock.length()
-                - 80 /* truncation marker reserve */);
+        int budget =
+                Math.max(0, maxChars - header.length() - summaryBlock.length() - 80 /* truncation marker reserve */);
         int kept = 0;
         int runningLen = 0;
         for (int i = blocks.size() - 1; i >= 0; i--) {
@@ -412,8 +438,7 @@ public class ProcessHistoryTextTool implements Tool {
         StringBuilder out = new StringBuilder(header);
         out.append(summaryBlock);
         if (dropped > 0) {
-            out.append("[… ").append(dropped)
-                    .append(" earlier messages truncated …]\n\n");
+            out.append("[… ").append(dropped).append(" earlier messages truncated …]\n\n");
         }
         for (int i = blocks.size() - kept; i < blocks.size(); i++) {
             out.append(blocks.get(i));

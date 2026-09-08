@@ -76,48 +76,63 @@ public class VideoTranscriptTool implements Tool {
     private static final double ASR_PROGRESS_INTERVAL_SEC = 30.0;
 
     private static final Pattern VIDEO_ID = Pattern.compile("[A-Za-z0-9_-]{11}");
-    private static final Pattern URL_PATH_ID = Pattern.compile(
-            "/(?:embed|shorts|v|live)/([A-Za-z0-9_-]{11})");
+    private static final Pattern URL_PATH_ID = Pattern.compile("/(?:embed|shorts|v|live)/([A-Za-z0-9_-]{11})");
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "url", Map.of(
-                            "type", "string",
-                            "description", "YouTube video URL "
-                                    + "(youtube.com/watch?v=…, youtu.be/…, "
-                                    + "shorts/…, embed/…) or a bare 11-char "
-                                    + "video id."),
-                    "language", Map.of(
-                            "type", "string",
-                            "description", "Optional preferred caption "
-                                    + "language(s), comma-separated BCP-47 "
-                                    + "codes (e.g. 'de', 'de,en'). First "
-                                    + "available wins. Defaults to 'en,de'. "
-                                    + "Also passed to the ASR fallback as "
-                                    + "a hint; pass 'auto' to let Whisper "
-                                    + "detect."),
-                    "fallback", Map.of(
-                            "type", "string",
-                            "description", "What to do when no captions "
-                                    + "are available. 'auto' (default) — "
-                                    + "download audio and run Whisper ASR. "
-                                    + "'captions' — error out instead of "
-                                    + "doing ASR (cheap, deterministic). "
-                                    + "'asr' — skip captions and go "
-                                    + "straight to ASR."),
-                    "asrModel", Map.of(
-                            "type", "string",
-                            "description", "Whisper model for the ASR "
-                                    + "fallback. One of: tiny, base, "
-                                    + "small (default), medium, "
-                                    + "large-v3, large-v3-turbo. Bigger "
-                                    + "is more accurate but slower."),
-                    "timestamps", Map.of(
-                            "type", "boolean",
-                            "description", "If true, prefix each segment "
-                                    + "with [hh:mm:ss]. Default false "
-                                    + "(plain text — denser for the LLM).")),
+            "properties",
+                    Map.of(
+                            "url",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "YouTube video URL "
+                                                    + "(youtube.com/watch?v=…, youtu.be/…, "
+                                                    + "shorts/…, embed/…) or a bare 11-char "
+                                                    + "video id."),
+                            "language",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional preferred caption "
+                                                    + "language(s), comma-separated BCP-47 "
+                                                    + "codes (e.g. 'de', 'de,en'). First "
+                                                    + "available wins. Defaults to 'en,de'. "
+                                                    + "Also passed to the ASR fallback as "
+                                                    + "a hint; pass 'auto' to let Whisper "
+                                                    + "detect."),
+                            "fallback",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "What to do when no captions "
+                                                    + "are available. 'auto' (default) — "
+                                                    + "download audio and run Whisper ASR. "
+                                                    + "'captions' — error out instead of "
+                                                    + "doing ASR (cheap, deterministic). "
+                                                    + "'asr' — skip captions and go "
+                                                    + "straight to ASR."),
+                            "asrModel",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Whisper model for the ASR "
+                                                    + "fallback. One of: tiny, base, "
+                                                    + "small (default), medium, "
+                                                    + "large-v3, large-v3-turbo. Bigger "
+                                                    + "is more accurate but slower."),
+                            "timestamps",
+                                    Map.of(
+                                            "type",
+                                            "boolean",
+                                            "description",
+                                            "If true, prefix each segment "
+                                                    + "with [hh:mm:ss]. Default false "
+                                                    + "(plain text — denser for the LLM).")),
             "required", List.of("url"));
 
     private final ThinkProcessService thinkProcessService;
@@ -125,10 +140,11 @@ public class VideoTranscriptTool implements Tool {
     private final YtDlpAudioDownloader audioDownloader;
     private final WhisperTranscriber whisperTranscriber;
 
-    public VideoTranscriptTool(ThinkProcessService thinkProcessService,
-                               ProgressEmitter progressEmitter,
-                               YtDlpAudioDownloader audioDownloader,
-                               WhisperTranscriber whisperTranscriber) {
+    public VideoTranscriptTool(
+            ThinkProcessService thinkProcessService,
+            ProgressEmitter progressEmitter,
+            YtDlpAudioDownloader audioDownloader,
+            WhisperTranscriber whisperTranscriber) {
         this.thinkProcessService = thinkProcessService;
         this.progressEmitter = progressEmitter;
         this.audioDownloader = audioDownloader;
@@ -180,27 +196,21 @@ public class VideoTranscriptTool implements Tool {
         }
         String videoId = extractVideoId(rawUrl);
         if (videoId == null) {
-            throw new ToolException(
-                    "Could not extract a YouTube video id from '"
-                            + rawUrl + "'. Expected a youtube.com / "
-                            + "youtu.be URL or a bare 11-char id.");
+            throw new ToolException("Could not extract a YouTube video id from '"
+                    + rawUrl + "'. Expected a youtube.com / "
+                    + "youtu.be URL or a bare 11-char id.");
         }
 
-        List<String> langs = parseLanguages(
-                params == null ? null : asString(params.get("language")));
-        boolean withTimestamps = asBoolean(
-                params == null ? null : params.get("timestamps"), false);
-        FallbackMode mode = FallbackMode.parse(
-                params == null ? null : asString(params.get("fallback")));
-        String asrModel = asString(
-                params == null ? null : params.get("asrModel"));
+        List<String> langs = parseLanguages(params == null ? null : asString(params.get("language")));
+        boolean withTimestamps = asBoolean(params == null ? null : params.get("timestamps"), false);
+        FallbackMode mode = FallbackMode.parse(params == null ? null : asString(params.get("fallback")));
+        String asrModel = asString(params == null ? null : params.get("asrModel"));
 
         ThinkProcessDocument process = loadProcess(ctx);
 
         // ─── Stage 1: captions ─────────────────────────────────────
         if (mode != FallbackMode.ASR_ONLY) {
-            emit(process, StatusTag.FETCH,
-                    "Looking for captions on video " + videoId + "…");
+            emit(process, StatusTag.FETCH, "Looking for captions on video " + videoId + "…");
             try {
                 return fetchCaptions(videoId, langs, withTimestamps, ctx);
             } catch (NoCaptionsException e) {
@@ -208,32 +218,26 @@ public class VideoTranscriptTool implements Tool {
                     throw new ToolException(
                             "No captions available for video '" + videoId
                                     + "' and fallback is set to 'captions'. "
-                                    + "Set fallback='auto' to enable ASR.");
+                                    + "Set fallback='auto' to enable ASR.",
+                            e);
                 }
-                emit(process, StatusTag.INFO,
-                        "No captions found — switching to ASR (Whisper).");
+                emit(process, StatusTag.INFO, "No captions found — switching to ASR (Whisper).");
             }
         }
 
         // ─── Stage 2: ASR fallback ─────────────────────────────────
-        return runAsrFallback(videoId, langs, withTimestamps,
-                asrModel, ctx, process);
+        return runAsrFallback(videoId, langs, withTimestamps, asrModel, ctx, process);
     }
 
-    private Map<String, Object> fetchCaptions(String videoId,
-                                              List<String> langs,
-                                              boolean withTimestamps,
-                                              ToolInvocationContext ctx) {
+    private Map<String, Object> fetchCaptions(
+            String videoId, List<String> langs, boolean withTimestamps, ToolInvocationContext ctx) {
         YoutubeTranscriptApi api = TranscriptApiFactory.createDefault();
         try {
             TranscriptList list = api.listTranscripts(videoId);
-            Transcript transcript = list.findTranscript(
-                    langs.toArray(String[]::new));
+            Transcript transcript = list.findTranscript(langs.toArray(String[]::new));
             TranscriptContent content = transcript.fetch();
 
-            String text = withTimestamps
-                    ? formatWithTimestamps(content)
-                    : formatPlain(content);
+            String text = withTimestamps ? formatWithTimestamps(content) : formatPlain(content);
             int fullLength = text.length();
             boolean truncated = fullLength > MAX_TEXT_CHARS;
             String body = truncated ? text.substring(0, MAX_TEXT_CHARS) : text;
@@ -241,12 +245,16 @@ public class VideoTranscriptTool implements Tool {
             int segments = content.getContent().size();
             double duration = computeDurationSec(content);
 
-            log.info("VideoTranscriptTool tenant='{}' videoId='{}' "
+            log.info(
+                    "VideoTranscriptTool tenant='{}' videoId='{}' "
                             + "stage=captions lang='{}' source={} "
                             + "segments={} bytes={}",
-                    ctx.tenantId(), videoId, transcript.getLanguageCode(),
+                    ctx.tenantId(),
+                    videoId,
+                    transcript.getLanguageCode(),
                     transcript.isGenerated() ? "asr-youtube" : "manual",
-                    segments, fullLength);
+                    segments,
+                    fullLength);
 
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("videoId", videoId);
@@ -269,37 +277,35 @@ public class VideoTranscriptTool implements Tool {
         }
     }
 
-    private Map<String, Object> runAsrFallback(String videoId,
-                                               List<String> langs,
-                                               boolean withTimestamps,
-                                               @Nullable String asrModel,
-                                               ToolInvocationContext ctx,
-                                               ThinkProcessDocument process) {
-        String effectiveModel = (asrModel == null || asrModel.isBlank())
-                ? DEFAULT_ASR_MODEL : asrModel;
+    private Map<String, Object> runAsrFallback(
+            String videoId,
+            List<String> langs,
+            boolean withTimestamps,
+            @Nullable String asrModel,
+            ToolInvocationContext ctx,
+            ThinkProcessDocument process) {
+        String effectiveModel = (asrModel == null || asrModel.isBlank()) ? DEFAULT_ASR_MODEL : asrModel;
         // Use only the first explicit language hint (or null for auto).
         // Whisper takes one language, not a fallback list.
-        String hint = langs.isEmpty() || "auto".equals(langs.get(0))
-                ? null : langs.get(0);
+        String hint = langs.isEmpty() || "auto".equals(langs.get(0)) ? null : langs.get(0);
 
-        emit(process, StatusTag.FETCH,
-                "Downloading audio for video " + videoId + " "
-                        + "(yt-dlp)…");
+        emit(process, StatusTag.FETCH, "Downloading audio for video " + videoId + " " + "(yt-dlp)…");
         Path audio;
         try {
             audio = audioDownloader.download(videoId);
         } catch (ToolException e) {
-            emit(process, StatusTag.INFO,
-                    "Audio download failed: " + e.getMessage());
+            emit(process, StatusTag.INFO, "Audio download failed: " + e.getMessage());
             throw e;
         }
 
         try {
             long sizeBytes = sizeQuiet(audio);
-            emit(process, StatusTag.INFO,
-                    String.format(Locale.ROOT,
-                            "Audio ready (%.1f MB). Transcribing with "
-                                    + "Whisper '%s'…",
+            emit(
+                    process,
+                    StatusTag.INFO,
+                    String.format(
+                            Locale.ROOT,
+                            "Audio ready (%.1f MB). Transcribing with " + "Whisper '%s'…",
                             sizeBytes / (1024.0 * 1024.0),
                             effectiveModel));
 
@@ -310,50 +316,51 @@ public class VideoTranscriptTool implements Tool {
                 if (key != lastEmittedKey.get()) {
                     lastEmittedKey.set(key);
                     String msg = duration > 0
-                            ? String.format(Locale.ROOT,
+                            ? String.format(
+                                    Locale.ROOT,
                                     "Transcribed %s / %s (%d%%)",
                                     formatHhmmss(chunkEnd),
                                     formatHhmmss(duration),
-                                    (int) Math.min(100,
-                                            Math.round(chunkEnd / duration * 100)))
-                            : String.format(Locale.ROOT,
-                                    "Transcribed %s",
-                                    formatHhmmss(chunkEnd));
+                                    (int) Math.min(100, Math.round(chunkEnd / duration * 100)))
+                            : String.format(Locale.ROOT, "Transcribed %s", formatHhmmss(chunkEnd));
                     emit(process, StatusTag.INFO, msg);
                 }
             };
 
             WhisperTranscriber.Result result;
             try {
-                result = whisperTranscriber.transcribe(
-                        audio, effectiveModel, hint, sink);
+                result = whisperTranscriber.transcribe(audio, effectiveModel, hint, sink);
             } catch (ToolException e) {
-                emit(process, StatusTag.INFO,
-                        "Transcription failed: " + e.getMessage());
+                emit(process, StatusTag.INFO, "Transcription failed: " + e.getMessage());
                 throw e;
             }
 
-            String text = withTimestamps
-                    ? formatAsrWithTimestamps(result)
-                    : formatAsrPlain(result);
+            String text = withTimestamps ? formatAsrWithTimestamps(result) : formatAsrPlain(result);
             int fullLength = text.length();
             boolean truncated = fullLength > MAX_TEXT_CHARS;
             String body = truncated ? text.substring(0, MAX_TEXT_CHARS) : text;
 
-            emit(process, StatusTag.INFO,
-                    String.format(Locale.ROOT,
-                            "Done — %d segments, %.1f s of audio, "
-                                    + "%.1f s of compute.",
+            emit(
+                    process,
+                    StatusTag.INFO,
+                    String.format(
+                            Locale.ROOT,
+                            "Done — %d segments, %.1f s of audio, " + "%.1f s of compute.",
                             result.segments().size(),
                             result.durationSec(),
                             result.elapsedSec()));
 
-            log.info("VideoTranscriptTool tenant='{}' videoId='{}' "
+            log.info(
+                    "VideoTranscriptTool tenant='{}' videoId='{}' "
                             + "stage=asr model='{}' lang='{}' segments={} "
                             + "audioSec={} elapsedSec={}",
-                    ctx.tenantId(), videoId, effectiveModel,
-                    result.language(), result.segments().size(),
-                    result.durationSec(), result.elapsedSec());
+                    ctx.tenantId(),
+                    videoId,
+                    effectiveModel,
+                    result.language(),
+                    result.segments().size(),
+                    result.durationSec(),
+                    result.elapsedSec());
 
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("videoId", videoId);
@@ -384,25 +391,22 @@ public class VideoTranscriptTool implements Tool {
         try {
             Files.deleteIfExists(mp3Path);
         } catch (IOException e) {
-            log.warn("Could not delete temp audio {}: {}",
-                    mp3Path, e.getMessage());
+            log.warn("Could not delete temp audio {}: {}", mp3Path, e.getMessage());
         }
         Path tmpDir = Path.of(System.getProperty("java.io.tmpdir"));
         String prefix = "yt-" + videoId + ".";
-        try (var stream = Files.newDirectoryStream(tmpDir,
-                p -> p.getFileName().toString().startsWith(prefix))) {
+        try (var stream =
+                Files.newDirectoryStream(tmpDir, p -> p.getFileName().toString().startsWith(prefix))) {
             for (Path leftover : stream) {
                 try {
                     Files.deleteIfExists(leftover);
                     log.debug("Cleaned up yt-dlp leftover {}", leftover);
                 } catch (IOException e) {
-                    log.warn("Could not delete yt-dlp leftover {}: {}",
-                            leftover, e.getMessage());
+                    log.warn("Could not delete yt-dlp leftover {}: {}", leftover, e.getMessage());
                 }
             }
         } catch (IOException e) {
-            log.warn("Could not scan for yt-dlp leftovers in {}: {}",
-                    tmpDir, e.getMessage());
+            log.warn("Could not scan for yt-dlp leftovers in {}: {}", tmpDir, e.getMessage());
         }
     }
 
@@ -415,8 +419,7 @@ public class VideoTranscriptTool implements Tool {
         return opt.orElse(null);
     }
 
-    private void emit(@Nullable ThinkProcessDocument process,
-                      StatusTag tag, String text) {
+    private void emit(@Nullable ThinkProcessDocument process, StatusTag tag, String text) {
         if (process == null) return;
         progressEmitter.emitStatus(process, tag, text);
     }
@@ -529,8 +532,7 @@ public class VideoTranscriptTool implements Tool {
 
     private static String normaliseText(@Nullable String raw) {
         if (raw == null) return "";
-        return raw
-                .replace("&amp;", "&")
+        return raw.replace("&amp;", "&")
                 .replace("&lt;", "<")
                 .replace("&gt;", ">")
                 .replace("&quot;", "\"")
@@ -571,7 +573,9 @@ public class VideoTranscriptTool implements Tool {
 
     /** Marker exception — captions stage failed, ASR may take over. */
     private static class NoCaptionsException extends RuntimeException {
-        NoCaptionsException(String msg, Throwable cause) { super(msg, cause); }
+        NoCaptionsException(String msg, Throwable cause) {
+            super(msg, cause);
+        }
     }
 
     /** {@code fallback} parameter values. */

@@ -33,16 +33,23 @@ public class VaultSecretSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "key", Map.of(
-                            "type", "string",
-                            "description", "Name to store the secret under. Read it back via "
-                                    + "{{secret:vault:<key>}}."),
-                    "value", Map.of(
-                            "type", "string",
-                            "description", "The secret value. NOTE: this passes through the "
-                                    + "model context — for a value that must stay hidden from "
-                                    + "the model, use vault_secret_generate instead.")),
+            "properties",
+                    Map.of(
+                            "key",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Name to store the secret under. Read it back via "
+                                                    + "{{secret:vault:<key>}}."),
+                            "value",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "The secret value. NOTE: this passes through the "
+                                                    + "model context — for a value that must stay hidden from "
+                                                    + "the model, use vault_secret_generate instead.")),
             "required", List.of("key", "value"));
 
     private final VaultService vaultService;
@@ -101,7 +108,7 @@ public class VaultSecretSetTool implements Tool {
         try {
             vaultService.writeSecret(scope, key, value);
         } catch (VaultException e) {
-            throw new ToolException("vault_secret_set failed: " + e.getMessage());
+            throw new ToolException("vault_secret_set failed: " + e.getMessage(), e);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("key", key);

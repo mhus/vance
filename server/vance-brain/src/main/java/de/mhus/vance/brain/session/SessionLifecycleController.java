@@ -36,7 +36,6 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -84,11 +83,9 @@ public class SessionLifecycleController {
             @PathVariable("sessionId") String sessionId,
             HttpServletRequest request) {
         SessionDocument session = requireOwnedSession(tenant, sessionId, request);
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
-                Action.EXECUTE);
-        if (session.getStatus() == SessionStatus.ARCHIVED
-                || session.getStatus() == SessionStatus.CLOSED) {
+        authority.enforce(
+                request, new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.EXECUTE);
+        if (session.getStatus() == SessionStatus.ARCHIVED || session.getStatus() == SessionStatus.CLOSED) {
             // No-op for terminal/archived sessions — 204 keeps the call idempotent
             return ResponseEntity.noContent().build();
         }
@@ -113,16 +110,13 @@ public class SessionLifecycleController {
             @PathVariable("sessionId") String sessionId,
             HttpServletRequest request) {
         SessionDocument session = requireOwnedSession(tenant, sessionId, request);
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
-                Action.START);
+        authority.enforce(
+                request, new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.START);
         if (session.getStatus() == SessionStatus.CLOSED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Session is CLOSED and cannot be resumed");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is CLOSED and cannot be resumed");
         }
         if (session.getStatus() == SessionStatus.ARCHIVED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Session is ARCHIVED — use /reactivate instead");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is ARCHIVED — use /reactivate instead");
         }
         lifecycleService.resumeSessionCascade(sessionId, processEventEmitter);
         return ResponseEntity.noContent().build();
@@ -134,12 +128,10 @@ public class SessionLifecycleController {
             @PathVariable("sessionId") String sessionId,
             HttpServletRequest request) {
         SessionDocument session = requireOwnedSession(tenant, sessionId, request);
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
-                Action.START);
+        authority.enforce(
+                request, new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.START);
         if (session.getStatus() == SessionStatus.CLOSED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Session is CLOSED and cannot be reactivated");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Session is CLOSED and cannot be reactivated");
         }
         if (session.getStatus() != SessionStatus.ARCHIVED) {
             // Already in an active state — symmetric with archive(),
@@ -164,12 +156,10 @@ public class SessionLifecycleController {
             @RequestBody(required = false) @Nullable SessionDuplicateRequest body,
             HttpServletRequest request) {
         SessionDocument session = requireOwnedSession(tenant, sessionId, request);
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
-                Action.EXECUTE);
+        authority.enforce(
+                request, new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.EXECUTE);
         String newTitle = body == null ? null : body.getTitle();
-        SessionDuplicationService.DuplicateResult result =
-                duplicationService.duplicate(sessionId, newTitle);
+        SessionDuplicationService.DuplicateResult result = duplicationService.duplicate(sessionId, newTitle);
         return SessionDuplicateResponse.builder()
                 .sessionId(result.newSessionId())
                 .title(result.title())
@@ -195,18 +185,13 @@ public class SessionLifecycleController {
         SessionDocument session = requireOwnedSession(tenant, sessionId, request);
         String targetProjectId = body.getTargetProjectId();
         if (targetProjectId == null || targetProjectId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "targetProjectId is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "targetProjectId is required");
         }
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
-                Action.EXECUTE);
-        authority.enforce(request,
-                new Resource.Project(tenant, targetProjectId),
-                Action.CREATE);
+        authority.enforce(
+                request, new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.EXECUTE);
+        authority.enforce(request, new Resource.Project(tenant, targetProjectId), Action.CREATE);
         try {
-            SessionMoveService.MoveResult result =
-                    moveService.move(tenant, sessionId, targetProjectId);
+            SessionMoveService.MoveResult result = moveService.move(tenant, sessionId, targetProjectId);
             return SessionMoveResponse.builder()
                     .sessionId(result.sessionId())
                     .fromProjectId(result.fromProjectId())
@@ -216,13 +201,13 @@ public class SessionLifecycleController {
                     .groupsCleared(result.groupsCleared())
                     .build();
         } catch (SessionMoveService.SessionNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (SessionMoveService.TargetProjectNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (SessionMoveService.SameProjectException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         } catch (SessionMoveService.SessionBusyException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         }
     }
 
@@ -241,18 +226,20 @@ public class SessionLifecycleController {
             @PathVariable("sessionId") String sessionId,
             HttpServletRequest request) {
         SessionDocument session = requireOwnedSession(tenant, sessionId, request);
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
-                Action.EXECUTE);
+        authority.enforce(
+                request, new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.EXECUTE);
 
         String chatProcessId = session.getChatProcessId();
         if (chatProcessId == null || chatProcessId.isBlank()) {
             return SessionCompactResponse.builder()
-                    .compacted(false).reason("no chat process").build();
+                    .compacted(false)
+                    .reason("no chat process")
+                    .build();
         }
-        ThinkProcessDocument process = thinkProcessService.findById(chatProcessId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Chat process not found for session '" + sessionId + "'"));
+        ThinkProcessDocument process = thinkProcessService
+                .findById(chatProcessId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Chat process not found for session '" + sessionId + "'"));
 
         try {
             CompactionResult r = laneScheduler
@@ -270,16 +257,18 @@ public class SessionLifecycleController {
             // Still queued on the lane (a turn was running); it will complete
             // between turns. The client just doesn't get the result now.
             return SessionCompactResponse.builder()
-                    .compacted(false).deferred(true).reason("deferred").build();
+                    .compacted(false)
+                    .deferred(true)
+                    .reason("deferred")
+                    .build();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Interrupted while compacting");
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Interrupted while compacting", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             log.warn("Manual compaction failed session='{}'", sessionId, cause);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Compaction failed: " + cause.getMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Compaction failed: " + cause.getMessage(), e);
         }
     }
 
@@ -289,9 +278,8 @@ public class SessionLifecycleController {
             @PathVariable("sessionId") String sessionId,
             HttpServletRequest request) {
         SessionDocument session = requireOwnedSession(tenant, sessionId, request);
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
-                Action.DELETE);
+        authority.enforce(
+                request, new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.DELETE);
         lifecycleService.deleteSession(sessionId);
         return ResponseEntity.noContent().build();
     }
@@ -303,43 +291,42 @@ public class SessionLifecycleController {
             @RequestBody SessionMetadataPatchRequest patch,
             HttpServletRequest request) {
         SessionDocument session = requireOwnedSession(tenant, sessionId, request);
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
-                Action.WRITE);
+        authority.enforce(
+                request, new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.WRITE);
         if (session.getStatus() == SessionStatus.CLOSED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Cannot patch metadata on a CLOSED session");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot patch metadata on a CLOSED session");
         }
         sessionService.patchMetadata(sessionId, patch);
-        SessionDocument refreshed = sessionService.findBySessionId(sessionId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Session disappeared mid-patch"));
+        SessionDocument refreshed = sessionService
+                .findBySessionId(sessionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session disappeared mid-patch"));
         return toDto(refreshed);
     }
 
     // -------------------------------------------------------------- helpers
 
-    private SessionDocument requireOwnedSession(
-            String tenant, String sessionId, HttpServletRequest request) {
+    private SessionDocument requireOwnedSession(String tenant, String sessionId, HttpServletRequest request) {
         String currentUser = currentUser(request);
-        SessionDocument session = sessionService.findBySessionId(sessionId)
+        SessionDocument session = sessionService
+                .findBySessionId(sessionId)
                 .filter(s -> tenant.equals(s.getTenantId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Session '" + sessionId + "' not found"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Session '" + sessionId + "' not found"));
         if (!currentUser.equals(session.getUserId())) {
-            log.debug("Session access denied: session='{}' owner='{}' caller='{}'",
-                    sessionId, session.getUserId(), currentUser);
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Session '" + sessionId + "' belongs to another user");
+            log.debug(
+                    "Session access denied: session='{}' owner='{}' caller='{}'",
+                    sessionId,
+                    session.getUserId(),
+                    currentUser);
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Session '" + sessionId + "' belongs to another user");
         }
         return session;
     }
 
     private static SessionMetadataDto toDto(SessionDocument session) {
         AccentColor color = session.getColor();
-        List<String> tags = session.getTags() == null
-                ? List.of()
-                : new ArrayList<>(session.getTags());
+        List<String> tags = session.getTags() == null ? List.of() : new ArrayList<>(session.getTags());
         return SessionMetadataDto.builder()
                 .title(session.getTitle())
                 .titleAutoGenerated(session.isTitleAutoGenerated())
@@ -354,8 +341,7 @@ public class SessionLifecycleController {
     private static String currentUser(HttpServletRequest request) {
         Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
         if (!(u instanceof String s) || s.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                    "No authenticated user");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
         }
         return s;
     }

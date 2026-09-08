@@ -1096,7 +1096,7 @@ public class ZaphodEngine implements ThinkEngine {
             Map<String, Object> parsed = objectMapper.readValue(jsonOnly, Map.class);
             root = parsed;
         } catch (RuntimeException e) {
-            throw new IllegalStateException("JSON parse error: " + e.getMessage());
+            throw new IllegalStateException("JSON parse error: " + e.getMessage(), e);
         }
         String title = requireSynthesisString(root, "title");
         String summary = requireSynthesisString(root, "summary");
@@ -1320,7 +1320,7 @@ public class ZaphodEngine implements ThinkEngine {
             pattern = ZaphodPattern.valueOf(String.valueOf(patternRaw).trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
-                    "Zaphod: unknown pattern '" + patternRaw + "' (supported: COUNCIL, DEBATE)");
+                    "Zaphod: unknown pattern '" + patternRaw + "' (supported: COUNCIL, DEBATE)", e);
         }
         if (pattern != ZaphodPattern.COUNCIL && pattern != ZaphodPattern.DEBATE) {
             throw new IllegalStateException("Zaphod currently supports only COUNCIL and DEBATE; got " + pattern);
@@ -1398,7 +1398,7 @@ public class ZaphodEngine implements ThinkEngine {
                 value = Integer.parseInt(String.valueOf(raw).trim());
             } catch (NumberFormatException e) {
                 throw new IllegalStateException(
-                        "Zaphod id='" + processId + "' params.maxRounds='" + raw + "' is not an integer");
+                        "Zaphod id='" + processId + "' params.maxRounds='" + raw + "' is not an integer", e);
             }
         }
         if (value < 1) {

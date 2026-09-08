@@ -66,8 +66,7 @@ public class RunController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         return registry.get(authority.contextOf(request), tenant, projectId, runId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Run not found: " + runId));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found: " + runId));
     }
 
     /**
@@ -92,10 +91,15 @@ public class RunController {
         try {
             parsed = RunAction.valueOf(action.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown run action: " + action);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown run action: " + action, ex);
         }
         try {
-            registry.perform(authority.contextOf(request), tenant, projectId, runId, parsed,
+            registry.perform(
+                    authority.contextOf(request),
+                    tenant,
+                    projectId,
+                    runId,
+                    parsed,
                     reason == null || reason.isBlank() ? "run view" : reason);
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
@@ -105,8 +109,7 @@ public class RunController {
         // Hand back the fresh state so the caller renders from truth
         // rather than from what it assumed the action would do.
         return registry.get(authority.contextOf(request), tenant, projectId, runId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Run not found: " + runId));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found: " + runId));
     }
 
     /** Which sources are active — lets the UI build its filter from data. */

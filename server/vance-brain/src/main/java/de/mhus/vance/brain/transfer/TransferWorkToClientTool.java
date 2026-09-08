@@ -31,24 +31,31 @@ public class TransferWorkToClientTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description", "Brain workspace RootDir to read from."),
-                    "remotePath", Map.of(
-                            "type", "string",
-                            "description", "Path inside the RootDir."),
-                    "localPath", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Path on the Foot host, relative to the foot "
-                                            + "workspace root. Sub-directories are "
-                                            + "created automatically."),
-                    "mode", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional POSIX mode in octal (e.g. \"0755\"). "
-                                            + "AND-ed against the foot mode mask.")),
+            "properties",
+                    Map.of(
+                            "dirName",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Brain workspace RootDir to read from."),
+                            "remotePath",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Path inside the RootDir."),
+                            "localPath",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Path on the Foot host, relative to the foot "
+                                                    + "workspace root. Sub-directories are "
+                                                    + "created automatically."),
+                            "mode",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional POSIX mode in octal (e.g. \"0755\"). "
+                                                    + "AND-ed against the foot mode mask.")),
             "required", List.of("dirName", "remotePath", "localPath"));
 
     private final BrainTransferService transfers;
@@ -92,19 +99,20 @@ public class TransferWorkToClientTool implements Tool {
         if (ctx.projectId() == null) {
             throw new ToolException("transfer_work_to_client requires a project context");
         }
-        TransferFileAttrs attrs = mode == null ? null
-                : TransferFileAttrs.builder().mode(mode).build();
+        TransferFileAttrs attrs =
+                mode == null ? null : TransferFileAttrs.builder().mode(mode).build();
 
         TransferResult result;
         try {
-            result = transfers.startDownload(
-                    ctx.sessionId(), ctx.tenantId(), ctx.projectId(), dirName, remotePath, localPath, attrs)
+            result = transfers
+                    .startDownload(
+                            ctx.sessionId(), ctx.tenantId(), ctx.projectId(), dirName, remotePath, localPath, attrs)
                     .get(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            throw new ToolException("transfer timed out");
+            throw new ToolException("transfer timed out", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ToolException("transfer interrupted");
+            throw new ToolException("transfer interrupted", e);
         } catch (Exception e) {
             throw new ToolException("transfer failed: " + e.getMessage(), e);
         }

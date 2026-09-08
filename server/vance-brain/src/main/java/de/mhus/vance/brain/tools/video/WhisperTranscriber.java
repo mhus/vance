@@ -106,11 +106,13 @@ public class WhisperTranscriber {
         try {
             process = pb.start();
         } catch (IOException e) {
-            throw new ToolException("Failed to start Python — is '" + pythonExecutable
-                    + "' on the host PATH? (macOS: ensure python3 "
-                    + "is installed; container: the brain image "
-                    + "ships python3). Underlying: "
-                    + e.getMessage());
+            throw new ToolException(
+                    "Failed to start Python — is '" + pythonExecutable
+                            + "' on the host PATH? (macOS: ensure python3 "
+                            + "is installed; container: the brain image "
+                            + "ships python3). Underlying: "
+                            + e.getMessage(),
+                    e);
         }
 
         // Drain stderr in a daemon thread so the progress sink fires
@@ -131,7 +133,7 @@ public class WhisperTranscriber {
             }
         } catch (IOException e) {
             process.destroyForcibly();
-            throw new ToolException("Whisper stdout read failed: " + e.getMessage());
+            throw new ToolException("Whisper stdout read failed: " + e.getMessage(), e);
         }
 
         boolean finished;
@@ -140,7 +142,7 @@ public class WhisperTranscriber {
         } catch (InterruptedException e) {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted during transcription");
+            throw new ToolException("Interrupted during transcription", e);
         }
         if (!finished) {
             process.destroyForcibly();
@@ -171,7 +173,7 @@ public class WhisperTranscriber {
         try {
             root = objectMapper.readTree(json);
         } catch (RuntimeException e) {
-            throw new ToolException("Could not parse Whisper output as JSON: " + e.getMessage());
+            throw new ToolException("Could not parse Whisper output as JSON: " + e.getMessage(), e);
         }
         if (root.has("error")) {
             throw new ToolException(

@@ -95,14 +95,13 @@ public class ResearchProvidersTool implements Tool {
         if (StringUtils.isBlank(ctx.projectId())) {
             throw new ToolException("research tools require a project scope");
         }
-        SearchScope scope = new SearchScope(
-                ctx.tenantId(), ctx.projectId(), ctx.processId(), ctx.userId());
+        SearchScope scope = new SearchScope(ctx.tenantId(), ctx.projectId(), ctx.processId(), ctx.userId());
 
         List<SearchProviderInstance> instances;
         try {
             instances = factory.assemble(scope);
         } catch (ZarniwoopException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
 
         List<Map<String, Object>> rows = new ArrayList<>(instances.size());

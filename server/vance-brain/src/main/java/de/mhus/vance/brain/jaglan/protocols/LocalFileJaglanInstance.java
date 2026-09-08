@@ -1,5 +1,12 @@
 package de.mhus.vance.brain.jaglan.protocols;
 
+import de.mhus.vance.api.documents.MountAccess;
+import de.mhus.vance.api.mount.MountedStat;
+import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.shared.workspace.WorkspaceRootService;
+import de.mhus.vance.toolpack.jaglan.JaglanCapabilities;
+import de.mhus.vance.toolpack.jaglan.JaglanInstance;
+import de.mhus.vance.toolpack.jaglan.JaglanProtocolException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -10,14 +17,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
-
-import de.mhus.vance.api.documents.MountAccess;
-import de.mhus.vance.api.mount.MountedStat;
-import de.mhus.vance.shared.workspace.WorkspaceException;
-import de.mhus.vance.shared.workspace.WorkspaceRootService;
-import de.mhus.vance.toolpack.jaglan.JaglanCapabilities;
-import de.mhus.vance.toolpack.jaglan.JaglanInstance;
-import de.mhus.vance.toolpack.jaglan.JaglanProtocolException;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -49,8 +48,12 @@ public class LocalFileJaglanInstance implements JaglanInstance {
     private final WorkspaceRootService confinement;
 
     LocalFileJaglanInstance(
-            String mount, Path root, boolean writable, Duration metadataTtl,
-            String displayName, WorkspaceRootService confinement) {
+            String mount,
+            Path root,
+            boolean writable,
+            Duration metadataTtl,
+            String displayName,
+            WorkspaceRootService confinement) {
         this.mount = mount;
         this.root = root;
         this.writable = writable;
@@ -113,15 +116,14 @@ public class LocalFileJaglanInstance implements JaglanInstance {
                     // listing it would leak size, mtime and mime type of a file
                     // outside the mount — plus promise a read that open() then
                     // correctly refuses.
-                    log.debug("Jaglan local mount '{}': '{}' leaves the root, skipped",
-                            mount, child);
+                    log.debug("Jaglan local mount '{}': '{}' leaves the root, skipped", mount, child);
                     continue;
                 }
                 out.add(toStat(child, prefix + name));
             }
         } catch (IOException e) {
-            throw JaglanProtocolException.unavailable(mount,
-                    "cannot list '" + pathInMount + "' in mount '" + mount + "': " + e, e);
+            throw JaglanProtocolException.unavailable(
+                    mount, "cannot list '" + pathInMount + "' in mount '" + mount + "': " + e, e);
         }
         return out;
     }
@@ -132,8 +134,8 @@ public class LocalFileJaglanInstance implements JaglanInstance {
         try {
             return Files.newInputStream(target);
         } catch (IOException e) {
-            throw JaglanProtocolException.unavailable(mount,
-                    "cannot read '" + pathInMount + "' in mount '" + mount + "': " + e, e);
+            throw JaglanProtocolException.unavailable(
+                    mount, "cannot read '" + pathInMount + "' in mount '" + mount + "': " + e, e);
         }
     }
 
@@ -148,8 +150,8 @@ public class LocalFileJaglanInstance implements JaglanInstance {
             }
             Files.copy(content, target, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
-            throw JaglanProtocolException.unavailable(mount,
-                    "cannot write '" + pathInMount + "' in mount '" + mount + "': " + e, e);
+            throw JaglanProtocolException.unavailable(
+                    mount, "cannot write '" + pathInMount + "' in mount '" + mount + "': " + e, e);
         }
         return toStat(target, pathInMount);
     }
@@ -161,8 +163,8 @@ public class LocalFileJaglanInstance implements JaglanInstance {
         try {
             Files.deleteIfExists(target);
         } catch (IOException e) {
-            throw JaglanProtocolException.unavailable(mount,
-                    "cannot delete '" + pathInMount + "' in mount '" + mount + "': " + e, e);
+            throw JaglanProtocolException.unavailable(
+                    mount, "cannot delete '" + pathInMount + "' in mount '" + mount + "': " + e, e);
         }
     }
 
@@ -170,9 +172,10 @@ public class LocalFileJaglanInstance implements JaglanInstance {
 
     private void requireWritable(String op) {
         if (!writable) {
-            throw new JaglanProtocolException(mount,
-                    "mount '" + mount + "' is read-only — set "
-                            + "writable: true in _vance/config/mounts/" + mount + ".yaml to allow " + op);
+            throw new JaglanProtocolException(
+                    mount,
+                    "mount '" + mount + "' is read-only — set " + "writable: true in _vance/config/mounts/" + mount
+                            + ".yaml to allow " + op);
         }
     }
 
@@ -189,8 +192,7 @@ public class LocalFileJaglanInstance implements JaglanInstance {
             return confinement.resolveWithin(root, pathInMount);
         } catch (WorkspaceException e) {
             // A refusal, not an outage: retrying will not make an escape legal.
-            throw new JaglanProtocolException(mount,
-                    "path '" + pathInMount + "' escapes mount '" + mount + "'");
+            throw new JaglanProtocolException(mount, "path '" + pathInMount + "' escapes mount '" + mount + "'");
         }
     }
 
@@ -221,7 +223,7 @@ public class LocalFileJaglanInstance implements JaglanInstance {
                 log.debug("Jaglan local: cannot probe mime of '{}': {}", target, e.toString());
             }
         }
-        return new MountedStat(pathInMount, directory, size, mimeType, etag, modifiedAtMs,
-                writable ? MountAccess.RW : MountAccess.RO);
+        return new MountedStat(
+                pathInMount, directory, size, mimeType, etag, modifiedAtMs, writable ? MountAccess.RW : MountAccess.RO);
     }
 }

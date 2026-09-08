@@ -1,6 +1,5 @@
 package de.mhus.vance.addon.brain.centauri.tool;
 
-import de.mhus.vance.addon.brain.centauri.FeedsApplication;
 import de.mhus.vance.brain.centauri.CentauriException;
 import de.mhus.vance.brain.centauri.CentauriService;
 import de.mhus.vance.brain.prompt.UntrustedContent;
@@ -41,15 +40,20 @@ public class FeedItemTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "sourceId", Map.of(
-                            "type", "string",
-                            "description", "Endpoint id of the source, e.g. 'hrafnagud'. "
-                                    + "Comes from feed_sources or from the marked entry in "
-                                    + "the app context."),
-                    "itemId", Map.of(
-                            "type", "string",
-                            "description", "The entry's id, as the feed reported it.")),
+            "properties",
+                    Map.of(
+                            "sourceId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Endpoint id of the source, e.g. 'hrafnagud'. "
+                                                    + "Comes from feed_sources or from the marked entry in "
+                                                    + "the app context."),
+                            "itemId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "The entry's id, as the feed reported it.")),
             "required", List.of("sourceId", "itemId"));
 
     private final EddieContext eddieContext;
@@ -99,21 +103,22 @@ public class FeedItemTool implements Tool {
         String sourceId = string(params, "sourceId");
         String itemId = string(params, "itemId");
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        FeedScope scope = new FeedScope(
-                ctx.tenantId(), project.getName(), ctx.processId(), ctx.userId());
+        FeedScope scope = new FeedScope(ctx.tenantId(), project.getName(), ctx.processId(), ctx.userId());
 
         FeedItem item;
         try {
             item = centauriService.loadItem(sourceId, itemId, scope).orElse(null);
         } catch (CentauriException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
         if (item == null) {
             // Not an error: an entry can age out of a source between the page
             // and the question about it.
             return Map.of(
-                    "found", false,
-                    "hint", "The source no longer knows this entry — it may have aged out "
+                    "found",
+                    false,
+                    "hint",
+                    "The source no longer knows this entry — it may have aged out "
                             + "of the stream. Re-read the feed with feed_read.");
         }
 
@@ -146,11 +151,16 @@ public class FeedItemTool implements Tool {
         if (!item.tags().isEmpty()) out.put("tags", safeTags(item.tags()));
         if (!item.extras().isEmpty()) out.put("extras", safeExtras(item.extras()));
         if (StringUtils.isBlank(item.body())) {
-            out.put("bodyHint", "This entry has no full text yet — the source fetches "
-                    + "bodies on its own schedule. The summary and the URL are what exists.");
+            out.put(
+                    "bodyHint",
+                    "This entry has no full text yet — the source fetches "
+                            + "bodies on its own schedule. The summary and the URL are what exists.");
         }
-        log.debug("FeedItemTool source='{}' item='{}' body={}",
-                sourceId, itemId, item.body() == null ? 0 : item.body().length());
+        log.debug(
+                "FeedItemTool source='{}' item='{}' body={}",
+                sourceId,
+                itemId,
+                item.body() == null ? 0 : item.body().length());
         return out;
     }
 
@@ -171,7 +181,8 @@ public class FeedItemTool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : extras.entrySet()) {
             Object value = e.getValue();
-            out.put(UntrustedContent.collapseWhitespace(e.getKey()),
+            out.put(
+                    UntrustedContent.collapseWhitespace(e.getKey()),
                     value == null || value instanceof Number || value instanceof Boolean
                             ? value
                             : UntrustedContent.collapseWhitespace(String.valueOf(value)));

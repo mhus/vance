@@ -95,10 +95,17 @@ class DavFolderResource extends AbstractDavResource
             return new DavSidecarResource(factory, childCoords, bytes);
         }
         try {
-            DocumentDocument created = factory.documentService().create(
-                    coords().tenantId(), requireProject(), childPath,
-                    null, null, DocumentService.mimeFromPath(childPath),
-                    inputStream, factory.currentUser(), factory.currentActor());
+            DocumentDocument created = factory.documentService()
+                    .create(
+                            coords().tenantId(),
+                            requireProject(),
+                            childPath,
+                            null,
+                            null,
+                            DocumentService.mimeFromPath(childPath),
+                            inputStream,
+                            factory.currentUser(),
+                            factory.currentActor());
             return new DavFileResource(factory, childCoords, created);
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ConflictException(this, e.getMessage());
@@ -113,9 +120,17 @@ class DavFolderResource extends AbstractDavResource
         WebDavPaths.Coords childCoords = childCoords(newName);
         String markerPath = childCoords.path() + "/" + factory.properties().getFolderMarkerName();
         Instant expiresAt = Instant.now().plus(factory.properties().getFolderMarkerTtl());
-        factory.documentService().upsertEphemeralText(
-                coords().tenantId(), requireProject(), markerPath,
-                null, null, "", factory.currentUser(), expiresAt, factory.currentActor());
+        factory.documentService()
+                .upsertEphemeralText(
+                        coords().tenantId(),
+                        requireProject(),
+                        markerPath,
+                        null,
+                        null,
+                        "",
+                        factory.currentUser(),
+                        expiresAt,
+                        factory.currentActor());
         return new DavFolderResource(factory, childCoords);
     }
 
@@ -132,8 +147,7 @@ class DavFolderResource extends AbstractDavResource
         io.milton.http.Request request = io.milton.http.HttpManager.request();
         io.milton.http.Auth auth = request == null ? null : request.getAuthorization();
         for (Resource child : getChildren()) {
-            if (!factory.securityManager().authorise(
-                    request, io.milton.http.Request.Method.DELETE, auth, child)) {
+            if (!factory.securityManager().authorise(request, io.milton.http.Request.Method.DELETE, auth, child)) {
                 throw new NotAuthorizedException(this);
             }
             if (child instanceof DeletableResource deletable) {
@@ -143,10 +157,10 @@ class DavFolderResource extends AbstractDavResource
         String path = coords().path();
         if (!path.isEmpty()) {
             String markerPath = path + "/" + factory.properties().getFolderMarkerName();
-            Optional<DocumentDocument> marker = factory.documentService()
-                    .findByPath(coords().tenantId(), requireProject(), markerPath);
-            marker.ifPresent(m -> factory.documentService().delete(
-                    m.getId(), factory.currentWriter(), factory.currentActor()));
+            Optional<DocumentDocument> marker =
+                    factory.documentService().findByPath(coords().tenantId(), requireProject(), markerPath);
+            marker.ifPresent(
+                    m -> factory.documentService().delete(m.getId(), factory.currentWriter(), factory.currentActor()));
         }
     }
 

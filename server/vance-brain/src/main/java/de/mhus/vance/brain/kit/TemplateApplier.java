@@ -258,7 +258,7 @@ public class TemplateApplier {
                     Integer.parseInt(v.trim());
                     return v.trim();
                 } catch (NumberFormatException e) {
-                    throw new KitException("input '" + in.name() + "': integer expected, got '" + v + "'");
+                    throw new KitException("input '" + in.name() + "': integer expected, got '" + v + "'", e);
                 }
             case SELECT:
                 if (in.choiceValues().contains(v)) return v;

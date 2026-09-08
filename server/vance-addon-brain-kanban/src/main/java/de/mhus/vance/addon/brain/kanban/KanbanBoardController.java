@@ -1,12 +1,5 @@
 package de.mhus.vance.addon.brain.kanban;
 
-import de.mhus.vance.brain.applications.VanceApplication;
-import de.mhus.vance.brain.applications.VanceApplication.ArtefactResult;
-import de.mhus.vance.brain.applications.VanceApplication.CreateContext;
-import de.mhus.vance.brain.applications.VanceApplication.CreateResult;
-import de.mhus.vance.brain.applications.VanceApplication.RefreshContext;
-import de.mhus.vance.brain.applications.VanceApplication.RefreshResult;
-
 import de.mhus.vance.api.common.AccentColor;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -97,11 +90,11 @@ public class KanbanBoardController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = normaliseFolder(folder);
-        VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                tenant, projectId, normalised, currentUser(httpRequest), null);
+        VanceApplication.RefreshContext rc =
+                new VanceApplication.RefreshContext(tenant, projectId, normalised, currentUser(httpRequest), null);
 
-        KanbanApplication.MoveResult mv = kanbanApplication.moveCard(
-                rc, normalised, request.getCard(), request.getToColumn());
+        KanbanApplication.MoveResult mv =
+                kanbanApplication.moveCard(rc, normalised, request.getCard(), request.getToColumn());
 
         return KanbanMoveResponse.builder()
                 .card(mv.cardPath())
@@ -131,27 +124,31 @@ public class KanbanBoardController {
                 : sanitiseName(request.getTitle());
         String path = normalisedFolder + "/" + column + "/" + slug + ".md";
 
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, projectId, path), Action.CREATE);
+        authority.enforce(httpRequest, new Resource.Document(tenant, projectId, path), Action.CREATE);
 
         if (documentService.findByPath(tenant, projectId, path).isPresent()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Card already exists at '" + path + "'.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Card already exists at '" + path + "'.");
         }
 
         CardDocument card = new CardDocument(
-                CARD_KIND, request.getTitle(),
-                request.getPriority(), request.getAssignee(),
+                CARD_KIND,
+                request.getTitle(),
+                request.getPriority(),
+                request.getAssignee(),
                 request.getLabels() != null ? new ArrayList<>(request.getLabels()) : new ArrayList<>(),
-                request.getDueDate(), request.getEstimate(),
+                request.getDueDate(),
+                request.getEstimate(),
                 request.isBlocked(),
                 request.getBody() != null ? request.getBody() : "",
                 new LinkedHashMap<>());
         String body = CardCodec.serialize(card, MD_MIME);
         DocumentDocument stored = writeNew(tenant, projectId, path, request.getTitle(), body, httpRequest);
 
-        log.info("KanbanBoardController.createCard tenant='{}' folder='{}' path='{}'",
-                tenant, normalisedFolder, stored.getPath());
+        log.info(
+                "KanbanBoardController.createCard tenant='{}' folder='{}' path='{}'",
+                tenant,
+                normalisedFolder,
+                stored.getPath());
 
         return toCardView(stored, column, card);
     }
@@ -167,16 +164,14 @@ public class KanbanBoardController {
             @Valid @RequestBody KanbanCardUpdateRequest request,
             HttpServletRequest httpRequest) {
 
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, projectId, path), Action.WRITE);
+        authority.enforce(httpRequest, new Resource.Document(tenant, projectId, path), Action.WRITE);
 
-        DocumentDocument doc0 = documentService.findByPath(tenant, projectId, path)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Card not found: " + path));
+        DocumentDocument doc0 = documentService
+                .findByPath(tenant, projectId, path)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Card not found: " + path));
         if (!CARD_KIND.equalsIgnoreCase(doc0.getKind())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Document at '" + path + "' is not a card (kind="
-                            + doc0.getKind() + ").");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Document at '" + path + "' is not a card (kind=" + doc0.getKind() + ").");
         }
 
         // Accent color is a document-level field, not part of the card
@@ -189,8 +184,8 @@ public class KanbanBoardController {
             try {
                 accent = AccentColor.valueOf(request.getColor());
             } catch (IllegalArgumentException e) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Unknown accent color '" + request.getColor() + "'.");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Unknown accent color '" + request.getColor() + "'.", e);
             }
             documentService.setColor(doc0.getId(), accent, actor(httpRequest));
         }
@@ -207,30 +202,38 @@ public class KanbanBoardController {
             DocumentDocument saved = null;
             CardDocument mergedCard = null;
             for (int attempt = 1; ; attempt++) {
-                DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
-                        .orElseThrow(() -> new ResponseStatusException(
-                                HttpStatus.NOT_FOUND, "Card not found: " + path));
+                DocumentDocument doc = documentService
+                        .findByPath(tenant, projectId, path)
+                        .orElseThrow(
+                                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Card not found: " + path));
                 CardDocument existing;
                 try {
                     existing = CardCodec.parse(loadAsText(doc), doc.getMimeType());
                 } catch (Exception e) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Could not parse card '" + path + "': " + e.getMessage());
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST, "Could not parse card '" + path + "': " + e.getMessage(), e);
                 }
                 mergedCard = mergePatch(existing, request);
                 String mergedBody = CardCodec.serialize(mergedCard, MD_MIME);
                 try {
                     saved = documentService.update(
-                            doc.getId(), mergedCard.title(), List.of(CARD_KIND),
-                            mergedBody, null, null, null, null, MD_MIME,
-                            DocumentService.TOOL_IDENTITY, actor(httpRequest));
+                            doc.getId(),
+                            mergedCard.title(),
+                            List.of(CARD_KIND),
+                            mergedBody,
+                            null,
+                            null,
+                            null,
+                            null,
+                            MD_MIME,
+                            DocumentService.TOOL_IDENTITY,
+                            actor(httpRequest));
                     break;
                 } catch (OptimisticLockingFailureException e) {
                     if (attempt >= UPDATE_MAX_ATTEMPTS) {
                         throw e;
                     }
-                    log.trace("KanbanBoardController.updateCard optimistic-lock retry {} for '{}'",
-                            attempt, path);
+                    log.trace("KanbanBoardController.updateCard optimistic-lock retry {} for '{}'", attempt, path);
                 }
             }
             updated = saved;
@@ -238,19 +241,22 @@ public class KanbanBoardController {
         } else {
             // Color-only patch: nothing to merge. Re-read the (now recolored)
             // document and parse it for the response view.
-            updated = documentService.findByPath(tenant, projectId, path)
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.NOT_FOUND, "Card not found: " + path));
+            updated = documentService
+                    .findByPath(tenant, projectId, path)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Card not found: " + path));
             try {
                 merged = CardCodec.parse(loadAsText(updated), updated.getMimeType());
             } catch (Exception e) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Could not parse card '" + path + "': " + e.getMessage());
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Could not parse card '" + path + "': " + e.getMessage(), e);
             }
         }
 
-        log.info("KanbanBoardController.updateCard tenant='{}' folder='{}' path='{}'",
-                tenant, folder, updated.getPath());
+        log.info(
+                "KanbanBoardController.updateCard tenant='{}' folder='{}' path='{}'",
+                tenant,
+                folder,
+                updated.getPath());
 
         String column = KanbanFolderReader.columnFor(normaliseFolder(folder), updated.getPath());
         return toCardView(updated, column, merged);
@@ -266,19 +272,16 @@ public class KanbanBoardController {
             @RequestParam("path") String path,
             HttpServletRequest httpRequest) {
 
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, projectId, path), Action.DELETE);
+        authority.enforce(httpRequest, new Resource.Document(tenant, projectId, path), Action.DELETE);
 
-        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Card not found: " + path));
+        DocumentDocument doc = documentService
+                .findByPath(tenant, projectId, path)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Card not found: " + path));
         if (!CARD_KIND.equalsIgnoreCase(doc.getKind())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Document at '" + path + "' is not a card.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Document at '" + path + "' is not a card.");
         }
         documentService.trash(doc.getId(), actor(httpRequest));
-        log.info("KanbanBoardController.deleteCard tenant='{}' folder='{}' path='{}'",
-                tenant, folder, path);
+        log.info("KanbanBoardController.deleteCard tenant='{}' folder='{}' path='{}'", tenant, folder, path);
     }
 
     // ── Rebuild ───────────────────────────────────────────────────
@@ -292,14 +295,17 @@ public class KanbanBoardController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = normaliseFolder(folder);
-        VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                tenant, projectId, normalised, currentUser(httpRequest), null);
+        VanceApplication.RefreshContext rc =
+                new VanceApplication.RefreshContext(tenant, projectId, normalised, currentUser(httpRequest), null);
         VanceApplication.RefreshResult result = kanbanApplication.refresh(rc);
 
         List<KanbanArtefactSummary> arts = new ArrayList<>();
         for (VanceApplication.ArtefactResult a : result.artefacts()) {
             arts.add(KanbanArtefactSummary.builder()
-                    .name(a.name()).path(a.path()).markdownLink(a.markdownLink()).build());
+                    .name(a.name())
+                    .path(a.path())
+                    .markdownLink(a.markdownLink())
+                    .build());
         }
         return KanbanRebuildResponse.builder()
                 .folder(normalised)
@@ -325,36 +331,37 @@ public class KanbanBoardController {
     // null-leaves-untouched contract is deterministic and worth pinning.
     static CardDocument mergePatch(CardDocument existing, KanbanCardUpdateRequest p) {
         String title = p.getTitle() != null ? p.getTitle() : existing.title();
-        String priority = p.getPriority() != null
-                ? (p.getPriority().isBlank() ? null : p.getPriority())
-                : existing.priority();
-        String assignee = p.getAssignee() != null
-                ? (p.getAssignee().isBlank() ? null : p.getAssignee())
-                : existing.assignee();
-        List<String> labels = p.getLabels() != null
-                ? new ArrayList<>(p.getLabels())
-                : new ArrayList<>(existing.labels());
-        String dueDate = p.getDueDate() != null
-                ? (p.getDueDate().isBlank() ? null : p.getDueDate())
-                : existing.dueDate();
+        String priority =
+                p.getPriority() != null ? (p.getPriority().isBlank() ? null : p.getPriority()) : existing.priority();
+        String assignee =
+                p.getAssignee() != null ? (p.getAssignee().isBlank() ? null : p.getAssignee()) : existing.assignee();
+        List<String> labels =
+                p.getLabels() != null ? new ArrayList<>(p.getLabels()) : new ArrayList<>(existing.labels());
+        String dueDate =
+                p.getDueDate() != null ? (p.getDueDate().isBlank() ? null : p.getDueDate()) : existing.dueDate();
         Double estimate = p.getEstimate() != null ? p.getEstimate() : existing.estimate();
         boolean blocked = p.getBlocked() != null ? p.getBlocked() : existing.blocked();
         String body = p.getBody() != null ? p.getBody() : existing.body();
         return new CardDocument(
-                existing.kind(), title, priority, assignee, labels, dueDate,
-                estimate, blocked, body, existing.extra());
+                existing.kind(), title, priority, assignee, labels, dueDate, estimate, blocked, body, existing.extra());
     }
 
-    private DocumentDocument writeNew(String tenant, String projectId,
-                                      String path, String title, String body,
-                                      HttpServletRequest httpRequest) {
+    private DocumentDocument writeNew(
+            String tenant, String projectId, String path, String title, String body, HttpServletRequest httpRequest) {
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
-                    tenant, projectId, path, title,
-                    List.of(CARD_KIND), MD_MIME, in, currentUser(httpRequest), actor(httpRequest));
+                    tenant,
+                    projectId,
+                    path,
+                    title,
+                    List.of(CARD_KIND),
+                    MD_MIME,
+                    in,
+                    currentUser(httpRequest),
+                    actor(httpRequest));
         } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Could not write card '" + path + "': " + e.getMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Could not write card '" + path + "': " + e.getMessage(), e);
         }
     }
 
@@ -363,8 +370,8 @@ public class KanbanBoardController {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Could not read card body: " + e.getMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Could not read card body: " + e.getMessage(), e);
         }
     }
 
@@ -389,15 +396,13 @@ public class KanbanBoardController {
 
     private static String normaliseFolder(String folder) {
         if (folder == null || folder.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "folder must be provided");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "folder must be provided");
         }
         String f = folder.trim();
         while (f.endsWith("/")) f = f.substring(0, f.length() - 1);
         while (f.startsWith("/")) f = f.substring(1);
         if (f.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "folder must not be empty");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "folder must not be empty");
         }
         return f;
     }

@@ -31,38 +31,48 @@ public class ImageGenerateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "prompt", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Image-generation prompt. Required, non-empty. "
-                                            + "Style tokens (medium, lighting, "
-                                            + "perspective, …) can be included "
-                                            + "inline, but persistent styles should "
-                                            + "live in the style layer — use "
-                                            + "`image_style_set` instead."),
-                    "path", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional document path. If set, overwrites an "
-                                            + "existing image at that path; otherwise "
-                                            + "the file is written to "
-                                            + "`images/<uuid>-<slug>.png` with the "
-                                            + "slug derived from the prompt."),
-                    "title", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional human-readable title override. When "
-                                            + "absent, a short title is generated "
-                                            + "from the prompt."),
-                    "aspectRatio", Map.of(
-                            "type", "string",
-                            "enum", List.of("1:1", "16:9", "9:16", "4:3", "3:4"),
-                            "description",
-                                    "Image aspect ratio. Defaults to 1:1.")),
+            "properties",
+                    Map.of(
+                            "prompt",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Image-generation prompt. Required, non-empty. "
+                                                    + "Style tokens (medium, lighting, "
+                                                    + "perspective, …) can be included "
+                                                    + "inline, but persistent styles should "
+                                                    + "live in the style layer — use "
+                                                    + "`image_style_set` instead."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional document path. If set, overwrites an "
+                                                    + "existing image at that path; otherwise "
+                                                    + "the file is written to "
+                                                    + "`images/<uuid>-<slug>.png` with the "
+                                                    + "slug derived from the prompt."),
+                            "title",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional human-readable title override. When "
+                                                    + "absent, a short title is generated "
+                                                    + "from the prompt."),
+                            "aspectRatio",
+                                    Map.of(
+                                            "type", "string",
+                                            "enum", List.of("1:1", "16:9", "9:16", "4:3", "3:4"),
+                                            "description", "Image aspect ratio. Defaults to 1:1.")),
             "required", List.of("prompt"));
 
-    @Override public String name() { return "image_generate"; }
+    @Override
+    public String name() {
+        return "image_generate";
+    }
 
     @Override
     public String description() {
@@ -78,9 +88,20 @@ public class ImageGenerateTool implements Tool {
                 + "every prompt.";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -104,11 +125,10 @@ public class ImageGenerateTool implements Tool {
             GenerateImageResult result = fenchurchService.generate(request);
             return successResponse(result);
         } catch (FenchurchException e) {
-            log.info("image_generate failed: reason={} msg={}",
-                    e.getReason(), e.getMessage());
+            log.info("image_generate failed: reason={} msg={}", e.getReason(), e.getMessage());
             return errorResponse(e);
         } catch (IllegalArgumentException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
     }
 

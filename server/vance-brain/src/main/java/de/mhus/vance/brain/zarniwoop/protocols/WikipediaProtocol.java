@@ -96,8 +96,7 @@ public class WikipediaProtocol implements SearchProtocol {
         }
         if (!ID.equals(cfg.protocolId())) {
             throw new IllegalArgumentException(
-                    "WikipediaProtocol cannot instantiate config with protocol '"
-                            + cfg.protocolId() + "'");
+                    "WikipediaProtocol cannot instantiate config with protocol '" + cfg.protocolId() + "'");
         }
         return new WikipediaInstance(cfg, objectMapper, http);
     }
@@ -105,7 +104,7 @@ public class WikipediaProtocol implements SearchProtocol {
     /** HTTP test-seam — same shape as {@link SerperHttpClient} but no key header. */
     interface WikipediaHttp {
 
-        record Response(int statusCode, String body) { }
+        record Response(int statusCode, String body) {}
 
         Response get(URI url, Duration timeout) throws Exception;
 
@@ -125,8 +124,7 @@ public class WikipediaProtocol implements SearchProtocol {
                         .timeout(timeout)
                         .GET()
                         .build();
-                HttpResponse<String> r = client.send(
-                        request, HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> r = client.send(request, HttpResponse.BodyHandlers.ofString());
                 return new Response(r.statusCode(), r.body() == null ? "" : r.body());
             }
         }
@@ -139,15 +137,13 @@ public class WikipediaProtocol implements SearchProtocol {
         private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
         private static final int DEFAULT_NUM = 5;
         private static final int MAX_NUM = 10;
-        private static final int EXTRACT_BUDGET = 3;   // pages to fetch extracts for
+        private static final int EXTRACT_BUDGET = 3; // pages to fetch extracts for
 
         private final ProviderInstanceConfig cfg;
         private final ObjectMapper objectMapper;
         private final WikipediaHttp http;
 
-        WikipediaInstance(ProviderInstanceConfig cfg,
-                          ObjectMapper objectMapper,
-                          WikipediaHttp http) {
+        WikipediaInstance(ProviderInstanceConfig cfg, ObjectMapper objectMapper, WikipediaHttp http) {
             this.cfg = cfg;
             this.objectMapper = objectMapper;
             this.http = http;
@@ -188,9 +184,7 @@ public class WikipediaProtocol implements SearchProtocol {
 
         @Override
         public ProviderAvailability availability(SearchScope scope) {
-            return StringUtils.isBlank(cfg.baseUrl())
-                    ? ProviderAvailability.DISABLED
-                    : ProviderAvailability.READY;
+            return StringUtils.isBlank(cfg.baseUrl()) ? ProviderAvailability.DISABLED : ProviderAvailability.READY;
         }
 
         @Override
@@ -221,10 +215,9 @@ public class WikipediaProtocol implements SearchProtocol {
 
         @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
-            if (req.modality() != SearchModality.WEB
-                    && req.modality() != SearchModality.ENCYCLOPEDIA) {
-                return softFailure(req, "modality " + req.modality()
-                        + " not supported by Wikipedia '" + cfg.instanceId() + "'");
+            if (req.modality() != SearchModality.WEB && req.modality() != SearchModality.ENCYCLOPEDIA) {
+                return softFailure(
+                        req, "modality " + req.modality() + " not supported by Wikipedia '" + cfg.instanceId() + "'");
             }
             int num = clampNum(req.maxResults());
             URI searchUri = URI.create(apiUrl()
@@ -236,15 +229,13 @@ public class WikipediaProtocol implements SearchProtocol {
                 response = http.get(searchUri, REQUEST_TIMEOUT);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException(
-                        "Interrupted while calling Wikipedia '" + cfg.instanceId() + "'");
+                throw new RuntimeException("Interrupted while calling Wikipedia '" + cfg.instanceId() + "'", ie);
             } catch (Exception e) {
-                throw new RuntimeException(
-                        "Wikipedia '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
+                throw new RuntimeException("Wikipedia '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
             }
             if (response.statusCode() != 200) {
-                throw new RuntimeException("Wikipedia '" + cfg.instanceId() + "' returned HTTP "
-                        + response.statusCode());
+                throw new RuntimeException(
+                        "Wikipedia '" + cfg.instanceId() + "' returned HTTP " + response.statusCode());
             }
             List<RawHit> raw = parseSearch(response.body());
             // Best-effort extract for the top N — failures are silent;
@@ -278,8 +269,16 @@ public class WikipediaProtocol implements SearchProtocol {
                         extras));
             }
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    hits, hits.size(), 0, null, null, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    hits,
+                    hits.size(),
+                    0,
+                    null,
+                    null,
+                    Map.of());
         }
 
         private String tryFetchExtract(String title) {
@@ -291,8 +290,7 @@ public class WikipediaProtocol implements SearchProtocol {
                 String extract = root.path("extract").asText("");
                 return StringUtils.isBlank(extract) ? null : extract;
             } catch (Exception e) {
-                log.debug("Wikipedia '{}': extract fetch for '{}' failed: {}",
-                        cfg.instanceId(), title, e.toString());
+                log.debug("Wikipedia '{}': extract fetch for '{}' failed: {}", cfg.instanceId(), title, e.toString());
                 return null;
             }
         }
@@ -364,8 +362,16 @@ public class WikipediaProtocol implements SearchProtocol {
 
         private SearchResult softFailure(SearchRequest req, String message) {
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    List.of(), 0, 0, null, message, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    List.of(),
+                    0,
+                    0,
+                    null,
+                    message,
+                    Map.of());
         }
 
         static final class RawHit {

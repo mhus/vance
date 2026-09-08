@@ -54,28 +54,47 @@ public class CalendarExportIcsTool implements Tool {
     private static final String ICS_MIME = "text/calendar";
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("documentRef", Map.of(
-                        "type", "string",
-                        "description", "Path or id of a kind:calendar "
-                                + "document to export. Required."));
-                put("calendarName", Map.of(
-                        "type", "string",
-                        "description", "Optional display name embedded "
-                                + "as X-WR-CALNAME. Defaults to the "
-                                + "source document's title."));
-                put("outputPath", Map.of(
-                        "type", "string",
-                        "description", "Path for the generated .ics "
-                                + "document. Default: "
-                                + "'exports/<calendar-slug>-<timestamp>.ics'."));
-                put("projectId", Map.of(
-                        "type", "string",
-                        "description", "Optional project name; "
-                                + "defaults to the active project."));
-            }},
-            "required", List.of("documentRef"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "documentRef",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Path or id of a kind:calendar " + "document to export. Required."));
+                    put(
+                            "calendarName",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional display name embedded "
+                                            + "as X-WR-CALNAME. Defaults to the "
+                                            + "source document's title."));
+                    put(
+                            "outputPath",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Path for the generated .ics "
+                                            + "document. Default: "
+                                            + "'exports/<calendar-slug>-<timestamp>.ics'."));
+                    put(
+                            "projectId",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional project name; " + "defaults to the active project."));
+                }
+            },
+            "required",
+            List.of("documentRef"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
@@ -85,13 +104,14 @@ public class CalendarExportIcsTool implements Tool {
     private final IcsExportService exportService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public CalendarExportIcsTool(EddieContext eddieContext,
-                                 DocumentService documentService,
-                                 DocumentLinkBuilder linkBuilder,
-                                 ThinkProcessService thinkProcessService,
-                                 ProgressEmitter progressEmitter,
-                                 IcsExportService exportService,
-                                 de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public CalendarExportIcsTool(
+            EddieContext eddieContext,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            ThinkProcessService thinkProcessService,
+            ProgressEmitter progressEmitter,
+            IcsExportService exportService,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
@@ -101,7 +121,10 @@ public class CalendarExportIcsTool implements Tool {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String name() { return "calendar_export_ics"; }
+    @Override
+    public String name() {
+        return "calendar_export_ics";
+    }
 
     @Override
     public String description() {
@@ -114,7 +137,10 @@ public class CalendarExportIcsTool implements Tool {
                 + "continuous sync use a subscription URL (planned).";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -141,34 +167,27 @@ public class CalendarExportIcsTool implements Tool {
 
         DocumentDocument source = resolveSourceDoc(documentRef, projectName, ctx);
         if (!"calendar".equalsIgnoreCase(source.getKind())) {
-            throw new ToolException(
-                    "Source document '" + source.getPath()
-                            + "' has kind '" + source.getKind()
-                            + "', expected kind:calendar.");
+            throw new ToolException("Source document '" + source.getPath()
+                    + "' has kind '" + source.getKind()
+                    + "', expected kind:calendar.");
         }
 
         CalendarDocument cal = parseCalendar(source);
         if (cal.events().isEmpty()) {
-            throw new ToolException(
-                    "Calendar '" + source.getPath() + "' has no "
-                            + "events to export.");
+            throw new ToolException("Calendar '" + source.getPath() + "' has no " + "events to export.");
         }
 
         String resolvedName = calendarName != null
                 ? calendarName
-                : (source.getTitle() != null ? source.getTitle()
-                                              : leafName(source.getPath()));
+                : (source.getTitle() != null ? source.getTitle() : leafName(source.getPath()));
 
-        emit(process, StatusTag.INFO,
-                "Rendering .ics for " + cal.events().size() + " events…");
+        emit(process, StatusTag.INFO, "Rendering .ics for " + cal.events().size() + " events…");
 
         long started = System.currentTimeMillis();
         byte[] bytes = exportService.toBytes(cal, resolvedName);
         long elapsedMs = System.currentTimeMillis() - started;
 
-        String finalPath = outputPath != null
-                ? outputPath
-                : defaultOutputPath(resolvedName);
+        String finalPath = outputPath != null ? outputPath : defaultOutputPath(resolvedName);
 
         DocumentDocument created;
         try (InputStream in = new ByteArrayInputStream(bytes)) {
@@ -183,23 +202,24 @@ public class CalendarExportIcsTool implements Tool {
                     ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not store generated .ics: " + e.getMessage());
+            throw new ToolException("Could not store generated .ics: " + e.getMessage(), e);
         }
 
         String vanceUri = DocumentLinkBuilder.buildVanceUri(
-                null, created.getPath(), "ics",
-                DocumentLinkBuilder.defaultModeForKind("ics"));
+                null, created.getPath(), "ics", DocumentLinkBuilder.defaultModeForKind("ics"));
         String markdownLink = linkBuilder.linkFor(created, projectName);
 
-        log.info("CalendarExportIcsTool tenant='{}' source='{}' "
-                        + "events={} elapsedMs={} path='{}'",
-                ctx.tenantId(), source.getPath(),
-                cal.events().size(), elapsedMs, finalPath);
-        emit(process, StatusTag.INFO,
-                String.format(Locale.ROOT,
-                        ".ics done — %d KB saved as '%s'.",
-                        bytes.length / 1024, finalPath));
+        log.info(
+                "CalendarExportIcsTool tenant='{}' source='{}' " + "events={} elapsedMs={} path='{}'",
+                ctx.tenantId(),
+                source.getPath(),
+                cal.events().size(),
+                elapsedMs,
+                finalPath);
+        emit(
+                process,
+                StatusTag.INFO,
+                String.format(Locale.ROOT, ".ics done — %d KB saved as '%s'.", bytes.length / 1024, finalPath));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("path", created.getPath());
@@ -213,51 +233,41 @@ public class CalendarExportIcsTool implements Tool {
 
     // ── Helpers ───────────────────────────────────────────────────
 
-    private DocumentDocument resolveSourceDoc(String ref,
-                                              String projectName,
-                                              ToolInvocationContext ctx) {
+    private DocumentDocument resolveSourceDoc(String ref, String projectName, ToolInvocationContext ctx) {
         boolean pathLike = ref.contains("/") || ref.contains(".");
         if (pathLike) {
-            Optional<DocumentDocument> byPath = documentService.findByPath(
-                    ctx.tenantId(), projectName, ref);
+            Optional<DocumentDocument> byPath = documentService.findByPath(ctx.tenantId(), projectName, ref);
             if (byPath.isPresent()) return byPath.get();
         }
         Optional<DocumentDocument> byId = documentService.findById(ref);
         if (byId.isPresent()) {
             DocumentDocument doc = byId.get();
             if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException(
-                        "Source document with id '" + ref
-                                + "' is not in your tenant");
+                throw new ToolException("Source document with id '" + ref + "' is not in your tenant");
             }
             return doc;
         }
         if (!pathLike) {
-            Optional<DocumentDocument> byPath = documentService.findByPath(
-                    ctx.tenantId(), projectName, ref);
+            Optional<DocumentDocument> byPath = documentService.findByPath(ctx.tenantId(), projectName, ref);
             if (byPath.isPresent()) return byPath.get();
         }
-        throw new ToolException(
-                "Source document '" + ref + "' not found in project '"
-                        + projectName + "'");
+        throw new ToolException("Source document '" + ref + "' not found in project '" + projectName + "'");
     }
 
     private CalendarDocument parseCalendar(DocumentDocument doc) {
         String body = loadAsText(doc);
         String mime = doc.getMimeType();
         if (!CalendarCodec.supports(mime)) {
-            throw new ToolException(
-                    "Source document '" + doc.getPath()
-                            + "' has mime '" + mime
-                            + "' which the calendar codec doesn't "
-                            + "support. Use a json / yaml calendar "
-                            + "document.");
+            throw new ToolException("Source document '" + doc.getPath()
+                    + "' has mime '" + mime
+                    + "' which the calendar codec doesn't "
+                    + "support. Use a json / yaml calendar "
+                    + "document.");
         }
         try {
             return CalendarCodec.parse(body, mime);
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse calendar document: " + e.getMessage());
+            throw new ToolException("Could not parse calendar document: " + e.getMessage(), e);
         }
     }
 
@@ -266,8 +276,7 @@ public class CalendarExportIcsTool implements Tool {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read source document content: " + e.getMessage());
+            throw new ToolException("Could not read source document content: " + e.getMessage(), e);
         }
     }
 
@@ -277,19 +286,16 @@ public class CalendarExportIcsTool implements Tool {
         return opt.orElse(null);
     }
 
-    private void emit(@Nullable ThinkProcessDocument process,
-                      StatusTag tag, String text) {
+    private void emit(@Nullable ThinkProcessDocument process, StatusTag tag, String text) {
         if (process == null) return;
         progressEmitter.emitStatus(process, tag, text);
     }
 
     static String defaultOutputPath(@Nullable String title) {
-        String stamp = DateTimeFormatter
-                .ofPattern("yyyy-MM-dd-HHmmss")
+        String stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
                 .withZone(ZoneOffset.UTC)
                 .format(Instant.now());
-        String slug = (title == null || title.isBlank())
-                ? "calendar" : IcsToCalendarTool.slug(title);
+        String slug = (title == null || title.isBlank()) ? "calendar" : IcsToCalendarTool.slug(title);
         return "exports/" + slug + "-" + stamp + ".ics";
     }
 

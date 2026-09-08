@@ -1,12 +1,12 @@
 package de.mhus.vance.simpleauth.brain;
 
-import de.mhus.vance.simpleauth.GrantRole;
-import de.mhus.vance.simpleauth.GrantScopeType;
-import de.mhus.vance.simpleauth.GrantSubjectType;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.simpleauth.GrantRole;
+import de.mhus.vance.simpleauth.GrantScopeType;
+import de.mhus.vance.simpleauth.GrantSubjectType;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
@@ -17,13 +17,16 @@ final class GrantToolSupport {
     private GrantToolSupport() {}
 
     /** Grant management requires ADMIN on the target scope (tenant or project). */
-    static void enforceScopeAdmin(PermissionService permissionService, SecurityContextFactory contextFactory,
-            ToolInvocationContext ctx, GrantScopeType scopeType, String scopeId) {
+    static void enforceScopeAdmin(
+            PermissionService permissionService,
+            SecurityContextFactory contextFactory,
+            ToolInvocationContext ctx,
+            GrantScopeType scopeType,
+            String scopeId) {
         Resource scope = scopeType == GrantScopeType.TENANT
                 ? new Resource.Tenant(ctx.tenantId())
                 : new Resource.Project(ctx.tenantId(), scopeId);
-        permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()), scope, Action.ADMIN);
+        permissionService.enforce(contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()), scope, Action.ADMIN);
     }
 
     /** Effective scopeId — TENANT grants are keyed on the tenant itself. */
@@ -70,7 +73,7 @@ final class GrantToolSupport {
         try {
             return Enum.valueOf(type, value.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ToolException("invalid " + field + ": '" + value + "'");
+            throw new ToolException("invalid " + field + ": '" + value + "'", e);
         }
     }
 }

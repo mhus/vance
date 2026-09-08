@@ -1,9 +1,9 @@
 package de.mhus.vance.addon.brain.workbook;
 
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
-import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -22,7 +22,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -60,12 +59,13 @@ public class WorkbookFormService {
 
     /** Wall-clock cap for a saveScript recompute run. */
     private static final Duration ON_SAVE_TIMEOUT = Duration.ofSeconds(30);
+
     private static final String FORM_KIND = "records";
 
     /** Current {@code items} records of the data document. */
     public List<Map<String, Object>> loadForm(String tenantId, String projectId, String docPath) {
-        Map<String, Object> doc = readYamlMap(tenantId, projectId, docPath,
-                "form document '" + docPath + "' not found");
+        Map<String, Object> doc =
+                readYamlMap(tenantId, projectId, docPath, "form document '" + docPath + "' not found");
         List<Map<String, Object>> records = new ArrayList<>();
         Object items = doc.get("items");
         if (items instanceof List<?> list) {
@@ -84,11 +84,16 @@ public class WorkbookFormService {
      * a per-form system session (fence {@code session: true}).
      */
     public void saveForm(
-            String tenantId, String projectId, String docPath,
+            String tenantId,
+            String projectId,
+            String docPath,
             @Nullable List<Map<String, Object>> records,
             @Nullable List<String> schema,
-            @Nullable String saveScript, boolean session, String editorId) {
-        DocumentDocument docDoc = documentService.findByPath(tenantId, projectId, docPath)
+            @Nullable String saveScript,
+            boolean session,
+            String editorId) {
+        DocumentDocument docDoc = documentService
+                .findByPath(tenantId, projectId, docPath)
                 .orElseThrow(() -> new ToolException("form document '" + docPath + "' not found"));
         Map<String, Object> doc = loadYaml(readContent(docDoc));
 
@@ -97,8 +102,7 @@ public class WorkbookFormService {
         doc.put("schema", (schema != null && !schema.isEmpty()) ? schema : unionKeys(rows));
 
         writeDoc(docDoc.getId(), tenantId, docPath, doc, editorId);
-        log.info("WorkbookFormService.saveForm tenant='{}' doc='{}' records={}",
-                tenantId, docPath, rows.size());
+        log.info("WorkbookFormService.saveForm tenant='{}' doc='{}' records={}", tenantId, docPath, rows.size());
 
         runOnSave(tenantId, projectId, docPath, saveScript, session, editorId);
     }
@@ -109,8 +113,7 @@ public class WorkbookFormService {
      * definition lives in the block's fence. Returns the created path.
      */
     public String createForm(
-            String tenantId, String projectId, String folder,
-            String name, @Nullable String title, String editorId) {
+            String tenantId, String projectId, String folder, String name, @Nullable String title, String editorId) {
         String slug = slugify(name);
         if (slug.isBlank()) {
             throw new ToolException("form name must not be empty");
@@ -132,7 +135,13 @@ public class WorkbookFormService {
         doc.put("items", new ArrayList<>());
 
         documentService.createText(
-                tenantId, projectId, docPath, displayTitle, null, serialize(docPath, doc), editorId,
+                tenantId,
+                projectId,
+                docPath,
+                displayTitle,
+                null,
+                serialize(docPath, doc),
+                editorId,
                 contextFactory.writeActor(tenantId, editorId, docPath));
         log.info("WorkbookFormService.createForm tenant='{}' doc='{}'", tenantId, docPath);
         return docPath;
@@ -149,36 +158,42 @@ public class WorkbookFormService {
      * per-form system session so session-bound tools / LLM are available.
      */
     private void runOnSave(
-            String tenantId, String projectId, String docPath,
-            @Nullable String fenceScript, boolean session, String editorId) {
+            String tenantId,
+            String projectId,
+            String docPath,
+            @Nullable String fenceScript,
+            boolean session,
+            String editorId) {
         if (fenceScript == null || fenceScript.isBlank()) return;
         String scriptPath = resolveRelative(docPath, stripVanceScheme(fenceScript));
         if (!scriptPath.toLowerCase(Locale.ROOT).endsWith(".js")) {
-            throw new ToolException(
-                    "saveScript must be a .js document (got '" + scriptPath
-                            + "') — only in-JVM JavaScript is supported in v1");
+            throw new ToolException("saveScript must be a .js document (got '" + scriptPath
+                    + "') — only in-JVM JavaScript is supported in v1");
         }
-        DocumentDocument scriptDoc = documentService.findByPath(tenantId, projectId, scriptPath)
+        DocumentDocument scriptDoc = documentService
+                .findByPath(tenantId, projectId, scriptPath)
                 .orElseThrow(() -> new ToolException("saveScript not found: " + scriptPath));
         String code = readContent(scriptDoc);
 
-        String sessionId = session
-                ? resolveFormSession(tenantId, projectId, docPath, editorId)
-                : null;
-        ToolInvocationContext scope =
-                new ToolInvocationContext(tenantId, projectId, sessionId, null, editorId);
+        String sessionId = session ? resolveFormSession(tenantId, projectId, docPath, editorId) : null;
+        ToolInvocationContext scope = new ToolInvocationContext(tenantId, projectId, sessionId, null, editorId);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
-            scriptExecutor.run(new ScriptRequest(
-                    "js", code, "form-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT)
+            scriptExecutor.run(new ScriptRequest("js", code, "form-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT)
                     .withDocumentBasePath(parentPath(scriptPath)));
-            log.info("WorkbookFormService.runOnSave tenant='{}' script='{}' session={} ok",
-                    tenantId, scriptPath, session);
+            log.info(
+                    "WorkbookFormService.runOnSave tenant='{}' script='{}' session={} ok",
+                    tenantId,
+                    scriptPath,
+                    session);
         } catch (ScriptExecutionException e) {
-            log.warn("WorkbookFormService.runOnSave tenant='{}' script='{}' failed [{}]: {}",
-                    tenantId, scriptPath, e.errorClass(), e.getMessage());
-            throw new ToolException(
-                    "saveScript '" + scriptPath + "' failed: " + e.getMessage());
+            log.warn(
+                    "WorkbookFormService.runOnSave tenant='{}' script='{}' failed [{}]: {}",
+                    tenantId,
+                    scriptPath,
+                    e.errorClass(),
+                    e.getMessage());
+            throw new ToolException("saveScript '" + scriptPath + "' failed: " + e.getMessage(), e);
         }
     }
 
@@ -189,15 +204,21 @@ public class WorkbookFormService {
      * lazy-reuse pattern as the scheduler / hook system sessions, but
      * workbook-form-owned.
      */
-    private String resolveFormSession(
-            String tenantId, String projectId, String docPath, String runAs) {
+    private String resolveFormSession(String tenantId, String projectId, String docPath, String runAs) {
         String displayName = "_form_" + docPath.replaceAll("[^a-zA-Z0-9._-]", "_");
-        return sessionService.findSystemSession(tenantId, projectId, displayName)
+        return sessionService
+                .findSystemSession(tenantId, projectId, displayName)
                 .map(SessionDocument::getSessionId)
                 .orElseGet(() -> {
                     SessionDocument created = sessionService.create(
-                            tenantId, runAs, projectId, displayName,
-                            Profiles.DAEMON, "workbook-form", null, /*system*/ true);
+                            tenantId,
+                            runAs,
+                            projectId,
+                            displayName,
+                            Profiles.DAEMON,
+                            "workbook-form",
+                            null, /*system*/
+                            true);
                     sessionService.markBootstrapped(created.getSessionId());
                     return created.getSessionId();
                 });
@@ -214,8 +235,7 @@ public class WorkbookFormService {
         return new ArrayList<>(keys);
     }
 
-    private void writeDoc(String docId, String tenantId, String docPath,
-            Map<String, Object> doc, String editorId) {
+    private void writeDoc(String docId, String tenantId, String docPath, Map<String, Object> doc, String editorId) {
         documentService.replaceContent(
                 docId,
                 new ByteArrayInputStream(serialize(docPath, doc).getBytes(StandardCharsets.UTF_8)),
@@ -224,9 +244,9 @@ public class WorkbookFormService {
                 contextFactory.writeActor(tenantId, editorId, docPath));
     }
 
-    private Map<String, Object> readYamlMap(
-            String tenantId, String projectId, String path, String missingMessage) {
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+    private Map<String, Object> readYamlMap(String tenantId, String projectId, String path, String missingMessage) {
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException(missingMessage));
         return loadYaml(readContent(doc));
     }
@@ -235,7 +255,7 @@ public class WorkbookFormService {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not read '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -278,7 +298,8 @@ public class WorkbookFormService {
 
     private static String slugify(String name) {
         if (name == null) return "";
-        return name.strip().toLowerCase(Locale.ROOT)
+        return name.strip()
+                .toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9]+", "-")
                 .replaceAll("(^-+)|(-+$)", "");
     }

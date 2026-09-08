@@ -28,38 +28,57 @@ import org.springframework.stereotype.Component;
 public class CalendarConflictsTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of(
-                        "type", "string",
-                        "description", "Calendar-app folder containing "
-                                + "_app.yaml (app: calendar)."));
-                put("from", Map.of(
-                        "type", "string",
-                        "description", "Optional ISO date — earliest "
-                                + "moment to check. Default: today."));
-                put("to", Map.of(
-                        "type", "string",
-                        "description", "Optional ISO date — latest "
-                                + "moment to check. Default: 180 days "
-                                + "from today (or _app.yaml's "
-                                + "calendar.window.until)."));
-                put("projectId", Map.of(
-                        "type", "string",
-                        "description", "Default: active project."));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Calendar-app folder containing " + "_app.yaml (app: calendar)."));
+                    put(
+                            "from",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional ISO date — earliest " + "moment to check. Default: today."));
+                    put(
+                            "to",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional ISO date — latest "
+                                            + "moment to check. Default: 180 days "
+                                            + "from today (or _app.yaml's "
+                                            + "calendar.window.until)."));
+                    put(
+                            "projectId",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Default: active project."));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final CalendarsApplication calendarsApplication;
 
-    public CalendarConflictsTool(EddieContext eddieContext,
-                                 CalendarsApplication calendarsApplication) {
+    public CalendarConflictsTool(EddieContext eddieContext, CalendarsApplication calendarsApplication) {
         this.eddieContext = eddieContext;
         this.calendarsApplication = calendarsApplication;
     }
 
-    @Override public String name() { return "calendar_conflicts"; }
+    @Override
+    public String name() {
+        return "calendar_conflicts";
+    }
 
     @Override
     public String description() {
@@ -71,7 +90,10 @@ public class CalendarConflictsTool implements Tool {
                 + "want the Gantt refreshed.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -93,14 +115,11 @@ public class CalendarConflictsTool implements Tool {
         LocalDate to = parseDate(paramString(params, "to"));
 
         VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                ctx.tenantId(), project.getName(), folder,
-                ctx.userId(), ctx.processId());
+                ctx.tenantId(), project.getName(), folder, ctx.userId(), ctx.processId());
 
-        VanceApplication.ArtefactResult result =
-                calendarsApplication.refreshConflicts(rc, from, to);
+        VanceApplication.ArtefactResult result = calendarsApplication.refreshConflicts(rc, from, to);
 
-        log.info("CalendarConflictsTool tenant='{}' folder='{}' -> {}",
-                ctx.tenantId(), folder, result.path());
+        log.info("CalendarConflictsTool tenant='{}' folder='{}' -> {}", ctx.tenantId(), folder, result.path());
 
         Map<String, Object> out = new LinkedHashMap<>(result.toMap());
         out.put("folder", folder);
@@ -112,8 +131,7 @@ public class CalendarConflictsTool implements Tool {
         try {
             return LocalDate.parse(iso);
         } catch (java.time.format.DateTimeParseException e) {
-            throw new ToolException(
-                    "Could not parse date '" + iso + "' — expected ISO yyyy-MM-dd.");
+            throw new ToolException("Could not parse date '" + iso + "' — expected ISO yyyy-MM-dd.", e);
         }
     }
 

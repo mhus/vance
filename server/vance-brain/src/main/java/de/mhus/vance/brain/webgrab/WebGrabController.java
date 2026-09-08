@@ -73,15 +73,14 @@ public class WebGrabController {
         // Checked against the folder rather than the final path: the name is
         // derived after the content is read, and an authorisation decision must
         // not depend on work done for a caller who may not be allowed to ask.
-        authority.enforce(request,
-                new Resource.Document(tenant, projectId, targetFolder), Action.CREATE);
+        authority.enforce(request, new Resource.Document(tenant, projectId, targetFolder), Action.CREATE);
 
         if (content.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nothing to grab.");
         }
         if (content.getSize() > MAX_BYTES) {
-            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
-                    "Grab is larger than " + (MAX_BYTES / 1024 / 1024) + " MB.");
+            throw new ResponseStatusException(
+                    HttpStatus.PAYLOAD_TOO_LARGE, "Grab is larger than " + (MAX_BYTES / 1024 / 1024) + " MB.");
         }
         if (url.isBlank()) {
             // The source is not decoration: it resolves every relative link in
@@ -93,22 +92,28 @@ public class WebGrabController {
         try {
             bytes = content.getBytes();
         } catch (IOException e) {
-            log.warn("Grab upload failed tenant='{}' project='{}' url='{}'",
-                    tenant, projectId, url, e);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read the upload.");
+            log.warn("Grab upload failed tenant='{}' project='{}' url='{}'", tenant, projectId, url, e);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read the upload.", e);
         }
 
         String mimeType = content.getContentType();
         WebGrabService.Grabbed grabbed;
         try {
-            grabbed = grabService.grab(tenant, projectId, targetFolder, url, mimeType, bytes,
-                    title, AccessFilterBase.usernameOrNull(request),
+            grabbed = grabService.grab(
+                    tenant,
+                    projectId,
+                    targetFolder,
+                    url,
+                    mimeType,
+                    bytes,
+                    title,
+                    AccessFilterBase.usernameOrNull(request),
                     WriteActor.user(authority.contextOf(request)));
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
-        return new GrabResultView(grabbed.path(), grabbed.title(), grabbed.mimeType(),
-                grabbed.converted(), bytes.length);
+        return new GrabResultView(
+                grabbed.path(), grabbed.title(), grabbed.mimeType(), grabbed.converted(), bytes.length);
     }
 
     /**
@@ -123,9 +128,5 @@ public class WebGrabController {
      * serves an external HTTP client, not the Vue app.
      */
     public record GrabResultView(
-            String path,
-            String title,
-            @Nullable String mimeType,
-            boolean converted,
-            int sourceBytes) {}
+            String path, String title, @Nullable String mimeType, boolean converted, int sourceBytes) {}
 }

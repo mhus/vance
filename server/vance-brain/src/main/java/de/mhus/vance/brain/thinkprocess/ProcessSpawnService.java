@@ -67,12 +67,20 @@ public class ProcessSpawnService {
         public UnknownTargetException(String message) {
             super(message);
         }
+
+        public UnknownTargetException(String message, @org.jspecify.annotations.Nullable Throwable cause) {
+            super(message, cause);
+        }
     }
 
     /** Raised when a process of that name already exists in the session. */
     public static class AlreadyExistsException extends RuntimeException {
         public AlreadyExistsException(String message) {
             super(message);
+        }
+
+        public AlreadyExistsException(String message, @org.jspecify.annotations.Nullable Throwable cause) {
+            super(message, cause);
         }
     }
 
@@ -95,23 +103,28 @@ public class ProcessSpawnService {
             return recipeResolver.applyDefaulting(
                     req.tenantId(), req.projectId(), req.recipe(), req.profile(), req.params());
         } catch (RecipeResolver.UnknownRecipeException | RecipeResolver.UnknownEngineException e) {
-            throw new UnknownTargetException(e.getMessage());
+            throw new UnknownTargetException(e.getMessage(), e);
         }
     }
 
     /** Create and start, from an already-resolved recipe. */
     public ThinkProcessDocument spawn(SpawnRequest req, AppliedRecipe applied) {
-        ThinkEngine engine = thinkEngineService.resolve(applied.engine())
+        ThinkEngine engine = thinkEngineService
+                .resolve(applied.engine())
                 .orElseThrow(() -> new UnknownTargetException(
-                        "Recipe '" + applied.name() + "' references unknown engine '"
-                                + applied.engine() + "'"));
+                        "Recipe '" + applied.name() + "' references unknown engine '" + applied.engine() + "'"));
 
         ThinkProcessDocument created;
         try {
             created = thinkProcessService.create(
-                    req.tenantId(), req.projectId(), req.sessionId(), req.name(),
-                    engine.name(), engine.version(),
-                    req.title(), req.goal(),
+                    req.tenantId(),
+                    req.projectId(),
+                    req.sessionId(),
+                    req.name(),
+                    engine.name(),
+                    engine.version(),
+                    req.title(),
+                    req.goal(),
                     /*parentProcessId*/ null,
                     applied.params(),
                     applied.name(),
@@ -124,7 +137,7 @@ public class ProcessSpawnService {
                     applied.defaultActiveSkills(),
                     applied.allowedSkills() == null ? null : Set.copyOf(applied.allowedSkills()));
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
-            throw new AlreadyExistsException(e.getMessage());
+            throw new AlreadyExistsException(e.getMessage(), e);
         }
 
         // ON the process lane, like every other spawn site
@@ -134,10 +147,12 @@ public class ProcessSpawnService {
         // log. Lane serialisation is an invariant, not an optimisation.
         Throwable failure = null;
         try {
-            laneScheduler.submit(created.getId(), () -> {
-                thinkEngineService.start(created);
-                return null;
-            }).get();
+            laneScheduler
+                    .submit(created.getId(), () -> {
+                        thinkEngineService.start(created);
+                        return null;
+                    })
+                    .get();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             failure = ie;
@@ -145,10 +160,12 @@ public class ProcessSpawnService {
             failure = ee.getCause() == null ? ee : ee.getCause();
         }
         if (failure != null) {
-            log.error("Engine start failed for process id='{}' engine='{}'",
-                    created.getId(), created.getThinkEngine(), failure);
-            throw new StartFailedException(
-                    "Engine start failed: " + failure.getMessage(), failure);
+            log.error(
+                    "Engine start failed for process id='{}' engine='{}'",
+                    created.getId(),
+                    created.getThinkEngine(),
+                    failure);
+            throw new StartFailedException("Engine start failed: " + failure.getMessage(), failure);
         }
 
         // Re-read: start() moves the status, and a caller rendering from the

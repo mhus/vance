@@ -6,12 +6,12 @@ import de.mhus.vance.api.projects.ProjectCreateRequest;
 import de.mhus.vance.api.projects.ProjectDto;
 import de.mhus.vance.api.projects.ProjectPlacementRequest;
 import de.mhus.vance.api.projects.ProjectUpdateRequest;
-import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.brain.kit.catalog.ProjectKitInstaller;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectCopyService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -63,13 +63,11 @@ public class ProjectAdminController {
     private final RequestAuthority authority;
 
     @GetMapping
-    public List<ProjectDto> list(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+    public List<ProjectDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         return projectService.all(tenant).stream()
-                .sorted(Comparator
-                        .comparing((ProjectDocument p) -> p.getProjectGroupId() == null ? "￿" : p.getProjectGroupId())
+                .sorted(Comparator.comparing(
+                                (ProjectDocument p) -> p.getProjectGroupId() == null ? "￿" : p.getProjectGroupId())
                         .thenComparing(ProjectDocument::getName))
                 .map(ProjectAdminController::toDto)
                 .toList();
@@ -95,9 +93,11 @@ public class ProjectAdminController {
                         isSet(request.getKitProject()),
                         request.getKitSource() != null
                                 && isSet(request.getKitSource().getUrl()))
-                .filter(Boolean::booleanValue).count();
+                .filter(Boolean::booleanValue)
+                .count();
         if (kitSources > 1) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
                     "kitName, kitProject and kitSource are mutually exclusive"
                             + " — a new project starts from one kit");
         }
@@ -128,10 +128,16 @@ public class ProjectAdminController {
                 // toast, foot prints both lines. Web-UI relies on the
                 // {@code X-Vance-Kit-Install-Error} header so the 2xx
                 // body can still carry the new ProjectDto.
-                log.warn("Kit install failed after project create tenant='{}' project='{}'"
+                log.warn(
+                        "Kit install failed after project create tenant='{}' project='{}'"
                                 + " kit='{}' kitProject='{}' kitSource='{}': {}",
-                        tenant, saved.getName(), request.getKitName(), request.getKitProject(),
-                        request.getKitSource() == null ? null : request.getKitSource().getUrl(),
+                        tenant,
+                        saved.getName(),
+                        request.getKitName(),
+                        request.getKitProject(),
+                        request.getKitSource() == null
+                                ? null
+                                : request.getKitSource().getUrl(),
                         e.getMessage());
                 return ResponseEntity.status(HttpStatus.CREATED)
                         .header("X-Vance-Kit-Install-Error", e.getMessage())
@@ -139,7 +145,7 @@ public class ProjectAdminController {
             }
             return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
         } catch (ProjectService.ProjectAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         }
     }
 
@@ -180,17 +186,18 @@ public class ProjectAdminController {
                     request.getProjectGroupId(),
                     request.isIncludeSecrets(),
                     authority.contextOf(httpRequest));
-            projectService.findByTenantAndName(tenant, request.getName())
+            projectService
+                    .findByTenantAndName(tenant, request.getName())
                     .ifPresent(saved -> report.setProject(toDto(saved)));
             return ResponseEntity.status(HttpStatus.CREATED).body(report);
         } catch (ProjectService.ProjectNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (ProjectService.ProjectAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         } catch (ProjectService.SystemProjectProtectedException
                 | ProjectService.ReservedProjectNameException
                 | IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
     }
 
@@ -202,16 +209,14 @@ public class ProjectAdminController {
      */
     @PostMapping("/{name}/suspend")
     public ProjectDto suspend(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
         try {
             return toDto(lifecycleService.suspend(tenant, name));
         } catch (ProjectService.ProjectNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (ProjectService.ProjectStatusConflictException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         }
     }
 
@@ -223,14 +228,12 @@ public class ProjectAdminController {
      */
     @PostMapping("/{name}/resume")
     public ProjectDto resume(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
         try {
             return toDto(lifecycleService.bring(tenant, name));
         } catch (ProjectService.ProjectNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
@@ -268,11 +271,11 @@ public class ProjectAdminController {
             return toDto(projectService.setPlacement(
                     tenant, name, request.getPlacementSelector(), request.getHomeResourceScore()));
         } catch (ProjectService.ProjectNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (IllegalArgumentException e) {
             // Covers PodSelector.InvalidLabelException — a malformed label is a
             // bad request, not a server fault.
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
     }
 
@@ -294,15 +297,13 @@ public class ProjectAdminController {
                     request.getTeamIds());
             return toDto(saved);
         } catch (ProjectService.ProjectNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
     @DeleteMapping("/{name}")
     public ProjectDto close(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
         try {
             ProjectGroupDocument archivedGroup = projectGroupService.ensureArchivedGroup(tenant);
@@ -312,7 +313,7 @@ public class ProjectAdminController {
             ProjectDocument saved = lifecycleService.close(tenant, name, archivedGroup.getName());
             return toDto(saved);
         } catch (ProjectService.ProjectNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
@@ -326,8 +327,10 @@ public class ProjectAdminController {
                 .status(doc.getStatus() == null ? null : doc.getStatus().name())
                 .homeNode(doc.getHomeNode())
                 .claimedAt(doc.getClaimedAt())
-                .lifecycleType(doc.getLifecycleType() == null
-                        ? null : doc.getLifecycleType().name())
+                .lifecycleType(
+                        doc.getLifecycleType() == null
+                                ? null
+                                : doc.getLifecycleType().name())
                 .ownerRequired(doc.isOwnerRequired())
                 .placementPendingSince(doc.getPendingSince())
                 .createdAt(doc.getCreatedAt())

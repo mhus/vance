@@ -163,11 +163,13 @@ public class ThreadReactTool implements Tool {
                     .orElseThrow(() -> InboxToolSupport.notVisible(threadId));
         } catch (MaximegalonRuleException e) {
             if (MaximegalonRuleException.REACTION_LIMIT_REACHED.equals(e.getReason())) {
-                throw new ToolException("this node already carries "
-                        + MaximegalonService.MAX_REACTION_KEYS + " distinct reactions, its "
-                        + "limit — join one that is already there instead of adding another.");
+                throw new ToolException(
+                        "this node already carries "
+                                + MaximegalonService.MAX_REACTION_KEYS + " distinct reactions, its "
+                                + "limit — join one that is already there instead of adding another.",
+                        e);
             }
-            throw new ToolException(e.getMessage() == null ? e.getReason() : e.getMessage());
+            throw new ToolException(e.getMessage() == null ? e.getReason() : e.getMessage(), e);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();

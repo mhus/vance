@@ -1,16 +1,16 @@
 package de.mhus.vance.brain.tools.eddie;
 
 import de.mhus.vance.api.thinkprocess.PeerEventType;
-import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.eddie.EddieEngine;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -39,26 +39,35 @@ public class PeerNotifyTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "type", Map.of(
-                            "type", "string",
-                            "enum", List.of(
-                                    "PROJECT_CREATED",
-                                    "PROJECT_ARCHIVED",
-                                    "PROCESS_SPAWNED",
-                                    "PROCESS_STATUS_CHANGED",
-                                    "USER_STATEMENT",
-                                    "NOTE"),
-                            "description", "Peer-event flavour."),
-                    "summary", Map.of(
-                            "type", "string",
-                            "description", "One-line, voice-friendly summary "
-                                    + "the peer hubs paste verbatim."),
-                    "payload", Map.of(
-                            "type", "object",
-                            "description", "Optional structured side-channel "
-                                    + "data — project name, process id, etc.",
-                            "additionalProperties", true)),
+            "properties",
+                    Map.of(
+                            "type",
+                                    Map.of(
+                                            "type", "string",
+                                            "enum",
+                                                    List.of(
+                                                            "PROJECT_CREATED",
+                                                            "PROJECT_ARCHIVED",
+                                                            "PROCESS_SPAWNED",
+                                                            "PROCESS_STATUS_CHANGED",
+                                                            "USER_STATEMENT",
+                                                            "NOTE"),
+                                            "description", "Peer-event flavour."),
+                            "summary",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "One-line, voice-friendly summary " + "the peer hubs paste verbatim."),
+                            "payload",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Optional structured side-channel "
+                                                    + "data — project name, process id, etc.",
+                                            "additionalProperties",
+                                            true)),
             "required", List.of("type", "summary"));
 
     private final SessionService sessionService;
@@ -127,9 +136,14 @@ public class PeerNotifyTool implements Tool {
             }
         }
 
-        log.info("peer_notify: tenant='{}' user='{}' from='{}' type={} notified={}/{}",
-                ctx.tenantId(), ctx.userId(), ctx.processId(),
-                type, notified, peerIds.size());
+        log.info(
+                "peer_notify: tenant='{}' user='{}' from='{}' type={} notified={}/{}",
+                ctx.tenantId(),
+                ctx.userId(),
+                ctx.processId(),
+                type,
+                notified,
+                peerIds.size());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("type", type.name());
@@ -144,8 +158,7 @@ public class PeerNotifyTool implements Tool {
      * are not the calling process itself.
      */
     private List<String> findPeerEddieProcessIds(ToolInvocationContext ctx) {
-        List<SessionDocument> sessions = sessionService.listForUser(
-                ctx.tenantId(), ctx.userId());
+        List<SessionDocument> sessions = sessionService.listForUser(ctx.tenantId(), ctx.userId());
         List<String> peers = new ArrayList<>();
         for (SessionDocument s : sessions) {
             String chatId = s.getChatProcessId();
@@ -163,7 +176,7 @@ public class PeerNotifyTool implements Tool {
         try {
             return PeerEventType.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ToolException("Unknown peer-event type '" + raw + "'");
+            throw new ToolException("Unknown peer-event type '" + raw + "'", e);
         }
     }
 

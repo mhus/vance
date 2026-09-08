@@ -4,11 +4,11 @@ import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.StopInitiatorRegistry;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,15 +35,18 @@ public class ProcessStopTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Target process name in the current session.")),
+            "properties",
+                    Map.of(
+                            "name",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Target process name in the current session.")),
             "required", List.of("name"));
 
     private final ThinkProcessService thinkProcessService;
     /** Lazy — same cycle reasons as {@code ProcessCreateTool}. */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+
     private final LaneScheduler laneScheduler;
     private final StopInitiatorRegistry stopInitiatorRegistry;
 
@@ -101,11 +104,10 @@ public class ProcessStopTool implements Tool {
         // instead of the process name. Scoped to the same session/tenant.
         ThinkProcessDocument target = thinkProcessService
                 .findByName(ctx.tenantId(), sessionId, name)
-                .or(() -> thinkProcessService.findById(name)
-                        .filter(p -> ctx.tenantId().equals(p.getTenantId())
-                                && sessionId.equals(p.getSessionId())))
-                .orElseThrow(() -> new ToolException(
-                        "Process '" + name + "' not found in current session"));
+                .or(() -> thinkProcessService
+                        .findById(name)
+                        .filter(p -> ctx.tenantId().equals(p.getTenantId()) && sessionId.equals(p.getSessionId())))
+                .orElseThrow(() -> new ToolException("Process '" + name + "' not found in current session"));
 
         // Self-stop would enqueue the stop task BEHIND the currently-running
         // turn on the same lane, and the turn thread blocks on .get() waiting
@@ -113,8 +115,7 @@ public class ProcessStopTool implements Tool {
         // ProcessSteerTool's self-guard (code-review Phase 2).
         if (target.getId() != null && target.getId().equals(ctx.processId())) {
             throw new ToolException(
-                    "process_stop cannot target the current process — "
-                            + "self-stop would deadlock the lane");
+                    "process_stop cannot target the current process — " + "self-stop would deadlock the lane");
         }
 
         // If already terminal, return its current shape — no engine call.
@@ -135,18 +136,18 @@ public class ProcessStopTool implements Tool {
             stopInitiatorRegistry.mark(target.getId(), ctx.processId());
         }
         try {
-            laneScheduler.submit(target.getId(),
-                    () -> {
+            laneScheduler
+                    .submit(target.getId(), () -> {
                         thinkEngineServiceProvider.getObject().stop(target);
                         return null;
-                    }).get();
+                    })
+                    .get();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted waiting for target stop");
+            throw new ToolException("Interrupted waiting for target stop", ie);
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-            throw new ToolException(
-                    "Target stop failed: " + cause.getMessage(), cause);
+            throw new ToolException("Target stop failed: " + cause.getMessage(), cause);
         } finally {
             // Listener consumes on match; this is the cleanup safety net
             // for the case where engine.stop fails before the status
@@ -155,8 +156,8 @@ public class ProcessStopTool implements Tool {
             stopInitiatorRegistry.consume(target.getId());
         }
 
-        ThinkProcessDocument refreshed = thinkProcessService.findById(target.getId())
-                .orElse(target);
+        ThinkProcessDocument refreshed =
+                thinkProcessService.findById(target.getId()).orElse(target);
         return shape(refreshed);
     }
 

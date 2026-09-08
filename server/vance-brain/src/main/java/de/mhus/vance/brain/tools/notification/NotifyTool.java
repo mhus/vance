@@ -38,18 +38,26 @@ public class NotifyTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "text", Map.of(
-                            "type", "string",
-                            "description", "Short attention text — recommend "
-                                    + "≤120 chars. Shown verbatim on the client."),
-                    "severity", Map.of(
-                            "type", "string",
-                            "enum", List.of("INFO", "WARN", "ERROR"),
-                            "description", "INFO (default, heads-up), WARN "
-                                    + "(needs attention soon), ERROR (failure / "
-                                    + "escalation). Drives client-side sound + "
-                                    + "icon, never suppresses the ping itself.")),
+            "properties",
+                    Map.of(
+                            "text",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Short attention text — recommend "
+                                                    + "≤120 chars. Shown verbatim on the client."),
+                            "severity",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("INFO", "WARN", "ERROR"),
+                                            "description",
+                                            "INFO (default, heads-up), WARN "
+                                                    + "(needs attention soon), ERROR (failure / "
+                                                    + "escalation). Drives client-side sound + "
+                                                    + "icon, never suppresses the ping itself.")),
             "required", List.of("text"));
 
     private final NotificationService notificationService;
@@ -90,13 +98,11 @@ public class NotifyTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String processId = ctx.processId();
         if (processId == null) {
-            throw new ToolException(
-                    "vance_notify requires a process scope — no processId in context");
+            throw new ToolException("vance_notify requires a process scope — no processId in context");
         }
         Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(processId);
         if (processOpt.isEmpty()) {
-            throw new ToolException(
-                    "vance_notify: process '" + processId + "' not found");
+            throw new ToolException("vance_notify: process '" + processId + "' not found");
         }
         String text = stringOrThrow(params, "text");
         NotificationSeverity severity = parseSeverity(optString(params, "severity"));
@@ -114,8 +120,7 @@ public class NotifyTool implements Tool {
         try {
             return NotificationSeverity.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ToolException(
-                    "Unknown severity '" + raw + "' — expected INFO, WARN, or ERROR");
+            throw new ToolException("Unknown severity '" + raw + "' — expected INFO, WARN, or ERROR", e);
         }
     }
 

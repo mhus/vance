@@ -57,9 +57,7 @@ public class UserAdminController {
     private final RequestAuthority authority;
 
     @GetMapping
-    public List<UserDto> list(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+    public List<UserDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         return userService.all(tenant).stream()
                 .sorted(Comparator.comparing(UserDocument::getName))
@@ -69,14 +67,12 @@ public class UserAdminController {
 
     @GetMapping("/{name}")
     public UserDto get(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.User(tenant, name), Action.ADMIN);
-        return userService.findByTenantAndName(tenant, name)
+        return userService
+                .findByTenantAndName(tenant, name)
                 .map(UserAdminController::toDto)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "User '" + name + "' not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User '" + name + "' not found"));
     }
 
     @PostMapping
@@ -85,23 +81,18 @@ public class UserAdminController {
             @Valid @RequestBody UserCreateRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
-        boolean withPassword = request.getPassword() != null && !request.getPassword().isBlank();
+        boolean withPassword =
+                request.getPassword() != null && !request.getPassword().isBlank();
         if (withPassword) {
             validatePolicy(request.getPassword());
         }
         try {
-            String passwordHash = withPassword
-                    ? passwordService.hash(request.getPassword())
-                    : null;
-            UserDocument saved = userService.create(
-                    tenant,
-                    request.getName(),
-                    passwordHash,
-                    request.getTitle(),
-                    request.getEmail());
+            String passwordHash = withPassword ? passwordService.hash(request.getPassword()) : null;
+            UserDocument saved =
+                    userService.create(tenant, request.getName(), passwordHash, request.getTitle(), request.getEmail());
             return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
         } catch (UserService.UserAlreadyExistsException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         }
     }
 
@@ -115,16 +106,14 @@ public class UserAdminController {
         UserStatus status = parseStatus(request.getStatus());
         // Self-protect: don't let the caller disable themselves.
         if (status == UserStatus.DISABLED && name.equals(currentUser(httpRequest))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Cannot disable your own account");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot disable your own account");
         }
         try {
             UserDocument saved = userService.update(
-                    tenant, name, request.getTitle(), request.getEmail(), status,
-                    request.getLoginEnabled());
+                    tenant, name, request.getTitle(), request.getEmail(), status, request.getLoginEnabled());
             return toDto(saved);
         } catch (UserService.UserNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
@@ -141,25 +130,22 @@ public class UserAdminController {
             userService.setPasswordHash(tenant, name, hash);
             return ResponseEntity.noContent().build();
         } catch (UserService.UserNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
     @DeleteMapping("/{name}")
     public ResponseEntity<Void> delete(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.User(tenant, name), Action.ADMIN);
         if (name.equals(currentUser(httpRequest))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Cannot delete your own account");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot delete your own account");
         }
         try {
             userService.delete(tenant, name);
             return ResponseEntity.noContent().build();
         } catch (UserService.UserNotFoundException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
     }
 
@@ -170,15 +156,14 @@ public class UserAdminController {
         try {
             passwordPolicyService.validate(plaintext);
         } catch (PasswordPolicyException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
     }
 
     private static String currentUser(HttpServletRequest req) {
         Object u = req.getAttribute(AccessFilterBase.ATTR_USERNAME);
         if (!(u instanceof String s) || s.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                    "No authenticated user");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
         }
         return s;
     }
@@ -188,8 +173,8 @@ public class UserAdminController {
         try {
             return UserStatus.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Unknown status '" + raw + "' — expected ACTIVE / DISABLED / PENDING");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Unknown status '" + raw + "' — expected ACTIVE / DISABLED / PENDING", e);
         }
     }
 

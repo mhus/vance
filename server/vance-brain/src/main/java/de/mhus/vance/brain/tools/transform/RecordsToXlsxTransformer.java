@@ -22,8 +22,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RecordsToXlsxTransformer implements DocumentTransformer {
 
-    private static final String XLSX_MIME =
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    private static final String XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     private final DocumentService documentService;
 
@@ -44,8 +43,7 @@ public class RecordsToXlsxTransformer implements DocumentTransformer {
 
     @Override
     public boolean canTransform(DocumentDocument source) {
-        return RecordsCodec.supports(source.getMimeType())
-                && "records".equalsIgnoreCase(source.getKind());
+        return RecordsCodec.supports(source.getMimeType()) && "records".equalsIgnoreCase(source.getKind());
     }
 
     @Override
@@ -54,14 +52,10 @@ public class RecordsToXlsxTransformer implements DocumentTransformer {
         try {
             records = RecordsCodec.parse(loadAsText(source), source.getMimeType());
         } catch (Exception e) {
-            throw new ToolException(
-                    "Could not parse source records document: "
-                            + e.getMessage());
+            throw new ToolException("Could not parse source records document: " + e.getMessage(), e);
         }
         if (records.schema().isEmpty()) {
-            throw new ToolException(
-                    "Source records document has no schema — "
-                            + "nothing to export.");
+            throw new ToolException("Source records document has no schema — " + "nothing to export.");
         }
         byte[] bytes = XlsxFromRecordsTool.render(records, title);
         return new Result(bytes, title);
@@ -72,9 +66,7 @@ public class RecordsToXlsxTransformer implements DocumentTransformer {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read source document content: "
-                            + e.getMessage());
+            throw new ToolException("Could not read source document content: " + e.getMessage(), e);
         }
     }
 }

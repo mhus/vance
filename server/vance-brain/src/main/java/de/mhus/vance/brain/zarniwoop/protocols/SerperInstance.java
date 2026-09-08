@@ -321,7 +321,7 @@ class SerperInstance implements SearchProviderInstance {
             response = http.post(URI.create(baseUrl() + path), apiKey, jsonBody, REQUEST_TIMEOUT);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("Interrupted while calling Serper '" + cfg.instanceId() + "'");
+            throw new RuntimeException("Interrupted while calling Serper '" + cfg.instanceId() + "'", ie);
         } catch (Exception e) {
             throw new RuntimeException("Serper '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
         }

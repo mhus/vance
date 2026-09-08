@@ -46,8 +46,7 @@ public final class FormFieldYamlParser {
         for (int i = 0; i < list.size(); i++) {
             Object entry = list.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new IllegalArgumentException(
-                        "'" + parentPath + "[" + i + "]' must be a map");
+                throw new IllegalArgumentException("'" + parentPath + "[" + i + "]' must be a map");
             }
             out.add(parseField((Map<String, Object>) entryMap, parentPath + "[" + i + "]"));
         }
@@ -66,9 +65,7 @@ public final class FormFieldYamlParser {
         Map<String, String> label = requiredLocalizedText(raw.get("label"), path + ".label");
         Map<String, String> help = optionalLocalizedText(raw.get("help"), path + ".help");
         boolean required = raw.get("required") instanceof Boolean b && b;
-        String defaultValue = raw.get("defaultValue") == null
-                ? null
-                : String.valueOf(raw.get("defaultValue"));
+        String defaultValue = raw.get("defaultValue") == null ? null : String.valueOf(raw.get("defaultValue"));
         List<FormChoiceDto> choices = parseChoices(raw.get("choices"), path + ".choices");
         Integer rows = optionalInt(raw.get("rows"), path + ".rows");
         Integer integerMin = optionalInt(raw.get("integerMin"), path + ".integerMin");
@@ -79,8 +76,7 @@ public final class FormFieldYamlParser {
         if ("repeat".equals(type)) {
             item = parseFields(raw.get("item"), path + ".item");
             if (item.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "'" + path + ".item' must declare at least one nested field");
+                throw new IllegalArgumentException("'" + path + ".item' must declare at least one nested field");
             }
         }
         return FormFieldDto.builder()
@@ -117,8 +113,7 @@ public final class FormFieldYamlParser {
                 continue;
             }
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new IllegalArgumentException(
-                        "'" + path + "[" + i + "]' must be a string or a map");
+                throw new IllegalArgumentException("'" + path + "[" + i + "]' must be a string or a map");
             }
             Map<String, Object> m = (Map<String, Object>) entryMap;
             String value = optionalString(m.get("value"));
@@ -160,8 +155,7 @@ public final class FormFieldYamlParser {
             return Map.of("en", s);
         }
         if (!(raw instanceof Map<?, ?> rawMap)) {
-            throw new IllegalArgumentException(
-                    "'" + path + "' must be a string or a map of language → text");
+            throw new IllegalArgumentException("'" + path + "' must be a string or a map of language → text");
         }
         Map<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : rawMap.entrySet()) {
@@ -195,7 +189,7 @@ public final class FormFieldYamlParser {
             try {
                 return Integer.parseInt(s.trim());
             } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("'" + path + "' is not an integer: " + s);
+                throw new IllegalArgumentException("'" + path + "' is not an integer: " + s, e);
             }
         }
         throw new IllegalArgumentException("'" + path + "' must be an integer");

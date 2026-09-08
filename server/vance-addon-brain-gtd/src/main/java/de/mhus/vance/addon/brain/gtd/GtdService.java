@@ -41,10 +41,11 @@ public class GtdService {
     private final GtdBucketResolver bucketResolver;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public GtdService(DocumentService documentService,
-                      GtdFolderReader folderReader,
-                      GtdBucketResolver bucketResolver,
-                      de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public GtdService(
+            DocumentService documentService,
+            GtdFolderReader folderReader,
+            GtdBucketResolver bucketResolver,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.folderReader = folderReader;
         this.bucketResolver = bucketResolver;
@@ -66,33 +67,49 @@ public class GtdService {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             return GtdActionCodec.parse(body, doc.getMimeType());
         } catch (IOException | RuntimeException e) {
-            throw new ToolException(
-                    "Could not read action '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not read action '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
     // ── Capture / create ──────────────────────────────────────────
 
     /** Quick capture into {@code inbox/} — the fast unprocessed path. */
-    public DocumentDocument capture(String tenantId, String projectId, String folder,
-                                    GtdConfig config, String title, @Nullable String note,
-                                    @Nullable String userId) {
+    public DocumentDocument capture(
+            String tenantId,
+            String projectId,
+            String folder,
+            GtdConfig config,
+            String title,
+            @Nullable String note,
+            @Nullable String userId) {
         if (title == null || title.isBlank()) throw new ToolException("title is required");
-        String base = normalise(folder) + "/" + config.inboxDir() + "/"
-                + slugOrDefault(title);
+        String base = normalise(folder) + "/" + config.inboxDir() + "/" + slugOrDefault(title);
         String path = uniquePath(tenantId, projectId, base);
         GtdActionDocument action = new GtdActionDocument(
-                GtdActionDocument.KIND, title.trim(), "", null,
-                new ArrayList<>(), false, note == null ? "" : note, new LinkedHashMap<>());
+                GtdActionDocument.KIND,
+                title.trim(),
+                "",
+                null,
+                new ArrayList<>(),
+                false,
+                note == null ? "" : note,
+                new LinkedHashMap<>());
         return create(tenantId, projectId, path, action, userId);
     }
 
     /** Create a processed action under {@code actions/} or {@code projects/<project>/}. */
-    public DocumentDocument createAction(String tenantId, String projectId, String folder,
-                                         GtdConfig config, String title, @Nullable String when,
-                                         @Nullable String deadline, @Nullable List<String> contexts,
-                                         @Nullable String project, @Nullable String body,
-                                         @Nullable String userId) {
+    public DocumentDocument createAction(
+            String tenantId,
+            String projectId,
+            String folder,
+            GtdConfig config,
+            String title,
+            @Nullable String when,
+            @Nullable String deadline,
+            @Nullable List<String> contexts,
+            @Nullable String project,
+            @Nullable String body,
+            @Nullable String userId) {
         if (title == null || title.isBlank()) throw new ToolException("title is required");
         String dir = project != null && !project.isBlank()
                 ? config.projectsDir() + "/" + GtdFolderReader.slugify(project)
@@ -100,19 +117,31 @@ public class GtdService {
         String base = normalise(folder) + "/" + dir + "/" + slugOrDefault(title);
         String path = uniquePath(tenantId, projectId, base);
         GtdActionDocument action = new GtdActionDocument(
-                GtdActionDocument.KIND, title.trim(),
-                when == null ? "" : when.trim(), nullIfBlank(deadline),
-                cleanList(contexts), false, body == null ? "" : body, new LinkedHashMap<>());
+                GtdActionDocument.KIND,
+                title.trim(),
+                when == null ? "" : when.trim(),
+                nullIfBlank(deadline),
+                cleanList(contexts),
+                false,
+                body == null ? "" : body,
+                new LinkedHashMap<>());
         return create(tenantId, projectId, path, action, userId);
     }
 
     // ── Update (in-place field patch) ─────────────────────────────
 
-    public DocumentDocument updateAction(String tenantId, String projectId, String path,
-                                         @Nullable String when, @Nullable String deadline,
-                                         @Nullable List<String> contexts, @Nullable Boolean done,
-                                         @Nullable String title, @Nullable String body) {
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+    public DocumentDocument updateAction(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String when,
+            @Nullable String deadline,
+            @Nullable List<String> contexts,
+            @Nullable Boolean done,
+            @Nullable String title,
+            @Nullable String body) {
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException("No action at '" + path + "'"));
         GtdActionDocument base = readAction(doc);
         GtdActionDocument merged = new GtdActionDocument(
@@ -153,11 +182,18 @@ public class GtdService {
      * alone: putting something away must not also rewrite when it was due, or
      * dragging it back out would land it somewhere it never was.
      */
-    public DocumentDocument move(String tenantId, String projectId, String folder,
-                                 GtdConfig config, String path, GtdBucket bucket,
-                                 @Nullable String date, @Nullable String userId) {
+    public DocumentDocument move(
+            String tenantId,
+            String projectId,
+            String folder,
+            GtdConfig config,
+            String path,
+            GtdBucket bucket,
+            @Nullable String date,
+            @Nullable String userId) {
         String normFolder = normalise(folder);
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException("No action at '" + path + "'"));
         GtdActionDocument base = readAction(doc);
         boolean inInbox = path.startsWith(normFolder + "/" + config.inboxDir() + "/");
@@ -173,20 +209,29 @@ public class GtdService {
                     String from = currentDir(normFolder, path);
                     if (from.isBlank() || from.equals(config.inboxDir())) extra.remove(TRASHED_FROM);
                     else extra.put(TRASHED_FROM, from);
-                    newPath = uniquePath(tenantId, projectId,
-                            stripExt(normFolder + "/" + config.trashDir() + "/" + leaf));
+                    newPath = uniquePath(
+                            tenantId, projectId, stripExt(normFolder + "/" + config.trashDir() + "/" + leaf));
                 }
             }
             case INBOX -> {
                 if (!inInbox) {
                     extra.remove(TRASHED_FROM);
-                    newPath = uniquePath(tenantId, projectId,
-                            stripExt(normFolder + "/" + config.inboxDir() + "/" + leaf));
+                    newPath = uniquePath(
+                            tenantId, projectId, stripExt(normFolder + "/" + config.inboxDir() + "/" + leaf));
                 }
             }
-            case TODAY -> { newWhen = GtdBucketResolver.WHEN_TODAY; newPath = outOfHolding(tenantId, projectId, normFolder, config, inInbox, inTrash, extra, leaf); }
-            case ANYTIME -> { newWhen = ""; newPath = outOfHolding(tenantId, projectId, normFolder, config, inInbox, inTrash, extra, leaf); }
-            case SOMEDAY -> { newWhen = GtdBucketResolver.WHEN_SOMEDAY; newPath = outOfHolding(tenantId, projectId, normFolder, config, inInbox, inTrash, extra, leaf); }
+            case TODAY -> {
+                newWhen = GtdBucketResolver.WHEN_TODAY;
+                newPath = outOfHolding(tenantId, projectId, normFolder, config, inInbox, inTrash, extra, leaf);
+            }
+            case ANYTIME -> {
+                newWhen = "";
+                newPath = outOfHolding(tenantId, projectId, normFolder, config, inInbox, inTrash, extra, leaf);
+            }
+            case SOMEDAY -> {
+                newWhen = GtdBucketResolver.WHEN_SOMEDAY;
+                newPath = outOfHolding(tenantId, projectId, normFolder, config, inInbox, inTrash, extra, leaf);
+            }
             case UPCOMING -> {
                 if (date == null || date.isBlank()) {
                     throw new ToolException("Upcoming requires a date (yyyy-MM-dd)");
@@ -196,12 +241,25 @@ public class GtdService {
             }
         }
         GtdActionDocument merged = new GtdActionDocument(
-                GtdActionDocument.KIND, base.title(), newWhen, base.deadline(),
-                base.contexts(), base.done(), base.body(), extra);
+                GtdActionDocument.KIND,
+                base.title(),
+                newWhen,
+                base.deadline(),
+                base.contexts(),
+                base.done(),
+                base.body(),
+                extra);
         String serialized = GtdActionCodec.serialize(merged, MD_MIME);
         DocumentDocument updated = documentService.update(
-                doc.getId(), base.title(), nativeTags(merged),
-                serialized, newPath, null, null, null, MD_MIME,
+                doc.getId(),
+                base.title(),
+                nativeTags(merged),
+                serialized,
+                newPath,
+                null,
+                null,
+                null,
+                MD_MIME,
                 DocumentService.TOOL_IDENTITY,
                 contextFactory.writeActor(tenantId, userId, doc.getPath()));
         log.info("GtdService.move path='{}' bucket={} newPath='{}'", path, bucket, newPath);
@@ -218,22 +276,25 @@ public class GtdService {
      * processed, exactly as a bucket move out of the Inbox does. A no-op when
      * the action already sits in the target folder.
      */
-    public DocumentDocument assignProject(String tenantId, String projectId, String folder,
-                                          GtdConfig config, String path,
-                                          @Nullable String project, @Nullable String userId) {
+    public DocumentDocument assignProject(
+            String tenantId,
+            String projectId,
+            String folder,
+            GtdConfig config,
+            String path,
+            @Nullable String project,
+            @Nullable String userId) {
         String normFolder = normalise(folder);
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException("No action at '" + path + "'"));
         String targetDir = projectDir(config, project);
         if (targetDir.equals(currentDir(normFolder, path))) return doc;
         String leaf = path.substring(path.lastIndexOf('/') + 1);
-        String newPath = uniquePath(tenantId, projectId,
-                stripExt(normFolder + "/" + targetDir + "/" + leaf));
+        String newPath = uniquePath(tenantId, projectId, stripExt(normFolder + "/" + targetDir + "/" + leaf));
         DocumentDocument updated = documentService.update(
-                doc.getId(), null, null, null, newPath,
-                contextFactory.writeActor(tenantId, userId, doc.getPath()));
-        log.info("GtdService.assignProject path='{}' project='{}' newPath='{}'",
-                path, project, newPath);
+                doc.getId(), null, null, null, newPath, contextFactory.writeActor(tenantId, userId, doc.getPath()));
+        log.info("GtdService.assignProject path='{}' project='{}' newPath='{}'", path, project, newPath);
         return updated;
     }
 
@@ -242,8 +303,7 @@ public class GtdService {
         if (project == null || project.isBlank()) return config.actionsDir();
         String slug = GtdFolderReader.slugify(project);
         if (slug.isEmpty()) {
-            throw new ToolException(
-                    "Project '" + project + "' has no usable folder name");
+            throw new ToolException("Project '" + project + "' has no usable folder name");
         }
         return config.projectsDir() + "/" + slug;
     }
@@ -252,8 +312,7 @@ public class GtdService {
     static String currentDir(String normFolder, String path) {
         String prefix = normFolder + "/";
         if (!path.startsWith(prefix)) {
-            throw new ToolException(
-                    "Action '" + path + "' is not inside '" + normFolder + "'");
+            throw new ToolException("Action '" + path + "' is not inside '" + normFolder + "'");
         }
         String rel = path.substring(prefix.length());
         int slash = rel.lastIndexOf('/');
@@ -272,9 +331,15 @@ public class GtdService {
      * hand-editable front matter, and "restore" must not be a way to write
      * outside the GTD folder.
      */
-    private @Nullable String outOfHolding(String tenantId, String projectId, String normFolder,
-                                          GtdConfig config, boolean inInbox, boolean inTrash,
-                                          Map<String, Object> extra, String leaf) {
+    private @Nullable String outOfHolding(
+            String tenantId,
+            String projectId,
+            String normFolder,
+            GtdConfig config,
+            boolean inInbox,
+            boolean inTrash,
+            Map<String, Object> extra,
+            String leaf) {
         if (!inInbox && !inTrash) return null;
         String dir = config.actionsDir();
         if (inTrash) {
@@ -282,8 +347,7 @@ public class GtdService {
             String candidate = from == null ? "" : from.toString().trim();
             if (isSafeRelativeDir(candidate)) dir = candidate;
         }
-        return uniquePath(tenantId, projectId,
-                stripExt(normFolder + "/" + dir + "/" + leaf));
+        return uniquePath(tenantId, projectId, stripExt(normFolder + "/" + dir + "/" + leaf));
     }
 
     /** A folder we are willing to restore into: relative, inside the root, no traversal. */
@@ -296,7 +360,11 @@ public class GtdService {
     }
 
     /** What {@link #deleteAction} did — the caller reports it, it does not decide it. */
-    public enum DeleteOutcome { TRASHED, PURGED, MISSING }
+    public enum DeleteOutcome {
+        TRASHED,
+        PURGED,
+        MISSING
+    }
 
     /**
      * The delete key, and it means two different things depending on where the
@@ -306,15 +374,14 @@ public class GtdService {
      * Inside the trash it hands the document to the project-wide soft delete —
      * gone from the app, recoverable only with the document tools.
      */
-    public DeleteOutcome deleteAction(String tenantId, String projectId, String folder,
-                                      GtdConfig config, String path, @Nullable String userId) {
+    public DeleteOutcome deleteAction(
+            String tenantId, String projectId, String folder, GtdConfig config, String path, @Nullable String userId) {
         String normFolder = normalise(folder);
         Optional<DocumentDocument> found = documentService.findByPath(tenantId, projectId, path);
         if (found.isEmpty()) return DeleteOutcome.MISSING;
         DocumentDocument doc = found.get();
         if (path.startsWith(normFolder + "/" + config.trashDir() + "/")) {
-            documentService.trash(doc.getId(),
-                    contextFactory.writeActor(tenantId, userId, doc.getPath()));
+            documentService.trash(doc.getId(), contextFactory.writeActor(tenantId, userId, doc.getPath()));
             log.info("GtdService.deleteAction purged path='{}'", path);
             return DeleteOutcome.PURGED;
         }
@@ -334,24 +401,28 @@ public class GtdService {
      *
      * @return how many actions were moved.
      */
-    public int sweepDoneToTrash(String tenantId, String projectId, String folder,
-                                GtdConfig config, GtdFolderReader.Scan scan,
-                                @Nullable String userId) {
+    public int sweepDoneToTrash(
+            String tenantId,
+            String projectId,
+            String folder,
+            GtdConfig config,
+            GtdFolderReader.Scan scan,
+            @Nullable String userId) {
         int moved = 0;
         for (GtdAction a : scan.actions()) {
             if (!a.done() || a.inTrash()) continue;
             try {
-                move(tenantId, projectId, folder, config, a.doc().getPath(),
-                        GtdBucket.TRASH, null, userId);
+                move(tenantId, projectId, folder, config, a.doc().getPath(), GtdBucket.TRASH, null, userId);
                 moved++;
             } catch (RuntimeException e) {
-                log.warn("GtdService.sweepDoneToTrash could not move '{}': {}",
-                        a.doc().getPath(), e.getMessage());
+                log.warn(
+                        "GtdService.sweepDoneToTrash could not move '{}': {}",
+                        a.doc().getPath(),
+                        e.getMessage());
             }
         }
         if (moved > 0) {
-            log.info("GtdService.sweepDoneToTrash tenant='{}' folder='{}' moved={}",
-                    tenantId, folder, moved);
+            log.info("GtdService.sweepDoneToTrash tenant='{}' folder='{}' moved={}", tenantId, folder, moved);
         }
         return moved;
     }
@@ -371,8 +442,7 @@ public class GtdService {
         Map<GtdBucket, List<GtdAction>> map = new LinkedHashMap<>();
         for (GtdBucket b : GtdBucket.values()) map.put(b, new ArrayList<>());
         for (GtdAction a : scan.actions()) {
-            GtdBucket bucket = bucketResolver.bucketOf(
-                    a.inInbox(), a.inTrash(), a.when(), a.deadline(), today);
+            GtdBucket bucket = bucketResolver.bucketOf(a.inInbox(), a.inTrash(), a.when(), a.deadline(), today);
             map.get(bucket).add(a);
         }
         return map;
@@ -381,10 +451,8 @@ public class GtdService {
     // ── Manual order within a bucket (§8b) ────────────────────────
 
     /** Convenience overload: take the order hint for {@code bucket} from the manifest. */
-    public List<GtdAction> applyBucketOrder(
-            GtdBucket bucket, GtdConfig config, List<GtdAction> bucketed) {
-        return applyBucketOrder(bucket, bucketed,
-                config.bucketOrder().getOrDefault(bucket, List.of()));
+    public List<GtdAction> applyBucketOrder(GtdBucket bucket, GtdConfig config, List<GtdAction> bucketed) {
+        return applyBucketOrder(bucket, bucketed, config.bucketOrder().getOrDefault(bucket, List.of()));
     }
 
     /**
@@ -398,8 +466,7 @@ public class GtdService {
      * it would show the person a different sequence than the one they dragged
      * into place, which is the whole point of the feature.
      */
-    public List<GtdAction> applyBucketOrder(
-            GtdBucket bucket, List<GtdAction> bucketed, List<String> order) {
+    public List<GtdAction> applyBucketOrder(GtdBucket bucket, List<GtdAction> bucketed, List<String> order) {
         if (order.isEmpty()) return defaultOrder(bucket, bucketed);
         Map<String, GtdAction> byId = new LinkedHashMap<>();
         for (GtdAction a : bucketed) byId.put(a.doc().getId(), a);
@@ -433,9 +500,8 @@ public class GtdService {
      * {@link #defaultOrder} position, so every reorder is also a small garbage
      * collection of the affected list.
      */
-    public List<String> resyncBucketOrder(GtdBucket bucket, List<GtdAction> bucketed,
-                                          List<String> existingOrder,
-                                          List<String> requestedOrder) {
+    public List<String> resyncBucketOrder(
+            GtdBucket bucket, List<GtdAction> bucketed, List<String> existingOrder, List<String> requestedOrder) {
         Set<String> alive = new LinkedHashSet<>();
         for (GtdAction a : defaultOrder(bucket, bucketed)) alive.add(a.doc().getId());
 
@@ -492,37 +558,53 @@ public class GtdService {
     // ── Search (shared metadata + summary path) ───────────────────
 
     public DocumentService.DocumentMetaListing search(
-            String tenantId, String projectId, String folder,
-            @Nullable String query, @Nullable String context, int limit) {
+            String tenantId,
+            String projectId,
+            String folder,
+            @Nullable String query,
+            @Nullable String context,
+            int limit) {
         String prefix = normalise(folder) + "/";
-        List<String> requireTags = context != null && !context.isBlank()
-                ? List.of(context.trim()) : List.of();
+        List<String> requireTags = context != null && !context.isBlank() ? List.of(context.trim()) : List.of();
         return documentService.searchProjectDocumentsMeta(
                 tenantId, projectId, prefix, query, requireTags, new LinkedHashMap<>(), limit);
     }
 
     // ── Persistence helpers ───────────────────────────────────────
 
-    private DocumentDocument create(String tenantId, String projectId, String path,
-                                    GtdActionDocument action, @Nullable String userId) {
+    private DocumentDocument create(
+            String tenantId, String projectId, String path, GtdActionDocument action, @Nullable String userId) {
         String serialized = GtdActionCodec.serialize(action, MD_MIME);
         try (InputStream in = new ByteArrayInputStream(serialized.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
-                    tenantId, projectId, path, action.title(),
-                    nativeTags(action), MD_MIME, in, userId,
+                    tenantId,
+                    projectId,
+                    path,
+                    action.title(),
+                    nativeTags(action),
+                    MD_MIME,
+                    in,
+                    userId,
                     contextFactory.writeActor(tenantId, userId, path));
             log.info("GtdService.create tenant='{}' path='{}'", tenantId, path);
             return stored;
         } catch (IOException e) {
-            throw new ToolException("Could not write action '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not write action '" + path + "': " + e.getMessage(), e);
         }
     }
 
     private DocumentDocument writeExisting(DocumentDocument doc, GtdActionDocument action) {
         String serialized = GtdActionCodec.serialize(action, MD_MIME);
         return documentService.update(
-                doc.getId(), action.title(), nativeTags(action),
-                serialized, null, null, null, null, MD_MIME,
+                doc.getId(),
+                action.title(),
+                nativeTags(action),
+                serialized,
+                null,
+                null,
+                null,
+                null,
+                MD_MIME,
                 DocumentService.TOOL_IDENTITY,
                 contextFactory.writeActor(doc.getTenantId(), null, doc.getPath()));
     }

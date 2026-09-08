@@ -92,8 +92,8 @@ public class ImageManipulationService {
      *  native libs. {@code image/jpg} is accepted as a legacy alias of
      *  {@code image/jpeg} on the read side; the write side normalises
      *  to {@code image/jpeg}. */
-    private static final Set<String> SUPPORTED_MIMES = Set.of(
-            "image/png", "image/jpeg", "image/jpg", "image/gif", "image/bmp");
+    private static final Set<String> SUPPORTED_MIMES =
+            Set.of("image/png", "image/jpeg", "image/jpg", "image/gif", "image/bmp");
 
     private final DocumentService documentService;
     private final SettingService settingService;
@@ -117,11 +117,14 @@ public class ImageManipulationService {
         }
         return executeOp(
                 "image_crop",
-                req.getTenantId(), req.getProjectId(), req.getProcessId(), req.getUserId(),
-                req.getPath(), req.getTargetPath(),
+                req.getTenantId(),
+                req.getProjectId(),
+                req.getProcessId(),
+                req.getUserId(),
+                req.getPath(),
+                req.getTargetPath(),
                 (img, mime) -> {
-                    if (req.getX() + req.getWidth() > img.width
-                            || req.getY() + req.getHeight() > img.height) {
+                    if (req.getX() + req.getWidth() > img.width || req.getY() + req.getHeight() > img.height) {
                         throw new ImageManipulationException(
                                 ImageManipulationException.Reason.PARAMETER_INVALID,
                                 "Crop rectangle " + req.getWidth() + "x" + req.getHeight()
@@ -142,10 +145,13 @@ public class ImageManipulationService {
         validateResizeDimensions(mode, req.getWidth(), req.getHeight());
         return executeOp(
                 "image_resize",
-                req.getTenantId(), req.getProjectId(), req.getProcessId(), req.getUserId(),
-                req.getPath(), req.getTargetPath(),
-                (img, mime) -> doResize(img, mime, mode, req.getWidth(), req.getHeight(),
-                        req.getBackground()));
+                req.getTenantId(),
+                req.getProjectId(),
+                req.getProcessId(),
+                req.getUserId(),
+                req.getPath(),
+                req.getTargetPath(),
+                (img, mime) -> doResize(img, mime, mode, req.getWidth(), req.getHeight(), req.getBackground()));
     }
 
     /** Rotate clockwise by an arbitrary number of degrees. */
@@ -154,8 +160,12 @@ public class ImageManipulationService {
         ensureEnabled(req.getTenantId(), req.getProjectId(), req.getProcessId());
         return executeOp(
                 "image_rotate",
-                req.getTenantId(), req.getProjectId(), req.getProcessId(), req.getUserId(),
-                req.getPath(), req.getTargetPath(),
+                req.getTenantId(),
+                req.getProjectId(),
+                req.getProcessId(),
+                req.getUserId(),
+                req.getPath(),
+                req.getTargetPath(),
                 (img, mime) -> img.rotate(
                         new Radians(Math.toRadians(req.getDegrees())),
                         defaultBackgroundForMime(req.getBackground(), mime)));
@@ -168,13 +178,16 @@ public class ImageManipulationService {
         FlipAxis axis = req.getAxis();
         if (axis == null) {
             throw new ImageManipulationException(
-                    ImageManipulationException.Reason.PARAMETER_INVALID,
-                    "'axis' is required: horizontal or vertical");
+                    ImageManipulationException.Reason.PARAMETER_INVALID, "'axis' is required: horizontal or vertical");
         }
         return executeOp(
                 "image_flip",
-                req.getTenantId(), req.getProjectId(), req.getProcessId(), req.getUserId(),
-                req.getPath(), req.getTargetPath(),
+                req.getTenantId(),
+                req.getProjectId(),
+                req.getProcessId(),
+                req.getUserId(),
+                req.getPath(),
+                req.getTargetPath(),
                 (img, mime) -> axis == FlipAxis.HORIZONTAL ? img.flipX() : img.flipY());
     }
 
@@ -183,8 +196,10 @@ public class ImageManipulationService {
     public ImageOpResult adjust(AdjustRequest req) {
         validateScope(req.getTenantId(), req.getPath());
         ensureEnabled(req.getTenantId(), req.getProjectId(), req.getProcessId());
-        if (req.getBrightness() == null && req.getContrast() == null
-                && req.getSaturation() == null && req.getGamma() == null) {
+        if (req.getBrightness() == null
+                && req.getContrast() == null
+                && req.getSaturation() == null
+                && req.getGamma() == null) {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.PARAMETER_INVALID,
                     "adjust requires at least one of brightness, contrast, saturation, gamma");
@@ -192,8 +207,12 @@ public class ImageManipulationService {
         validateAdjustRanges(req);
         return executeOp(
                 "image_adjust",
-                req.getTenantId(), req.getProjectId(), req.getProcessId(), req.getUserId(),
-                req.getPath(), req.getTargetPath(),
+                req.getTenantId(),
+                req.getProjectId(),
+                req.getProcessId(),
+                req.getUserId(),
+                req.getPath(),
+                req.getTargetPath(),
                 (img, mime) -> doAdjust(img, req));
     }
 
@@ -205,14 +224,17 @@ public class ImageManipulationService {
         FilterName filter = req.getFilter();
         if (filter == null) {
             throw new ImageManipulationException(
-                    ImageManipulationException.Reason.PARAMETER_INVALID,
-                    "'filter' is required");
+                    ImageManipulationException.Reason.PARAMETER_INVALID, "'filter' is required");
         }
         Map<String, Object> params = req.getParams() == null ? Map.of() : req.getParams();
         return executeOp(
                 "image_filter:" + filter.wire(),
-                req.getTenantId(), req.getProjectId(), req.getProcessId(), req.getUserId(),
-                req.getPath(), req.getTargetPath(),
+                req.getTenantId(),
+                req.getProjectId(),
+                req.getProcessId(),
+                req.getUserId(),
+                req.getPath(),
+                req.getTargetPath(),
                 (img, mime) -> doFilter(img, filter, params));
     }
 
@@ -221,27 +243,31 @@ public class ImageManipulationService {
     public ImageOpResult autoEnhance(AutoEnhanceRequest req) {
         validateScope(req.getTenantId(), req.getPath());
         ensureEnabled(req.getTenantId(), req.getProjectId(), req.getProcessId());
-        AutoEnhanceProcessor.Config config = readAutoEnhanceConfig(
-                req.getTenantId(), req.getProjectId(), req.getProcessId());
+        AutoEnhanceProcessor.Config config =
+                readAutoEnhanceConfig(req.getTenantId(), req.getProjectId(), req.getProcessId());
         return executeOp(
                 "image_auto_enhance",
-                req.getTenantId(), req.getProjectId(), req.getProcessId(), req.getUserId(),
-                req.getPath(), req.getTargetPath(),
+                req.getTenantId(),
+                req.getProjectId(),
+                req.getProcessId(),
+                req.getUserId(),
+                req.getPath(),
+                req.getTargetPath(),
                 (img, mime) -> {
                     try {
                         return AutoEnhanceProcessor.enhance(img, config);
                     } catch (IOException e) {
                         throw new ImageManipulationException(
                                 ImageManipulationException.Reason.PROCESSING_ERROR,
-                                "auto_enhance failed: " + e.getMessage(), e);
+                                "auto_enhance failed: " + e.getMessage(),
+                                e);
                     }
                 });
     }
 
     // ─────────────────── Per-op helpers ───────────────────
 
-    private static void validateResizeDimensions(
-            ResizeMode mode, @Nullable Integer width, @Nullable Integer height) {
+    private static void validateResizeDimensions(ResizeMode mode, @Nullable Integer width, @Nullable Integer height) {
         switch (mode) {
             case EXACT, COVER, CONTAIN -> {
                 if (width == null || height == null || width <= 0 || height <= 0) {
@@ -268,8 +294,12 @@ public class ImageManipulationService {
     }
 
     private static ImmutableImage doResize(
-            ImmutableImage img, String sourceMime, ResizeMode mode,
-            @Nullable Integer width, @Nullable Integer height, @Nullable String background) {
+            ImmutableImage img,
+            String sourceMime,
+            ResizeMode mode,
+            @Nullable Integer width,
+            @Nullable Integer height,
+            @Nullable String background) {
         return switch (mode) {
             case EXACT -> img.scaleTo(width, height);
             case WIDTH -> img.scaleToWidth(width);
@@ -322,38 +352,33 @@ public class ImageManipulationService {
             return out;
         } catch (IOException e) {
             throw new ImageManipulationException(
-                    ImageManipulationException.Reason.PROCESSING_ERROR,
-                    "adjust filter failed: " + e.getMessage(), e);
+                    ImageManipulationException.Reason.PROCESSING_ERROR, "adjust filter failed: " + e.getMessage(), e);
         }
     }
 
-    private static ImmutableImage doFilter(
-            ImmutableImage img, FilterName filter, Map<String, Object> params) {
+    private static ImmutableImage doFilter(ImmutableImage img, FilterName filter, Map<String, Object> params) {
         try {
             return switch (filter) {
-                case BLUR_GAUSSIAN -> img.filter(
-                        new GaussianBlurFilter(readIntParam(params, "radius", 5, 1, 50)));
+                case BLUR_GAUSSIAN -> img.filter(new GaussianBlurFilter(readIntParam(params, "radius", 5, 1, 50)));
                 case SHARPEN -> img.filter(new SharpenFilter());
                 case GRAYSCALE -> img.filter(new GrayscaleFilter());
                 case SEPIA -> img.filter(new SepiaFilter());
                 case INVERT -> img.filter(new InvertFilter());
                 case EDGE -> img.filter(new EdgeFilter());
                 case EMBOSS -> img.filter(new EmbossFilter());
-                case POSTERIZE -> img.filter(
-                        new PosterizeFilter(readIntParam(params, "levels", 4, 2, 8)));
+                case POSTERIZE -> img.filter(new PosterizeFilter(readIntParam(params, "levels", 4, 2, 8)));
                 case SOLARIZE -> img.filter(new SolarizeFilter());
-                case THRESHOLD -> img.filter(
-                        new ThresholdFilter(readIntParam(params, "threshold", 128, 0, 255)));
+                case THRESHOLD -> img.filter(new ThresholdFilter(readIntParam(params, "threshold", 128, 0, 255)));
             };
         } catch (IOException e) {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.PROCESSING_ERROR,
-                    "filter '" + filter.wire() + "' failed: " + e.getMessage(), e);
+                    "filter '" + filter.wire() + "' failed: " + e.getMessage(),
+                    e);
         }
     }
 
-    private static int readIntParam(
-            Map<String, Object> params, String key, int defaultValue, int min, int max) {
+    private static int readIntParam(Map<String, Object> params, String key, int defaultValue, int min, int max) {
         Object raw = params.get(key);
         int value;
         if (raw == null) {
@@ -366,14 +391,14 @@ public class ImageManipulationService {
             } catch (NumberFormatException e) {
                 throw new ImageManipulationException(
                         ImageManipulationException.Reason.PARAMETER_INVALID,
-                        "filter param '" + key + "' must be an integer, got '" + raw + "'");
+                        "filter param '" + key + "' must be an integer, got '" + raw + "'",
+                        e);
             }
         }
         if (value < min || value > max) {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.PARAMETER_INVALID,
-                    "filter param '" + key + "' must be in [" + min + ", " + max
-                            + "], got " + value);
+                    "filter param '" + key + "' must be in [" + min + ", " + max + "], got " + value);
         }
         return value;
     }
@@ -395,12 +420,11 @@ public class ImageManipulationService {
     private AutoEnhanceProcessor.Config readAutoEnhanceConfig(
             String tenantId, @Nullable String projectId, @Nullable String processId) {
         return new AutoEnhanceProcessor.Config(
-                doubleSetting(tenantId, projectId, processId,
-                        SETTING_AUTO_PERCENTILE, DEFAULT_AUTO_PERCENTILE, 0.0, 0.25),
-                doubleSetting(tenantId, projectId, processId,
-                        SETTING_AUTO_GAMMA, DEFAULT_AUTO_GAMMA, 0.1, 5.0),
-                doubleSetting(tenantId, projectId, processId,
-                        SETTING_AUTO_SATURATION, DEFAULT_AUTO_SATURATION, -1.0, 1.0));
+                doubleSetting(
+                        tenantId, projectId, processId, SETTING_AUTO_PERCENTILE, DEFAULT_AUTO_PERCENTILE, 0.0, 0.25),
+                doubleSetting(tenantId, projectId, processId, SETTING_AUTO_GAMMA, DEFAULT_AUTO_GAMMA, 0.1, 5.0),
+                doubleSetting(
+                        tenantId, projectId, processId, SETTING_AUTO_SATURATION, DEFAULT_AUTO_SATURATION, -1.0, 1.0));
     }
 
     // ─────────────────── Shared pipeline ───────────────────
@@ -461,8 +485,8 @@ public class ImageManipulationService {
             recordOutcome(opName, "limit_exceeded", startMs);
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.LIMIT_EXCEEDED,
-                    "Output size " + outBytes.length + " bytes exceeds "
-                            + limits.maxOutputBytes() + " (" + SETTING_MAX_OUTPUT_BYTES + ")");
+                    "Output size " + outBytes.length + " bytes exceeds " + limits.maxOutputBytes() + " ("
+                            + SETTING_MAX_OUTPUT_BYTES + ")");
         }
 
         String effectiveTarget = resolveTarget(sourcePath, targetPath);
@@ -473,9 +497,15 @@ public class ImageManipulationService {
         // WRITE check (and reserved-prefix ADMIN gate for _vance/) applies at the
         // DocumentService chokepoint, instead of the SYSTEM fail-open.
         DocumentDocument written = documentService.createOrReplaceBinary(
-                tenantId, effectiveProject, effectiveTarget,
-                outBytes, outputMime,
-                null, null, null, userId,
+                tenantId,
+                effectiveProject,
+                effectiveTarget,
+                outBytes,
+                outputMime,
+                null,
+                null,
+                null,
+                userId,
                 contextFactory.writeActor(tenantId, userId, effectiveTarget));
 
         long durationMs = System.currentTimeMillis() - startMs;
@@ -489,9 +519,9 @@ public class ImageManipulationService {
                 durationMs);
     }
 
-    private DocumentDocument loadSource(
-            String tenantId, String projectId, String sourcePath, Limits limits) {
-        DocumentDocument source = documentService.findByPath(tenantId, projectId, sourcePath)
+    private DocumentDocument loadSource(String tenantId, String projectId, String sourcePath, Limits limits) {
+        DocumentDocument source = documentService
+                .findByPath(tenantId, projectId, sourcePath)
                 .orElseThrow(() -> new ImageManipulationException(
                         ImageManipulationException.Reason.SOURCE_NOT_FOUND,
                         "No document at path '" + sourcePath + "'"));
@@ -499,8 +529,7 @@ public class ImageManipulationService {
         if (mime == null || !mime.toLowerCase(Locale.ROOT).startsWith("image/")) {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.NOT_AN_IMAGE,
-                    "Document '" + sourcePath + "' is not an image (mimeType="
-                            + (mime == null ? "null" : mime) + ")");
+                    "Document '" + sourcePath + "' is not an image (mimeType=" + (mime == null ? "null" : mime) + ")");
         }
         if (!SUPPORTED_MIMES.contains(mime.toLowerCase(Locale.ROOT))) {
             throw new ImageManipulationException(
@@ -512,8 +541,8 @@ public class ImageManipulationService {
         if (source.getSize() > limits.maxInputBytes()) {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.LIMIT_EXCEEDED,
-                    "Source image is " + source.getSize() + " bytes; limit is "
-                            + limits.maxInputBytes() + " (" + SETTING_MAX_INPUT_BYTES + ")");
+                    "Source image is " + source.getSize() + " bytes; limit is " + limits.maxInputBytes() + " ("
+                            + SETTING_MAX_INPUT_BYTES + ")");
         }
         return source;
     }
@@ -524,14 +553,15 @@ public class ImageManipulationService {
             if (bytes.length > limits.maxInputBytes()) {
                 throw new ImageManipulationException(
                         ImageManipulationException.Reason.LIMIT_EXCEEDED,
-                        "Source image is " + bytes.length + " bytes; limit is "
-                                + limits.maxInputBytes() + " (" + SETTING_MAX_INPUT_BYTES + ")");
+                        "Source image is " + bytes.length + " bytes; limit is " + limits.maxInputBytes() + " ("
+                                + SETTING_MAX_INPUT_BYTES + ")");
             }
             return bytes;
         } catch (IOException e) {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.PROCESSING_ERROR,
-                    "Failed to read source image bytes: " + e.getMessage(), e);
+                    "Failed to read source image bytes: " + e.getMessage(),
+                    e);
         }
     }
 
@@ -540,8 +570,7 @@ public class ImageManipulationService {
             return ImmutableImage.loader().fromBytes(bytes);
         } catch (IOException e) {
             throw new ImageManipulationException(
-                    ImageManipulationException.Reason.PROCESSING_ERROR,
-                    "Failed to decode image: " + e.getMessage(), e);
+                    ImageManipulationException.Reason.PROCESSING_ERROR, "Failed to decode image: " + e.getMessage(), e);
         }
     }
 
@@ -588,9 +617,7 @@ public class ImageManipulationService {
         }
     }
 
-    private ImmutableImage applyOp(
-            String opName, long startMs,
-            ImageOp op, ImmutableImage input, String sourceMime) {
+    private ImmutableImage applyOp(String opName, long startMs, ImageOp op, ImmutableImage input, String sourceMime) {
         try {
             return op.apply(input, sourceMime);
         } catch (ImageManipulationException e) {
@@ -600,27 +627,28 @@ public class ImageManipulationService {
             recordOutcome(opName, "processing_error", startMs);
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.PROCESSING_ERROR,
-                    "Operation '" + opName + "' failed: " + e.getMessage(), e);
+                    "Operation '" + opName + "' failed: " + e.getMessage(),
+                    e);
         }
     }
 
-    private byte[] encode(
-            String opName, long startMs, ImmutableImage img, String mime) {
+    private byte[] encode(String opName, long startMs, ImmutableImage img, String mime) {
         try {
             return switch (mime) {
                 case "image/png" -> img.bytes(new PngWriter());
                 case "image/jpeg" -> img.bytes(new JpegWriter().withCompression(JPEG_QUALITY));
                 case "image/gif" -> img.bytes(GifWriter.Default);
                 case "image/bmp" -> encodeViaImageIO(img, "bmp");
-                default -> throw new ImageManipulationException(
-                        ImageManipulationException.Reason.FORMAT_UNSUPPORTED,
-                        "Unsupported output mime " + mime);
+                default ->
+                    throw new ImageManipulationException(
+                            ImageManipulationException.Reason.FORMAT_UNSUPPORTED, "Unsupported output mime " + mime);
             };
         } catch (IOException e) {
             recordOutcome(opName, "processing_error", startMs);
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.PROCESSING_ERROR,
-                    "Failed to encode output as " + mime + ": " + e.getMessage(), e);
+                    "Failed to encode output as " + mime + ": " + e.getMessage(),
+                    e);
         }
     }
 
@@ -649,25 +677,21 @@ public class ImageManipulationService {
     }
 
     private void ensureTargetIsWritable(
-            String opName, long startMs,
-            String tenantId, String projectId,
-            String sourcePath, String effectiveTarget) {
+            String opName, long startMs, String tenantId, String projectId, String sourcePath, String effectiveTarget) {
         if (effectiveTarget.equals(sourcePath)) {
             return;
         }
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                tenantId, projectId, effectiveTarget);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, effectiveTarget);
         if (existing.isEmpty()) {
             return;
         }
         String existingMime = existing.get().getMimeType();
-        if (existingMime == null
-                || !SUPPORTED_MIMES.contains(existingMime.toLowerCase(Locale.ROOT))) {
+        if (existingMime == null || !SUPPORTED_MIMES.contains(existingMime.toLowerCase(Locale.ROOT))) {
             recordOutcome(opName, "target_blocked", startMs);
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.TARGET_BLOCKED,
-                    "Target '" + effectiveTarget + "' exists but is not a supported image "
-                            + "(mimeType=" + existingMime + ")");
+                    "Target '" + effectiveTarget + "' exists but is not a supported image " + "(mimeType="
+                            + existingMime + ")");
         }
     }
 
@@ -680,8 +704,7 @@ public class ImageManipulationService {
             return;
         }
         try {
-            progressEmitter.emitStatus(process, StatusTag.WAITING,
-                    opName.replace('_', ' ') + " …");
+            progressEmitter.emitStatus(process, StatusTag.WAITING, opName.replace('_', ' ') + " …");
         } catch (RuntimeException e) {
             log.debug("ImageManipulationService: status emit failed: {}", e.toString());
         }
@@ -690,10 +713,10 @@ public class ImageManipulationService {
     private void recordOutcome(String opName, String outcome, long startMs) {
         long duration = System.currentTimeMillis() - startMs;
         try {
-            metricService.counter("vance.image.tools.calls",
-                    "tool", opName, "outcome", outcome).increment();
-            metricService.timer("vance.image.tools.duration",
-                    "tool", opName).record(Duration.ofMillis(duration));
+            metricService
+                    .counter("vance.image.tools.calls", "tool", opName, "outcome", outcome)
+                    .increment();
+            metricService.timer("vance.image.tools.duration", "tool", opName).record(Duration.ofMillis(duration));
         } catch (RuntimeException e) {
             log.debug("ImageManipulationService: metric record failed: {}", e.toString());
         }
@@ -707,90 +730,94 @@ public class ImageManipulationService {
         }
         if (path == null || path.isBlank()) {
             throw new ImageManipulationException(
-                    ImageManipulationException.Reason.PARAMETER_INVALID,
-                    "'path' is required");
+                    ImageManipulationException.Reason.PARAMETER_INVALID, "'path' is required");
         }
     }
 
-    private void ensureEnabled(
-            String tenantId, @Nullable String projectId, @Nullable String processId) {
-        boolean enabled = settingService.getBooleanValueCascade(
-                tenantId, projectId, processId, SETTING_ENABLED, true);
+    private void ensureEnabled(String tenantId, @Nullable String projectId, @Nullable String processId) {
+        boolean enabled = settingService.getBooleanValueCascade(tenantId, projectId, processId, SETTING_ENABLED, true);
         if (!enabled) {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.DISABLED,
-                    "Image manipulation tools are disabled in this scope ("
-                            + SETTING_ENABLED + " = false)");
+                    "Image manipulation tools are disabled in this scope (" + SETTING_ENABLED + " = false)");
         }
     }
 
     // ─────────────────── Settings ───────────────────
 
-    private record Limits(
-            long maxInputBytes,
-            int maxInputDimension,
-            int maxOutputDimension,
-            long maxOutputBytes) {}
+    private record Limits(long maxInputBytes, int maxInputDimension, int maxOutputDimension, long maxOutputBytes) {}
 
-    private Limits readLimits(
-            String tenantId, @Nullable String projectId, @Nullable String processId) {
+    private Limits readLimits(String tenantId, @Nullable String projectId, @Nullable String processId) {
         return new Limits(
-                longSetting(tenantId, projectId, processId,
-                        SETTING_MAX_INPUT_BYTES, DEFAULT_MAX_INPUT_BYTES),
-                intSetting(tenantId, projectId, processId,
-                        SETTING_MAX_INPUT_DIMENSION, DEFAULT_MAX_INPUT_DIMENSION),
-                intSetting(tenantId, projectId, processId,
-                        SETTING_MAX_OUTPUT_DIMENSION, DEFAULT_MAX_OUTPUT_DIMENSION),
-                longSetting(tenantId, projectId, processId,
-                        SETTING_MAX_OUTPUT_BYTES, DEFAULT_MAX_OUTPUT_BYTES));
+                longSetting(tenantId, projectId, processId, SETTING_MAX_INPUT_BYTES, DEFAULT_MAX_INPUT_BYTES),
+                intSetting(tenantId, projectId, processId, SETTING_MAX_INPUT_DIMENSION, DEFAULT_MAX_INPUT_DIMENSION),
+                intSetting(tenantId, projectId, processId, SETTING_MAX_OUTPUT_DIMENSION, DEFAULT_MAX_OUTPUT_DIMENSION),
+                longSetting(tenantId, projectId, processId, SETTING_MAX_OUTPUT_BYTES, DEFAULT_MAX_OUTPUT_BYTES));
     }
 
     private long longSetting(
-            String tenantId, @Nullable String projectId, @Nullable String processId,
-            String key, long defaultValue) {
+            String tenantId, @Nullable String projectId, @Nullable String processId, String key, long defaultValue) {
         String raw = settingService.getStringValueCascade(tenantId, projectId, processId, key);
         if (raw == null || raw.isBlank()) return defaultValue;
         try {
             long parsed = Long.parseLong(raw.trim());
             return parsed > 0 ? parsed : defaultValue;
         } catch (NumberFormatException e) {
-            log.warn("ImageManipulationService: non-numeric setting '{}'='{}', using default {}",
-                    key, raw, defaultValue);
+            log.warn(
+                    "ImageManipulationService: non-numeric setting '{}'='{}', using default {}",
+                    key,
+                    raw,
+                    defaultValue);
             return defaultValue;
         }
     }
 
     private int intSetting(
-            String tenantId, @Nullable String projectId, @Nullable String processId,
-            String key, int defaultValue) {
+            String tenantId, @Nullable String projectId, @Nullable String processId, String key, int defaultValue) {
         String raw = settingService.getStringValueCascade(tenantId, projectId, processId, key);
         if (raw == null || raw.isBlank()) return defaultValue;
         try {
             int parsed = Integer.parseInt(raw.trim());
             return parsed > 0 ? parsed : defaultValue;
         } catch (NumberFormatException e) {
-            log.warn("ImageManipulationService: non-numeric setting '{}'='{}', using default {}",
-                    key, raw, defaultValue);
+            log.warn(
+                    "ImageManipulationService: non-numeric setting '{}'='{}', using default {}",
+                    key,
+                    raw,
+                    defaultValue);
             return defaultValue;
         }
     }
 
     private double doubleSetting(
-            String tenantId, @Nullable String projectId, @Nullable String processId,
-            String key, double defaultValue, double min, double max) {
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            String key,
+            double defaultValue,
+            double min,
+            double max) {
         String raw = settingService.getStringValueCascade(tenantId, projectId, processId, key);
         if (raw == null || raw.isBlank()) return defaultValue;
         try {
             double parsed = Double.parseDouble(raw.trim());
             if (parsed < min || parsed > max) {
-                log.warn("ImageManipulationService: setting '{}'={} outside [{}, {}], using default {}",
-                        key, parsed, min, max, defaultValue);
+                log.warn(
+                        "ImageManipulationService: setting '{}'={} outside [{}, {}], using default {}",
+                        key,
+                        parsed,
+                        min,
+                        max,
+                        defaultValue);
                 return defaultValue;
             }
             return parsed;
         } catch (NumberFormatException e) {
-            log.warn("ImageManipulationService: non-numeric setting '{}'='{}', using default {}",
-                    key, raw, defaultValue);
+            log.warn(
+                    "ImageManipulationService: non-numeric setting '{}'='{}', using default {}",
+                    key,
+                    raw,
+                    defaultValue);
             return defaultValue;
         }
     }

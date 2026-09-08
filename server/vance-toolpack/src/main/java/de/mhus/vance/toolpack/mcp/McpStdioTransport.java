@@ -1,7 +1,7 @@
 package de.mhus.vance.toolpack.mcp;
 
-import de.mhus.vance.toolpack.core.McpJsonRpc;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.McpJsonRpc;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -45,13 +45,12 @@ public final class McpStdioTransport implements McpTransport {
      * pack's explicit {@code env} supplies the rest (code-review Phase 2).
      */
     private static final Set<String> ENV_PASSTHROUGH = Set.of(
-            "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
-            "TMPDIR", "TMP", "TEMP", "SystemRoot", "USERPROFILE");
+            "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR", "TMP", "TEMP", "SystemRoot", "USERPROFILE");
 
     private final McpConfig config;
     private final McpJsonRpc rpc;
-    private final ConcurrentHashMap<Long, CompletableFuture<McpJsonRpc.Frame.Response>> pending
-            = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, CompletableFuture<McpJsonRpc.Frame.Response>> pending =
+            new ConcurrentHashMap<>();
 
     private @Nullable Process process;
     private @Nullable BufferedWriter stdin;
@@ -89,12 +88,12 @@ public final class McpStdioTransport implements McpTransport {
             this.process = pb.start();
         } catch (IOException e) {
             throw new IllegalStateException(
-                    "McpStdioTransport: failed to spawn '" + String.join(" ", config.command())
-                            + "': " + e.getMessage(), e);
+                    "McpStdioTransport: failed to spawn '" + String.join(" ", config.command()) + "': "
+                            + e.getMessage(),
+                    e);
         }
         Process p = this.process;
-        this.stdin = new BufferedWriter(new OutputStreamWriter(
-                p.getOutputStream(), StandardCharsets.UTF_8));
+        this.stdin = new BufferedWriter(new OutputStreamWriter(p.getOutputStream(), StandardCharsets.UTF_8));
 
         // Flip the flag BEFORE the reader thread starts: readerLoop gates
         // its read on `open`, so a thread that wins the race against a
@@ -103,14 +102,12 @@ public final class McpStdioTransport implements McpTransport {
         // no diagnostic (the server answered, nobody listened).
         this.open = true;
 
-        BufferedReader stdout = new BufferedReader(new InputStreamReader(
-                p.getInputStream(), StandardCharsets.UTF_8));
+        BufferedReader stdout = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
         this.readerThread = new Thread(() -> readerLoop(stdout), "mcp-stdio-reader");
         this.readerThread.setDaemon(true);
         this.readerThread.start();
 
-        BufferedReader stderr = new BufferedReader(new InputStreamReader(
-                p.getErrorStream(), StandardCharsets.UTF_8));
+        BufferedReader stderr = new BufferedReader(new InputStreamReader(p.getErrorStream(), StandardCharsets.UTF_8));
         this.stderrThread = new Thread(() -> stderrLoop(stderr), "mcp-stdio-stderr");
         this.stderrThread.setDaemon(true);
         this.stderrThread.start();
@@ -129,7 +126,9 @@ public final class McpStdioTransport implements McpTransport {
         pending.clear();
         try {
             if (stdin != null) stdin.close();
-        } catch (IOException ignored) { /* best-effort */ }
+        } catch (IOException ignored) {
+            /* best-effort */
+        }
         if (process != null && process.isAlive()) {
             process.destroy();
             try {
@@ -143,8 +142,7 @@ public final class McpStdioTransport implements McpTransport {
         }
         if (readerThread != null) readerThread.interrupt();
         if (stderrThread != null) stderrThread.interrupt();
-        log.info("McpStdioTransport closed: pid was={}",
-                process == null ? -1 : process.pid());
+        log.info("McpStdioTransport closed: pid was={}", process == null ? -1 : process.pid());
     }
 
     @Override
@@ -154,10 +152,7 @@ public final class McpStdioTransport implements McpTransport {
 
     @Override
     public @Nullable Object sendRequest(
-            String method,
-            @Nullable Map<String, Object> params,
-            Duration timeout,
-            ToolInvocationContext ctx) {
+            String method, @Nullable Map<String, Object> params, Duration timeout, ToolInvocationContext ctx) {
         if (!isOpen()) {
             throw new IllegalStateException("MCP stdio transport not open");
         }
@@ -171,12 +166,10 @@ public final class McpStdioTransport implements McpTransport {
             try {
                 response = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
             } catch (TimeoutException te) {
-                throw new IllegalStateException(
-                        "MCP request timed out after " + timeout + " — method=" + method);
+                throw new IllegalStateException("MCP request timed out after " + timeout + " — method=" + method, te);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new IllegalStateException(
-                        "MCP request interrupted — method=" + method);
+                throw new IllegalStateException("MCP request interrupted — method=" + method, ie);
             } catch (java.util.concurrent.ExecutionException ee) {
                 Throwable cause = ee.getCause() == null ? ee : ee.getCause();
                 if (cause instanceof RuntimeException re) throw re;
@@ -193,8 +186,7 @@ public final class McpStdioTransport implements McpTransport {
     }
 
     @Override
-    public void sendNotification(
-            String method, @Nullable Map<String, Object> params, ToolInvocationContext ctx) {
+    public void sendNotification(String method, @Nullable Map<String, Object> params, ToolInvocationContext ctx) {
         if (!isOpen()) {
             throw new IllegalStateException("MCP stdio transport not open");
         }
@@ -202,8 +194,7 @@ public final class McpStdioTransport implements McpTransport {
     }
 
     @Override
-    public synchronized void setNotificationHandler(
-            @Nullable Consumer<McpJsonRpc.Frame.Notification> handler) {
+    public synchronized void setNotificationHandler(@Nullable Consumer<McpJsonRpc.Frame.Notification> handler) {
         this.notificationHandler = handler;
     }
 
@@ -234,8 +225,7 @@ public final class McpStdioTransport implements McpTransport {
         } finally {
             // Reader EOF — most often the subprocess died. Surface to all
             // pending futures so callers don't hang forever.
-            IllegalStateException eof = new IllegalStateException(
-                    "MCP stdio subprocess closed stdout");
+            IllegalStateException eof = new IllegalStateException("MCP stdio subprocess closed stdout");
             for (CompletableFuture<McpJsonRpc.Frame.Response> f : pending.values()) {
                 f.completeExceptionally(eof);
             }
@@ -247,8 +237,10 @@ public final class McpStdioTransport implements McpTransport {
         try {
             frame = McpJsonRpc.parse(line);
         } catch (RuntimeException e) {
-            log.warn("McpStdioTransport: malformed JSON-RPC frame, dropping: {} -- '{}'",
-                    e.getMessage(), truncate(line));
+            log.warn(
+                    "McpStdioTransport: malformed JSON-RPC frame, dropping: {} -- '{}'",
+                    e.getMessage(),
+                    truncate(line));
             return;
         }
         if (frame instanceof McpJsonRpc.Frame.Response r) {
@@ -263,10 +255,13 @@ public final class McpStdioTransport implements McpTransport {
         if (frame instanceof McpJsonRpc.Frame.Notification n) {
             Consumer<McpJsonRpc.Frame.Notification> h = notificationHandler;
             if (h != null) {
-                try { h.accept(n); }
-                catch (RuntimeException e) {
-                    log.warn("McpStdioTransport: notification handler threw for method={}: {}",
-                            n.method(), e.toString());
+                try {
+                    h.accept(n);
+                } catch (RuntimeException e) {
+                    log.warn(
+                            "McpStdioTransport: notification handler threw for method={}: {}",
+                            n.method(),
+                            e.toString());
                 }
             }
             return;
@@ -274,8 +269,7 @@ public final class McpStdioTransport implements McpTransport {
         // Server-initiated request — MCP allows this for sampling, but
         // v1 doesn't support it. Log and ignore.
         if (frame instanceof McpJsonRpc.Frame.Request r) {
-            log.debug("McpStdioTransport: ignoring server-initiated request method={} id={}",
-                    r.method(), r.id());
+            log.debug("McpStdioTransport: ignoring server-initiated request method={} id={}", r.method(), r.id());
         }
     }
 
@@ -285,7 +279,9 @@ public final class McpStdioTransport implements McpTransport {
             while ((line = reader.readLine()) != null) {
                 log.info("[mcp-stderr] {}", line);
             }
-        } catch (IOException ignored) { /* process exited */ }
+        } catch (IOException ignored) {
+            /* process exited */
+        }
     }
 
     /**
@@ -294,8 +290,7 @@ public final class McpStdioTransport implements McpTransport {
      * explicit {@code configEnv} (which may override them). The Brain
      * process's secrets are never carried through (code-review Phase 2).
      */
-    static Map<String, String> childEnv(
-            Map<String, String> inherited, Map<String, String> configEnv) {
+    static Map<String, String> childEnv(Map<String, String> inherited, Map<String, String> configEnv) {
         Map<String, String> out = new HashMap<>();
         for (String key : ENV_PASSTHROUGH) {
             String v = inherited.get(key);

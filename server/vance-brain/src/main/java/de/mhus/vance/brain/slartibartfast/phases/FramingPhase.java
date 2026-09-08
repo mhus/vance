@@ -22,7 +22,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -163,20 +162,14 @@ public class FramingPhase {
      * mutates {@code state} in place. Caller is responsible for
      * persisting the state and dispatching the next phase.
      */
-    public void execute(
-            ArchitectState state,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
-        EngineChatFactory.EngineChatBundle bundle =
-                engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
-        String modelAlias = bundle.primaryConfig().provider() + ":"
-                + bundle.primaryConfig().modelName();
+    public void execute(ArchitectState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
+        EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
+        String modelAlias =
+                bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
 
         List<ChatMessage> messages = new ArrayList<>();
         String langBlock = languageContextResolver.formatBlock(process);
-        messages.add(SystemMessage.from(langBlock.isEmpty()
-                ? SYSTEM_PROMPT
-                : SYSTEM_PROMPT + "\n\n" + langBlock));
+        messages.add(SystemMessage.from(langBlock.isEmpty() ? SYSTEM_PROMPT : SYSTEM_PROMPT + "\n\n" + langBlock));
         messages.add(UserMessage.from(buildInitialUserPrompt(state)));
 
         FramingResult parsed = null;
@@ -202,8 +195,11 @@ public class FramingPhase {
                 break;
             } catch (FramingValidationException ve) {
                 validationError = ve.getMessage();
-                log.info("Slartibartfast id='{}' FRAMING attempt {} validation failed: {}",
-                        process.getId(), attempt, validationError);
+                log.info(
+                        "Slartibartfast id='{}' FRAMING attempt {} validation failed: {}",
+                        process.getId(),
+                        attempt,
+                        validationError);
                 if (attempt < MAX_OUTPUT_CORRECTIONS) {
                     messages.add(AiMessage.from(text));
                     messages.add(UserMessage.from(buildCorrectivePrompt(validationError)));
@@ -212,10 +208,11 @@ public class FramingPhase {
         }
 
         if (parsed == null) {
-            state.setFailureReason("FRAMING failed after "
-                    + MAX_OUTPUT_CORRECTIONS + " corrections — last error: "
-                    + validationError);
-            appendIteration(state, "user-description=" + abbrev(state.getUserDescription(), 60),
+            state.setFailureReason(
+                    "FRAMING failed after " + MAX_OUTPUT_CORRECTIONS + " corrections — last error: " + validationError);
+            appendIteration(
+                    state,
+                    "user-description=" + abbrev(state.getUserDescription(), 60),
                     "FAILED — " + validationError,
                     PhaseIteration.IterationOutcome.FAILED,
                     /*llmRecordId*/ latestLlmRecordId(state));
@@ -223,10 +220,10 @@ public class FramingPhase {
         }
 
         applyToState(state, parsed);
-        appendIteration(state,
+        appendIteration(
+                state,
                 "user-description=" + abbrev(state.getUserDescription(), 60),
-                parsed.statedCriteria.size() + " stated, "
-                        + parsed.assumedCriteria.size() + " assumed",
+                parsed.statedCriteria.size() + " stated, " + parsed.assumedCriteria.size() + " assumed",
                 PhaseIteration.IterationOutcome.PASSED,
                 latestLlmRecordId(state));
     }
@@ -236,9 +233,9 @@ public class FramingPhase {
     private static String buildInitialUserPrompt(ArchitectState state) {
         StringBuilder sb = new StringBuilder();
         sb.append("User request:\n").append(state.getUserDescription()).append("\n\n");
-        sb.append("Output schema type (informational, influences "
-                + "the acceptance criteria): ")
-                .append(state.getOutputSchemaType().name()).append("\n\n");
+        sb.append("Output schema type (informational, influences " + "the acceptance criteria): ")
+                .append(state.getOutputSchemaType().name())
+                .append("\n\n");
         sb.append("Now emit a single JSON object matching the schema.");
         return sb.toString();
     }
@@ -255,66 +252,56 @@ public class FramingPhase {
     private FramingResult parseAndValidate(String text) {
         String jsonOnly = extractJsonObject(text);
         if (jsonOnly == null) {
-            throw new FramingValidationException(
-                    "no JSON object found in reply");
+            throw new FramingValidationException("no JSON object found in reply");
         }
         Map<String, Object> root;
         try {
             root = objectMapper.readValue(jsonOnly, Map.class);
         } catch (RuntimeException e) {
-            throw new FramingValidationException(
-                    "JSON parse error: " + e.getMessage());
+            throw new FramingValidationException("JSON parse error: " + e.getMessage(), e);
         }
 
         Object framedRaw = root.get("framed");
         if (!(framedRaw instanceof String framed) || framed.isBlank()) {
-            throw new FramingValidationException(
-                    "required field 'framed' missing or blank");
+            throw new FramingValidationException("required field 'framed' missing or blank");
         }
 
         Object statedRaw = root.get("statedCriteria");
         if (!(statedRaw instanceof List<?> statedList)) {
-            throw new FramingValidationException(
-                    "required field 'statedCriteria' missing or not an array");
+            throw new FramingValidationException("required field 'statedCriteria' missing or not an array");
         }
         List<ParsedStated> statedCriteria = new ArrayList<>();
         for (int i = 0; i < statedList.size(); i++) {
             Object entry = statedList.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new FramingValidationException(
-                        "statedCriteria[" + i + "] is not an object");
+                throw new FramingValidationException("statedCriteria[" + i + "] is not an object");
             }
             Object t = ((Map<String, Object>) entryMap).get("text");
             if (!(t instanceof String s) || s.isBlank()) {
-                throw new FramingValidationException(
-                        "statedCriteria[" + i + "].text missing or blank");
+                throw new FramingValidationException("statedCriteria[" + i + "].text missing or blank");
             }
             statedCriteria.add(new ParsedStated(s.trim()));
         }
 
         Object assumedRaw = root.get("assumedCriteria");
         if (!(assumedRaw instanceof List<?> assumedList)) {
-            throw new FramingValidationException(
-                    "required field 'assumedCriteria' missing or not an array "
-                            + "(empty array is ok, but must be present)");
+            throw new FramingValidationException("required field 'assumedCriteria' missing or not an array "
+                    + "(empty array is ok, but must be present)");
         }
         List<ParsedAssumed> assumedCriteria = new ArrayList<>();
         for (int i = 0; i < assumedList.size(); i++) {
             Object entry = assumedList.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
-                throw new FramingValidationException(
-                        "assumedCriteria[" + i + "] is not an object");
+                throw new FramingValidationException("assumedCriteria[" + i + "] is not an object");
             }
             Map<String, Object> m = (Map<String, Object>) entryMap;
             Object t = m.get("text");
             if (!(t instanceof String s) || s.isBlank()) {
-                throw new FramingValidationException(
-                        "assumedCriteria[" + i + "].text missing or blank");
+                throw new FramingValidationException("assumedCriteria[" + i + "].text missing or blank");
             }
             Object o = m.get("origin");
             if (!(o instanceof String origin) || origin.isBlank()) {
-                throw new FramingValidationException(
-                        "assumedCriteria[" + i + "].origin missing");
+                throw new FramingValidationException("assumedCriteria[" + i + "].origin missing");
             }
             CriterionOrigin parsedOrigin;
             try {
@@ -323,15 +310,15 @@ public class FramingPhase {
                 throw new FramingValidationException(
                         "assumedCriteria[" + i + "].origin '" + origin
                                 + "' is not a valid value (allowed: "
-                                + "INFERRED_CONVENTION | INFERRED_DOMAIN | INFERRED_CONTEXT)");
+                                + "INFERRED_CONVENTION | INFERRED_DOMAIN | INFERRED_CONTEXT)",
+                        ex);
             }
             if (parsedOrigin == CriterionOrigin.USER_STATED
                     || parsedOrigin == CriterionOrigin.USER_CONFIRMED
                     || parsedOrigin == CriterionOrigin.DEFAULT) {
-                throw new FramingValidationException(
-                        "assumedCriteria[" + i + "].origin '" + origin
-                                + "' is not allowed for inferred criteria — "
-                                + "use INFERRED_CONVENTION/DOMAIN/CONTEXT");
+                throw new FramingValidationException("assumedCriteria[" + i + "].origin '" + origin
+                        + "' is not allowed for inferred criteria — "
+                        + "use INFERRED_CONVENTION/DOMAIN/CONTEXT");
             }
             Object c = m.get("confidence");
             double confidence;
@@ -339,21 +326,17 @@ public class FramingPhase {
                 confidence = n.doubleValue();
             } else {
                 throw new FramingValidationException(
-                        "assumedCriteria[" + i + "].confidence missing or "
-                                + "not a number");
+                        "assumedCriteria[" + i + "].confidence missing or " + "not a number");
             }
             if (confidence < 0.0 || confidence > 1.0) {
                 throw new FramingValidationException(
-                        "assumedCriteria[" + i + "].confidence " + confidence
-                                + " outside 0.0..1.0");
+                        "assumedCriteria[" + i + "].confidence " + confidence + " outside 0.0..1.0");
             }
             Object r = m.get("rationale");
             if (!(r instanceof String rationale) || rationale.isBlank()) {
-                throw new FramingValidationException(
-                        "assumedCriteria[" + i + "].rationale missing or blank");
+                throw new FramingValidationException("assumedCriteria[" + i + "].rationale missing or blank");
             }
-            assumedCriteria.add(new ParsedAssumed(
-                    s.trim(), parsedOrigin, confidence, rationale.trim()));
+            assumedCriteria.add(new ParsedAssumed(s.trim(), parsedOrigin, confidence, rationale.trim()));
         }
 
         // Phase-D fields (all optional in the JSON; engine-params
@@ -364,20 +347,23 @@ public class FramingPhase {
         String recipeName = optString(root.get("recipeName"));
 
         if (mode != null && !"CREATE".equals(mode) && !"EDIT".equals(mode)) {
-            throw new FramingValidationException(
-                    "mode '" + mode + "' must be CREATE or EDIT (or omitted)");
+            throw new FramingValidationException("mode '" + mode + "' must be CREATE or EDIT (or omitted)");
         }
         // EDIT mode without a target name is unusable — reject.
-        if ("EDIT".equals(mode)
-                && (targetRecipeName == null || targetRecipeName.isBlank())) {
-            throw new FramingValidationException(
-                    "mode=EDIT but targetRecipeName missing — extract "
-                            + "the recipe name from the user description "
-                            + "(e.g. \"Erweitere 'rat-der-macher'\" → \"rat-der-macher\")");
+        if ("EDIT".equals(mode) && (targetRecipeName == null || targetRecipeName.isBlank())) {
+            throw new FramingValidationException("mode=EDIT but targetRecipeName missing — extract "
+                    + "the recipe name from the user description "
+                    + "(e.g. \"Erweitere 'rat-der-macher'\" → \"rat-der-macher\")");
         }
 
-        return new FramingResult(framed.trim(), statedCriteria, assumedCriteria,
-                mode, targetRecipeName, modificationSummary, recipeName);
+        return new FramingResult(
+                framed.trim(),
+                statedCriteria,
+                assumedCriteria,
+                mode,
+                targetRecipeName,
+                modificationSummary,
+                recipeName);
     }
 
     private static @Nullable String optString(@Nullable Object v) {
@@ -472,8 +458,7 @@ public class FramingPhase {
 
         // Phase-D fields: engine-param wins (set by buildInitialState),
         // LLM only fills in when the state slot is still null.
-        if ("EDIT".equals(parsed.mode)
-                && state.getMode() == de.mhus.vance.api.slartibartfast.ArchitectMode.CREATE) {
+        if ("EDIT".equals(parsed.mode) && state.getMode() == de.mhus.vance.api.slartibartfast.ArchitectMode.CREATE) {
             state.setMode(de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT);
         }
         if (parsed.targetRecipeName != null && state.getTargetRecipeName() == null) {
@@ -490,19 +475,14 @@ public class FramingPhase {
     // ──────────────────── Audit append ────────────────────
 
     private static void appendLlmRecord(
-            ArchitectState state,
-            String response,
-            String modelAlias,
-            long durationMs,
-            int attempt) {
+            ArchitectState state, String response, String modelAlias, long durationMs, int attempt) {
         List<LlmCallRecord> records = new ArrayList<>(state.getLlmCallRecords());
         String id = "llm" + (records.size() + 1);
         records.add(LlmCallRecord.builder()
                 .id(id)
                 .phase(ArchitectStatus.FRAMING)
                 .iteration(attempt + 1)
-                .promptHash(sha256Hex(SYSTEM_PROMPT
-                        + "\n----\n" + state.getUserDescription()))
+                .promptHash(sha256Hex(SYSTEM_PROMPT + "\n----\n" + state.getUserDescription()))
                 .promptPreview(abbrev(SYSTEM_PROMPT, PROMPT_PREVIEW_LIMIT))
                 .response(response)
                 .modelAlias(modelAlias)
@@ -524,7 +504,9 @@ public class FramingPhase {
             PhaseIteration.IterationOutcome outcome,
             @Nullable String llmRecordId) {
         int attempt = (int) state.getIterations().stream()
-                .filter(it -> it.getPhase() == ArchitectStatus.FRAMING).count() + 1;
+                        .filter(it -> it.getPhase() == ArchitectStatus.FRAMING)
+                        .count()
+                + 1;
         List<PhaseIteration> log = new ArrayList<>(state.getIterations());
         log.add(PhaseIteration.builder()
                 .iteration(attempt)
@@ -551,14 +533,16 @@ public class FramingPhase {
 
     private record ParsedStated(String text) {}
 
-    private record ParsedAssumed(
-            String text,
-            CriterionOrigin origin,
-            double confidence,
-            String rationale) {}
+    private record ParsedAssumed(String text, CriterionOrigin origin, double confidence, String rationale) {}
 
     private static class FramingValidationException extends RuntimeException {
-        FramingValidationException(String message) { super(message); }
+        FramingValidationException(String message) {
+            super(message);
+        }
+
+        FramingValidationException(String message, @org.jspecify.annotations.Nullable Throwable cause) {
+            super(message, cause);
+        }
     }
 
     // ──────────────────── Small utilities ────────────────────

@@ -57,12 +57,9 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class DocxReportRenderer implements MarkdownReportRenderer {
 
-    private static final List<Extension> EXTENSIONS = List.of(
-            TablesExtension.create());
+    private static final List<Extension> EXTENSIONS = List.of(TablesExtension.create());
 
-    private final Parser parser = Parser.builder()
-            .extensions(EXTENSIONS)
-            .build();
+    private final Parser parser = Parser.builder().extensions(EXTENSIONS).build();
 
     @Override
     public String format() {
@@ -83,7 +80,7 @@ public class DocxReportRenderer implements MarkdownReportRenderer {
     public byte[] render(MarkdownReportContext context) {
         Node ast = parser.parse(context.markdown() == null ? "" : context.markdown());
         try (XWPFDocument doc = new XWPFDocument();
-             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             applyCoreProperties(doc, context);
             if (context.title() != null && !context.title().isBlank()) {
                 XWPFParagraph titlePar = doc.createParagraph();
@@ -98,8 +95,7 @@ public class DocxReportRenderer implements MarkdownReportRenderer {
             doc.write(out);
             return out.toByteArray();
         } catch (Exception e) {
-            throw new ToolException(
-                    "DOCX rendering failed: " + e.getMessage());
+            throw new ToolException("DOCX rendering failed: " + e.getMessage(), e);
         }
     }
 
@@ -141,7 +137,9 @@ public class DocxReportRenderer implements MarkdownReportRenderer {
         private boolean inStrong = false;
         private boolean inCode = false;
 
-        DocxVisitor(XWPFDocument doc) { this.doc = doc; }
+        DocxVisitor(XWPFDocument doc) {
+            this.doc = doc;
+        }
 
         @Override
         public void visit(Heading h) {
@@ -299,8 +297,7 @@ public class DocxReportRenderer implements MarkdownReportRenderer {
         @Override
         public void visit(ListItem item) {
             current = doc.createParagraph();
-            current.setIndentationLeft(
-                    LIST_INDENT_TWIPS.intValue() * Math.max(1, listDepth));
+            current.setIndentationLeft(LIST_INDENT_TWIPS.intValue() * Math.max(1, listDepth));
             currentRun = current.createRun();
             currentRun.setText("• ");
             visitChildren(item);
@@ -349,9 +346,7 @@ public class DocxReportRenderer implements MarkdownReportRenderer {
                 if (n instanceof TableHead head) {
                     for (Node r = head.getFirstChild(); r != null; r = r.getNext()) {
                         if (r instanceof TableRow row) {
-                            XWPFTableRow tableRow = currentRow == 0
-                                    ? table.getRow(0)
-                                    : table.createRow();
+                            XWPFTableRow tableRow = currentRow == 0 ? table.getRow(0) : table.createRow();
                             populateRow(tableRow, row, true);
                             currentRow++;
                         }
@@ -363,9 +358,7 @@ public class DocxReportRenderer implements MarkdownReportRenderer {
                 if (n instanceof TableBody body) {
                     for (Node r = body.getFirstChild(); r != null; r = r.getNext()) {
                         if (r instanceof TableRow row) {
-                            XWPFTableRow tableRow = currentRow == 0
-                                    ? table.getRow(0)
-                                    : table.createRow();
+                            XWPFTableRow tableRow = currentRow == 0 ? table.getRow(0) : table.createRow();
                             populateRow(tableRow, row, false);
                             currentRow++;
                         }
@@ -395,9 +388,8 @@ public class DocxReportRenderer implements MarkdownReportRenderer {
             int col = 0;
             for (Node n = row.getFirstChild(); n != null; n = n.getNext()) {
                 if (!(n instanceof TableCell cell)) continue;
-                XWPFTableCell tableCell = col < tableRow.getTableCells().size()
-                        ? tableRow.getCell(col)
-                        : tableRow.addNewTableCell();
+                XWPFTableCell tableCell =
+                        col < tableRow.getTableCells().size() ? tableRow.getCell(col) : tableRow.addNewTableCell();
                 // Wipe the placeholder paragraph that POI auto-creates
                 if (!tableCell.getParagraphs().isEmpty()) {
                     tableCell.removeParagraph(0);
@@ -415,9 +407,20 @@ public class DocxReportRenderer implements MarkdownReportRenderer {
         private static String plaintextOf(Node node) {
             StringBuilder sb = new StringBuilder();
             node.accept(new AbstractVisitor() {
-                @Override public void visit(Text t) { sb.append(t.getLiteral()); }
-                @Override public void visit(Code c) { sb.append(c.getLiteral()); }
-                @Override public void visit(SoftLineBreak b) { sb.append(' '); }
+                @Override
+                public void visit(Text t) {
+                    sb.append(t.getLiteral());
+                }
+
+                @Override
+                public void visit(Code c) {
+                    sb.append(c.getLiteral());
+                }
+
+                @Override
+                public void visit(SoftLineBreak b) {
+                    sb.append(' ');
+                }
             });
             return sb.toString();
         }

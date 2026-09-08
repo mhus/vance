@@ -17,10 +17,8 @@ import java.util.Map;
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
-import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormat;
 import org.apache.poi.ss.usermodel.FillPatternType;
-import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFCellStyle;
@@ -45,14 +43,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class SheetXlsxService {
 
-    private static final double PX_PER_CHAR = 7.0;   // ~ default Calibri 11
-    private static final double PT_PER_PX = 0.75;    // 96dpi → 72pt
+    private static final double PX_PER_CHAR = 7.0; // ~ default Calibri 11
+    private static final double PT_PER_PX = 0.75; // 96dpi → 72pt
 
     // ── Export ─────────────────────────────────────────────────────
 
     public byte[] exportXlsx(SheetDocument doc) {
         try (XSSFWorkbook wb = new XSSFWorkbook();
-             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             XSSFSheet sheet = wb.createSheet("Sheet1");
             DataFormat fmt = wb.createDataFormat();
             Map<String, XSSFCellStyle> styleCache = new HashMap<>();
@@ -94,7 +92,7 @@ public class SheetXlsxService {
             wb.write(out);
             return out.toByteArray();
         } catch (IOException e) {
-            throw new ToolException("Could not build XLSX: " + e.getMessage());
+            throw new ToolException("Could not build XLSX: " + e.getMessage(), e);
         }
     }
 
@@ -136,11 +134,19 @@ public class SheetXlsxService {
                     String data = readCellData(cell);
                     Fmt f = readCellFormat(cell);
                     if (data.isEmpty() && f.isEmpty()) continue;
-                    String addr = SheetCodec.columnLetterFromIndex(cell.getColumnIndex() + 1)
-                            + (cell.getRowIndex() + 1);
-                    cells.add(new SheetCell(addr, data, f.color, f.background,
-                            f.bold ? Boolean.TRUE : null, f.italic ? Boolean.TRUE : null,
-                            f.align, f.numberFormat, f.borders, new LinkedHashMap<>()));
+                    String addr =
+                            SheetCodec.columnLetterFromIndex(cell.getColumnIndex() + 1) + (cell.getRowIndex() + 1);
+                    cells.add(new SheetCell(
+                            addr,
+                            data,
+                            f.color,
+                            f.background,
+                            f.bold ? Boolean.TRUE : null,
+                            f.italic ? Boolean.TRUE : null,
+                            f.align,
+                            f.numberFormat,
+                            f.borders,
+                            new LinkedHashMap<>()));
                     maxRow = Math.max(maxRow, cell.getRowIndex() + 1);
                     maxCol = Math.max(maxCol, cell.getColumnIndex() + 1);
                 }
@@ -168,10 +174,17 @@ public class SheetXlsxService {
                 }
             }
 
-            return new SheetDocument("sheet", schema, maxRow > 0 ? maxRow : null, cells,
-                    columns, rowHeights, new LinkedHashMap<>(), new LinkedHashMap<>());
+            return new SheetDocument(
+                    "sheet",
+                    schema,
+                    maxRow > 0 ? maxRow : null,
+                    cells,
+                    columns,
+                    rowHeights,
+                    new LinkedHashMap<>(),
+                    new LinkedHashMap<>());
         } catch (IOException | RuntimeException e) {
-            throw new ToolException("Could not read XLSX: " + e.getMessage());
+            throw new ToolException("Could not read XLSX: " + e.getMessage(), e);
         }
     }
 
@@ -191,8 +204,14 @@ public class SheetXlsxService {
         }
         List<String> schema = new ArrayList<>();
         for (int ci = 1; ci <= maxCol; ci++) schema.add(SheetCodec.columnLetterFromIndex(ci));
-        return new SheetDocument("sheet", schema, grid.isEmpty() ? null : grid.size(), cells,
-                new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
+        return new SheetDocument(
+                "sheet",
+                schema,
+                grid.isEmpty() ? null : grid.size(),
+                cells,
+                new LinkedHashMap<>(),
+                new LinkedHashMap<>(),
+                new LinkedHashMap<>(),
                 new LinkedHashMap<>());
     }
 
@@ -212,8 +231,14 @@ public class SheetXlsxService {
                 return;
             }
         }
-        if ("TRUE".equalsIgnoreCase(data)) { cell.setCellValue(true); return; }
-        if ("FALSE".equalsIgnoreCase(data)) { cell.setCellValue(false); return; }
+        if ("TRUE".equalsIgnoreCase(data)) {
+            cell.setCellValue(true);
+            return;
+        }
+        if ("FALSE".equalsIgnoreCase(data)) {
+            cell.setCellValue(false);
+            return;
+        }
         try {
             cell.setCellValue(Double.parseDouble(data));
             return;
@@ -239,25 +264,30 @@ public class SheetXlsxService {
 
     // ── Format <-> POI ─────────────────────────────────────────────
 
-    private @Nullable XSSFCellStyle styleFor(XSSFWorkbook wb, DataFormat fmt,
-                                             Map<String, XSSFCellStyle> cache, SheetCell c) {
-        boolean hasStyle = c.color() != null || c.background() != null
-                || Boolean.TRUE.equals(c.bold()) || Boolean.TRUE.equals(c.italic())
-                || c.align() != null || c.numberFormat() != null || c.borders() != null;
+    private @Nullable XSSFCellStyle styleFor(
+            XSSFWorkbook wb, DataFormat fmt, Map<String, XSSFCellStyle> cache, SheetCell c) {
+        boolean hasStyle = c.color() != null
+                || c.background() != null
+                || Boolean.TRUE.equals(c.bold())
+                || Boolean.TRUE.equals(c.italic())
+                || c.align() != null
+                || c.numberFormat() != null
+                || c.borders() != null;
         if (!hasStyle) return null;
-        String key = c.color() + "|" + c.background() + "|" + c.bold() + "|" + c.italic()
-                + "|" + c.align() + "|" + c.numberFormat() + "|" + c.borders();
+        String key = c.color() + "|" + c.background() + "|" + c.bold() + "|" + c.italic() + "|" + c.align() + "|"
+                + c.numberFormat() + "|" + c.borders();
         XSSFCellStyle cached = cache.get(key);
         if (cached != null) return cached;
 
         XSSFCellStyle style = wb.createCellStyle();
         if (c.numberFormat() != null) style.setDataFormat(fmt.getFormat(c.numberFormat()));
         if (c.align() != null) {
-            style.setAlignment(switch (c.align()) {
-                case "center" -> HorizontalAlignment.CENTER;
-                case "right" -> HorizontalAlignment.RIGHT;
-                default -> HorizontalAlignment.LEFT;
-            });
+            style.setAlignment(
+                    switch (c.align()) {
+                        case "center" -> HorizontalAlignment.CENTER;
+                        case "right" -> HorizontalAlignment.RIGHT;
+                        default -> HorizontalAlignment.LEFT;
+                    });
         }
         if (Boolean.TRUE.equals(c.bold()) || Boolean.TRUE.equals(c.italic()) || c.color() != null) {
             XSSFFont font = wb.createFont();
@@ -284,12 +314,22 @@ public class SheetXlsxService {
     }
 
     /** Parsed per-cell format for import. */
-    private record Fmt(@Nullable String color, @Nullable String background,
-                       boolean bold, boolean italic, @Nullable String align,
-                       @Nullable String numberFormat, @Nullable String borders) {
+    private record Fmt(
+            @Nullable String color,
+            @Nullable String background,
+            boolean bold,
+            boolean italic,
+            @Nullable String align,
+            @Nullable String numberFormat,
+            @Nullable String borders) {
         boolean isEmpty() {
-            return color == null && background == null && !bold && !italic
-                    && align == null && numberFormat == null && borders == null;
+            return color == null
+                    && background == null
+                    && !bold
+                    && !italic
+                    && align == null
+                    && numberFormat == null
+                    && borders == null;
         }
     }
 
@@ -301,12 +341,13 @@ public class SheetXlsxService {
         String numberFormat = null;
         String df = xs.getDataFormatString();
         if (df != null && !df.isBlank() && !"General".equalsIgnoreCase(df)) numberFormat = df;
-        String align = switch (xs.getAlignment()) {
-            case CENTER -> "center";
-            case RIGHT -> "right";
-            case LEFT -> "left";
-            default -> null;
-        };
+        String align =
+                switch (xs.getAlignment()) {
+                    case CENTER -> "center";
+                    case RIGHT -> "right";
+                    case LEFT -> "left";
+                    default -> null;
+                };
         boolean bold = false;
         boolean italic = false;
         String color = null;
@@ -336,10 +377,11 @@ public class SheetXlsxService {
         }
         if (h.length() != 6) return null;
         try {
-            byte[] rgb = new byte[]{
-                    (byte) Integer.parseInt(h.substring(0, 2), 16),
-                    (byte) Integer.parseInt(h.substring(2, 4), 16),
-                    (byte) Integer.parseInt(h.substring(4, 6), 16)};
+            byte[] rgb = new byte[] {
+                (byte) Integer.parseInt(h.substring(0, 2), 16),
+                (byte) Integer.parseInt(h.substring(2, 4), 16),
+                (byte) Integer.parseInt(h.substring(4, 6), 16)
+            };
             return new XSSFColor(rgb, null);
         } catch (NumberFormatException e) {
             return null;
@@ -381,8 +423,10 @@ public class SheetXlsxService {
             char ch = s.charAt(i);
             if (inQuotes) {
                 if (ch == '"') {
-                    if (i + 1 < s.length() && s.charAt(i + 1) == '"') { field.append('"'); i++; }
-                    else inQuotes = false;
+                    if (i + 1 < s.length() && s.charAt(i + 1) == '"') {
+                        field.append('"');
+                        i++;
+                    } else inQuotes = false;
                 } else {
                     field.append(ch);
                 }

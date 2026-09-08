@@ -36,8 +36,10 @@ public class JournalService {
     private final JournalFolderReader folderReader;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public JournalService(DocumentService documentService, JournalFolderReader folderReader,
-                          de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public JournalService(
+            DocumentService documentService,
+            JournalFolderReader folderReader,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.folderReader = folderReader;
         this.contextFactory = contextFactory;
@@ -53,8 +55,8 @@ public class JournalService {
     public static String entryPath(String folder, JournalConfig config, String isoDate) {
         LocalDate d = parseOrThrow(isoDate);
         String normalized = JournalFolderReader.normaliseFolder(folder);
-        return normalized + "/" + config.entriesDir() + "/" + d.getYear()
-                + "/" + d.format(ISO) + JournalFolderReader.PAGE_EXTENSION;
+        return normalized + "/" + config.entriesDir() + "/" + d.getYear() + "/" + d.format(ISO)
+                + JournalFolderReader.PAGE_EXTENSION;
     }
 
     // ── Read ──────────────────────────────────────────────────────
@@ -65,8 +67,7 @@ public class JournalService {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             return JournalEntryCodec.parse(body, doc.getMimeType());
         } catch (IOException | RuntimeException e) {
-            throw new ToolException(
-                    "Could not read journal entry '" + doc.getPath() + "': " + e.getMessage());
+            throw new ToolException("Could not read journal entry '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -87,7 +88,10 @@ public class JournalService {
      * @return the stored document
      */
     public DocumentDocument upsertEntry(
-            String tenantId, String projectId, String folder, JournalConfig config,
+            String tenantId,
+            String projectId,
+            String folder,
+            JournalConfig config,
             String isoDate,
             @Nullable String body,
             @Nullable String title,
@@ -97,12 +101,9 @@ public class JournalService {
 
         String date = parseOrThrow(isoDate).format(ISO);
         String path = entryPath(folder, config, date);
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectId, path);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, path);
 
-        JournalEntryDocument base = existing.isPresent()
-                ? readEntry(existing.get())
-                : JournalEntryDocument.empty();
+        JournalEntryDocument base = existing.isPresent() ? readEntry(existing.get()) : JournalEntryDocument.empty();
 
         String effectiveTitle = title != null && !title.isBlank()
                 ? title.trim()
@@ -112,8 +113,13 @@ public class JournalService {
         String effectiveBody = body != null ? body : base.body();
 
         JournalEntryDocument entry = new JournalEntryDocument(
-                JournalEntryDocument.KIND, date, effectiveTitle,
-                effectiveMood, effectiveTags, effectiveBody, base.extra());
+                JournalEntryDocument.KIND,
+                date,
+                effectiveTitle,
+                effectiveMood,
+                effectiveTags,
+                effectiveBody,
+                base.extra());
         String serialized = JournalEntryCodec.serialize(entry, MD_MIME);
 
         // Native tags mirror the front-matter tags so the shared metadata
@@ -124,8 +130,15 @@ public class JournalService {
 
         if (existing.isPresent()) {
             DocumentDocument updated = documentService.update(
-                    existing.get().getId(), effectiveTitle, nativeTags,
-                    serialized, null, null, null, null, MD_MIME,
+                    existing.get().getId(),
+                    effectiveTitle,
+                    nativeTags,
+                    serialized,
+                    null,
+                    null,
+                    null,
+                    null,
+                    MD_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(tenantId, userId, path));
             log.info("JournalService.upsertEntry(update) tenant='{}' path='{}'", tenantId, path);
@@ -133,21 +146,26 @@ public class JournalService {
         }
         try (InputStream in = new ByteArrayInputStream(serialized.getBytes(StandardCharsets.UTF_8))) {
             DocumentDocument stored = documentService.create(
-                    tenantId, projectId, path, effectiveTitle,
-                    nativeTags, MD_MIME, in, userId,
+                    tenantId,
+                    projectId,
+                    path,
+                    effectiveTitle,
+                    nativeTags,
+                    MD_MIME,
+                    in,
+                    userId,
                     contextFactory.writeActor(tenantId, userId, path));
             log.info("JournalService.upsertEntry(create) tenant='{}' path='{}'", tenantId, path);
             return stored;
         } catch (IOException e) {
-            throw new ToolException("Could not write journal entry '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not write journal entry '" + path + "': " + e.getMessage(), e);
         }
     }
 
     // ── Queries over a scan ───────────────────────────────────────
 
     /** Entries whose date is within {@code [from, to]} inclusive (ISO strings). */
-    public List<JournalEntry> listRange(JournalFolderReader.Scan scan,
-                                        @Nullable String from, @Nullable String to) {
+    public List<JournalEntry> listRange(JournalFolderReader.Scan scan, @Nullable String from, @Nullable String to) {
         List<JournalEntry> out = new ArrayList<>();
         for (JournalEntry e : scan.entries()) {
             if (from != null && e.date().compareTo(from) < 0) continue;
@@ -204,8 +222,14 @@ public class JournalService {
      * — the journal invents no index of its own.
      */
     public DocumentService.DocumentMetaListing search(
-            String tenantId, String projectId, String folder, JournalConfig config,
-            @Nullable String query, @Nullable String mood, @Nullable String tag, int limit) {
+            String tenantId,
+            String projectId,
+            String folder,
+            JournalConfig config,
+            @Nullable String query,
+            @Nullable String mood,
+            @Nullable String tag,
+            int limit) {
         String prefix = JournalFolderReader.normaliseFolder(folder) + "/" + config.entriesDir() + "/";
         Map<String, String> headerEquals = new LinkedHashMap<>();
         if (mood != null && !mood.isBlank()) headerEquals.put("mood", mood.trim());
@@ -239,7 +263,7 @@ public class JournalService {
         try {
             return LocalDate.parse(isoDate.trim(), ISO);
         } catch (RuntimeException e) {
-            throw new ToolException("Invalid date '" + isoDate + "' — expected yyyy-MM-dd");
+            throw new ToolException("Invalid date '" + isoDate + "' — expected yyyy-MM-dd", e);
         }
     }
 

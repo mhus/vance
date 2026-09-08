@@ -57,32 +57,27 @@ public class SessionListController {
             @PathVariable("tenant") String tenant,
             @RequestParam(value = "projectId", required = false) @Nullable String projectId,
             @RequestParam(value = "status", required = false) @Nullable List<String> statusCsv,
-            @RequestParam(value = "includeArchived", required = false, defaultValue = "false")
-                    boolean includeArchived,
+            @RequestParam(value = "includeArchived", required = false, defaultValue = "false") boolean includeArchived,
             @RequestParam(value = "tag", required = false) @Nullable String tag,
             HttpServletRequest request) {
         String currentUser = currentUser(request);
 
         Set<SessionStatus> statuses = resolveStatuses(statusCsv, includeArchived);
 
-        List<SessionDocument> sessions = sessionService.listWithFilters(
-                tenant, currentUser, projectId, statuses, tag);
+        List<SessionDocument> sessions = sessionService.listWithFilters(tenant, currentUser, projectId, statuses, tag);
 
         // Per-record authority enforcement is overkill for an
         // owner-scoped list — the listWithFilters query already binds
         // userId. We only enforce when projectId is given (project-
         // level access can be revoked independently of session ownership).
         if (projectId != null && !projectId.isBlank()) {
-            authority.enforce(request,
-                    new Resource.Project(tenant, projectId), Action.READ);
+            authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         }
 
         Map<String, String> recipeByProcessId = collectChatRecipes(sessions);
         List<SessionSummaryRichDto> out = new ArrayList<>(sessions.size());
         for (SessionDocument s : sessions) {
-            String recipe = s.getChatProcessId() == null
-                    ? null
-                    : recipeByProcessId.get(s.getChatProcessId());
+            String recipe = s.getChatProcessId() == null ? null : recipeByProcessId.get(s.getChatProcessId());
             out.add(toDto(s, recipe));
         }
         return out;
@@ -112,14 +107,10 @@ public class SessionListController {
         return byProcessId;
     }
 
-    private static Set<SessionStatus> resolveStatuses(
-            @Nullable List<String> raw, boolean includeArchived) {
+    private static Set<SessionStatus> resolveStatuses(@Nullable List<String> raw, boolean includeArchived) {
         if (raw == null || raw.isEmpty()) {
-            EnumSet<SessionStatus> defaults = EnumSet.of(
-                    SessionStatus.INIT,
-                    SessionStatus.RUNNING,
-                    SessionStatus.IDLE,
-                    SessionStatus.SUSPENDED);
+            EnumSet<SessionStatus> defaults =
+                    EnumSet.of(SessionStatus.INIT, SessionStatus.RUNNING, SessionStatus.IDLE, SessionStatus.SUSPENDED);
             if (includeArchived) {
                 defaults.add(SessionStatus.ARCHIVED);
             }
@@ -132,8 +123,7 @@ public class SessionListController {
                 try {
                     parsed.add(SessionStatus.valueOf(v.trim().toUpperCase(java.util.Locale.ROOT)));
                 } catch (IllegalArgumentException e) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Unknown session status: " + v);
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown session status: " + v, e);
                 }
             }
         }
@@ -151,9 +141,7 @@ public class SessionListController {
     }
 
     static SessionSummaryRichDto toDto(SessionDocument s, @Nullable String chatRecipe) {
-        List<String> tags = s.getTags() == null
-                ? List.of()
-                : new ArrayList<>(s.getTags());
+        List<String> tags = s.getTags() == null ? List.of() : new ArrayList<>(s.getTags());
         return SessionSummaryRichDto.builder()
                 .sessionId(s.getSessionId())
                 .projectId(s.getProjectId())
@@ -183,8 +171,7 @@ public class SessionListController {
     private static String currentUser(HttpServletRequest request) {
         Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
         if (!(u instanceof String s) || s.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                    "No authenticated user");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
         }
         return s;
     }

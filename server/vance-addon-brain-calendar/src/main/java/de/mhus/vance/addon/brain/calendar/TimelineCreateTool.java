@@ -57,160 +57,263 @@ public class TimelineCreateTool implements Tool {
     private static final String YAML_MIME = "application/yaml";
 
     private static final Map<String, Object> AXIS_PROPS;
+
     static {
         AXIS_PROPS = new LinkedHashMap<>();
-        AXIS_PROPS.put("mode", Map.of(
-                "type", "string",
-                "enum", List.of("numeric", "datetime"),
-                "description", "'numeric' for a bare number line (deep time, "
-                        + "hours-since-T0, page numbers of a story). 'datetime' for "
-                        + "ISO-8601 dates and times. Required — one axis per document, "
-                        + "never mixed."));
-        AXIS_PROPS.put("unit", Map.of(
-                "type", "string",
-                "description", "Numeric axis only: unit suffix for tick labels. "
-                        + "Free-form — 'Ma' (million years), 'ka', 'yr BP', 'min', "
-                        + "'Tage'. Put the unit HERE, never into a position value."));
-        AXIS_PROPS.put("direction", Map.of(
-                "type", "string",
-                "enum", List.of("forward", "ago"),
-                "description", "Numeric axis only. 'forward' (default): larger "
-                        + "number = later. 'ago': larger number = EARLIER — use for "
-                        + "geological / archaeological scales ('201.4 Ma ago'). With "
-                        + "'ago' a period runs from the larger to the smaller number."));
-        AXIS_PROPS.put("from", Map.of(
-                "type", "string",
-                "description", "Optional left bound of the visible window. Omit to "
-                        + "fit the entries."));
-        AXIS_PROPS.put("to", Map.of(
-                "type", "string",
-                "description", "Optional right bound of the visible window."));
-        AXIS_PROPS.put("label", Map.of(
-                "type", "string",
-                "description", "Optional caption under the ruler, e.g. 'Millionen "
-                        + "Jahre vor heute'."));
+        AXIS_PROPS.put(
+                "mode",
+                Map.of(
+                        "type",
+                        "string",
+                        "enum",
+                        List.of("numeric", "datetime"),
+                        "description",
+                        "'numeric' for a bare number line (deep time, "
+                                + "hours-since-T0, page numbers of a story). 'datetime' for "
+                                + "ISO-8601 dates and times. Required — one axis per document, "
+                                + "never mixed."));
+        AXIS_PROPS.put(
+                "unit",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Numeric axis only: unit suffix for tick labels. "
+                                + "Free-form — 'Ma' (million years), 'ka', 'yr BP', 'min', "
+                                + "'Tage'. Put the unit HERE, never into a position value."));
+        AXIS_PROPS.put(
+                "direction",
+                Map.of(
+                        "type",
+                        "string",
+                        "enum",
+                        List.of("forward", "ago"),
+                        "description",
+                        "Numeric axis only. 'forward' (default): larger "
+                                + "number = later. 'ago': larger number = EARLIER — use for "
+                                + "geological / archaeological scales ('201.4 Ma ago'). With "
+                                + "'ago' a period runs from the larger to the smaller number."));
+        AXIS_PROPS.put(
+                "from",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional left bound of the visible window. Omit to " + "fit the entries."));
+        AXIS_PROPS.put(
+                "to",
+                Map.of(
+                        "type", "string",
+                        "description", "Optional right bound of the visible window."));
+        AXIS_PROPS.put(
+                "label",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional caption under the ruler, e.g. 'Millionen " + "Jahre vor heute'."));
     }
 
     private static final Map<String, Object> LANE_PROPS;
+
     static {
         LANE_PROPS = new LinkedHashMap<>();
-        LANE_PROPS.put("id", Map.of(
-                "type", "string",
-                "description", "Lane id, referenced by entry.lane. Required."));
-        LANE_PROPS.put("title", Map.of(
-                "type", "string",
-                "description", "Display label; defaults to the id."));
-        LANE_PROPS.put("color", Map.of(
-                "type", "string",
-                "description", "Palette name or CSS colour for entries in this lane "
-                        + "that declare none themselves."));
+        LANE_PROPS.put(
+                "id",
+                Map.of(
+                        "type", "string",
+                        "description", "Lane id, referenced by entry.lane. Required."));
+        LANE_PROPS.put(
+                "title",
+                Map.of(
+                        "type", "string",
+                        "description", "Display label; defaults to the id."));
+        LANE_PROPS.put(
+                "color",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Palette name or CSS colour for entries in this lane " + "that declare none themselves."));
     }
 
     private static final Map<String, Object> ENTRY_PROPS;
+
     static {
         ENTRY_PROPS = new LinkedHashMap<>();
-        ENTRY_PROPS.put("id", Map.of(
-                "type", "string",
-                "description", "Stable id. Needed only when another entry names this "
-                        + "one as its 'parent'; otherwise auto-generated."));
-        ENTRY_PROPS.put("title", Map.of(
-                "type", "string",
-                "description", "Display label. Required."));
-        ENTRY_PROPS.put("from", Map.of(
-                "type", "string",
-                "description", "Start position, read against the axis. Numeric axis: "
-                        + "a bare number ('201.4'). Datetime axis: ISO-8601 "
-                        + "('2026-03-04T21:40', '2026-03-04', '1969'). Required."));
-        ENTRY_PROPS.put("to", Map.of(
-                "type", "string",
-                "description", "End position. Present = a PERIOD (drawn as a bar), "
-                        + "absent = a POINT (drawn as a marker). That is the only "
-                        + "difference between the two — there is no separate event type."));
-        ENTRY_PROPS.put("fromEarliest", Map.of(
-                "type", "string",
-                "description", "Earliest the start could be. Use for genuine "
-                        + "uncertainty: 'last seen between 21:40 and 22:05' is "
-                        + "from=21:40, fromLatest=22:05; '201.4 ± 0.2 Ma' is "
-                        + "from=201.4, fromEarliest=201.6, fromLatest=201.2 on an "
-                        + "'ago' axis. Do NOT hide uncertainty in notes — the drawing "
-                        + "then shows a hard edge where there is none."));
-        ENTRY_PROPS.put("fromLatest", Map.of(
-                "type", "string",
-                "description", "Latest the start could be."));
-        ENTRY_PROPS.put("toEarliest", Map.of(
-                "type", "string",
-                "description", "Earliest the end could be. Only with 'to'."));
-        ENTRY_PROPS.put("toLatest", Map.of(
-                "type", "string",
-                "description", "Latest the end could be. Only with 'to'."));
-        ENTRY_PROPS.put("lane", Map.of(
-                "type", "string",
-                "description", "Lane id. Lanes are the parallel strands read against "
-                        + "one clock — suspect / victim / witness, or stratigraphy / "
-                        + "climate / fauna. Omit for the default lane."));
-        ENTRY_PROPS.put("parent", Map.of(
-                "type", "string",
-                "description", "Id of the entry this one sits inside — era > period "
-                        + "> epoch. Nesting is a flat list plus this reference, never "
-                        + "nested objects."));
-        ENTRY_PROPS.put("color", Map.of(
-                "type", "string",
-                "description", "Palette name (blue/green/red/orange/yellow/purple/"
-                        + "pink/teal/gray) or CSS colour."));
-        ENTRY_PROPS.put("tags", Map.of(
-                "type", "array",
-                "items", Map.of("type", "string"),
-                "description", "Free-form filter tags."));
-        ENTRY_PROPS.put("notes", Map.of(
-                "type", "string",
-                "description", "Multi-line description — the evidence, the source, "
-                        + "the reasoning."));
+        ENTRY_PROPS.put(
+                "id",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Stable id. Needed only when another entry names this "
+                                + "one as its 'parent'; otherwise auto-generated."));
+        ENTRY_PROPS.put(
+                "title",
+                Map.of(
+                        "type", "string",
+                        "description", "Display label. Required."));
+        ENTRY_PROPS.put(
+                "from",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Start position, read against the axis. Numeric axis: "
+                                + "a bare number ('201.4'). Datetime axis: ISO-8601 "
+                                + "('2026-03-04T21:40', '2026-03-04', '1969'). Required."));
+        ENTRY_PROPS.put(
+                "to",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "End position. Present = a PERIOD (drawn as a bar), "
+                                + "absent = a POINT (drawn as a marker). That is the only "
+                                + "difference between the two — there is no separate event type."));
+        ENTRY_PROPS.put(
+                "fromEarliest",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Earliest the start could be. Use for genuine "
+                                + "uncertainty: 'last seen between 21:40 and 22:05' is "
+                                + "from=21:40, fromLatest=22:05; '201.4 ± 0.2 Ma' is "
+                                + "from=201.4, fromEarliest=201.6, fromLatest=201.2 on an "
+                                + "'ago' axis. Do NOT hide uncertainty in notes — the drawing "
+                                + "then shows a hard edge where there is none."));
+        ENTRY_PROPS.put(
+                "fromLatest",
+                Map.of(
+                        "type", "string",
+                        "description", "Latest the start could be."));
+        ENTRY_PROPS.put(
+                "toEarliest",
+                Map.of(
+                        "type", "string",
+                        "description", "Earliest the end could be. Only with 'to'."));
+        ENTRY_PROPS.put(
+                "toLatest",
+                Map.of(
+                        "type", "string",
+                        "description", "Latest the end could be. Only with 'to'."));
+        ENTRY_PROPS.put(
+                "lane",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Lane id. Lanes are the parallel strands read against "
+                                + "one clock — suspect / victim / witness, or stratigraphy / "
+                                + "climate / fauna. Omit for the default lane."));
+        ENTRY_PROPS.put(
+                "parent",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Id of the entry this one sits inside — era > period "
+                                + "> epoch. Nesting is a flat list plus this reference, never "
+                                + "nested objects."));
+        ENTRY_PROPS.put(
+                "color",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Palette name (blue/green/red/orange/yellow/purple/" + "pink/teal/gray) or CSS colour."));
+        ENTRY_PROPS.put(
+                "tags",
+                Map.of(
+                        "type", "array",
+                        "items", Map.of("type", "string"),
+                        "description", "Free-form filter tags."));
+        ENTRY_PROPS.put(
+                "notes",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Multi-line description — the evidence, the source, " + "the reasoning."));
     }
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("axis", Map.of(
-                        "type", "object",
-                        "properties", AXIS_PROPS,
-                        "required", List.of("mode"),
-                        "description", "The axis declaration. Required — it is what "
-                                + "makes the document renderable at all."));
-                put("entries", Map.of(
-                        "type", "array",
-                        "items", Map.of(
-                                "type", "object",
-                                "properties", ENTRY_PROPS,
-                                "required", List.of("title", "from")),
-                        "description", "Periods and points, in any order."));
-                put("lanes", Map.of(
-                        "type", "array",
-                        "items", Map.of(
-                                "type", "object",
-                                "properties", LANE_PROPS,
-                                "required", List.of("id")),
-                        "description", "Optional lane declarations, in render order. "
-                                + "Declare a lane to fix its position or to show it "
-                                + "while still empty ('no record of the witness that "
-                                + "night'). Undeclared lanes named by entries are "
-                                + "appended."));
-                put("title", Map.of(
-                        "type", "string",
-                        "description", "Document title, also rendered above the ruler."));
-                put("outputPath", Map.of(
-                        "type", "string",
-                        "description", "Storage path. Default: "
-                                + "'timelines/<title-slug>-<timestamp>.yaml'."));
-                put("projectId", Map.of(
-                        "type", "string",
-                        "description", "Optional project name; defaults to the active "
-                                + "project."));
-                put("overwrite", Map.of(
-                        "type", "boolean",
-                        "description", "When true and outputPath exists, replace the "
-                                + "body instead of failing. Default false."));
-            }},
-            "required", List.of("axis", "entries"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "axis",
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "properties",
+                                    AXIS_PROPS,
+                                    "required",
+                                    List.of("mode"),
+                                    "description",
+                                    "The axis declaration. Required — it is what "
+                                            + "makes the document renderable at all."));
+                    put(
+                            "entries",
+                            Map.of(
+                                    "type", "array",
+                                    "items",
+                                            Map.of(
+                                                    "type",
+                                                    "object",
+                                                    "properties",
+                                                    ENTRY_PROPS,
+                                                    "required",
+                                                    List.of("title", "from")),
+                                    "description", "Periods and points, in any order."));
+                    put(
+                            "lanes",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "object", "properties", LANE_PROPS, "required", List.of("id")),
+                                    "description",
+                                    "Optional lane declarations, in render order. "
+                                            + "Declare a lane to fix its position or to show it "
+                                            + "while still empty ('no record of the witness that "
+                                            + "night'). Undeclared lanes named by entries are "
+                                            + "appended."));
+                    put(
+                            "title",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Document title, also rendered above the ruler."));
+                    put(
+                            "outputPath",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Storage path. Default: " + "'timelines/<title-slug>-<timestamp>.yaml'."));
+                    put(
+                            "projectId",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional project name; defaults to the active " + "project."));
+                    put(
+                            "overwrite",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "When true and outputPath exists, replace the "
+                                            + "body instead of failing. Default false."));
+                }
+            },
+            "required",
+            List.of("axis", "entries"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
@@ -219,12 +322,13 @@ public class TimelineCreateTool implements Tool {
     private final ProgressEmitter progressEmitter;
     private final SecurityContextFactory contextFactory;
 
-    public TimelineCreateTool(EddieContext eddieContext,
-                              DocumentService documentService,
-                              DocumentLinkBuilder linkBuilder,
-                              ThinkProcessService thinkProcessService,
-                              ProgressEmitter progressEmitter,
-                              SecurityContextFactory contextFactory) {
+    public TimelineCreateTool(
+            EddieContext eddieContext,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            ThinkProcessService thinkProcessService,
+            ProgressEmitter progressEmitter,
+            SecurityContextFactory contextFactory) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.linkBuilder = linkBuilder;
@@ -233,7 +337,10 @@ public class TimelineCreateTool implements Tool {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String name() { return "timeline_create"; }
+    @Override
+    public String name() {
+        return "timeline_create";
+    }
 
     @Override
     public String description() {
@@ -250,7 +357,10 @@ public class TimelineCreateTool implements Tool {
                 + "progress).";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
@@ -266,8 +376,7 @@ public class TimelineCreateTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         List<Map<String, Object>> rawEntries = paramMapList(params, "entries");
         if (rawEntries == null || rawEntries.isEmpty()) {
-            throw new ToolException(
-                    "'entries' is empty — a timeline with no entries has no axis range "
+            throw new ToolException("'entries' is empty — a timeline with no entries has no axis range "
                     + "and renders as a blank ruler. Collect the periods and points "
                     + "first, then make one call with all of them.");
         }
@@ -291,21 +400,21 @@ public class TimelineCreateTool implements Tool {
         String effectiveTitle = title != null ? title : "Timeline";
         String finalPath = outputPath != null ? outputPath : defaultOutputPath(effectiveTitle);
 
-        TimelineDocument timeline = new TimelineDocument(
-                "timeline", title, axis, lanes, entries, new LinkedHashMap<>());
+        TimelineDocument timeline =
+                new TimelineDocument("timeline", title, axis, lanes, entries, new LinkedHashMap<>());
         String yaml = TimelineCodec.serialize(timeline, YAML_MIME);
         byte[] bytes = yaml.getBytes(StandardCharsets.UTF_8);
 
-        emit(process, StatusTag.INFO, String.format(Locale.ROOT,
-                "Writing timeline with %d entries to '%s'…", entries.size(), finalPath));
+        emit(
+                process,
+                StatusTag.INFO,
+                String.format(Locale.ROOT, "Writing timeline with %d entries to '%s'…", entries.size(), finalPath));
 
         DocumentDocument stored;
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(ctx.tenantId(), projectName, finalPath);
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), projectName, finalPath);
         if (existing.isPresent()) {
             if (!overwrite) {
-                throw new ToolException(
-                        "A document already exists at '" + finalPath + "'. Pass "
+                throw new ToolException("A document already exists at '" + finalPath + "'. Pass "
                         + "overwrite=true to replace it or pick a different outputPath.");
             }
             stored = documentService.update(
@@ -334,17 +443,21 @@ public class TimelineCreateTool implements Tool {
                         ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), finalPath));
             } catch (IOException e) {
-                throw new ToolException("Could not store timeline: " + e.getMessage());
+                throw new ToolException("Could not store timeline: " + e.getMessage(), e);
             }
         }
 
         String vanceUri = DocumentLinkBuilder.buildVanceUri(
-                null, stored.getPath(), "timeline",
-                DocumentLinkBuilder.defaultModeForKind("timeline"));
+                null, stored.getPath(), "timeline", DocumentLinkBuilder.defaultModeForKind("timeline"));
         String markdownLink = linkBuilder.linkFor(stored, projectName);
 
-        log.info("TimelineCreateTool tenant='{}' entries={} axis={} path='{}' replaced={}",
-                ctx.tenantId(), entries.size(), axis.modeWire(), finalPath, existing.isPresent());
+        log.info(
+                "TimelineCreateTool tenant='{}' entries={} axis={} path='{}' replaced={}",
+                ctx.tenantId(),
+                entries.size(),
+                axis.modeWire(),
+                finalPath,
+                existing.isPresent());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("path", stored.getPath());
@@ -362,24 +475,20 @@ public class TimelineCreateTool implements Tool {
 
     private static TimelineAxis buildAxis(@Nullable Map<String, Object> raw) {
         if (raw == null) {
-            throw new ToolException(
-                    "'axis' is required. Declare mode='numeric' (with unit, e.g. 'Ma', "
+            throw new ToolException("'axis' is required. Declare mode='numeric' (with unit, e.g. 'Ma', "
                     + "and direction='ago' for scales counting backwards from today) or "
                     + "mode='datetime' for ISO-8601 dates and times.");
         }
         String modeRaw = stringOrNull(raw.get("mode"));
         if (modeRaw == null) {
-            throw new ToolException(
-                    "'axis.mode' is required — 'numeric' or 'datetime'. It is not inferred "
+            throw new ToolException("'axis.mode' is required — 'numeric' or 'datetime'. It is not inferred "
                     + "from the entries: '201.4' is a plausible year and a plausible "
                     + "'millions of years ago', and guessing wrong draws the timeline "
                     + "mirror-imaged with no error anywhere.");
         }
         TimelineAxis.TimelineAxisMode mode = TimelineAxis.TimelineAxisMode.fromWire(modeRaw);
-        if (mode == TimelineAxis.TimelineAxisMode.NUMERIC
-                && !"numeric".equalsIgnoreCase(modeRaw.trim())) {
-            throw new ToolException(
-                    "'axis.mode' must be 'numeric' or 'datetime', got '" + modeRaw + "'.");
+        if (mode == TimelineAxis.TimelineAxisMode.NUMERIC && !"numeric".equalsIgnoreCase(modeRaw.trim())) {
+            throw new ToolException("'axis.mode' must be 'numeric' or 'datetime', got '" + modeRaw + "'.");
         }
         return new TimelineAxis(
                 mode,
@@ -397,26 +506,21 @@ public class TimelineCreateTool implements Tool {
         for (Map<String, Object> lane : raw) {
             String id = stringOrNull(lane.get("id"));
             if (id == null) {
-                throw new ToolException("every lane needs an 'id' — it is what entry.lane "
-                        + "references.");
+                throw new ToolException("every lane needs an 'id' — it is what entry.lane " + "references.");
             }
-            out.add(new TimelineLane(
-                    id, stringOrNull(lane.get("title")), stringOrNull(lane.get("color"))));
+            out.add(new TimelineLane(id, stringOrNull(lane.get("title")), stringOrNull(lane.get("color"))));
         }
         return out;
     }
 
-    private static TimelineEntry buildEntry(
-            Map<String, Object> raw, int index, TimelineAxis axis) {
+    private static TimelineEntry buildEntry(Map<String, Object> raw, int index, TimelineAxis axis) {
         String title = stringOrNull(raw.get("title"));
         if (title == null) {
-            throw new ToolException(
-                    "entries[" + index + "] is missing 'title' — required for every entry.");
+            throw new ToolException("entries[" + index + "] is missing 'title' — required for every entry.");
         }
         String from = firstOf(raw, "from", "at", "start");
         if (from == null) {
-            throw new ToolException(
-                    "entries[" + index + "] ('" + title + "') is missing 'from' — every "
+            throw new ToolException("entries[" + index + "] ('" + title + "') is missing 'from' — every "
                     + "entry needs a start position on the axis.");
         }
         requireReadable(axis, from, "from", index, title);
@@ -457,21 +561,18 @@ public class TimelineCreateTool implements Tool {
                 + value + "' cannot be read on a "
                 + axis.modeWire() + " axis. "
                 + (axis.mode() == TimelineAxis.TimelineAxisMode.DATETIME
-                        ? "Expected ISO-8601 — '2026-03-04T21:40', '2026-03-04' or a bare "
-                          + "year like '1969'."
+                        ? "Expected ISO-8601 — '2026-03-04T21:40', '2026-03-04' or a bare " + "year like '1969'."
                         : "Expected a bare number like '201.4'; the unit belongs in "
-                          + "axis.unit, not in the value."));
+                                + "axis.unit, not in the value."));
     }
 
     // ── Path helpers ──────────────────────────────────────────────
 
     static String defaultOutputPath(@Nullable String title) {
-        String stamp = DateTimeFormatter
-                .ofPattern("yyyy-MM-dd-HHmmss")
+        String stamp = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
                 .withZone(ZoneOffset.UTC)
                 .format(Instant.now());
-        String slug = (title == null || title.isBlank())
-                ? "timeline" : IcsToCalendarTool.slug(title);
+        String slug = (title == null || title.isBlank()) ? "timeline" : IcsToCalendarTool.slug(title);
         return "timelines/" + slug + "-" + stamp + ".yaml";
     }
 
@@ -525,15 +626,13 @@ public class TimelineCreateTool implements Tool {
         return params.get(key) instanceof Boolean b && b;
     }
 
-    private static @Nullable Map<String, Object> paramMap(
-            @Nullable Map<String, Object> params, String key) {
+    private static @Nullable Map<String, Object> paramMap(@Nullable Map<String, Object> params, String key) {
         if (params == null) return null;
         if (!(params.get(key) instanceof Map<?, ?> m)) return null;
         return coerceMap(m);
     }
 
-    private static @Nullable List<Map<String, Object>> paramMapList(
-            @Nullable Map<String, Object> params, String key) {
+    private static @Nullable List<Map<String, Object>> paramMapList(@Nullable Map<String, Object> params, String key) {
         if (params == null) return null;
         if (!(params.get(key) instanceof List<?> list)) return null;
         List<Map<String, Object>> out = new ArrayList<>();

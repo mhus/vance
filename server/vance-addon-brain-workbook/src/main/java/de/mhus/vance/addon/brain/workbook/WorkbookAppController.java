@@ -362,7 +362,7 @@ public class WorkbookAppController {
                     DocumentService.WriterIdentity.of(editorId, null, null),
                     actor);
         } catch (java.io.IOException e) {
-            throw new ToolException("Could not patch front-matter: " + e.getMessage());
+            throw new ToolException("Could not patch front-matter: " + e.getMessage(), e);
         }
     }
 
@@ -436,7 +436,7 @@ public class WorkbookAppController {
         try (InputStream in = documentService.loadContent(src)) {
             body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (java.io.IOException e) {
-            throw new ToolException("Could not read source page: " + e.getMessage());
+            throw new ToolException("Could not read source page: " + e.getMessage(), e);
         }
 
         // Compute the destination path: same parent + base slug + "-copy".
@@ -537,7 +537,7 @@ public class WorkbookAppController {
                     DocumentService.WriterIdentity.of(currentUser(httpRequest), null, null),
                     actor(httpRequest));
         } catch (java.io.IOException e) {
-            throw new ToolException("Could not update manifest: " + e.getMessage());
+            throw new ToolException("Could not update manifest: " + e.getMessage(), e);
         }
 
         // Re-issue a fresh scan so the client gets the new landingPageId.

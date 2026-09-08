@@ -8,10 +8,10 @@ import de.mhus.vance.api.ursascheduler.SchedulerDto;
 import de.mhus.vance.api.ursascheduler.SchedulerSaveRequest;
 import de.mhus.vance.api.ursascheduler.SchedulerSource;
 import de.mhus.vance.api.ursascheduler.SchedulerSummary;
+import de.mhus.vance.brain.megadodo.MegadodoMapper;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.brain.megadodo.MegadodoMapper;
 import de.mhus.vance.shared.megadodo.MegadodoEventDocument;
 import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.permission.Action;
@@ -91,8 +91,8 @@ public class UrsaSchedulerController {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         String norm = normalizeName(name);
         ResolvedUrsaScheduler r = loader.load(tenant, project, norm)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Scheduler '" + norm + "' not found in project '" + project + "'"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Scheduler '" + norm + "' not found in project '" + project + "'"));
         return toDto(r);
     }
 
@@ -109,41 +109,38 @@ public class UrsaSchedulerController {
         String norm = normalizeName(name);
         String yaml = body.getYaml();
         if (yaml == null || yaml.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "'yaml' must be a non-empty string");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'yaml' must be a non-empty string");
         }
         try {
             loader.validateYaml(norm, yaml);
         } catch (UrsaSchedulerLoader.SchedulerParseException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }
         String path = pathFor(norm);
         Optional<DocumentDocument> existing = documentService.findByPath(tenant, project, path);
         boolean created = existing.isEmpty();
         String createdBy = authority.contextOf(request).subjectId();
         if (existing.isPresent()) {
-            documentService.update(existing.get().getId(),
+            documentService.update(
+                    existing.get().getId(),
                     /*newTitle*/ null,
                     /*newTags*/ null,
                     /*newInlineText*/ yaml,
                     /*newPath*/ null,
                     systemActor(request));
         } else {
-            documentService.createText(tenant, project, path,
-                    "Scheduler: " + norm,
-                    /*tags*/ null,
-                    yaml,
-                    createdBy,
-                    systemActor(request));
+            documentService.createText(
+                    tenant, project, path, "Scheduler: " + norm, /*tags*/ null, yaml, createdBy, systemActor(request));
         }
         // refreshOne is driven by the DocumentChangedEvent →
         // UrsaSchedulerDocumentListener chain that documentService
         // already kicked off above.
         ResolvedUrsaScheduler reloaded = loader.load(tenant, project, norm)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Scheduler vanished immediately after write"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR, "Scheduler vanished immediately after write"));
         SchedulerDto dto = toDto(reloaded);
-        return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK).body(dto);
+        return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(dto);
     }
 
     // ─── Delete ───────────────────────────────────────────────────────────
@@ -156,8 +153,7 @@ public class UrsaSchedulerController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.ADMIN);
         String norm = normalizeName(name);
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                tenant, project, pathFor(norm));
+        Optional<DocumentDocument> existing = documentService.findByPath(tenant, project, pathFor(norm));
         if (existing.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
@@ -201,7 +197,7 @@ public class UrsaSchedulerController {
         try {
             outcome = schedulerService.fireNow(tenant, project, norm);
         } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
         }
         // firedAt comes back from the service so the returned logPath
         // matches the document the writer creates (no second-boundary
@@ -221,9 +217,7 @@ public class UrsaSchedulerController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         String norm = normalizeName(name);
-        return megadodoService
-                .listForRef(tenant, project, MegadodoRefType.SCHEDULER, norm, limit)
-                .stream()
+        return megadodoService.listForRef(tenant, project, MegadodoRefType.SCHEDULER, norm, limit).stream()
                 .map(MegadodoMapper::toDto)
                 .toList();
     }
@@ -272,8 +266,7 @@ public class UrsaSchedulerController {
     private static String normalizeName(String raw) {
         String n = raw.trim().toLowerCase(Locale.ROOT);
         if (n.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "scheduler name must not be blank");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "scheduler name must not be blank");
         }
         return n;
     }
@@ -294,12 +287,10 @@ public class UrsaSchedulerController {
     }
 
     private static String pathFor(String name) {
-        return UrsaSchedulerLoader.SCHEDULER_PATH_PREFIX + name
-                + UrsaSchedulerLoader.SCHEDULER_PATH_SUFFIX;
+        return UrsaSchedulerLoader.SCHEDULER_PATH_PREFIX + name + UrsaSchedulerLoader.SCHEDULER_PATH_SUFFIX;
     }
 
-    public record RefreshResult(int registered) {
-    }
+    public record RefreshResult(int registered) {}
 
     /**
      * Response of {@code POST /scheduler/{name}/fire}. {@code correlationId}
@@ -309,6 +300,5 @@ public class UrsaSchedulerController {
      * completes (or while it's still pending, in which case the
      * front-matter shows {@code outcome: pending}).
      */
-    public record FireResult(String correlationId, String logPath) {
-    }
+    public record FireResult(String correlationId, String logPath) {}
 }

@@ -2,11 +2,11 @@ package de.mhus.vance.brain.tools.script;
 
 import de.mhus.vance.api.action.ScriptSource;
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.action.ActionInvocation;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.ScriptActionExecutor;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.toolpack.SpawnTool;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -38,26 +38,31 @@ import org.springframework.stereotype.Component;
 public class ScriptRunDocTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("path", Map.of(
-                "type", "string",
-                "description", "Document path of the .js script, "
-                        + "resolved via the standard cascade "
-                        + "(project → _vance → resource)."));
-        properties.put("params", Map.of(
-                "type", "object",
-                "description", "Arbitrary key/value map passed to the "
-                        + "script as the top-level 'args' binding.",
-                "additionalProperties", true));
-        properties.put("timeoutSeconds", Map.of(
-                "type", "integer",
-                "description", "Wall-clock timeout for the script run. "
-                        + "Default 30s."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("path"));
+        properties.put(
+                "path",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Document path of the .js script, "
+                                + "resolved via the standard cascade "
+                                + "(project → _vance → resource)."));
+        properties.put(
+                "params",
+                Map.of(
+                        "type",
+                        "object",
+                        "description",
+                        "Arbitrary key/value map passed to the " + "script as the top-level 'args' binding.",
+                        "additionalProperties",
+                        true));
+        properties.put(
+                "timeoutSeconds",
+                Map.of("type", "integer", "description", "Wall-clock timeout for the script run. " + "Default 30s."));
+        SCHEMA = Map.of("type", "object", "properties", properties, "required", List.of("path"));
     }
 
     private final ScriptActionExecutor scriptActionExecutor;
@@ -91,8 +96,7 @@ public class ScriptRunDocTool implements Tool {
         Map<String, Object> userParams = mapParam(params, "params");
 
         TriggerAction.Script action = new TriggerAction.Script(
-                ScriptSource.DOCUMENT, /*dirName*/ null, path,
-                timeoutSeconds, userParams, ctx.userId());
+                ScriptSource.DOCUMENT, /*dirName*/ null, path, timeoutSeconds, userParams, ctx.userId());
         // Script-actions don't enforce a session — but the calling
         // tool DOES have one, and it's useful information for
         // ScriptActionExecutor's tool-invocation context (so script
@@ -114,8 +118,8 @@ public class ScriptRunDocTool implements Tool {
                         /*correlationId*/ null,
                         "tool:" + name(),
                         ctx.processId());
-        ActionResult result = scriptActionExecutor.execute(new ActionInvocation<>(
-                action, triggerCtx, TriggerKind.TOOL));
+        ActionResult result =
+                scriptActionExecutor.execute(new ActionInvocation<>(action, triggerCtx, TriggerKind.TOOL));
         return toResultMap(result);
     }
 
@@ -139,7 +143,7 @@ public class ScriptRunDocTool implements Tool {
             try {
                 return Integer.parseInt(s.trim());
             } catch (NumberFormatException e) {
-                throw new ToolException("parameter '" + key + "' must be an integer");
+                throw new ToolException("parameter '" + key + "' must be an integer", e);
             }
         }
         throw new ToolException("parameter '" + key + "' must be an integer");

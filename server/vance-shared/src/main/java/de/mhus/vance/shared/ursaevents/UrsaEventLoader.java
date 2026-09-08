@@ -264,7 +264,7 @@ public class UrsaEventLoader {
                     sourceRaw.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
-                    "unknown 'script.source' '" + sourceRaw + "' (expected: document | workspace)");
+                    "unknown 'script.source' '" + sourceRaw + "' (expected: document | workspace)", e);
         }
         String path = stringOrNull(map.get("path"));
         if (path == null || path.isBlank()) {
@@ -285,7 +285,7 @@ public class UrsaEventLoader {
             try {
                 timeoutSeconds = Integer.parseInt(s.trim());
             } catch (NumberFormatException e) {
-                throw new IllegalStateException("'script.timeoutSeconds' must be an integer, got '" + s + "'");
+                throw new IllegalStateException("'script.timeoutSeconds' must be an integer, got '" + s + "'", e);
             }
         }
         if (timeoutSeconds != null && timeoutSeconds <= 0) {

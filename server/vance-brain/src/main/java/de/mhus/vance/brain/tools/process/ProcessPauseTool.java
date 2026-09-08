@@ -2,11 +2,11 @@ package de.mhus.vance.brain.tools.process;
 
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,10 +34,12 @@ public class ProcessPauseTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Target process name in the current session.")),
+            "properties",
+                    Map.of(
+                            "name",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Target process name in the current session.")),
             "required", List.of("name"));
 
     private final ThinkProcessService thinkProcessService;
@@ -83,40 +85,39 @@ public class ProcessPauseTool implements Tool {
         }
         ThinkProcessDocument target = thinkProcessService
                 .findByName(ctx.tenantId(), sessionId, name)
-                .or(() -> thinkProcessService.findById(name)
-                        .filter(p -> ctx.tenantId().equals(p.getTenantId())
-                                && sessionId.equals(p.getSessionId())))
-                .orElseThrow(() -> new ToolException(
-                        "Process '" + name + "' not found in current session"));
+                .or(() -> thinkProcessService
+                        .findById(name)
+                        .filter(p -> ctx.tenantId().equals(p.getTenantId()) && sessionId.equals(p.getSessionId())))
+                .orElseThrow(() -> new ToolException("Process '" + name + "' not found in current session"));
 
         // Self-pause would enqueue the pause task behind the running turn on
         // the same lane while that turn blocks on .get() → lane deadlock.
         // Reject it, mirroring ProcessSteerTool's self-guard (Phase 2).
         if (target.getId() != null && target.getId().equals(ctx.processId())) {
             throw new ToolException(
-                    "process_pause cannot target the current process — "
-                            + "self-pause would deadlock the lane");
+                    "process_pause cannot target the current process — " + "self-pause would deadlock the lane");
         }
 
         ThinkProcessStatus current = target.getStatus();
-        if (current == ThinkProcessStatus.CLOSED
-                || current == ThinkProcessStatus.PAUSED) {
+        if (current == ThinkProcessStatus.CLOSED || current == ThinkProcessStatus.PAUSED) {
             return shape(target);
         }
         try {
-            laneScheduler.submit(target.getId(), () -> {
-                thinkProcessService.updateStatus(target.getId(), ThinkProcessStatus.PAUSED);
-                return null;
-            }).get();
+            laneScheduler
+                    .submit(target.getId(), () -> {
+                        thinkProcessService.updateStatus(target.getId(), ThinkProcessStatus.PAUSED);
+                        return null;
+                    })
+                    .get();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted waiting for pause");
+            throw new ToolException("Interrupted waiting for pause", ie);
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
             throw new ToolException("Pause failed: " + cause.getMessage(), cause);
         }
-        ThinkProcessDocument refreshed = thinkProcessService.findById(target.getId())
-                .orElse(target);
+        ThinkProcessDocument refreshed =
+                thinkProcessService.findById(target.getId()).orElse(target);
         return shape(refreshed);
     }
 

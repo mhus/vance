@@ -58,12 +58,10 @@ public class UrsaSchedulerLoader {
      * Resolve a single scheduler by name in the project/_vance cascade.
      * Returns empty if no tier carries it.
      */
-    public Optional<ResolvedUrsaScheduler> load(
-            String tenantId, @Nullable String projectId, String name) {
+    public Optional<ResolvedUrsaScheduler> load(String tenantId, @Nullable String projectId, String name) {
         if (name == null || name.isBlank()) return Optional.empty();
         String path = pathFor(name);
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                tenantId, effectiveProjectId(projectId), path);
+        Optional<LookupResult> hit = documentService.lookupCascade(tenantId, effectiveProjectId(projectId), path);
         if (hit.isEmpty()) return Optional.empty();
         LookupResult result = hit.get();
         if (result.source() == LookupResult.Source.RESOURCE) {
@@ -77,7 +75,8 @@ public class UrsaSchedulerLoader {
             throw new SchedulerParseException(
                     "Failed to parse scheduler '" + name + "' from "
                             + result.source() + " at path '" + result.path()
-                            + "': " + e.getMessage(), e);
+                            + "': " + e.getMessage(),
+                    e);
         }
     }
 
@@ -87,8 +86,8 @@ public class UrsaSchedulerLoader {
      * logged and skipped — the rest of the bootstrap continues.
      */
     public List<ResolvedUrsaScheduler> listAll(String tenantId, @Nullable String projectId) {
-        Map<String, LookupResult> hits = documentService.listByPrefixCascade(
-                tenantId, effectiveProjectId(projectId), SCHEDULER_PATH_PREFIX);
+        Map<String, LookupResult> hits =
+                documentService.listByPrefixCascade(tenantId, effectiveProjectId(projectId), SCHEDULER_PATH_PREFIX);
         List<ResolvedUrsaScheduler> out = new ArrayList<>(hits.size());
         for (Map.Entry<String, LookupResult> e : hits.entrySet()) {
             String path = e.getKey();
@@ -99,8 +98,11 @@ public class UrsaSchedulerLoader {
             try {
                 out.add(parse(name, hit));
             } catch (RuntimeException ex) {
-                log.warn("UrsaSchedulerLoader: skipping malformed scheduler path='{}' source={}: {}",
-                        path, hit.source(), ex.getMessage());
+                log.warn(
+                        "UrsaSchedulerLoader: skipping malformed scheduler path='{}' source={}: {}",
+                        path,
+                        hit.source(),
+                        ex.getMessage());
             }
         }
         return out;
@@ -117,8 +119,7 @@ public class UrsaSchedulerLoader {
     }
 
     private static String effectiveProjectId(@Nullable String projectId) {
-        return (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
+        return (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
     /**
@@ -129,9 +130,7 @@ public class UrsaSchedulerLoader {
     public static @Nullable String nameFromPath(String path) {
         if (!path.startsWith(SCHEDULER_PATH_PREFIX)) return null;
         if (!path.endsWith(SCHEDULER_PATH_SUFFIX)) return null;
-        String stem = path.substring(
-                SCHEDULER_PATH_PREFIX.length(),
-                path.length() - SCHEDULER_PATH_SUFFIX.length());
+        String stem = path.substring(SCHEDULER_PATH_PREFIX.length(), path.length() - SCHEDULER_PATH_SUFFIX.length());
         return stem.isBlank() ? null : stem;
     }
 
@@ -147,8 +146,7 @@ public class UrsaSchedulerLoader {
         try {
             return parse(norm, syntheticHit(norm, yaml));
         } catch (RuntimeException ex) {
-            throw new SchedulerParseException(
-                    "scheduler YAML invalid: " + ex.getMessage(), ex);
+            throw new SchedulerParseException("scheduler YAML invalid: " + ex.getMessage(), ex);
         }
     }
 
@@ -211,18 +209,14 @@ public class UrsaSchedulerLoader {
         String workflow = stringOrNull(spec.get("workflow"));
         ResolvedUrsaScheduler.ScriptSpec script = parseScript(spec.get("script"));
         // Exactly one of recipe / workflow / script must be set.
-        int targetCount = (recipe != null ? 1 : 0)
-                + (workflow != null ? 1 : 0)
-                + (script != null ? 1 : 0);
+        int targetCount = (recipe != null ? 1 : 0) + (workflow != null ? 1 : 0) + (script != null ? 1 : 0);
         if (targetCount > 1) {
-            throw new IllegalStateException(
-                    "'recipe', 'workflow', 'script' are mutually exclusive — set exactly one");
+            throw new IllegalStateException("'recipe', 'workflow', 'script' are mutually exclusive — set exactly one");
         }
         if (targetCount == 0) {
-            throw new IllegalStateException(
-                    "missing trigger target — set 'recipe' (spawns a ThinkProcess), "
-                            + "'workflow' (spawns a Magrathea workflow run), "
-                            + "or 'script' (runs a JS script)");
+            throw new IllegalStateException("missing trigger target — set 'recipe' (spawns a ThinkProcess), "
+                    + "'workflow' (spawns a Magrathea workflow run), "
+                    + "or 'script' (runs a JS script)");
         }
         String timezone = stringOrNull(spec.get("timezone"));
 
@@ -231,12 +225,10 @@ public class UrsaSchedulerLoader {
         String cron = stringOrNull(spec.get("cron"));
         Instant at = parseAt(spec.get("at"), timezone);
         if (cron != null && at != null) {
-            throw new IllegalStateException(
-                    "'cron' and 'at' are mutually exclusive — set exactly one");
+            throw new IllegalStateException("'cron' and 'at' are mutually exclusive — set exactly one");
         }
         if (cron == null && at == null) {
-            throw new IllegalStateException(
-                    "missing trigger — set either 'cron' (recurring) or 'at' (one-shot)");
+            throw new IllegalStateException("missing trigger — set either 'cron' (recurring) or 'at' (one-shot)");
         }
         // Normalise + validate cron. Spring's CronExpression accepts
         // 6-field "<sec> <min> <hour> <dom> <mon> <dow>" plus macros
@@ -250,8 +242,7 @@ public class UrsaSchedulerLoader {
             String trimmed = cron.trim();
             if (CronExpression.isValidExpression(trimmed)) {
                 cron = trimmed;
-            } else if (trimmed.split("\\s+").length == 5
-                    && CronExpression.isValidExpression("0 " + trimmed)) {
+            } else if (trimmed.split("\\s+").length == 5 && CronExpression.isValidExpression("0 " + trimmed)) {
                 cron = "0 " + trimmed;
             } else {
                 int fields = trimmed.split("\\s+").length;
@@ -287,12 +278,10 @@ public class UrsaSchedulerLoader {
         // overlapping run). Reject the combination at parse time instead of
         // accepting misleading config; SKIP (the default) is allowed as
         // best-effort. See specification/scheduler.md.
-        if (recipe == null
-                && (overlap == OverlapPolicy.QUEUE || overlap == OverlapPolicy.CANCEL_PREVIOUS)) {
-            throw new IllegalStateException(
-                    "overlap: " + overlap + " is only supported for 'recipe' triggers — "
-                            + "workflow/script runs are not overlap-tracked. Use overlap: SKIP "
-                            + "(or a recipe trigger).");
+        if (recipe == null && (overlap == OverlapPolicy.QUEUE || overlap == OverlapPolicy.CANCEL_PREVIOUS)) {
+            throw new IllegalStateException("overlap: " + overlap + " is only supported for 'recipe' triggers — "
+                    + "workflow/script runs are not overlap-tracked. Use overlap: SKIP "
+                    + "(or a recipe trigger).");
         }
         LockMode lockMode = parseLockMode(spec.get("lockMode"));
         List<String> tags = stringList(spec.get("tags"), "tags");
@@ -311,9 +300,20 @@ public class UrsaSchedulerLoader {
                 mapSource(hit.source()),
                 doc == null ? null : doc.getId(),
                 doc == null ? null : doc.getCreatedBy(),
-                description, cron, at, timezone, enabled,
-                recipe, workflow, script, Map.copyOf(params),
-                initialMessage, runAs, overlap, lockMode, tags);
+                description,
+                cron,
+                at,
+                timezone,
+                enabled,
+                recipe,
+                workflow,
+                script,
+                Map.copyOf(params),
+                initialMessage,
+                runAs,
+                overlap,
+                lockMode,
+                tags);
     }
 
     /** Parses the {@code script:} block when present; returns {@code null} when absent. */
@@ -337,22 +337,18 @@ public class UrsaSchedulerLoader {
                     sourceRaw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
-                    "unknown 'script.source' '" + sourceRaw + "' (expected: document | workspace)");
+                    "unknown 'script.source' '" + sourceRaw + "' (expected: document | workspace)", e);
         }
         String path = stringOrNull(map.get("path"));
         if (path == null || path.isBlank()) {
             throw new IllegalStateException("'script.path' must be non-blank");
         }
         String dirName = stringOrNull(map.get("dirName"));
-        if (source == de.mhus.vance.api.action.ScriptSource.WORKSPACE
-                && (dirName == null || dirName.isBlank())) {
-            throw new IllegalStateException(
-                    "'script.dirName' is required when source=workspace");
+        if (source == de.mhus.vance.api.action.ScriptSource.WORKSPACE && (dirName == null || dirName.isBlank())) {
+            throw new IllegalStateException("'script.dirName' is required when source=workspace");
         }
-        if (source == de.mhus.vance.api.action.ScriptSource.DOCUMENT
-                && dirName != null && !dirName.isBlank()) {
-            throw new IllegalStateException(
-                    "'script.dirName' must be omitted when source=document");
+        if (source == de.mhus.vance.api.action.ScriptSource.DOCUMENT && dirName != null && !dirName.isBlank()) {
+            throw new IllegalStateException("'script.dirName' must be omitted when source=document");
         }
         Integer timeoutSeconds = null;
         Object rawTimeout = map.get("timeoutSeconds");
@@ -362,13 +358,11 @@ public class UrsaSchedulerLoader {
             try {
                 timeoutSeconds = Integer.parseInt(s.trim());
             } catch (NumberFormatException e) {
-                throw new IllegalStateException(
-                        "'script.timeoutSeconds' must be an integer, got '" + s + "'");
+                throw new IllegalStateException("'script.timeoutSeconds' must be an integer, got '" + s + "'", e);
             }
         }
         if (timeoutSeconds != null && timeoutSeconds <= 0) {
-            throw new IllegalStateException(
-                    "'script.timeoutSeconds' must be > 0, got " + timeoutSeconds);
+            throw new IllegalStateException("'script.timeoutSeconds' must be > 0, got " + timeoutSeconds);
         }
         return new ResolvedUrsaScheduler.ScriptSpec(source, dirName, path, timeoutSeconds);
     }
@@ -383,8 +377,8 @@ public class UrsaSchedulerLoader {
             case "FULL" -> LockMode.FULL;
             case "PROTECTED" -> LockMode.PROTECTED;
             case "HIDDEN" -> LockMode.HIDDEN;
-            default -> throw new IllegalStateException(
-                    "unknown lockMode '" + s + "' — expected full | protected | hidden");
+            default ->
+                throw new IllegalStateException("unknown lockMode '" + s + "' — expected full | protected | hidden");
         };
     }
 
@@ -406,8 +400,7 @@ public class UrsaSchedulerLoader {
             return d.toInstant();
         }
         if (!(raw instanceof String s) || s.isBlank()) {
-            throw new IllegalStateException(
-                    "'at' must be an ISO-8601 datetime string");
+            throw new IllegalStateException("'at' must be an ISO-8601 datetime string");
         }
         String trimmed = s.trim();
         try {
@@ -422,16 +415,13 @@ public class UrsaSchedulerLoader {
         }
         try {
             LocalDateTime ldt = LocalDateTime.parse(trimmed);
-            ZoneId zone = (timezone == null || timezone.isBlank())
-                    ? ZoneOffset.UTC
-                    : ZoneId.of(timezone);
+            ZoneId zone = (timezone == null || timezone.isBlank()) ? ZoneOffset.UTC : ZoneId.of(timezone);
             return ldt.atZone(zone).toInstant();
         } catch (DateTimeParseException ex) {
-            throw new IllegalStateException(
-                    "'at' is not a valid ISO-8601 datetime: '" + trimmed + "'");
+            throw new IllegalStateException("'at' is not a valid ISO-8601 datetime: '" + trimmed + "'", ex);
         } catch (java.time.DateTimeException ex) {
             throw new IllegalStateException(
-                    "'at' carries an unknown timezone '" + timezone + "': " + ex.getMessage());
+                    "'at' carries an unknown timezone '" + timezone + "': " + ex.getMessage(), ex);
         }
     }
 
@@ -446,8 +436,9 @@ public class UrsaSchedulerLoader {
             case "SKIP" -> OverlapPolicy.SKIP;
             case "QUEUE" -> OverlapPolicy.QUEUE;
             case "CANCEL_PREVIOUS", "CANCELPREVIOUS" -> OverlapPolicy.CANCEL_PREVIOUS;
-            default -> throw new IllegalStateException(
-                    "unknown overlap policy '" + s + "' — expected skip | queue | cancelPrevious");
+            default ->
+                throw new IllegalStateException(
+                        "unknown overlap policy '" + s + "' — expected skip | queue | cancelPrevious");
         };
     }
 
@@ -455,15 +446,13 @@ public class UrsaSchedulerLoader {
         return switch (source) {
             case PROJECT -> SchedulerSource.PROJECT;
             case VANCE -> SchedulerSource.TENANT;
-            case RESOURCE -> throw new IllegalStateException(
-                    "resource layer is not allowed for schedulers");
+            case RESOURCE -> throw new IllegalStateException("resource layer is not allowed for schedulers");
         };
     }
 
     private static String stringOrThrow(@Nullable Object raw, String fieldName) {
         if (!(raw instanceof String s) || s.isBlank()) {
-            throw new IllegalStateException(
-                    "missing required field '" + fieldName + "' (must be a non-empty string)");
+            throw new IllegalStateException("missing required field '" + fieldName + "' (must be a non-empty string)");
         }
         return s;
     }
@@ -481,8 +470,7 @@ public class UrsaSchedulerLoader {
         List<String> out = new ArrayList<>(list.size());
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
-                throw new IllegalStateException(
-                        "'" + fieldName + "' contains a non-string or blank entry");
+                throw new IllegalStateException("'" + fieldName + "' contains a non-string or blank entry");
             }
             out.add(s);
         }

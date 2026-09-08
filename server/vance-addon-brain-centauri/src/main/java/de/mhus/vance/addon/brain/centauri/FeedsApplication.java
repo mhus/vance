@@ -65,8 +65,8 @@ public class FeedsApplication implements VanceApplication {
         Optional<DocumentDocument> existing =
                 documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
-            throw new ToolException("Manifest already exists at '" + manifestPath
-                    + "'. Pass overwrite=true to replace it.");
+            throw new ToolException(
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -80,11 +80,20 @@ public class FeedsApplication implements VanceApplication {
                 "application", APP_NAME, title, description, configBlock, new LinkedHashMap<>());
         String body = ApplicationCodec.serialize(manifest, YAML_MIME);
 
-        DocumentDocument stored = write(ctx.tenantId(), ctx.projectName(), manifestPath,
-                title == null ? "Feeds" : title, body, existing.orElse(null), ctx.userId());
+        DocumentDocument stored = write(
+                ctx.tenantId(),
+                ctx.projectName(),
+                manifestPath,
+                title == null ? "Feeds" : title,
+                body,
+                existing.orElse(null),
+                ctx.userId());
 
-        log.info("FeedsApplication.create tenant='{}' folder='{}' streams={}",
-                ctx.tenantId(), folder, config.streams().size());
+        log.info(
+                "FeedsApplication.create tenant='{}' folder='{}' streams={}",
+                ctx.tenantId(),
+                folder,
+                config.streams().size());
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("streamCount", config.streams().size());
@@ -94,9 +103,15 @@ public class FeedsApplication implements VanceApplication {
                         + "source first as a document under _vance/config/feeds/."
                 : "Feed ready with " + config.streams().size() + " stream(s). Open it to read.";
 
-        return new CreateResult(APP_NAME, folder, stored.getPath(),
+        return new CreateResult(
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
-                List.of(), List.of(), nextStep, stats);
+                List.of(),
+                List.of(),
+                nextStep,
+                stats);
     }
 
     /**
@@ -108,8 +123,11 @@ public class FeedsApplication implements VanceApplication {
     public RefreshResult refresh(RefreshContext ctx) {
         String folder = normaliseFolder(ctx.folder());
         FeedsConfig config = readConfig(ctx.tenantId(), ctx.projectName(), folder);
-        log.debug("FeedsApplication.refresh tenant='{}' folder='{}' streams={} (nothing derived)",
-                ctx.tenantId(), folder, config.streams().size());
+        log.debug(
+                "FeedsApplication.refresh tenant='{}' folder='{}' streams={} (nothing derived)",
+                ctx.tenantId(),
+                folder,
+                config.streams().size());
         return new RefreshResult(APP_NAME, folder, List.of());
     }
 
@@ -125,24 +143,23 @@ public class FeedsApplication implements VanceApplication {
      */
     @Override
     public Optional<AppStatus> status(StatusContext ctx) {
-        FeedsConfig config = readConfig(
-                ctx.tenantId(), ctx.projectName(), normaliseFolder(ctx.folder()));
+        FeedsConfig config = readConfig(ctx.tenantId(), ctx.projectName(), normaliseFolder(ctx.folder()));
         if (config.streams().isEmpty()) {
-            return Optional.of(AppStatus.of("No streams configured",
-                    StatusSeverity.ATTENTION, List.of()));
+            return Optional.of(AppStatus.of("No streams configured", StatusSeverity.ATTENTION, List.of()));
         }
         List<StatusItem> items = new ArrayList<>();
         for (FeedStream stream : config.streams()) {
             items.add(new StatusItem(
-                    stream.sourceId(),
-                    stream.selector().isEmpty() ? null : stream.selector(),
-                    null, null));
+                    stream.sourceId(), stream.selector().isEmpty() ? null : stream.selector(), null, null));
         }
-        long sources = config.streams().stream().map(FeedStream::sourceId).distinct().count();
+        long sources =
+                config.streams().stream().map(FeedStream::sourceId).distinct().count();
         return Optional.of(new AppStatus(
                 config.streams().size() + " stream(s) from " + sources + " source(s)",
                 null,
-                List.of(new StatusMetric("Streams", String.valueOf(config.streams().size())),
+                List.of(
+                        new StatusMetric(
+                                "Streams", String.valueOf(config.streams().size())),
                         new StatusMetric("Sources", String.valueOf(sources))),
                 items,
                 null));
@@ -155,8 +172,7 @@ public class FeedsApplication implements VanceApplication {
      */
     @Override
     public @Nullable String promptInject(PromptInjectContext ctx) {
-        FeedsConfig config = readConfig(
-                ctx.tenantId(), ctx.projectName(), normaliseFolder(ctx.folder()));
+        FeedsConfig config = readConfig(ctx.tenantId(), ctx.projectName(), normaliseFolder(ctx.folder()));
         if (config.streams().isEmpty()) {
             return "The open feed has no streams configured yet.";
         }
@@ -169,7 +185,9 @@ public class FeedsApplication implements VanceApplication {
             sb.append('\n');
         }
         if (!config.languages().isEmpty()) {
-            sb.append("Languages: ").append(String.join(", ", config.languages())).append('\n');
+            sb.append("Languages: ")
+                    .append(String.join(", ", config.languages()))
+                    .append('\n');
         }
         if (!config.exclude().isEmpty()) {
             sb.append("Excluded: ").append(String.join(", ", config.exclude())).append('\n');
@@ -201,8 +219,10 @@ public class FeedsApplication implements VanceApplication {
                             + "— it is the app's own pick, NOT a text selection inside a "
                             + "document. Never answer that no selection arrived, and never ask "
                             + "them to mark it again: ")
-                    .append(ForeignPromptText.quoted(selected)).append('\n')
-                    .append(ForeignPromptText.PROVENANCE_NOTE).append('\n')
+                    .append(ForeignPromptText.quoted(selected))
+                    .append('\n')
+                    .append(ForeignPromptText.PROVENANCE_NOTE)
+                    .append('\n')
                     .append("Read it in full with feed_item(sourceId, itemId) — the part "
                             + "before the slash is the source, the part after it the id.\n");
         }
@@ -232,8 +252,7 @@ public class FeedsApplication implements VanceApplication {
      */
     ApplicationDocument readManifest(String tenantId, String projectName, String folder) {
         String manifestPath = normaliseFolder(folder) + "/" + APP_MANIFEST;
-        Optional<DocumentDocument> doc =
-                documentService.findByPath(tenantId, projectName, manifestPath);
+        Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectName, manifestPath);
         if (doc.isEmpty()) {
             throw new ToolException("No feed manifest at '" + manifestPath + "'");
         }
@@ -241,15 +260,15 @@ public class FeedsApplication implements VanceApplication {
         ApplicationDocument parsed = ApplicationCodec.parse(body, doc.get().getMimeType());
         String app = parsed.app();
         if (!app.isBlank() && !APP_NAME.equals(app)) {
-            throw new ToolException("'" + manifestPath + "' is an app: " + app
-                    + ", not a feed — refusing to overwrite its manifest.");
+            throw new ToolException(
+                    "'" + manifestPath + "' is an app: " + app + ", not a feed — refusing to overwrite its manifest.");
         }
         return parsed;
     }
 
     /** Replace the {@code config.feeds} block, keeping title and description. */
-    DocumentDocument writeConfig(String tenantId, String projectName, String folder,
-                                 FeedsConfig config, @Nullable String userId) {
+    DocumentDocument writeConfig(
+            String tenantId, String projectName, String folder, FeedsConfig config, @Nullable String userId) {
         String normalised = normaliseFolder(folder);
         String manifestPath = normalised + "/" + APP_MANIFEST;
         ApplicationDocument current = readManifest(tenantId, projectName, normalised);
@@ -257,15 +276,22 @@ public class FeedsApplication implements VanceApplication {
         Map<String, Object> configBlock = new LinkedHashMap<>(current.config());
         configBlock.put(APP_NAME, config.toBlock());
         ApplicationDocument updated = new ApplicationDocument(
-                "application", APP_NAME, current.title(), current.description(),
-                configBlock, new LinkedHashMap<>(current.extra()));
+                "application",
+                APP_NAME,
+                current.title(),
+                current.description(),
+                configBlock,
+                new LinkedHashMap<>(current.extra()));
 
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectName, manifestPath);
-        return write(tenantId, projectName, manifestPath,
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectName, manifestPath);
+        return write(
+                tenantId,
+                projectName,
+                manifestPath,
                 current.title() == null ? "Feeds" : current.title(),
                 ApplicationCodec.serialize(updated, YAML_MIME),
-                existing.orElse(null), userId);
+                existing.orElse(null),
+                userId);
     }
 
     /**
@@ -302,22 +328,34 @@ public class FeedsApplication implements VanceApplication {
 
     // ── internals ────────────────────────────────────────────────────
 
-    private DocumentDocument write(String tenantId, String projectName, String path,
-                                   String title, String body,
-                                   @Nullable DocumentDocument existing,
-                                   @Nullable String userId) {
+    private DocumentDocument write(
+            String tenantId,
+            String projectName,
+            String path,
+            String title,
+            String body,
+            @Nullable DocumentDocument existing,
+            @Nullable String userId) {
         var actor = contextFactory.writeActor(tenantId, userId, path);
         if (existing != null) {
-            return documentService.update(existing.getId(), title,
+            return documentService.update(
+                    existing.getId(),
+                    title,
                     List.of("application", APP_NAME),
-                    body, null, null, null, null, YAML_MIME,
-                    DocumentService.TOOL_IDENTITY, actor);
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    actor);
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
-            return documentService.create(tenantId, projectName, path, title,
-                    List.of("application", APP_NAME), YAML_MIME, in, userId, actor);
+            return documentService.create(
+                    tenantId, projectName, path, title, List.of("application", APP_NAME), YAML_MIME, in, userId, actor);
         } catch (IOException e) {
-            throw new ToolException("Could not write manifest '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not write manifest '" + path + "': " + e.getMessage(), e);
         }
     }
 
@@ -346,11 +384,14 @@ public class FeedsApplication implements VanceApplication {
         // languages/exclude accept a comma-separated string as well as a list —
         // the create form submits one text field per filter, and the manifest
         // parser has always taken both shapes (FeedsConfig#asStringList).
-        return new FeedsConfig(streams, asString(params.get("text")),
+        return new FeedsConfig(
+                streams,
+                asString(params.get("text")),
                 FeedsConfig.asStringSet(params.get("languages")),
                 FeedsConfig.asStringList(params.get("include")),
                 FeedsConfig.asStringList(params.get("exclude")),
-                asString(params.get("since")), pageSize);
+                asString(params.get("since")),
+                pageSize);
     }
 
     private static @Nullable String asString(@Nullable Object v) {

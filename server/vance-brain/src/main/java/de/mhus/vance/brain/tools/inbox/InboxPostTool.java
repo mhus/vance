@@ -3,13 +3,13 @@ package de.mhus.vance.brain.tools.inbox;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.MaximegalonDocumentRef;
 import de.mhus.vance.api.inbox.MaximegalonType;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,51 +42,77 @@ public class InboxPostTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "targetUserId", Map.of(
-                            "type", "string",
-                            "description", "Recipient user-id (assignedToUserId)."),
-                    "type", Map.of(
-                            "type", "string",
-                            "enum", List.of(
-                                    "APPROVAL", "DECISION", "FEEDBACK",
-                                    "ORDERING", "STRUCTURE_EDIT",
-                                    "OUTPUT_TEXT", "OUTPUT_IMAGE", "OUTPUT_DOCUMENT"),
-                            "description", "Item type. Asks (APPROVAL/DECISION/...) wait "
-                                    + "for an answer; Outputs (OUTPUT_*) are informational."),
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Headline for the inbox list."),
-                    "body", Map.of(
-                            "type", "string",
-                            "description", "Optional Markdown long-form description."),
-                    "criticality", Map.of(
-                            "type", "string",
-                            "enum", List.of("LOW", "NORMAL", "CRITICAL"),
-                            "description", "Drives auto-answer + notification routing. "
-                                    + "Default NORMAL. LOW with payload.default = "
-                                    + "auto-answered immediately."),
-                    "tags", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description", "Free-form tags for filtering."),
-                    "payload", Map.of(
-                            "type", "object",
-                            "description", "Type-specific structured payload "
-                                    + "(options for DECISION, schema for STRUCTURE_EDIT, "
-                                    + "url for OUTPUT_IMAGE, default for LOW auto-answer, ...).",
-                            "additionalProperties", true),
-                    "documentRef", Map.of(
-                            "type", "object",
-                            "description", "Optional reference to a document the "
-                                    + "item is about. Validated against DocumentService; "
-                                    + "the resolved ref becomes the thread's documentRef, "
-                                    + "which is what makes it findable from that document. "
-                                    + "Identify the doc by id or by (projectId, path).",
-                            "properties", Map.of(
-                                    "id", Map.of("type", "string"),
-                                    "projectId", Map.of("type", "string"),
-                                    "path", Map.of("type", "string")))),
+            "properties",
+                    Map.of(
+                            "targetUserId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Recipient user-id (assignedToUserId)."),
+                            "type",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of(
+                                                    "APPROVAL",
+                                                    "DECISION",
+                                                    "FEEDBACK",
+                                                    "ORDERING",
+                                                    "STRUCTURE_EDIT",
+                                                    "OUTPUT_TEXT",
+                                                    "OUTPUT_IMAGE",
+                                                    "OUTPUT_DOCUMENT"),
+                                            "description",
+                                            "Item type. Asks (APPROVAL/DECISION/...) wait "
+                                                    + "for an answer; Outputs (OUTPUT_*) are informational."),
+                            "title",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Headline for the inbox list."),
+                            "body",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional Markdown long-form description."),
+                            "criticality",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("LOW", "NORMAL", "CRITICAL"),
+                                            "description",
+                                            "Drives auto-answer + notification routing. "
+                                                    + "Default NORMAL. LOW with payload.default = "
+                                                    + "auto-answered immediately."),
+                            "tags",
+                                    Map.of(
+                                            "type", "array",
+                                            "items", Map.of("type", "string"),
+                                            "description", "Free-form tags for filtering."),
+                            "payload",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Type-specific structured payload "
+                                                    + "(options for DECISION, schema for STRUCTURE_EDIT, "
+                                                    + "url for OUTPUT_IMAGE, default for LOW auto-answer, ...).",
+                                            "additionalProperties",
+                                            true),
+                            "documentRef",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Optional reference to a document the "
+                                                    + "item is about. Validated against DocumentService; "
+                                                    + "the resolved ref becomes the thread's documentRef, "
+                                                    + "which is what makes it findable from that document. "
+                                                    + "Identify the doc by id or by (projectId, path).",
+                                            "properties",
+                                            Map.of(
+                                                    "id", Map.of("type", "string"),
+                                                    "projectId", Map.of("type", "string"),
+                                                    "path", Map.of("type", "string")))),
             "required", List.of("targetUserId", "type", "title"));
 
     private final MaximegalonService inboxItemService;
@@ -192,8 +218,9 @@ public class InboxPostTool implements Tool {
         if (saved.getAnswer() != null) {
             // Auto-answered (LOW with default) — surface the verdict.
             out.put("autoAnswered", true);
-            out.put("resolvedBy", saved.getResolvedBy() == null
-                    ? null : saved.getResolvedBy().name());
+            out.put(
+                    "resolvedBy",
+                    saved.getResolvedBy() == null ? null : saved.getResolvedBy().name());
         }
         return out;
     }
@@ -226,22 +253,18 @@ public class InboxPostTool implements Tool {
 
         DocumentDocument doc;
         if (id != null) {
-            doc = documentService.findById(id)
-                    .orElseThrow(() -> new ToolException(
-                            "documentRef.id '" + id + "' not found"));
+            doc = documentService
+                    .findById(id)
+                    .orElseThrow(() -> new ToolException("documentRef.id '" + id + "' not found"));
             if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException(
-                        "documentRef.id '" + id + "' not in your tenant");
+                throw new ToolException("documentRef.id '" + id + "' not in your tenant");
             }
         } else if (projectId != null && path != null) {
-            doc = documentService.findByPath(ctx.tenantId(), projectId, path)
-                    .orElseThrow(() -> new ToolException(
-                            "documentRef '" + projectId + "/" + path
-                                    + "' not found"));
+            doc = documentService
+                    .findByPath(ctx.tenantId(), projectId, path)
+                    .orElseThrow(() -> new ToolException("documentRef '" + projectId + "/" + path + "' not found"));
         } else {
-            throw new ToolException(
-                    "documentRef requires either 'id' or both "
-                            + "'projectId' and 'path'");
+            throw new ToolException("documentRef requires either 'id' or both " + "'projectId' and 'path'");
         }
 
         // Authorize the referenced document against the caller's scope —
@@ -266,7 +289,7 @@ public class InboxPostTool implements Tool {
         try {
             return MaximegalonType.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ToolException("Unknown inbox item type '" + raw + "'");
+            throw new ToolException("Unknown inbox item type '" + raw + "'", e);
         }
     }
 
@@ -275,7 +298,7 @@ public class InboxPostTool implements Tool {
         try {
             return Criticality.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ToolException("Unknown criticality '" + raw + "'");
+            throw new ToolException("Unknown criticality '" + raw + "'", e);
         }
     }
 

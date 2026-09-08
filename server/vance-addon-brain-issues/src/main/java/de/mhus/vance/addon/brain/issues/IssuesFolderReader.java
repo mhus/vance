@@ -35,11 +35,7 @@ public class IssuesFolderReader {
         this.documentService = documentService;
     }
 
-    public record Scan(
-            String folder,
-            DocumentDocument manifest,
-            IssuesConfig config,
-            List<Issue> issues) {}
+    public record Scan(String folder, DocumentDocument manifest, IssuesConfig config, List<Issue> issues) {}
 
     public Scan scan(String tenantId, String projectId, String folder) {
         String normalized = normaliseFolder(folder);
@@ -83,18 +79,21 @@ public class IssuesFolderReader {
             if (leaf.startsWith("_")) continue;
             int number = numberOf(doc);
             String state = headerValue(doc, "state");
-            String title = doc.getTitle() != null && !doc.getTitle().isBlank()
-                    ? doc.getTitle() : humanise(stem(leaf));
-            List<String> labels = doc.getTags() != null
-                    ? new ArrayList<>(doc.getTags()) : new ArrayList<>();
+            String title = doc.getTitle() != null && !doc.getTitle().isBlank() ? doc.getTitle() : humanise(stem(leaf));
+            List<String> labels = doc.getTags() != null ? new ArrayList<>(doc.getTags()) : new ArrayList<>();
             labels.remove("issue");
-            out.add(new Issue(doc, number, title,
+            out.add(new Issue(
+                    doc,
+                    number,
+                    title,
                     state == null ? IssueDocument.STATE_OPEN : state,
-                    labels, headerValue(doc, "assignee"), headerValue(doc, "priority"), archived));
+                    labels,
+                    headerValue(doc, "assignee"),
+                    headerValue(doc, "priority"),
+                    archived));
         }
         // Open first, then by number descending (newest issues on top).
-        out.sort(Comparator
-                .comparing((Issue i) -> i.isOpen() ? 0 : 1)
+        out.sort(Comparator.comparing((Issue i) -> i.isOpen() ? 0 : 1)
                 .thenComparing(Comparator.comparingInt(Issue::number).reversed()));
         return out;
     }
@@ -102,7 +101,11 @@ public class IssuesFolderReader {
     private int numberOf(DocumentDocument doc) {
         String h = headerValue(doc, "number");
         if (h != null) {
-            try { return Integer.parseInt(h); } catch (NumberFormatException ignored) { /* fall through */ }
+            try {
+                return Integer.parseInt(h);
+            } catch (NumberFormatException ignored) {
+                /* fall through */
+            }
         }
         String leaf = doc.getPath().substring(doc.getPath().lastIndexOf('/') + 1);
         Matcher m = NUMBER_PREFIX.matcher(leaf);
@@ -119,8 +122,8 @@ public class IssuesFolderReader {
         try (InputStream in = documentService.loadContent(manifest)) {
             return IssuesConfig.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException | RuntimeException e) {
-            throw new ToolException("Could not parse issues manifest '" + manifest.getPath()
-                    + "': " + e.getMessage());
+            throw new ToolException(
+                    "Could not parse issues manifest '" + manifest.getPath() + "': " + e.getMessage(), e);
         }
     }
 

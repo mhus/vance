@@ -47,21 +47,28 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class MarkdownToXlsxTransformer implements DocumentTransformer {
 
-    private static final String XLSX_MIME =
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    private static final String XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-    private static final List<Extension> EXTENSIONS = List.of(
-            TablesExtension.create());
+    private static final List<Extension> EXTENSIONS = List.of(TablesExtension.create());
 
-    private final Parser parser = Parser.builder()
-            .extensions(EXTENSIONS)
-            .build();
+    private final Parser parser = Parser.builder().extensions(EXTENSIONS).build();
 
     private final DocumentService documentService;
 
-    @Override public String targetFormat()    { return "xlsx"; }
-    @Override public String targetMimeType()  { return XLSX_MIME; }
-    @Override public String targetExtension() { return "xlsx"; }
+    @Override
+    public String targetFormat() {
+        return "xlsx";
+    }
+
+    @Override
+    public String targetMimeType() {
+        return XLSX_MIME;
+    }
+
+    @Override
+    public String targetExtension() {
+        return "xlsx";
+    }
 
     @Override
     public boolean canTransform(DocumentDocument source) {
@@ -76,18 +83,15 @@ public class MarkdownToXlsxTransformer implements DocumentTransformer {
         String md = loadAsText(source);
         TableBlock table = findFirstTable(parser.parse(md));
         if (table == null) {
-            throw new ToolException(
-                    "Markdown document '" + source.getPath()
-                            + "' contains no table. Add a GFM-style "
-                            + "Markdown table (header row + "
-                            + "alignment row + body rows) or convert "
-                            + "to a kind:records document first.");
+            throw new ToolException("Markdown document '" + source.getPath()
+                    + "' contains no table. Add a GFM-style "
+                    + "Markdown table (header row + "
+                    + "alignment row + body rows) or convert "
+                    + "to a kind:records document first.");
         }
         RecordsDocument records = toRecords(table);
         if (records.schema().isEmpty()) {
-            throw new ToolException(
-                    "Markdown table has no columns — nothing to "
-                            + "export.");
+            throw new ToolException("Markdown table has no columns — nothing to " + "export.");
         }
         byte[] bytes = XlsxFromRecordsTool.render(records, title);
         return new Result(bytes, title);
@@ -98,9 +102,7 @@ public class MarkdownToXlsxTransformer implements DocumentTransformer {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not read source document content: "
-                            + e.getMessage());
+            throw new ToolException("Could not read source document content: " + e.getMessage(), e);
         }
     }
 
@@ -139,7 +141,7 @@ public class MarkdownToXlsxTransformer implements DocumentTransformer {
                 for (Node r = head.getFirstChild(); r != null; r = r.getNext()) {
                     if (r instanceof TableRow row) {
                         collectHeader(row, schema);
-                        break;  // only one header row
+                        break; // only one header row
                     }
                 }
             }
@@ -197,9 +199,20 @@ public class MarkdownToXlsxTransformer implements DocumentTransformer {
     private static String plaintextOf(Node node) {
         StringBuilder sb = new StringBuilder();
         node.accept(new AbstractVisitor() {
-            @Override public void visit(Text t)          { sb.append(t.getLiteral()); }
-            @Override public void visit(Code c)          { sb.append(c.getLiteral()); }
-            @Override public void visit(SoftLineBreak b) { sb.append(' '); }
+            @Override
+            public void visit(Text t) {
+                sb.append(t.getLiteral());
+            }
+
+            @Override
+            public void visit(Code c) {
+                sb.append(c.getLiteral());
+            }
+
+            @Override
+            public void visit(SoftLineBreak b) {
+                sb.append(' ');
+            }
         });
         return sb.toString();
     }

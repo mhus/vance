@@ -30,31 +30,56 @@ import org.springframework.stereotype.Component;
 public class StarredAddTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("project", Map.of("type", "string",
-                        "description", "Project the document lives in."));
-                put("path", Map.of("type", "string",
-                        "description", "Project-relative document path. For an application, "
-                                + "the manifest path (e.g. 'links/_app.yaml')."));
-                put("title", Map.of("type", "string",
-                        "description", "Label for the tile. Omit to take the document's own "
-                                + "title, or to keep an existing one."));
-                put("description", Map.of("type", "string",
-                        "description", "Optional note shown under the title."));
-                put("highlight", Map.of("type", "boolean",
-                        "description", "Emphasise the tile. Visual only — it never "
-                                + "influences which entry a lookup picks."));
-                put("hidden", Map.of("type", "boolean",
-                        "description", "Register it but keep it off the start page. Still "
-                                + "found by a lookup."));
-            }},
-            "required", List.of("project", "path"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("project", Map.of("type", "string", "description", "Project the document lives in."));
+                    put(
+                            "path",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Project-relative document path. For an application, "
+                                            + "the manifest path (e.g. 'links/_app.yaml')."));
+                    put(
+                            "title",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Label for the tile. Omit to take the document's own "
+                                            + "title, or to keep an existing one."));
+                    put("description", Map.of("type", "string", "description", "Optional note shown under the title."));
+                    put(
+                            "highlight",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Emphasise the tile. Visual only — it never "
+                                            + "influences which entry a lookup picks."));
+                    put(
+                            "hidden",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Register it but keep it off the start page. Still " + "found by a lookup."));
+                }
+            },
+            "required",
+            List.of("project", "path"));
 
     private final StarredService starredService;
     private final StarredToolSupport support;
 
-    @Override public String name() { return "starred_add"; }
+    @Override
+    public String name() {
+        return "starred_add";
+    }
 
     @Override
     public String description() {
@@ -64,17 +89,27 @@ public class StarredAddTool implements Tool {
                 + "current value.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public boolean deferred() { return true; }
+    @Override
+    public boolean deferred() {
+        return true;
+    }
 
-    @Override public Set<String> labels() {
+    @Override
+    public Set<String> labels() {
         Set<String> labels = new java.util.HashSet<>(StarredToolSupport.BASE_LABELS);
         labels.add("write");
         return Set.copyOf(labels);
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -84,7 +119,10 @@ public class StarredAddTool implements Tool {
 
         try {
             StarredItem item = starredService.star(
-                    ctx.tenantId(), user, project, path,
+                    ctx.tenantId(),
+                    user,
+                    project,
+                    path,
                     StarredToolSupport.paramString(params, "title"),
                     StarredToolSupport.paramString(params, "description"),
                     StarredToolSupport.paramBoolean(params, "highlight"),
@@ -97,7 +135,7 @@ public class StarredAddTool implements Tool {
             result.put("starred", StarredToolSupport.row(item));
             return result;
         } catch (StarredService.StarredException e) {
-            throw new ToolException(e.getMessage());
+            throw new ToolException(e.getMessage(), e);
         }
     }
 }

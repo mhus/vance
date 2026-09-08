@@ -474,7 +474,7 @@ public class UrsaSchedulerService {
             return ZoneId.of(tz);
         } catch (java.time.DateTimeException ex) {
             // ZoneRulesException is a subclass of DateTimeException — covered.
-            throw new IllegalArgumentException("unknown timezone '" + tz + "'");
+            throw new IllegalArgumentException("unknown timezone '" + tz + "'", ex);
         }
     }
 
@@ -588,7 +588,7 @@ public class UrsaSchedulerService {
         try {
             loaded = loader.load(tenantId, projectId, name);
         } catch (UrsaSchedulerLoader.SchedulerParseException ex) {
-            throw new IllegalArgumentException("Scheduler '" + name + "' could not be parsed: " + ex.getMessage());
+            throw new IllegalArgumentException("Scheduler '" + name + "' could not be parsed: " + ex.getMessage(), ex);
         }
         if (loaded.isEmpty()) {
             throw new IllegalArgumentException(

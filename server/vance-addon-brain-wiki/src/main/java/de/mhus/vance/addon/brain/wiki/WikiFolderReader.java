@@ -58,17 +58,12 @@ public class WikiFolderReader {
      * @param pages   content + home pages (generated files excluded), sorted
      */
     public record Scan(
-            String folder,
-            DocumentDocument manifest,
-            WikiConfig config,
-            List<String> spaces,
-            List<WikiPage> pages) {}
+            String folder, DocumentDocument manifest, WikiConfig config, List<String> spaces, List<WikiPage> pages) {}
 
     public Scan scan(String tenantId, String projectId, String folder) {
         String normalized = normaliseFolder(folder);
         String manifestPath = normalized + "/" + APP_MANIFEST;
-        Optional<DocumentDocument> manifest = documentService.findByPath(
-                tenantId, projectId, manifestPath);
+        Optional<DocumentDocument> manifest = documentService.findByPath(tenantId, projectId, manifestPath);
         if (manifest.isEmpty()) {
             throw new ToolException("No wiki manifest at '" + manifestPath + "'.");
         }
@@ -93,9 +88,7 @@ public class WikiFolderReader {
             boolean main = MAIN_PAGE.equals(slug);
 
             PageBody body = readPageBody(doc);
-            String title = body.title != null && !body.title.isBlank()
-                    ? body.title
-                    : humanise(slug);
+            String title = body.title != null && !body.title.isBlank() ? body.title : humanise(slug);
             pages.add(new WikiPage(doc, rel, space, slug, title, main, body.links));
 
             // Register the space plus every ancestor folder as a space.
@@ -103,13 +96,11 @@ public class WikiFolderReader {
         }
 
         // Root pages first (space ""), then by space, then main-first, then title.
-        pages.sort(Comparator
-                .comparing(WikiPage::space)
+        pages.sort(Comparator.comparing(WikiPage::space)
                 .thenComparing((WikiPage p) -> p.main() ? 0 : 1)
                 .thenComparing((WikiPage p) -> p.title().toLowerCase(Locale.ROOT)));
 
-        return new Scan(normalized, manifest.get(), config,
-                new ArrayList<>(spaces), pages);
+        return new Scan(normalized, manifest.get(), config, new ArrayList<>(spaces), pages);
     }
 
     private static void addSpaceWithAncestors(TreeSet<String> spaces, String space) {
@@ -165,9 +156,7 @@ public class WikiFolderReader {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             return WikiConfig.parse(body);
         } catch (IOException | RuntimeException e) {
-            throw new ToolException(
-                    "Could not parse wiki manifest '" + manifest.getPath() + "': "
-                            + e.getMessage());
+            throw new ToolException("Could not parse wiki manifest '" + manifest.getPath() + "': " + e.getMessage(), e);
         }
     }
 
@@ -184,9 +173,7 @@ public class WikiFolderReader {
     public static String indexPathFor(String folder, String space, String outputPath) {
         String out = outputPath == null || outputPath.isBlank() ? "_index.md" : outputPath.trim();
         while (out.startsWith("/")) out = out.substring(1);
-        return space.isEmpty()
-                ? folder + "/" + out
-                : folder + "/" + space + "/" + out;
+        return space.isEmpty() ? folder + "/" + out : folder + "/" + space + "/" + out;
     }
 
     /**

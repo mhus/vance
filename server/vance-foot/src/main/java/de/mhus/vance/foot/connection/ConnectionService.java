@@ -1,12 +1,12 @@
 package de.mhus.vance.foot.connection;
 
 import de.mhus.vance.api.access.AccessTokenResponse;
-import de.mhus.vance.api.ws.Profiles;
+import de.mhus.vance.api.ws.ClientContext;
 import de.mhus.vance.api.ws.ErrorData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.PingData;
 import de.mhus.vance.api.ws.PongData;
-import de.mhus.vance.api.ws.ClientContext;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.api.ws.WelcomeData;
 import de.mhus.vance.foot.auth.FootAuthService;
@@ -47,7 +47,11 @@ import tools.jackson.databind.json.JsonMapper;
 @lombok.extern.slf4j.Slf4j
 public class ConnectionService {
 
-    public enum State { DISCONNECTED, CONNECTING, OPEN }
+    public enum State {
+        DISCONNECTED,
+        CONNECTING,
+        OPEN
+    }
 
     private final FootConfig config;
     private final MessageDispatcher dispatcher;
@@ -90,6 +94,7 @@ public class ConnectionService {
      * post-reconnect welcome. {@code null} when nothing was bound.
      */
     private volatile @Nullable ReconnectTarget reconnectTarget;
+
     private final AtomicLong requestCounter = new AtomicLong();
     /**
      * Wall-clock of the last frame we successfully handed to the socket.
@@ -99,17 +104,19 @@ public class ConnectionService {
     private final AtomicLong lastOutboundAtMs = new AtomicLong();
 
     /** The session (and its active process) to re-adopt after an auto-reconnect. */
-    public record ReconnectTarget(String sessionId,
-                                  @Nullable String projectId,
-                                  @Nullable String activeProcess) {}
+    public record ReconnectTarget(
+            String sessionId,
+            @Nullable String projectId,
+            @Nullable String activeProcess) {}
 
-    public ConnectionService(FootConfig config,
-                             MessageDispatcher dispatcher,
-                             ChatTerminal terminal,
-                             SessionService sessions,
-                             WindowTitleService windowTitle,
-                             PermissionService permissions,
-                             FootAuthService auth) {
+    public ConnectionService(
+            FootConfig config,
+            MessageDispatcher dispatcher,
+            ChatTerminal terminal,
+            SessionService sessions,
+            WindowTitleService windowTitle,
+            PermissionService permissions,
+            FootAuthService auth) {
         this.config = config;
         this.dispatcher = dispatcher;
         this.terminal = terminal;
@@ -125,8 +132,8 @@ public class ConnectionService {
      * {@code ConnectionService} keeps no compile-time dependency on channel
      * features (and no Spring cycle through them).
      */
-    private final java.util.Map<String, java.util.function.BiConsumer<String, WebSocketEnvelope>>
-            channelListeners = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<String, java.util.function.BiConsumer<String, WebSocketEnvelope>> channelListeners =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * Claims a Live-WS channel. One listener per channel — a second
@@ -243,11 +250,11 @@ public class ConnectionService {
     private void openConnection() throws Exception {
         AccessTokenResponse token = auth.acquireAccessToken();
         currentToken = token;
-        terminal.verbose("Access token ready, expires at "
-                + java.time.Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
+        terminal.verbose(
+                "Access token ready, expires at " + java.time.Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
 
-        URI wsUri = URI.create(config.getBrain().getWsBase()
-                + "/brain/" + config.getAuth().getTenant() + "/ws");
+        URI wsUri = URI.create(
+                config.getBrain().getWsBase() + "/brain/" + config.getAuth().getTenant() + "/ws");
         String profile = config.getClient().getProfile();
         if (profile == null || profile.isBlank()) {
             profile = Profiles.FOOT;
@@ -347,8 +354,7 @@ public class ConnectionService {
             t.setDaemon(true);
             return t;
         });
-        scheduler.scheduleWithFixedDelay(this::sendKeepAlivePing,
-                intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
+        scheduler.scheduleWithFixedDelay(this::sendKeepAlivePing, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
         keepAliveRef.set(scheduler);
         terminal.println(Verbosity.DEBUG, "Keep-alive scheduled every %ds", intervalSeconds);
     }
@@ -386,8 +392,7 @@ public class ConnectionService {
             return;
         }
         long initialMs = Math.max(0L, rc.getInitialDelay().toMillis());
-        terminal.println(Verbosity.INFO,
-                "Connection lost — reconnecting (first retry in %ds)…", initialMs / 1000);
+        terminal.println(Verbosity.INFO, "Connection lost — reconnecting (first retry in %ds)…", initialMs / 1000);
         scheduler.schedule(() -> runReconnect(rc, 1, initialMs), initialMs, TimeUnit.MILLISECONDS);
     }
 
@@ -409,8 +414,7 @@ public class ConnectionService {
     private void captureReconnectTarget() {
         SessionService.BoundSession bound = sessions.current();
         if (bound != null) {
-            reconnectTarget = new ReconnectTarget(
-                    bound.sessionId(), bound.projectId(), sessions.activeProcess());
+            reconnectTarget = new ReconnectTarget(bound.sessionId(), bound.projectId(), sessions.activeProcess());
         }
     }
 
@@ -442,16 +446,14 @@ public class ConnectionService {
             return;
         }
         if (rc.getMaxAttempts() > 0 && attempt >= rc.getMaxAttempts()) {
-            terminal.println(Verbosity.WARN,
-                    "Reconnect gave up after %d attempts — use /connect to retry.", attempt);
+            terminal.println(Verbosity.WARN, "Reconnect gave up after %d attempts — use /connect to retry.", attempt);
             stopReconnect();
             return;
         }
         long nextMs = Math.min(
                 (long) (delayMs * rc.getBackoffMultiplier()),
                 Math.max(delayMs, rc.getMaxDelay().toMillis()));
-        terminal.println(Verbosity.DEBUG,
-                "Reconnect attempt %d failed — retrying in %ds", attempt, nextMs / 1000);
+        terminal.println(Verbosity.DEBUG, "Reconnect attempt %d failed — retrying in %ds", attempt, nextMs / 1000);
         ScheduledExecutorService scheduler = reconnectRef.get();
         if (scheduler != null && !intentionalClose.get()) {
             scheduler.schedule(() -> runReconnect(rc, attempt + 1, nextMs), nextMs, TimeUnit.MILLISECONDS);
@@ -502,8 +504,7 @@ public class ConnectionService {
         // connection underneath a still-running engine.
         long sinceOutboundMs = System.currentTimeMillis() - lastOutboundAtMs.get();
         if (keepAliveIntervalMs > 0 && sinceOutboundMs < keepAliveIntervalMs) {
-            terminal.println(Verbosity.DEBUG,
-                    "keepalive skipped — outbound %dms ago (lease fresh)", sinceOutboundMs);
+            terminal.println(Verbosity.DEBUG, "keepalive skipped — outbound %dms ago (lease fresh)", sinceOutboundMs);
             return;
         }
         long sent = System.currentTimeMillis();
@@ -515,8 +516,7 @@ public class ConnectionService {
                     Duration.ofSeconds(10));
             long rtt = System.currentTimeMillis() - sent;
             long oneWay = pong.getServerTimestamp() - pong.getClientTimestamp();
-            terminal.println(Verbosity.DEBUG,
-                    "ping rtt=%dms one-way=%dms", rtt, oneWay);
+            terminal.println(Verbosity.DEBUG, "ping rtt=%dms one-way=%dms", rtt, oneWay);
         } catch (Exception e) {
             // Pong overdue. Inbound traffic in the meantime says the brain
             // is alive and simply queued our pong behind a busy stream —
@@ -524,9 +524,11 @@ public class ConnectionService {
             // did its real job: it refreshed the lease).
             long sinceInboundMs = System.currentTimeMillis() - dispatcher.lastInboundAtMs();
             if (keepAliveIntervalMs > 0 && sinceInboundMs < keepAliveIntervalMs) {
-                terminal.println(Verbosity.DEBUG,
+                terminal.println(
+                        Verbosity.DEBUG,
                         "ping unanswered (%s) but inbound %dms ago — keeping connection",
-                        describe(e), sinceInboundMs);
+                        describe(e),
+                        sinceInboundMs);
                 return;
             }
             // Nothing in either direction: the socket is wedged — typically a
@@ -534,8 +536,7 @@ public class ConnectionService {
             // connection without a FIN, so onClose never fired. Tear it down
             // and let the reconnect campaign take over instead of pinging a
             // corpse forever.
-            terminal.println(Verbosity.WARN,
-                    "ping failed: %s — connection looks dead, reconnecting", describe(e));
+            terminal.println(Verbosity.WARN, "ping failed: %s — connection looks dead, reconnecting", describe(e));
             handleUnexpectedDrop("ping timeout");
         }
     }
@@ -647,7 +648,8 @@ public class ConnectionService {
 
         if (MessageType.ERROR.equals(reply.getType())) {
             ErrorData err = json.convertValue(reply.getData(), ErrorData.class);
-            throw new BrainException(err.getErrorCode(),
+            throw new BrainException(
+                    err.getErrorCode(),
                     err.getErrorMessage() == null ? "(no message)" : err.getErrorMessage(),
                     err.getReason());
         }
@@ -670,8 +672,7 @@ public class ConnectionService {
      * {@code failAllPending}. Callers who need a hard cap should use
      * the strict {@link #request} overload above.
      */
-    public <T> T requestStreaming(
-            String type, @Nullable Object payload, Class<T> replyType, Duration idleTimeout)
+    public <T> T requestStreaming(String type, @Nullable Object payload, Class<T> replyType, Duration idleTimeout)
             throws BrainException, InterruptedException {
         if (!isOpen()) {
             throw new IllegalStateException("Not connected — /connect first.");
@@ -700,11 +701,12 @@ public class ConnectionService {
                 long deadline = lastActivity + timeoutMs;
                 long waitMs = deadline - now;
                 if (waitMs <= 0) {
-                    long idleSec = Math.max(timeoutMs / 1000L,
-                            (now - lastActivity) / 1000L);
-                    terminal.println(Verbosity.INFO,
+                    long idleSec = Math.max(timeoutMs / 1000L, (now - lastActivity) / 1000L);
+                    terminal.println(
+                            Verbosity.INFO,
                             "… still waiting for brain (no activity for %ds, request id=%s)",
-                            idleSec, id);
+                            idleSec,
+                            id);
                     baselineMs = now;
                     continue;
                 }
@@ -725,7 +727,8 @@ public class ConnectionService {
 
         if (MessageType.ERROR.equals(reply.getType())) {
             ErrorData err = json.convertValue(reply.getData(), ErrorData.class);
-            throw new BrainException(err.getErrorCode(),
+            throw new BrainException(
+                    err.getErrorCode(),
                     err.getErrorMessage() == null ? "(no message)" : err.getErrorMessage(),
                     err.getReason());
         }
@@ -809,19 +812,19 @@ public class ConnectionService {
 
         @Override
         public void onChannelMessage(String channel, WebSocketEnvelope envelope) {
-            java.util.function.BiConsumer<String, WebSocketEnvelope> handler =
-                    channelListeners.get(channel);
+            java.util.function.BiConsumer<String, WebSocketEnvelope> handler = channelListeners.get(channel);
             if (handler == null) {
-                terminal.println(Verbosity.DEBUG,
-                        "No listener for channel '%s' (type=%s) — dropped", channel,
+                terminal.println(
+                        Verbosity.DEBUG,
+                        "No listener for channel '%s' (type=%s) — dropped",
+                        channel,
                         envelope.getType());
                 return;
             }
             try {
                 handler.accept(channel, envelope);
             } catch (RuntimeException e) {
-                terminal.println(Verbosity.DEBUG,
-                        "Channel '%s' listener failed: %s", channel, e.toString());
+                terminal.println(Verbosity.DEBUG, "Channel '%s' listener failed: %s", channel, e.toString());
             }
         }
 
@@ -837,8 +840,7 @@ public class ConnectionService {
             stopKeepAlive();
             sessions.clear();
             windowTitle.setConnection("disconnected");
-            dispatcher.failAllPending(new IllegalStateException(
-                    "Connection closed (" + statusCode + ")"));
+            dispatcher.failAllPending(new IllegalStateException("Connection closed (" + statusCode + ")"));
             terminal.info("WebSocket closed: " + statusCode
                     + (reason == null || reason.isBlank() ? "" : " (" + reason + ")"));
             // A close we did not ask for (peer/idle/abnormal 1006) kicks off an

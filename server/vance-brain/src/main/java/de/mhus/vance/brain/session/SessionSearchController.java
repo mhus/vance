@@ -39,21 +39,17 @@ public class SessionSearchController {
             @PathVariable("tenant") String tenant,
             @RequestParam("q") String query,
             @RequestParam(value = "scope", required = false, defaultValue = "BOTH") String scopeRaw,
-            @RequestParam(value = "includeArchived", required = false, defaultValue = "true")
-                    boolean includeArchived,
-            @RequestParam(value = "limit", required = false, defaultValue = "" + DEFAULT_LIMIT)
-                    int limit,
+            @RequestParam(value = "includeArchived", required = false, defaultValue = "true") boolean includeArchived,
+            @RequestParam(value = "limit", required = false, defaultValue = "" + DEFAULT_LIMIT) int limit,
             HttpServletRequest request) {
         if (query == null || query.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Query parameter 'q' must not be empty");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Query parameter 'q' must not be empty");
         }
         SessionSearchScope scope;
         try {
             scope = SessionSearchScope.valueOf(scopeRaw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Unknown search scope: " + scopeRaw);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown search scope: " + scopeRaw, e);
         }
         String currentUser = currentUser(request);
         return searchService.search(tenant, currentUser, query, scope, includeArchived, limit);
@@ -62,8 +58,7 @@ public class SessionSearchController {
     private static String currentUser(HttpServletRequest request) {
         Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
         if (!(u instanceof String s) || s.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                    "No authenticated user");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
         }
         return s;
     }

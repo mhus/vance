@@ -38,7 +38,8 @@ public enum FilterName {
                     ImageManipulationException.Reason.PARAMETER_INVALID,
                     "Unknown filter '" + s + "'. Available: blur_gaussian, sharpen, "
                             + "grayscale, sepia, invert, edge, emboss, posterize, "
-                            + "solarize, threshold.");
+                            + "solarize, threshold.",
+                    e);
         }
     }
 }

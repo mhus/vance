@@ -530,6 +530,11 @@ public class ShootyGuardService {
             this.failureClass = failureClass == null ? "unknown" : failureClass;
         }
 
+        GuardScriptFailure(@Nullable String failureClass, @Nullable String message, @Nullable Throwable cause) {
+            super(message, cause);
+            this.failureClass = failureClass == null ? "unknown" : failureClass;
+        }
+
         String failureClass() {
             return failureClass;
         }
@@ -592,9 +597,9 @@ public class ShootyGuardService {
         try {
             scriptExecutor.run(request);
         } catch (ScriptExecutionException e) {
-            throw new GuardScriptFailure(e.errorClass().name(), e.getMessage());
+            throw new GuardScriptFailure(e.errorClass().name(), e.getMessage(), e);
         } catch (RuntimeException e) {
-            throw new GuardScriptFailure(e.getClass().getSimpleName(), e.toString());
+            throw new GuardScriptFailure(e.getClass().getSimpleName(), e.toString(), e);
         } finally {
             IN_GUARD_RUN.remove();
         }

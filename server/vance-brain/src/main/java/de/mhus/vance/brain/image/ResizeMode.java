@@ -30,7 +30,8 @@ public enum ResizeMode {
         } catch (IllegalArgumentException e) {
             throw new ImageManipulationException(
                     ImageManipulationException.Reason.PARAMETER_INVALID,
-                    "Unknown resize mode '" + s + "'. Expected: exact, width, height, cover, contain.");
+                    "Unknown resize mode '" + s + "'. Expected: exact, width, height, cover, contain.",
+                    e);
         }
     }
 }

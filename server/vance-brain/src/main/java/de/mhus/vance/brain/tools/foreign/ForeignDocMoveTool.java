@@ -31,34 +31,69 @@ public class ForeignDocMoveTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "fromProjectId", Map.of("type", "string",
-                            "description", "Source project name (required)."),
-                    "fromPath", Map.of("type", "string",
-                            "description", "Path of the source document (required)."),
-                    "toProjectId", Map.of("type", "string",
-                            "description", "Destination project name. Defaults to your current project."),
-                    "toPath", Map.of("type", "string",
-                            "description", "Destination path. Defaults to the source path. Must not exist."),
-                    "title", Map.of("type", "string",
-                            "description", "Optional title override; defaults to the source's title.")),
+            "properties",
+                    Map.of(
+                            "fromProjectId", Map.of("type", "string", "description", "Source project name (required)."),
+                            "fromPath",
+                                    Map.of("type", "string", "description", "Path of the source document (required)."),
+                            "toProjectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Destination project name. Defaults to your current project."),
+                            "toPath",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Destination path. Defaults to the source path. Must not exist."),
+                            "title",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional title override; defaults to the source's title.")),
             "required", List.of("fromProjectId", "fromPath"));
 
     private final ForeignAccessSupport foreign;
 
-    @Override public String name() { return "foreign_doc_move"; }
+    @Override
+    public String name() {
+        return "foreign_doc_move";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Move a document from one project to another (copy-to-destination + trash-source). "
                 + "Needs delete access to the source and create access to the destination. The copy "
                 + "gets a fresh id; the source is trashed. Use foreign_doc_copy to keep the original.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public Set<String> labels() { return Set.of("write", "cross-project", "document"); }
-    @Override public String searchHint() { return "Move a document between projects"; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write", "cross-project", "document");
+    }
+
+    @Override
+    public String searchHint() {
+        return "Move a document between projects";
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -74,11 +109,10 @@ public class ForeignDocMoveTool implements Tool {
         foreign.enforceDoc(ctx, sourceProject.getName(), fromPath, Action.DELETE);
         DocumentDocument source = foreign.documents()
                 .findByPath(ctx.tenantId(), sourceProject.getName(), fromPath)
-                .orElseThrow(() -> new ToolException("Document '" + fromPath
-                        + "' not found in project '" + sourceProject.getName() + "'"));
+                .orElseThrow(() -> new ToolException(
+                        "Document '" + fromPath + "' not found in project '" + sourceProject.getName() + "'"));
 
-        ProjectDocument target = foreign.resolveTarget(
-                KindToolSupport.paramString(params, "toProjectId"), ctx);
+        ProjectDocument target = foreign.resolveTarget(KindToolSupport.paramString(params, "toProjectId"), ctx);
         String toPath = KindToolSupport.paramString(params, "toPath");
         if (toPath == null) toPath = fromPath;
         if (ForeignAccessSupport.reserved(toPath)) {
@@ -88,16 +122,17 @@ public class ForeignDocMoveTool implements Tool {
 
         DocumentDocument copy;
         try {
-            copy = foreign.documents().create(
-                    ctx.tenantId(),
-                    target.getName(),
-                    toPath,
-                    title != null ? title : source.getTitle(),
-                    source.getTags() != null ? List.copyOf(source.getTags()) : null,
-                    source.getMimeType(),
-                    new ByteArrayInputStream(foreign.readText(source).getBytes(StandardCharsets.UTF_8)),
-                    ctx.userId(),
-                    foreign.writeActor(ctx, toPath));
+            copy = foreign.documents()
+                    .create(
+                            ctx.tenantId(),
+                            target.getName(),
+                            toPath,
+                            title != null ? title : source.getTitle(),
+                            source.getTags() != null ? List.copyOf(source.getTags()) : null,
+                            source.getMimeType(),
+                            new ByteArrayInputStream(foreign.readText(source).getBytes(StandardCharsets.UTF_8)),
+                            ctx.userId(),
+                            foreign.writeActor(ctx, toPath));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }
@@ -113,17 +148,21 @@ public class ForeignDocMoveTool implements Tool {
             try {
                 foreign.documents().delete(copy.getId(), foreign.writeActor(ctx, toPath));
             } catch (RuntimeException rollbackEx) {
-                throw new ToolException("Cross-project move failed and rollback failed: the copy at "
-                        + copy.getProjectId() + ":" + copy.getPath() + " (id=" + copy.getId()
-                        + ") could not be removed (" + rollbackEx.getMessage()
-                        + ") after the source-trash error (" + e.getMessage()
-                        + "). Source still alive at " + source.getProjectId() + ":" + source.getPath()
-                        + ". Use doc_delete on the copy to finish manually.", e);
+                throw new ToolException(
+                        "Cross-project move failed and rollback failed: the copy at "
+                                + copy.getProjectId() + ":" + copy.getPath() + " (id=" + copy.getId()
+                                + ") could not be removed (" + rollbackEx.getMessage()
+                                + ") after the source-trash error (" + e.getMessage()
+                                + "). Source still alive at " + source.getProjectId() + ":" + source.getPath()
+                                + ". Use doc_delete on the copy to finish manually.",
+                        rollbackEx);
             }
-            throw new ToolException("Cross-project move aborted: trashing the source failed ("
-                    + e.getMessage() + "); the created copy was rolled back, so the document "
-                    + "remains only at its source " + source.getProjectId() + ":" + source.getPath()
-                    + ". Retry the move.", e);
+            throw new ToolException(
+                    "Cross-project move aborted: trashing the source failed ("
+                            + e.getMessage() + "); the created copy was rolled back, so the document "
+                            + "remains only at its source " + source.getProjectId() + ":" + source.getPath()
+                            + ". Retry the move.",
+                    e);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();

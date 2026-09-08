@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -39,23 +40,32 @@ public class ThreadLeaveTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "threadId", Map.of(
-                            "type", "string",
-                            "description", "From inbox_list or a self-check finding."),
-                    "note", Map.of(
-                            "type", "string",
-                            "description", "Optional: posted as a contribution before you "
-                                    + "go. Leaving without a word looks like a failure to "
-                                    + "whoever brought you in.")),
+            "properties",
+                    Map.of(
+                            "threadId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "From inbox_list or a self-check finding."),
+                            "note",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional: posted as a contribution before you "
+                                                    + "go. Leaving without a word looks like a failure to "
+                                                    + "whoever brought you in.")),
             "required", List.of("threadId"));
 
     private final MaximegalonService threads;
     private final InboxToolSupport support;
 
-    @Override public String name() { return "thread_leave"; }
+    @Override
+    public String name() {
+        return "thread_leave";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Take yourself off an inbox thread: you stop being a participant and it stops "
                 + "showing as unread for you. For threads that do not concern you — not for "
                 + "ones you would rather not deal with. If the thread is waiting on YOUR "
@@ -63,21 +73,41 @@ public class ThreadLeaveTool implements Tool {
                 + "Leaving changes nothing about the matter itself.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return false; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
+
+    @Override
+    public String searchHint() {
         return "Stop following an inbox thread that does not concern you";
     }
 
-    @Override public String troubleshootingHint() {
+    @Override
+    public String troubleshootingHint() {
         return "Refused for the assignee of an open ask — delegate it instead. You can only "
                 + "remove yourself; taking somebody else out is not a tool.";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -107,9 +137,9 @@ public class ThreadLeaveTool implements Tool {
                     .orElseThrow(() -> InboxToolSupport.notVisible(threadId));
         } catch (MaximegalonRuleException e) {
             if (MaximegalonRuleException.ASSIGNEE_MUST_STAY.equals(e.getReason())) {
-                throw assigneeMustStay();
+                throw assigneeMustStay(e);
             }
-            throw new ToolException(e.getMessage() == null ? e.getReason() : e.getMessage());
+            throw new ToolException(e.getMessage() == null ? e.getReason() : e.getMessage(), e);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -117,16 +147,24 @@ public class ThreadLeaveTool implements Tool {
         out.put("left", true);
         // Said out loud because "I am off it" and "it is handled" are the two
         // things easiest to confuse here, and only one of them is true.
-        out.put("note", "You will not hear about this thread again. Nothing about the "
-                + "matter changed — its status is still " + updated.getStatus() + ".");
+        out.put(
+                "note",
+                "You will not hear about this thread again. Nothing about the "
+                        + "matter changed — its status is still " + updated.getStatus() + ".");
         return out;
     }
 
     /** The one refusal this tool has, worded once for both places that raise it. */
+    private static ToolException assigneeMustStay(@Nullable Throwable cause) {
+        return new ToolException(
+                "this thread is waiting on your decision, so you "
+                        + "cannot leave it. Answer it, or give it to somebody who can decide "
+                        + "with thread_delegate.",
+                cause);
+    }
+
     private static ToolException assigneeMustStay() {
-        return new ToolException("this thread is waiting on your decision, so you "
-                + "cannot leave it. Answer it, or give it to somebody who can decide "
-                + "with thread_delegate.");
+        return assigneeMustStay(null);
     }
 
     private static String requiredString(Map<String, Object> params, String key) {
@@ -135,8 +173,7 @@ public class ThreadLeaveTool implements Tool {
         throw new ToolException("'" + key + "' is required");
     }
 
-    private static @org.jspecify.annotations.Nullable String optString(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String optString(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         return raw instanceof String s && !s.isBlank() ? s.trim() : null;
     }

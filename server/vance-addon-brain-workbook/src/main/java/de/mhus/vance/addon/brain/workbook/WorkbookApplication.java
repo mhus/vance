@@ -42,12 +42,13 @@ public class WorkbookApplication implements VanceApplication {
     private final WorkbookScriptService scriptService;
     private final SecurityContextFactory contextFactory;
 
-    public WorkbookApplication(WorkbookFolderReader folderReader,
-                                WorkbookIndexRenderer indexRenderer,
-                                DocumentService documentService,
-                                DocumentLinkBuilder linkBuilder,
-                                WorkbookScriptService scriptService,
-                                SecurityContextFactory contextFactory) {
+    public WorkbookApplication(
+            WorkbookFolderReader folderReader,
+            WorkbookIndexRenderer indexRenderer,
+            DocumentService documentService,
+            DocumentLinkBuilder linkBuilder,
+            WorkbookScriptService scriptService,
+            SecurityContextFactory contextFactory) {
         this.folderReader = folderReader;
         this.indexRenderer = indexRenderer;
         this.documentService = documentService;
@@ -56,7 +57,10 @@ public class WorkbookApplication implements VanceApplication {
         this.contextFactory = contextFactory;
     }
 
-    @Override public String appName() { return APP_NAME; }
+    @Override
+    public String appName() {
+        return APP_NAME;
+    }
 
     @Override
     public String promptInject(PromptInjectContext ctx) {
@@ -95,14 +99,12 @@ public class WorkbookApplication implements VanceApplication {
     @Override
     public List<AppTarget> targets(TargetsContext ctx) {
         if (ctx.purpose() != TargetPurpose.NAVIGATE) return List.of();
-        WorkbookFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), ctx.folder());
+        WorkbookFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), ctx.folder());
         List<AppTarget> out = new ArrayList<>(scan.pages().size());
         for (WorkbookPage page : scan.pages()) {
             String id = page.doc().getId();
             if (id == null || id.isBlank()) continue;
-            String label = page.title() != null && !page.title().isBlank()
-                    ? page.title() : page.relativePath();
+            String label = page.title() != null && !page.title().isBlank() ? page.title() : page.relativePath();
             if (label == null || label.isBlank()) {
                 log.debug("workbook targets: page '{}' has no label — skipped", id);
                 continue;
@@ -122,12 +124,11 @@ public class WorkbookApplication implements VanceApplication {
         Map<String, Object> params = ctx.params() != null ? ctx.params() : new LinkedHashMap<>();
         String manifestPath = folder + "/" + WorkbookFolderReader.APP_MANIFEST;
 
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), manifestPath);
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
             throw new ToolException(
-                    "Manifest already exists at '" + manifestPath
-                            + "'. Pass overwrite=true to replace it.");
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -139,12 +140,16 @@ public class WorkbookApplication implements VanceApplication {
         StringBuilder mb = new StringBuilder();
         mb.append("$meta:\n  kind: application\n  app: workbook\n");
         if (title != null) mb.append("title: \"").append(escape(title)).append("\"\n");
-        if (description != null) mb.append("description: \"").append(escape(description)).append("\"\n");
+        if (description != null)
+            mb.append("description: \"").append(escape(description)).append("\"\n");
         mb.append("workbook:\n");
-        if (landingPage != null) mb.append("  landingPage: ").append(landingPage).append("\n");
+        if (landingPage != null)
+            mb.append("  landingPage: ").append(landingPage).append("\n");
         mb.append("  index:\n")
                 .append("    outputPath: _index.md\n")
-                .append("    style: ").append(indexStyle != null ? indexStyle.toLowerCase(Locale.ROOT) : "cards").append("\n")
+                .append("    style: ")
+                .append(indexStyle != null ? indexStyle.toLowerCase(Locale.ROOT) : "cards")
+                .append("\n")
                 .append("    showDescriptions: true\n")
                 .append("    groupBySection: true\n");
         mb.append("  defaultPageKind: workpage\n");
@@ -156,56 +161,65 @@ public class WorkbookApplication implements VanceApplication {
                     existing.get().getId(),
                     title != null ? title : "Workbook",
                     List.of("application", "workbook"),
-                    manifestBody, null, null, null, null, YAML_MIME,
+                    manifestBody,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
         } else {
-            try (InputStream in = new ByteArrayInputStream(
-                    manifestBody.getBytes(StandardCharsets.UTF_8))) {
+            try (InputStream in = new ByteArrayInputStream(manifestBody.getBytes(StandardCharsets.UTF_8))) {
                 stored = documentService.create(
-                        ctx.tenantId(), ctx.projectName(),
+                        ctx.tenantId(),
+                        ctx.projectName(),
                         manifestPath,
                         title != null ? title : "Workbook",
                         List.of("application", "workbook"),
-                        YAML_MIME, in, ctx.userId(),
+                        YAML_MIME,
+                        in,
+                        ctx.userId(),
                         contextFactory.writeActor(ctx.tenantId(), ctx.userId(), manifestPath));
             } catch (IOException e) {
-                throw new ToolException(
-                        "Could not write manifest '" + manifestPath + "': " + e.getMessage());
+                throw new ToolException("Could not write manifest '" + manifestPath + "': " + e.getMessage(), e);
             }
         }
 
         // First refresh to seed an _index.md (even if empty).
-        RefreshContext rc = new RefreshContext(
-                ctx.tenantId(), ctx.projectName(), folder,
-                ctx.userId(), ctx.processId());
+        RefreshContext rc =
+                new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId());
         RefreshResult refresh = refresh(rc);
 
-        log.info("WorkbookApplication.create tenant='{}' folder='{}'",
-                ctx.tenantId(), folder);
+        log.info("WorkbookApplication.create tenant='{}' folder='{}'", ctx.tenantId(), folder);
 
         Map<String, Object> stats = new LinkedHashMap<>();
         if (title != null) stats.put("title", title);
-        stats.put("pageCount", refresh.artefacts().isEmpty() ? 0
-                : refresh.artefacts().get(0).stats().getOrDefault("pageCount", 0));
+        stats.put(
+                "pageCount",
+                refresh.artefacts().isEmpty()
+                        ? 0
+                        : refresh.artefacts().get(0).stats().getOrDefault("pageCount", 0));
 
         String nextStep = "Workbook ready. Add pages with "
                 + "`workpage_create(path=\"" + folder + "/<slug>\", title=\"...\", blocks=[...])` "
                 + "then `app_rebuild('" + folder + "')` to refresh the index.";
 
         return new CreateResult(
-                APP_NAME, folder, stored.getPath(),
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
                 List.of(),
                 refresh.artefacts(),
-                nextStep, stats);
+                nextStep,
+                stats);
     }
 
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
         String folder = WorkbookFolderReader.normaliseFolder(ctx.folder());
-        WorkbookFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), ctx.projectName(), folder);
+        WorkbookFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), ctx.projectName(), folder);
 
         String title = scan.manifest().getTitle();
         if (title == null || title.isBlank()) title = leafFolderName(folder);
@@ -213,15 +227,15 @@ public class WorkbookApplication implements VanceApplication {
         String indexBody = indexRenderer.render(scan, title);
         String outputPath = WorkbookFolderReader.resolveOutputPath(
                 folder, scan.config().index().outputPath());
-        DocumentDocument stored = writeArtefact(
-                ctx, outputPath, indexBody, "Index — " + title);
+        DocumentDocument stored = writeArtefact(ctx, outputPath, indexBody, "Index — " + title);
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("pageCount", scan.pages().size());
         long sectionCount = scan.pages().stream()
                 .map(WorkbookPage::section)
                 .filter(s -> !s.isEmpty())
-                .distinct().count();
+                .distinct()
+                .count();
         stats.put("sectionCount", sectionCount);
 
         // Run the scripts each page opted into via $meta.rebuildScripts —
@@ -238,48 +252,62 @@ public class WorkbookApplication implements VanceApplication {
                     scriptsRun++;
                 } catch (RuntimeException e) {
                     scriptsFailed++;
-                    log.warn("WorkbookApplication.refresh rebuild-script failed "
+                    log.warn(
+                            "WorkbookApplication.refresh rebuild-script failed "
                                     + "tenant='{}' page='{}' script='{}': {}",
-                            ctx.tenantId(), page.doc().getPath(), scriptPath, e.getMessage());
+                            ctx.tenantId(),
+                            page.doc().getPath(),
+                            scriptPath,
+                            e.getMessage());
                 }
             }
         }
         stats.put("scriptsRun", scriptsRun);
         if (scriptsFailed > 0) stats.put("scriptsFailed", scriptsFailed);
 
-        ArtefactResult index = new ArtefactResult(
-                "index", stored.getPath(),
-                linkBuilder.linkFor(stored, ctx.projectName()),
-                stats);
+        ArtefactResult index =
+                new ArtefactResult("index", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), stats);
 
-        log.info("WorkbookApplication.refresh tenant='{}' folder='{}' pages={} scriptsRun={} scriptsFailed={}",
-                ctx.tenantId(), folder, scan.pages().size(), scriptsRun, scriptsFailed);
+        log.info(
+                "WorkbookApplication.refresh tenant='{}' folder='{}' pages={} scriptsRun={} scriptsFailed={}",
+                ctx.tenantId(),
+                folder,
+                scan.pages().size(),
+                scriptsRun,
+                scriptsFailed);
 
         return new RefreshResult(APP_NAME, folder, List.of(index));
     }
 
-    private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath,
-                                           String body, String title) {
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), ctx.projectName(), outputPath);
+    private DocumentDocument writeArtefact(RefreshContext ctx, String outputPath, String body, String title) {
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), ctx.projectName(), outputPath);
         if (existing.isPresent()) {
             return documentService.update(
                     existing.get().getId(),
-                    title, List.of("workbook", "generated", "index"),
-                    body, null, null, null, null, MD_MIME,
+                    title,
+                    List.of("workbook", "generated", "index"),
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    MD_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
             return documentService.create(
-                    ctx.tenantId(), ctx.projectName(),
-                    outputPath, title,
+                    ctx.tenantId(),
+                    ctx.projectName(),
+                    outputPath,
+                    title,
                     List.of("workbook", "generated", "index"),
-                    MD_MIME, in, ctx.userId(),
+                    MD_MIME,
+                    in,
+                    ctx.userId(),
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), outputPath));
         } catch (IOException e) {
-            throw new ToolException(
-                    "Could not write artefact '" + outputPath + "': " + e.getMessage());
+            throw new ToolException("Could not write artefact '" + outputPath + "': " + e.getMessage(), e);
         }
     }
 

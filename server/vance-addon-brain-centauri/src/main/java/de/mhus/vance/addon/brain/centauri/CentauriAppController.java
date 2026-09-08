@@ -1,39 +1,39 @@
 package de.mhus.vance.addon.brain.centauri;
 
+import de.mhus.vance.brain.applications.VanceApplication;
+import de.mhus.vance.brain.centauri.CentauriException;
+import de.mhus.vance.brain.centauri.CentauriGateService;
 import de.mhus.vance.brain.centauri.CentauriItem;
-import de.mhus.vance.shared.access.AccessFilterBase;
-import de.mhus.vance.toolpack.facet.Facet;
-import de.mhus.vance.toolpack.facet.FacetValue;
 import de.mhus.vance.brain.centauri.CentauriNote;
 import de.mhus.vance.brain.centauri.CentauriPage;
 import de.mhus.vance.brain.centauri.CentauriPageRequest;
-import de.mhus.vance.brain.centauri.CentauriGateService;
 import de.mhus.vance.brain.centauri.CentauriService;
 import de.mhus.vance.brain.centauri.FeedCapabilitiesCache;
 import de.mhus.vance.brain.centauri.FeedSourceFactory;
 import de.mhus.vance.brain.centauri.FeedStream;
-import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.toolpack.facet.Facet;
+import de.mhus.vance.toolpack.facet.FacetValue;
 import de.mhus.vance.toolpack.feed.FeedCapabilities;
 import de.mhus.vance.toolpack.feed.FeedDirection;
 import de.mhus.vance.toolpack.feed.FeedExtraField;
 import de.mhus.vance.toolpack.feed.FeedFilter;
 import de.mhus.vance.toolpack.feed.FeedItem;
+import de.mhus.vance.toolpack.feed.FeedReportReason;
+import de.mhus.vance.toolpack.feed.FeedRequestKind;
 import de.mhus.vance.toolpack.feed.FeedScope;
 import de.mhus.vance.toolpack.feed.FeedSelector;
 import de.mhus.vance.toolpack.feed.FeedSelectorKind;
-import de.mhus.vance.brain.centauri.CentauriException;
-import de.mhus.vance.toolpack.feed.FeedReportReason;
-import de.mhus.vance.toolpack.feed.FeedRequestKind;
+import de.mhus.vance.toolpack.feed.FeedSignal;
 import de.mhus.vance.toolpack.feed.FeedSignalOutcome;
 import de.mhus.vance.toolpack.feed.FeedSignalRequest;
-import de.mhus.vance.toolpack.feed.FeedSignal;
 import de.mhus.vance.toolpack.feed.FeedSourceInstance;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.ByteArrayInputStream;
@@ -45,14 +45,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import java.util.Map;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -99,10 +99,11 @@ public class CentauriAppController {
      * of being dropped, so the configuration form can say why it is unusable.
      */
     @GetMapping("/brain/{tenant}/addon/centauri/sources")
-    public List<FeedSourceView> sources(@PathVariable String tenant,
-                                        @RequestParam String projectId,
-                                        @RequestParam(defaultValue = "false") boolean refresh,
-                                        HttpServletRequest request) {
+    public List<FeedSourceView> sources(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam(defaultValue = "false") boolean refresh,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         FeedScope scope = scope(tenant, projectId, request);
         if (refresh) {
@@ -123,16 +124,20 @@ public class CentauriAppController {
                 FeedCapabilities caps = instance.capabilities();
                 List<FeedSelectorView> selectors = new ArrayList<>();
                 for (FeedSelector selector : instance.listSelectors()) {
-                    selectors.add(new FeedSelectorView(selector.value(), selector.label(),
-                            selector.kind().name(), selector.language()));
+                    selectors.add(new FeedSelectorView(
+                            selector.value(), selector.label(), selector.kind().name(), selector.language()));
                 }
-                out.add(new FeedSourceView(instance.id(), instance.displayName(),
-                        instance.baseUrl(), toView(caps), selectors, null));
+                out.add(new FeedSourceView(
+                        instance.id(), instance.displayName(), instance.baseUrl(), toView(caps), selectors, null));
             } catch (RuntimeException e) {
-                log.warn("Centauri: source '{}' could not be described: {}",
-                        instance.id(), e.toString());
-                out.add(new FeedSourceView(instance.id(), instance.displayName(),
-                        instance.baseUrl(), null, List.of(), String.valueOf(e.getMessage())));
+                log.warn("Centauri: source '{}' could not be described: {}", instance.id(), e.toString());
+                out.add(new FeedSourceView(
+                        instance.id(),
+                        instance.displayName(),
+                        instance.baseUrl(),
+                        null,
+                        List.of(),
+                        String.valueOf(e.getMessage())));
             }
         }
         return out;
@@ -148,13 +153,13 @@ public class CentauriAppController {
      * that only one of them answers.
      */
     @GetMapping("/brain/{tenant}/addon/centauri/facet-values")
-    public List<FeedFacetValueView> facetValues(@PathVariable String tenant,
-                                                @RequestParam String projectId,
-                                                @RequestParam String sourceId,
-                                                @RequestParam String key,
-                                                @RequestParam(required = false)
-                                                @Nullable String parent,
-                                                HttpServletRequest request) {
+    public List<FeedFacetValueView> facetValues(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String sourceId,
+            @RequestParam String key,
+            @RequestParam(required = false) @Nullable String parent,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         FeedScope scope = scope(tenant, projectId, request);
         FeedSourceInstance instance = sourceFactory.find(scope, sourceId);
@@ -189,37 +194,42 @@ public class CentauriAppController {
      * than a failure of ours.
      */
     @GetMapping("/brain/{tenant}/addon/centauri/item")
-    public ResponseEntity<FeedItemView> item(@PathVariable String tenant,
-                                             @RequestParam String projectId,
-                                             @RequestParam String sourceId,
-                                             @RequestParam String itemId,
-                                             HttpServletRequest request) {
+    public ResponseEntity<FeedItemView> item(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String sourceId,
+            @RequestParam String itemId,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         FeedScope scope = scope(tenant, projectId, request);
         FeedSourceInstance instance = sourceFactory.find(scope, sourceId);
         String displayName = instance == null ? sourceId : instance.displayName();
-        return centauriService.loadItem(sourceId, itemId, scope)
+        return centauriService
+                .loadItem(sourceId, itemId, scope)
                 .map(item -> ResponseEntity.ok(toView(item, sourceId, displayName, "")))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/brain/{tenant}/addon/centauri/config")
-    public FeedConfigView config(@PathVariable String tenant,
-                                 @RequestParam String projectId,
-                                 @RequestParam String folder,
-                                 HttpServletRequest request) {
+    public FeedConfigView config(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
         String normalised = manifestFolder(tenant, projectId, folder, request, Action.READ);
-        return toView(normalised,
+        return toView(
+                normalised,
                 application.readManifest(tenant, projectId, normalised).title(),
                 application.readConfig(tenant, projectId, normalised));
     }
 
     @PutMapping("/brain/{tenant}/addon/centauri/config")
-    public FeedConfigView saveConfig(@PathVariable String tenant,
-                                     @RequestParam String projectId,
-                                     @RequestParam String folder,
-                                     @RequestBody FeedConfigView body,
-                                     HttpServletRequest request) {
+    public FeedConfigView saveConfig(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody FeedConfigView body,
+            HttpServletRequest request) {
         String normalised = manifestFolder(tenant, projectId, folder, request, Action.WRITE);
         FeedsConfig incoming = fromView(body);
         // Refuse a selector the source cannot read, rather than storing it and
@@ -231,11 +241,9 @@ public class CentauriAppController {
         if (!complaints.isEmpty()) {
             CentauriService.SelectorComplaint first = complaints.get(0);
             throw new IllegalArgumentException(
-                    first.sourceId() + " cannot read the stream '" + first.selector()
-                            + "': " + first.complaint());
+                    first.sourceId() + " cannot read the stream '" + first.selector() + "': " + first.complaint());
         }
-        application.writeConfig(tenant, projectId, normalised, incoming,
-                currentUser(request));
+        application.writeConfig(tenant, projectId, normalised, incoming, currentUser(request));
         return config(tenant, projectId, normalised, request);
     }
 
@@ -251,12 +259,14 @@ public class CentauriAppController {
      * never asked. The project check stays — a document grant is not a licence
      * to use the app at all.
      */
-    private String manifestFolder(String tenant, String projectId, String folder,
-                                  HttpServletRequest request, Action action) {
+    private String manifestFolder(
+            String tenant, String projectId, String folder, HttpServletRequest request, Action action) {
         authority.enforce(request, new Resource.Project(tenant, projectId), action);
         String normalised = FeedsApplication.normaliseFolder(folder);
-        authority.enforce(request, new Resource.Document(tenant, projectId,
-                normalised + "/" + VanceApplication.APP_MANIFEST), action);
+        authority.enforce(
+                request,
+                new Resource.Document(tenant, projectId, normalised + "/" + VanceApplication.APP_MANIFEST),
+                action);
         return normalised;
     }
 
@@ -265,10 +275,11 @@ public class CentauriAppController {
      * {@link FeedPageRequest}.
      */
     @PostMapping("/brain/{tenant}/addon/centauri/page")
-    public FeedPageView page(@PathVariable String tenant,
-                             @RequestParam String projectId,
-                             @RequestBody FeedPageRequest body,
-                             HttpServletRequest request) {
+    public FeedPageView page(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestBody FeedPageRequest body,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         FeedScope scope = scope(tenant, projectId, request);
 
@@ -286,8 +297,9 @@ public class CentauriAppController {
             // under the operator's credentials, for a caller who needs nothing
             // but project READ.
             if (body.streams().size() > MAX_PREVIEW_STREAMS) {
-                throw new IllegalArgumentException("at most " + MAX_PREVIEW_STREAMS
-                        + " streams can be previewed at once, got " + body.streams().size());
+                throw new IllegalArgumentException(
+                        "at most " + MAX_PREVIEW_STREAMS + " streams can be previewed at once, got "
+                                + body.streams().size());
             }
             streams = new ArrayList<>();
             for (FeedStreamView view : body.streams()) {
@@ -296,8 +308,7 @@ public class CentauriAppController {
             filter = fromView(body.filter()).toFilter(Instant.now());
             pageSize = body.pageSize();
         } else {
-            String folder = manifestFolder(
-                    tenant, projectId, requireFolder(body), request, Action.READ);
+            String folder = manifestFolder(tenant, projectId, requireFolder(body), request, Action.READ);
             FeedsConfig stored = application.readConfig(tenant, projectId, folder);
             streams = stored.streams();
             // A filter in the body overrides the stored one rather than being
@@ -312,9 +323,7 @@ public class CentauriAppController {
         }
 
         CentauriPage page = centauriService.fetchPage(
-                new CentauriPageRequest(streams, filter, pageSize, direction(body.direction()),
-                        body.cursor()),
-                scope);
+                new CentauriPageRequest(streams, filter, pageSize, direction(body.direction()), body.cursor()), scope);
         return toView(page);
     }
 
@@ -334,33 +343,38 @@ public class CentauriAppController {
      * this call site is the only place the question is really asked.
      */
     @PostMapping("/brain/{tenant}/addon/centauri/clip")
-    public ResponseEntity<ClipResponse> clip(@PathVariable String tenant,
-                                             @RequestParam String projectId,
-                                             @RequestBody ClipRequest body,
-                                             HttpServletRequest request) {
+    public ResponseEntity<ClipResponse> clip(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestBody ClipRequest body,
+            HttpServletRequest request) {
         String path = normalisePath(body.targetPath());
-        authority.enforce(request, new Resource.Document(tenant, projectId, path),
-                Action.CREATE);
+        authority.enforce(request, new Resource.Document(tenant, projectId, path), Action.CREATE);
         var existing = documentService.findByPath(tenant, projectId, path);
         if (existing.isPresent()) {
             // Conflict with a link, not just a path: the entry was already
             // clipped, and the useful answer is where it went. A 409 whose
             // link is null leaves the caller with the one thing it cannot act
             // on — the knowledge that something is in the way.
-            return ResponseEntity.status(409).body(new ClipResponse(
-                    path, linkBuilder.linkFor(existing.get(), projectId)));
+            return ResponseEntity.status(409)
+                    .body(new ClipResponse(path, linkBuilder.linkFor(existing.get(), projectId)));
         }
 
         String markdown = renderClip(body);
         String user = currentUser(request);
-        try (InputStream in = new ByteArrayInputStream(
-                markdown.getBytes(StandardCharsets.UTF_8))) {
-            DocumentDocument stored = documentService.create(tenant, projectId, path,
-                    body.title(), List.of("clip", "feed"), MD_MIME, in, user,
+        try (InputStream in = new ByteArrayInputStream(markdown.getBytes(StandardCharsets.UTF_8))) {
+            DocumentDocument stored = documentService.create(
+                    tenant,
+                    projectId,
+                    path,
+                    body.title(),
+                    List.of("clip", "feed"),
+                    MD_MIME,
+                    in,
+                    user,
                     contextFactory.writeActor(tenant, user, path));
             log.info("Centauri: clipped '{}' into '{}/{}'", body.url(), projectId, path);
-            return ResponseEntity.ok(new ClipResponse(
-                    stored.getPath(), linkBuilder.linkFor(stored, projectId)));
+            return ResponseEntity.ok(new ClipResponse(stored.getPath(), linkBuilder.linkFor(stored, projectId)));
         } catch (IOException e) {
             throw new IllegalStateException("could not write clip '" + path + "'", e);
         }
@@ -375,10 +389,11 @@ public class CentauriAppController {
      * the exception handler below turns it into `409`.
      */
     @PostMapping("/brain/{tenant}/addon/centauri/signal")
-    public SignalResponseView signal(@PathVariable String tenant,
-                                     @RequestParam String projectId,
-                                     @RequestBody SignalRequestView body,
-                                     HttpServletRequest request) {
+    public SignalResponseView signal(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestBody SignalRequestView body,
+            HttpServletRequest request) {
         // WRITE, not READ: a signal leaves the house. Reading a feed is not
         // permission to speak in the project's name to a foreign service.
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
@@ -388,16 +403,14 @@ public class CentauriAppController {
         FeedSignalRequest signalRequest = new FeedSignalRequest(
                 body.itemId(),
                 signal,
-                signal == FeedSignal.REPORT
-                        ? parseEnum(FeedReportReason.class, body.reason(), "reason") : null,
+                signal == FeedSignal.REPORT ? parseEnum(FeedReportReason.class, body.reason(), "reason") : null,
                 signal == FeedSignal.REQUEST
                         ? parseEnum(FeedRequestKind.class, body.requestKind(), "requestKind")
                         : null,
                 body.note(),
                 null);
 
-        FeedSignalOutcome outcome =
-                centauriService.sendSignal(body.sourceId(), signalRequest, scope);
+        FeedSignalOutcome outcome = centauriService.sendSignal(body.sourceId(), signalRequest, scope);
         return new SignalResponseView(outcome.name());
     }
 
@@ -408,20 +421,20 @@ public class CentauriAppController {
      */
     @ExceptionHandler({CentauriException.class, IllegalArgumentException.class})
     public ResponseEntity<Map<String, String>> onRefused(RuntimeException e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(Map.of("error", String.valueOf(e.getMessage())));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", String.valueOf(e.getMessage())));
     }
 
-    private static <E extends Enum<E>> E parseEnum(
-            Class<E> type, @Nullable String raw, String field) {
+    private static <E extends Enum<E>> E parseEnum(Class<E> type, @Nullable String raw, String field) {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException(field + " is required");
         }
         try {
             return Enum.valueOf(type, raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("unknown " + field + " '" + raw + "' — allowed: "
-                    + java.util.Arrays.toString(type.getEnumConstants()));
+            throw new IllegalArgumentException(
+                    "unknown " + field + " '" + raw + "' — allowed: "
+                            + java.util.Arrays.toString(type.getEnumConstants()),
+                    e);
         }
     }
 
@@ -437,20 +450,37 @@ public class CentauriAppController {
             signals.add(signal.name());
         }
         return new FeedCapabilitiesView(
-                caps.selectorMode().name(), kinds,
-                caps.pushdownTextSearch(), caps.pushdownLanguage(), caps.pushdownSince(),
-                caps.supportsNewerDirection(), caps.carriesFullBody(), caps.maxPageSize(),
-                signals, caps.carriesControlUrl(), facetViews(caps.facets()),
+                caps.selectorMode().name(),
+                kinds,
+                caps.pushdownTextSearch(),
+                caps.pushdownLanguage(),
+                caps.pushdownSince(),
+                caps.supportsNewerDirection(),
+                caps.carriesFullBody(),
+                caps.maxPageSize(),
+                signals,
+                caps.carriesControlUrl(),
+                facetViews(caps.facets()),
                 extraFieldViews(caps.extraFields()));
     }
 
-    private static FeedItemView toView(FeedItem item, String sourceId,
-                                       String sourceName, String selector) {
+    private static FeedItemView toView(FeedItem item, String sourceId, String sourceName, String selector) {
         return new FeedItemView(
-                item.id(), item.publishedAt().toString(), item.title(), item.url(),
-                item.summary(), item.author(), item.language(), item.imageUrl(),
-                item.controlUrl(), item.tags(), item.body(), item.extras(),
-                sourceId, sourceName, selector);
+                item.id(),
+                item.publishedAt().toString(),
+                item.title(),
+                item.url(),
+                item.summary(),
+                item.author(),
+                item.language(),
+                item.imageUrl(),
+                item.controlUrl(),
+                item.tags(),
+                item.body(),
+                item.extras(),
+                sourceId,
+                sourceName,
+                selector);
     }
 
     private static List<FeedExtraFieldView> extraFieldViews(List<FeedExtraField> fields) {
@@ -468,8 +498,7 @@ public class CentauriAppController {
             for (FacetValue value : facet.values()) {
                 values.add(new FeedFacetValueView(value.id(), value.label(), value.parentId()));
             }
-            out.add(new FeedFacetView(facet.key(), facet.label(),
-                    facet.hierarchical(), facet.lazyChildren(), values));
+            out.add(new FeedFacetView(facet.key(), facet.label(), facet.hierarchical(), facet.lazyChildren(), values));
         }
         return out;
     }
@@ -478,16 +507,15 @@ public class CentauriAppController {
         List<FeedItemView> items = new ArrayList<>(page.items().size());
         for (CentauriItem entry : page.items()) {
             FeedItem item = entry.item();
-            items.add(toView(item, entry.sourceId(), entry.sourceDisplayName(),
-                    entry.selector()));
+            items.add(toView(item, entry.sourceId(), entry.sourceDisplayName(), entry.selector()));
         }
         List<FeedNoteView> notes = new ArrayList<>(page.notes().size());
         for (CentauriNote note : page.notes()) {
-            notes.add(new FeedNoteView(note.sourceId(), note.selector(),
-                    note.kind().name(), note.detail()));
+            notes.add(new FeedNoteView(
+                    note.sourceId(), note.selector(), note.kind().name(), note.detail()));
         }
-        return new FeedPageView(items, page.nextCursor(), page.hasMore(), notes,
-                page.droppedByFilter(), page.droppedAsDuplicate());
+        return new FeedPageView(
+                items, page.nextCursor(), page.hasMore(), notes, page.droppedByFilter(), page.droppedAsDuplicate());
     }
 
     private static FeedConfigView toView(String folder, @Nullable String title, FeedsConfig cfg) {
@@ -495,9 +523,17 @@ public class CentauriAppController {
         for (FeedStream stream : cfg.streams()) {
             streams.add(new FeedStreamView(stream.sourceId(), stream.selector()));
         }
-        return new FeedConfigView(folder, title, streams,
-                new FeedFilterView(cfg.text(), new ArrayList<>(cfg.languages()),
-                        cfg.include(), cfg.exclude(), cfg.since(), cfg.facets()),
+        return new FeedConfigView(
+                folder,
+                title,
+                streams,
+                new FeedFilterView(
+                        cfg.text(),
+                        new ArrayList<>(cfg.languages()),
+                        cfg.include(),
+                        cfg.exclude(),
+                        cfg.since(),
+                        cfg.facets()),
                 cfg.pageSize());
     }
 
@@ -505,14 +541,22 @@ public class CentauriAppController {
         List<FeedStream> streams = new ArrayList<>();
         if (view.streams() != null) {
             for (FeedStreamView stream : view.streams()) {
-                if (stream != null && stream.source() != null && !stream.source().isBlank()) {
+                if (stream != null
+                        && stream.source() != null
+                        && !stream.source().isBlank()) {
                     streams.add(new FeedStream(stream.source(), stream.selector()));
                 }
             }
         }
         FeedsConfig filter = fromView(view.filter());
-        return new FeedsConfig(streams, filter.text(), filter.languages(),
-                filter.include(), filter.exclude(), filter.since(), filter.facets(),
+        return new FeedsConfig(
+                streams,
+                filter.text(),
+                filter.languages(),
+                filter.include(),
+                filter.exclude(),
+                filter.since(),
+                filter.facets(),
                 view.pageSize());
     }
 
@@ -521,12 +565,16 @@ public class CentauriAppController {
         if (view == null) {
             return FeedsConfig.empty();
         }
-        Set<String> languages = view.languages() == null
-                ? Set.of() : Set.copyOf(new LinkedHashSet<>(view.languages()));
-        return new FeedsConfig(List.of(), view.text(), languages,
+        Set<String> languages = view.languages() == null ? Set.of() : Set.copyOf(new LinkedHashSet<>(view.languages()));
+        return new FeedsConfig(
+                List.of(),
+                view.text(),
+                languages,
                 view.include() == null ? List.of() : view.include(),
                 view.exclude() == null ? List.of() : view.exclude(),
-                view.since(), view.facets(), 0);
+                view.since(),
+                view.facets(),
+                0);
     }
 
     // ── internals ────────────────────────────────────────────────────
@@ -610,20 +658,17 @@ public class CentauriAppController {
             throw new IllegalArgumentException("targetPath is required");
         }
         if (path.contains("..")) {
-            throw new IllegalArgumentException(
-                    "targetPath must not contain '..': " + raw);
+            throw new IllegalArgumentException("targetPath must not contain '..': " + raw);
         }
         if (path.contains("//")) {
-            throw new IllegalArgumentException(
-                    "targetPath must not contain an empty segment: " + raw);
+            throw new IllegalArgumentException("targetPath must not contain an empty segment: " + raw);
         }
         return path.endsWith(".md") ? path : path + ".md";
     }
 
     private static String requireFolder(FeedPageRequest body) {
         if (body.folder() == null || body.folder().isBlank()) {
-            throw new IllegalArgumentException(
-                    "either folder or an explicit streams list is required");
+            throw new IllegalArgumentException("either folder or an explicit streams list is required");
         }
         return body.folder();
     }
@@ -632,8 +677,7 @@ public class CentauriAppController {
         if (raw == null || raw.isBlank()) {
             return FeedDirection.OLDER;
         }
-        return "newer".equals(raw.trim().toLowerCase(Locale.ROOT))
-                ? FeedDirection.NEWER : FeedDirection.OLDER;
+        return "newer".equals(raw.trim().toLowerCase(Locale.ROOT)) ? FeedDirection.NEWER : FeedDirection.OLDER;
     }
 
     private static FeedScope scope(String tenant, String projectId, HttpServletRequest request) {

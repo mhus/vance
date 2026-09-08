@@ -66,8 +66,8 @@ public class SearchApplication implements VanceApplication {
         Optional<DocumentDocument> existing =
                 documentService.findByPath(ctx.tenantId(), ctx.projectName(), manifestPath);
         if (existing.isPresent() && !ctx.overwrite()) {
-            throw new ToolException("Manifest already exists at '" + manifestPath
-                    + "'. Pass overwrite=true to replace it.");
+            throw new ToolException(
+                    "Manifest already exists at '" + manifestPath + "'. Pass overwrite=true to replace it.");
         }
 
         String title = asString(params.get("title"));
@@ -83,20 +83,31 @@ public class SearchApplication implements VanceApplication {
         ApplicationDocument manifest = new ApplicationDocument(
                 "application", APP_NAME, title, description, configBlock, new LinkedHashMap<>());
 
-        DocumentDocument stored = write(ctx.tenantId(), ctx.projectName(), manifestPath,
+        DocumentDocument stored = write(
+                ctx.tenantId(),
+                ctx.projectName(),
+                manifestPath,
                 title == null ? "Search" : title,
                 ApplicationCodec.serialize(manifest, YAML_MIME),
-                existing.orElse(null), ctx.userId());
+                existing.orElse(null),
+                ctx.userId());
 
-        log.info("SearchApplication.create tenant='{}' folder='{}' modality={}",
-                ctx.tenantId(), folder, config.defaultModality());
+        log.info(
+                "SearchApplication.create tenant='{}' folder='{}' modality={}",
+                ctx.tenantId(),
+                folder,
+                config.defaultModality());
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("defaultModality", config.defaultModality().name().toLowerCase(Locale.ROOT));
 
-        return new CreateResult(APP_NAME, folder, stored.getPath(),
+        return new CreateResult(
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
-                List.of(), List.of(),
+                List.of(),
+                List.of(),
                 "Search ready. Open it and type — the modalities on offer follow the "
                         + "providers configured under _vance/config/research/.",
                 stats);
@@ -111,8 +122,7 @@ public class SearchApplication implements VanceApplication {
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
         String folder = normaliseFolder(ctx.folder());
-        log.debug("SearchApplication.refresh tenant='{}' folder='{}' (nothing derived)",
-                ctx.tenantId(), folder);
+        log.debug("SearchApplication.refresh tenant='{}' folder='{}' (nothing derived)", ctx.tenantId(), folder);
         return new RefreshResult(APP_NAME, folder, List.of());
     }
 
@@ -128,14 +138,12 @@ public class SearchApplication implements VanceApplication {
      */
     @Override
     public Optional<AppStatus> status(StatusContext ctx) {
-        SearchConfig config = readConfig(
-                ctx.tenantId(), ctx.projectName(), normaliseFolder(ctx.folder()));
+        SearchConfig config = readConfig(ctx.tenantId(), ctx.projectName(), normaliseFolder(ctx.folder()));
         List<StatusMetric> metrics = new ArrayList<>();
-        metrics.add(new StatusMetric("Modality",
-                config.defaultModality().name().toLowerCase(Locale.ROOT)));
+        metrics.add(new StatusMetric("Modality", config.defaultModality().name().toLowerCase(Locale.ROOT)));
         if (!config.savedSearches().isEmpty()) {
-            metrics.add(new StatusMetric("Saved",
-                    String.valueOf(config.savedSearches().size())));
+            metrics.add(new StatusMetric(
+                    "Saved", String.valueOf(config.savedSearches().size())));
         }
         List<StatusItem> items = new ArrayList<>();
         for (SearchConfig.SavedSearch saved : config.savedSearches()) {
@@ -145,7 +153,10 @@ public class SearchApplication implements VanceApplication {
                 config.savedSearches().isEmpty()
                         ? "Ready"
                         : config.savedSearches().size() + " saved search(es)",
-                null, metrics, items, null));
+                null,
+                metrics,
+                items,
+                null));
     }
 
     /**
@@ -155,16 +166,19 @@ public class SearchApplication implements VanceApplication {
      */
     @Override
     public @Nullable String promptInject(PromptInjectContext ctx) {
-        SearchConfig config = readConfig(
-                ctx.tenantId(), ctx.projectName(), normaliseFolder(ctx.folder()));
+        SearchConfig config = readConfig(ctx.tenantId(), ctx.projectName(), normaliseFolder(ctx.folder()));
         StringBuilder sb = new StringBuilder("Open search surface, default modality ")
                 .append(config.defaultModality().name().toLowerCase(Locale.ROOT))
                 .append(".\n");
         if (!config.savedSearches().isEmpty()) {
             sb.append("Saved searches:\n");
             for (SearchConfig.SavedSearch saved : config.savedSearches()) {
-                sb.append("- ").append(saved.name()).append(": ").append(saved.query())
-                        .append(" (").append(saved.modality().name().toLowerCase(Locale.ROOT))
+                sb.append("- ")
+                        .append(saved.name())
+                        .append(": ")
+                        .append(saved.query())
+                        .append(" (")
+                        .append(saved.modality().name().toLowerCase(Locale.ROOT))
                         .append(")\n");
             }
         }
@@ -197,8 +211,10 @@ public class SearchApplication implements VanceApplication {
                             + "the app's own pick, NOT a text selection inside a document. Never "
                             + "answer that no selection arrived, and never ask them to mark it "
                             + "again: ")
-                    .append(ForeignPromptText.quoted(selected)).append('\n')
-                    .append(ForeignPromptText.PROVENANCE_NOTE).append('\n')
+                    .append(ForeignPromptText.quoted(selected))
+                    .append('\n')
+                    .append(ForeignPromptText.PROVENANCE_NOTE)
+                    .append('\n')
                     .append("Read it with web_fetch on the URL — a search result is a "
                             + "pointer, not a document we hold.\n");
         }
@@ -213,8 +229,7 @@ public class SearchApplication implements VanceApplication {
 
     ApplicationDocument readManifest(String tenantId, String projectName, String folder) {
         String manifestPath = normaliseFolder(folder) + "/" + APP_MANIFEST;
-        Optional<DocumentDocument> doc =
-                documentService.findByPath(tenantId, projectName, manifestPath);
+        Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectName, manifestPath);
         if (doc.isEmpty()) {
             throw new ToolException("No search manifest at '" + manifestPath + "'");
         }
@@ -223,8 +238,8 @@ public class SearchApplication implements VanceApplication {
     }
 
     /** Replace the {@code config.search} block, keeping title and description. */
-    DocumentDocument writeConfig(String tenantId, String projectName, String folder,
-                                 SearchConfig config, @Nullable String userId) {
+    DocumentDocument writeConfig(
+            String tenantId, String projectName, String folder, SearchConfig config, @Nullable String userId) {
         String normalised = normaliseFolder(folder);
         String manifestPath = normalised + "/" + APP_MANIFEST;
         ApplicationDocument current = readManifest(tenantId, projectName, normalised);
@@ -232,15 +247,22 @@ public class SearchApplication implements VanceApplication {
         Map<String, Object> configBlock = new LinkedHashMap<>(current.config());
         configBlock.put(SearchConfig.BLOCK, config.toBlock());
         ApplicationDocument updated = new ApplicationDocument(
-                "application", APP_NAME, current.title(), current.description(),
-                configBlock, new LinkedHashMap<>(current.extra()));
+                "application",
+                APP_NAME,
+                current.title(),
+                current.description(),
+                configBlock,
+                new LinkedHashMap<>(current.extra()));
 
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectName, manifestPath);
-        return write(tenantId, projectName, manifestPath,
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectName, manifestPath);
+        return write(
+                tenantId,
+                projectName,
+                manifestPath,
                 current.title() == null ? "Search" : current.title(),
                 ApplicationCodec.serialize(updated, YAML_MIME),
-                existing.orElse(null), userId);
+                existing.orElse(null),
+                userId);
     }
 
     static String normaliseFolder(@Nullable String folder) {
@@ -262,22 +284,34 @@ public class SearchApplication implements VanceApplication {
 
     // ── internals ────────────────────────────────────────────────────
 
-    private DocumentDocument write(String tenantId, String projectName, String path,
-                                   String title, String body,
-                                   @Nullable DocumentDocument existing,
-                                   @Nullable String userId) {
+    private DocumentDocument write(
+            String tenantId,
+            String projectName,
+            String path,
+            String title,
+            String body,
+            @Nullable DocumentDocument existing,
+            @Nullable String userId) {
         var actor = contextFactory.writeActor(tenantId, userId, path);
         if (existing != null) {
-            return documentService.update(existing.getId(), title,
+            return documentService.update(
+                    existing.getId(),
+                    title,
                     List.of("application", APP_NAME),
-                    body, null, null, null, null, YAML_MIME,
-                    DocumentService.TOOL_IDENTITY, actor);
+                    body,
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
+                    DocumentService.TOOL_IDENTITY,
+                    actor);
         }
         try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
-            return documentService.create(tenantId, projectName, path, title,
-                    List.of("application", APP_NAME), YAML_MIME, in, userId, actor);
+            return documentService.create(
+                    tenantId, projectName, path, title, List.of("application", APP_NAME), YAML_MIME, in, userId, actor);
         } catch (IOException e) {
-            throw new ToolException("Could not write manifest '" + path + "': " + e.getMessage());
+            throw new ToolException("Could not write manifest '" + path + "': " + e.getMessage(), e);
         }
     }
 

@@ -35,20 +35,31 @@ public class VaultSecretGenerateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "key", Map.of(
-                            "type", "string",
-                            "description", "Name to store the generated secret under in the "
-                                    + "vault. Read it back later via {{secret:vault:<key>}}."),
-                    "format", Map.of(
-                            "type", "string",
-                            "enum", List.of("alphanumeric", "hex", "uuid"),
-                            "description", "Value format. alphanumeric (default) / hex honour "
-                                    + "'length'; uuid ignores it."),
-                    "length", Map.of(
-                            "type", "integer",
-                            "description", "Length for alphanumeric/hex (default 32, "
-                                    + MIN_LENGTH + "–" + MAX_LENGTH + ").")),
+            "properties",
+                    Map.of(
+                            "key",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Name to store the generated secret under in the "
+                                                    + "vault. Read it back later via {{secret:vault:<key>}}."),
+                            "format",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("alphanumeric", "hex", "uuid"),
+                                            "description",
+                                            "Value format. alphanumeric (default) / hex honour "
+                                                    + "'length'; uuid ignores it."),
+                            "length",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Length for alphanumeric/hex (default 32, " + MIN_LENGTH + "–" + MAX_LENGTH
+                                                    + ").")),
             "required", List.of("key"));
 
     private final VaultService vaultService;
@@ -108,7 +119,7 @@ public class VaultSecretGenerateTool implements Tool {
         try {
             vaultService.generateSecret(scope, key, format, length);
         } catch (VaultException e) {
-            throw new ToolException("vault_secret_generate failed: " + e.getMessage());
+            throw new ToolException("vault_secret_generate failed: " + e.getMessage(), e);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("key", key);
@@ -125,8 +136,7 @@ public class VaultSecretGenerateTool implements Tool {
         try {
             return SecretFormat.valueOf(raw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ToolException(
-                    "Unknown format '" + raw + "' — expected alphanumeric, hex, or uuid");
+            throw new ToolException("Unknown format '" + raw + "' — expected alphanumeric, hex, or uuid", e);
         }
     }
 
@@ -141,12 +151,11 @@ public class VaultSecretGenerateTool implements Tool {
             try {
                 length = Integer.parseInt(raw.toString().trim());
             } catch (NumberFormatException e) {
-                throw new ToolException("'length' must be an integer");
+                throw new ToolException("'length' must be an integer", e);
             }
         }
         if (length < MIN_LENGTH || length > MAX_LENGTH) {
-            throw new ToolException(
-                    "'length' must be between " + MIN_LENGTH + " and " + MAX_LENGTH);
+            throw new ToolException("'length' must be between " + MIN_LENGTH + " and " + MAX_LENGTH);
         }
         return length;
     }

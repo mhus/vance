@@ -39,25 +39,34 @@ public class InboxListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "status", Map.of(
-                            "type", "string",
-                            "enum", List.of("PENDING", "ANSWERED", "DISMISSED", "ARCHIVED"),
-                            "description", "Filter by state. Omit for everything "
-                                    + "except ARCHIVED."),
-                    "onlyUnread", Map.of(
-                            "type", "boolean",
-                            "description", "Only threads with something you have not read."),
-                    "onlyAsks", Map.of(
-                            "type", "boolean",
-                            "description", "Only threads that are waiting for an answer "
-                                    + "from a person."),
-                    "tag", Map.of(
-                            "type", "string",
-                            "description", "Single tag filter."),
-                    "limit", Map.of(
-                            "type", "integer",
-                            "description", "Newest first. Default 20, capped at 50.")),
+            "properties",
+                    Map.of(
+                            "status",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("PENDING", "ANSWERED", "DISMISSED", "ARCHIVED"),
+                                            "description",
+                                            "Filter by state. Omit for everything " + "except ARCHIVED."),
+                            "onlyUnread",
+                                    Map.of(
+                                            "type", "boolean",
+                                            "description", "Only threads with something you have not read."),
+                            "onlyAsks",
+                                    Map.of(
+                                            "type",
+                                            "boolean",
+                                            "description",
+                                            "Only threads that are waiting for an answer " + "from a person."),
+                            "tag",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Single tag filter."),
+                            "limit",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Newest first. Default 20, capped at 50.")),
             "required", List.of());
 
     private final MaximegalonService threads;
@@ -65,9 +74,13 @@ public class InboxListTool implements Tool {
     private final PermissionService permissionService;
     private final SecurityContextFactory contextFactory;
 
-    @Override public String name() { return "inbox_list"; }
+    @Override
+    public String name() {
+        return "inbox_list";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "List the inbox threads waiting on you — one line each, newest first, "
                 + "plus your unread counts. This is your Vance inbox: matters other people "
                 + "and agents put in front of you, each heading for at most one decision. "
@@ -75,21 +88,41 @@ public class InboxListTool implements Tool {
                 + "reading never answers anything.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return false; }
-    @Override public Set<String> labels() { return Set.of("read-only"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("read-only");
+    }
+
+    @Override
+    public String searchHint() {
         return "See what is waiting on you in your Vance inbox (requests, decisions, results)";
     }
 
-    @Override public String troubleshootingHint() {
+    @Override
+    public String troubleshootingHint() {
         return "Thread ids come from inbox_list. Nothing in the inbox or thread tools "
                 + "answers an ask — that is a person's decision.";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -98,8 +131,7 @@ public class InboxListTool implements Tool {
         // Same gate the REST list uses. The target user is hard-wired to the
         // owner, so there is nothing here a caller could point elsewhere.
         permissionService.enforce(
-                contextFactory.forToolSubject(tenantId, owner),
-                new Resource.Tenant(tenantId), Action.READ);
+                contextFactory.forToolSubject(tenantId, owner), new Resource.Tenant(tenantId), Action.READ);
 
         MaximegalonStatus status = parseStatus(params.get("status"));
         boolean onlyUnread = boolParam(params, "onlyUnread");
@@ -110,8 +142,7 @@ public class InboxListTool implements Tool {
         // something we can simply do, and `truncated` says what happened.
         int limit = Math.min(Math.max(1, requested), MAX_LIMIT);
 
-        List<MaximegalonDocument> all =
-                threads.listFiltered(tenantId, List.of(owner), status, tag);
+        List<MaximegalonDocument> all = threads.listFiltered(tenantId, List.of(owner), status, tag);
         List<MaximegalonDocument> matching = new ArrayList<>(all.size());
         for (MaximegalonDocument doc : all) {
             if (status == null && doc.getStatus() == MaximegalonStatus.ARCHIVED) continue;
@@ -122,19 +153,20 @@ public class InboxListTool implements Tool {
         boolean truncated = matching.size() > limit;
         List<MaximegalonDocument> page = truncated ? matching.subList(0, limit) : matching;
 
-        Map<String, Integer> messageCounts = threads.countMessages(tenantId,
-                page.stream().map(MaximegalonDocument::getId)
-                        .filter(java.util.Objects::nonNull).toList());
+        Map<String, Integer> messageCounts = threads.countMessages(
+                tenantId,
+                page.stream()
+                        .map(MaximegalonDocument::getId)
+                        .filter(java.util.Objects::nonNull)
+                        .toList());
 
         List<Map<String, Object>> rows = new ArrayList<>(page.size());
         for (MaximegalonDocument doc : page) {
-            rows.add(InboxRows.listRow(doc, isUnread(doc, owner),
-                    messageCounts.get(doc.getId())));
+            rows.add(InboxRows.listRow(doc, isUnread(doc, owner), messageCounts.get(doc.getId())));
         }
 
         MaximegalonService.BadgeCounts badge = threads.countBadge(tenantId, owner);
-        MaximegalonService.PendingCounts pending =
-                threads.countPending(tenantId, List.of(owner));
+        MaximegalonService.PendingCounts pending = threads.countPending(tenantId, List.of(owner));
 
         Map<String, Object> counts = new LinkedHashMap<>();
         counts.put("unread", badge.unread());
@@ -168,8 +200,7 @@ public class InboxListTool implements Tool {
         try {
             return MaximegalonStatus.valueOf(s.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new ToolException("unknown status '" + s
-                    + "' — one of PENDING, ANSWERED, DISMISSED, ARCHIVED.");
+            throw new ToolException("unknown status '" + s + "' — one of PENDING, ANSWERED, DISMISSED, ARCHIVED.", e);
         }
     }
 
@@ -179,8 +210,7 @@ public class InboxListTool implements Tool {
         return raw instanceof String s && Boolean.parseBoolean(s);
     }
 
-    private static @org.jspecify.annotations.Nullable String stringParam(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String stringParam(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         return raw instanceof String s && !s.isBlank() ? s.trim() : null;
     }

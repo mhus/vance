@@ -58,7 +58,6 @@ public class ProposingPhase {
     private static final int MAX_OUTPUT_CORRECTIONS = 2;
     private static final int PROMPT_PREVIEW_LIMIT = 500;
 
-
     private final EngineChatFactory engineChatFactory;
     private final LlmCallTracker llmCallTracker;
     private final ObjectMapper objectMapper;
@@ -86,31 +85,25 @@ public class ProposingPhase {
         for (SchemaArchitect a : schemaArchitects) {
             SchemaArchitect existing = map.put(a.type(), a);
             if (existing != null) {
-                throw new IllegalStateException(
-                        "Duplicate SchemaArchitect beans for "
-                                + a.type() + ": "
-                                + existing.getClass().getName()
-                                + " and " + a.getClass().getName());
+                throw new IllegalStateException("Duplicate SchemaArchitect beans for "
+                        + a.type() + ": "
+                        + existing.getClass().getName()
+                        + " and " + a.getClass().getName());
             }
         }
         this.architects = Map.copyOf(map);
     }
 
-    public void execute(
-            ArchitectState state,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    public void execute(ArchitectState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
 
         if (state.getGoal() == null || state.getSubgoals().isEmpty()) {
-            state.setFailureReason("PROPOSING entered without goal/subgoals — "
-                    + "DECOMPOSING+BINDING must run first");
+            state.setFailureReason("PROPOSING entered without goal/subgoals — " + "DECOMPOSING+BINDING must run first");
             return;
         }
 
-        EngineChatFactory.EngineChatBundle bundle =
-                engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
-        String modelAlias = bundle.primaryConfig().provider() + ":"
-                + bundle.primaryConfig().modelName();
+        EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
+        String modelAlias =
+                bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
 
         // Recovery hint from a failed VALIDATING pass.
         String recoveryHint = null;
@@ -121,10 +114,9 @@ public class ProposingPhase {
 
         SchemaArchitect architect = architects.get(state.getOutputSchemaType());
         if (architect == null) {
-            throw new IllegalStateException(
-                    "No SchemaArchitect bean registered for "
-                            + state.getOutputSchemaType()
-                            + " — every OutputSchemaType requires a bean");
+            throw new IllegalStateException("No SchemaArchitect bean registered for "
+                    + state.getOutputSchemaType()
+                    + " — every OutputSchemaType requires a bean");
         }
         String systemPrompt = architect.proposingSystemPrompt();
 
@@ -149,18 +141,13 @@ public class ProposingPhase {
         // project's recipe inventory injected into the user prompt
         // so the LLM picks real names instead of inventing
         // plausible-sounding ones.
-        List<ResolvedRecipe> availableRecipes = architect.wantsSubRecipeListing()
-                ? listAvailableSubRecipes(process)
-                : List.of();
+        List<ResolvedRecipe> availableRecipes =
+                architect.wantsSubRecipeListing() ? listAvailableSubRecipes(process) : List.of();
 
         List<ChatMessage> messages = new ArrayList<>();
         String langBlock = languageContextResolver.formatBlock(process);
-        messages.add(SystemMessage.from(langBlock.isEmpty()
-                ? systemPrompt
-                : systemPrompt + "\n\n" + langBlock));
-        messages.add(UserMessage.from(
-                buildInitialUserPrompt(state, recoveryHint,
-                        architect, availableRecipes)));
+        messages.add(SystemMessage.from(langBlock.isEmpty() ? systemPrompt : systemPrompt + "\n\n" + langBlock));
+        messages.add(UserMessage.from(buildInitialUserPrompt(state, recoveryHint, architect, availableRecipes)));
 
         ProposeResult parsed = null;
         String validationError = null;
@@ -185,15 +172,17 @@ public class ProposingPhase {
                 break;
             } catch (ProposeValidationException ve) {
                 validationError = ve.getMessage();
-                log.info("Slartibartfast id='{}' PROPOSING attempt {} validation failed: {}",
-                        process.getId(), attempt, validationError);
+                log.info(
+                        "Slartibartfast id='{}' PROPOSING attempt {} validation failed: {}",
+                        process.getId(),
+                        attempt,
+                        validationError);
                 if (attempt < MAX_OUTPUT_CORRECTIONS) {
                     messages.add(AiMessage.from(text));
-                    messages.add(UserMessage.from(
-                            "Your last JSON was rejected: "
-                                    + validationError
-                                    + "\n\nCorrect it and emit a single JSON "
-                                    + "object matching the schema."));
+                    messages.add(UserMessage.from("Your last JSON was rejected: "
+                            + validationError
+                            + "\n\nCorrect it and emit a single JSON "
+                            + "object matching the schema."));
                 }
             }
         }
@@ -202,7 +191,8 @@ public class ProposingPhase {
             state.setFailureReason("PROPOSING failed after "
                     + MAX_OUTPUT_CORRECTIONS + " corrections — last error: "
                     + validationError);
-            appendIteration(state,
+            appendIteration(
+                    state,
                     summariseInputs(state),
                     "FAILED — " + validationError,
                     PhaseIteration.IterationOutcome.FAILED,
@@ -219,10 +209,11 @@ public class ProposingPhase {
             state.setPendingRecovery(null);
         }
 
-        appendIteration(state,
+        appendIteration(
+                state,
                 summariseInputs(state),
-                "recipe '" + parsed.name + "' (" + parsed.yaml.length()
-                        + " chars yaml, conf=" + parsed.confidence + ")",
+                "recipe '" + parsed.name + "' (" + parsed.yaml.length() + " chars yaml, conf=" + parsed.confidence
+                        + ")",
                 PhaseIteration.IterationOutcome.PASSED,
                 wasRecovery ? "recovery" : "initial",
                 latestLlmRecordId(state));
@@ -251,10 +242,8 @@ public class ProposingPhase {
 
             // The previous rejected yaml — non-null after at least
             // one PROPOSING pass.
-            de.mhus.vance.api.slartibartfast.RecipeDraft prev =
-                    state.getProposedRecipe();
-            if (prev != null && prev.getYaml() != null
-                    && !prev.getYaml().isBlank()) {
+            de.mhus.vance.api.slartibartfast.RecipeDraft prev = state.getProposedRecipe();
+            if (prev != null && prev.getYaml() != null && !prev.getYaml().isBlank()) {
                 sb.append("HERE IS THE RECIPE YOU PROPOSED LAST TIME "
                         + "(do NOT regenerate from scratch — REVISE "
                         + "this structure to fix the errors listed "
@@ -271,33 +260,30 @@ public class ProposingPhase {
             sb.append("================================================\n\n");
         }
 
-        sb.append("Output schema type: ")
-                .append(state.getOutputSchemaType()).append("\n\n");
+        sb.append("Output schema type: ").append(state.getOutputSchemaType()).append("\n\n");
 
         // Edit-mode: the LLM patches an existing recipe instead of
         // inventing one. Show the original yaml verbatim plus the
         // modification request, and instruct the LLM to keep
         // everything except the parts the modification touches.
-        if (state.getMode()
-                == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT
+        if (state.getMode() == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT
                 && state.getExistingRecipeYaml() != null) {
             sb.append("================================================\n");
             sb.append("⚙  EDIT MODE — PATCH THE EXISTING RECIPE ⚙\n");
             sb.append("================================================\n\n");
             sb.append("You are NOT authoring a new recipe from scratch. "
-                    + "You are modifying THIS existing recipe (named '")
+                            + "You are modifying THIS existing recipe (named '")
                     .append(state.getTargetRecipeName())
                     .append("'):\n\n");
-            sb.append("```yaml\n").append(state.getExistingRecipeYaml())
-                    .append("\n```\n\n");
+            sb.append("```yaml\n").append(state.getExistingRecipeYaml()).append("\n```\n\n");
             sb.append("Modification requested:\n  ")
-                    .append(state.getModificationSummary() == null
-                            ? "(no summary — infer from the framed goal below)"
-                            : state.getModificationSummary())
+                    .append(
+                            state.getModificationSummary() == null
+                                    ? "(no summary — infer from the framed goal below)"
+                                    : state.getModificationSummary())
                     .append("\n\n");
             sb.append("RULES:\n");
-            sb.append("- Keep ALL existing structures EXCEPT what the "
-                    + "modification explicitly changes.\n");
+            sb.append("- Keep ALL existing structures EXCEPT what the " + "modification explicitly changes.\n");
             sb.append("- Preserve existing names, personae, persona texts, "
                     + "phase names, head recipe references — anything not "
                     + "named in the modification stays IDENTICAL.\n");
@@ -310,18 +296,15 @@ public class ProposingPhase {
             sb.append("================================================\n\n");
         }
 
-        sb.append("Framed goal:\n").append(state.getGoal().getFramed())
-                .append("\n\n");
+        sb.append("Framed goal:\n").append(state.getGoal().getFramed()).append("\n\n");
 
         sb.append("acceptanceCriteria:\n");
         for (Criterion c : state.getAcceptanceCriteria()) {
-            sb.append("  ").append(c.getId()).append(": ")
-                    .append(c.getText()).append("\n");
+            sb.append("  ").append(c.getId()).append(": ").append(c.getText()).append("\n");
         }
         sb.append("\n");
 
-        sb.append("subgoals (every plan decision you tie to one MUST "
-                + "cite its sg-id in justifications):\n");
+        sb.append("subgoals (every plan decision you tie to one MUST " + "cite its sg-id in justifications):\n");
         for (Subgoal sg : state.getSubgoals()) {
             sb.append("  ").append(sg.getId());
             if (sg.isSpeculative()) sb.append(" [SPECULATIVE]");
@@ -346,19 +329,16 @@ public class ProposingPhase {
     // ──────────────────── Parse + light validate ────────────────────
 
     @SuppressWarnings("unchecked")
-    private ProposeResult parseAndValidate(
-            String text, SchemaArchitect architect) {
+    private ProposeResult parseAndValidate(String text, SchemaArchitect architect) {
         String jsonOnly = extractJsonObject(text);
         if (jsonOnly == null) {
-            throw new ProposeValidationException(
-                    "no JSON object found in reply");
+            throw new ProposeValidationException("no JSON object found in reply");
         }
         Map<String, Object> root;
         try {
             root = objectMapper.readValue(jsonOnly, Map.class);
         } catch (RuntimeException e) {
-            throw new ProposeValidationException(
-                    "JSON parse error: " + e.getMessage());
+            throw new ProposeValidationException("JSON parse error: " + e.getMessage(), e);
         }
 
         // Delegate name + YAML extraction to the architect. Vogon /
@@ -369,40 +349,35 @@ public class ProposingPhase {
         try {
             name = architect.extractRecipeName(root);
         } catch (RuntimeException e) {
-            throw new ProposeValidationException(e.getMessage());
+            throw new ProposeValidationException(e.getMessage(), e);
         }
 
         String yaml;
         try {
             yaml = architect.extractRecipeYaml(root);
         } catch (RuntimeException e) {
-            throw new ProposeValidationException(e.getMessage());
+            throw new ProposeValidationException(e.getMessage(), e);
         }
 
         Object j = root.get("justifications");
         if (!(j instanceof Map<?, ?> jMap)) {
-            throw new ProposeValidationException(
-                    "required field 'justifications' missing or not an object");
+            throw new ProposeValidationException("required field 'justifications' missing or not an object");
         }
         Map<String, String> justifications = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : jMap.entrySet()) {
-            if (!(e.getKey() instanceof String key)
-                    || !(e.getValue() instanceof String val)) {
-                throw new ProposeValidationException(
-                        "justifications must be String→String "
-                                + "(key=" + e.getKey() + ", value=" + e.getValue() + ")");
+            if (!(e.getKey() instanceof String key) || !(e.getValue() instanceof String val)) {
+                throw new ProposeValidationException("justifications must be String→String " + "(key=" + e.getKey()
+                        + ", value=" + e.getValue() + ")");
             }
             if (key.isBlank() || val.isBlank()) {
                 throw new ProposeValidationException(
-                        "justifications entry with blank key/value: '"
-                                + key + "' → '" + val + "'");
+                        "justifications entry with blank key/value: '" + key + "' → '" + val + "'");
             }
             justifications.put(key, val);
         }
         if (justifications.isEmpty()) {
             throw new ProposeValidationException(
-                    "justifications must not be empty — every "
-                            + "constraint-key MUST point to an sg-id");
+                    "justifications must not be empty — every " + "constraint-key MUST point to an sg-id");
         }
 
         double confidence = 0.5;
@@ -410,20 +385,16 @@ public class ProposingPhase {
         if (c instanceof Number num) {
             confidence = num.doubleValue();
             if (confidence < 0.0 || confidence > 1.0) {
-                throw new ProposeValidationException(
-                        "confidence " + confidence + " outside 0.0..1.0");
+                throw new ProposeValidationException("confidence " + confidence + " outside 0.0..1.0");
             }
         }
 
         Object sr = root.get("shapeRationale");
         if (!(sr instanceof String shapeRationale) || shapeRationale.isBlank()) {
-            throw new ProposeValidationException(
-                    "required field 'shapeRationale' missing or blank");
+            throw new ProposeValidationException("required field 'shapeRationale' missing or blank");
         }
 
-        return new ProposeResult(
-                name.trim(), yaml, justifications, confidence,
-                shapeRationale.trim());
+        return new ProposeResult(name.trim(), yaml, justifications, confidence, shapeRationale.trim());
     }
 
     // ──────────────────── State application ────────────────────
@@ -492,7 +463,9 @@ public class ProposingPhase {
             String triggeredBy,
             @Nullable String llmRecordId) {
         int attempt = (int) state.getIterations().stream()
-                .filter(it -> it.getPhase() == ArchitectStatus.PROPOSING).count() + 1;
+                        .filter(it -> it.getPhase() == ArchitectStatus.PROPOSING)
+                        .count()
+                + 1;
         List<PhaseIteration> log = new ArrayList<>(state.getIterations());
         log.add(PhaseIteration.builder()
                 .iteration(attempt)
@@ -521,18 +494,17 @@ public class ProposingPhase {
      * latter empirically results in Marvin's runtime PLAN-LLM
      * taking shortcuts and the pipeline not running.
      */
-    private List<ResolvedRecipe> listAvailableSubRecipes(
-            ThinkProcessDocument process) {
+    private List<ResolvedRecipe> listAvailableSubRecipes(ThinkProcessDocument process) {
         try {
-            return recipeLoader.listAll(
-                            process.getTenantId(), process.getProjectId())
-                    .stream()
+            return recipeLoader.listAll(process.getTenantId(), process.getProjectId()).stream()
                     .filter(r -> !r.name().startsWith("_slart/"))
                     .toList();
         } catch (RuntimeException e) {
-            log.warn("Slartibartfast id='{}' PROPOSING failed listing project "
+            log.warn(
+                    "Slartibartfast id='{}' PROPOSING failed listing project "
                             + "recipes: {} — proceeding without recipe-list",
-                    process.getId(), e.toString());
+                    process.getId(),
+                    e.toString());
             return List.of();
         }
     }
@@ -552,13 +524,19 @@ public class ProposingPhase {
         boolean escape = false;
         for (int i = start; i < raw.length(); i++) {
             char c = raw.charAt(i);
-            if (escape) { escape = false; continue; }
+            if (escape) {
+                escape = false;
+                continue;
+            }
             if (inString) {
                 if (c == '\\') escape = true;
                 else if (c == '"') inString = false;
                 continue;
             }
-            if (c == '"') { inString = true; continue; }
+            if (c == '"') {
+                inString = true;
+                continue;
+            }
             if (c == '{') depth++;
             else if (c == '}') {
                 depth--;
@@ -588,13 +566,15 @@ public class ProposingPhase {
     // ──────────────────── Internal types ────────────────────
 
     private record ProposeResult(
-            String name,
-            String yaml,
-            Map<String, String> justifications,
-            double confidence,
-            String shapeRationale) {}
+            String name, String yaml, Map<String, String> justifications, double confidence, String shapeRationale) {}
 
     private static class ProposeValidationException extends RuntimeException {
-        ProposeValidationException(String message) { super(message); }
+        ProposeValidationException(String message) {
+            super(message);
+        }
+
+        ProposeValidationException(String message, @org.jspecify.annotations.Nullable Throwable cause) {
+            super(message, cause);
+        }
     }
 }

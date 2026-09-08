@@ -49,19 +49,17 @@ public class PhaseOutputParser {
         }
         Object actionRaw = root.get("action");
         if (!(actionRaw instanceof String actionStr) || actionStr.isBlank()) {
-            return Result.failure(
-                    "Required field 'action' is missing — must be one of "
-                            + "CALL_RECIPE, PROCEED_TO_CONCLUDE, NEEDS_SUBTASKS, "
-                            + "NEEDS_USER_INPUT, BLOCKED_BY_PROBLEM.");
+            return Result.failure("Required field 'action' is missing — must be one of "
+                    + "CALL_RECIPE, PROCEED_TO_CONCLUDE, NEEDS_SUBTASKS, "
+                    + "NEEDS_USER_INPUT, BLOCKED_BY_PROBLEM.");
         }
         ScopeAction action;
         try {
             action = ScopeAction.valueOf(actionStr.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            return Result.failure(
-                    "Unknown 'action' value '" + actionStr
-                            + "' — allowed: CALL_RECIPE, PROCEED_TO_CONCLUDE, "
-                            + "NEEDS_SUBTASKS, NEEDS_USER_INPUT, BLOCKED_BY_PROBLEM.");
+            return Result.failure("Unknown 'action' value '" + actionStr
+                    + "' — allowed: CALL_RECIPE, PROCEED_TO_CONCLUDE, "
+                    + "NEEDS_SUBTASKS, NEEDS_USER_INPUT, BLOCKED_BY_PROBLEM.");
         }
         RecipeCall recipeCall = parseRecipeCall(root.get("recipeCall"));
         if (recipeCall == null && action == ScopeAction.CALL_RECIPE) {
@@ -74,11 +72,9 @@ public class PhaseOutputParser {
         UserInputSpec userInput = parseUserInput(root.get("userInput"));
         String problem = optString(root, "problem");
         String reason = optString(root, "reason");
-        String violation = validateActionFields(
-                action.name(), recipeCall, newTasks, userInput, problem);
+        String violation = validateActionFields(action.name(), recipeCall, newTasks, userInput, problem);
         if (violation != null) return Result.failure(violation);
-        return Result.ok(new ScopeOutput(
-                action, recipeCall, newTasks, userInput, problem, reason));
+        return Result.ok(new ScopeOutput(action, recipeCall, newTasks, userInput, problem, reason));
     }
 
     public Result<ReflectOutput> parseReflect(@Nullable String raw) {
@@ -88,19 +84,17 @@ public class PhaseOutputParser {
         }
         Object actionRaw = root.get("action");
         if (!(actionRaw instanceof String actionStr) || actionStr.isBlank()) {
-            return Result.failure(
-                    "Required field 'action' is missing — must be one of "
-                            + "CALL_RECIPE, PROCEED_TO_CONCLUDE, NEEDS_SUBTASKS, "
-                            + "NEEDS_USER_INPUT, BLOCKED_BY_PROBLEM.");
+            return Result.failure("Required field 'action' is missing — must be one of "
+                    + "CALL_RECIPE, PROCEED_TO_CONCLUDE, NEEDS_SUBTASKS, "
+                    + "NEEDS_USER_INPUT, BLOCKED_BY_PROBLEM.");
         }
         ReflectAction action;
         try {
             action = ReflectAction.valueOf(actionStr.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            return Result.failure(
-                    "Unknown 'action' value '" + actionStr
-                            + "' — allowed: CALL_RECIPE, PROCEED_TO_CONCLUDE, "
-                            + "NEEDS_SUBTASKS, NEEDS_USER_INPUT, BLOCKED_BY_PROBLEM.");
+            return Result.failure("Unknown 'action' value '" + actionStr
+                    + "' — allowed: CALL_RECIPE, PROCEED_TO_CONCLUDE, "
+                    + "NEEDS_SUBTASKS, NEEDS_USER_INPUT, BLOCKED_BY_PROBLEM.");
         }
         RecipeCall recipeCall = parseRecipeCall(root.get("recipeCall"));
         if (recipeCall == null && action == ReflectAction.CALL_RECIPE) {
@@ -110,11 +104,9 @@ public class PhaseOutputParser {
         UserInputSpec userInput = parseUserInput(root.get("userInput"));
         String problem = optString(root, "problem");
         String reason = optString(root, "reason");
-        String violation = validateActionFields(
-                action.name(), recipeCall, newTasks, userInput, problem);
+        String violation = validateActionFields(action.name(), recipeCall, newTasks, userInput, problem);
         if (violation != null) return Result.failure(violation);
-        return Result.ok(new ReflectOutput(
-                action, recipeCall, newTasks, userInput, problem, reason));
+        return Result.ok(new ReflectOutput(action, recipeCall, newTasks, userInput, problem, reason));
     }
 
     public Result<PostChildrenOutput> parsePostChildren(@Nullable String raw) {
@@ -124,32 +116,25 @@ public class PhaseOutputParser {
         }
         Object actionRaw = root.get("action");
         if (!(actionRaw instanceof String actionStr) || actionStr.isBlank()) {
-            return Result.failure(
-                    "Required field 'action' is missing — must be one of "
-                            + "PROCEED_TO_CONCLUDE, NEEDS_SUBTASKS, BLOCKED_BY_PROBLEM.");
+            return Result.failure("Required field 'action' is missing — must be one of "
+                    + "PROCEED_TO_CONCLUDE, NEEDS_SUBTASKS, BLOCKED_BY_PROBLEM.");
         }
         PostChildrenAction action;
         try {
             action = PostChildrenAction.valueOf(actionStr.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            return Result.failure(
-                    "Unknown 'action' value '" + actionStr + "'.");
+            return Result.failure("Unknown 'action' value '" + actionStr + "'.");
         }
         List<NewTaskSpec> newTasks = parseNewTasks(root.get("newTasks"));
         String problem = optString(root, "problem");
         String reason = optString(root, "reason");
-        if (action == PostChildrenAction.NEEDS_SUBTASKS
-                && (newTasks == null || newTasks.isEmpty())) {
-            return Result.failure(
-                    "'newTasks' must be a non-empty array when "
-                            + "action=NEEDS_SUBTASKS.");
+        if (action == PostChildrenAction.NEEDS_SUBTASKS && (newTasks == null || newTasks.isEmpty())) {
+            return Result.failure("'newTasks' must be a non-empty array when " + "action=NEEDS_SUBTASKS.");
         }
         if (action == PostChildrenAction.BLOCKED_BY_PROBLEM && problem == null) {
-            return Result.failure(
-                    "'problem' is required when action=BLOCKED_BY_PROBLEM.");
+            return Result.failure("'problem' is required when action=BLOCKED_BY_PROBLEM.");
         }
-        return Result.ok(new PostChildrenOutput(
-                action, newTasks, problem, reason));
+        return Result.ok(new PostChildrenOutput(action, newTasks, problem, reason));
     }
 
     public Result<ConcludeOutput> parseConclude(@Nullable String raw) {
@@ -159,8 +144,7 @@ public class PhaseOutputParser {
         }
         String result = optString(root, "result");
         if (result == null) {
-            return Result.failure(
-                    "'result' is required in CONCLUDE — the markdown final answer.");
+            return Result.failure("'result' is required in CONCLUDE — the markdown final answer.");
         }
         List<PostActionSpec> postActions = parsePostActions(root.get("postActions"));
         String reason = optString(root, "reason");
@@ -174,18 +158,16 @@ public class PhaseOutputParser {
         }
         Object verdictRaw = root.get("verdict");
         if (!(verdictRaw instanceof String verdictStr) || verdictStr.isBlank()) {
-            return Result.failure(
-                    "Required field 'verdict' is missing — must be one of "
-                            + "PASS, RETRY_CONCLUDE, NEED_MORE_DATA, HARD_FAIL.");
+            return Result.failure("Required field 'verdict' is missing — must be one of "
+                    + "PASS, RETRY_CONCLUDE, NEED_MORE_DATA, HARD_FAIL.");
         }
         ValidateVerdict verdict;
         try {
             verdict = ValidateVerdict.valueOf(verdictStr.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            return Result.failure(
-                    "Unknown 'verdict' value '" + verdictStr
-                            + "' — allowed: PASS, RETRY_CONCLUDE, "
-                            + "NEED_MORE_DATA, HARD_FAIL.");
+            return Result.failure("Unknown 'verdict' value '" + verdictStr
+                    + "' — allowed: PASS, RETRY_CONCLUDE, "
+                    + "NEED_MORE_DATA, HARD_FAIL.");
         }
         List<String> issues = parseStringList(root.get("issues"));
         String hint = optString(root, "hint");
@@ -385,25 +367,24 @@ public class PhaseOutputParser {
             }
             case "NEEDS_SUBTASKS" -> {
                 if (newTasks == null || newTasks.isEmpty()) {
-                    return "'newTasks' must be a non-empty array when "
-                            + "action=NEEDS_SUBTASKS.";
+                    return "'newTasks' must be a non-empty array when " + "action=NEEDS_SUBTASKS.";
                 }
             }
             case "NEEDS_USER_INPUT" -> {
                 if (userInput == null) {
-                    return "'userInput' object is required when "
-                            + "action=NEEDS_USER_INPUT.";
+                    return "'userInput' object is required when " + "action=NEEDS_USER_INPUT.";
                 }
             }
             case "BLOCKED_BY_PROBLEM" -> {
                 if (problem == null) {
-                    return "'problem' is required when "
-                            + "action=BLOCKED_BY_PROBLEM.";
+                    return "'problem' is required when " + "action=BLOCKED_BY_PROBLEM.";
                 }
             }
             case "PROCEED_TO_CONCLUDE" -> {
                 /* no required side-fields */
             }
+            // Unreachable: action is valueOf-validated before this method.
+            default -> {}
         }
         return null;
     }
@@ -429,8 +410,16 @@ public class PhaseOutputParser {
             return new Result<>(null, error);
         }
 
-        public boolean ok() { return output != null; }
-        public T output() { return output; }
-        public String error() { return error; }
+        public boolean ok() {
+            return output != null;
+        }
+
+        public T output() {
+            return output;
+        }
+
+        public String error() {
+            return error;
+        }
     }
 }

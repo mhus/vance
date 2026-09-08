@@ -4,6 +4,7 @@ import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.markdown.MarkdownAnsiRenderer;
 import de.mhus.vance.foot.markdown.MarkdownRenderState;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -52,7 +53,7 @@ public class ChatTerminal {
 
     private final AtomicReference<Verbosity> threshold = new AtomicReference<>(Verbosity.INFO);
     private final AtomicReference<@Nullable Terminal> jlineTerminal = new AtomicReference<>();
-    private final PrintWriter stdoutWriter = new PrintWriter(System.out, true);
+    private final PrintWriter stdoutWriter = new PrintWriter(System.out, true, StandardCharsets.UTF_8);
     private final Deque<Line> buffer = new ArrayDeque<>(BUFFER_LIMIT);
     private final Object bufferLock = new Object();
 
@@ -81,6 +82,7 @@ public class ChatTerminal {
 
     /** Buffer for partial stream chunks until a newline lets us flush. */
     private final StringBuilder streamBuffer = new StringBuilder();
+
     private static final int STREAM_BUFFER_FORCE_FLUSH = 4096;
 
     public ChatTerminal(FootConfig config, LiveRegion liveRegion) {
@@ -179,10 +181,8 @@ public class ChatTerminal {
             return;
         }
         for (String line : buildBox(contentLines, Math.max(1, width() - 4))) {
-            AttributedString styled = new AttributedStringBuilder()
-                    .style(style)
-                    .append(line)
-                    .toAttributedString();
+            AttributedString styled =
+                    new AttributedStringBuilder().style(style).append(line).toAttributedString();
             printlnStyled(level, styled);
         }
     }
@@ -211,11 +211,25 @@ public class ChatTerminal {
         return out;
     }
 
-    public void error(String message) { println(Verbosity.ERROR, message); }
-    public void warn(String message)  { println(Verbosity.WARN, message); }
-    public void info(String message)  { println(Verbosity.INFO, message); }
-    public void verbose(String message) { println(Verbosity.VERBOSE, message); }
-    public void debug(String message)   { println(Verbosity.DEBUG, message); }
+    public void error(String message) {
+        println(Verbosity.ERROR, message);
+    }
+
+    public void warn(String message) {
+        println(Verbosity.WARN, message);
+    }
+
+    public void info(String message) {
+        println(Verbosity.INFO, message);
+    }
+
+    public void verbose(String message) {
+        println(Verbosity.VERBOSE, message);
+    }
+
+    public void debug(String message) {
+        println(Verbosity.DEBUG, message);
+    }
 
     /**
      * Renders the main-process chat reply, never truncated.
@@ -304,18 +318,15 @@ public class ChatTerminal {
         };
     }
 
-    private void emitWithStyle(Verbosity level, String message,
-                                @Nullable AttributedStyle style, boolean truncate) {
+    private void emitWithStyle(Verbosity level, String message, @Nullable AttributedStyle style, boolean truncate) {
         String visible = truncate ? truncate(message) : message;
         record(level, visible);
         if (style == null) {
             emit(visible);
             return;
         }
-        AttributedString styled = new AttributedStringBuilder()
-                .style(style)
-                .append(visible)
-                .toAttributedString();
+        AttributedString styled =
+                new AttributedStringBuilder().style(style).append(visible).toAttributedString();
         emitStyled(styled);
     }
 

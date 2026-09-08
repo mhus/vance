@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.trillian.nature;
 
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
-import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.ai.light.LightLlmService;
+import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.trillian.TrillianAttributeStore;
 import de.mhus.vance.brain.trillian.TrillianJournalStore;
 import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
@@ -11,8 +11,8 @@ import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import java.util.List;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -73,6 +73,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      * one is raised. Adam only reads and advances them.
      */
     static final String PARAM_ASK_PROBES = TrillianAskTool.PARAM_ASK_PROBES;
+
     static final String PARAM_ASK_OPENED_AT = TrillianAskTool.PARAM_ASK_OPENED_AT;
 
     /**
@@ -97,14 +98,13 @@ public class TrillianNatureAdam extends TrillianNatureBase {
 
     private static final Map<String, Object> REFLECT_SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "keep", Map.of("type", "boolean"),
-                    "entry", Map.of("type", "string"),
-                    // Positions in the numbered journal handed to the
-                    // pass. Optional: most reflexions prune nothing.
-                    "remove", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "integer"))),
+            "properties",
+                    Map.of(
+                            "keep", Map.of("type", "boolean"),
+                            "entry", Map.of("type", "string"),
+                            // Positions in the numbered journal handed to the
+                            // pass. Optional: most reflexions prune nothing.
+                            "remove", Map.of("type", "array", "items", Map.of("type", "integer"))),
             "required", java.util.List.of("keep", "entry"));
 
     /** Only picks a name and a trait — nothing here needs to be unguessable. */
@@ -144,18 +144,18 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     @Override
     public String callName(Map<String, Object> attributes) {
         Object given = attributes.get(TrillianCharacterCatalog.ATTR_NAME);
-        return given instanceof String name && !name.isBlank()
-                ? name.strip()
-                : super.callName(attributes);
+        return given instanceof String name && !name.isBlank() ? name.strip() : super.callName(attributes);
     }
 
     @Override
-    public Map<String, Object> initialAttributes(
-            String tenantId, String projectId, String account) {
+    public Map<String, Object> initialAttributes(String tenantId, String projectId, String account) {
         Map<String, Object> stored = attributeStore.load(tenantId, projectId, account);
         if (!stored.isEmpty()) {
-            log.info("Trillian adam: seeded {} attribute(s) for '{}' from {}",
-                    stored.size(), account, TrillianAttributeStore.pathFor(account));
+            log.info(
+                    "Trillian adam: seeded {} attribute(s) for '{}' from {}",
+                    stored.size(),
+                    account,
+                    TrillianAttributeStore.pathFor(account));
             return stored;
         }
         // Nothing stored: this account has never run. Give it a
@@ -163,26 +163,27 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         // regenerated on the next boot is not an identity.
         Map<String, Object> character = characterCatalog.generate(tenantId, projectId, random);
         attributeStore.save(tenantId, projectId, account, character);
-        log.info("Trillian adam: '{}' starts as '{}' ({})", account,
+        log.info(
+                "Trillian adam: '{}' starts as '{}' ({})",
+                account,
                 character.get(TrillianCharacterCatalog.ATTR_NAME),
                 character.get(TrillianCharacterCatalog.ATTR_GENDER));
         return character;
     }
 
     @Override
-    public void attributesChanged(
-            ThinkProcessDocument worker, Map<String, Object> attributes) {
+    public void attributesChanged(ThinkProcessDocument worker, Map<String, Object> attributes) {
         String account = accountOf(worker);
         if (account == null) {
             // No account means no key to file this under. Only reachable
             // with broken wiring, where the attribute write itself was
             // already questionable — say so, don't fail the write.
-            log.warn("Trillian adam: worker process '{}' carries no account name — "
-                    + "attributes stay ephemeral", worker.getId());
+            log.warn(
+                    "Trillian adam: worker process '{}' carries no account name — " + "attributes stay ephemeral",
+                    worker.getId());
             return;
         }
-        attributeStore.save(
-                worker.getTenantId(), worker.getProjectId(), account, attributes);
+        attributeStore.save(worker.getTenantId(), worker.getProjectId(), account, attributes);
     }
 
     @Override
@@ -209,9 +210,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      */
     @Async
     @Override
-    public void taskConcluded(
-            ThinkProcessDocument worker, String taskId,
-            TaskOutcome outcome, String summary) {
+    public void taskConcluded(ThinkProcessDocument worker, String taskId, TaskOutcome outcome, String summary) {
         String account = accountOf(worker);
         if (account == null) {
             return;
@@ -228,13 +227,17 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                     .recipeName(REFLECT_RECIPE)
                     .userPrompt(summary)
                     .pebbleVars(Map.of(
-                            "taskId", taskId,
-                            "outcome", outcome.name(),
-                            "summary", summary,
+                            "taskId",
+                            taskId,
+                            "outcome",
+                            outcome.name(),
+                            "summary",
+                            summary,
                             // The existing notes are what makes "already
                             // known" answerable — without them the pass
                             // rewrites the same lesson every time.
-                            "journal", numbered(existing)))
+                            "journal",
+                            numbered(existing)))
                     .schema(REFLECT_SCHEMA)
                     .tenantId(tenantId)
                     .projectId(projectId)
@@ -272,8 +275,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         if (account == null) {
             return base;
         }
-        String journal = journalStore.tail(
-                process.getTenantId(), process.getProjectId(), account);
+        String journal = journalStore.tail(process.getTenantId(), process.getProjectId(), account);
         if (journal == null) {
             return base;
         }
@@ -308,9 +310,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         for (int i = 0; i < entries.size(); i++) {
             String text = entries.get(i);
             String body = text.startsWith("- ") ? text.substring(2) : text;
-            sb.append(i + 1).append(". ")
-                    .append(body.replace("\n", "\n   "))
-                    .append('\n');
+            sb.append(i + 1).append(". ").append(body.replace("\n", "\n   ")).append('\n');
         }
         return sb.toString();
     }
@@ -358,7 +358,8 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                     if (silentFor(worker, now).compareTo(SILENT_AFTER) > 0) {
                         findings.add(new SelfCheckFinding(
                                 SelfCheckFinding.Kind.WORKER_SILENT,
-                                nameOf(worker), worker.getId(),
+                                nameOf(worker),
+                                worker.getId(),
                                 "running but silent for " + since(worker.getUpdatedAt(), now)
                                         + " — check whether it is still making progress"));
                     }
@@ -396,8 +397,8 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         if (account == null) return List.of();
         List<SelfCheckFinding> findings = new java.util.ArrayList<>();
         try {
-            for (MaximegalonDocument thread : maximegalonService.listUnreadForUser(
-                    loop.getTenantId(), account, MAX_UNREAD_PER_CHECK)) {
+            for (MaximegalonDocument thread :
+                    maximegalonService.listUnreadForUser(loop.getTenantId(), account, MAX_UNREAD_PER_CHECK)) {
                 findings.add(new SelfCheckFinding(
                         SelfCheckFinding.Kind.INBOX_UNREAD,
                         String.valueOf(thread.getId()),
@@ -405,8 +406,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                         unreadDetail(thread)));
             }
         } catch (RuntimeException e) {
-            log.warn("Trillian adam: unread inbox lookup for '{}' failed: {}",
-                    account, e.toString());
+            log.warn("Trillian adam: unread inbox lookup for '{}' failed: {}", account, e.toString());
             return List.of();
         }
         return findings;
@@ -499,10 +499,13 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                     case INBOX_UNREAD -> {
                         // Handled above — its subject is not a process.
                     }
+                    case EXTERNAL_PENDING -> {
+                        // Delivered in the turn, never by this probe
+                        // loop (see its javadoc).
+                    }
                 }
             } catch (RuntimeException e) {
-                log.warn("Trillian adam: could not record self-check on '{}': {}",
-                        finding.subjectId(), e.toString());
+                log.warn("Trillian adam: could not record self-check on '{}': {}", finding.subjectId(), e.toString());
             }
         }
     }
@@ -528,8 +531,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
             maximegalonService.markRead(loop.getTenantId(), threadId, account);
             log.debug("Trillian adam: thread '{}' marked read for '{}'", threadId, account);
         } catch (RuntimeException e) {
-            log.warn("Trillian adam: could not mark thread '{}' read for '{}': {}",
-                    threadId, account, e.toString());
+            log.warn("Trillian adam: could not mark thread '{}' read for '{}': {}", threadId, account, e.toString());
         }
     }
 
@@ -558,8 +560,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                 : "parked since " + waited + " — nothing will reach it until someone "
                         + "answers. Ask Control again, briefly, saying how long it has "
                         + "waited.";
-        return new SelfCheckFinding(
-                SelfCheckFinding.Kind.WORKER_WAITING, nameOf(worker), worker.getId(), detail);
+        return new SelfCheckFinding(SelfCheckFinding.Kind.WORKER_WAITING, nameOf(worker), worker.getId(), detail);
     }
 
     /**
@@ -579,7 +580,8 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     /** Whether an unanswered {@code trillian_ask} question is open. */
     private boolean awaitsAnswer(ThinkProcessDocument worker) {
         Map<String, Object> overrides = worker.getEngineParamOverrides();
-        Object raw = overrides == null ? null
+        Object raw = overrides == null
+                ? null
                 : overrides.get(de.mhus.vance.brain.trillian.TrillianWorkerEngine.PARAM_ASK_PENDING);
         return Boolean.TRUE.equals(raw);
     }
@@ -636,8 +638,9 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      * re-deriving it at delivery time takes the same branch.
      */
     private record ProbeDecision(
-            boolean granted, @Nullable Integer nextProbes, @Nullable Long nextOpenedAt) {
-    }
+            boolean granted,
+            @Nullable Integer nextProbes,
+            @Nullable Long nextOpenedAt) {}
 
     private void applyProbeDecision(ThinkProcessDocument worker, ProbeDecision decision) {
         if (decision.nextProbes() != null) {
@@ -646,8 +649,10 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         if (decision.nextOpenedAt() != null) {
             setOverride(worker, PARAM_ASK_OPENED_AT, decision.nextOpenedAt());
             if (decision.granted()) {
-                log.info("Trillian adam: worker '{}' got a half-open re-check after {}",
-                        worker.getId(), ASK_PROBE_COOLDOWN);
+                log.info(
+                        "Trillian adam: worker '{}' got a half-open re-check after {}",
+                        worker.getId(),
+                        ASK_PROBE_COOLDOWN);
             }
         }
     }
@@ -664,13 +669,13 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      */
     private void closeLoopingWorker(ThinkProcessDocument worker) {
         try {
-            thinkProcessService.closeProcess(
-                    worker.getId(), de.mhus.vance.api.thinkprocess.CloseReason.STOPPED);
-            log.info("Trillian adam: stopped looping worker '{}' after {} safety-net rounds",
-                    worker.getId(), MAX_BLOCKED_RESUMES);
+            thinkProcessService.closeProcess(worker.getId(), de.mhus.vance.api.thinkprocess.CloseReason.STOPPED);
+            log.info(
+                    "Trillian adam: stopped looping worker '{}' after {} safety-net rounds",
+                    worker.getId(),
+                    MAX_BLOCKED_RESUMES);
         } catch (RuntimeException e) {
-            log.warn("Trillian adam: could not stop looping worker '{}': {}",
-                    worker.getId(), e.toString());
+            log.warn("Trillian adam: could not stop looping worker '{}': {}", worker.getId(), e.toString());
         }
     }
 
@@ -678,8 +683,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         try {
             thinkProcessService.setEngineParamOverride(worker.getId(), key, value);
         } catch (RuntimeException e) {
-            log.warn("Trillian adam: could not write '{}' on '{}': {}",
-                    key, worker.getId(), e.toString());
+            log.warn("Trillian adam: could not write '{}' on '{}': {}", key, worker.getId(), e.toString());
         }
     }
 
@@ -729,8 +733,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                     + "progress, process_steer it to continue; if it was repeating "
                     + "itself, report that to Control instead.";
         }
-        return new SelfCheckFinding(
-                SelfCheckFinding.Kind.WORKER_BLOCKED, nameOf(worker), worker.getId(), detail);
+        return new SelfCheckFinding(SelfCheckFinding.Kind.WORKER_BLOCKED, nameOf(worker), worker.getId(), detail);
     }
 
     /**
@@ -749,8 +752,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
     }
 
     private static String nameOf(ThinkProcessDocument worker) {
-        return worker.getName() == null || worker.getName().isBlank()
-                ? worker.getId() : worker.getName();
+        return worker.getName() == null || worker.getName().isBlank() ? worker.getId() : worker.getName();
     }
 
     private static java.time.Duration silentFor(ThinkProcessDocument worker, Instant now) {
@@ -776,8 +778,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
         if (worker.getEngineParams() == null) {
             return null;
         }
-        Object raw = worker.getEngineParams()
-                .get(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);
+        Object raw = worker.getEngineParams().get(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);
         return raw instanceof String s && !s.isBlank() ? s : null;
     }
 }

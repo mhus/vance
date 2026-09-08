@@ -27,7 +27,9 @@ class DavSidecarResource extends AbstractDavResource
 
     DavSidecarResource(DocumentResourceFactory factory, WebDavPaths.Coords coords, byte[] data) {
         super(factory, coords);
-        this.data = data;
+        // Defensive copy — the caller-held array must not alias the
+        // served content.
+        this.data = data.clone();
     }
 
     @Override
@@ -41,8 +43,9 @@ class DavSidecarResource extends AbstractDavResource
     }
 
     @Override
-    public void sendContent(OutputStream out, @Nullable Range range,
-            Map<String, String> params, @Nullable String contentType) throws IOException {
+    public void sendContent(
+            OutputStream out, @Nullable Range range, Map<String, String> params, @Nullable String contentType)
+            throws IOException {
         out.write(data);
         out.flush();
     }
@@ -67,8 +70,7 @@ class DavSidecarResource extends AbstractDavResource
             throws BadRequestException, ConflictException, NotAuthorizedException {
         try {
             byte[] bytes = in.readAllBytes();
-            factory.sidecarStore().put(
-                    coords().tenantId(), requireProject(), coords().path(), bytes);
+            factory.sidecarStore().put(coords().tenantId(), requireProject(), coords().path(), bytes);
         } catch (IOException e) {
             throw new BadRequestException(this, "Failed to read sidecar content");
         }

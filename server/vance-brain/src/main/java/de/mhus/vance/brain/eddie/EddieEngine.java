@@ -2082,6 +2082,8 @@ public class EddieEngine extends StructuredActionEngine {
                             chars,
                             summariseReason(action.reason()));
                 }
+                // Unreachable: scope is validated against LEARN_SCOPES above.
+                default -> {}
             }
         } catch (RuntimeException e) {
             log.warn("Eddie id='{}' LEARN persistence failed: {}", process.getId(), e.toString());

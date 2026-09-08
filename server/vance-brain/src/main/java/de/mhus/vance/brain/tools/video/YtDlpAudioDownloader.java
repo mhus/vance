@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.video;
 
 import de.mhus.vance.toolpack.ToolException;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -49,13 +50,11 @@ public class YtDlpAudioDownloader {
      *                       times out
      */
     public Path download(String videoId) {
-        Path outFile = Path.of(System.getProperty("java.io.tmpdir"),
-                "yt-" + videoId + ".mp3");
+        Path outFile = Path.of(System.getProperty("java.io.tmpdir"), "yt-" + videoId + ".mp3");
         try {
             Files.deleteIfExists(outFile);
         } catch (IOException e) {
-            log.warn("Could not clean stale audio file {}: {}",
-                    outFile, e.getMessage());
+            log.warn("Could not clean stale audio file {}: {}", outFile, e.getMessage());
         }
 
         // -x: extract audio, --audio-format mp3 picks the encoder.
@@ -66,66 +65,56 @@ public class YtDlpAudioDownloader {
         List<String> cmd = List.of(
                 "yt-dlp",
                 "-x",
-                "--audio-format", "mp3",
-                "--audio-quality", "5",
+                "--audio-format",
+                "mp3",
+                "--audio-quality",
+                "5",
                 "--no-playlist",
                 "--no-warnings",
                 "--quiet",
-                "-o", outFile.toString(),
+                "-o",
+                outFile.toString(),
                 "https://www.youtube.com/watch?v=" + videoId);
 
-        ProcessBuilder pb = new ProcessBuilder(cmd)
-                .redirectErrorStream(true);
+        ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
 
-        log.info("yt-dlp download videoId='{}' target='{}'",
-                videoId, outFile);
+        log.info("yt-dlp download videoId='{}' target='{}'", videoId, outFile);
         long startMs = System.currentTimeMillis();
         Process process;
         try {
             process = pb.start();
         } catch (IOException e) {
-            throw new ToolException(
-                    "Failed to start yt-dlp — is it installed and on "
-                            + "the host PATH? (macOS: brew install yt-dlp; "
-                            + "container: apt-get install yt-dlp). "
-                            + "Underlying error: " + e.getMessage());
+            throw new ToolException("Failed to start yt-dlp — is it installed and on "
+                    + "the host PATH? (macOS: brew install yt-dlp; "
+                    + "container: apt-get install yt-dlp). "
+                    + "Underlying error: " + e.getMessage());
         }
 
         String stderr;
         try {
-            stderr = new String(process.getInputStream().readAllBytes());
-            boolean finished = process.waitFor(
-                    DOWNLOAD_TIMEOUT.toMinutes(), TimeUnit.MINUTES);
+            stderr = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            boolean finished = process.waitFor(DOWNLOAD_TIMEOUT.toMinutes(), TimeUnit.MINUTES);
             if (!finished) {
                 process.destroyForcibly();
                 throw new ToolException(
-                        "yt-dlp timed out after "
-                                + DOWNLOAD_TIMEOUT.toMinutes()
-                                + " minutes for video " + videoId);
+                        "yt-dlp timed out after " + DOWNLOAD_TIMEOUT.toMinutes() + " minutes for video " + videoId);
             }
         } catch (InterruptedException e) {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
-            throw new ToolException(
-                    "Interrupted while downloading audio for " + videoId);
+            throw new ToolException("Interrupted while downloading audio for " + videoId);
         } catch (IOException e) {
-            throw new ToolException(
-                    "yt-dlp output stream failed: " + e.getMessage());
+            throw new ToolException("yt-dlp output stream failed: " + e.getMessage());
         }
 
         int exit = process.exitValue();
         long elapsedMs = System.currentTimeMillis() - startMs;
         if (exit != 0) {
-            throw new ToolException(
-                    "yt-dlp failed (exit " + exit + ") for video "
-                            + videoId + ": "
-                            + lastLine(stderr));
+            throw new ToolException("yt-dlp failed (exit " + exit + ") for video " + videoId + ": " + lastLine(stderr));
         }
 
         if (!Files.isRegularFile(outFile)) {
-            throw new ToolException(
-                    "yt-dlp claimed success but output file is missing: "
-                            + outFile);
+            throw new ToolException("yt-dlp claimed success but output file is missing: " + outFile);
         }
 
         long sizeBytes;
@@ -134,8 +123,7 @@ public class YtDlpAudioDownloader {
         } catch (IOException e) {
             sizeBytes = -1;
         }
-        log.info("yt-dlp download videoId='{}' done elapsedMs={} bytes={}",
-                videoId, elapsedMs, sizeBytes);
+        log.info("yt-dlp download videoId='{}' done elapsedMs={} bytes={}", videoId, elapsedMs, sizeBytes);
         return outFile;
     }
 

@@ -2324,6 +2324,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             chars,
                             summariseReason(action.reason()));
                 }
+                // Unreachable: scope is validated against LEARN_SCOPES above.
+                default -> {}
             }
         } catch (RuntimeException e) {
             log.warn("Arthur id='{}' LEARN persistence failed: {}", process.getId(), e.toString());

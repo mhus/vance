@@ -5,6 +5,7 @@ import de.mhus.vance.anus.setup.SetupBootstrap;
 import de.mhus.vance.anus.setup.SetupWizard;
 import de.mhus.vance.anus.sudo.SudoBootstrap;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -83,10 +84,9 @@ public class OneShotCommandRunner implements ApplicationRunner {
         accessService.armForSudo();
         // Autoflush writer: NonInteractiveShellRunner does not flush its own
         // output, and the System.exit above would drop a buffered command result.
-        PrintWriter out = new PrintWriter(System.out, true);
+        PrintWriter out = new PrintWriter(System.out, true, StandardCharsets.UTF_8);
         try {
-            NonInteractiveShellRunner runner =
-                    new NonInteractiveShellRunner(commandParser, commandRegistry, out);
+            NonInteractiveShellRunner runner = new NonInteractiveShellRunner(commandParser, commandRegistry, out);
             for (String line : commands) {
                 // run() joins the array with spaces and parses the whole line,
                 // so option flags survive; it throws on a non-OK exit status,

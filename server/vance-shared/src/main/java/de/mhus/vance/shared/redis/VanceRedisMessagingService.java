@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.redis;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
@@ -55,6 +56,7 @@ public class VanceRedisMessagingService {
      * All public methods become no-ops in that state.
      */
     private final @Nullable StringRedisTemplate redis;
+
     private final @Nullable RedisMessageListenerContainer container;
     private final boolean enabled;
     private final Map<String, MessageListener> listeners = new ConcurrentHashMap<>();
@@ -100,7 +102,7 @@ public class VanceRedisMessagingService {
         if (listeners.containsKey(topic)) return;
         MessageListener listener = (msg, pattern) -> {
             try {
-                handler.accept(topic, new String(msg.getBody()));
+                handler.accept(topic, new String(msg.getBody(), StandardCharsets.UTF_8));
             } catch (RuntimeException e) {
                 log.warn("redis-msg processing failed on {}: {}", topic, e.toString());
             }
@@ -132,8 +134,8 @@ public class VanceRedisMessagingService {
         if (listeners.containsKey(pattern)) return;
         MessageListener listener = (msg, p) -> {
             try {
-                String topic = new String(msg.getChannel());
-                handler.accept(topic, new String(msg.getBody()));
+                String topic = new String(msg.getChannel(), StandardCharsets.UTF_8);
+                handler.accept(topic, new String(msg.getBody(), StandardCharsets.UTF_8));
             } catch (RuntimeException e) {
                 log.warn("redis-msg processing failed on pattern {}: {}", pattern, e.toString());
             }
@@ -166,7 +168,7 @@ public class VanceRedisMessagingService {
         if (listeners.containsKey(topic)) return;
         MessageListener listener = (msg, pattern) -> {
             try {
-                handler.accept(topic, new String(msg.getBody()));
+                handler.accept(topic, new String(msg.getBody(), StandardCharsets.UTF_8));
             } catch (RuntimeException e) {
                 log.warn("redis-msg processing failed on {}: {}", topic, e.toString());
             }

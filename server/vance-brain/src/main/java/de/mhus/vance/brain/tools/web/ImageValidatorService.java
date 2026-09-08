@@ -9,6 +9,7 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -89,26 +90,21 @@ public class ImageValidatorService {
      * simplest way to get a representative answer about whether the
      * resource is reachable for the eventual {@code <img>} fetch.
      */
-    private static final String BROWSER_USER_AGENT =
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    + "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    + "Chrome/124.0.0.0 Safari/537.36";
+    private static final String BROWSER_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            + "AppleWebKit/537.36 (KHTML, like Gecko) "
+            + "Chrome/124.0.0.0 Safari/537.36";
 
     private final ImageUrlCacheRepository cache;
     private final SettingService settings;
     private final ImageValidatorHttp http;
 
     @Autowired
-    public ImageValidatorService(
-            ImageUrlCacheRepository cache, SettingService settings) {
+    public ImageValidatorService(ImageUrlCacheRepository cache, SettingService settings) {
         this(cache, settings, new JdkImageValidatorHttp());
     }
 
     /** Test-seam constructor — lets unit tests inject a stubbed HTTP client. */
-    ImageValidatorService(
-            ImageUrlCacheRepository cache,
-            SettingService settings,
-            ImageValidatorHttp http) {
+    ImageValidatorService(ImageUrlCacheRepository cache, SettingService settings, ImageValidatorHttp http) {
         this.cache = cache;
         this.settings = settings;
         this.http = http;
@@ -127,22 +123,20 @@ public class ImageValidatorService {
             @Nullable String processId) {
         if (urls == null || urls.isEmpty()) return List.of();
         ValidatorConfig cfg = configFor(tenantId, projectId, processId);
-        ExecutorService pool = Executors.newFixedThreadPool(
-                Math.max(1, Math.min(cfg.maxConcurrent, urls.size())));
+        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, Math.min(cfg.maxConcurrent, urls.size())));
         try {
             Map<String, CompletableFuture<ValidationResult>> futures = new LinkedHashMap<>();
             for (String url : urls) {
                 if (futures.containsKey(url)) continue; // dedup within a batch
-                futures.put(url,
-                        CompletableFuture.supplyAsync(() -> validateOneSafely(url, cfg), pool));
+                futures.put(url, CompletableFuture.supplyAsync(() -> validateOneSafely(url, cfg), pool));
             }
-            CompletableFuture<Void> all = CompletableFuture.allOf(
-                    futures.values().toArray(new CompletableFuture[0]));
+            CompletableFuture<Void> all =
+                    CompletableFuture.allOf(futures.values().toArray(new CompletableFuture[0]));
             try {
                 all.get(cfg.totalBudgetMs, TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
-                log.warn("ImageValidator: total budget {}ms exhausted, "
-                        + "{} of {} URLs incomplete",
+                log.warn(
+                        "ImageValidator: total budget {}ms exhausted, " + "{} of {} URLs incomplete",
                         cfg.totalBudgetMs,
                         futures.values().stream().filter(f -> !f.isDone()).count(),
                         futures.size());
@@ -166,8 +160,7 @@ public class ImageValidatorService {
             }
             List<ValidationResult> out = new ArrayList<>(urls.size());
             for (String url : urls) {
-                out.add(byUrl.getOrDefault(url,
-                        ValidationResult.failed(url, "duplicate_in_batch")));
+                out.add(byUrl.getOrDefault(url, ValidationResult.failed(url, "duplicate_in_batch")));
             }
             return out;
         } finally {
@@ -177,10 +170,7 @@ public class ImageValidatorService {
 
     /** Single-URL validation with the configured cache + HTTP probe. */
     public ValidationResult validateOne(
-            String url,
-            @Nullable String tenantId,
-            @Nullable String projectId,
-            @Nullable String processId) {
+            String url, @Nullable String tenantId, @Nullable String projectId, @Nullable String processId) {
         if (url == null || url.isBlank()) {
             return ValidationResult.failed(url == null ? "" : url, "blank_url");
         }
@@ -214,8 +204,7 @@ public class ImageValidatorService {
             return ValidationResult.failed(url, "invalid_uri");
         }
         if (uri.getScheme() == null
-                || !(uri.getScheme().equalsIgnoreCase("http")
-                        || uri.getScheme().equalsIgnoreCase("https"))) {
+                || !(uri.getScheme().equalsIgnoreCase("http") || uri.getScheme().equalsIgnoreCase("https"))) {
             return ValidationResult.failed(url, "scheme_not_http");
         }
 
@@ -235,7 +224,8 @@ public class ImageValidatorService {
             try {
                 head = http.getRange(uri, Duration.ofMillis(cfg.timeoutMs), BROWSER_USER_AGENT);
             } catch (Exception e) {
-                return ValidationResult.failed(url, "range_get_failed: " + e.getClass().getSimpleName());
+                return ValidationResult.failed(
+                        url, "range_get_failed: " + e.getClass().getSimpleName());
             }
         }
 
@@ -251,8 +241,7 @@ public class ImageValidatorService {
         }
         String path = finalUri.getPath();
         if (path == null || path.isEmpty() || "/".equals(path) || "/index.html".equalsIgnoreCase(path)) {
-            return ValidationResult.failed(url, "homepage_fallback", finalUrl, head.status,
-                    head.contentType);
+            return ValidationResult.failed(url, "homepage_fallback", finalUrl, head.status, head.contentType);
         }
 
         String ct = head.contentType == null ? "" : head.contentType.toLowerCase();
@@ -279,8 +268,8 @@ public class ImageValidatorService {
         if (sample != null && looksLikeImageBytes(sample)) {
             return ValidationResult.ok(url, finalUrl, head.status, ct.isEmpty() ? "image/?" : ct);
         }
-        return ValidationResult.failed(url, "content_type_" + (ct.isEmpty() ? "missing" : ct),
-                finalUrl, head.status, ct);
+        return ValidationResult.failed(
+                url, "content_type_" + (ct.isEmpty() ? "missing" : ct), finalUrl, head.status, ct);
     }
 
     /**
@@ -297,17 +286,31 @@ public class ImageValidatorService {
         // PNG
         if ((b[0] & 0xFF) == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') return true;
         // GIF87a / GIF89a
-        if (b.length >= 6 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F' && b[3] == '8'
-                && (b[4] == '7' || b[4] == '9') && b[5] == 'a') return true;
+        if (b.length >= 6
+                && b[0] == 'G'
+                && b[1] == 'I'
+                && b[2] == 'F'
+                && b[3] == '8'
+                && (b[4] == '7' || b[4] == '9')
+                && b[5] == 'a') return true;
         // WebP: RIFF....WEBP
-        if (b.length >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F'
-                && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P') return true;
+        if (b.length >= 12
+                && b[0] == 'R'
+                && b[1] == 'I'
+                && b[2] == 'F'
+                && b[3] == 'F'
+                && b[8] == 'W'
+                && b[9] == 'E'
+                && b[10] == 'B'
+                && b[11] == 'P') return true;
         // BMP
         if (b[0] == 'B' && b[1] == 'M') return true;
         // ICO: 00 00 01 00
         if (b[0] == 0x00 && b[1] == 0x00 && b[2] == 0x01 && b[3] == 0x00) return true;
         // SVG / XML
-        String head = new String(b, 0, Math.min(b.length, 256)).trim().toLowerCase();
+        String head = new String(b, 0, Math.min(b.length, 256), StandardCharsets.UTF_8)
+                .trim()
+                .toLowerCase();
         if (head.startsWith("<?xml") || head.startsWith("<svg")) return true;
         return false;
     }
@@ -332,26 +335,22 @@ public class ImageValidatorService {
             // Cache write failure is non-fatal — the verdict still
             // reaches the caller, the next probe just does the
             // HTTP work again.
-            log.debug("ImageValidator: cache write failed for {}: {}",
-                    result.getUrl(), e.toString());
+            log.debug("ImageValidator: cache write failed for {}: {}", result.getUrl(), e.toString());
         }
     }
 
     private ValidatorConfig configFor(
-            @Nullable String tenantId,
-            @Nullable String projectId,
-            @Nullable String processId) {
+            @Nullable String tenantId, @Nullable String projectId, @Nullable String processId) {
         return ValidatorConfig.builder()
-                .timeoutMs(intSetting(tenantId, projectId, processId,
-                        SETTING_TIMEOUT_MS, DEFAULT_TIMEOUT_MS))
-                .totalBudgetMs(intSetting(tenantId, projectId, processId,
-                        SETTING_TOTAL_BUDGET_MS, DEFAULT_TOTAL_BUDGET_MS))
-                .cacheTtlOkHours(intSetting(tenantId, projectId, processId,
-                        SETTING_CACHE_TTL_OK_HOURS, DEFAULT_CACHE_TTL_OK_HOURS))
-                .cacheTtlFailMinutes(intSetting(tenantId, projectId, processId,
-                        SETTING_CACHE_TTL_FAIL_MINUTES, DEFAULT_CACHE_TTL_FAIL_MINUTES))
-                .maxConcurrent(intSetting(tenantId, projectId, processId,
-                        SETTING_MAX_CONCURRENT, DEFAULT_MAX_CONCURRENT))
+                .timeoutMs(intSetting(tenantId, projectId, processId, SETTING_TIMEOUT_MS, DEFAULT_TIMEOUT_MS))
+                .totalBudgetMs(
+                        intSetting(tenantId, projectId, processId, SETTING_TOTAL_BUDGET_MS, DEFAULT_TOTAL_BUDGET_MS))
+                .cacheTtlOkHours(intSetting(
+                        tenantId, projectId, processId, SETTING_CACHE_TTL_OK_HOURS, DEFAULT_CACHE_TTL_OK_HOURS))
+                .cacheTtlFailMinutes(intSetting(
+                        tenantId, projectId, processId, SETTING_CACHE_TTL_FAIL_MINUTES, DEFAULT_CACHE_TTL_FAIL_MINUTES))
+                .maxConcurrent(
+                        intSetting(tenantId, projectId, processId, SETTING_MAX_CONCURRENT, DEFAULT_MAX_CONCURRENT))
                 .build();
     }
 
@@ -389,27 +388,50 @@ public class ImageValidatorService {
     public static class ValidationResult {
         String url;
         boolean ok;
-        @Nullable String reason;
-        @Nullable String finalUrl;
+
+        @Nullable
+        String reason;
+
+        @Nullable
+        String finalUrl;
+
         int status;
-        @Nullable String contentType;
+
+        @Nullable
+        String contentType;
 
         public static ValidationResult ok(String url, String finalUrl, int status, String contentType) {
             return ValidationResult.builder()
-                    .url(url).ok(true).reason(null)
-                    .finalUrl(finalUrl).status(status).contentType(contentType).build();
+                    .url(url)
+                    .ok(true)
+                    .reason(null)
+                    .finalUrl(finalUrl)
+                    .status(status)
+                    .contentType(contentType)
+                    .build();
         }
 
         public static ValidationResult failed(String url, String reason) {
             return ValidationResult.builder()
-                    .url(url).ok(false).reason(reason).finalUrl(null).status(0).contentType(null).build();
+                    .url(url)
+                    .ok(false)
+                    .reason(reason)
+                    .finalUrl(null)
+                    .status(0)
+                    .contentType(null)
+                    .build();
         }
 
         public static ValidationResult failed(
                 String url, String reason, String finalUrl, int status, @Nullable String contentType) {
             return ValidationResult.builder()
-                    .url(url).ok(false).reason(reason)
-                    .finalUrl(finalUrl).status(status).contentType(contentType).build();
+                    .url(url)
+                    .ok(false)
+                    .reason(reason)
+                    .finalUrl(finalUrl)
+                    .status(status)
+                    .contentType(contentType)
+                    .build();
         }
 
         public static ValidationResult fromCache(ImageUrlCacheDocument doc) {
@@ -440,8 +462,13 @@ public class ImageValidatorService {
     @Builder
     static class ProbeResponse {
         int status;
-        @Nullable URI finalUri;
-        @Nullable String contentType;
+
+        @Nullable
+        URI finalUri;
+
+        @Nullable
+        String contentType;
+
         byte @Nullable [] sample;
     }
 
@@ -483,8 +510,8 @@ public class ImageValidatorService {
                     .header("Range", "bytes=0-1023")
                     .timeout(timeout)
                     .build();
-            HttpResponse<byte[]> response = SsrfGuard.sendGuarded(http, request,
-                    SsrfGuard.capped(HttpResponse.BodyHandlers.ofByteArray()));
+            HttpResponse<byte[]> response =
+                    SsrfGuard.sendGuarded(http, request, SsrfGuard.capped(HttpResponse.BodyHandlers.ofByteArray()));
             return ProbeResponse.builder()
                     .status(response.statusCode())
                     .finalUri(response.uri())

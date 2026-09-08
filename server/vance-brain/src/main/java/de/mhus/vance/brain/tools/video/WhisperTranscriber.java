@@ -6,6 +6,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -13,7 +14,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
@@ -65,15 +65,12 @@ public class WhisperTranscriber {
 
     @PostConstruct
     void extractScript() throws IOException {
-        Path target = Path.of(System.getProperty("java.io.tmpdir"),
-                "vance-whisper-transcribe.py");
-        try (InputStream in = new ClassPathResource(
-                "scripts/transcribe.py").getInputStream()) {
+        Path target = Path.of(System.getProperty("java.io.tmpdir"), "vance-whisper-transcribe.py");
+        try (InputStream in = new ClassPathResource("scripts/transcribe.py").getInputStream()) {
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         }
         scriptPath = target;
-        log.info("WhisperTranscriber: wrapper script extracted to {}",
-                scriptPath);
+        log.info("WhisperTranscriber: wrapper script extracted to {}", scriptPath);
     }
 
     /**
@@ -91,26 +88,17 @@ public class WhisperTranscriber {
      * @throws ToolException on subprocess failure / timeout / non-zero
      *                       exit / unparseable output
      */
-    public Result transcribe(Path audioPath,
-                             @Nullable String model,
-                             @Nullable String language,
-                             @Nullable ProgressSink onProgress) {
+    public Result transcribe(
+            Path audioPath, @Nullable String model, @Nullable String language, @Nullable ProgressSink onProgress) {
         if (scriptPath == null) {
             throw new ToolException("Whisper wrapper not initialised");
         }
-        String effectiveModel = (model == null || model.isBlank())
-                ? DEFAULT_MODEL : model;
-        String effectiveLang = (language == null || language.isBlank())
-                ? "auto" : language;
+        String effectiveModel = (model == null || model.isBlank()) ? DEFAULT_MODEL : model;
+        String effectiveLang = (language == null || language.isBlank()) ? "auto" : language;
 
-        List<String> cmd = List.of(
-                pythonExecutable,
-                scriptPath.toString(),
-                audioPath.toString(),
-                effectiveModel,
-                effectiveLang);
-        log.info("Whisper transcribe model='{}' lang='{}' audio='{}'",
-                effectiveModel, effectiveLang, audioPath);
+        List<String> cmd =
+                List.of(pythonExecutable, scriptPath.toString(), audioPath.toString(), effectiveModel, effectiveLang);
+        log.info("Whisper transcribe model='{}' lang='{}' audio='{}'", effectiveModel, effectiveLang, audioPath);
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
         long startMs = System.currentTimeMillis();
@@ -118,53 +106,48 @@ public class WhisperTranscriber {
         try {
             process = pb.start();
         } catch (IOException e) {
-            throw new ToolException(
-                    "Failed to start Python — is '" + pythonExecutable
-                            + "' on the host PATH? (macOS: ensure python3 "
-                            + "is installed; container: the brain image "
-                            + "ships python3). Underlying: "
-                            + e.getMessage());
+            throw new ToolException("Failed to start Python — is '" + pythonExecutable
+                    + "' on the host PATH? (macOS: ensure python3 "
+                    + "is installed; container: the brain image "
+                    + "ships python3). Underlying: "
+                    + e.getMessage());
         }
 
         // Drain stderr in a daemon thread so the progress sink fires
         // live and the buffer never blocks the child.
         List<String> stderrLines = new ArrayList<>();
-        Thread stderrThread = new Thread(() ->
-                readStderr(process.getErrorStream(), stderrLines, onProgress),
+        Thread stderrThread = new Thread(
+                () -> readStderr(process.getErrorStream(), stderrLines, onProgress),
                 "whisper-stderr-" + audioPath.getFileName());
         stderrThread.setDaemon(true);
         stderrThread.start();
 
         StringBuilder stdout = new StringBuilder();
-        try (BufferedReader r = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
+        try (BufferedReader r =
+                new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = r.readLine()) != null) {
                 stdout.append(line).append('\n');
             }
         } catch (IOException e) {
             process.destroyForcibly();
-            throw new ToolException(
-                    "Whisper stdout read failed: " + e.getMessage());
+            throw new ToolException("Whisper stdout read failed: " + e.getMessage());
         }
 
         boolean finished;
         try {
-            finished = process.waitFor(
-                    TRANSCRIBE_TIMEOUT.toMinutes(), TimeUnit.MINUTES);
+            finished = process.waitFor(TRANSCRIBE_TIMEOUT.toMinutes(), TimeUnit.MINUTES);
         } catch (InterruptedException e) {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
-            throw new ToolException(
-                    "Interrupted during transcription");
+            throw new ToolException("Interrupted during transcription");
         }
         if (!finished) {
             process.destroyForcibly();
-            throw new ToolException(
-                    "Whisper transcription timed out after "
-                            + TRANSCRIBE_TIMEOUT.toMinutes()
-                            + " minutes — try a smaller model or a "
-                            + "shorter video");
+            throw new ToolException("Whisper transcription timed out after "
+                    + TRANSCRIBE_TIMEOUT.toMinutes()
+                    + " minutes — try a smaller model or a "
+                    + "shorter video");
         }
 
         try {
@@ -177,39 +160,33 @@ public class WhisperTranscriber {
         int exit = process.exitValue();
         if (exit != 0) {
             throw new ToolException(
-                    "Whisper transcription failed (exit " + exit + "): "
-                            + lastNonBlankLine(stderrLines));
+                    "Whisper transcription failed (exit " + exit + "): " + lastNonBlankLine(stderrLines));
         }
 
         String json = stdout.toString().trim();
         if (json.isEmpty()) {
-            throw new ToolException(
-                    "Whisper transcription produced no output");
+            throw new ToolException("Whisper transcription produced no output");
         }
         JsonNode root;
         try {
             root = objectMapper.readTree(json);
         } catch (RuntimeException e) {
-            throw new ToolException(
-                    "Could not parse Whisper output as JSON: "
-                            + e.getMessage());
+            throw new ToolException("Could not parse Whisper output as JSON: " + e.getMessage());
         }
         if (root.has("error")) {
             throw new ToolException(
                     "Whisper wrapper error: " + root.get("error").asText());
         }
-        log.info("Whisper transcribe done elapsedMs={} segments={} "
-                        + "language='{}'",
+        log.info(
+                "Whisper transcribe done elapsedMs={} segments={} " + "language='{}'",
                 elapsedMs,
                 root.path("segments").size(),
                 root.path("language").asText());
         return Result.from(root, elapsedMs);
     }
 
-    private static void readStderr(InputStream stream,
-                                   List<String> sink,
-                                   @Nullable ProgressSink onProgress) {
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(stream))) {
+    private static void readStderr(InputStream stream, List<String> sink, @Nullable ProgressSink onProgress) {
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             String line;
             while ((line = r.readLine()) != null) {
                 sink.add(line);
@@ -233,9 +210,7 @@ public class WhisperTranscriber {
         int idx = line.indexOf(key);
         if (idx < 0) return -1;
         int end = line.indexOf(' ', idx + key.length());
-        String num = end < 0
-                ? line.substring(idx + key.length())
-                : line.substring(idx + key.length(), end);
+        String num = end < 0 ? line.substring(idx + key.length()) : line.substring(idx + key.length(), end);
         try {
             return Double.parseDouble(num);
         } catch (NumberFormatException e) {

@@ -58,8 +58,7 @@ import org.yaml.snakeyaml.Yaml;
 public class TemplateApplier {
 
     /** Pattern for {@code {{var:<name>}}} placeholders. */
-    private static final Pattern VAR_REF =
-            Pattern.compile("\\{\\{\\s*var\\s*:\\s*([A-Za-z][A-Za-z0-9_-]*)\\s*\\}\\}");
+    private static final Pattern VAR_REF = Pattern.compile("\\{\\{\\s*var\\s*:\\s*([A-Za-z][A-Za-z0-9_-]*)\\s*\\}\\}");
 
     /** File name of the template manifest in a kit-root. */
     public static final String TEMPLATE_FILENAME = "template.yaml";
@@ -69,6 +68,7 @@ public class TemplateApplier {
      * audit blob lands. One file per template name; re-apply overwrites.
      */
     public static final String APPLIED_PATH_PREFIX = "_vance/tool-templates/";
+
     public static final String APPLIED_PATH_SUFFIX = ".applied.yaml";
 
     private final KitInstaller installer;
@@ -103,8 +103,7 @@ public class TemplateApplier {
         Path buildRoot = resolved.buildRoot();
         Path templatePath = buildRoot.resolve(TEMPLATE_FILENAME);
         if (!Files.isRegularFile(templatePath)) {
-            throw new KitException("kit is not a template — no "
-                    + TEMPLATE_FILENAME + " at " + buildRoot);
+            throw new KitException("kit is not a template — no " + TEMPLATE_FILENAME + " at " + buildRoot);
         }
 
         TemplateDescriptor descriptor;
@@ -135,8 +134,7 @@ public class TemplateApplier {
         // features) and feed them into the substitution map. Each derived shadows
         // the input scope intentionally — they cannot collide with input names
         // because parseDerived already enforces that.
-        Map<String, List<String>> derivedLists = evaluateDerived(
-                descriptor.derived(), sanitised, byName);
+        Map<String, List<String>> derivedLists = evaluateDerived(descriptor.derived(), sanitised, byName);
         for (Map.Entry<String, List<String>> e : derivedLists.entrySet()) {
             docVars.put(e.getKey(), renderJsonStringArray(e.getValue()));
         }
@@ -151,7 +149,10 @@ public class TemplateApplier {
         // Delegate the rest to KitInstaller — same code path as a regular
         // one-way kit (APPLY mode, no manifest, no vault).
         KitOperationResultDto installerResult = installer.apply(
-                KitAccess.of(tenantId), projectId, source, resolved,
+                KitAccess.of(tenantId),
+                projectId,
+                source,
+                resolved,
                 KitImportMode.APPLY,
                 /*prune*/ false,
                 /*keepPasswords*/ false,
@@ -171,22 +172,29 @@ public class TemplateApplier {
         // Web-UI wizard, plus a record of what was applied. Secrets are
         // structurally excluded (see buildAppliedState).
         writeAppliedState(
-                tenantId, projectId, descriptor, sanitised, byName,
-                derivedLists, installerResult.getSourceCommit(), actor);
+                tenantId,
+                projectId,
+                descriptor,
+                sanitised,
+                byName,
+                derivedLists,
+                installerResult.getSourceCommit(),
+                actor);
 
-        log.info("TemplateApplier: applied template '{}' tenant='{}' project='{}' inputs={} settings={}",
-                descriptor.name(), tenantId, projectId,
-                docVars.size(), settingWrites.size());
+        log.info(
+                "TemplateApplier: applied template '{}' tenant='{}' project='{}' inputs={} settings={}",
+                descriptor.name(),
+                tenantId,
+                projectId,
+                docVars.size(),
+                settingWrites.size());
 
-        return new ApplyResult(
-                installerResult, descriptor.postInstall(), descriptor.name());
+        return new ApplyResult(installerResult, descriptor.postInstall(), descriptor.name());
     }
 
     /** Outcome of a template apply — the installer's report plus the post-install hook. */
     public record ApplyResult(
-            KitOperationResultDto installer,
-            @Nullable TemplatePostInstall postInstall,
-            String templateName) {}
+            KitOperationResultDto installer, @Nullable TemplatePostInstall postInstall, String templateName) {}
 
     // ──────────────────── Internals ────────────────────
 
@@ -196,8 +204,7 @@ public class TemplateApplier {
      * booleans normalised to "true"/"false", unknown keys dropped with
      * a warning).
      */
-    private static Map<String, String> validateInputs(
-            TemplateDescriptor descriptor, Map<String, String> inputs) {
+    private static Map<String, String> validateInputs(TemplateDescriptor descriptor, Map<String, String> inputs) {
         Map<String, String> raw = inputs == null ? Map.of() : new HashMap<>(inputs);
         Map<String, String> out = new LinkedHashMap<>();
 
@@ -206,16 +213,16 @@ public class TemplateApplier {
             if (v == null || v.isEmpty()) v = computeDefault(in);
             if (v == null || v.isEmpty()) {
                 if (in.required()) {
-                    throw new KitException("template '" + descriptor.name()
-                            + "': required input '" + in.name() + "' is missing");
+                    throw new KitException(
+                            "template '" + descriptor.name() + "': required input '" + in.name() + "' is missing");
                 }
                 continue;
             }
             out.put(in.name(), validateValue(in, v));
         }
         if (!raw.isEmpty()) {
-            log.warn("TemplateApplier: dropped unknown input(s) for template '{}': {}",
-                    descriptor.name(), raw.keySet());
+            log.warn(
+                    "TemplateApplier: dropped unknown input(s) for template '{}': {}", descriptor.name(), raw.keySet());
         }
         return out;
     }
@@ -245,25 +252,22 @@ public class TemplateApplier {
                 if ("true".equalsIgnoreCase(v.trim()) || "false".equalsIgnoreCase(v.trim())) {
                     return v.trim().toLowerCase();
                 }
-                throw new KitException("input '" + in.name()
-                        + "': boolean expected, got '" + v + "'");
+                throw new KitException("input '" + in.name() + "': boolean expected, got '" + v + "'");
             case INTEGER:
                 try {
                     Integer.parseInt(v.trim());
                     return v.trim();
                 } catch (NumberFormatException e) {
-                    throw new KitException("input '" + in.name()
-                            + "': integer expected, got '" + v + "'");
+                    throw new KitException("input '" + in.name() + "': integer expected, got '" + v + "'");
                 }
             case SELECT:
                 if (in.choiceValues().contains(v)) return v;
-                throw new KitException("input '" + in.name()
-                        + "': value '" + v + "' not in choices " + in.choiceValues());
+                throw new KitException(
+                        "input '" + in.name() + "': value '" + v + "' not in choices " + in.choiceValues());
             case MULTI_SELECT:
                 return validateMultiSelect(in, v);
-            default:
-                return v;
         }
+        return v;
     }
 
     /**
@@ -279,8 +283,7 @@ public class TemplateApplier {
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();
         for (String sel : selected) {
             if (!allowed.contains(sel)) {
-                throw new KitException("input '" + in.name()
-                        + "': value '" + sel + "' not in choices " + allowed);
+                throw new KitException("input '" + in.name() + "': value '" + sel + "' not in choices " + allowed);
             }
             seen.add(sel);
         }
@@ -288,8 +291,7 @@ public class TemplateApplier {
         List<String> ordered = new java.util.ArrayList<>();
         for (String a : allowed) if (seen.contains(a)) ordered.add(a);
         if (in.required() && ordered.isEmpty()) {
-            throw new KitException("input '" + in.name()
-                    + "': at least one choice must be selected");
+            throw new KitException("input '" + in.name() + "': at least one choice must be selected");
         }
         return renderJsonStringArray(ordered);
     }
@@ -301,25 +303,24 @@ public class TemplateApplier {
         // string (anus / chat-agent can hand off either).
         if (s.startsWith("[")) {
             try {
-                com.fasterxml.jackson.databind.JsonNode node =
-                        JSON.readTree(s);
+                com.fasterxml.jackson.databind.JsonNode node = JSON.readTree(s);
                 if (!node.isArray()) {
-                    throw new KitException("input '" + inputName
-                            + "': multi-select value must be a JSON array, got " + node.getNodeType());
+                    throw new KitException("input '" + inputName + "': multi-select value must be a JSON array, got "
+                            + node.getNodeType());
                 }
                 List<String> out = new java.util.ArrayList<>();
                 for (com.fasterxml.jackson.databind.JsonNode el : node) {
                     if (!el.isTextual()) {
-                        throw new KitException("input '" + inputName
-                                + "': multi-select elements must be strings, got " + el.getNodeType());
+                        throw new KitException("input '" + inputName + "': multi-select elements must be strings, got "
+                                + el.getNodeType());
                     }
                     String t = el.asText();
                     if (!t.isBlank()) out.add(t);
                 }
                 return out;
             } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-                throw new KitException("input '" + inputName
-                        + "': multi-select value is not valid JSON: " + e.getMessage(), e);
+                throw new KitException(
+                        "input '" + inputName + "': multi-select value is not valid JSON: " + e.getMessage(), e);
             }
         }
         // Fallback: comma-separated.
@@ -400,30 +401,35 @@ public class TemplateApplier {
         for (TemplateDocumentOverlay e : overlay) {
             boolean keep = false;
             for (String req : e.requires()) {
-                if (activeFeatures.contains(req)) { keep = true; break; }
+                if (activeFeatures.contains(req)) {
+                    keep = true;
+                    break;
+                }
             }
             Path file = docsRoot.resolve(e.path()).normalize();
             // Guard against path-traversal attempts pointing outside docsRoot.
             if (!file.startsWith(docsRoot)) {
-                throw new KitException(
-                        "documents overlay '" + e.path() + "' escapes documents/ root");
+                throw new KitException("documents overlay '" + e.path() + "' escapes documents/ root");
             }
             if (!keep) {
                 try {
                     if (Files.isRegularFile(file)) {
                         Files.delete(file);
-                        log.debug("TemplateApplier: filtered out document '{}' (requires={}, active={})",
-                                e.path(), e.requires(), activeFeatures);
+                        log.debug(
+                                "TemplateApplier: filtered out document '{}' (requires={}, active={})",
+                                e.path(),
+                                e.requires(),
+                                activeFeatures);
                     } else if (Files.exists(file)) {
-                        log.warn("TemplateApplier: documents-overlay path '{}' is not a regular file — skipped",
+                        log.warn(
+                                "TemplateApplier: documents-overlay path '{}' is not a regular file — skipped",
                                 e.path());
                     } else {
                         // Document referenced in overlay but missing on disk —
                         // parse-time validation didn't catch it because the path
                         // is resolved against the build tree, not the source. Be
                         // strict: a stale overlay entry is always a kit bug.
-                        log.warn("TemplateApplier: documents-overlay references missing path '{}'",
-                                e.path());
+                        log.warn("TemplateApplier: documents-overlay references missing path '{}'", e.path());
                     }
                 } catch (IOException ioe) {
                     throw new KitException("failed to delete filtered document " + file, ioe);
@@ -444,8 +450,8 @@ public class TemplateApplier {
             if (!Files.isRegularFile(file)) continue;
             try {
                 String content = Files.readString(file, StandardCharsets.UTF_8);
-                String substituted = substitute(content, vars,
-                        buildRoot.relativize(file).toString());
+                String substituted =
+                        substitute(content, vars, buildRoot.relativize(file).toString());
                 if (!substituted.equals(content)) {
                     Files.writeString(file, substituted, StandardCharsets.UTF_8);
                 }
@@ -482,8 +488,7 @@ public class TemplateApplier {
 
     // Package-private so TemplateApplierSettingTypeTest can pin the PASSWORD -> HIDDEN
     // rule directly instead of driving a whole kit apply for it.
-    void persistSetting(String tenantId, String applyProject, SettingTarget st,
-            SettingWriteOrigin origin) {
+    void persistSetting(String tenantId, String applyProject, SettingTarget st, SettingWriteOrigin origin) {
         String project = resolveProjectFor(st.input.target(), applyProject);
         // Security (code-review-2): a kit template's setting target must stay within
         // the project the kit is applied to. An untrusted template.yaml could
@@ -494,8 +499,8 @@ public class TemplateApplier {
         if (!project.equals(applyProject)) {
             throw new IllegalStateException(
                     "kit template setting '" + st.input.target().key() + "' targets project '"
-                    + project + "' outside the apply-project '" + applyProject
-                    + "' — cross-project/tenant setting targets are not allowed");
+                            + project + "' outside the apply-project '" + applyProject
+                            + "' — cross-project/tenant setting targets are not allowed");
         }
         String key = st.input.target().key();
         if (origin == SettingWriteOrigin.AGENT) {
@@ -513,17 +518,14 @@ public class TemplateApplier {
             // scripts on top. The two origins differ only in the W1/W3 guards.
             if (origin == SettingWriteOrigin.AGENT) {
                 settingService.setAgentSecret(
-                        tenantId, SettingService.SCOPE_PROJECT, project, key,
-                        st.value, SettingType.PASSWORD);
+                        tenantId, SettingService.SCOPE_PROJECT, project, key, st.value, SettingType.PASSWORD);
             } else {
                 settingService.setEncryptedSecret(
-                        tenantId, SettingService.SCOPE_PROJECT, project, key,
-                        st.value, SettingType.PASSWORD);
+                        tenantId, SettingService.SCOPE_PROJECT, project, key, st.value, SettingType.PASSWORD);
             }
         } else {
             settingService.set(
-                    tenantId, SettingService.SCOPE_PROJECT, project, key,
-                    st.value, SettingType.STRING, null);
+                    tenantId, SettingService.SCOPE_PROJECT, project, key, st.value, SettingType.STRING, null);
         }
     }
 
@@ -539,9 +541,8 @@ public class TemplateApplier {
                 // semantics: if target.project is set, use it; else fall back to
                 // the apply-project (which would be the _user_<X> project for the
                 // user-hub case).
-                    target.project() != null ? target.project() : applyProject;
-            case PROJECT ->
-                    target.project() != null ? target.project() : applyProject;
+                target.project() != null ? target.project() : applyProject;
+            case PROJECT -> target.project() != null ? target.project() : applyProject;
         };
     }
 
@@ -626,21 +627,31 @@ public class TemplateApplier {
             @Nullable String sourceCommit,
             @Nullable String actor) {
         Map<String, Object> state = buildAppliedState(
-                descriptor, sanitisedInputs, inputsByName, derivedLists,
-                sourceCommit, actor, Instant.now());
+                descriptor, sanitisedInputs, inputsByName, derivedLists, sourceCommit, actor, Instant.now());
         String yaml = renderYaml(state);
         String path = appliedPathFor(descriptor.name());
         String title = "Applied state — " + descriptor.name();
         List<String> tags = List.of("tool-template", "applied");
         try {
-            documentService.upsertText(tenantId, projectId, path, title, tags, yaml, actor,
+            documentService.upsertText(
+                    tenantId,
+                    projectId,
+                    path,
+                    title,
+                    tags,
+                    yaml,
+                    actor,
                     de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } catch (RuntimeException e) {
             // Best-effort: a failure here must not roll back the apply
             // (documents + settings are already persisted). Log and move
             // on — the wizard can still work, just without pre-fill.
-            log.warn("TemplateApplier: failed to write applied-state for '{}' in tenant='{}' project='{}': {}",
-                    descriptor.name(), tenantId, projectId, e.getMessage());
+            log.warn(
+                    "TemplateApplier: failed to write applied-state for '{}' in tenant='{}' project='{}': {}",
+                    descriptor.name(),
+                    tenantId,
+                    projectId,
+                    e.getMessage());
         }
     }
 
@@ -687,9 +698,10 @@ public class TemplateApplier {
         b.appliedBy(strOrNull(map.get("appliedBy")));
         b.sourceCommit(strOrNull(map.get("sourceCommit")));
         Object inputsRaw = map.get("inputs");
-        b.inputs(inputsRaw instanceof Map<?, ?> im
-                ? new LinkedHashMap<>((Map<String, Object>) im)
-                : new LinkedHashMap<>());
+        b.inputs(
+                inputsRaw instanceof Map<?, ?> im
+                        ? new LinkedHashMap<>((Map<String, Object>) im)
+                        : new LinkedHashMap<>());
         Object featuresRaw = map.get("features");
         b.features(featuresRaw instanceof List<?> fl ? toStringList(fl) : List.of());
         Object derivedRaw = map.get("derived");

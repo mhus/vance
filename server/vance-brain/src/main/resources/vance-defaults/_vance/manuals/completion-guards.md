@@ -29,6 +29,8 @@ vance.guard.output      // the final output the engine would deliver ('' at star
 vance.guard.round       // guard fires so far (0 on the first yield)
 vance.guard.maxRounds   // hard cap — continueWith refuses past it
 vance.guard.naturalStop // true = natural stop, false = explicit terminate
+                       // (stop/terminate only — fixed sentinel at start/command;
+                       //  branch on `point` first)
 vance.guard.command     // at point 'command': { name, args } — null elsewhere
 
 // actions (point-specific; unavailable ones throw)

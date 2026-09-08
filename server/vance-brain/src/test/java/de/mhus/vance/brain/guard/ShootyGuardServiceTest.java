@@ -44,7 +44,6 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -108,8 +107,11 @@ class ShootyGuardServiceTest {
 
     private ShootyGuardService service;
 
+    private io.micrometer.core.instrument.simple.SimpleMeterRegistry registry;
+
     @BeforeEach
     void setUp() {
+        registry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
         service = new ShootyGuardService(
                 recipeResolver,
                 thinkProcessService,
@@ -126,7 +128,7 @@ class ShootyGuardServiceTest {
                 sessionService,
                 thinkEngineProvider,
                 skillSteerProvider,
-                new MetricService(new SimpleMeterRegistry()));
+                new MetricService(registry));
         when(recipeResolver.resolve(anyString(), anyString(), anyString())).thenReturn(Optional.empty());
         when(chatMessageService.activeHistory(any(), any(), any())).thenReturn(List.of());
         when(sessionService.findBySessionId(any())).thenReturn(Optional.empty());
@@ -209,7 +211,7 @@ class ShootyGuardServiceTest {
     }
 
     @Test
-    void scriptError_failsOpen() {
+    void scriptError_failsOpen_countsScriptErrorNotPassed() {
         when(scriptExecutor.run(any()))
                 .thenThrow(new ScriptExecutionException(ScriptExecutionException.ErrorClass.GUEST_EXCEPTION, "boom"));
 
@@ -217,6 +219,10 @@ class ShootyGuardServiceTest {
 
         assertThat(result.fired()).isFalse();
         verify(eventEmitter, never()).scheduleTurn(anyString());
+        // "passed" says every applicable guard actually passed — a script
+        // error is script_error, not a pass (fail-open ≠ guard agreed).
+        assertThat(outcomeCount("script_error")).isEqualTo(1.0);
+        assertThat(outcomeCount("passed")).isZero();
     }
 
     @Test
@@ -493,6 +499,52 @@ class ShootyGuardServiceTest {
 
         // Fail-open: the turn proceeds, the exception does not propagate.
         service.runStartGuards(recipeProcess(), List.of(userMsg));
+
+        // The error is script_error, not also "passed" — same vocabulary
+        // as the command gate, which never double-counts either.
+        assertThat(outcomeCount("script_error")).isEqualTo(1.0);
+        assertThat(outcomeCount("passed")).isZero();
+    }
+
+    @Test
+    void guardsOnTurnStart_resetsBudgetAndLoopScratch_beforeStartGuards() {
+        // The combined anchor owns the mandatory ordering (shooty.md §2.2):
+        // budget reset + loop-scratch wipe first, THEN the start guards —
+        // the script starts on a clean slate. Ford and Frankie call this
+        // anchor too; this is the contract that keeps them honest.
+        recipeWith(GuardConfig.scriptBody("vance.guard.activateSkill('x');", false, GuardPoint.START, 1));
+        ThinkProcessDocument process = ThinkProcessDocument.builder()
+                .id("p1")
+                .tenantId("acme")
+                .projectId("proj")
+                .sessionId("s1")
+                .recipeName("coding")
+                .guardRounds(2)
+                .build();
+        service.putScratch(process, /*session*/ false, "asked", "yes");
+        AtomicReference<ScriptRequest> seen = new AtomicReference<>();
+        when(scriptExecutor.run(any())).thenAnswer(inv -> {
+            seen.set(inv.getArgument(0));
+            return new ScriptResult(null, Duration.ZERO);
+        });
+        SteerMessage userMsg = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "hi");
+
+        service.guardsOnTurnStart(process, List.of(userMsg));
+
+        // Budget reset happened, and it happened BEFORE the script ran.
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(thinkProcessService, scriptExecutor);
+        order.verify(thinkProcessService).resetGuardRounds("p1");
+        order.verify(scriptExecutor).run(any());
+        // The loop scratch was wiped before the script read it.
+        assertThat(seen.get()).isNotNull();
+        assertThat(seen.get().guardApi().loopValues.get("asked")).isNull();
+    }
+
+    /** The count of {@code vance.guard.evaluations} for one outcome tag. */
+    private double outcomeCount(String outcome) {
+        io.micrometer.core.instrument.Counter c =
+                registry.find("vance.guard.evaluations").tag("outcome", outcome).counter();
+        return c == null ? 0.0 : c.count();
     }
 
     // ─────────── START: turn-prompt replacement ───────────

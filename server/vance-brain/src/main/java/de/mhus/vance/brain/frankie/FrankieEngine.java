@@ -382,9 +382,10 @@ public class FrankieEngine implements ThinkEngine {
             List<SteerMessage> drained = ctx.drainPending();
             // START-point guards fire per genuine user turn, before prompt
             // assembly — a start guard that activates a skill puts it into
-            // this very turn. Fail-open; guard-injected turns fire nothing.
-            // See planning/shooty.md.
-            guardService.runStartGuards(process, drained);
+            // this very turn. The combined anchor resets the guard
+            // budget/loop scratch first (shooty.md §2.2); fail-open,
+            // guard-injected turns fire nothing.
+            guardService.guardsOnTurnStart(process, drained);
             List<SteerMessage> extras = persistUserInputAndCollectExtras(process, chatLog, drained);
 
             // 2) Build the LLM bundle + initial message list.

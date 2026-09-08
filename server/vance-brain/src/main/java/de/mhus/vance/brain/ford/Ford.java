@@ -358,9 +358,10 @@ public class Ford implements ThinkEngine {
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         // START-point guards fire per genuine user turn, before prompt assembly
         // (skill-trigger matching, active-skill resolution) — a start guard
-        // that activates a skill puts it into this very turn. Fail-open;
-        // guard-injected turns fire nothing. See planning/shooty.md.
-        guardService.runStartGuards(process, inbox);
+        // that activates a skill puts it into this very turn. The combined
+        // anchor resets the guard budget/loop scratch first (shooty.md §2.2);
+        // fail-open, guard-injected turns fire nothing.
+        guardService.guardsOnTurnStart(process, inbox);
         // Default IDLE on any abnormal exit — matches legacy lifecycle.
         // Set to outcome.awaitingUserInput() inside the try when the
         // tool-loop returns cleanly.

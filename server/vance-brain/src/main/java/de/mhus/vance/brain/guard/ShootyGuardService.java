@@ -185,6 +185,8 @@ public class ShootyGuardService {
      */
     public GuardEvaluation evaluate(ThinkProcessDocument process, @Nullable String finalOutput, boolean naturalStop) {
         List<GuardConfig> guards = resolveGuards(process);
+        boolean any = false;
+        boolean anyError = false;
         log.trace(
                 "Guard evaluate id='{}' naturalStop={} guardRounds={} resolvedGuards={}",
                 process.getId(),
@@ -211,13 +213,31 @@ public class ShootyGuardService {
                         guard.maxRounds());
                 continue;
             }
-            GuardEvaluation fired = runStopGuard(process, guard, finalOutput, naturalStop);
+            any = true;
+            GuardEvaluation fired;
+            try {
+                fired = runStopGuard(process, guard, finalOutput, naturalStop);
+            } catch (GuardScriptFailure e) {
+                anyError = true;
+                log.warn(
+                        "Guard id='{}' script failed ({}) — fail-open: {}",
+                        process.getId(),
+                        e.failureClass(),
+                        e.getMessage());
+                metrics.counter(METRIC, "outcome", "script_error").increment();
+                continue;
+            }
             if (fired != null) {
                 return fired;
             }
         }
-        log.trace("Guard evaluate id='{}' — all applicable guards passed", process.getId());
-        metrics.counter(METRIC, "outcome", "passed").increment();
+        // "passed" says every applicable guard actually passed — a script
+        // error already counted as script_error and is not a pass (fail-open
+        // means the engine proceeds, not that the guard agreed).
+        if (any && !anyError) {
+            log.trace("Guard evaluate id='{}' — all applicable guards passed", process.getId());
+            metrics.counter(METRIC, "outcome", "passed").increment();
+        }
         return GuardEvaluation.passed();
     }
 
@@ -225,24 +245,17 @@ public class ShootyGuardService {
      * One yield-point guard's run. Returns a {@link GuardEvaluation#fired}
      * when the script injected a follow-up, else {@code null} (script
      * passed, was not found, or failed — fail-open in all three cases).
+     * Throws {@link GuardScriptFailure} on a script error; the per-point
+     * fail strategy (here: open) is decided by the caller.
      */
     private @Nullable GuardEvaluation runStopGuard(
-            ThinkProcessDocument process, GuardConfig guard, @Nullable String finalOutput, boolean naturalStop) {
+            ThinkProcessDocument process, GuardConfig guard, @Nullable String finalOutput, boolean naturalStop)
+            throws GuardScriptFailure {
         AtomicBoolean fired = new AtomicBoolean(false);
         AtomicReference<String> reason = new AtomicReference<>(null);
         int[] localRounds = {process.getGuardRounds()};
         GuardScriptHost host = stopHost(process, guard, fired, reason, localRounds);
-        try {
-            runGuardScript(
-                    process, guard, naturalStop ? "stop" : "terminate", null, finalOutput, naturalStop, null, host);
-        } catch (GuardScriptFailure e) {
-            log.warn(
-                    "Guard id='{}' script failed ({}) — fail-open: {}",
-                    process.getId(),
-                    e.failureClass(),
-                    e.getMessage());
-            metrics.counter(METRIC, "outcome", "script_error").increment();
-        }
+        runGuardScript(process, guard, naturalStop ? "stop" : "terminate", null, finalOutput, naturalStop, null, host);
         if (fired.get()) {
             metrics.counter(METRIC, "outcome", "fired").increment();
             return GuardEvaluation.fired(guard, reason.get());
@@ -319,6 +332,10 @@ public class ShootyGuardService {
      * <p>Guard-injected turns (sender {@code _guard}) are not genuine
      * user turns and fire nothing — otherwise every completion-guard
      * round would multiply start-guard runs.
+     *
+     * <p>Engines do not call this (and {@link #resetIfUserTurn}) directly —
+     * they call {@link #guardsOnTurnStart}, which owns the mandatory
+     * ordering (reset first, then start guards) in one place.
      */
     public void runStartGuards(ThinkProcessDocument process, List<SteerMessage> inbox) {
         if (inbox == null || inbox.isEmpty()) {
@@ -333,6 +350,7 @@ public class ShootyGuardService {
         // before the guards run — by default nothing is replaced.
         turnPromptStore.remove(process.getId());
         boolean any = false;
+        boolean anyError = false;
         for (GuardConfig guard : resolveGuards(process)) {
             if (!guard.trigger().firesOnStart()) {
                 continue;
@@ -363,6 +381,7 @@ public class ShootyGuardService {
             try {
                 runGuardScript(process, guard, "start", userText, null, /*naturalStop*/ true, null, host);
             } catch (GuardScriptFailure e) {
+                anyError = true;
                 log.warn(
                         "Guard id='{}' start script failed ({}) — fail-open: {}",
                         process.getId(),
@@ -371,13 +390,30 @@ public class ShootyGuardService {
                 metrics.counter(METRIC, "outcome", "script_error").increment();
             }
         }
-        if (any) {
+        // "passed" says every applicable guard actually passed — a script
+        // error already counted as script_error and is not a pass (fail-open
+        // means the turn proceeds, not that the guard agreed).
+        if (any && !anyError) {
             log.trace("Guard start id='{}' — all applicable start guards passed", process.getId());
             metrics.counter(METRIC, "outcome", "passed").increment();
         }
     }
 
     // ───────────────────────────── COMMAND ─────────────────────────────
+
+    /**
+     * The combined turn-start anchor: resets the per-process guard budget
+     * and loop scratch when {@code inbox} carries genuine user input, then
+     * runs the START guards — in exactly this order, per
+     * {@code specification/public/shooty.md} §2.2 ("erst Budget-Reset +
+     * Loop-Scratch-Wipe, dann Start-Guards" — das Skript startet auf
+     * sauberer Tafel). Engines call this instead of the two steps
+     * separately so the ordering cannot drift per engine.
+     */
+    public void guardsOnTurnStart(ThinkProcessDocument process, List<SteerMessage> inbox) {
+        resetIfUserTurn(process, inbox);
+        runStartGuards(process, inbox);
+    }
 
     /**
      * The COMMAND point: gates {@code command} before its handler runs.
@@ -392,7 +428,9 @@ public class ShootyGuardService {
      *
      * <p>Re-entrancy: skipped when {@link #inGuardRun()} — a guard does
      * not judge its own actions (commands fired by skill activation,
-     * LLM calls, future hooks).
+     * LLM calls, future hooks). The dispatcher checks the marker too,
+     * before it even calls this method — kept deliberately: the check here
+     * also guards future call sites of this public method.
      */
     public @Nullable EngineCommandResult gateCommand(ThinkProcessDocument process, EngineCommand command) {
         if (inGuardRun()) {
@@ -736,6 +774,17 @@ public class ShootyGuardService {
     }
 
     /**
+     * Whether {@code process} owns a session — the one blank-aware
+     * predicate every caller must use. A session-less process carries
+     * {@code null} (Lombok builder without {@code @Builder.Default}) or
+     * {@code ""} (field initializer / persisted documents) — testing for
+     * {@code null} alone misclassifies the {@code ""} shape as sessioned.
+     */
+    public static boolean hasSession(ThinkProcessDocument process) {
+        return sessionKey(process) != null;
+    }
+
+    /**
      * The process's session id, or {@code null} when it has none.
      *
      * <p>{@code ThinkProcessDocument.sessionId} is {@code @NullMarked} and
@@ -884,6 +933,10 @@ public class ShootyGuardService {
     }
 
     private void inject(ThinkProcessDocument process, String prompt) {
+        // The "[completion-guard] " prefix is the stable v2 wire marker —
+        // deliberately kept under the Shooty rename: history entries and
+        // scripts may match on it, and the sender id (`_guard`), not the
+        // prefix, carries the machine-readable semantics.
         String content = "[completion-guard] " + prompt;
         SteerMessage.UserChatInput injected =
                 new SteerMessage.UserChatInput(Instant.now(), null, INJECT_SENDER, content);

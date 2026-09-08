@@ -165,4 +165,32 @@ class GuardCommandHandlerTest {
         assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
         verify(guardService, org.mockito.Mockito.never()).putScratch(any(), anyBoolean(), any(), any());
     }
+
+    @Test
+    void status_show_blankSession_reportsNoSession() {
+        // A session-less process carries "" when persisted — the blank shape
+        // must report "(no session)" like the null shape does, not a
+        // "session" scope that is really the loop-scratch fallback again.
+        ThinkProcessDocument blankSession =
+                ThinkProcessDocument.builder().id("p1").sessionId("").build();
+        when(guardService.loopScratchView(any())).thenReturn(Map.of("asked", true));
+
+        EngineCommandResult result = handler.handle(blankSession, cmd("status"));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.OK);
+        assertThat(result.message()).contains("loop: 1 entries");
+        assertThat(result.message()).contains("session: (no session)");
+        verify(guardService, org.mockito.Mockito.never()).sessionScratchView(any());
+    }
+
+    @Test
+    void status_sessionOp_blankSession_isError() {
+        ThinkProcessDocument blankSession =
+                ThinkProcessDocument.builder().id("p1").sessionId("").build();
+
+        EngineCommandResult result = handler.handle(blankSession, cmd("status session set k v"));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
+        verify(guardService, org.mockito.Mockito.never()).putScratch(any(), anyBoolean(), any(), any());
+    }
 }

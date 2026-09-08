@@ -7,6 +7,8 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,6 +28,14 @@ import org.springframework.stereotype.Component;
  * never mutated, so the replacement never leaks into history, replays or
  * compaction.
  *
+ * <p><b>Runs last</b> ({@link Ordered#LOWEST_PRECEDENCE}): the
+ * replacement is the final word on this request's system messages, so
+ * request-augmenting handlers that ran before it (the research-pressure
+ * nudge) are part of what gets replaced — without the explicit order,
+ * "replaces completely" would depend on bean-scan accident. A handler
+ * that must survive a replacement would need a higher precedence and a
+ * documented reason; none exists today.
+ *
  * <p>Default is no manipulation: without a set prompt the handler is a
  * no-op. One text per turn (last setTurnPrompt call wins); the store is
  * cleared at the next genuine user turn, and a guard-injected follow-up
@@ -33,6 +43,7 @@ import org.springframework.stereotype.Component;
  * work unit. See {@code planning/shooty.md} §8.
  */
 @Component
+@Order(Ordered.LOWEST_PRECEDENCE)
 public class GuardTurnContextHandler implements TurnContextHandler {
 
     private final ShootyGuardService guardService;

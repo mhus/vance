@@ -13,8 +13,9 @@
     findings are grandfathered in pmd-baseline.properties next to this file;
     shrinking that file is a deliberate cleanup act.
 
-    The check itself is bound to `validate` in the parent POM — see
-    agent/build-test.md. qa/ skips PMD entirely (test sources only).
+    The check itself is bound to `process-classes` in the parent POM —
+    see agent/build-test.md. The reactor parent (packaging `pom`) never
+    runs PMD. qa/ skips PMD entirely (test sources only).
   </description>
 
   <rule ref="category/java/errorprone.xml">

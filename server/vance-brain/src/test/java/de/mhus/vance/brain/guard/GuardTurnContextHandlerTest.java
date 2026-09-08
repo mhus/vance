@@ -71,4 +71,19 @@ class GuardTurnContextHandlerTest {
         assertThat(((SystemMessage) result.get(0)).text()).isEqualTo("custom framing");
         assertThat(((UserMessage) result.get(1)).singleText()).isEqualTo("hello");
     }
+
+    @Test
+    void runsLast_replacementIsTheFinalWord() {
+        // "Replaces completely" must not depend on bean-scan accident: the
+        // guard handler carries the lowest precedence, so Spring's sorted
+        // handler list runs it after every request-augmenting handler
+        // (the research-pressure nudge) — their system messages are part
+        // of what gets replaced.
+        List<de.mhus.vance.brain.thinkengine.TurnContextHandler> handlers = new java.util.ArrayList<>(
+                java.util.Arrays.asList(new de.mhus.vance.brain.zarniwoop.ResearchSearchPressureHandler(), handler));
+
+        org.springframework.core.annotation.AnnotationAwareOrderComparator.sort(handlers);
+
+        assertThat(handlers.get(handlers.size() - 1)).isInstanceOf(GuardTurnContextHandler.class);
+    }
 }

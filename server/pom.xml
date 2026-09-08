@@ -456,8 +456,13 @@
             </plugin>
             <!--
                 PMD static analysis — bug patterns only, curated in
-                pmd-ruleset.xml (repo root of the reactor, next to this POM;
-                style/perf noise is excluded there with measured reasons).
+                pmd-ruleset.xml at the reactor root (server/, one level up
+                from each child module — that is what the ../ path below
+                resolves to). The reactor parent itself never runs PMD:
+                packaging `pom` has no classes, so the plugin skips it
+                (verified: "Skipping ... pmd report goal"), which is why
+                the path is not `next to this POM` for the parent.
+                Style/perf noise is excluded there with measured reasons.
                 The `check` goal forks the `pmd` analysis itself.
 
                 Baseline: pmd-baseline.properties grandfathers known

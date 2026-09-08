@@ -255,17 +255,16 @@ public abstract class StructuredActionEngine implements ThinkEngine {
     }
 
     /**
-     * Turn-start guard hook: resets the guard round budget when {@code inbox}
-     * carries genuine user input — see
-     * {@link ShootyGuardService#resetIfUserTurn} — and then runs the
-     * START-point guards (see {@link ShootyGuardService#runStartGuards}).
-     * Call at turn start (after draining the inbox) so each fresh user
-     * request gets a full guard budget and the start guards see a clean
-     * loop scratch, in a long-lived chat session.
+     * Turn-start guard hook — delegates to
+     * {@link ShootyGuardService#guardsOnTurnStart}, the one place that
+     * owns the mandatory ordering (budget/scratch reset first, then the
+     * START guards — the script starts on a clean slate). Call at turn
+     * start (after draining the inbox) so each fresh user request gets a
+     * full guard budget and the start guards see a clean loop scratch, in
+     * a long-lived chat session.
      */
     protected void guardsOnTurnStart(ThinkProcessDocument process, List<SteerMessage> inbox) {
-        completionGuardService.resetIfUserTurn(process, inbox);
-        completionGuardService.runStartGuards(process, inbox);
+        completionGuardService.guardsOnTurnStart(process, inbox);
     }
 
     /**

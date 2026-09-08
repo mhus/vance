@@ -1048,7 +1048,13 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public final long maxRounds;
 
-        /** {@code true} for a natural stop, {@code false} for an explicit terminate. */
+        /**
+         * {@code true} for a natural stop, {@code false} for an explicit
+         * terminate. <b>Meaningful at the stop/terminate points only</b> —
+         * at {@code start}/{@code command} the value is a fixed sentinel
+         * ({@code true}/{@code false} respectively); branch on
+         * {@link #point} first, never on this field alone.
+         */
         @HostAccess.Export
         public final boolean naturalStop;
 

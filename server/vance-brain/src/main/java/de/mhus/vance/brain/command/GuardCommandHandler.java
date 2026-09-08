@@ -69,7 +69,7 @@ public class GuardCommandHandler implements EngineCommandHandler {
             }
             h = splitFirstToken(r);
         }
-        if (session && process.getSessionId() == null) {
+        if (session && !ShootyGuardService.hasSession(process)) {
             return EngineCommandResult.error("process has no session — session scratch unavailable");
         }
         String op = h[0].toLowerCase(Locale.ROOT);
@@ -112,14 +112,18 @@ public class GuardCommandHandler implements EngineCommandHandler {
         if (loop) {
             total += appendScope(detail, "loop", guardService.loopScratchView(process));
         }
-        if (session) {
+        // Blank-aware via hasSession: a session-less process carries null
+        // (builder) or "" (persisted) — the "" shape must not report a
+        // "session" scope that is really the loop-scratch fallback again.
+        boolean sessioned = ShootyGuardService.hasSession(process);
+        if (session && sessioned) {
             total += appendScope(detail, "session", guardService.sessionScratchView(process));
         }
         String summary = "loop: " + guardService.loopScratchView(process).size() + " entries"
-                + (process.getSessionId() == null
-                        ? "; session: (no session)"
-                        : "; session: "
-                                + guardService.sessionScratchView(process).size() + " entries");
+                + (sessioned
+                        ? "; session: "
+                                + guardService.sessionScratchView(process).size() + " entries"
+                        : "; session: (no session)");
         return EngineCommandResult.ok(
                 summary, total == 0 ? null : detail.toString().stripTrailing());
     }

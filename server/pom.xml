@@ -55,22 +55,22 @@
 
     <properties>
         <java.version>25</java.version>
-        <lombok.version>1.18.46</lombok.version>
+        <lombok.version>1.18.48</lombok.version>
         <spring.boot.version>4.1.1</spring.boot.version>
-        <langchain4j.version>1.19.0</langchain4j.version>
-        <langgraph4j.version>1.8.25</langgraph4j.version>
+        <langchain4j.version>1.20.0</langchain4j.version>
+        <langgraph4j.version>1.8.26</langgraph4j.version>
         <picocli.version>4.7.7</picocli.version>
         <jspecify.version>1.0.1</jspecify.version>
         <jjwt.version>0.13.0</jjwt.version>
         <console-master.version>1.0.0-SNAPSHOT</console-master.version>
-        <jline.version>4.4.0</jline.version>
+        <jline.version>4.4.2</jline.version>
         <lanterna.version>3.1.5</lanterna.version>
         <graaljs.version>25.3.4.1</graaljs.version>
         <jgit.version>7.7.1.202607240634-r</jgit.version>
-        <anthropic.sdk.version>2.59.0</anthropic.sdk.version>
+        <anthropic.sdk.version>2.61.0</anthropic.sdk.version>
         <!-- swagger-parser 2.x supports both OpenAPI 3.x and Swagger 2.x. Used by
              RestApiToolPackFactory to materialise REST-API packs into Vance Tools. -->
-        <swagger.parser.version>2.1.47</swagger.parser.version>
+        <swagger.parser.version>2.1.48</swagger.parser.version>
         <jagged.version>1.0.0</jagged.version>
         <!-- HTML → text extraction for WebFetchTool's 'text' flag. Robust against
              broken markup, drops script/style content, decodes entities. -->
@@ -395,7 +395,7 @@
                     <dependency>
                         <groupId>de.skuzzle.enforcer</groupId>
                         <artifactId>restrict-imports-enforcer-rule</artifactId>
-                        <version>3.0.1</version>
+                        <version>3.0.2</version>
                     </dependency>
                 </dependencies>
             </plugin>

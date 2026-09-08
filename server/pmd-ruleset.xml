@@ -13,10 +13,41 @@
     findings are grandfathered in pmd-baseline.properties next to this file;
     shrinking that file is a deliberate cleanup act.
 
+    Second adoption round (same day): the security and bestpractices categories
+    were added after a full measurement — security is tiny and taken wholesale,
+    bestpractices is curated with the same noise-exclusion logic. Measurement
+    data and keep/exclude rationale: planning/source-quality-spotless-pmd.md §6.
+
     The check itself is bound to `process-classes` in the parent POM —
     see agent/build-test.md. The reactor parent (packaging `pom`) never
     runs PMD. qa/ skips PMD entirely (test sources only).
   </description>
+
+  <rule ref="category/java/security.xml"/>
+
+  <rule ref="category/java/bestpractices.xml">
+    <!-- Second adoption round (2026-09-08), numbers = vance/ee findings. -->
+    <!-- 2539/106: SLF4J parameterized logging — guards are micro-optimization -->
+    <exclude name="GuardLogStatement"/>
+    <!-- 181/2: null-safety is the JSpecify contract, not literal ordering style -->
+    <exclude name="LiteralsFirstInComparisons"/>
+    <!-- 144/1: impl-vs-interface declaration style -->
+    <exclude name="LooseCoupling"/>
+    <!-- 89/6: deliberate compact-init idiom in tool descriptors; re-open option -->
+    <exclude name="DoubleBraceInitialization"/>
+    <!-- 13/0: template strings + localhost defaults — FPs -->
+    <exclude name="AvoidUsingHardCodedIP"/>
+    <!-- 33/1, 29/0, 15/0, 6/0, 5/0, 2/0, 1/0, 1/0, 0/2: style/micro -->
+    <exclude name="ImplicitFunctionalInterface"/>
+    <exclude name="UseVarargs"/>
+    <exclude name="AvoidReassigningLoopVariables"/>
+    <exclude name="ForLoopCanBeForeach"/>
+    <exclude name="OneDeclarationPerLine"/>
+    <exclude name="UseEnumCollections"/>
+    <exclude name="UseCollectionIsEmpty"/>
+    <exclude name="MissingOverride"/>
+    <exclude name="ReplaceHashtableWithMap"/>
+  </rule>
 
   <rule ref="category/java/errorprone.xml">
     <!-- 1292: log/key strings repeated 3+ times; constant extraction is not a bug fix -->

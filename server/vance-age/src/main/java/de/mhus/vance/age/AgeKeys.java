@@ -35,9 +35,6 @@ public final class AgeKeys {
     private static final Pattern RECIPIENT_IN_TEXT = Pattern.compile(
             "age1[" + BECH32_LOWER + "]{58}");
 
-    private static final Pattern ALL_IDENTITIES_IN_TEXT = Pattern.compile(
-            "AGE-SECRET-KEY-1[" + BECH32_UPPER + "]{58}");
-
     private AgeKeys() {
     }
 
@@ -72,7 +69,7 @@ public final class AgeKeys {
     public static List<String> extractIdentities(String text) {
         List<String> identities = new ArrayList<>();
         if (text != null) {
-            Matcher matcher = ALL_IDENTITIES_IN_TEXT.matcher(text);
+            Matcher matcher = IDENTITY_IN_TEXT.matcher(text);
             while (matcher.find() && !identities.contains(matcher.group())) {
                 identities.add(matcher.group());
             }

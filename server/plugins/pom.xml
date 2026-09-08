@@ -17,6 +17,44 @@
     </description>
     <packaging>pom</packaging>
 
+    <!-- Mirrors the Spotless config from the Vance parent POM (server/pom.xml).
+         Kept inline here because this aggregator deliberately has no parent;
+         when changing formatter or rules, change both places. -->
+    <properties>
+        <spotless.maven.version>3.10.2</spotless.maven.version>
+        <spotless.palantir.version>2.97.0</spotless.palantir.version>
+        <spotless.ratchetFrom>origin/main</spotless.ratchetFrom>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless.maven.version}</version>
+                <configuration>
+                    <ratchetFrom>${spotless.ratchetFrom}</ratchetFrom>
+                    <java>
+                        <palantirJavaFormat>
+                            <version>${spotless.palantir.version}</version>
+                        </palantirJavaFormat>
+                        <importOrder/>
+                        <removeUnusedImports/>
+                    </java>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>spotless-check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <phase>validate</phase>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
     <modules>
         <module>generate-java-to-ts-maven-plugin</module>
     </modules>

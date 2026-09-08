@@ -97,6 +97,16 @@
              a bare @maven.build.timestamp@ otherwise filters to an empty string. -->
         <build.timestamp>${maven.build.timestamp}</build.timestamp>
         <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
+        <!-- Spotless source formatting (agent/java.md "Source formatting").
+             palantir-java-format: 4-space indent, 120 cols, no javadoc reflow —
+             closest to the existing house style. Formatter upgrades are
+             deliberate acts: the version is pinned, never floated. The
+             ratchet limits enforcement to files changed since origin/main;
+             override with -Dspotless.ratchetFrom=NONE to check/apply the
+             full tree (audits, deliberate reformat rounds). -->
+        <spotless.maven.version>3.10.2</spotless.maven.version>
+        <spotless.palantir.version>2.97.0</spotless.palantir.version>
+        <spotless.ratchetFrom>origin/main</spotless.ratchetFrom>
     </properties>
 
     <dependencyManagement>
@@ -398,6 +408,51 @@
                         <version>3.0.1</version>
                     </dependency>
                 </dependencies>
+            </plugin>
+            <!--
+                Source formatting via Spotless — the single formatter for all
+                Java code in the reactor (and, via inheritance, in qa/).
+                See agent/java.md "Source formatting" for the rules.
+
+                - palantir-java-format: 4-space indent, 120 cols,
+                  lambda-friendly; javadoc is NOT reflowed (default), so
+                  hand-wrapped comment prose stays as authored.
+                - importOrder (bare): plain alphabetical, matches existing code.
+                - removeUnusedImports: javadoc-aware, {@link}-only imports stay.
+
+                Enforcement is `spotless:check` bound to `validate`, so every
+                lifecycle build (wb build, CI, wb qa) fails on unformatted
+                files. ratchetFrom limits it to files changed since
+                origin/main — the existing tree is NOT auto-reformatted;
+                formatting converges file by file as they get touched.
+
+                Full-tree audit / deliberate reformat round:
+                  mvn spotless:check -Dspotless.ratchetFrom=NONE
+                  mvn spotless:apply -Dspotless.ratchetFrom=NONE
+            -->
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless.maven.version}</version>
+                <configuration>
+                    <ratchetFrom>${spotless.ratchetFrom}</ratchetFrom>
+                    <java>
+                        <palantirJavaFormat>
+                            <version>${spotless.palantir.version}</version>
+                        </palantirJavaFormat>
+                        <importOrder/>
+                        <removeUnusedImports/>
+                    </java>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>spotless-check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <phase>validate</phase>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -9,7 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.command.EngineCommandOutcome;
-import de.mhus.vance.brain.guard.CompletionGuardService;
+import de.mhus.vance.brain.guard.ShootyGuardService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
@@ -26,8 +26,11 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class GuardCommandHandlerTest {
 
-    @Mock private ThinkProcessService thinkProcessService;
-    @Mock private CompletionGuardService guardService;
+    @Mock
+    private ThinkProcessService thinkProcessService;
+
+    @Mock
+    private ShootyGuardService guardService;
 
     private GuardCommandHandler handler;
 
@@ -52,8 +55,7 @@ class GuardCommandHandlerTest {
 
     @Test
     void script_setsScriptOverride() {
-        EngineCommandResult result = handler.handle(
-                process(), cmd("script _vance/guards/dev-done.js"));
+        EngineCommandResult result = handler.handle(process(), cmd("script _vance/guards/dev-done.js"));
 
         assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.OK);
         verify(thinkProcessService).setGuardOverride("p1", "_vance/guards/dev-done.js", null);
@@ -68,12 +70,10 @@ class GuardCommandHandlerTest {
 
     @Test
     void inline_setsBodyOverride() {
-        EngineCommandResult result = handler.handle(
-                process(), cmd("inline vance.process.notify('Hello World!');"));
+        EngineCommandResult result = handler.handle(process(), cmd("inline vance.process.notify('Hello World!');"));
 
         assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.OK);
-        verify(thinkProcessService).setGuardOverride(
-                "p1", null, "vance.process.notify('Hello World!');");
+        verify(thinkProcessService).setGuardOverride("p1", null, "vance.process.notify('Hello World!');");
     }
 
     @Test

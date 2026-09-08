@@ -6,11 +6,11 @@ import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatException;
-import de.mhus.vance.brain.history.TurnReasoningBuffer;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
-import de.mhus.vance.brain.guard.CompletionGuardService;
+import de.mhus.vance.brain.guard.ShootyGuardService;
+import de.mhus.vance.brain.history.TurnReasoningBuffer;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
@@ -19,10 +19,10 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.Lc4jSchema;
 import de.mhus.vance.brain.tools.ToolErrorPayload;
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.ToolException;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -147,7 +147,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      * via {@link #runCompletionGuard}; no-op unless a guard is configured
      * on the recipe or as a per-process runtime override.
      */
-    private final CompletionGuardService completionGuardService;
+    private final ShootyGuardService completionGuardService;
 
     /**
      * Action-loop judge, shared by every single-action engine. Consulted
@@ -167,20 +167,19 @@ public abstract class StructuredActionEngine implements ThinkEngine {
 
     /** Per-request context handlers (research-pressure et al.), shared. */
     protected final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
-    private final de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer
-            attachedUserMessageComposer;
+
+    private final de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer attachedUserMessageComposer;
 
     protected StructuredActionEngine(
             StreamingProperties streamingProperties,
             LlmCallTracker llmCallTracker,
             ObjectMapper objectMapper,
             SystemPromptComposer composer,
-            CompletionGuardService completionGuardService,
+            ShootyGuardService completionGuardService,
             ActionLoopJudgeService actionLoopJudgeService,
             ThinkProcessService thinkProcessService,
             de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers,
-            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer
-                    attachedUserMessageComposer) {
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer attachedUserMessageComposer) {
         this.streamingProperties = streamingProperties;
         this.llmCallTracker = llmCallTracker;
         this.objectMapper = objectMapper;
@@ -211,19 +210,22 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             ThinkEngineContext ctx,
             List<ChatMessage> messages,
             ThinkProcessDocument process,
-            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.@Nullable Context
-                    attachmentContext) {
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.@Nullable Context attachmentContext) {
         if (attachmentContext == null || !ctx.attachmentSink().hasPending()) {
             return;
         }
         java.util.List<de.mhus.vance.api.attachment.AttachmentRef> refs =
                 ctx.attachmentSink().drain();
         try {
-            messages.add(attachedUserMessageComposer.compose(
-                    attachmentContext, "Output of the tool call above:", refs));
+            messages.add(
+                    attachedUserMessageComposer.compose(attachmentContext, "Output of the tool call above:", refs));
         } catch (RuntimeException e) {
-            log.warn("{} id='{}' cannot show {} tool attachment(s): {}",
-                    name(), process.getId(), refs.size(), e.toString());
+            log.warn(
+                    "{} id='{}' cannot show {} tool attachment(s): {}",
+                    name(),
+                    process.getId(),
+                    refs.size(),
+                    e.toString());
         }
     }
 
@@ -248,21 +250,22 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         try {
             completionGuardService.evaluate(process, finalOutput, /*naturalStop*/ true);
         } catch (RuntimeException e) {
-            log.warn("Completion guard evaluation failed id='{}' — ignoring: {}",
-                    process.getId(), e.toString());
+            log.warn("Completion guard evaluation failed id='{}' — ignoring: {}", process.getId(), e.toString());
         }
     }
 
     /**
-     * Resets the completion-guard round budget when {@code inbox} carries
-     * genuine user input — see
-     * {@link CompletionGuardService#resetIfUserTurn}. Call at turn start
-     * (after draining the inbox) so each fresh user request gets a full
-     * guard budget in a long-lived chat session.
+     * Turn-start guard hook: resets the guard round budget when {@code inbox}
+     * carries genuine user input — see
+     * {@link ShootyGuardService#resetIfUserTurn} — and then runs the
+     * START-point guards (see {@link ShootyGuardService#runStartGuards}).
+     * Call at turn start (after draining the inbox) so each fresh user
+     * request gets a full guard budget and the start guards see a clean
+     * loop scratch, in a long-lived chat session.
      */
-    protected void resetGuardBudgetForUserTurn(
-            ThinkProcessDocument process, List<SteerMessage> inbox) {
+    protected void guardsOnTurnStart(ThinkProcessDocument process, List<SteerMessage> inbox) {
         completionGuardService.resetIfUserTurn(process, inbox);
+        completionGuardService.runStartGuards(process, inbox);
     }
 
     /**
@@ -346,9 +349,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      * {@code awaiting_user_input} flag.
      */
     protected abstract ActionTurnOutcome handleAction(
-            EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx);
+            EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx);
 
     /**
      * Whether {@code action} ends the turn (chat message, BLOCKED on
@@ -371,13 +372,9 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      * next. Subclasses overriding {@link #isTerminalAction} must
      * override this. Default throws.
      */
-    protected String applyContinuingAction(
-            EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    protected String applyContinuingAction(EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
         throw new UnsupportedOperationException(
-                "applyContinuingAction not implemented for "
-                        + name() + " action='" + action.type() + "'");
+                "applyContinuingAction not implemented for " + name() + " action='" + action.type() + "'");
     }
 
     /**
@@ -464,8 +461,18 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             String modelAlias,
             int maxCorrections,
             long deadlineMs) {
-        return runStructuredActionLoop(aiChat, readToolSpecsFactory, messages, ctx,
-                process, maxIters, modelAlias, maxCorrections, deadlineMs, Set.of(), null);
+        return runStructuredActionLoop(
+                aiChat,
+                readToolSpecsFactory,
+                messages,
+                ctx,
+                process,
+                maxIters,
+                modelAlias,
+                maxCorrections,
+                deadlineMs,
+                Set.of(),
+                null);
     }
 
     /**
@@ -488,8 +495,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             int maxCorrections,
             long deadlineMs,
             Set<String> extraTools,
-            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.@Nullable Context
-                    attachmentContext) {
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.@Nullable Context attachmentContext) {
 
         // Fresh tools + spec list per loop. Refreshed after any
         // iteration that called read tools so tool_description
@@ -514,19 +520,17 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             //
             // Both paths read the same document, so this is one findById
             // per iteration, not two.
-            ThinkProcessDocument live = thinkProcessService
-                    .findById(process.getId()).orElse(process);
+            ThinkProcessDocument live =
+                    thinkProcessService.findById(process.getId()).orElse(process);
             ThinkProcessStatus liveStatus = live.getStatus();
             if (liveStatus == ThinkProcessStatus.SUSPENDED
                     || liveStatus == ThinkProcessStatus.PAUSED
                     || liveStatus == ThinkProcessStatus.CLOSED) {
-                log.info("{} id='{}' action-loop interrupt (status={}) — exiting",
-                        name(), process.getId(), liveStatus);
+                log.info("{} id='{}' action-loop interrupt (status={}) — exiting", name(), process.getId(), liveStatus);
                 return ActionLoopResult.interrupted(false, toolInvocations);
             }
             if (live.isHaltRequested()) {
-                log.info("{} id='{}' action-loop halt requested — exiting (PAUSED)",
-                        name(), process.getId());
+                log.info("{} id='{}' action-loop halt requested — exiting (PAUSED)", name(), process.getId());
                 thinkProcessService.clearHalt(process.getId());
                 return ActionLoopResult.interrupted(true, toolInvocations);
             }
@@ -537,10 +541,13 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             // free-text as a terminal fallback; deliberately NOT
             // "max-iters", so it does not re-trigger the judge.
             if (System.currentTimeMillis() >= deadlineMs) {
-                log.warn("{} id='{}' action-loop wallclock exceeded ({} min) — falling back (toolInvocations={})",
-                        name(), process.getId(), TURN_WALLCLOCK_MINUTES, toolInvocations);
-                return ActionLoopResult.fallback(
-                        bestFreeText, "max-wallclock", null, toolInvocations);
+                log.warn(
+                        "{} id='{}' action-loop wallclock exceeded ({} min) — falling back (toolInvocations={})",
+                        name(),
+                        process.getId(),
+                        TURN_WALLCLOCK_MINUTES,
+                        toolInvocations);
+                return ActionLoopResult.fallback(bestFreeText, "max-wallclock", null, toolInvocations);
             }
 
             ChatRequest req = ChatRequest.builder()
@@ -555,12 +562,13 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 if (!bestFreeText.isEmpty()) {
                     log.warn(
                             "{} id='{}' action-loop LLM failure ({}) — falling back to best free-text seen ({} chars)",
-                            name(), process.getId(), e.toString(), bestFreeText.length());
-                    return ActionLoopResult.fallback(bestFreeText, "llm-failure",
-                            e, toolInvocations);
+                            name(),
+                            process.getId(),
+                            e.toString(),
+                            bestFreeText.length());
+                    return ActionLoopResult.fallback(bestFreeText, "llm-failure", e, toolInvocations);
                 }
-                log.warn("{} id='{}' action-loop LLM failure with no recoverable text",
-                        name(), process.getId());
+                log.warn("{} id='{}' action-loop LLM failure with no recoverable text", name(), process.getId());
                 throw e;
             }
 
@@ -589,8 +597,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 String captured = ReasoningExtractor.extract(reply);
                 if (!captured.isBlank()) {
                     reasoning.append(captured);
-                    log.trace("{} id='{}' reasoning captured chars={}",
-                            name(), process.getId(), captured.length());
+                    log.trace("{} id='{}' reasoning captured chars={}", name(), process.getId(), captured.length());
                 }
             }
 
@@ -598,8 +605,10 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 if (corrections < maxCorrections) {
                     log.info(
                             "{} id='{}' action-loop: free text without action call, correcting ({}/{})",
-                            name(), process.getId(),
-                            corrections + 1, maxCorrections);
+                            name(),
+                            process.getId(),
+                            corrections + 1,
+                            maxCorrections);
                     messages.add(reply);
                     messages.add(SystemMessage.from(noActionCorrection()));
                     corrections++;
@@ -620,7 +629,9 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                     log.info(
                             "{} id='{}' action-loop: recovered '{}' action from free-text JSON "
                                     + "after exhausting corrections",
-                            name(), process.getId(), recovered.type());
+                            name(),
+                            process.getId(),
+                            recovered.type());
                     return ActionLoopResult.action(recovered, toolInvocations);
                 }
                 // The model answered in prose without the action wrapper.
@@ -632,12 +643,15 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                     log.info(
                             "{} id='{}' action-loop: wrapped free-text as '{}' action "
                                     + "(model emitted no action call)",
-                            name(), process.getId(), wrapped.type());
+                            name(),
+                            process.getId(),
+                            wrapped.type());
                     return ActionLoopResult.action(wrapped, toolInvocations);
                 }
                 log.warn(
                         "{} id='{}' action-loop: out of corrections, falling back to free-text",
-                        name(), process.getId());
+                        name(),
+                        process.getId());
                 // Sanitize the fallback before it lands in the user-
                 // facing chat. The LLM sometimes regurgitates the
                 // <process-event> markers from its drain (treating
@@ -648,8 +662,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 // sees only the prose the LLM actually wrote, not the
                 // structural plumbing.
                 String sanitized = sanitizeFallbackText(bestFreeText);
-                return ActionLoopResult.fallback(sanitized, "no-action-tool-call",
-                        null, toolInvocations);
+                return ActionLoopResult.fallback(sanitized, "no-action-tool-call", null, toolInvocations);
             }
 
             // Split: action call vs. read calls. The action call (if
@@ -706,17 +719,17 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             if (anyReadToolFailed) {
                 log.info(
                         "{} id='{}' action-loop: read-tool failure alongside action — re-prompting",
-                        name(), process.getId());
-                messages.add(SystemMessage.from(
-                        "One or more read-tool calls in your previous reply"
-                                + " returned an error. Do NOT emit an action"
-                                + " whose content assumes those tools"
-                                + " succeeded (e.g. don't say a document was"
-                                + " saved if the save call errored). Look at"
-                                + " the tool-result messages above and emit"
-                                + " a fresh "
-                                + actionToolName()
-                                + " that reflects the actual outcome."));
+                        name(),
+                        process.getId());
+                messages.add(SystemMessage.from("One or more read-tool calls in your previous reply"
+                        + " returned an error. Do NOT emit an action"
+                        + " whose content assumes those tools"
+                        + " succeeded (e.g. don't say a document was"
+                        + " saved if the save call errored). Look at"
+                        + " the tool-result messages above and emit"
+                        + " a fresh "
+                        + actionToolName()
+                        + " that reflects the actual outcome."));
                 continue;
             }
 
@@ -726,18 +739,21 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 if (corrections < maxCorrections) {
                     log.info(
                             "{} id='{}' action-loop: invalid action ({}), correcting ({}/{})",
-                            name(), process.getId(), parsed.error(),
-                            corrections + 1, maxCorrections);
-                    messages.add(ToolExecutionResultMessage.from(actionCall,
-                            invalidActionToolResult(parsed.error())));
+                            name(),
+                            process.getId(),
+                            parsed.error(),
+                            corrections + 1,
+                            maxCorrections);
+                    messages.add(ToolExecutionResultMessage.from(actionCall, invalidActionToolResult(parsed.error())));
                     corrections++;
                     continue;
                 }
                 log.warn(
                         "{} id='{}' action-loop: invalid action after {} corrections, falling back",
-                        name(), process.getId(), corrections);
-                return ActionLoopResult.fallback(bestFreeText, "invalid-action",
-                        null, toolInvocations);
+                        name(),
+                        process.getId(),
+                        corrections);
+                return ActionLoopResult.fallback(bestFreeText, "invalid-action", null, toolInvocations);
             }
 
             // Semantic gate — subclass-defined post-parse rejection
@@ -745,31 +761,34 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             // back as a correction so the LLM re-emits a valid action
             // instead of leaking the engine-internal reject string
             // into the chat as the assistant's reply.
-            String semanticReject =
-                    validateActionSemantics(parsed.action(), process, ctx);
+            String semanticReject = validateActionSemantics(parsed.action(), process, ctx);
             if (semanticReject != null) {
                 if (corrections < maxCorrections) {
                     log.info(
                             "{} id='{}' action-loop: semantic reject ({}), correcting ({}/{})",
-                            name(), process.getId(),
+                            name(),
+                            process.getId(),
                             summarise(semanticReject),
-                            corrections + 1, maxCorrections);
-                    messages.add(ToolExecutionResultMessage.from(actionCall,
-                            semanticRejectToolResult(semanticReject)));
+                            corrections + 1,
+                            maxCorrections);
+                    messages.add(ToolExecutionResultMessage.from(actionCall, semanticRejectToolResult(semanticReject)));
                     corrections++;
                     continue;
                 }
                 log.warn(
                         "{} id='{}' action-loop: semantic reject after {} corrections, falling back",
-                        name(), process.getId(), corrections);
-                return ActionLoopResult.fallback(bestFreeText, "semantic-reject",
-                        null, toolInvocations);
+                        name(),
+                        process.getId(),
+                        corrections);
+                return ActionLoopResult.fallback(bestFreeText, "semantic-reject", null, toolInvocations);
             }
 
             log.info(
                     "{} id='{}' action='{}' reason='{}'",
-                    name(), process.getId(),
-                    parsed.action().type(), summarise(parsed.action().reason()));
+                    name(),
+                    process.getId(),
+                    parsed.action().type(),
+                    summarise(parsed.action().reason()));
 
             // Continuing actions (e.g. Arthur's TODO_UPDATE / START_PLAN /
             // START_EXECUTION) don't terminate the turn — they mutate
@@ -786,10 +805,13 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 try {
                     feedback = applyContinuingAction(parsed.action(), process, ctx);
                 } catch (RuntimeException e) {
-                    log.warn("{} id='{}' continuing-action handler failed: {}",
-                            name(), process.getId(), e.toString(), e);
-                    feedback = "(internal: applyContinuingAction failed: "
-                            + e.getMessage() + ")";
+                    log.warn(
+                            "{} id='{}' continuing-action handler failed: {}",
+                            name(),
+                            process.getId(),
+                            e.toString(),
+                            e);
+                    feedback = "(internal: applyContinuingAction failed: " + e.getMessage() + ")";
                 }
                 if (feedback == null || feedback.isBlank()) {
                     feedback = "Action " + parsed.action().type() + " applied.";
@@ -815,7 +837,10 @@ public abstract class StructuredActionEngine implements ThinkEngine {
 
         log.warn(
                 "{} id='{}' action-loop: exceeded {} iterations, falling back (toolInvocations={})",
-                name(), process.getId(), maxIters, toolInvocations);
+                name(),
+                process.getId(),
+                maxIters,
+                toolInvocations);
         return ActionLoopResult.fallback(bestFreeText, "max-iters", null, toolInvocations);
     }
 
@@ -848,8 +873,18 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             String modelAlias,
             int maxCorrections,
             List<SteerMessage> inbox) {
-        return runActionLoopWithJudge(aiChat, readToolSpecsFactory, messages, ctx,
-                process, maxIters, modelAlias, maxCorrections, inbox, Set.of(), null);
+        return runActionLoopWithJudge(
+                aiChat,
+                readToolSpecsFactory,
+                messages,
+                ctx,
+                process,
+                maxIters,
+                modelAlias,
+                maxCorrections,
+                inbox,
+                Set.of(),
+                null);
     }
 
     /**
@@ -869,16 +904,22 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             int maxCorrections,
             List<SteerMessage> inbox,
             Set<String> extraTools,
-            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.@Nullable Context
-                    attachmentContext) {
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.@Nullable Context attachmentContext) {
         // One deadline for the whole turn — initial budget plus every
         // judge extension share it, so the wallclock net actually bounds
         // the turn instead of resetting each extension round.
-        long deadlineMs = System.currentTimeMillis()
-                + TURN_WALLCLOCK_MINUTES * 60_000L;
+        long deadlineMs = System.currentTimeMillis() + TURN_WALLCLOCK_MINUTES * 60_000L;
         ActionLoopResult loopResult = runStructuredActionLoop(
-                aiChat, readToolSpecsFactory, messages, ctx, process,
-                maxIters, modelAlias, maxCorrections, deadlineMs, extraTools,
+                aiChat,
+                readToolSpecsFactory,
+                messages,
+                ctx,
+                process,
+                maxIters,
+                modelAlias,
+                maxCorrections,
+                deadlineMs,
+                extraTools,
                 attachmentContext);
 
         // When the loop max-iters out (and isn't a plan-mode-yield case,
@@ -905,26 +946,32 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             // Observed as a 31-minute turn answered with a placeholder.
             // Stop here and keep what the loop produced.
             if (System.currentTimeMillis() >= deadlineMs) {
-                log.warn("{} id='{}' turn wallclock ({} min) spent — skipping judge extension, "
+                log.warn(
+                        "{} id='{}' turn wallclock ({} min) spent — skipping judge extension, "
                                 + "keeping gathered text (chars={}, toolInvocations={})",
-                        name(), process.getId(), TURN_WALLCLOCK_MINUTES,
-                        loopResult.fallbackText() == null ? 0 : loopResult.fallbackText().length(),
+                        name(),
+                        process.getId(),
+                        TURN_WALLCLOCK_MINUTES,
+                        loopResult.fallbackText() == null
+                                ? 0
+                                : loopResult.fallbackText().length(),
                         loopResult.toolInvocations());
                 break;
             }
-            ActionLoopJudgeService.JudgeRequest req =
-                    new ActionLoopJudgeService.JudgeRequest(
-                            process,
-                            ActionLoopJudgeHelpers.lastUserGoal(inbox, process),
-                            loopResult.fallbackText() == null
-                                    ? "" : loopResult.fallbackText(),
-                            ActionLoopJudgeHelpers.extractToolCallNames(messages),
-                            loopResult.toolInvocations());
+            ActionLoopJudgeService.JudgeRequest req = new ActionLoopJudgeService.JudgeRequest(
+                    process,
+                    ActionLoopJudgeHelpers.lastUserGoal(inbox, process),
+                    loopResult.fallbackText() == null ? "" : loopResult.fallbackText(),
+                    ActionLoopJudgeHelpers.extractToolCallNames(messages),
+                    loopResult.toolInvocations());
             ActionLoopJudgeService.Judgment j = actionLoopJudgeService.judge(req);
             if (j.extend()) {
-                log.info("{} id='{}' judge extends action loop (+{} iters, reason='{}')",
-                        name(), process.getId(),
-                        ActionLoopJudgeHelpers.JUDGE_EXTENSION_ITERS, j.reason());
+                log.info(
+                        "{} id='{}' judge extends action loop (+{} iters, reason='{}')",
+                        name(),
+                        process.getId(),
+                        ActionLoopJudgeHelpers.JUDGE_EXTENSION_ITERS,
+                        j.reason());
                 // Same surface as the initial round: an extension that
                 // dropped extraTools would take the turn's active-skill
                 // tools away mid-turn (the loop dispatches through the
@@ -932,19 +979,27 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 // allowed"), and a dropped attachmentContext would stop
                 // tool-produced images from reaching the model.
                 loopResult = runStructuredActionLoop(
-                        aiChat, readToolSpecsFactory, messages, ctx, process,
+                        aiChat,
+                        readToolSpecsFactory,
+                        messages,
+                        ctx,
+                        process,
                         ActionLoopJudgeHelpers.JUDGE_EXTENSION_ITERS,
-                        modelAlias, maxCorrections, deadlineMs,
-                        extraTools, attachmentContext);
+                        modelAlias,
+                        maxCorrections,
+                        deadlineMs,
+                        extraTools,
+                        attachmentContext);
                 continue;
             }
-            log.info("{} id='{}' judge synthesises (answer-chars={}, reason='{}')",
-                    name(), process.getId(),
+            log.info(
+                    "{} id='{}' judge synthesises (answer-chars={}, reason='{}')",
+                    name(),
+                    process.getId(),
                     j.synthesizedAnswer() == null ? 0 : j.synthesizedAnswer().length(),
                     j.reason());
             loopResult = new ActionLoopResult(
-                    null, j.synthesizedAnswer(),
-                    "judge-synthesize", null, loopResult.toolInvocations());
+                    null, j.synthesizedAnswer(), "judge-synthesize", null, loopResult.toolInvocations());
             break;
         }
         return loopResult;
@@ -957,8 +1012,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      */
     private static ContextToolsApi toolsFor(ThinkEngineContext ctx, Set<String> extraTools) {
         ContextToolsApi tools = ctx.tools();
-        return extraTools == null || extraTools.isEmpty()
-                ? tools : tools.withAdditional(extraTools);
+        return extraTools == null || extraTools.isEmpty() ? tools : tools.withAdditional(extraTools);
     }
 
     /**
@@ -984,11 +1038,8 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             return new ActionLoopResult(a, null, null, null, toolInvocations);
         }
 
-        static ActionLoopResult fallback(String text, String reason,
-                                          @Nullable Throwable cause,
-                                          int toolInvocations) {
-            return new ActionLoopResult(null, text == null ? "" : text, reason,
-                    cause, toolInvocations);
+        static ActionLoopResult fallback(String text, String reason, @Nullable Throwable cause, int toolInvocations) {
+            return new ActionLoopResult(null, text == null ? "" : text, reason, cause, toolInvocations);
         }
 
         /**
@@ -998,9 +1049,8 @@ public abstract class StructuredActionEngine implements ThinkEngine {
          * pause handler already set the terminal status; leave it alone).
          */
         static ActionLoopResult interrupted(boolean forcePause, int toolInvocations) {
-            return new ActionLoopResult(null, "",
-                    forcePause ? REASON_INTERRUPTED_HALT : REASON_INTERRUPTED,
-                    null, toolInvocations);
+            return new ActionLoopResult(
+                    null, "", forcePause ? REASON_INTERRUPTED_HALT : REASON_INTERRUPTED, null, toolInvocations);
         }
 
         public boolean isAction() {
@@ -1013,8 +1063,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
 
         /** True when the loop bailed on a mid-loop interrupt. */
         public boolean isInterrupted() {
-            return REASON_INTERRUPTED.equals(fallbackReason)
-                    || REASON_INTERRUPTED_HALT.equals(fallbackReason);
+            return REASON_INTERRUPTED.equals(fallbackReason) || REASON_INTERRUPTED_HALT.equals(fallbackReason);
         }
 
         /**
@@ -1075,14 +1124,12 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         }
         if (!supportedActionTypes().contains(typeStr)) {
             return ParseResult.error(
-                    "unknown action type '" + typeStr
-                            + "'. Supported types: " + supportedActionTypes());
+                    "unknown action type '" + typeStr + "'. Supported types: " + supportedActionTypes());
         }
         Object reasonVal = json.get("reason");
         if (!(reasonVal instanceof String reasonStr) || reasonStr.isBlank()) {
             return ParseResult.error(
-                    "missing required field 'reason' — every action must explain"
-                            + " why it was chosen");
+                    "missing required field 'reason' — every action must explain" + " why it was chosen");
         }
         // Pass everything else through as params so subclass can read
         // type-specific fields. Strip type/reason since they're top-level.
@@ -1092,10 +1139,19 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         return ParseResult.ok(new EngineAction(typeStr, reasonStr, params));
     }
 
-    private record ParseResult(@Nullable EngineAction action, @Nullable String error) {
-        static ParseResult ok(EngineAction a) { return new ParseResult(a, null); }
-        static ParseResult error(String e) { return new ParseResult(null, e); }
-        boolean valid() { return action != null; }
+    private record ParseResult(
+            @Nullable EngineAction action, @Nullable String error) {
+        static ParseResult ok(EngineAction a) {
+            return new ParseResult(a, null);
+        }
+
+        static ParseResult error(String e) {
+            return new ParseResult(null, e);
+        }
+
+        boolean valid() {
+            return action != null;
+        }
     }
 
     /**
@@ -1185,9 +1241,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         // The reason is required for tool calls but we're already in
         // recovery; synthesise a placeholder rather than refuse and
         // leak the JSON to chat.
-        String reasonStr = (reasonVal instanceof String rs && !rs.isBlank())
-                ? rs
-                : "recovered from free-text emission";
+        String reasonStr = (reasonVal instanceof String rs && !rs.isBlank()) ? rs : "recovered from free-text emission";
         Map<String, Object> params = new LinkedHashMap<>(json);
         params.remove("type");
         params.remove("reason");
@@ -1232,9 +1286,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         // an action shape. We don't try every fence — only json-typed
         // ones with an action-like top-level object (heuristic on
         // \"type\" + \"reason\" markers).
-        s = s.replaceAll(
-                "(?is)```json\\s*\\{\\s*\"type\"\\s*:\\s*\"[A-Z_]+\"[\\s\\S]*?\\}\\s*```",
-                "");
+        s = s.replaceAll("(?is)```json\\s*\\{\\s*\"type\"\\s*:\\s*\"[A-Z_]+\"[\\s\\S]*?\\}\\s*```", "");
         // Collapse run-on blank lines from the cuts.
         s = s.replaceAll("\\n{3,}", "\n\n").trim();
         if (s.length() < 20 && text.length() > 20) {
@@ -1268,10 +1320,12 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         try {
             Map<String, Object> err = new LinkedHashMap<>();
             err.put("error", error == null ? "invalid action" : error);
-            err.put("hint", "Re-emit the action call with a valid 'type' (one of "
-                    + supportedActionTypes()
-                    + ") and a non-blank 'reason'. Type-specific fields must match "
-                    + "the schema for the chosen type.");
+            err.put(
+                    "hint",
+                    "Re-emit the action call with a valid 'type' (one of "
+                            + supportedActionTypes()
+                            + ") and a non-blank 'reason'. Type-specific fields must match "
+                            + "the schema for the chosen type.");
             return objectMapper.writeValueAsString(err);
         } catch (RuntimeException e) {
             return "{\"error\":\"" + (error == null ? "invalid action" : error) + "\"}";
@@ -1285,8 +1339,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             err.put("hint", hint);
             return objectMapper.writeValueAsString(err);
         } catch (RuntimeException e) {
-            return "{\"error\":\"semantic_reject\",\"hint\":\""
-                    + hint.replace("\"", "'") + "\"}";
+            return "{\"error\":\"semantic_reject\",\"hint\":\"" + hint.replace("\"", "'") + "\"}";
         }
     }
 
@@ -1305,9 +1358,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      * string as a chat message.
      */
     protected @Nullable String validateActionSemantics(
-            EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+            EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
         return null;
     }
 
@@ -1320,31 +1371,24 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      */
     private record ReadToolOutcome(String json, boolean failed) {}
 
-    private ReadToolOutcome invokeReadTool(
-            ContextToolsApi tools, ToolExecutionRequest call, String processId) {
+    private ReadToolOutcome invokeReadTool(ContextToolsApi tools, ToolExecutionRequest call, String processId) {
         Map<String, Object> params;
         try {
             params = parseToolArgs(call.arguments());
         } catch (RuntimeException e) {
-            log.warn("{} id='{}' read-tool='{}' bad arguments: {}",
-                    name(), processId, call.name(), e.getMessage());
-            return new ReadToolOutcome(
-                    errorJson("Invalid tool arguments: " + e.getMessage()), true);
+            log.warn("{} id='{}' read-tool='{}' bad arguments: {}", name(), processId, call.name(), e.getMessage());
+            return new ReadToolOutcome(errorJson("Invalid tool arguments: " + e.getMessage()), true);
         }
-        log.info("{} id='{}' read_tool {}({})",
-                name(), processId, call.name(), summariseArgs(params));
+        log.info("{} id='{}' read_tool {}({})", name(), processId, call.name(), summariseArgs(params));
         try {
             Map<String, Object> result = tools.invoke(call.name(), params);
             return new ReadToolOutcome(objectMapper.writeValueAsString(result), false);
         } catch (ToolException e) {
-            log.info("{} id='{}' read-tool='{}' returned error: {}",
-                    name(), processId, call.name(), e.getMessage());
+            log.info("{} id='{}' read-tool='{}' returned error: {}", name(), processId, call.name(), e.getMessage());
             return new ReadToolOutcome(errorJson(e), true);
         } catch (RuntimeException e) {
-            log.warn("{} id='{}' read-tool='{}' unexpected failure: {}",
-                    name(), processId, call.name(), e.toString());
-            return new ReadToolOutcome(
-                    errorJson("Tool failed: " + e.getMessage()), true);
+            log.warn("{} id='{}' read-tool='{}' unexpected failure: {}", name(), processId, call.name(), e.toString());
+            return new ReadToolOutcome(errorJson("Tool failed: " + e.getMessage()), true);
         }
     }
 
@@ -1430,8 +1474,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      * the client shows only the preamble. Pure so it can be unit-tested
      * without the streaming stack.
      */
-    static @Nullable String unstreamedTerminalMessage(
-            @Nullable String replyText, EngineAction action) {
+    static @Nullable String unstreamedTerminalMessage(@Nullable String replyText, EngineAction action) {
         String message = action.stringParam("message");
         if (message == null || message.isBlank()) {
             return null;
@@ -1450,8 +1493,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      * {@link #unstreamedTerminalMessage}.
      */
     private void streamTerminalMessageIfUnstreamed(
-            AiMessage reply, EngineAction action,
-            ThinkEngineContext ctx, ThinkProcessDocument process) {
+            AiMessage reply, EngineAction action, ThinkEngineContext ctx, ThinkProcessDocument process) {
         String message = unstreamedTerminalMessage(reply.text(), action);
         if (message == null) {
             return;
@@ -1463,11 +1505,9 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 .chunk(message)
                 .build();
         try {
-            ctx.events().publish(process.getSessionId(),
-                    MessageType.CHAT_MESSAGE_STREAM_CHUNK, data);
+            ctx.events().publish(process.getSessionId(), MessageType.CHAT_MESSAGE_STREAM_CHUNK, data);
         } catch (RuntimeException e) {
-            log.warn("{} id='{}' terminal-message stream-publish threw: {}",
-                    name(), process.getId(), e.toString());
+            log.warn("{} id='{}' terminal-message stream-publish threw: {}", name(), process.getId(), e.toString());
         }
     }
 
@@ -1495,17 +1535,14 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         long startMs = System.currentTimeMillis();
 
         ChunkBatcher batcher = new ChunkBatcher(
-                streamingProperties.getChunkCharThreshold(),
-                streamingProperties.getChunkFlushMs(),
-                chunk -> {
+                streamingProperties.getChunkCharThreshold(), streamingProperties.getChunkFlushMs(), chunk -> {
                     ChatMessageChunkData data = ChatMessageChunkData.builder()
                             .thinkProcessId(process.getId())
                             .processName(process.getName())
                             .role(ChatRole.ASSISTANT)
                             .chunk(chunk)
                             .build();
-                    events.publish(sessionId,
-                            MessageType.CHAT_MESSAGE_STREAM_CHUNK, data);
+                    events.publish(sessionId, MessageType.CHAT_MESSAGE_STREAM_CHUNK, data);
                 });
         // Second batcher for the reasoning side-channel. Reasoning models
         // (GLM/DeepSeek-style) stream `reasoning_content` deltas via
@@ -1514,11 +1551,12 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         // live. The full reasoning still rides the final commit's
         // `thinking` field, so no-op-thinking clients lose nothing.
         ChunkBatcher thinkingBatcher = new ChunkBatcher(
-                streamingProperties.getChunkCharThreshold(),
-                streamingProperties.getChunkFlushMs(),
-                chunk -> {
-                    log.trace("{} thinking-chunk publish id='{}' session='{}' chars={}",
-                            name(), process.getId(), sessionId,
+                streamingProperties.getChunkCharThreshold(), streamingProperties.getChunkFlushMs(), chunk -> {
+                    log.trace(
+                            "{} thinking-chunk publish id='{}' session='{}' chars={}",
+                            name(),
+                            process.getId(),
+                            sessionId,
                             chunk == null ? 0 : chunk.length());
                     ChatMessageChunkData data = ChatMessageChunkData.builder()
                             .thinkProcessId(process.getId())
@@ -1526,8 +1564,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                             .role(ChatRole.ASSISTANT)
                             .chunk(chunk)
                             .build();
-                    events.publish(sessionId,
-                            MessageType.CHAT_MESSAGE_THINKING_CHUNK, data);
+                    events.publish(sessionId, MessageType.CHAT_MESSAGE_THINKING_CHUNK, data);
                 });
 
         // Splits inline <think>…</think> reasoning (Qwen3/DeepSeek-R1)
@@ -1591,17 +1628,14 @@ public abstract class StructuredActionEngine implements ThinkEngine {
 
         try {
             ChatResponse complete = done.get(STREAM_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-            llmCallTracker.record(
-                    process, request, complete, System.currentTimeMillis() - startMs, modelAlias);
+            llmCallTracker.record(process, request, complete, System.currentTimeMillis() - startMs, modelAlias);
             return complete.aiMessage();
         } catch (TimeoutException e) {
             done.cancel(true);
-            throw new AiChatException(
-                    name() + " streaming timed out after " + STREAM_TIMEOUT_MINUTES + "m", e);
+            throw new AiChatException(name() + " streaming timed out after " + STREAM_TIMEOUT_MINUTES + "m", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            throw new AiChatException(
-                    name() + " streaming failed: " + cause.getMessage(), cause);
+            throw new AiChatException(name() + " streaming failed: " + cause.getMessage(), cause);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new AiChatException(name() + " streaming interrupted", e);

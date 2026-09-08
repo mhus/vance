@@ -8,13 +8,13 @@ import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
-import de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.StreamedReply;
 import de.mhus.vance.brain.ai.VanceSystemMessage;
+import de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -34,9 +34,10 @@ import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.thinkengine.action.ReasoningExtractor;
+import de.mhus.vance.brain.thinkengine.action.ThinkStreamSplitter;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolErrorPayload;
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -44,6 +45,7 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.ToolException;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -52,12 +54,9 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
-import de.mhus.vance.brain.thinkengine.action.ReasoningExtractor;
-import de.mhus.vance.brain.thinkengine.action.ThinkStreamSplitter;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
-import dev.langchain4j.model.output.FinishReason;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -154,6 +153,7 @@ public class FrankieEngine implements ThinkEngine {
      * (~130 schemas, ~35k input tokens) on every turn.
      */
     private static final Set<String> ENGINE_DEFAULT_TOOLS;
+
     static {
         java.util.LinkedHashSet<String> base = new java.util.LinkedHashSet<>();
         // discovery / introspection
@@ -235,8 +235,7 @@ public class FrankieEngine implements ThinkEngine {
      * Appended to the shared output-cap diagnosis so it carries the same
      * "where did my turn go" hint {@link #MODEL_COLLAPSE_MESSAGE} does.
      */
-    private static final String WORKER_PARKED_NOTE =
-            "The worker stays BLOCKED until the next input.";
+    private static final String WORKER_PARKED_NOTE = "The worker stays BLOCKED until the next input.";
 
     /**
      * Last-resort hardcoded system prompt — used only when neither the
@@ -268,7 +267,7 @@ public class FrankieEngine implements ThinkEngine {
     private final ModelCatalog modelCatalog;
     private final MemoryCompactionService memoryCompactionService;
     private final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
-    private final de.mhus.vance.brain.guard.CompletionGuardService completionGuardService;
+    private final de.mhus.vance.brain.guard.ShootyGuardService guardService;
     private final AttachedUserMessageComposer attachedUserMessageComposer;
     private final ClientTurnContextResolver clientTurnContextResolver;
 
@@ -286,8 +285,7 @@ public class FrankieEngine implements ThinkEngine {
 
     @Override
     public String description() {
-        return "Pi-style focused worker — drain, LLM, tools, repeat until done. "
-                + "First validating recipe: coding.";
+        return "Pi-style focused worker — drain, LLM, tools, repeat until done. " + "First validating recipe: coding.";
     }
 
     @Override
@@ -304,8 +302,11 @@ public class FrankieEngine implements ThinkEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("Frankie.start tenant='{}' session='{}' id='{}'",
-                process.getTenantId(), process.getSessionId(), process.getId());
+        log.info(
+                "Frankie.start tenant='{}' session='{}' id='{}'",
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
@@ -379,14 +380,18 @@ public class FrankieEngine implements ThinkEngine {
             // 1) Persist user input from inbox, collect non-UCI items as turn-local extras.
             ChatMessageService chatLog = ctx.chatMessageService();
             List<SteerMessage> drained = ctx.drainPending();
+            // START-point guards fire per genuine user turn, before prompt
+            // assembly — a start guard that activates a skill puts it into
+            // this very turn. Fail-open; guard-injected turns fire nothing.
+            // See planning/shooty.md.
+            guardService.runStartGuards(process, drained);
             List<SteerMessage> extras = persistUserInputAndCollectExtras(process, chatLog, drained);
 
             // 2) Build the LLM bundle + initial message list.
-            EngineChatFactory.EngineChatBundle bundle =
-                    engineChatFactory.forProcess(process, ctx, NAME);
+            EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, NAME);
             AiChat aiChat = bundle.chat();
-            String modelAlias =
-                    bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
+            String modelAlias = bundle.primaryConfig().provider() + ":"
+                    + bundle.primaryConfig().modelName();
 
             // Resolve recipe-pinned / Foot-activated skills (Layer 1+2)
             // through the user/project/tenant/bundled cascade. Skills add
@@ -396,15 +401,15 @@ public class FrankieEngine implements ThinkEngine {
             // or explicit /skill add via ProcessSkillCommand. See
             // CLAUDE.md "Skills" and specification/skills.md.
             List<ResolvedSkill> activeSkills = resolveActiveSkills(process);
-            ContextToolsApi tools = ctx.tools()
-                    .withAdditional(skillPromptComposer.mergedTools(activeSkills));
+            ContextToolsApi tools = ctx.tools().withAdditional(skillPromptComposer.mergedTools(activeSkills));
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
 
             // Resolve model info before assembling the prompt — needed
             // for compaction triggers AND for tier-aware Pebble vars +
             // the current-date block in buildPromptMessages.
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                    process.getTenantId(), process.getProjectId(),
+                    process.getTenantId(),
+                    process.getProjectId(),
                     bundle.primaryConfig().providerInstance(),
                     bundle.primaryConfig().provider(),
                     bundle.primaryConfig().modelName());
@@ -416,30 +421,33 @@ public class FrankieEngine implements ThinkEngine {
             // without attachments must not depend on that.
             AttachedUserMessageComposer.Context attachmentContext = anyAttachment(drained)
                     ? new AttachedUserMessageComposer.Context(
-                            process.getTenantId(), process.getProjectId(), process.getId(),
+                            process.getTenantId(),
+                            process.getProjectId(),
+                            process.getId(),
                             bundle.primaryConfig().fullName(),
                             de.mhus.vance.brain.ai.ProviderType.requireWireName(
                                     bundle.primaryConfig().provider()),
                             modelInfo.capabilities())
                     : null;
-            List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, extras, drained, activeSkills, modelInfo,
-                    attachmentContext);
+            List<ChatMessage> messages =
+                    buildPromptMessages(process, chatLog, extras, drained, activeSkills, modelInfo, attachmentContext);
 
             // Turn-start compaction: identical to Arthur/Eddie/Ford.
             // Trigger ratio uses outgoing prompt vs model context window;
             // SOFT/HARD/EMERGENCY thresholds from PrakProperties. Compacts
             // older chat history into an ARCHIVED_CHAT memory and rebuilds
             // the prompt when something was archived.
-            CompactionResult cr0 = memoryCompactionService.compactIfNeeded(
-                    process, bundle.primaryConfig(), messages, modelInfo);
+            CompactionResult cr0 =
+                    memoryCompactionService.compactIfNeeded(process, bundle.primaryConfig(), messages, modelInfo);
             if (cr0.compacted()) {
-                log.info("Frankie.turn id='{}' compaction (turn-start) ok: {} msgs → {} chars (memory='{}')",
-                        process.getId(), cr0.messagesCompacted(),
-                        cr0.summaryChars(), cr0.memoryId());
+                log.info(
+                        "Frankie.turn id='{}' compaction (turn-start) ok: {} msgs → {} chars (memory='{}')",
+                        process.getId(),
+                        cr0.messagesCompacted(),
+                        cr0.summaryChars(),
+                        cr0.memoryId());
                 messages = buildPromptMessages(
-                        process, chatLog, extras, drained, activeSkills, modelInfo,
-                        attachmentContext);
+                        process, chatLog, extras, drained, activeSkills, modelInfo, attachmentContext);
             }
 
             // Context-scaled streaming timeout: rebuild the chat model with
@@ -447,13 +455,18 @@ public class FrankieEngine implements ThinkEngine {
             // gets a proportionally longer streaming budget instead of the
             // fixed 300s floor (which slow providers exceed on big prompts).
             // Floored at 300s in ModelInfo#scaledStreamTimeoutSeconds, so
-            // this can only lengthen the budget. See planning/completion-guard.md.
+            // this can only lengthen the budget. See planning/shooty.md.
             int estInputTokens = memoryCompactionService.estimateTokens(messages);
-            aiChat = engineChatFactory.forProcess(process, ctx, NAME,
-                    de.mhus.vance.brain.ai.AiChatOptions.builder()
-                            .estInputTokens(estInputTokens).build()).chat();
-            log.trace("Frankie id='{}' scaled stream timeout for est={} tokens",
-                    process.getId(), estInputTokens);
+            aiChat = engineChatFactory
+                    .forProcess(
+                            process,
+                            ctx,
+                            NAME,
+                            de.mhus.vance.brain.ai.AiChatOptions.builder()
+                                    .estInputTokens(estInputTokens)
+                                    .build())
+                    .chat();
+            log.trace("Frankie id='{}' scaled stream timeout for est={} tokens", process.getId(), estInputTokens);
             // Anchor = index where the persisted-history prefix ends. The
             // Pi-style loop appends AiMessage replies + tool results past
             // this boundary in-memory only (Frankie persists only the
@@ -492,8 +505,7 @@ public class FrankieEngine implements ThinkEngine {
                 if (current == ThinkProcessStatus.SUSPENDED
                         || current == ThinkProcessStatus.PAUSED
                         || current == ThinkProcessStatus.CLOSED) {
-                    log.info("Frankie id='{}' external interrupt (status={}) — exiting loop",
-                            process.getId(), current);
+                    log.info("Frankie id='{}' external interrupt (status={}) — exiting loop", process.getId(), current);
                     exitStatus = null;
                     return;
                 }
@@ -505,8 +517,7 @@ public class FrankieEngine implements ThinkEngine {
                 // breaks the loop: clear it and park PAUSED so the user's
                 // next message auto-resumes (ProcessSteerHandler).
                 if (thinkProcessService.isHaltRequested(process.getId())) {
-                    log.info("Frankie id='{}' halt requested — exiting loop (PAUSED)",
-                            process.getId());
+                    log.info("Frankie id='{}' halt requested — exiting loop (PAUSED)", process.getId());
                     thinkProcessService.clearHalt(process.getId());
                     exitStatus = ThinkProcessStatus.PAUSED;
                     return;
@@ -520,8 +531,10 @@ public class FrankieEngine implements ThinkEngine {
                 // ">=" closes that window without changing semantics in
                 // the normal non-zero-minute case.
                 if (System.currentTimeMillis() >= deadlineMs) {
-                    log.warn("Frankie id='{}' wallclock exceeded ({} min) — BLOCKED",
-                            process.getId(), properties.getMaxWallclockMinutes());
+                    log.warn(
+                            "Frankie id='{}' wallclock exceeded ({} min) — BLOCKED",
+                            process.getId(),
+                            properties.getMaxWallclockMinutes());
                     exitStatus = ThinkProcessStatus.BLOCKED;
                     return;
                 }
@@ -535,28 +548,27 @@ public class FrankieEngine implements ThinkEngine {
                 // rebuild and re-attach it afterwards so open tool-call
                 // / tool-result pairs survive intact.
                 CompactionResult cr =
-                        memoryCompactionService.compactIfNeeded(
-                                process, bundle.primaryConfig(), messages, modelInfo);
+                        memoryCompactionService.compactIfNeeded(process, bundle.primaryConfig(), messages, modelInfo);
                 if (cr.compacted()) {
-                    log.info("Frankie.turn id='{}' compaction (mid-loop) ok: {} msgs → {} chars (memory='{}')",
-                            process.getId(), cr.messagesCompacted(),
-                            cr.summaryChars(), cr.memoryId());
-                    List<ChatMessage> inflightTail =
-                            new ArrayList<>(messages.subList(anchorSize, messages.size()));
+                    log.info(
+                            "Frankie.turn id='{}' compaction (mid-loop) ok: {} msgs → {} chars (memory='{}')",
+                            process.getId(),
+                            cr.messagesCompacted(),
+                            cr.summaryChars(),
+                            cr.memoryId());
+                    List<ChatMessage> inflightTail = new ArrayList<>(messages.subList(anchorSize, messages.size()));
                     messages = buildPromptMessages(
-                            process, chatLog, extras, drained, activeSkills, modelInfo,
-                            attachmentContext);
+                            process, chatLog, extras, drained, activeSkills, modelInfo, attachmentContext);
                     anchorSize = messages.size();
                     messages.addAll(inflightTail);
                 }
 
-                ChatRequest.Builder req = ChatRequest.builder()
-                        .messages(turnContextHandlers.apply(messages, ctx, process));
+                ChatRequest.Builder req =
+                        ChatRequest.builder().messages(turnContextHandlers.apply(messages, ctx, process));
                 if (!toolSpecs.isEmpty()) {
                     req.toolSpecifications(toolSpecs);
                 }
-                StreamedReply streamed = streamOneIteration(
-                        aiChat, req.build(), ctx, process, modelAlias, modelInfo);
+                StreamedReply streamed = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias, modelInfo);
                 AiMessage reply = streamed.message();
 
                 // Accumulate the model's reasoning across the turn's
@@ -603,26 +615,33 @@ public class FrankieEngine implements ThinkEngine {
                         log.warn(
                                 "Frankie id='{}' empty LLM response (no text, no tool calls) "
                                         + "finish={} maxOutputTokens={} — BLOCKED",
-                                process.getId(), streamed.finishReason(),
+                                process.getId(),
+                                streamed.finishReason(),
                                 streamed.maxOutputTokens());
-                        persistAssistantReply(process, chatLog, ctx,
-                                streamed.emptyReplyMessage(
-                                        MODEL_COLLAPSE_MESSAGE, WORKER_PARKED_NOTE),
-                                drained, tools, toolsThisTurn);
+                        persistAssistantReply(
+                                process,
+                                chatLog,
+                                ctx,
+                                streamed.emptyReplyMessage(MODEL_COLLAPSE_MESSAGE, WORKER_PARKED_NOTE),
+                                drained,
+                                tools,
+                                toolsThisTurn);
                         exitStatus = ThinkProcessStatus.BLOCKED;
                         return;
                     }
                     persistAssistantReply(process, chatLog, ctx, finalText, drained, tools, toolsThisTurn);
-                    log.info("Frankie id='{}' natural stop — awaiting follow-up ({} chars)",
-                            process.getId(), finalText.length());
+                    log.info(
+                            "Frankie id='{}' natural stop — awaiting follow-up ({} chars)",
+                            process.getId(),
+                            finalText.length());
                     // Judge the completion and, on fire, inject a
                     // follow-up prompt + schedule a turn so the worker
-                    // continues. See planning/completion-guard.md.
-                    boolean guardFired = completionGuardService
-                            .evaluate(process, finalText, /*naturalStop*/ true).fired();
+                    // continues. See planning/shooty.md.
+                    boolean guardFired = guardService
+                            .evaluate(process, finalText, /*naturalStop*/ true)
+                            .fired();
                     if (guardFired) {
-                        log.info("Frankie id='{}' natural stop — completion guard fired, continuing",
-                                process.getId());
+                        log.info("Frankie id='{}' natural stop — completion guard fired, continuing", process.getId());
                     }
                     exitStatus = ThinkProcessStatus.IDLE;
                     return;
@@ -639,8 +658,7 @@ public class FrankieEngine implements ThinkEngine {
                 if (!isPollingOnlyBatch(reply.toolExecutionRequests())) {
                     String batchHash = hashToolCalls(reply.toolExecutionRequests());
                     if (isIdleStuck(recentToolHashes, batchHash)) {
-                        log.warn("Frankie id='{}' idle-stuck on '{}' — BLOCKED",
-                                process.getId(), batchHash);
+                        log.warn("Frankie id='{}' idle-stuck on '{}' — BLOCKED", process.getId(), batchHash);
                         exitStatus = ThinkProcessStatus.BLOCKED;
                         return;
                     }
@@ -670,17 +688,18 @@ public class FrankieEngine implements ThinkEngine {
 
                 // Execute tools, append results, watch for _terminate.
                 messages.add(reply);
-                boolean terminate = executeToolBatch(
-                        reply.toolExecutionRequests(), tools, messages, process.getId());
+                boolean terminate = executeToolBatch(reply.toolExecutionRequests(), tools, messages, process.getId());
 
                 if (terminate) {
                     // Completion guard first (only guards with trigger
                     // terminate/both apply here): if it fires, it injected
                     // a follow-up + scheduled a turn — stay IDLE and let
                     // the worker address it instead of closing.
-                    if (completionGuardService.evaluate(
-                            process, /*finalOutput*/ "", /*naturalStop*/ false).fired()) {
-                        log.info("Frankie id='{}' tool-terminate — completion guard fired, staying IDLE",
+                    if (guardService
+                            .evaluate(process, /*finalOutput*/ "", /*naturalStop*/ false)
+                            .fired()) {
+                        log.info(
+                                "Frankie id='{}' tool-terminate — completion guard fired, staying IDLE",
                                 process.getId());
                         exitStatus = ThinkProcessStatus.IDLE;
                         return;
@@ -692,8 +711,7 @@ public class FrankieEngine implements ThinkEngine {
                         // tool signals "this task is finished" but the
                         // session keeps going — the user can ask the
                         // next thing. Stay IDLE.
-                        log.info("Frankie id='{}' session-primary tool-terminate — IDLE",
-                                process.getId());
+                        log.info("Frankie id='{}' session-primary tool-terminate — IDLE", process.getId());
                         exitStatus = ThinkProcessStatus.IDLE;
                     }
                     return;
@@ -733,8 +751,7 @@ public class FrankieEngine implements ThinkEngine {
                 // activatedDeferredTools from Mongo per call. Same reason
                 // StructuredActionEngine rebuilds after its read-tool
                 // dispatch.
-                tools = ctx.tools().withAdditional(
-                        skillPromptComposer.mergedTools(activeSkills));
+                tools = ctx.tools().withAdditional(skillPromptComposer.mergedTools(activeSkills));
                 toolSpecs = tools.primaryAsLc4j();
 
                 // Loop continues: next iteration's LLM call will see the tool results.
@@ -762,13 +779,12 @@ public class FrankieEngine implements ThinkEngine {
      * rendered as user-role messages in this turn only.
      */
     private List<SteerMessage> persistUserInputAndCollectExtras(
-            ThinkProcessDocument process,
-            ChatMessageService chatLog,
-            List<SteerMessage> inbox) {
+            ThinkProcessDocument process, ChatMessageService chatLog, List<SteerMessage> inbox) {
         List<SteerMessage> extras = new ArrayList<>();
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci
-                    && uci.content() != null && !uci.content().isBlank()) {
+                    && uci.content() != null
+                    && !uci.content().isBlank()) {
                 chatLog.append(ChatMessageDocument.builder()
                         .tenantId(process.getTenantId())
                         .sessionId(process.getSessionId())
@@ -778,8 +794,7 @@ public class FrankieEngine implements ThinkEngine {
                         // What this message pointed at, if anything — see
                         // SelectionReferenceIngest. Frankie fields turns from
                         // the same composer when it runs as a session primary.
-                        .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest
-                                .metaFor(uci.activeApp()))
+                        .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest.metaFor(uci.activeApp()))
                         .build());
             } else if (!(m instanceof SteerMessage.UserChatInput)) {
                 extras.add(m);
@@ -831,10 +846,7 @@ public class FrankieEngine implements ThinkEngine {
     }
 
     private void persistInterimAssistantReply(
-            ThinkProcessDocument process,
-            ChatMessageService chatLog,
-            ThinkEngineContext ctx,
-            @Nullable String text) {
+            ThinkProcessDocument process, ChatMessageService chatLog, ThinkEngineContext ctx, @Nullable String text) {
         if (text == null || text.isBlank()) return;
         java.util.Map<String, Object> meta = new java.util.LinkedHashMap<>();
         meta.put(ChatMessageDocument.META_KIND, ChatMessageDocument.KIND_INTERIM);
@@ -879,8 +891,7 @@ public class FrankieEngine implements ThinkEngine {
         }
         java.util.Set<String> toolLabels = tools.unionPrakLabels(toolsThisTurn);
         if (!toolLabels.isEmpty()) {
-            meta.put(ChatMessageDocument.META_PRAK_TOOL_LABELS,
-                    java.util.List.copyOf(toolLabels));
+            meta.put(ChatMessageDocument.META_PRAK_TOOL_LABELS, java.util.List.copyOf(toolLabels));
         }
         // Always persist to Mongo so peer_read_chat_memory can read
         // the worker's transcript later — only the live UI-emit is
@@ -941,12 +952,9 @@ public class FrankieEngine implements ThinkEngine {
         // ClientTurnContextResolver.
         PromptContextBuilder ctxBuilder = clientTurnContextResolver
                 .resolve(process, turnUserInputs)
-                .applyTo(PromptContextBuilder
-                        .forProcess(process, modelInfo)
-                        .engine(NAME));
+                .applyTo(PromptContextBuilder.forProcess(process, modelInfo).engine(NAME));
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
-        String engineDefault = enginePromptResolver.resolve(
-                process, basePath, ENGINE_FALLBACK_PROMPT);
+        String engineDefault = enginePromptResolver.resolve(process, basePath, ENGINE_FALLBACK_PROMPT);
         String base = systemPromptComposer.compose(process, engineDefault, ctxBuilder);
         // Project memory: language hints, memory.* settings, project
         // agent.md from the document cascade, foot-uploaded agent.md /
@@ -958,16 +966,15 @@ public class FrankieEngine implements ThinkEngine {
             base = base + "\n\n" + memoryBlock;
         }
         messages.add(SystemMessage.from(base));
-        String skillSection = skillPromptComposer.compose(activeSkills, ctxBuilder.build(),
-                de.mhus.vance.brain.skill.SkillTurnSupport.rawArgsByName(process));
+        String skillSection = skillPromptComposer.compose(
+                activeSkills, ctxBuilder.build(), de.mhus.vance.brain.skill.SkillTurnSupport.rawArgsByName(process));
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour). DYNAMIC so date rollover doesn't bust the
         // cached static prefix. See PromptDateBlock.
-        promptDateContextResolver.appendDynamicMessage(
-                messages, process, modelInfo == null ? null : modelInfo.size());
+        promptDateContextResolver.appendDynamicMessage(messages, process, modelInfo == null ? null : modelInfo.size());
         // Client environment (os/shell/cwd/sandbox) — tells the LLM which
         // command dialect its client_exec_run calls run on. DYNAMIC, no-op
         // when no CLIENT connection is bound. See PromptEnvironmentBlock.
@@ -987,13 +994,12 @@ public class FrankieEngine implements ThinkEngine {
         if (!todoBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(todoBlock));
         }
-        List<ChatMessageDocument> history = chatLog.activeHistory(
-                process.getTenantId(), process.getSessionId(), process.getId());
+        List<ChatMessageDocument> history =
+                chatLog.activeHistory(process.getTenantId(), process.getSessionId(), process.getId());
         // Attachment-free turns — the overwhelming majority — render
         // exactly as before: straight from the persisted history.
-        List<SteerMessage.UserChatInput> rebuild = attachmentContext == null
-                ? List.of()
-                : userChatInputs(turnUserInputs);
+        List<SteerMessage.UserChatInput> rebuild =
+                attachmentContext == null ? List.of() : userChatInputs(turnUserInputs);
         // With attachments in play, drop the trailing history entries
         // that belong to this turn's user input and re-render them from
         // the inbox — text-only ones come out identical, the one
@@ -1006,8 +1012,7 @@ public class FrankieEngine implements ThinkEngine {
             messages.add(toLangchain(history.get(i)));
         }
         for (SteerMessage.UserChatInput uci : rebuild) {
-            messages.add(attachedUserMessageComposer.compose(
-                    attachmentContext, uci.content(), uci.attachments()));
+            messages.add(attachedUserMessageComposer.compose(attachmentContext, uci.content(), uci.attachments()));
         }
         for (SteerMessage m : inboxExtras) {
             String wrapped = renderForLlm(m);
@@ -1060,12 +1065,17 @@ public class FrankieEngine implements ThinkEngine {
             String marker = s == TodoStatus.IN_PROGRESS ? "[~]" : "[ ]";
             String label = t.getContent() == null ? "" : t.getContent();
             if (s == TodoStatus.IN_PROGRESS
-                    && t.getActiveForm() != null && !t.getActiveForm().isBlank()) {
+                    && t.getActiveForm() != null
+                    && !t.getActiveForm().isBlank()) {
                 label = t.getActiveForm();
             }
-            sb.append(marker).append(' ')
-                    .append("(id=").append(t.getId() == null ? "" : t.getId()).append(") ")
-                    .append(label).append('\n');
+            sb.append(marker)
+                    .append(' ')
+                    .append("(id=")
+                    .append(t.getId() == null ? "" : t.getId())
+                    .append(") ")
+                    .append(label)
+                    .append('\n');
             visible++;
         }
         // Defensive: if every item is COMPLETED the auto-clear in
@@ -1077,8 +1087,7 @@ public class FrankieEngine implements ThinkEngine {
                     + "to start one when the task needs structure.\n";
         }
         sb.append('\n');
-        sb.append("Use `todo_update` to mark progress, `todo_create` to add steps, "
-                + "`todo_remove` to drop them.\n");
+        sb.append("Use `todo_update` to mark progress, `todo_create` to add steps, " + "`todo_remove` to drop them.\n");
         return sb.toString();
     }
 
@@ -1101,25 +1110,34 @@ public class FrankieEngine implements ThinkEngine {
         List<ResolvedSkill> out = new ArrayList<>(active.size());
         for (ActiveSkillRefEmbedded ref : active) {
             try {
-                skillResolver.resolve(scope, ref.getName())
-                        .ifPresentOrElse(out::add, () -> log.warn(
-                                "Frankie id='{}' active skill '{}' no longer resolves — skipping",
-                                process.getId(), ref.getName()));
+                skillResolver
+                        .resolve(scope, ref.getName())
+                        .ifPresentOrElse(
+                                out::add,
+                                () -> log.warn(
+                                        "Frankie id='{}' active skill '{}' no longer resolves — skipping",
+                                        process.getId(),
+                                        ref.getName()));
             } catch (UnknownSkillException e) {
-                log.warn("Frankie id='{}' active skill '{}' unknown — skipping",
-                        process.getId(), ref.getName());
+                log.warn("Frankie id='{}' active skill '{}' unknown — skipping", process.getId(), ref.getName());
             }
         }
         return out;
     }
 
     private SkillScopeContext scopeFor(ThinkProcessDocument process) {
-        SessionDocument session = sessionService.findBySessionId(process.getSessionId())
-                .orElse(null);
-        String userId = session != null && session.getUserId() != null
-                && !session.getUserId().isBlank() ? session.getUserId() : null;
-        String projectId = session != null && session.getProjectId() != null
-                && !session.getProjectId().isBlank() ? session.getProjectId() : null;
+        SessionDocument session =
+                sessionService.findBySessionId(process.getSessionId()).orElse(null);
+        String userId = session != null
+                        && session.getUserId() != null
+                        && !session.getUserId().isBlank()
+                ? session.getUserId()
+                : null;
+        String projectId = session != null
+                        && session.getProjectId() != null
+                        && !session.getProjectId().isBlank()
+                ? session.getProjectId()
+                : null;
         return SkillScopeContext.of(process.getTenantId(), userId, projectId);
     }
 
@@ -1169,15 +1187,17 @@ public class FrankieEngine implements ThinkEngine {
             }
         }
         if (parsed == null || parsed < 0) {
-            log.warn("Frankie id='{}' ignoring {}='{}' — not a non-negative number",
-                    process.getId(), PARAM_MAX_WALLCLOCK_MINUTES, raw);
+            log.warn(
+                    "Frankie id='{}' ignoring {}='{}' — not a non-negative number",
+                    process.getId(),
+                    PARAM_MAX_WALLCLOCK_MINUTES,
+                    raw);
             return properties.getMaxWallclockMinutes();
         }
         return parsed;
     }
 
-    private static @Nullable String paramString(
-            ThinkProcessDocument process, String key, @Nullable String fallback) {
+    private static @Nullable String paramString(ThinkProcessDocument process, String key, @Nullable String fallback) {
         Map<String, Object> params = process.getEngineParams();
         if (params == null) return fallback;
         Object v = params.get(key);
@@ -1204,24 +1224,27 @@ public class FrankieEngine implements ThinkEngine {
         if (!ctx.attachmentSink().hasPending()) {
             return;
         }
-        List<de.mhus.vance.api.attachment.AttachmentRef> refs = ctx.attachmentSink().drain();
+        List<de.mhus.vance.api.attachment.AttachmentRef> refs =
+                ctx.attachmentSink().drain();
         try {
-            AttachedUserMessageComposer.Context attachmentContext =
-                    new AttachedUserMessageComposer.Context(
-                            process.getTenantId(), process.getProjectId(), process.getId(),
-                            bundle.primaryConfig().fullName(),
-                            de.mhus.vance.brain.ai.ProviderType.requireWireName(
-                                    bundle.primaryConfig().provider()),
-                            modelInfo == null ? Set.of() : modelInfo.capabilities());
-            messages.add(attachedUserMessageComposer.compose(
-                    attachmentContext,
-                    "Output of the tool call above:",
-                    refs));
+            AttachedUserMessageComposer.Context attachmentContext = new AttachedUserMessageComposer.Context(
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    process.getId(),
+                    bundle.primaryConfig().fullName(),
+                    de.mhus.vance.brain.ai.ProviderType.requireWireName(
+                            bundle.primaryConfig().provider()),
+                    modelInfo == null ? Set.of() : modelInfo.capabilities());
+            messages.add(
+                    attachedUserMessageComposer.compose(attachmentContext, "Output of the tool call above:", refs));
         } catch (RuntimeException e) {
             // Unknown provider wire-name, resolver trouble — the turn
             // continues without the picture rather than dying over it.
-            log.warn("Frankie id='{}' cannot show {} tool attachment(s): {}",
-                    process.getId(), refs.size(), e.toString());
+            log.warn(
+                    "Frankie id='{}' cannot show {} tool attachment(s): {}",
+                    process.getId(),
+                    refs.size(),
+                    e.toString());
         }
     }
 
@@ -1237,7 +1260,8 @@ public class FrankieEngine implements ThinkEngine {
     /** Whether any of them carries an attachment — the trigger for the rebuild. */
     private static boolean anyAttachment(List<SteerMessage> drained) {
         for (SteerMessage m : drained) {
-            if (m instanceof SteerMessage.UserChatInput uci && !uci.attachments().isEmpty()) {
+            if (m instanceof SteerMessage.UserChatInput uci
+                    && !uci.attachments().isEmpty()) {
                 return true;
             }
         }
@@ -1304,9 +1328,7 @@ public class FrankieEngine implements ThinkEngine {
         // internal-only. See ThinkProcessDocument.hiddenFromUi.
         boolean hidden = process.isHiddenFromUi();
         ChunkBatcher batcher = new ChunkBatcher(
-                streamingProperties.getChunkCharThreshold(),
-                streamingProperties.getChunkFlushMs(),
-                chunk -> {
+                streamingProperties.getChunkCharThreshold(), streamingProperties.getChunkFlushMs(), chunk -> {
                     if (hidden) return;
                     ChatMessageChunkData data = ChatMessageChunkData.builder()
                             .thinkProcessId(process.getId())
@@ -1321,12 +1343,12 @@ public class FrankieEngine implements ThinkEngine {
         // stream (split out below). Published as CHAT_MESSAGE_THINKING_CHUNK
         // so foot + web render live "thoughts".
         ChunkBatcher thinkingBatcher = new ChunkBatcher(
-                streamingProperties.getChunkCharThreshold(),
-                streamingProperties.getChunkFlushMs(),
-                chunk -> {
+                streamingProperties.getChunkCharThreshold(), streamingProperties.getChunkFlushMs(), chunk -> {
                     if (hidden) return;
-                    log.trace("Frankie thinking-chunk publish id='{}' chars={}",
-                            process.getId(), chunk == null ? 0 : chunk.length());
+                    log.trace(
+                            "Frankie thinking-chunk publish id='{}' chars={}",
+                            process.getId(),
+                            chunk == null ? 0 : chunk.length());
                     ChatMessageChunkData data = ChatMessageChunkData.builder()
                             .thinkProcessId(process.getId())
                             .processName(process.getName())
@@ -1389,14 +1411,11 @@ public class FrankieEngine implements ThinkEngine {
         try {
             ChatResponse response = done.get(STREAM_TIMEOUT_MINUTES, TimeUnit.MINUTES);
             llmCallTracker.record(
-                    process, request, response,
-                    System.currentTimeMillis() - startMs, modelAlias,
-                    modelInfo);
+                    process, request, response, System.currentTimeMillis() - startMs, modelAlias, modelInfo);
             return StreamedReply.of(response, request);
         } catch (TimeoutException e) {
             done.cancel(true);
-            throw new AiChatException(
-                    "Frankie streaming timed out after " + STREAM_TIMEOUT_MINUTES + "m", e);
+            throw new AiChatException("Frankie streaming timed out after " + STREAM_TIMEOUT_MINUTES + "m", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new AiChatException("Frankie streaming failed: " + cause.getMessage(), cause);
@@ -1416,10 +1435,7 @@ public class FrankieEngine implements ThinkEngine {
      * with {@code DONE}.
      */
     private boolean executeToolBatch(
-            List<ToolExecutionRequest> calls,
-            ContextToolsApi tools,
-            List<ChatMessage> messages,
-            String processId) {
+            List<ToolExecutionRequest> calls, ContextToolsApi tools, List<ChatMessage> messages, String processId) {
         boolean terminate = false;
         for (ToolExecutionRequest call : calls) {
             ToolInvocationResult invoked = invokeOne(tools, call, processId);
@@ -1433,14 +1449,12 @@ public class FrankieEngine implements ThinkEngine {
 
     private record ToolInvocationResult(String serialized, boolean terminate) {}
 
-    private ToolInvocationResult invokeOne(
-            ContextToolsApi tools, ToolExecutionRequest call, String processId) {
+    private ToolInvocationResult invokeOne(ContextToolsApi tools, ToolExecutionRequest call, String processId) {
         Map<String, Object> params;
         try {
             params = parseArgs(call.arguments());
         } catch (RuntimeException e) {
-            log.warn("Frankie id='{}' tool='{}' bad arguments: {}",
-                    processId, call.name(), e.getMessage());
+            log.warn("Frankie id='{}' tool='{}' bad arguments: {}", processId, call.name(), e.getMessage());
             return new ToolInvocationResult(errorJson("Invalid tool arguments: " + e.getMessage()), false);
         }
         try {
@@ -1448,12 +1462,10 @@ public class FrankieEngine implements ThinkEngine {
             boolean terminate = isTruthy(result.get(FrankieTermination.RESULT_TERMINATE_KEY));
             return new ToolInvocationResult(objectMapper.writeValueAsString(result), terminate);
         } catch (ToolException e) {
-            log.info("Frankie id='{}' tool='{}' returned error: {}",
-                    processId, call.name(), e.getMessage());
+            log.info("Frankie id='{}' tool='{}' returned error: {}", processId, call.name(), e.getMessage());
             return new ToolInvocationResult(errorJson(e), false);
         } catch (RuntimeException e) {
-            log.warn("Frankie id='{}' tool='{}' unexpected failure: {}",
-                    processId, call.name(), e.toString());
+            log.warn("Frankie id='{}' tool='{}' unexpected failure: {}", processId, call.name(), e.toString());
             return new ToolInvocationResult(errorJson("Tool failed: " + e.getMessage()), false);
         }
     }
@@ -1481,7 +1493,8 @@ public class FrankieEngine implements ThinkEngine {
     // ──────────────────── Safety / interrupt helpers ────────────────────
 
     private ThinkProcessStatus readCurrentStatus(ThinkProcessDocument process) {
-        return thinkProcessService.findById(process.getId())
+        return thinkProcessService
+                .findById(process.getId())
                 .map(ThinkProcessDocument::getStatus)
                 .orElse(process.getStatus());
     }
@@ -1511,8 +1524,8 @@ public class FrankieEngine implements ThinkEngine {
      * Batches made up only of these are exempt from the idle-stuck net —
      * polling a long exec is legitimate waiting, not a stuck loop.
      */
-    private static final java.util.Set<String> POLLING_TOOLS = java.util.Set.of(
-            "exec_status", "client_exec_status", "work_exec_status");
+    private static final java.util.Set<String> POLLING_TOOLS =
+            java.util.Set.of("exec_status", "client_exec_status", "work_exec_status");
 
     private static boolean isPollingOnlyBatch(List<ToolExecutionRequest> calls) {
         if (calls == null || calls.isEmpty()) {
@@ -1540,8 +1553,7 @@ public class FrankieEngine implements ThinkEngine {
         }
         long max = Math.max(step, properties.getPollThrottleMaxMs());
         long ms = Math.min(step * consecutivePolls, max);
-        log.trace("Frankie id='{}' poll throttle #{} — sleeping {}ms",
-                process.getId(), consecutivePolls, ms);
+        log.trace("Frankie id='{}' poll throttle #{} — sleeping {}ms", process.getId(), consecutivePolls, ms);
         long slept = 0;
         while (slept < ms) {
             if (thinkProcessService.isHaltRequested(process.getId())) {
@@ -1561,7 +1573,10 @@ public class FrankieEngine implements ThinkEngine {
     private String hashToolCalls(List<ToolExecutionRequest> calls) {
         StringBuilder sb = new StringBuilder();
         for (ToolExecutionRequest c : calls) {
-            sb.append(c.name()).append('(').append(c.arguments() == null ? "" : c.arguments()).append(")|");
+            sb.append(c.name())
+                    .append('(')
+                    .append(c.arguments() == null ? "" : c.arguments())
+                    .append(")|");
         }
         return Integer.toHexString(sb.toString().hashCode());
     }

@@ -6,11 +6,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One completion guard: a JS guard script plus where it fires and its
- * loop cap. Config-level (recipe {@code guard:} block or a per-process
- * runtime override). The script decides judge + action imperatively via
- * the {@code vance.guard.*} surface — see
- * {@code planning/completion-guard.md} v2.
+ * One Shooty guard: a JS guard script plus the hook point it fires at
+ * and its loop cap. Config-level (recipe {@code guard:} block or a
+ * per-process runtime override). The script decides judge + action
+ * imperatively via the {@code vance.guard.*} surface — see
+ * {@code planning/shooty.md}.
  *
  * <p>Exactly one script source is set: {@link #scriptPath} (document
  * cascade) or inline {@link #scriptBody}. {@link #params} are handed to
@@ -23,15 +23,20 @@ import org.jspecify.annotations.Nullable;
  * @param params     inputs exposed to the script as {@code vance.params.*}
  * @param allowTools grant the process's full tool surface (default: a
  *                   supervisor surface — llm/documents/process only)
- * @param trigger    which yield point this guard applies to
- * @param maxRounds  hard cap on guard injections for the process (0 = disabled)
+ * @param trigger    the {@link GuardPoint} this guard fires at (the YAML
+ *                   field keeps the name {@code trigger}; STOP/TERMINATE
+ *                   additionally honor {@code maxRounds})
+ * @param maxRounds  hard cap on guard injections for the process
+ *                   (0 = disabled; only evaluated at STOP/TERMINATE —
+ *                   START runs once per user turn, COMMAND once per
+ *                   command, both bounded by the script timeout)
  */
 public record GuardConfig(
         @Nullable String scriptPath,
         @Nullable String scriptBody,
         @Nullable Map<String, Object> params,
         boolean allowTools,
-        GuardTrigger trigger,
+        GuardPoint trigger,
         int maxRounds) {
 
     public GuardConfig {
@@ -49,21 +54,22 @@ public record GuardConfig(
     }
 
     /** Guard script from a document-cascade path. */
-    public static GuardConfig scriptPath(
-            String scriptPath, boolean allowTools, GuardTrigger trigger, int maxRounds) {
+    public static GuardConfig scriptPath(String scriptPath, boolean allowTools, GuardPoint trigger, int maxRounds) {
         return new GuardConfig(scriptPath, null, Map.of(), allowTools, trigger, maxRounds);
     }
 
     /** Guard script from a document-cascade path with script params. */
     public static GuardConfig scriptPath(
-            String scriptPath, @Nullable Map<String, Object> params,
-            boolean allowTools, GuardTrigger trigger, int maxRounds) {
+            String scriptPath,
+            @Nullable Map<String, Object> params,
+            boolean allowTools,
+            GuardPoint trigger,
+            int maxRounds) {
         return new GuardConfig(scriptPath, null, params, allowTools, trigger, maxRounds);
     }
 
     /** Guard script from an inline body. */
-    public static GuardConfig scriptBody(
-            String scriptBody, boolean allowTools, GuardTrigger trigger, int maxRounds) {
+    public static GuardConfig scriptBody(String scriptBody, boolean allowTools, GuardPoint trigger, int maxRounds) {
         return new GuardConfig(null, scriptBody, Map.of(), allowTools, trigger, maxRounds);
     }
 }

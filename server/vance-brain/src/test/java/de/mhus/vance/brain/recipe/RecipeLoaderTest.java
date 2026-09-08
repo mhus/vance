@@ -61,6 +61,47 @@ class RecipeLoaderTest {
     }
 
     @Test
+    void load_guardBlock_parsesAllPoints() {
+        stubRecipe("""
+                description: Guards at every point
+                engine: eddie
+                guard:
+                  - script: _vance/guards/start.js
+                    trigger: start
+                  - script: _vance/guards/safety.js
+                    trigger: command
+                    params: { judge: "safe?" }
+                  - scriptBody: vance.guard.continueWith('nudge');
+                    trigger: both
+                    maxRounds: 4
+                """);
+
+        ResolvedRecipe recipe = loader.load("acme", "p-1", "analyze").orElseThrow();
+
+        assertThat(recipe.guards())
+                .extracting(GuardConfig::trigger)
+                .containsExactly(GuardPoint.START, GuardPoint.COMMAND, GuardPoint.BOTH);
+        assertThat(recipe.guards().get(0).maxRounds()).isEqualTo(2); // default
+        assertThat(recipe.guards().get(1).params()).containsEntry("judge", "safe?");
+        assertThat(recipe.guards().get(2).maxRounds()).isEqualTo(4);
+    }
+
+    @Test
+    void load_guardBlock_unknownTrigger_isRejected() {
+        stubRecipe("""
+                description: Bad trigger
+                engine: eddie
+                guard:
+                  - script: _vance/guards/x.js
+                    trigger: yield
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("trigger");
+    }
+
+    @Test
     void load_promptPrefixUnderParams_isNotAPrompt() {
         // The shape that cost coding.yaml and trillian-worker-void.yaml their
         // entire prompt: indented one level too far, accepted in silence.
@@ -139,7 +180,8 @@ class RecipeLoaderTest {
                 promptPrefix: "{% broken"
                 """);
         doThrow(new PromptTemplateException("syntax error", null))
-                .when(renderer).compile("{% broken");
+                .when(renderer)
+                .compile("{% broken");
 
         assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
                 .isInstanceOf(RecipeLoader.RecipeParseException.class)
@@ -242,7 +284,9 @@ class RecipeLoaderTest {
     private void stubRecipe(String yaml) {
         LookupResult hit = new LookupResult(
                 RecipeLoader.RECIPE_PATH_PREFIX + "analyze" + RecipeLoader.RECIPE_PATH_SUFFIX,
-                yaml, LookupResult.Source.VANCE, null);
+                yaml,
+                LookupResult.Source.VANCE,
+                null);
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(hit));
     }
 }

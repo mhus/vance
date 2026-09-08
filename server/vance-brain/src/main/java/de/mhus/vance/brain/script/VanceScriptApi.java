@@ -60,8 +60,8 @@ public final class VanceScriptApi {
      * log call and pushes a {@code (stream, formattedLine)} tuple
      * when present. The SLF4J log is unaffected.
      */
-    private static final InheritableThreadLocal<BiConsumer<String, String>>
-            ACTIVE_LOG_TEE = new InheritableThreadLocal<>();
+    private static final InheritableThreadLocal<BiConsumer<String, String>> ACTIVE_LOG_TEE =
+            new InheritableThreadLocal<>();
 
     public static void setActiveLogTee(@Nullable BiConsumer<String, String> tee) {
         if (tee == null) ACTIVE_LOG_TEE.remove();
@@ -79,8 +79,7 @@ public final class VanceScriptApi {
      * eval runs on a watchdog child thread that inherits the sink at creation.
      * Set/clear around the eval; the set must be thread-safe.
      */
-    private static final InheritableThreadLocal<Set<String>> ACTIVE_SECRET_TEE =
-            new InheritableThreadLocal<>();
+    private static final InheritableThreadLocal<Set<String>> ACTIVE_SECRET_TEE = new InheritableThreadLocal<>();
 
     public static void setActiveSecretTee(@Nullable Set<String> tee) {
         if (tee == null) ACTIVE_SECRET_TEE.remove();
@@ -185,13 +184,13 @@ public final class VanceScriptApi {
     public final @Nullable ScriptSecretApi secret;
 
     /**
-     * Completion-guard surface exposed as {@code vance.guard}. Present
-     * only for guard runs (the {@code CompletionGuardService} builds it
-     * with the yield context + a cap-aware continue hook + the loop /
+     * Shooty guard surface exposed as {@code vance.guard}. Present
+     * only for guard runs (the {@code ShootyGuardService} builds it
+     * with the run context + a point-specific host + the loop /
      * session scratch stores). {@code null} for every other script run
      * — trigger-scoped, Cortex, skill, Damogran-js — where
      * {@code vance.guard} is {@code null} in JavaScript. See
-     * {@code planning/completion-guard.md} v2.5.
+     * {@code planning/shooty.md}.
      */
     @HostAccess.Export
     public final @Nullable ScriptGuardApi guard;
@@ -204,25 +203,24 @@ public final class VanceScriptApi {
         this(toolsApi, recipeName, Set.of(), null, null, null);
     }
 
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames) {
+    public VanceScriptApi(ContextToolsApi toolsApi, @Nullable String recipeName, Set<String> deniedToolNames) {
         this(toolsApi, recipeName, deniedToolNames, null, null, null);
     }
 
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService) {
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService) {
         this(toolsApi, recipeName, deniedToolNames, documentService, null, null);
     }
 
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService,
-                          @Nullable BiConsumer<String,
-                                  @Nullable Map<String, Object>> progressEmitter) {
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter) {
         this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter, null);
     }
 
@@ -251,14 +249,13 @@ public final class VanceScriptApi {
      * ExecutingPhase wires this to
      * {@link de.mhus.vance.brain.notification.NotificationService#publish}.
      */
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService,
-                          @Nullable BiConsumer<String,
-                                  @Nullable Map<String, Object>> progressEmitter,
-                          @Nullable BiConsumer<String,
-                                  @Nullable NotificationSeverity> notificationEmitter) {
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.files = new ScriptFilesApi(this.tools);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
@@ -269,9 +266,8 @@ public final class VanceScriptApi {
         // (Hactar's ExecutingPhase, ScriptCortexExecutionService) replace
         // this with the actual map via the params-aware constructor below.
         this.params = Map.of();
-        this.documents = documentService == null
-                ? null
-                : new ScriptDocumentApi(documentService, toolsApi.scope(), null, null);
+        this.documents =
+                documentService == null ? null : new ScriptDocumentApi(documentService, toolsApi.scope(), null, null);
         this.llm = null;
         this.settings = null;
         this.secret = null;
@@ -286,31 +282,51 @@ public final class VanceScriptApi {
      * Existing 6-arg callers get an empty {@code vance.params} via
      * the 6-arg constructor above.
      */
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService,
-                          @Nullable BiConsumer<String,
-                                  @Nullable Map<String, Object>> progressEmitter,
-                          @Nullable BiConsumer<String,
-                                  @Nullable NotificationSeverity> notificationEmitter,
-                          @Nullable Map<String, Object> paramsMap) {
-        this(toolsApi, recipeName, deniedToolNames, documentService,
-                progressEmitter, notificationEmitter, paramsMap, null, null, null, null, null);
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable Map<String, Object> paramsMap) {
+        this(
+                toolsApi,
+                recipeName,
+                deniedToolNames,
+                documentService,
+                progressEmitter,
+                notificationEmitter,
+                paramsMap,
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService,
-                          @Nullable BiConsumer<String,
-                                  @Nullable Map<String, Object>> progressEmitter,
-                          @Nullable BiConsumer<String,
-                                  @Nullable NotificationSeverity> notificationEmitter,
-                          @Nullable Map<String, Object> paramsMap,
-                          @Nullable LightLlmService lightLlmService) {
-        this(toolsApi, recipeName, deniedToolNames, documentService,
-                progressEmitter, notificationEmitter, paramsMap, lightLlmService, null, null, null, null);
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable Map<String, Object> paramsMap,
+            @Nullable LightLlmService lightLlmService) {
+        this(
+                toolsApi,
+                recipeName,
+                deniedToolNames,
+                documentService,
+                progressEmitter,
+                notificationEmitter,
+                paramsMap,
+                lightLlmService,
+                null,
+                null,
+                null,
+                null);
     }
 
     /**
@@ -318,41 +334,60 @@ public final class VanceScriptApi {
      * {@code vance.settings} surface. Delegates with a {@code null}
      * {@code documentBasePath} (project-root-relative document paths).
      */
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService,
-                          @Nullable BiConsumer<String,
-                                  @Nullable Map<String, Object>> progressEmitter,
-                          @Nullable BiConsumer<String,
-                                  @Nullable NotificationSeverity> notificationEmitter,
-                          @Nullable Map<String, Object> paramsMap,
-                          @Nullable LightLlmService lightLlmService,
-                          @Nullable SettingService settingService) {
-        this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter,
-                notificationEmitter, paramsMap, lightLlmService, settingService, null, null, null);
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable Map<String, Object> paramsMap,
+            @Nullable LightLlmService lightLlmService,
+            @Nullable SettingService settingService) {
+        this(
+                toolsApi,
+                recipeName,
+                deniedToolNames,
+                documentService,
+                progressEmitter,
+                notificationEmitter,
+                paramsMap,
+                lightLlmService,
+                settingService,
+                null,
+                null,
+                null);
     }
 
     /**
      * 11-arg overload (adds {@code contextFactory}) — pre-secret call surface,
      * delegates with a {@code null} {@link SecretResolver}.
      */
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService,
-                          @Nullable BiConsumer<String,
-                                  @Nullable Map<String, Object>> progressEmitter,
-                          @Nullable BiConsumer<String,
-                                  @Nullable NotificationSeverity> notificationEmitter,
-                          @Nullable Map<String, Object> paramsMap,
-                          @Nullable LightLlmService lightLlmService,
-                          @Nullable SettingService settingService,
-                          @Nullable String documentBasePath,
-                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory) {
-        this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter,
-                notificationEmitter, paramsMap, lightLlmService, settingService,
-                documentBasePath, contextFactory, null);
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable Map<String, Object> paramsMap,
+            @Nullable LightLlmService lightLlmService,
+            @Nullable SettingService settingService,
+            @Nullable String documentBasePath,
+            de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory) {
+        this(
+                toolsApi,
+                recipeName,
+                deniedToolNames,
+                documentService,
+                progressEmitter,
+                notificationEmitter,
+                paramsMap,
+                lightLlmService,
+                settingService,
+                documentBasePath,
+                contextFactory,
+                null);
     }
 
     /**
@@ -362,53 +397,73 @@ public final class VanceScriptApi {
      * document paths project-root-relative. GraaljsScriptExecutor uses this,
      * threading {@code ScriptRequest#documentBasePath}.
      */
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService,
-                          @Nullable BiConsumer<String,
-                                  @Nullable Map<String, Object>> progressEmitter,
-                          @Nullable BiConsumer<String,
-                                  @Nullable NotificationSeverity> notificationEmitter,
-                          @Nullable Map<String, Object> paramsMap,
-                          @Nullable LightLlmService lightLlmService,
-                          @Nullable SettingService settingService,
-                          @Nullable String documentBasePath,
-                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
-                          @Nullable SecretResolver secretResolver) {
-        this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter,
-                notificationEmitter, paramsMap, lightLlmService, settingService,
-                documentBasePath, contextFactory, secretResolver, /*guardApi*/ null);
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable Map<String, Object> paramsMap,
+            @Nullable LightLlmService lightLlmService,
+            @Nullable SettingService settingService,
+            @Nullable String documentBasePath,
+            de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
+            @Nullable SecretResolver secretResolver) {
+        this(
+                toolsApi,
+                recipeName,
+                deniedToolNames,
+                documentService,
+                progressEmitter,
+                notificationEmitter,
+                paramsMap,
+                lightLlmService,
+                settingService,
+                documentBasePath,
+                contextFactory,
+                secretResolver, /*guardApi*/
+                null);
     }
 
     /**
      * 13-arg constructor — adds {@code guardApi}, the {@code vance.guard}
      * surface for a completion-guard run. The
-     * {@code CompletionGuardService} is the only caller that passes a
+     * {@code ShootyGuardService} is the only caller that passes a
      * non-null value (via {@code ScriptRequest}); all other script runs
      * leave {@code vance.guard} unset. Delegates with a {@code null}
      * workflow host — {@code vance.workflow.status} then refuses and
      * {@code vance.workflow.current} is null, while
      * {@code vance.workflow.start} keeps working (it is a tool call).
      */
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService,
-                          @Nullable BiConsumer<String,
-                                  @Nullable Map<String, Object>> progressEmitter,
-                          @Nullable BiConsumer<String,
-                                  @Nullable NotificationSeverity> notificationEmitter,
-                          @Nullable Map<String, Object> paramsMap,
-                          @Nullable LightLlmService lightLlmService,
-                          @Nullable SettingService settingService,
-                          @Nullable String documentBasePath,
-                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
-                          @Nullable SecretResolver secretResolver,
-                          @Nullable ScriptGuardApi guardApi) {
-        this(toolsApi, recipeName, deniedToolNames, documentService, progressEmitter,
-                notificationEmitter, paramsMap, lightLlmService, settingService,
-                documentBasePath, contextFactory, secretResolver, guardApi,
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable Map<String, Object> paramsMap,
+            @Nullable LightLlmService lightLlmService,
+            @Nullable SettingService settingService,
+            @Nullable String documentBasePath,
+            de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
+            @Nullable SecretResolver secretResolver,
+            @Nullable ScriptGuardApi guardApi) {
+        this(
+                toolsApi,
+                recipeName,
+                deniedToolNames,
+                documentService,
+                progressEmitter,
+                notificationEmitter,
+                paramsMap,
+                lightLlmService,
+                settingService,
+                documentBasePath,
+                contextFactory,
+                secretResolver,
+                guardApi,
                 /*workflowHost*/ null);
     }
 
@@ -420,42 +475,34 @@ public final class VanceScriptApi {
      * builds it from its projector bean plus
      * {@code ScriptRequest#workflowRun}.
      */
-    public VanceScriptApi(ContextToolsApi toolsApi,
-                          @Nullable String recipeName,
-                          Set<String> deniedToolNames,
-                          @Nullable DocumentService documentService,
-                          @Nullable BiConsumer<String,
-                                  @Nullable Map<String, Object>> progressEmitter,
-                          @Nullable BiConsumer<String,
-                                  @Nullable NotificationSeverity> notificationEmitter,
-                          @Nullable Map<String, Object> paramsMap,
-                          @Nullable LightLlmService lightLlmService,
-                          @Nullable SettingService settingService,
-                          @Nullable String documentBasePath,
-                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
-                          @Nullable SecretResolver secretResolver,
-                          @Nullable ScriptGuardApi guardApi,
-                          @Nullable ScriptWorkflowHost workflowHost) {
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable Map<String, Object> paramsMap,
+            @Nullable LightLlmService lightLlmService,
+            @Nullable SettingService settingService,
+            @Nullable String documentBasePath,
+            de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
+            @Nullable SecretResolver secretResolver,
+            @Nullable ScriptGuardApi guardApi,
+            @Nullable ScriptWorkflowHost workflowHost) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.files = new ScriptFilesApi(this.tools);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
         this.process = new ScriptProcessApi(this, progressEmitter, notificationEmitter);
-        this.params = paramsMap == null
-                ? Map.of()
-                : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(paramsMap));
+        this.params =
+                paramsMap == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(paramsMap));
         this.documents = documentService == null
                 ? null
                 : new ScriptDocumentApi(documentService, toolsApi.scope(), documentBasePath, contextFactory);
-        this.llm = lightLlmService == null
-                ? null
-                : new ScriptLightLlmApi(lightLlmService, toolsApi.scope());
-        this.settings = settingService == null
-                ? null
-                : new ScriptSettingsApi(settingService, toolsApi.scope());
-        this.secret = secretResolver == null
-                ? null
-                : new ScriptSecretApi(secretResolver, toolsApi.scope());
+        this.llm = lightLlmService == null ? null : new ScriptLightLlmApi(lightLlmService, toolsApi.scope());
+        this.settings = settingService == null ? null : new ScriptSettingsApi(settingService, toolsApi.scope());
+        this.secret = secretResolver == null ? null : new ScriptSecretApi(secretResolver, toolsApi.scope());
         this.guard = guardApi;
         this.workflow = new ScriptWorkflowApi(this, toolsApi.scope(), workflowHost);
     }
@@ -484,8 +531,7 @@ public final class VanceScriptApi {
             } catch (ToolException e) {
                 throw new ScriptHostException(e.getMessage(), e);
             } catch (RuntimeException e) {
-                throw new ScriptHostException(
-                        "Tool '" + name + "' failed: " + e.getMessage(), e);
+                throw new ScriptHostException("Tool '" + name + "' failed: " + e.getMessage(), e);
             }
         }
 
@@ -540,7 +586,8 @@ public final class VanceScriptApi {
             if (!isEnabled()) {
                 throw new ScriptHostException(
                         "vance.files: file tools are not available in this context — "
-                                + "the bound process/engine grants no file_* tools", null);
+                                + "the bound process/engine grants no file_* tools",
+                        null);
             }
         }
 
@@ -568,8 +615,8 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public Map<String, Object> write(String path, String content) {
             requireEnabled();
-            return tools.call("file_write", Map.of(
-                    "path", requirePath(path), "content", content == null ? "" : content));
+            return tools.call(
+                    "file_write", Map.of("path", requirePath(path), "content", content == null ? "" : content));
         }
 
         @HostAccess.Export
@@ -626,9 +673,13 @@ public final class VanceScriptApi {
 
         @HostAccess.Export
         public void info(String message, @Nullable Map<String, Object> fields) {
-            LOG.info("[script] tenant={} project={} process={} {} {}",
-                    scope.tenantId(), scope.projectId(), scope.processId(),
-                    message, fields == null ? Map.of() : fields);
+            LOG.info(
+                    "[script] tenant={} project={} process={} {} {}",
+                    scope.tenantId(),
+                    scope.projectId(),
+                    scope.processId(),
+                    message,
+                    fields == null ? Map.of() : fields);
             tee("info", message, fields);
         }
 
@@ -642,9 +693,13 @@ public final class VanceScriptApi {
 
         @HostAccess.Export
         public void warn(String message, @Nullable Map<String, Object> fields) {
-            LOG.warn("[script] tenant={} project={} process={} {} {}",
-                    scope.tenantId(), scope.projectId(), scope.processId(),
-                    message, fields == null ? Map.of() : fields);
+            LOG.warn(
+                    "[script] tenant={} project={} process={} {} {}",
+                    scope.tenantId(),
+                    scope.projectId(),
+                    scope.processId(),
+                    message,
+                    fields == null ? Map.of() : fields);
             tee("warn", message, fields);
         }
 
@@ -655,9 +710,13 @@ public final class VanceScriptApi {
 
         @HostAccess.Export
         public void error(String message, @Nullable Map<String, Object> fields) {
-            LOG.error("[script] tenant={} project={} process={} {} {}",
-                    scope.tenantId(), scope.projectId(), scope.processId(),
-                    message, fields == null ? Map.of() : fields);
+            LOG.error(
+                    "[script] tenant={} project={} process={} {} {}",
+                    scope.tenantId(),
+                    scope.projectId(),
+                    scope.processId(),
+                    message,
+                    fields == null ? Map.of() : fields);
             tee("error", message, fields);
         }
 
@@ -666,12 +725,10 @@ public final class VanceScriptApi {
             error(message, null);
         }
 
-        private static void tee(String stream, String message,
-                                @Nullable Map<String, Object> fields) {
+        private static void tee(String stream, String message, @Nullable Map<String, Object> fields) {
             BiConsumer<String, String> hook = ACTIVE_LOG_TEE.get();
             if (hook == null) return;
-            String line = (fields == null || fields.isEmpty())
-                    ? message : message + " " + fields;
+            String line = (fields == null || fields.isEmpty()) ? message : message + " " + fields;
             try {
                 hook.accept(stream, line);
             } catch (RuntimeException ignored) {
@@ -701,16 +758,13 @@ public final class VanceScriptApi {
     public static final class ScriptProcessApi {
 
         private final VanceScriptApi parent;
-        private final @Nullable BiConsumer<String,
-                @Nullable Map<String, Object>> progressEmitter;
-        private final @Nullable BiConsumer<String,
-                @Nullable NotificationSeverity> notificationEmitter;
+        private final @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter;
+        private final @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter;
 
-        ScriptProcessApi(VanceScriptApi parent,
-                @Nullable BiConsumer<String,
-                        @Nullable Map<String, Object>> progressEmitter,
-                @Nullable BiConsumer<String,
-                        @Nullable NotificationSeverity> notificationEmitter) {
+        ScriptProcessApi(
+                VanceScriptApi parent,
+                @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+                @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter) {
             this.parent = parent;
             this.progressEmitter = progressEmitter;
             this.notificationEmitter = notificationEmitter;
@@ -739,20 +793,24 @@ public final class VanceScriptApi {
          */
         @HostAccess.Export
         public void progress(String message, @Nullable Map<String, Object> payload) {
-            Objects.requireNonNull(message,
-                    "vance.process.progress: message must not be null");
+            Objects.requireNonNull(message, "vance.process.progress: message must not be null");
             if (progressEmitter == null) {
-                LOG.trace("[script] tenant={} process={} progress (no-emitter) {} {}",
-                        parent.context.tenantId, parent.context.processId,
-                        message, payload == null ? Map.of() : payload);
+                LOG.trace(
+                        "[script] tenant={} process={} progress (no-emitter) {} {}",
+                        parent.context.tenantId,
+                        parent.context.processId,
+                        message,
+                        payload == null ? Map.of() : payload);
                 return;
             }
             try {
                 progressEmitter.accept(message, payload);
             } catch (RuntimeException e) {
                 // A broken emitter must never leak back into the script.
-                LOG.warn("[script] tenant={} process={} progress emit failed: {}",
-                        parent.context.tenantId, parent.context.processId,
+                LOG.warn(
+                        "[script] tenant={} process={} progress emit failed: {}",
+                        parent.context.tenantId,
+                        parent.context.processId,
                         e.toString());
             }
         }
@@ -775,20 +833,24 @@ public final class VanceScriptApi {
          */
         @HostAccess.Export
         public void notify(String message, @Nullable String severity) {
-            Objects.requireNonNull(message,
-                    "vance.process.notify: message must not be null");
+            Objects.requireNonNull(message, "vance.process.notify: message must not be null");
             NotificationSeverity sev = parseSeverity(severity);
             if (notificationEmitter == null) {
-                LOG.trace("[script] tenant={} process={} notify (no-emitter) [{}] {}",
-                        parent.context.tenantId, parent.context.processId,
-                        sev, message);
+                LOG.trace(
+                        "[script] tenant={} process={} notify (no-emitter) [{}] {}",
+                        parent.context.tenantId,
+                        parent.context.processId,
+                        sev,
+                        message);
                 return;
             }
             try {
                 notificationEmitter.accept(message, sev);
             } catch (RuntimeException e) {
-                LOG.warn("[script] tenant={} process={} notify emit failed: {}",
-                        parent.context.tenantId, parent.context.processId,
+                LOG.warn(
+                        "[script] tenant={} process={} notify emit failed: {}",
+                        parent.context.tenantId,
+                        parent.context.processId,
                         e.toString());
             }
         }
@@ -856,8 +918,7 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public final @Nullable Map<String, Object> current;
 
-        ScriptWorkflowApi(VanceScriptApi parent, ToolInvocationContext scope,
-                          @Nullable ScriptWorkflowHost host) {
+        ScriptWorkflowApi(VanceScriptApi parent, ToolInvocationContext scope, @Nullable ScriptWorkflowHost host) {
             this.parent = parent;
             this.scope = scope;
             this.projector = host == null ? null : host.projector();
@@ -899,25 +960,23 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public @Nullable Map<String, Object> status(String runId) {
             if (runId == null || runId.isBlank()) {
-                throw new ScriptHostException(
-                        "vance.workflow.status: runId must not be empty", null);
+                throw new ScriptHostException("vance.workflow.status: runId must not be empty", null);
             }
             if (projector == null) {
                 throw new ScriptHostException(
-                        "vance.workflow.status: Magrathea is not enabled on this brain "
-                                + "(vance.services.magrathea)", null);
+                        "vance.workflow.status: Magrathea is not enabled on this brain " + "(vance.services.magrathea)",
+                        null);
             }
             String projectId = scope.projectId();
             if (projectId == null || projectId.isBlank()) {
-                throw new ScriptHostException(
-                        "vance.workflow.status: no project context", null);
+                throw new ScriptHostException("vance.workflow.status: no project context", null);
             }
-            return projector.project(scope.tenantId(), projectId, runId.trim())
+            return projector
+                    .project(scope.tenantId(), projectId, runId.trim())
                     // The projector is asked for this scope, but a run id is
                     // global — re-check rather than trust the lookup, same as
                     // the REST route does before answering.
-                    .filter(dto -> scope.tenantId().equals(dto.getTenantId())
-                            && projectId.equals(dto.getProjectId()))
+                    .filter(dto -> scope.tenantId().equals(dto.getTenantId()) && projectId.equals(dto.getProjectId()))
                     .map(ScriptWorkflowApi::toMap)
                     .orElse(null);
         }
@@ -939,36 +998,43 @@ public final class VanceScriptApi {
             out.put("result", dto.getResult());
             out.put("startedBy", dto.getStartedBy());
             out.put("tags", dto.getTags() == null ? List.of() : dto.getTags());
-            out.put("createdAt", dto.getCreatedAt() == null ? null : dto.getCreatedAt().toString());
-            out.put("updatedAt", dto.getUpdatedAt() == null ? null : dto.getUpdatedAt().toString());
-            out.put("terminatedAt",
+            out.put(
+                    "createdAt",
+                    dto.getCreatedAt() == null ? null : dto.getCreatedAt().toString());
+            out.put(
+                    "updatedAt",
+                    dto.getUpdatedAt() == null ? null : dto.getUpdatedAt().toString());
+            out.put(
+                    "terminatedAt",
                     dto.getTerminatedAt() == null ? null : dto.getTerminatedAt().toString());
             return out;
         }
     }
 
     /**
-     * Completion-guard surface exposed as {@code vance.guard} — present
-     * only for guard runs. Read-only yield context ({@link #task},
+     * Shooty guard surface exposed as {@code vance.guard} — present
+     * only for guard runs. Read-only run context ({@link #task},
      * {@link #output}, {@link #round}, {@link #maxRounds},
-     * {@link #naturalStop}), the cap-aware {@link #continueWith(String)}
-     * action, and the two transient scratch stores {@link #loopValues}
-     * (per process/loop) and {@link #sessionValues} (per session) — both
-     * {@link ScriptGuardScratchApi} instances backed by host-side maps
-     * that survive across the re-entrant guard runs.
+     * {@link #naturalStop}, {@link #point}, {@link #command}), the
+     * point-specific actions {@link #continueWith(String)} (STOP/TERMINATE),
+     * {@link #deny(String)} (COMMAND) and {@link #activateSkill(String,
+     * String)} (any point), and the two transient scratch stores
+     * {@link #loopValues} (per process/loop) and {@link #sessionValues}
+     * (per session) — both {@link ScriptGuardScratchApi} instances backed
+     * by host-side maps that survive across the re-entrant guard runs.
      *
      * <p>Judge and follow-up prompt are no longer config fields — the
      * script decides both (typically via {@code vance.llm.judge(...)} +
      * {@code vance.guard.continueWith(...)}). See
-     * {@code planning/completion-guard.md} v2.
+     * {@code planning/shooty.md}.
      */
     public static final class ScriptGuardApi {
 
-        /** First user message of the task under evaluation. */
+        /** First user message of the task under evaluation (at {@code start}: this turn's genuine user input). */
         @HostAccess.Export
         public final String task;
 
-        /** The final output the engine would yield. */
+        /** The final output the engine would yield (empty at {@code start}/{@code command}). */
         @HostAccess.Export
         public final String output;
 
@@ -976,13 +1042,27 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public final long round;
 
-        /** Hard cap on guard injections — {@link #continueWith} refuses past it. */
+        /** Hard cap on guard injections — {@link #continueWith(String)} refuses past it. */
         @HostAccess.Export
         public final long maxRounds;
 
         /** {@code true} for a natural stop, {@code false} for an explicit terminate. */
         @HostAccess.Export
         public final boolean naturalStop;
+
+        /**
+         * The guard point this run evaluates at:
+         * {@code 'start' | 'command' | 'stop' | 'terminate'}.
+         */
+        @HostAccess.Export
+        public final String point;
+
+        /**
+         * The engine command under judgment at the {@code command} point:
+         * {@code { name, args }}. {@code null} at every other point.
+         */
+        @HostAccess.Export
+        public final @Nullable Map<String, Object> command;
 
         /** Per-process / per-loop scratch store (reset on a genuine user turn). */
         @HostAccess.Export
@@ -994,19 +1074,24 @@ public final class VanceScriptApi {
 
         private final GuardScriptHost host;
 
-        public ScriptGuardApi(String task,
-                              String output,
-                              long round,
-                              long maxRounds,
-                              boolean naturalStop,
-                              ScriptGuardScratchApi loopValues,
-                              ScriptGuardScratchApi sessionValues,
-                              GuardScriptHost host) {
+        public ScriptGuardApi(
+                String task,
+                String output,
+                long round,
+                long maxRounds,
+                boolean naturalStop,
+                String point,
+                @Nullable Map<String, Object> command,
+                ScriptGuardScratchApi loopValues,
+                ScriptGuardScratchApi sessionValues,
+                GuardScriptHost host) {
             this.task = task == null ? "" : task;
             this.output = output == null ? "" : output;
             this.round = round;
             this.maxRounds = maxRounds;
             this.naturalStop = naturalStop;
+            this.point = point == null ? "" : point;
+            this.command = command;
             this.loopValues = Objects.requireNonNull(loopValues, "loopValues");
             this.sessionValues = Objects.requireNonNull(sessionValues, "sessionValues");
             this.host = Objects.requireNonNull(host, "host");
@@ -1019,15 +1104,57 @@ public final class VanceScriptApi {
          * script can react to being capped. Named {@code continueWith}
          * because {@code continue} is a JavaScript reserved word.
          *
+         * <p>Only meaningful at the {@code stop}/{@code terminate} points —
+         * the host throws a {@link ScriptHostException} elsewhere.
+         *
          * @return {@code true} if injected, {@code false} if capped
          */
         @HostAccess.Export
         public boolean continueWith(String prompt) {
             if (prompt == null || prompt.isBlank()) {
-                throw new ScriptHostException(
-                        "vance.guard.continueWith: prompt must not be blank", null);
+                throw new ScriptHostException("vance.guard.continueWith: prompt must not be blank", null);
             }
             return host.continueWith(prompt);
+        }
+
+        /**
+         * Veto the engine command under judgment — only meaningful at the
+         * {@code command} point; the command then fails hard with this
+         * reason. The host throws a {@link ScriptHostException} at every
+         * other point (a start/stop guard has nothing to deny).
+         *
+         * @param reason short human-readable denial ground (non-blank)
+         */
+        @HostAccess.Export
+        public void deny(String reason) {
+            if (reason == null || reason.isBlank()) {
+                throw new ScriptHostException("vance.guard.deny: reason must not be blank", null);
+            }
+            host.deny(reason);
+        }
+
+        /**
+         * Activate {@code skillName} on the guarded process (sticky, no
+         * separate action turn — auto-trigger-style). Available at every
+         * point; at {@code start} the enclosing turn picks the skill up
+         * immediately.
+         *
+         * @return {@code true} when freshly activated, {@code false} when
+         *         the skill was already active
+         */
+        @HostAccess.Export
+        public boolean activateSkill(String skillName) {
+            return activateSkill(skillName, null);
+        }
+
+        /** As {@link #activateSkill(String)} with optional raw trailing
+         *  text, bound like {@code /skill <name> <args>}. */
+        @HostAccess.Export
+        public boolean activateSkill(String skillName, @Nullable String args) {
+            if (skillName == null || skillName.isBlank()) {
+                throw new ScriptHostException("vance.guard.activateSkill: skillName must not be blank", null);
+            }
+            return host.activateSkill(skillName, args);
         }
     }
 
@@ -1035,7 +1162,7 @@ public final class VanceScriptApi {
      * A transient key/value scratch store handed to guard scripts as
      * {@code vance.guard.loopValues} / {@code vance.guard.sessionValues}.
      * Backed by a host-side map that lives in the
-     * {@code CompletionGuardService} (in-memory, non-persistent) so
+     * {@code ShootyGuardService} (in-memory, non-persistent) so
      * values survive across the re-entrant guard runs of a loop/session.
      *
      * <p>Exposed as an explicit wrapper — not the raw map — so the only
@@ -1083,8 +1210,7 @@ public final class VanceScriptApi {
             Object stored = backing.get(key);
             // Scalars are immutable — no copy needed, and this keeps the
             // common "flag" case free of marshalling.
-            if (stored == null || stored instanceof String
-                    || stored instanceof Boolean || stored instanceof Number) {
+            if (stored == null || stored instanceof String || stored instanceof Boolean || stored instanceof Number) {
                 return stored;
             }
             return ScriptValueMarshaller.toStorable(stored, MAX_NODES, MAX_DEPTH);
@@ -1099,8 +1225,7 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public void set(String key, @Nullable Object value) {
             if (key == null || key.isBlank()) {
-                throw new ScriptHostException(
-                        "vance.guard scratch set: key must not be blank", null);
+                throw new ScriptHostException("vance.guard scratch set: key must not be blank", null);
             }
             Object stored = ScriptValueMarshaller.toStorable(value, MAX_NODES, MAX_DEPTH);
             if (stored == null) {
@@ -1149,9 +1274,11 @@ public final class VanceScriptApi {
          */
         private final de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory;
 
-        ScriptDocumentApi(DocumentService documentService, ToolInvocationContext scope,
-                          @Nullable String basePath,
-                          de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory) {
+        ScriptDocumentApi(
+                DocumentService documentService,
+                ToolInvocationContext scope,
+                @Nullable String basePath,
+                de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory) {
             this.documentService = documentService;
             this.scope = scope;
             this.basePath = normalizeBasePath(basePath);
@@ -1170,10 +1297,9 @@ public final class VanceScriptApi {
          * provider trusts (R1) — genuine system scripts still pass.
          */
         private de.mhus.vance.shared.permission.WriteActor writeActor() {
-            de.mhus.vance.shared.permission.SecurityContext subject =
-                    contextFactory != null
-                            ? contextFactory.forToolSubject(scope.tenantId(), scope.userId())
-                            : subjectFallback();
+            de.mhus.vance.shared.permission.SecurityContext subject = contextFactory != null
+                    ? contextFactory.forToolSubject(scope.tenantId(), scope.userId())
+                    : subjectFallback();
             return de.mhus.vance.shared.permission.WriteActor.user(subject);
         }
 
@@ -1181,8 +1307,7 @@ public final class VanceScriptApi {
             String uid = scope.userId();
             return uid == null || uid.isBlank()
                     ? de.mhus.vance.shared.permission.SecurityContext.SYSTEM
-                    : de.mhus.vance.shared.permission.SecurityContext.user(
-                            uid, scope.tenantId(), java.util.List.of());
+                    : de.mhus.vance.shared.permission.SecurityContext.user(uid, scope.tenantId(), java.util.List.of());
         }
 
         /**
@@ -1217,7 +1342,8 @@ public final class VanceScriptApi {
                 // different document than the one named.
                 throw new ScriptHostException(
                         "vance.documents: '" + path + "' carries a query, and this operation "
-                                + "has no parameterised form — only read() does", null);
+                                + "has no parameterised form — only read() does",
+                        null);
             }
             return ref.path();
         }
@@ -1237,17 +1363,14 @@ public final class VanceScriptApi {
             de.mhus.vance.shared.document.DocumentRef ref;
             try {
                 ref = de.mhus.vance.shared.document.DocumentRefResolver.resolveRef(
-                        path,
-                        de.mhus.vance.shared.document.DocumentRefContext.of(
-                                scope.projectId(), basePath));
+                        path, de.mhus.vance.shared.document.DocumentRefContext.of(scope.projectId(), basePath));
             } catch (de.mhus.vance.shared.document.DocumentRefException e) {
-                throw new ScriptHostException(
-                        "vance.documents: bad path '" + path + "': " + e.getMessage(), null);
+                throw new ScriptHostException("vance.documents: bad path '" + path + "': " + e.getMessage(), null);
             }
             if (!scope.projectId().equals(ref.projectId())) {
                 throw new ScriptHostException(
-                        "vance.documents: cross-project access is not allowed "
-                                + "from scripts ('" + path + "')", null);
+                        "vance.documents: cross-project access is not allowed " + "from scripts ('" + path + "')",
+                        null);
             }
             return ref;
         }
@@ -1269,10 +1392,10 @@ public final class VanceScriptApi {
             requireProject();
             requirePath(path);
             de.mhus.vance.shared.document.DocumentRef ref = resolveDocRef(path);
-            DocumentDocument doc = documentService.findByPath(
-                            scope.tenantId(), scope.projectId(), ref.path())
-                    .orElseThrow(() -> new ScriptHostException(
-                            "vance.documents: not found '" + ref.path() + "'", null));
+            DocumentDocument doc = documentService
+                    .findByPath(scope.tenantId(), scope.projectId(), ref.path())
+                    .orElseThrow(
+                            () -> new ScriptHostException("vance.documents: not found '" + ref.path() + "'", null));
             try {
                 // The query travels. A mounted source turns it into a computed
                 // view; a stored document has nothing to parameterise and says
@@ -1294,27 +1417,25 @@ public final class VanceScriptApi {
             requireProject();
             requirePath(path);
             if (content == null) {
-                throw new ScriptHostException(
-                        "vance.documents.write: content must not be null", null);
+                throw new ScriptHostException("vance.documents.write: content must not be null", null);
             }
             String resolved = resolveDoc(path);
             if (resolved.startsWith(DocumentService.TRASH_FOLDER_PREFIX)) {
                 throw new ScriptHostException(
-                        "vance.documents.write: cannot write under '"
-                                + DocumentService.TRASH_FOLDER_PREFIX + "'", null);
+                        "vance.documents.write: cannot write under '" + DocumentService.TRASH_FOLDER_PREFIX + "'",
+                        null);
             }
             documentService.upsertText(
-                    scope.tenantId(), scope.projectId(),
-                    resolved, null, null, content, scope.userId(),
-                    writeActor());
+                    scope.tenantId(), scope.projectId(), resolved, null, null, content, scope.userId(), writeActor());
         }
 
         @HostAccess.Export
         public boolean exists(String path) {
             requireProject();
             requirePath(path);
-            return documentService.findByPath(
-                    scope.tenantId(), scope.projectId(), resolveDoc(path)).isPresent();
+            return documentService
+                    .findByPath(scope.tenantId(), scope.projectId(), resolveDoc(path))
+                    .isPresent();
         }
 
         /**
@@ -1326,8 +1447,8 @@ public final class VanceScriptApi {
         public boolean delete(String path) {
             requireProject();
             requirePath(path);
-            return documentService.findByPath(
-                            scope.tenantId(), scope.projectId(), resolveDoc(path))
+            return documentService
+                    .findByPath(scope.tenantId(), scope.projectId(), resolveDoc(path))
                     .map(doc -> {
                         documentService.trash(doc.getId(), writeActor());
                         return true;
@@ -1350,14 +1471,12 @@ public final class VanceScriptApi {
             requireProject();
             // Resolve the prefix against basePath; null prefix lists the whole
             // basePath (or project-wide when no basePath is set).
-            String effectivePrefix = prefix == null
-                    ? (basePath.isEmpty() ? null : basePath)
-                    : resolve(prefix);
+            String effectivePrefix = prefix == null ? (basePath.isEmpty() ? null : basePath) : resolve(prefix);
             List<Map<String, Object>> out = new ArrayList<>();
             // Page through up to 200 at a time — caller can pass a more
             // specific prefix if they hit the cap in practice.
-            documentService.listByProjectPaged(
-                            scope.tenantId(), scope.projectId(), 0, 200, effectivePrefix)
+            documentService
+                    .listByProjectPaged(scope.tenantId(), scope.projectId(), 0, 200, effectivePrefix)
                     .forEach(doc -> out.add(toSummary(doc)));
             return out;
         }
@@ -1376,23 +1495,20 @@ public final class VanceScriptApi {
             requireProject();
             requirePath(path);
             String resolved = resolveDoc(path);
-            return documentService.findByPath(
-                            scope.tenantId(), scope.projectId(), resolved)
-                    .orElseThrow(() -> new ScriptHostException(
-                            "vance.documents: not found '" + resolved + "'", null));
+            return documentService
+                    .findByPath(scope.tenantId(), scope.projectId(), resolved)
+                    .orElseThrow(() -> new ScriptHostException("vance.documents: not found '" + resolved + "'", null));
         }
 
         private void requireProject() {
             if (scope.projectId() == null || scope.projectId().isBlank()) {
-                throw new ScriptHostException(
-                        "vance.documents requires a project-scoped run", null);
+                throw new ScriptHostException("vance.documents requires a project-scoped run", null);
             }
         }
 
         private static void requirePath(String path) {
             if (path == null || path.isBlank()) {
-                throw new ScriptHostException(
-                        "vance.documents: path must not be empty", null);
+                throw new ScriptHostException("vance.documents: path must not be empty", null);
             }
         }
 
@@ -1406,7 +1522,9 @@ public final class VanceScriptApi {
             m.put("mimeType", doc.getMimeType());
             m.put("size", doc.getSize());
             m.put("tags", doc.getTags() == null ? List.of() : List.copyOf(doc.getTags()));
-            m.put("createdAt", doc.getCreatedAt() == null ? null : doc.getCreatedAt().toString());
+            m.put(
+                    "createdAt",
+                    doc.getCreatedAt() == null ? null : doc.getCreatedAt().toString());
             m.put("version", doc.getVersion());
             return m;
         }
@@ -1443,14 +1561,12 @@ public final class VanceScriptApi {
          * classification label, generated title, summary, etc.).
          */
         @HostAccess.Export
-        public String call(String recipeName, String userPrompt,
-                           @Nullable Map<String, Object> pebbleVars) {
+        public String call(String recipeName, String userPrompt, @Nullable Map<String, Object> pebbleVars) {
             validateInputs(recipeName, userPrompt);
             try {
                 return service.call(buildRequest(recipeName, userPrompt, pebbleVars, null));
             } catch (LightLlmException e) {
-                throw new ScriptHostException(
-                        "vance.llm.call(" + recipeName + "): " + e.getMessage(), e);
+                throw new ScriptHostException("vance.llm.call(" + recipeName + "): " + e.getMessage(), e);
             }
         }
 
@@ -1470,19 +1586,18 @@ public final class VanceScriptApi {
          * exhausted.
          */
         @HostAccess.Export
-        public Map<String, Object> callForJson(String recipeName, String userPrompt,
-                                               @Nullable Map<String, Object> pebbleVars) {
+        public Map<String, Object> callForJson(
+                String recipeName, String userPrompt, @Nullable Map<String, Object> pebbleVars) {
             validateInputs(recipeName, userPrompt);
             try {
-                return service.callForJson(
-                        buildRequest(recipeName, userPrompt, pebbleVars, null));
+                return service.callForJson(buildRequest(recipeName, userPrompt, pebbleVars, null));
             } catch (SchemaValidationException e) {
                 throw new ScriptHostException(
-                        "vance.llm.callForJson(" + recipeName + "): "
-                                + "schema validation exhausted: " + e.getMessage(), e);
+                        "vance.llm.callForJson(" + recipeName + "): " + "schema validation exhausted: "
+                                + e.getMessage(),
+                        e);
             } catch (LightLlmException e) {
-                throw new ScriptHostException(
-                        "vance.llm.callForJson(" + recipeName + "): " + e.getMessage(), e);
+                throw new ScriptHostException("vance.llm.callForJson(" + recipeName + "): " + e.getMessage(), e);
             }
         }
 
@@ -1512,24 +1627,24 @@ public final class VanceScriptApi {
          * substituting the model it expected.
          */
         @HostAccess.Export
-        public Map<String, Object> callForJsonWithModel(String recipeName, String userPrompt,
-                                                        @Nullable Map<String, Object> pebbleVars) {
+        public Map<String, Object> callForJsonWithModel(
+                String recipeName, String userPrompt, @Nullable Map<String, Object> pebbleVars) {
             validateInputs(recipeName, userPrompt);
             try {
-                LightLlmJsonAnswer answer = service.callForJsonWithModel(
-                        buildRequest(recipeName, userPrompt, pebbleVars, null));
+                LightLlmJsonAnswer answer =
+                        service.callForJsonWithModel(buildRequest(recipeName, userPrompt, pebbleVars, null));
                 Map<String, Object> wrapped = new java.util.HashMap<>();
                 wrapped.put("result", answer.json());
                 wrapped.put("model", answer.model());
                 return wrapped;
             } catch (SchemaValidationException e) {
                 throw new ScriptHostException(
-                        "vance.llm.callForJsonWithModel(" + recipeName + "): "
-                                + "schema validation exhausted: " + e.getMessage(), e);
+                        "vance.llm.callForJsonWithModel(" + recipeName + "): " + "schema validation exhausted: "
+                                + e.getMessage(),
+                        e);
             } catch (LightLlmException e) {
                 throw new ScriptHostException(
-                        "vance.llm.callForJsonWithModel(" + recipeName + "): "
-                                + e.getMessage(), e);
+                        "vance.llm.callForJsonWithModel(" + recipeName + "): " + e.getMessage(), e);
             }
         }
 
@@ -1541,21 +1656,19 @@ public final class VanceScriptApi {
 
         private void validateInputs(String recipeName, String userPrompt) {
             if (recipeName == null || recipeName.isBlank()) {
-                throw new ScriptHostException(
-                        "vance.llm: recipeName must not be empty", null);
+                throw new ScriptHostException("vance.llm: recipeName must not be empty", null);
             }
             if (userPrompt == null) {
-                throw new ScriptHostException(
-                        "vance.llm: userPrompt must not be null", null);
+                throw new ScriptHostException("vance.llm: userPrompt must not be null", null);
             }
             if (scope.tenantId() == null || scope.tenantId().isBlank()) {
-                throw new ScriptHostException(
-                        "vance.llm requires a tenant-scoped run", null);
+                throw new ScriptHostException("vance.llm requires a tenant-scoped run", null);
             }
         }
 
         private LightLlmRequest buildRequest(
-                String recipeName, String userPrompt,
+                String recipeName,
+                String userPrompt,
                 @Nullable Map<String, Object> vars,
                 @Nullable Map<String, Object> schema) {
             return LightLlmRequest.builder()
@@ -1601,8 +1714,7 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public @Nullable String get(String key) {
             requireScope(key);
-            return service.getStringValueCascade(
-                    scope.tenantId(), scope.projectId(), scope.processId(), key);
+            return service.getStringValueCascade(scope.tenantId(), scope.projectId(), scope.processId(), key);
         }
 
         /** Returns the string value, or {@code defaultValue} when
@@ -1656,18 +1768,15 @@ public final class VanceScriptApi {
         public boolean getBoolean(String key, boolean defaultValue) {
             requireScope(key);
             return service.getBooleanValueCascade(
-                    scope.tenantId(), scope.projectId(), scope.processId(),
-                    key, defaultValue);
+                    scope.tenantId(), scope.projectId(), scope.processId(), key, defaultValue);
         }
 
         private void requireScope(String key) {
             if (key == null || key.isBlank()) {
-                throw new ScriptHostException(
-                        "vance.settings: key must not be empty", null);
+                throw new ScriptHostException("vance.settings: key must not be empty", null);
             }
             if (scope.tenantId() == null || scope.tenantId().isBlank()) {
-                throw new ScriptHostException(
-                        "vance.settings requires a tenant-scoped run", null);
+                throw new ScriptHostException("vance.settings requires a tenant-scoped run", null);
             }
         }
     }

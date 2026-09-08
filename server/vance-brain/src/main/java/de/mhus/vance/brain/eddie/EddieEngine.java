@@ -11,7 +11,6 @@ import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
 import de.mhus.vance.brain.ai.VanceSystemMessage;
-import de.mhus.vance.shared.activity.EddieActivityEntry;
 import de.mhus.vance.brain.eddie.activity.EddieActivityService;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -20,22 +19,20 @@ import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
-import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
-import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.thinkengine.action.EngineAction;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine.ActionLoopResult;
-import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.usermemory.UserMemoryService;
+import de.mhus.vance.shared.activity.EddieActivityEntry;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.session.SessionDocument;
-import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
-import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.ToolException;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -44,6 +41,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,7 +50,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
-import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -95,8 +92,7 @@ public class EddieEngine extends StructuredActionEngine {
     public static final String NAME = "eddie";
     public static final String VERSION = "0.2.0";
 
-    public static final String GREETING =
-            "Hi, I'm Eddie. What can I take off your plate?";
+    public static final String GREETING = "Hi, I'm Eddie. What can I take off your plate?";
 
     /**
      * Eddie's engine-base allow-set is intentionally <b>empty</b>
@@ -207,10 +203,8 @@ public class EddieEngine extends StructuredActionEngine {
      * Eddie's ASK_USER is a plain conversational question, not a
      * spawn that could cascade.
      */
-    private static final Set<String> SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS = Set.of(
-            EddieActionSchema.TYPE_DELEGATE_PROJECT,
-            EddieActionSchema.TYPE_STEER_PROJECT);
-
+    private static final Set<String> SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS =
+            Set.of(EddieActionSchema.TYPE_DELEGATE_PROJECT, EddieActionSchema.TYPE_STEER_PROJECT);
 
     // ──────────────────── Dependencies ────────────────────
 
@@ -223,6 +217,7 @@ public class EddieEngine extends StructuredActionEngine {
      * {@code specification/public/skills.md} §5.
      */
     private final de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport;
+
     private final EnginePromptResolver enginePromptResolver;
     private final MemoryContextLoader memoryContextLoader;
     private final EddieActivityService activityService;
@@ -252,8 +247,7 @@ public class EddieEngine extends StructuredActionEngine {
      * {@link #handleAction} to gate spawn-actions — same pattern as
      * Arthur, see {@code SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS}.
      */
-    private final ConcurrentMap<String, Boolean> currentTurnHadUserInput =
-            new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Boolean> currentTurnHadUserInput = new ConcurrentHashMap<>();
 
     /**
      * Per-process map of {@code eventId → SteerMessage.ProcessEvent}
@@ -263,8 +257,8 @@ public class EddieEngine extends StructuredActionEngine {
      * here and reject anything outside the current drain. See
      * {@code planning/arthur-process-event-attribution.md}.
      */
-    private final ConcurrentMap<String, Map<String, SteerMessage.ProcessEvent>>
-            currentTurnEventsByRef = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Map<String, SteerMessage.ProcessEvent>> currentTurnEventsByRef =
+            new ConcurrentHashMap<>();
 
     public EddieEngine(
             StreamingProperties streamingProperties,
@@ -296,13 +290,19 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
             de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor,
             de.mhus.vance.brain.notification.NotificationService notificationService,
-            de.mhus.vance.brain.guard.CompletionGuardService completionGuardService,
+            de.mhus.vance.brain.guard.ShootyGuardService completionGuardService,
             de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers,
-            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer
-                    attachedUserMessageComposer) {
-        super(streamingProperties, llmCallTracker, objectMapper, composer,
-                completionGuardService, actionLoopJudgeService, thinkProcessService,
-                turnContextHandlers, attachedUserMessageComposer);
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer attachedUserMessageComposer) {
+        super(
+                streamingProperties,
+                llmCallTracker,
+                objectMapper,
+                composer,
+                completionGuardService,
+                actionLoopJudgeService,
+                thinkProcessService,
+                turnContextHandlers,
+                attachedUserMessageComposer);
         this.modelCatalog = modelCatalog;
         this.engineChatFactory = engineChatFactory;
         this.skillTurnSupport = skillTurnSupport;
@@ -385,8 +385,7 @@ public class EddieEngine extends StructuredActionEngine {
     private String engineDefaultPrompt(ThinkProcessDocument process) {
         String basePath = paramString(process, "promptDocument", PROMPT_PATH);
         return enginePromptResolver.resolveForTenant(
-                process.getTenantId(), process.getProjectId(),
-                basePath, loadResource(PROMPT_RESOURCE));
+                process.getTenantId(), process.getProjectId(), basePath, loadResource(PROMPT_RESOURCE));
     }
 
     private static String loadResource(String path) {
@@ -408,8 +407,7 @@ public class EddieEngine extends StructuredActionEngine {
             cachedPromptResource = content;
             return content;
         } catch (IOException e) {
-            throw new UncheckedIOException(
-                    "Failed to load Eddie prompt resource: " + path, e);
+            throw new UncheckedIOException("Failed to load Eddie prompt resource: " + path, e);
         }
     }
 
@@ -421,8 +419,7 @@ public class EddieEngine extends StructuredActionEngine {
         try {
             loadResource(PROMPT_RESOURCE);
         } catch (RuntimeException e) {
-            log.warn("EddieEngine: prompt-resource warmup failed — first turn will retry: {}",
-                    e.toString());
+            log.warn("EddieEngine: prompt-resource warmup failed — first turn will retry: {}", e.toString());
         }
     }
 
@@ -452,16 +449,20 @@ public class EddieEngine extends StructuredActionEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("Eddie.start tenant='{}' session='{}' id='{}'",
-                process.getTenantId(), process.getSessionId(), process.getId());
+        log.info(
+                "Eddie.start tenant='{}' session='{}' id='{}'",
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId());
         String greeting = composeGreetingWithRecap(process);
-        ctx.chatMessageService().append(ChatMessageDocument.builder()
-                .tenantId(process.getTenantId())
-                .sessionId(process.getSessionId())
-                .thinkProcessId(process.getId())
-                .role(ChatRole.ASSISTANT)
-                .content(greeting)
-                .build());
+        ctx.chatMessageService()
+                .append(ChatMessageDocument.builder()
+                        .tenantId(process.getTenantId())
+                        .sessionId(process.getSessionId())
+                        .thinkProcessId(process.getId())
+                        .role(ChatRole.ASSISTANT)
+                        .content(greeting)
+                        .build());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
@@ -470,13 +471,14 @@ public class EddieEngine extends StructuredActionEngine {
         log.debug("Eddie.resume id='{}'", process.getId());
         String recap = buildPeerRecap(process);
         if (recap != null) {
-            ctx.chatMessageService().append(ChatMessageDocument.builder()
-                    .tenantId(process.getTenantId())
-                    .sessionId(process.getSessionId())
-                    .thinkProcessId(process.getId())
-                    .role(ChatRole.ASSISTANT)
-                    .content(recap)
-                    .build());
+            ctx.chatMessageService()
+                    .append(ChatMessageDocument.builder()
+                            .tenantId(process.getTenantId())
+                            .sessionId(process.getSessionId())
+                            .thinkProcessId(process.getId())
+                            .role(ChatRole.ASSISTANT)
+                            .content(recap)
+                            .build());
         }
         // Re-open Working-WS for every persisted worker link. Pool is
         // pod-local — this rebuild is what makes Eddie's observation
@@ -496,8 +498,7 @@ public class EddieEngine extends StructuredActionEngine {
         try {
             workerConnectionPool.closeAll(process.getId());
         } catch (RuntimeException e) {
-            log.debug("Eddie.suspend pool close failed for id='{}': {}",
-                    process.getId(), e.toString());
+            log.debug("Eddie.suspend pool close failed for id='{}': {}", process.getId(), e.toString());
         }
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.SUSPENDED);
     }
@@ -533,17 +534,18 @@ public class EddieEngine extends StructuredActionEngine {
         try {
             jwt = jwtService.createToken(tenantId, userId, exp);
         } catch (RuntimeException e) {
-            log.warn("Eddie.resume: cannot issue JWT for reconnect (tenant='{}' user='{}'): {}",
-                    tenantId, userId, e.toString());
+            log.warn(
+                    "Eddie.resume: cannot issue JWT for reconnect (tenant='{}' user='{}'): {}",
+                    tenantId,
+                    userId,
+                    e.toString());
             return;
         }
         for (var link : links) {
             try {
-                workerConnectionPool.openOrReuse(
-                        process.getId(), link, jwt, workerFrameRouter);
+                workerConnectionPool.openOrReuse(process.getId(), link, jwt, workerFrameRouter);
             } catch (RuntimeException e) {
-                log.debug("Eddie.resume: reconnect to worker={} failed: {}",
-                        link.getWorkerProcessId(), e.toString());
+                log.debug("Eddie.resume: reconnect to worker={} failed: {}", link.getWorkerProcessId(), e.toString());
             }
         }
     }
@@ -584,8 +586,7 @@ public class EddieEngine extends StructuredActionEngine {
         boolean continueWithEmptyInbox = false;
         while (true) {
             if (thinkProcessService.isHaltRequested(process.getId())) {
-                log.info("Eddie.runTurn id='{}' — halt requested, yielding",
-                        process.getId());
+                log.info("Eddie.runTurn id='{}' — halt requested, yielding", process.getId());
                 return;
             }
             List<SteerMessage> drained = ctx.drainPending();
@@ -596,12 +597,13 @@ public class EddieEngine extends StructuredActionEngine {
                 continueWithEmptyInbox = false;
                 continuationsRemaining--;
                 if (continuationsRemaining < 0) {
-                    log.warn("Eddie.runTurn id='{}' — continuation budget "
-                            + "({}) exhausted; transitioning to BLOCKED so the "
-                            + "user can intervene",
-                            process.getId(), continuationBudget);
-                    thinkProcessService.updateStatus(
-                            process.getId(), ThinkProcessStatus.BLOCKED);
+                    log.warn(
+                            "Eddie.runTurn id='{}' — continuation budget "
+                                    + "({}) exhausted; transitioning to BLOCKED so the "
+                                    + "user can intervene",
+                            process.getId(),
+                            continuationBudget);
+                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
                     return;
                 }
             }
@@ -613,12 +615,13 @@ public class EddieEngine extends StructuredActionEngine {
             } else {
                 silentTurnsInARow++;
                 if (silentTurnsInARow >= silentTurnsLimit) {
-                    log.warn("Eddie.runTurn id='{}' — {} silent turns in a row "
-                            + "(LLM stuck — no chat, no tool calls); transitioning "
-                            + "to BLOCKED so the user can intervene",
-                            process.getId(), silentTurnsLimit);
-                    thinkProcessService.updateStatus(
-                            process.getId(), ThinkProcessStatus.BLOCKED);
+                    log.warn(
+                            "Eddie.runTurn id='{}' — {} silent turns in a row "
+                                    + "(LLM stuck — no chat, no tool calls); transitioning "
+                                    + "to BLOCKED so the user can intervene",
+                            process.getId(),
+                            silentTurnsLimit);
+                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
                     return;
                 }
             }
@@ -628,15 +631,14 @@ public class EddieEngine extends StructuredActionEngine {
                     .map(ThinkProcessDocument::getStatus)
                     .orElse(ThinkProcessStatus.SUSPENDED);
             de.mhus.vance.api.thinkprocess.ProcessMode currentMode = process.getMode();
-            boolean activeMode = currentMode != null
-                    && currentMode != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
+            boolean activeMode =
+                    currentMode != null && currentMode != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
             // Continue if (a) mode changed (entered new plan-mode phase),
             // OR (b) we're in any active plan-mode and the engine isn't
             // waiting on user input. PROPOSE_PLAN / ANSWER / ASK_USER set
             // awaiting=true → BLOCKED → no continuation, the user's next
             // message reactivates via the regular pending pipeline.
-            if (currentStatus == ThinkProcessStatus.IDLE
-                    && (currentMode != modeBefore || activeMode)) {
+            if (currentStatus == ThinkProcessStatus.IDLE && (currentMode != modeBefore || activeMode)) {
                 continueWithEmptyInbox = true;
             }
         }
@@ -671,8 +673,7 @@ public class EddieEngine extends StructuredActionEngine {
     private String buildTodoListBlock(ThinkProcessDocument process) {
         java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
         de.mhus.vance.api.thinkprocess.ProcessMode mode = process.getMode();
-        boolean activeMode = mode != null
-                && mode != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
+        boolean activeMode = mode != null && mode != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
         boolean hasTodos = todos != null && !todos.isEmpty();
         if (!activeMode && !hasTodos) {
             return "";
@@ -688,44 +689,52 @@ public class EddieEngine extends StructuredActionEngine {
         // this the LLM falls into a re-emit loop on the just-emitted
         // transition action.
         if (!hasTodos) {
-            String modeGuidance = switch (mode) {
-                case EXPLORING -> "Current mode: **EXPLORING** — you just "
-                        + "entered this via START_PLAN. NEVER emit START_PLAN "
-                        + "again, you're already in it. Now actually explore: "
-                        + "`web_search`, `doc_read`, `doc_list`, `manual_read`, "
-                        + "or any read-only tool to gather what you need. "
-                        + "Once you have enough information, emit `PROPOSE_PLAN` "
-                        + "with a structured plan + todos.";
-                case PLANNING -> "Current mode: **PLANNING** — plan proposed, "
-                        + "awaiting user. The user's next message will either "
-                        + "accept (emit START_EXECUTION) or revise (emit a "
-                        + "fresh PROPOSE_PLAN). Do not re-emit PROPOSE_PLAN "
-                        + "from your own initiative — wait for the user.";
-                case EXECUTING -> "Current mode: **EXECUTING** — but the "
-                        + "TodoList is empty. This is a degenerate state — "
-                        + "emit ANSWER explaining what was done (if anything) "
-                        + "and the plan is complete.";
-                default -> null;
-            };
+            String modeGuidance =
+                    switch (mode) {
+                        case EXPLORING ->
+                            "Current mode: **EXPLORING** — you just "
+                                    + "entered this via START_PLAN. NEVER emit START_PLAN "
+                                    + "again, you're already in it. Now actually explore: "
+                                    + "`web_search`, `doc_read`, `doc_list`, `manual_read`, "
+                                    + "or any read-only tool to gather what you need. "
+                                    + "Once you have enough information, emit `PROPOSE_PLAN` "
+                                    + "with a structured plan + todos.";
+                        case PLANNING ->
+                            "Current mode: **PLANNING** — plan proposed, "
+                                    + "awaiting user. The user's next message will either "
+                                    + "accept (emit START_EXECUTION) or revise (emit a "
+                                    + "fresh PROPOSE_PLAN). Do not re-emit PROPOSE_PLAN "
+                                    + "from your own initiative — wait for the user.";
+                        case EXECUTING ->
+                            "Current mode: **EXECUTING** — but the "
+                                    + "TodoList is empty. This is a degenerate state — "
+                                    + "emit ANSWER explaining what was done (if anything) "
+                                    + "and the plan is complete.";
+                        default -> null;
+                    };
             if (modeGuidance != null) {
                 sb.append(modeGuidance).append("\n");
                 return sb.toString();
             }
         }
         for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
-            de.mhus.vance.api.thinkprocess.TodoStatus s = t.getStatus() == null
-                    ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING
-                    : t.getStatus();
-            String marker = switch (s) {
-                case PENDING -> "[ ]";
-                case IN_PROGRESS -> "[~]";
-                case COMPLETED -> "[✓]";
-            };
-            sb.append(marker).append(' ')
-                    .append("(id=").append(t.getId() == null ? "" : t.getId()).append(") ");
+            de.mhus.vance.api.thinkprocess.TodoStatus s =
+                    t.getStatus() == null ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING : t.getStatus();
+            String marker =
+                    switch (s) {
+                        case PENDING -> "[ ]";
+                        case IN_PROGRESS -> "[~]";
+                        case COMPLETED -> "[✓]";
+                    };
+            sb.append(marker)
+                    .append(' ')
+                    .append("(id=")
+                    .append(t.getId() == null ? "" : t.getId())
+                    .append(") ");
             String content = t.getContent() == null ? "" : t.getContent();
             if (s == de.mhus.vance.api.thinkprocess.TodoStatus.IN_PROGRESS
-                    && t.getActiveForm() != null && !t.getActiveForm().isBlank()) {
+                    && t.getActiveForm() != null
+                    && !t.getActiveForm().isBlank()) {
                 content = t.getActiveForm();
             }
             sb.append(content).append('\n');
@@ -757,15 +766,13 @@ public class EddieEngine extends StructuredActionEngine {
     }
 
     @Override
-    public ParentReport summarizeForParent(
-            ThinkProcessDocument process, ProcessEventType eventType) {
+    public ParentReport summarizeForParent(ThinkProcessDocument process, ProcessEventType eventType) {
         // Default: generic summary. The Activity-Log captures detail
         // for cross-Eddie sync; parents (rarely a thing for Eddie since
         // she lives at the top of the scope tree) get the same one-line
         // marker as any other engine.
-        return ParentReport.of(
-                "Eddie process " + process.getId()
-                        + " status=" + eventType.name().toLowerCase());
+        return ParentReport.of("Eddie process " + process.getId() + " status="
+                + eventType.name().toLowerCase());
     }
 
     /**
@@ -784,8 +791,7 @@ public class EddieEngine extends StructuredActionEngine {
         String userId = sessionOpt.get().getUserId();
         if (userId == null || userId.isBlank()) return null;
 
-        List<EddieActivityEntry> peers = activityService.readPeerRecap(
-                process.getTenantId(), userId, process.getId());
+        List<EddieActivityEntry> peers = activityService.readPeerRecap(process.getTenantId(), userId, process.getId());
         if (peers.isEmpty()) return null;
         if (peers.size() == 1) {
             return "Quick status: " + peers.get(0).getSummary() + ".";
@@ -805,10 +811,7 @@ public class EddieEngine extends StructuredActionEngine {
 
     // ──────────────────── One turn ────────────────────
 
-    private TurnSignal runTurnFor(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            List<SteerMessage> inbox) {
+    private TurnSignal runTurnFor(ThinkProcessDocument process, ThinkEngineContext ctx, List<SteerMessage> inbox) {
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         // Per-turn flag for handleAction: was this turn triggered by a
@@ -825,11 +828,13 @@ public class EddieEngine extends StructuredActionEngine {
         int eventCounter = 0;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci
-                    && uci.content() != null && !uci.content().isBlank()) {
+                    && uci.content() != null
+                    && !uci.content().isBlank()) {
                 hadUserInput = true;
             }
             if (m instanceof SteerMessage.ProcessEvent pe
-                    && pe.eventId() != null && !pe.eventId().isBlank()) {
+                    && pe.eventId() != null
+                    && !pe.eventId().isBlank()) {
                 String token = "ev" + (++eventCounter);
                 eventsByRef.put(token, pe);
             }
@@ -839,11 +844,11 @@ public class EddieEngine extends StructuredActionEngine {
             // ArthurEngine for the same pattern and
             // planning/process-engine-reply-channel.md.
             if (m instanceof SteerMessage.Reply r
-                    && r.content() != null && !r.content().isBlank()) {
+                    && r.content() != null
+                    && !r.content().isBlank()) {
                 String token = "ev" + (++eventCounter);
                 String wrapped = "Child reply from "
-                        + (r.sourceProcessName() == null
-                                ? r.sourceProcessId() : r.sourceProcessName())
+                        + (r.sourceProcessName() == null ? r.sourceProcessId() : r.sourceProcessName())
                         + "\n\nLast assistant reply from this child (verbatim):\n"
                         + "--- BEGIN CHILD REPLY ---\n"
                         + r.content()
@@ -862,10 +867,10 @@ public class EddieEngine extends StructuredActionEngine {
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
         currentTurnEventsByRef.put(process.getId(), eventsByRef);
-        // Genuine user input restarts the completion-guard budget (see
-        // StructuredActionEngine#resetGuardBudgetForUserTurn) — the
+        // Genuine user input restarts the guard budget and runs the START-point guards (see
+        // StructuredActionEngine#guardsOnTurnStart) — the
         // guard's own follow-up injections don't.
-        resetGuardBudgetForUserTurn(process, inbox);
+        guardsOnTurnStart(process, inbox);
         boolean awaitingUserInput = false;
         // Set when the action loop bailed on a mid-loop interrupt (ESC /
         // /pause): no fake reply, and the finally leaves the interrupt
@@ -890,47 +895,51 @@ public class EddieEngine extends StructuredActionEngine {
                             .senderDisplayName(uci.fromUserDisplayName())
                             // What this message pointed at, if anything —
                             // see SelectionReferenceIngest.
-                            .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest
-                                    .metaFor(uci.activeApp()))
+                            .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest.metaFor(uci.activeApp()))
                             .build());
                 }
             }
 
-            EngineChatFactory.EngineChatBundle chatBundle =
-                    engineChatFactory.forProcess(process, ctx, NAME);
+            EngineChatFactory.EngineChatBundle chatBundle = engineChatFactory.forProcess(process, ctx, NAME);
             AiChat aiChat = chatBundle.chat();
             AiChatConfig config = chatBundle.primaryConfig();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                    process.getTenantId(), process.getProjectId(),
-                    config.providerInstance(), config.provider(), config.modelName());
-            ModelSize effectiveSize = ModelSize.parseOrAuto(
-                    paramString(process, "modelSize", null), modelInfo.size());
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    config.providerInstance(),
+                    config.provider(),
+                    config.modelName());
+            ModelSize effectiveSize = ModelSize.parseOrAuto(paramString(process, "modelSize", null), modelInfo.size());
 
             // Active skills — body into the prompt, tools: entries onto
             // the loop's surface (add-only).
-            List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills =
-                    skillTurnSupport.resolveActive(process);
+            List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills = skillTurnSupport.resolveActive(process);
             java.util.Set<String> skillTools = skillTurnSupport.mergedTools(activeSkills);
 
-            List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, inbox, modelInfo, effectiveSize, ctx, activeSkills);
+            List<ChatMessage> messages =
+                    buildPromptMessages(process, chatLog, inbox, modelInfo, effectiveSize, ctx, activeSkills);
             // Strength-aware compaction trigger: SOFT/HARD/EMERGENCY
             // based on est-tokens vs context window. Compacts via
             // MemoryCompactionService and rebuilds the prompt if so.
             de.mhus.vance.brain.memory.CompactionResult cr =
                     memoryCompactionService.compactIfNeeded(process, config, messages, modelInfo);
             if (cr.compacted()) {
-                log.info("Eddie.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
-                        process.getId(), cr.messagesCompacted(),
-                        cr.summaryChars(), cr.memoryId());
-                messages = buildPromptMessages(
-                        process, chatLog, inbox, modelInfo, effectiveSize, ctx, activeSkills);
+                log.info(
+                        "Eddie.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
+                        process.getId(),
+                        cr.messagesCompacted(),
+                        cr.summaryChars(),
+                        cr.memoryId());
+                messages = buildPromptMessages(process, chatLog, inbox, modelInfo, effectiveSize, ctx, activeSkills);
             }
-            int maxIters = paramInt(process, "maxIterations",
-                    DEFAULT_MAX_ITERATIONS);
-            log.debug("Eddie.turn id='{}' inbox={} historyMsgs={} model={} maxIters={}",
-                    process.getId(), inbox.size(), messages.size(),
-                    config.modelName(), maxIters);
+            int maxIters = paramInt(process, "maxIterations", DEFAULT_MAX_ITERATIONS);
+            log.debug(
+                    "Eddie.turn id='{}' inbox={} historyMsgs={} model={} maxIters={}",
+                    process.getId(),
+                    inbox.size(),
+                    messages.size(),
+                    config.modelName(),
+                    maxIters);
 
             String modelAlias = config.provider() + ":" + config.modelName();
 
@@ -942,16 +951,24 @@ public class EddieEngine extends StructuredActionEngine {
             // tools.invokeInternal() — same dispatch pool, just
             // bypassing the LLM-visibility gate.
             ActionLoopResult loopResult = runActionLoopWithJudge(
-                    aiChat, ContextToolsApi::primaryAsLc4j,
-                    messages, ctx, process, maxIters, modelAlias,
-                    modelInfo.actionLoopCorrections(), inbox, skillTools,
+                    aiChat,
+                    ContextToolsApi::primaryAsLc4j,
+                    messages,
+                    ctx,
+                    process,
+                    maxIters,
+                    modelAlias,
+                    modelInfo.actionLoopCorrections(),
+                    inbox,
+                    skillTools,
                     // Lets a tool-produced image (MCP screenshot) reach
                     // the model between iterations.
                     new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.Context(
-                            process.getTenantId(), process.getProjectId(), process.getId(),
+                            process.getTenantId(),
+                            process.getProjectId(),
+                            process.getId(),
                             config.fullName(),
-                            de.mhus.vance.brain.ai.ProviderType.requireWireName(
-                                    config.provider()),
+                            de.mhus.vance.brain.ai.ProviderType.requireWireName(config.provider()),
                             modelInfo.capabilities()));
 
             // Mid-loop interrupt (ESC / /pause): stop before a terminal
@@ -961,8 +978,10 @@ public class EddieEngine extends StructuredActionEngine {
                 interrupted = true;
                 interruptForcePause = loopResult.interruptForcesPause();
                 ctx.historyTagSink().discard();
-                log.info("Eddie.turn id='{}' interrupted (forcePause={}) — parking, no answer surfaced",
-                        process.getId(), interruptForcePause);
+                log.info(
+                        "Eddie.turn id='{}' interrupted (forcePause={}) — parking, no answer surfaced",
+                        process.getId(),
+                        interruptForcePause);
                 return new TurnSignal(false, loopResult.madeProgress());
             }
 
@@ -982,14 +1001,13 @@ public class EddieEngine extends StructuredActionEngine {
                 // (un-consolidated) content stays on disk and the
                 // user-facing turn is unaffected.
                 if (EddieActionSchema.TYPE_LEARN.equals(loopResult.action().type())) {
-                    runLearnConsolidation(loopResult.action(), aiChat,
-                            process, ctx, modelAlias);
+                    runLearnConsolidation(loopResult.action(), aiChat, process, ctx, modelAlias);
                 }
             } else if ("max-iters".equals(loopResult.fallbackReason())
                     && loopResult.madeProgress()
                     && (process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
-                        || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
-                        || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING)) {
+                            || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
+                            || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING)) {
                 // Plan-mode mid-execution pause: the LLM was actively
                 // calling tools (web search, doc writes, …) and just
                 // hit the per-turn cap before reaching a terminal
@@ -999,13 +1017,13 @@ public class EddieEngine extends StructuredActionEngine {
                 // free-text narration so the next turn's prompt
                 // carries cross-turn memory of in-turn work.
                 String narration = loopResult.fallbackText();
-                String chatNote = (narration == null || narration.isBlank())
-                        ? null
-                        : narration;
-                log.info("Eddie.turn id='{}' max-iters with progress "
-                        + "({} tool invocations, narration={} chars) — "
-                        + "yielding for outer continuation",
-                        process.getId(), loopResult.toolInvocations(),
+                String chatNote = (narration == null || narration.isBlank()) ? null : narration;
+                log.info(
+                        "Eddie.turn id='{}' max-iters with progress "
+                                + "({} tool invocations, narration={} chars) — "
+                                + "yielding for outer continuation",
+                        process.getId(),
+                        loopResult.toolInvocations(),
                         narration == null ? 0 : narration.length());
                 outcome = new ActionTurnOutcome(chatNote, /*awaiting*/ false);
             } else {
@@ -1016,8 +1034,7 @@ public class EddieEngine extends StructuredActionEngine {
                     // diagnostic. The validator gave it 2 chances; this
                     // is the best we can do.
                     outcome = new ActionTurnOutcome(text, true);
-                } else if (process.getMode()
-                        == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
+                } else if (process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
                         && allTodosCompleted(process)) {
                     // Graceful plan-completion close: the LLM emitted
                     // tool calls until everything in the plan was done,
@@ -1026,20 +1043,19 @@ public class EddieEngine extends StructuredActionEngine {
                     // leak the "internal: action loop ..." string —
                     // synthesise a brief summary from the TodoList so
                     // the user sees a real reply.
-                    outcome = new ActionTurnOutcome(
-                            renderPlanCompletionSummary(process), true);
+                    outcome = new ActionTurnOutcome(renderPlanCompletionSummary(process), true);
                 } else {
                     // Genuine stuck path — LLM gave nothing usable, no
                     // plan to fall back on. Keep the diagnostic but
                     // mark it clearly as a system hint, not a "user
                     // visible answer" pretending to be Eddie's voice.
                     outcome = new ActionTurnOutcome(
-                            "_I just lost track of things "
-                                    + "— tell me briefly where we should pick up._",
-                            true);
-                    log.warn("Eddie id='{}' action-loop fallback with no usable "
+                            "_I just lost track of things " + "— tell me briefly where we should pick up._", true);
+                    log.warn(
+                            "Eddie id='{}' action-loop fallback with no usable "
                                     + "text (reason={}) — posting placeholder reply",
-                            process.getId(), loopResult.fallbackReason());
+                            process.getId(),
+                            loopResult.fallbackReason());
                 }
             }
             awaitingUserInput = outcome.awaitingUserInput();
@@ -1053,7 +1069,8 @@ public class EddieEngine extends StructuredActionEngine {
                         .thinkProcessId(process.getId())
                         .role(ChatRole.ASSISTANT)
                         .content(chatMessage)
-                        .thinking(ctx.reasoning() == null ? null : ctx.reasoning().snapshot());
+                        .thinking(
+                                ctx.reasoning() == null ? null : ctx.reasoning().snapshot());
                 Map<String, Object> outcomeMeta = outcome.chatMessageMeta();
                 Map<String, Object> mergedMeta = null;
                 if (outcomeMeta != null && !outcomeMeta.isEmpty()) {
@@ -1079,16 +1096,14 @@ public class EddieEngine extends StructuredActionEngine {
                         && !process.getParentProcessId().isBlank()) {
                     ctx.emitReply(chatMessage, lastUserInputAt(inbox), null);
                 }
-                String preview = chatMessage.length() > 120
-                        ? chatMessage.substring(0, 120) + "…" : chatMessage;
-                log.info("Eddie.turn id='{}' awaiting={} -> '{}'",
-                        process.getId(), awaitingUserInput, preview);
+                String preview = chatMessage.length() > 120 ? chatMessage.substring(0, 120) + "…" : chatMessage;
+                log.info("Eddie.turn id='{}' awaiting={} -> '{}'", process.getId(), awaitingUserInput, preview);
             } else {
                 // No assistant turn this round — drop buffered tags
                 // rather than letting them leak onto the next turn.
                 ctx.historyTagSink().discard();
-                log.info("Eddie.turn id='{}' awaiting={} (silent — no chat append)",
-                        process.getId(), awaitingUserInput);
+                log.info(
+                        "Eddie.turn id='{}' awaiting={} (silent — no chat append)", process.getId(), awaitingUserInput);
             }
             // Completion guard: at a natural chat completion (produced a
             // reply, not waiting on the user) let any recipe/skill-configured
@@ -1108,13 +1123,11 @@ public class EddieEngine extends StructuredActionEngine {
                 // PAUSED (user's next message auto-resumes); status-flip
                 // path leaves the terminal status the pause handler set.
                 if (interruptForcePause) {
-                    thinkProcessService.updateStatus(
-                            process.getId(), ThinkProcessStatus.PAUSED);
+                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
                 }
             } else {
-                ThinkProcessStatus exitStatus = awaitingUserInput
-                        ? ThinkProcessStatus.BLOCKED
-                        : ThinkProcessStatus.IDLE;
+                ThinkProcessStatus exitStatus =
+                        awaitingUserInput ? ThinkProcessStatus.BLOCKED : ThinkProcessStatus.IDLE;
                 thinkProcessService.updateStatus(process.getId(), exitStatus);
             }
         }
@@ -1148,15 +1161,13 @@ public class EddieEngine extends StructuredActionEngine {
      * See {@link de.mhus.vance.brain.thinkengine.action.StructuredActionEngine#answerActionFromText}.
      */
     @Override
-    protected de.mhus.vance.brain.thinkengine.action.@Nullable EngineAction
-            answerActionFromText(String text) {
+    protected de.mhus.vance.brain.thinkengine.action.@Nullable EngineAction answerActionFromText(String text) {
         if (text == null || text.isBlank()) {
             return null;
         }
         return new de.mhus.vance.brain.thinkengine.action.EngineAction(
                 EddieActionSchema.TYPE_ANSWER,
-                "Model replied in prose without the action wrapper; "
-                        + "delivering it as ANSWER.",
+                "Model replied in prose without the action wrapper; " + "delivering it as ANSWER.",
                 java.util.Map.of(EddieActionSchema.PARAM_MESSAGE, text));
     }
 
@@ -1188,10 +1199,7 @@ public class EddieEngine extends StructuredActionEngine {
     }
 
     @Override
-    protected String applyContinuingAction(
-            EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    protected String applyContinuingAction(EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
         // DISCOVER short-circuits the standard dispatch — synchronous
         // lookup, JSON feedback into the next action-loop iteration.
         // Mirror of Arthur's DISCOVER handler.
@@ -1205,21 +1213,17 @@ public class EddieEngine extends StructuredActionEngine {
         // user-visible chat note for TODO_UPDATE COMPLETED transitions
         // (below) so the user sees plan progress live instead of a
         // 2-minute silent run.
-        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todosBefore =
-                snapshotTodos(process);
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todosBefore = snapshotTodos(process);
         ActionTurnOutcome ignored = handleAction(action, process, ctx);
         String type = action.type();
-        if (de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_START_EXECUTION
-                .equals(type)) {
+        if (de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_START_EXECUTION.equals(type)) {
             return renderStartExecutionFeedback(process);
         }
-        if (de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_TODO_UPDATE
-                .equals(type)) {
+        if (de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_TODO_UPDATE.equals(type)) {
             appendProgressChatForCompletions(process, ctx, todosBefore);
             return renderTodoListFeedback(process, "TODO_UPDATE applied");
         }
-        if (de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_START_PLAN
-                .equals(type)) {
+        if (de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_START_PLAN.equals(type)) {
             return "START_PLAN applied — mode is now EXPLORING. NEVER emit "
                     + "START_PLAN again. Use read-only tools (web_search, "
                     + "doc_read, doc_list, manual_read) to gather what you "
@@ -1274,8 +1278,7 @@ public class EddieEngine extends StructuredActionEngine {
      * inside {@link #applyContinuingAction}. Returns an empty list
      * when no todos are persisted yet.
      */
-    private static java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> snapshotTodos(
-            ThinkProcessDocument process) {
+    private static java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> snapshotTodos(ThinkProcessDocument process) {
         java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
         if (todos == null) return java.util.List.of();
         return new java.util.ArrayList<>(todos);
@@ -1319,8 +1322,8 @@ public class EddieEngine extends StructuredActionEngine {
             msg.append("✓ ").append(completedTitles.get(i));
         }
         try {
-            ctx.chatMessageService().append(
-                    de.mhus.vance.shared.chat.ChatMessageDocument.builder()
+            ctx.chatMessageService()
+                    .append(de.mhus.vance.shared.chat.ChatMessageDocument.builder()
                             .tenantId(process.getTenantId())
                             .sessionId(process.getSessionId())
                             .thinkProcessId(process.getId())
@@ -1328,8 +1331,7 @@ public class EddieEngine extends StructuredActionEngine {
                             .content(msg.toString())
                             .build());
         } catch (RuntimeException e) {
-            log.warn("Eddie id='{}' failed to append plan-progress chat note: {}",
-                    process.getId(), e.toString());
+            log.warn("Eddie id='{}' failed to append plan-progress chat note: {}", process.getId(), e.toString());
         }
     }
 
@@ -1340,8 +1342,7 @@ public class EddieEngine extends StructuredActionEngine {
      * silent transition leaves no record in the chat history.
      */
     private String renderStartExecutionFeedback(ThinkProcessDocument process) {
-        return renderTodoListFeedback(process,
-                "START_EXECUTION applied — mode is now EXECUTING");
+        return renderTodoListFeedback(process, "START_EXECUTION applied — mode is now EXECUTING");
     }
 
     /**
@@ -1356,46 +1357,44 @@ public class EddieEngine extends StructuredActionEngine {
         if (todos == null) todos = java.util.List.of();
         de.mhus.vance.api.thinkprocess.TodoItem firstActive = null;
         for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
-            de.mhus.vance.api.thinkprocess.TodoStatus s = t.getStatus() == null
-                    ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING
-                    : t.getStatus();
-            String marker = switch (s) {
-                case PENDING -> "[ ]";
-                case IN_PROGRESS -> "[~]";
-                case COMPLETED -> "[✓]";
-            };
-            sb.append(marker).append(" (id=")
+            de.mhus.vance.api.thinkprocess.TodoStatus s =
+                    t.getStatus() == null ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING : t.getStatus();
+            String marker =
+                    switch (s) {
+                        case PENDING -> "[ ]";
+                        case IN_PROGRESS -> "[~]";
+                        case COMPLETED -> "[✓]";
+                    };
+            sb.append(marker)
+                    .append(" (id=")
                     .append(t.getId() == null ? "" : t.getId())
                     .append(") ")
                     .append(t.getContent() == null ? "" : t.getContent())
                     .append('\n');
-            if (firstActive == null
-                    && s != de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) {
+            if (firstActive == null && s != de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) {
                 firstActive = t;
             }
         }
         sb.append('\n');
         if (firstActive == null) {
-            sb.append("All todos COMPLETED. Emit ANSWER with a brief summary "
-                    + "so the user sees the final result.");
-        } else if (firstActive.getStatus()
-                == de.mhus.vance.api.thinkprocess.TodoStatus.IN_PROGRESS) {
+            sb.append("All todos COMPLETED. Emit ANSWER with a brief summary " + "so the user sees the final result.");
+        } else if (firstActive.getStatus() == de.mhus.vance.api.thinkprocess.TodoStatus.IN_PROGRESS) {
             sb.append("The first active item (id=")
                     .append(firstActive.getId())
                     .append(") is already IN_PROGRESS. Do NOT emit TODO_UPDATE "
-                    + "for it again — that's a no-op. Instead, call read/write "
-                    + "tools (web_search, doc_read, doc_write, doc_edit, "
-                    + "etc.) or DELEGATE_PROJECT / STEER_PROJECT to make real "
-                    + "progress. Once the work is done, emit TODO_UPDATE to "
-                    + "mark it COMPLETED and pick the next item.");
+                            + "for it again — that's a no-op. Instead, call read/write "
+                            + "tools (web_search, doc_read, doc_write, doc_edit, "
+                            + "etc.) or DELEGATE_PROJECT / STEER_PROJECT to make real "
+                            + "progress. Once the work is done, emit TODO_UPDATE to "
+                            + "mark it COMPLETED and pick the next item.");
         } else {
             sb.append("Next: emit TODO_UPDATE setting id=")
                     .append(firstActive.getId())
                     .append(" to IN_PROGRESS, then in the same or next "
-                    + "iteration call the read/write tools to do the actual "
-                    + "work (web_search, doc_write, …) or "
-                    + "DELEGATE_PROJECT / STEER_PROJECT for hand-off. "
-                    + "NEVER re-emit START_EXECUTION.");
+                            + "iteration call the read/write tools to do the actual "
+                            + "work (web_search, doc_write, …) or "
+                            + "DELEGATE_PROJECT / STEER_PROJECT for hand-off. "
+                            + "NEVER re-emit START_EXECUTION.");
         }
         return sb.toString();
     }
@@ -1426,17 +1425,18 @@ public class EddieEngine extends StructuredActionEngine {
      */
     @Override
     protected @Nullable String validateActionSemantics(
-            EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
-        boolean inActivePlanMode = process.getMode() != null
-                && process.getMode() != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
+            EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
+        boolean inActivePlanMode =
+                process.getMode() != null && process.getMode() != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
         if (!Boolean.TRUE.equals(currentTurnHadUserInput.get(process.getId()))
                 && !inActivePlanMode
                 && SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS.contains(action.type())) {
-            log.warn("Eddie id='{}' rejected spawn-action '{}' on event-only turn"
+            log.warn(
+                    "Eddie id='{}' rejected spawn-action '{}' on event-only turn"
                             + " (no fresh user-input in inbox) — reason: '{}'",
-                    process.getId(), action.type(), action.reason());
+                    process.getId(),
+                    action.type(),
+                    action.reason());
             return "Action '" + action.type() + "' is not allowed on a turn "
                     + "triggered without fresh user-input. The current inbox carries "
                     + "only in-bound process events (child closed / steer reply / "
@@ -1451,32 +1451,28 @@ public class EddieEngine extends StructuredActionEngine {
 
     @Override
     protected ActionTurnOutcome handleAction(
-            EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+            EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
         // Plan-Mode actions go through the shared service first. When
         // the service recognises the action it returns the outcome;
         // otherwise null and we fall through to Eddie-specific actions.
         ActionTurnOutcome planOutcome = planModeService.dispatch(action, process, ctx);
         if (planOutcome != null) return planOutcome;
         return switch (action.type()) {
-            case EddieActionSchema.TYPE_ANSWER           -> handleAnswer(action);
-            case EddieActionSchema.TYPE_ASK_USER         -> handleAskUser(action);
+            case EddieActionSchema.TYPE_ANSWER -> handleAnswer(action);
+            case EddieActionSchema.TYPE_ASK_USER -> handleAskUser(action);
             case EddieActionSchema.TYPE_DELEGATE_PROJECT -> handleDelegateProject(action, process, ctx);
-            case EddieActionSchema.TYPE_STEER_PROJECT    -> handleSteerProject(action, process, ctx);
-            case EddieActionSchema.TYPE_RELAY            -> handleRelay(action, process, ctx);
-            case EddieActionSchema.TYPE_RELAY_INBOX      -> handleRelayInbox(action, process, ctx);
-            case EddieActionSchema.TYPE_LEARN            -> handleLearn(action, process);
-            case EddieActionSchema.TYPE_MEDIATE          -> handleMediate(action, process, ctx);
-            case EddieActionSchema.TYPE_NOTIFY_USER      -> handleNotifyUser(action, process);
-            case EddieActionSchema.TYPE_WAIT             -> handleWait(action);
-            case EddieActionSchema.TYPE_REJECT           -> handleReject(action);
+            case EddieActionSchema.TYPE_STEER_PROJECT -> handleSteerProject(action, process, ctx);
+            case EddieActionSchema.TYPE_RELAY -> handleRelay(action, process, ctx);
+            case EddieActionSchema.TYPE_RELAY_INBOX -> handleRelayInbox(action, process, ctx);
+            case EddieActionSchema.TYPE_LEARN -> handleLearn(action, process);
+            case EddieActionSchema.TYPE_MEDIATE -> handleMediate(action, process, ctx);
+            case EddieActionSchema.TYPE_NOTIFY_USER -> handleNotifyUser(action, process);
+            case EddieActionSchema.TYPE_WAIT -> handleWait(action);
+            case EddieActionSchema.TYPE_REJECT -> handleReject(action);
             default -> {
-                log.warn("Eddie id='{}' unknown action type '{}'",
-                        process.getId(), action.type());
+                log.warn("Eddie id='{}' unknown action type '{}'", process.getId(), action.type());
                 yield new ActionTurnOutcome(
-                        "(internal: unknown action type '" + action.type()
-                                + "', reason was: " + action.reason() + ")",
+                        "(internal: unknown action type '" + action.type() + "', reason was: " + action.reason() + ")",
                         true);
             }
         };
@@ -1549,8 +1545,7 @@ public class EddieEngine extends StructuredActionEngine {
      * list — keeps the free-text question shape intact.
      */
     @SuppressWarnings("unchecked")
-    private static String renderAskUserOptions(
-            String baseMessage, @Nullable Object optionsRaw) {
+    private static String renderAskUserOptions(String baseMessage, @Nullable Object optionsRaw) {
         if (!(optionsRaw instanceof List<?> rawList) || rawList.isEmpty()) {
             return baseMessage;
         }
@@ -1587,14 +1582,13 @@ public class EddieEngine extends StructuredActionEngine {
             EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
         String projectName = action.stringParam(EddieActionSchema.PARAM_PROJECT_NAME);
         String projectGoal = action.stringParam(EddieActionSchema.PARAM_PROJECT_GOAL);
-        if (projectName == null || projectName.isBlank()
-                || projectGoal == null || projectGoal.isBlank()) {
-            log.warn("Eddie id='{}' DELEGATE_PROJECT missing projectName / projectGoal — reason='{}'",
-                    process.getId(), action.reason());
+        if (projectName == null || projectName.isBlank() || projectGoal == null || projectGoal.isBlank()) {
+            log.warn(
+                    "Eddie id='{}' DELEGATE_PROJECT missing projectName / projectGoal — reason='{}'",
+                    process.getId(),
+                    action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — internal error: project name or goal was missing. ("
-                            + action.reason() + ")",
-                    true);
+                    "Sorry — internal error: project name or goal was missing. (" + action.reason() + ")", true);
         }
         String projectTitle = action.stringParam(EddieActionSchema.PARAM_PROJECT_TITLE);
         String kitName = action.stringParam(EddieActionSchema.PARAM_KIT_NAME);
@@ -1621,8 +1615,10 @@ public class EddieEngine extends StructuredActionEngine {
                     params.put("kitName", kitName);
                 }
                 createResult = ctx.tools().invokeInternal("project_create", params);
-                log.info("Eddie id='{}' DELEGATE_PROJECT name='{}'{} kit='{}' reason='{}'",
-                        process.getId(), resolvedName,
+                log.info(
+                        "Eddie id='{}' DELEGATE_PROJECT name='{}'{} kit='{}' reason='{}'",
+                        process.getId(),
+                        resolvedName,
                         attempt > 1 ? " (renamed from '" + projectName + "', attempt " + attempt + ")" : "",
                         kitName == null ? "" : kitName,
                         summariseReason(action.reason()));
@@ -1632,22 +1628,25 @@ public class EddieEngine extends StructuredActionEngine {
                 if (!isProjectNameTaken(e)) {
                     // Different failure — kit-resolver miss, permission
                     // denied, anything else — surface immediately.
-                    log.warn("Eddie id='{}' DELEGATE_PROJECT failed: {}",
-                            process.getId(), e.toString());
-                    return new ActionTurnOutcome(
-                            "Could not create the project: " + e.getMessage(),
-                            true);
+                    log.warn("Eddie id='{}' DELEGATE_PROJECT failed: {}", process.getId(), e.toString());
+                    return new ActionTurnOutcome("Could not create the project: " + e.getMessage(), true);
                 }
                 // Name collision — bump the suffix and try again. First
                 // collision goes to "<name>-2", then "-3", etc.
                 resolvedName = projectName + "-" + (attempt + 1);
-                log.info("Eddie id='{}' DELEGATE_PROJECT name '{}' taken, retrying as '{}'",
-                        process.getId(), attempt == 1 ? projectName : resolvedName, resolvedName);
+                log.info(
+                        "Eddie id='{}' DELEGATE_PROJECT name '{}' taken, retrying as '{}'",
+                        process.getId(),
+                        attempt == 1 ? projectName : resolvedName,
+                        resolvedName);
             }
         }
         if (createResult == null) {
-            log.warn("Eddie id='{}' DELEGATE_PROJECT gave up after {} suffix attempts on base '{}': {}",
-                    process.getId(), MAX_PROJECT_NAME_TRIES, projectName,
+            log.warn(
+                    "Eddie id='{}' DELEGATE_PROJECT gave up after {} suffix attempts on base '{}': {}",
+                    process.getId(),
+                    MAX_PROJECT_NAME_TRIES,
+                    projectName,
                     lastError == null ? "(no error)" : lastError.toString());
             return new ActionTurnOutcome(
                     "Could not find a free project name based on '"
@@ -1669,8 +1668,11 @@ public class EddieEngine extends StructuredActionEngine {
             // Best-effort — failure here only leaves the old spot in
             // place; the project itself is created either way and the
             // LLM can re-target via project_switch.
-            log.debug("Eddie id='{}' failed to set workingProjectId='{}' after DELEGATE: {}",
-                    process.getId(), resolvedName, e.toString());
+            log.debug(
+                    "Eddie id='{}' failed to set workingProjectId='{}' after DELEGATE: {}",
+                    process.getId(),
+                    resolvedName,
+                    e.toString());
         }
 
         // Auto-observe: open a Working-WS to the freshly-spawned chat-process
@@ -1683,19 +1685,16 @@ public class EddieEngine extends StructuredActionEngine {
             try {
                 Map<String, Object> observeParams = new LinkedHashMap<>();
                 observeParams.put("processId", workerId);
-                observeParams.put("channelMode",
-                        de.mhus.vance.api.eddie.ChannelMode.MILESTONES.name());
+                observeParams.put("channelMode", de.mhus.vance.api.eddie.ChannelMode.MILESTONES.name());
                 ctx.tools().invokeInternal("process_observe", observeParams);
             } catch (RuntimeException e) {
-                log.debug("Eddie id='{}' auto-observe after DELEGATE failed: {}",
-                        process.getId(), e.toString());
+                log.debug("Eddie id='{}' auto-observe after DELEGATE failed: {}", process.getId(), e.toString());
             }
         }
 
         // Silent spawn unless Eddie explicitly wants to say something.
         return new ActionTurnOutcome(
-                message == null || message.isBlank() ? null : message,
-                /*awaitingUserInput*/ false);
+                message == null || message.isBlank() ? null : message, /*awaitingUserInput*/ false);
     }
 
     /**
@@ -1714,14 +1713,13 @@ public class EddieEngine extends StructuredActionEngine {
         if (project == null || project.isBlank()) {
             project = process.getWorkingProjectId();
         }
-        if (project == null || project.isBlank()
-                || content == null || content.isBlank()) {
-            log.warn("Eddie id='{}' STEER_PROJECT missing project / content — reason='{}'",
-                    process.getId(), action.reason());
+        if (project == null || project.isBlank() || content == null || content.isBlank()) {
+            log.warn(
+                    "Eddie id='{}' STEER_PROJECT missing project / content — reason='{}'",
+                    process.getId(),
+                    action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — internal error: project or message was missing. ("
-                            + action.reason() + ")",
-                    true);
+                    "Sorry — internal error: project or message was missing. (" + action.reason() + ")", true);
         }
         String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
 
@@ -1740,20 +1738,18 @@ public class EddieEngine extends StructuredActionEngine {
             params.put("projectId", project);
             params.put("message", content);
             ctx.tools().invokeInternal("project_chat_send", params);
-            log.info("Eddie id='{}' STEER_PROJECT project='{}' reason='{}'",
-                    process.getId(), project,
+            log.info(
+                    "Eddie id='{}' STEER_PROJECT project='{}' reason='{}'",
+                    process.getId(),
+                    project,
                     summariseReason(action.reason()));
         } catch (RuntimeException e) {
-            log.warn("Eddie id='{}' STEER_PROJECT failed: {}",
-                    process.getId(), e.toString());
-            return new ActionTurnOutcome(
-                    "Could not deliver the message: " + e.getMessage(),
-                    true);
+            log.warn("Eddie id='{}' STEER_PROJECT failed: {}", process.getId(), e.toString());
+            return new ActionTurnOutcome("Could not deliver the message: " + e.getMessage(), true);
         }
 
         return new ActionTurnOutcome(
-                message == null || message.isBlank() ? null : message,
-                /*awaitingUserInput*/ false);
+                message == null || message.isBlank() ? null : message, /*awaitingUserInput*/ false);
     }
 
     /**
@@ -1761,8 +1757,7 @@ public class EddieEngine extends StructuredActionEngine {
      * Zero-token pass-through: engine copies the worker's content
      * verbatim, with an optional short prefix from Eddie.
      */
-    private ActionTurnOutcome handleRelay(
-            EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
+    private ActionTurnOutcome handleRelay(EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
         EventRelayResolution res = resolveRelayEvent(action, process, ctx);
         if (res.error() != null) {
             return new ActionTurnOutcome(res.error(), true);
@@ -1773,17 +1768,20 @@ public class EddieEngine extends StructuredActionEngine {
         // Marvin-wording / Ford-source mismatch the planning doc
         // describes.
         StringBuilder out = new StringBuilder();
-        out.append("**[Worker ").append(res.sourceName())
-                .append(" → ").append(res.event().type().name().toLowerCase())
+        out.append("**[Worker ")
+                .append(res.sourceName())
+                .append(" → ")
+                .append(res.event().type().name().toLowerCase())
                 .append("]**\n\n");
         out.append(body);
         // Cross-engine ASK_USER picker — same provenance lookup as
         // before, but anchored on the event's source-process rather
         // than the LLM-supplied name (see specification/eddie-engine.md
         // §5.8 for why we forward picker options).
-        Map<String, Object> relayedMeta = extractAskUserOptionsMetaForProcess(
-                res.event().sourceProcessId(), process, ctx);
-        log.info("Eddie id='{}' RELAY eventRef='{}' source='{}' ({} chars) reason='{}'{}",
+        Map<String, Object> relayedMeta =
+                extractAskUserOptionsMetaForProcess(res.event().sourceProcessId(), process, ctx);
+        log.info(
+                "Eddie id='{}' RELAY eventRef='{}' source='{}' ({} chars) reason='{}'{}",
                 process.getId(),
                 action.stringParam(EddieActionSchema.PARAM_EVENT_REF),
                 res.sourceName(),
@@ -1803,7 +1801,7 @@ public class EddieEngine extends StructuredActionEngine {
             SteerMessage.@Nullable ProcessEvent event,
             @Nullable String body,
             @Nullable String sourceName,
-            @Nullable String error) { }
+            @Nullable String error) {}
 
     /**
      * Validates the {@code eventRef} param against the current turn's
@@ -1818,15 +1816,16 @@ public class EddieEngine extends StructuredActionEngine {
                 currentTurnEventsByRef.getOrDefault(process.getId(), Map.of());
         SteerMessage.ProcessEvent event = pickRelayEvent(action, process, available);
         if (event == null) {
-            log.warn("Eddie id='{}' relay could not be resolved "
+            log.warn(
+                    "Eddie id='{}' relay could not be resolved "
                             + "(drain size={}, eventRef='{}', legacy source='{}') "
                             + "— reason='{}'",
-                    process.getId(), available.size(),
+                    process.getId(),
+                    available.size(),
                     action.stringParam(EddieActionSchema.PARAM_EVENT_REF),
                     action.stringParam("source"),
                     action.reason());
-            return new EventRelayResolution(null, null, null,
-                    relayFallbackMessage(available));
+            return new EventRelayResolution(null, null, null, relayFallbackMessage(available));
         }
         // Unwrap the BEGIN/END CHILD REPLY framing that
         // ParentNotificationListener.enrichWithLastReply adds for the
@@ -1836,11 +1835,13 @@ public class EddieEngine extends StructuredActionEngine {
         // CHILD REPLY ---" markers to leak into the user's chat.
         String body = unwrapChildReply(event.humanSummary());
         if (body == null || body.isBlank()) {
-            log.warn("Eddie id='{}' relay eventId '{}' has empty body — reason='{}'",
-                    process.getId(), event.eventId(), action.reason());
-            return new EventRelayResolution(null, null, null,
-                    "_The worker returned an empty response. "
-                            + "Tell me briefly how to proceed._");
+            log.warn(
+                    "Eddie id='{}' relay eventId '{}' has empty body — reason='{}'",
+                    process.getId(),
+                    event.eventId(),
+                    action.reason());
+            return new EventRelayResolution(
+                    null, null, null, "_The worker returned an empty response. " + "Tell me briefly how to proceed._");
         }
         // Source-worker name for the deterministic header. Eddie's
         // workers live in their own sessions (cross-project), so a
@@ -1849,7 +1850,8 @@ public class EddieEngine extends StructuredActionEngine {
         // ParentNotificationListener / EddieChatFrameHandler already
         // anchored to Eddie.
         String sourceProcessId = event.sourceProcessId();
-        String sourceName = thinkProcessService.findById(sourceProcessId)
+        String sourceName = thinkProcessService
+                .findById(sourceProcessId)
                 .filter(p -> process.getTenantId().equals(p.getTenantId()))
                 .map(ThinkProcessDocument::getName)
                 .orElse(sourceProcessId);
@@ -1861,11 +1863,8 @@ public class EddieEngine extends StructuredActionEngine {
      * {@code ArthurEngine.resolveRelayEvent}. See the javadoc there
      * for the rationale.
      */
-    private SteerMessage.@org.jspecify.annotations.Nullable ProcessEvent
-    pickRelayEvent(
-            EngineAction action,
-            ThinkProcessDocument process,
-            Map<String, SteerMessage.ProcessEvent> available) {
+    private SteerMessage.@org.jspecify.annotations.Nullable ProcessEvent pickRelayEvent(
+            EngineAction action, ThinkProcessDocument process, Map<String, SteerMessage.ProcessEvent> available) {
         String eventRef = action.stringParam(EddieActionSchema.PARAM_EVENT_REF);
         if (eventRef != null && !eventRef.isBlank()) {
             SteerMessage.ProcessEvent byToken = available.get(eventRef);
@@ -1887,11 +1886,10 @@ public class EddieEngine extends StructuredActionEngine {
     }
 
     private boolean matchesLegacySource(
-            SteerMessage.ProcessEvent event,
-            ThinkProcessDocument process,
-            String legacySource) {
+            SteerMessage.ProcessEvent event, ThinkProcessDocument process, String legacySource) {
         if (legacySource.equals(event.sourceProcessId())) return true;
-        return thinkProcessService.findById(event.sourceProcessId())
+        return thinkProcessService
+                .findById(event.sourceProcessId())
                 .filter(p -> process.getTenantId().equals(p.getTenantId()))
                 .map(ThinkProcessDocument::getName)
                 .filter(legacySource::equals)
@@ -1903,8 +1901,7 @@ public class EddieEngine extends StructuredActionEngine {
      * so the renderer can attach the short token to each
      * {@code <process-event>} marker. Symmetric to Arthur.
      */
-    private static Map<String, String> invertToShortTokens(
-            Map<String, SteerMessage.ProcessEvent> eventsByToken) {
+    private static Map<String, String> invertToShortTokens(Map<String, SteerMessage.ProcessEvent> eventsByToken) {
         Map<String, String> out = new LinkedHashMap<>();
         for (var entry : eventsByToken.entrySet()) {
             String token = entry.getKey();
@@ -1920,11 +1917,9 @@ public class EddieEngine extends StructuredActionEngine {
      * User-visible fallback when RELAY can't be honoured. Never
      * leaks the internal validator diagnostic into the chat.
      */
-    private String relayFallbackMessage(
-            Map<String, SteerMessage.ProcessEvent> available) {
+    private String relayFallbackMessage(Map<String, SteerMessage.ProcessEvent> available) {
         if (available.isEmpty()) {
-            return "_I have nothing to pass along right now. "
-                    + "Tell me briefly where we should pick up._";
+            return "_I have nothing to pass along right now. " + "Tell me briefly where we should pick up._";
         }
         return "_I just lost track while passing along the worker's "
                 + "response. If you still need the answer, ask again — "
@@ -1941,16 +1936,18 @@ public class EddieEngine extends StructuredActionEngine {
     @SuppressWarnings("unchecked")
     private @Nullable Map<String, Object> extractAskUserOptionsMetaForProcess(
             String workerProcessId, ThinkProcessDocument eddie, ThinkEngineContext ctx) {
-        ThinkProcessDocument worker = thinkProcessService.findById(workerProcessId)
+        ThinkProcessDocument worker = thinkProcessService
+                .findById(workerProcessId)
                 .filter(p -> eddie.getTenantId().equals(p.getTenantId()))
                 .orElse(null);
         if (worker == null) return null;
-        List<ChatMessageDocument> history = ctx.chatMessageService().activeHistory(
-                worker.getTenantId(), worker.getSessionId(), worker.getId());
+        List<ChatMessageDocument> history =
+                ctx.chatMessageService().activeHistory(worker.getTenantId(), worker.getSessionId(), worker.getId());
         for (int i = history.size() - 1; i >= 0; i--) {
             ChatMessageDocument m = history.get(i);
             if (m.getRole() != ChatRole.ASSISTANT
-                    || m.getContent() == null || m.getContent().isBlank()) continue;
+                    || m.getContent() == null
+                    || m.getContent().isBlank()) continue;
             Map<String, Object> meta = m.getMeta();
             if (meta == null || meta.isEmpty()) return null;
             Object options = meta.get(ChatMessageDocument.META_ASK_USER_OPTIONS);
@@ -1972,14 +1969,13 @@ public class EddieEngine extends StructuredActionEngine {
             EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
         String inboxTitle = action.stringParam(EddieActionSchema.PARAM_INBOX_TITLE);
         String spoken = action.stringParam(EddieActionSchema.PARAM_SPOKEN);
-        if (inboxTitle == null || inboxTitle.isBlank()
-                || spoken == null || spoken.isBlank()) {
-            log.warn("Eddie id='{}' RELAY_INBOX missing inboxTitle / spoken — reason='{}'",
-                    process.getId(), action.reason());
+        if (inboxTitle == null || inboxTitle.isBlank() || spoken == null || spoken.isBlank()) {
+            log.warn(
+                    "Eddie id='{}' RELAY_INBOX missing inboxTitle / spoken — reason='{}'",
+                    process.getId(),
+                    action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — internal error: inbox title or announcement was missing. ("
-                            + action.reason() + ")",
-                    true);
+                    "Sorry — internal error: inbox title or announcement was missing. (" + action.reason() + ")", true);
         }
         EventRelayResolution res = resolveRelayEvent(action, process, ctx);
         if (res.error() != null) {
@@ -1991,11 +1987,8 @@ public class EddieEngine extends StructuredActionEngine {
         // session's user; cross-user inbox posts aren't a thing here.
         String targetUserId = resolveUserId(process);
         if (targetUserId == null) {
-            log.warn("Eddie id='{}' RELAY_INBOX cannot resolve userId from session",
-                    process.getId());
-            return new ActionTurnOutcome(
-                    "Sorry — internal error: could not determine the recipient.",
-                    true);
+            log.warn("Eddie id='{}' RELAY_INBOX cannot resolve userId from session", process.getId());
+            return new ActionTurnOutcome("Sorry — internal error: could not determine the recipient.", true);
         }
 
         // Post the body to the inbox via the existing inbox_post tool.
@@ -2007,19 +2000,17 @@ public class EddieEngine extends StructuredActionEngine {
             params.put("title", inboxTitle);
             params.put("body", body);
             ctx.tools().invokeInternal("inbox_post", params);
-            log.info("Eddie id='{}' RELAY_INBOX eventRef='{}' source='{}' title='{}' "
-                            + "({} chars) reason='{}'",
+            log.info(
+                    "Eddie id='{}' RELAY_INBOX eventRef='{}' source='{}' title='{}' " + "({} chars) reason='{}'",
                     process.getId(),
                     action.stringParam(EddieActionSchema.PARAM_EVENT_REF),
                     res.sourceName(),
-                    inboxTitle, body.length(),
+                    inboxTitle,
+                    body.length(),
                     summariseReason(action.reason()));
         } catch (RuntimeException e) {
-            log.warn("Eddie id='{}' RELAY_INBOX inbox_post failed: {}",
-                    process.getId(), e.toString());
-            return new ActionTurnOutcome(
-                    "Could not place the item into the inbox: " + e.getMessage(),
-                    true);
+            log.warn("Eddie id='{}' RELAY_INBOX inbox_post failed: {}", process.getId(), e.toString());
+            return new ActionTurnOutcome("Could not place the item into the inbox: " + e.getMessage(), true);
         }
 
         // The user-facing chat message is just the spoken announcement.
@@ -2047,35 +2038,26 @@ public class EddieEngine extends StructuredActionEngine {
      * makes the behaviour identical when Eddie sits in the tenant hub
      * and keeps the rule symmetric with Arthur.
      */
-    private ActionTurnOutcome handleLearn(
-            EngineAction action, ThinkProcessDocument process) {
+    private ActionTurnOutcome handleLearn(EngineAction action, ThinkProcessDocument process) {
         String scope = action.stringParam(EddieActionSchema.PARAM_SCOPE);
         String content = action.stringParam(EddieActionSchema.PARAM_CONTENT);
-        if (scope == null || scope.isBlank()
-                || content == null || content.isBlank()) {
-            log.warn("Eddie id='{}' LEARN missing scope/content — reason='{}'",
-                    process.getId(), action.reason());
+        if (scope == null || scope.isBlank() || content == null || content.isBlank()) {
+            log.warn("Eddie id='{}' LEARN missing scope/content — reason='{}'", process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — internal error: scope or content was missing while "
-                            + "learning. (" + action.reason() + ")",
+                    "Sorry — internal error: scope or content was missing while " + "learning. (" + action.reason()
+                            + ")",
                     true);
         }
         if (!EddieActionSchema.LEARN_SCOPES.contains(scope)) {
-            log.warn("Eddie id='{}' LEARN unknown scope='{}' — reason='{}'",
-                    process.getId(), scope, action.reason());
+            log.warn("Eddie id='{}' LEARN unknown scope='{}' — reason='{}'", process.getId(), scope, action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — internal error: unknown scope '" + scope
-                            + "'. Allowed are 'persona' and 'fact'.",
-                    true);
+                    "Sorry — internal error: unknown scope '" + scope + "'. Allowed are 'persona' and 'fact'.", true);
         }
 
         String userProject = resolveUserProjectName(process);
         if (userProject == null) {
-            log.warn("Eddie id='{}' LEARN cannot resolve user project — session/userId missing",
-                    process.getId());
-            return new ActionTurnOutcome(
-                    "Sorry — internal error: no hub project available.",
-                    true);
+            log.warn("Eddie id='{}' LEARN cannot resolve user project — session/userId missing", process.getId());
+            return new ActionTurnOutcome("Sorry — internal error: no hub project available.", true);
         }
         String tenantId = process.getTenantId();
         String authorTag = "eddie:" + process.getId();
@@ -2083,29 +2065,28 @@ public class EddieEngine extends StructuredActionEngine {
         try {
             switch (scope) {
                 case EddieActionSchema.LEARN_SCOPE_PERSONA -> {
-                    String mode = action.stringParamOr(
-                            EddieActionSchema.PARAM_MODE,
-                            EddieActionSchema.LEARN_MODE_REPLACE);
-                    int chars = userMemoryService.learnPersona(
-                            tenantId, userProject, content, mode, authorTag);
-                    log.info("Eddie id='{}' LEARN persona mode='{}' ({} chars total) reason='{}'",
-                            process.getId(), mode, chars,
+                    String mode =
+                            action.stringParamOr(EddieActionSchema.PARAM_MODE, EddieActionSchema.LEARN_MODE_REPLACE);
+                    int chars = userMemoryService.learnPersona(tenantId, userProject, content, mode, authorTag);
+                    log.info(
+                            "Eddie id='{}' LEARN persona mode='{}' ({} chars total) reason='{}'",
+                            process.getId(),
+                            mode,
+                            chars,
                             summariseReason(action.reason()));
                 }
                 case EddieActionSchema.LEARN_SCOPE_FACT -> {
-                    int chars = userMemoryService.learnFact(
-                            tenantId, userProject, content, authorTag);
-                    log.info("Eddie id='{}' LEARN fact (journal now {} chars) reason='{}'",
-                            process.getId(), chars,
+                    int chars = userMemoryService.learnFact(tenantId, userProject, content, authorTag);
+                    log.info(
+                            "Eddie id='{}' LEARN fact (journal now {} chars) reason='{}'",
+                            process.getId(),
+                            chars,
                             summariseReason(action.reason()));
                 }
             }
         } catch (RuntimeException e) {
-            log.warn("Eddie id='{}' LEARN persistence failed: {}",
-                    process.getId(), e.toString());
-            return new ActionTurnOutcome(
-                    "Could not remember that right now — " + e.getMessage(),
-                    true);
+            log.warn("Eddie id='{}' LEARN persistence failed: {}", process.getId(), e.toString());
+            return new ActionTurnOutcome("Could not remember that right now — " + e.getMessage(), true);
         }
 
         // Optional spoken confirmation. If absent, silent — the user
@@ -2137,17 +2118,14 @@ public class EddieEngine extends StructuredActionEngine {
         if (userProject == null) return;
         String authorTag = "eddie:" + process.getId();
         userMemoryService.runConsolidation(
-                scope, process.getTenantId(), userProject, authorTag,
-                (systemPrompt, currentText) -> {
-                    List<ChatMessage> messages = List.of(
-                            SystemMessage.from(systemPrompt),
-                            UserMessage.from(currentText));
+                scope, process.getTenantId(), userProject, authorTag, (systemPrompt, currentText) -> {
+                    List<ChatMessage> messages =
+                            List.of(SystemMessage.from(systemPrompt), UserMessage.from(currentText));
                     dev.langchain4j.model.chat.request.ChatRequest req =
                             dev.langchain4j.model.chat.request.ChatRequest.builder()
                                     .messages(messages)
                                     .build();
-                    AiMessage reply = streamOneIteration(
-                            aiChat, req, ctx, process, modelAlias);
+                    AiMessage reply = streamOneIteration(aiChat, req, ctx, process, modelAlias);
                     return reply.text();
                 });
     }
@@ -2179,18 +2157,16 @@ public class EddieEngine extends StructuredActionEngine {
      * (mobile / voice-only). A formal {@code ProfileRegistry.canMediate}
      * gate is on the roadmap.
      */
-    private ActionTurnOutcome handleMediate(
-            EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    private ActionTurnOutcome handleMediate(EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
         // Capability gate: only profiles with canMediate=true (foot, web)
         // can run the close+reopen WS dance. Mobile (voice-only) gets
         // a polite explanation instead.
-        de.mhus.vance.shared.access.ProfileCapabilities caps =
-                profileRegistry.capabilities(process.getBoundProfile());
+        de.mhus.vance.shared.access.ProfileCapabilities caps = profileRegistry.capabilities(process.getBoundProfile());
         if (!caps.canMediate()) {
-            log.info("Eddie id='{}' MEDIATE skipped — profile '{}' canMediate=false",
-                    process.getId(), process.getBoundProfile());
+            log.info(
+                    "Eddie id='{}' MEDIATE skipped — profile '{}' canMediate=false",
+                    process.getId(),
+                    process.getBoundProfile());
             return new ActionTurnOutcome(
                     "You are on a client that has no way back "
                             + "out of a direct connection. I'll stay here for you — "
@@ -2201,10 +2177,8 @@ public class EddieEngine extends StructuredActionEngine {
 
         String target = action.stringParam(EddieActionSchema.PARAM_TARGET);
         if (target == null || target.isBlank()) {
-            log.warn("Eddie id='{}' MEDIATE missing target — reason='{}'",
-                    process.getId(), action.reason());
-            return new ActionTurnOutcome(
-                    "Sorry — internal error: mediate target was missing.", true);
+            log.warn("Eddie id='{}' MEDIATE missing target — reason='{}'", process.getId(), action.reason());
+            return new ActionTurnOutcome("Sorry — internal error: mediate target was missing.", true);
         }
         // Resolve the target by project / worker name. Two paths:
         //   (1) Fast: Eddie delegated this worker herself — workerLinks
@@ -2217,26 +2191,20 @@ public class EddieEngine extends StructuredActionEngine {
         MediateTarget resolved = null;
         if (process.getWorkerLinks() != null) {
             var linked = process.getWorkerLinks().stream()
-                    .filter(l -> target.equals(l.getWorkerProcessName())
-                            || target.equals(l.getWorkerProcessId()))
+                    .filter(l -> target.equals(l.getWorkerProcessName()) || target.equals(l.getWorkerProcessId()))
                     .findFirst();
             if (linked.isPresent()) {
                 var l = linked.get();
-                resolved = new MediateTarget(
-                        l.getWorkerSessionId(),
-                        l.getWorkerProcessId(),
-                        l.getWorkerProjectName());
+                resolved = new MediateTarget(l.getWorkerSessionId(), l.getWorkerProcessId(), l.getWorkerProjectName());
             }
         }
         if (resolved == null) {
             resolved = resolveMediateTargetByProject(process, target);
         }
         if (resolved == null) {
-            log.warn("Eddie id='{}' MEDIATE: no chat-process for target='{}'",
-                    process.getId(), target);
+            log.warn("Eddie id='{}' MEDIATE: no chat-process for target='{}'", process.getId(), target);
             return new ActionTurnOutcome(
-                    "Could not open the project '" + target + "' — no "
-                            + "active chat process found.", true);
+                    "Could not open the project '" + target + "' — no " + "active chat process found.", true);
         }
 
         // Resurrect a closed / stopped / done chat-process. Older
@@ -2251,9 +2219,11 @@ public class EddieEngine extends StructuredActionEngine {
             thinkProcessService.findById(resolved.workerProcessId()).ifPresent(p -> {
                 ThinkProcessStatus s = p.getStatus();
                 if (s != ThinkProcessStatus.IDLE && s != ThinkProcessStatus.RUNNING) {
-                    log.info("Eddie id='{}' MEDIATE: resurrecting chat-process '{}' "
-                            + "from status={}",
-                            process.getId(), p.getId(), s);
+                    log.info(
+                            "Eddie id='{}' MEDIATE: resurrecting chat-process '{}' " + "from status={}",
+                            process.getId(),
+                            p.getId(),
+                            s);
                     thinkProcessService.updateStatus(p.getId(), ThinkProcessStatus.IDLE);
                 }
             });
@@ -2271,8 +2241,10 @@ public class EddieEngine extends StructuredActionEngine {
         // bind. See SessionService.forceUnbind javadoc.
         boolean tookOver = sessionService.forceUnbind(resolved.workerSessionId());
         if (tookOver) {
-            log.info("Eddie id='{}' MEDIATE: took over session='{}' from previous binding",
-                    process.getId(), resolved.workerSessionId());
+            log.info(
+                    "Eddie id='{}' MEDIATE: took over session='{}' from previous binding",
+                    process.getId(),
+                    resolved.workerSessionId());
         }
 
         // Push the switch-to frame. No server-side state writes — the
@@ -2280,38 +2252,32 @@ public class EddieEngine extends StructuredActionEngine {
         // normally; absence of user input is the natural "quiet" state
         // while the user is over at the worker.
         String voice = action.stringParam(EddieActionSchema.PARAM_VOICE_ANNOUNCEMENT);
-        de.mhus.vance.api.eddie.SwitchToNotification frame =
-                de.mhus.vance.api.eddie.SwitchToNotification.builder()
-                        .targetSessionId(resolved.workerSessionId())
-                        .targetProjectId(resolved.workerProjectName())
-                        .targetProcessName(target)
-                        .voiceAnnouncement(voice)
-                        .build();
+        de.mhus.vance.api.eddie.SwitchToNotification frame = de.mhus.vance.api.eddie.SwitchToNotification.builder()
+                .targetSessionId(resolved.workerSessionId())
+                .targetProjectId(resolved.workerProjectName())
+                .targetProcessName(target)
+                .voiceAnnouncement(voice)
+                .build();
         try {
-            ctx.events().publish(process.getSessionId(),
-                    de.mhus.vance.api.ws.MessageType.SWITCH_TO, frame);
+            ctx.events().publish(process.getSessionId(), de.mhus.vance.api.ws.MessageType.SWITCH_TO, frame);
         } catch (RuntimeException e) {
-            log.warn("Eddie MEDIATE: switch-to push failed for session='{}': {}",
-                    process.getSessionId(), e.toString());
-            return new ActionTurnOutcome(
-                    "Could not send the switch frame — I'll stay here for you.",
-                    true);
+            log.warn("Eddie MEDIATE: switch-to push failed for session='{}': {}", process.getSessionId(), e.toString());
+            return new ActionTurnOutcome("Could not send the switch frame — I'll stay here for you.", true);
         }
 
-        log.info("Eddie id='{}' MEDIATE target='{}' targetSession='{}' reason='{}'",
-                process.getId(), target, resolved.workerSessionId(),
+        log.info(
+                "Eddie id='{}' MEDIATE target='{}' targetSession='{}' reason='{}'",
+                process.getId(),
+                target,
+                resolved.workerSessionId(),
                 summariseReason(action.reason()));
 
-        return new ActionTurnOutcome(voice == null || voice.isBlank() ? null : voice,
-                /*awaitingUserInput=*/ true);
+        return new ActionTurnOutcome(voice == null || voice.isBlank() ? null : voice, /*awaitingUserInput=*/ true);
     }
 
     /** Fields the switch-to frame + resurrect logic need — keeps the
      *  worker-links fast path and the project-name fallback uniform. */
-    private record MediateTarget(
-            String workerSessionId,
-            String workerProcessId,
-            String workerProjectName) {}
+    private record MediateTarget(String workerSessionId, String workerProcessId, String workerProjectName) {}
 
     /**
      * Resolve a switch target by project name when no worker-link
@@ -2323,23 +2289,24 @@ public class EddieEngine extends StructuredActionEngine {
      * <p>Returns {@code null} when the project has no chat-process —
      * caller treats that as "no switchable target".
      */
-    private @Nullable MediateTarget resolveMediateTargetByProject(
-            ThinkProcessDocument process, String projectName) {
+    private @Nullable MediateTarget resolveMediateTargetByProject(ThinkProcessDocument process, String projectName) {
         String tenantId = process.getTenantId();
         if (tenantId == null || tenantId.isBlank()) return null;
         java.util.List<de.mhus.vance.shared.session.SessionDocument> sessions;
         try {
             sessions = sessionService.listForProject(tenantId, projectName);
         } catch (RuntimeException e) {
-            log.debug("Eddie MEDIATE: session lookup failed for project='{}': {}",
-                    projectName, e.toString());
+            log.debug("Eddie MEDIATE: session lookup failed for project='{}': {}", projectName, e.toString());
             return null;
         }
         if (sessions == null || sessions.isEmpty()) return null;
         de.mhus.vance.shared.session.SessionDocument best = null;
         for (var s : sessions) {
             if (s.getChatProcessId() == null || s.getChatProcessId().isBlank()) continue;
-            if (best == null) { best = s; continue; }
+            if (best == null) {
+                best = s;
+                continue;
+            }
             java.time.Instant ai = s.getCreatedAt();
             java.time.Instant bi = best.getCreatedAt();
             if (ai != null && (bi == null || ai.isAfter(bi))) best = s;
@@ -2357,29 +2324,26 @@ public class EddieEngine extends StructuredActionEngine {
      * ({@code NOTIFY} frame). Delivery is best-effort: dropped when no
      * client is connected to the session.
      */
-    private ActionTurnOutcome handleNotifyUser(
-            EngineAction action, ThinkProcessDocument process) {
+    private ActionTurnOutcome handleNotifyUser(EngineAction action, ThinkProcessDocument process) {
         String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
         if (message == null || message.isBlank()) {
-            log.warn("Eddie id='{}' NOTIFY_USER missing message — reason='{}'",
-                    process.getId(), action.reason());
+            log.warn("Eddie id='{}' NOTIFY_USER missing message — reason='{}'", process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Could not notify the user — the message text "
-                            + "was missing. (" + action.reason() + ")",
-                    true);
+                    "Could not notify the user — the message text " + "was missing. (" + action.reason() + ")", true);
         }
         de.mhus.vance.api.notification.NotificationSeverity severity =
-                parseNotifySeverity(
-                        action.stringParam(EddieActionSchema.PARAM_SEVERITY),
-                        process);
+                parseNotifySeverity(action.stringParam(EddieActionSchema.PARAM_SEVERITY), process);
         boolean delivered = notificationService.publish(process, message, severity);
-        log.info("Eddie id='{}' NOTIFY_USER severity={} delivered={} reason='{}'",
-                process.getId(), severity, delivered, action.reason());
+        log.info(
+                "Eddie id='{}' NOTIFY_USER severity={} delivered={} reason='{}'",
+                process.getId(),
+                severity,
+                delivered,
+                action.reason());
         return new ActionTurnOutcome(
                 delivered
                         ? "The user has been notified."
-                        : "The notification was created, but no "
-                                + "client was connected — it was not delivered.",
+                        : "The notification was created, but no " + "client was connected — it was not delivered.",
                 true);
     }
 
@@ -2397,8 +2361,7 @@ public class EddieEngine extends StructuredActionEngine {
             return de.mhus.vance.api.notification.NotificationSeverity.valueOf(
                     raw.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            log.debug("Eddie id='{}' NOTIFY_USER unknown severity '{}' — defaulting to INFO",
-                    process.getId(), raw);
+            log.debug("Eddie id='{}' NOTIFY_USER unknown severity '{}' — defaulting to INFO", process.getId(), raw);
             return de.mhus.vance.api.notification.NotificationSeverity.INFO;
         }
     }
@@ -2406,8 +2369,7 @@ public class EddieEngine extends StructuredActionEngine {
     private ActionTurnOutcome handleWait(EngineAction action) {
         String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
         return new ActionTurnOutcome(
-                message == null || message.isBlank() ? null : message,
-                /*awaitingUserInput*/ false);
+                message == null || message.isBlank() ? null : message, /*awaitingUserInput*/ false);
     }
 
     private ActionTurnOutcome handleReject(EngineAction action) {
@@ -2426,55 +2388,48 @@ public class EddieEngine extends StructuredActionEngine {
      * of Arthur's DISCOVER handler — same JSON shape (loaded /
      * alternatives / hint) so the LLM reads it the same way.
      */
-    private String handleDiscover(
-            EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    private String handleDiscover(EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
         Object raw = action.params().get(EddieActionSchema.PARAM_INTENT);
         if (!(raw instanceof String intent) || intent.isBlank()) {
-            return "DISCOVER: missing 'intent' — emit a non-blank "
-                    + "user-mentioned term or phrase.";
+            return "DISCOVER: missing 'intent' — emit a non-blank " + "user-mentioned term or phrase.";
         }
         try {
-            de.mhus.vance.brain.discovery.DiscoveryResult result =
-                    discoveryService.discover(
-                            intent,
-                            process.getTenantId(),
-                            process.getProjectId(),
-                            process.getId(),
-                            ctx.tools().allowed(),
-                            // The session's callable tools are the
-                            // catalog's tool section — without this the
-                            // client's own tools (client_*, MCP packs)
-                            // are invisible to discovery.
-                            ctx.tools().listAll());
+            de.mhus.vance.brain.discovery.DiscoveryResult result = discoveryService.discover(
+                    intent,
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    process.getId(),
+                    ctx.tools().allowed(),
+                    // The session's callable tools are the
+                    // catalog's tool section — without this the
+                    // client's own tools (client_*, MCP packs)
+                    // are invisible to discovery.
+                    ctx.tools().listAll());
             String json = serializeDiscoveryResult(result);
-            log.info("Eddie id='{}' DISCOVER intent='{}' loaded={} alternatives={}",
-                    process.getId(), intent,
+            log.info(
+                    "Eddie id='{}' DISCOVER intent='{}' loaded={} alternatives={}",
+                    process.getId(),
+                    intent,
                     result.getLoaded() != null ? result.getLoaded().getName() : null,
-                    result.getAlternatives() == null ? 0
+                    result.getAlternatives() == null
+                            ? 0
                             : result.getAlternatives().size());
             return json;
         } catch (RuntimeException e) {
-            log.warn("Eddie id='{}' DISCOVER intent='{}' failed: {}",
-                    process.getId(), intent, e.toString());
+            log.warn("Eddie id='{}' DISCOVER intent='{}' failed: {}", process.getId(), intent, e.toString());
             return "DISCOVER failed: " + e.getMessage()
                     + " — fall back to manual_list / manual_read or just answer "
                     + "with what you know.";
         }
     }
 
-    private String serializeDiscoveryResult(
-            de.mhus.vance.brain.discovery.DiscoveryResult result) {
+    private String serializeDiscoveryResult(de.mhus.vance.brain.discovery.DiscoveryResult result) {
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("intent", result.getIntent());
-        out.put("loaded", result.getLoaded() == null
-                ? null : discoveryMatchToMap(result.getLoaded()));
-        java.util.List<java.util.Map<String, Object>> alternatives =
-                new java.util.ArrayList<>();
+        out.put("loaded", result.getLoaded() == null ? null : discoveryMatchToMap(result.getLoaded()));
+        java.util.List<java.util.Map<String, Object>> alternatives = new java.util.ArrayList<>();
         if (result.getAlternatives() != null) {
-            for (de.mhus.vance.brain.discovery.DiscoveryResult.Match m
-                    : result.getAlternatives()) {
+            for (de.mhus.vance.brain.discovery.DiscoveryResult.Match m : result.getAlternatives()) {
                 alternatives.add(discoveryMatchToMap(m));
             }
         }
@@ -2508,7 +2463,8 @@ public class EddieEngine extends StructuredActionEngine {
      * is unset — caller must handle that defensively.
      */
     private @Nullable String resolveUserId(ThinkProcessDocument process) {
-        return sessionService.findBySessionId(process.getSessionId())
+        return sessionService
+                .findBySessionId(process.getSessionId())
                 .map(de.mhus.vance.shared.session.SessionDocument::getUserId)
                 .filter(s -> s != null && !s.isBlank())
                 .orElse(null);
@@ -2532,8 +2488,7 @@ public class EddieEngine extends StructuredActionEngine {
         // joins the static prefix; the cache marker lands on the
         // last static block. See specification/prompt-caching.md §5.
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
-                de.mhus.vance.brain.prompt.PromptContextBuilder
-                        .forProcess(process, modelInfo)
+                de.mhus.vance.brain.prompt.PromptContextBuilder.forProcess(process, modelInfo)
                         .tier(modelSize)
                         .engine(NAME);
         // Per-turn client context: voice mode, the app the reader has
@@ -2546,8 +2501,8 @@ public class EddieEngine extends StructuredActionEngine {
         de.mhus.vance.brain.prompt.ClientTurnContextResolver.ClientTurnContext client =
                 clientTurnContextResolver.resolve(process, inbox);
         client.applyTo(ctxBuilder);
-        ctxBuilder.withRootDirTypes(workspaceService.getRootDirTypes(
-                        process.getTenantId(), process.getProjectId()))
+        ctxBuilder
+                .withRootDirTypes(workspaceService.getRootDirTypes(process.getTenantId(), process.getProjectId()))
                 // This turn's manifest, so the template can gate
                 // tool-specific text on the tool being callable.
                 .withAvailableTools(engineCtx.tools().primary());
@@ -2557,10 +2512,9 @@ public class EddieEngine extends StructuredActionEngine {
         // recipe normally has no promptPrefix — the prompt belongs
         // in the .md cascade, not the YAML — so this path is the
         // common case for Eddie chat-process spawns.
-        String base = composer.compose(process,
-                process.getPromptOverride() == null
-                        ? engineDefaultPrompt(process)
-                        : process.getPromptOverride(),
+        String base = composer.compose(
+                process,
+                process.getPromptOverride() == null ? engineDefaultPrompt(process) : process.getPromptOverride(),
                 ctxBuilder);
         messages.add(SystemMessage.from(base));
         String userBlock = composeUserContextBlock(process);
@@ -2572,8 +2526,7 @@ public class EddieEngine extends StructuredActionEngine {
         // this turn's Pebble context plus each skill's invocation
         // arguments. Own message: a skill activation must not bust the
         // static prefix's cache marker.
-        String skillSection = skillTurnSupport.composeSection(
-                process, activeSkills, ctxBuilder.build());
+        String skillSection = skillTurnSupport.composeSection(process, activeSkills, ctxBuilder.build());
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }
@@ -2581,8 +2534,7 @@ public class EddieEngine extends StructuredActionEngine {
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour, default none). DYNAMIC — date rollover stays
         // behind the cache marker. See PromptDateBlock.
-        promptDateContextResolver.appendDynamicMessage(
-                messages, process, modelInfo == null ? null : modelInfo.size());
+        promptDateContextResolver.appendDynamicMessage(messages, process, modelInfo == null ? null : modelInfo.size());
         // Client environment (os/shell/cwd/sandbox) — tells the LLM which
         // command dialect its client_exec_run calls run on. DYNAMIC, no-op
         // when no CLIENT connection is bound. See PromptEnvironmentBlock.
@@ -2607,8 +2559,7 @@ public class EddieEngine extends StructuredActionEngine {
         // RAG auto-inject (when enabled in recipe) rides inside the
         // memory block — MemoryContextLoader splices it in for any
         // engine that hands it a userQuery. Engine-agnostic on purpose.
-        String memoryBlock = memoryContextLoader.composeBlock(
-                process, latestUserInputText(inbox));
+        String memoryBlock = memoryContextLoader.composeBlock(process, latestUserInputText(inbox));
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(memoryBlock));
         }
@@ -2646,8 +2597,7 @@ public class EddieEngine extends StructuredActionEngine {
         // HistoryStrengthFilter drops STRENGTH:weak rows when
         // `vance.prak.contextFilterEnabled=true`; otherwise pass-through.
         List<ChatMessageDocument> history = historyStrengthFilter.filter(
-                chatLog.activeHistory(
-                        process.getTenantId(), process.getSessionId(), process.getId()));
+                chatLog.activeHistory(process.getTenantId(), process.getSessionId(), process.getId()));
         for (ChatMessageDocument msg : history) {
             messages.add(toLangchain(msg, client.collabActive()));
         }
@@ -2655,8 +2605,8 @@ public class EddieEngine extends StructuredActionEngine {
         // Short-token map for the renderer — only events present in
         // THIS drain map (built in runTurnFor) get a multi-drain
         // eventRef rendered.
-        Map<String, String> eventIdToToken = invertToShortTokens(
-                currentTurnEventsByRef.getOrDefault(process.getId(), Map.of()));
+        Map<String, String> eventIdToToken =
+                invertToShortTokens(currentTurnEventsByRef.getOrDefault(process.getId(), Map.of()));
         boolean multiEventDrain = eventIdToToken.size() > 1;
         // REPLY-channel dedup (process-engine-reply-channel migration):
         // when a worker emits an explicit Reply the legacy lifecycle
@@ -2737,23 +2687,20 @@ public class EddieEngine extends StructuredActionEngine {
         // remembers the projectId for the first call or two and then
         // drops it on later calls (we saw this in plan-mode loops).
         String currentProjectId = process.getProjectId();
-        if (hasUserId
-                && de.mhus.vance.shared.home.HomeBootstrapService.TENANT_PROJECT_NAME
-                        .equals(currentProjectId)) {
-            String userProject = de.mhus.vance.shared.home.HomeBootstrapService
-                    .HUB_PROJECT_NAME_PREFIX + userId;
+        if (hasUserId && de.mhus.vance.shared.home.HomeBootstrapService.TENANT_PROJECT_NAME.equals(currentProjectId)) {
+            String userProject = de.mhus.vance.shared.home.HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId;
             sb.append("\n\n**Routing — where user-facing artifacts land:** "
-                    + "this chat sits in the tenant hub (`_tenant`, "
-                    + "SYSTEM). Any document, scratchpad, or workspace "
-                    + "write the user asked for must target the user "
-                    + "project `")
+                            + "this chat sits in the tenant hub (`_tenant`, "
+                            + "SYSTEM). Any document, scratchpad, or workspace "
+                            + "write the user asked for must target the user "
+                            + "project `")
                     .append(userProject)
                     .append("`. Always pass `projectId=\"")
                     .append(userProject)
                     .append("\"` to `doc_write`, `doc_edit`, "
-                    + "`work_file_write`, etc. — the "
-                    + "default routes to `_tenant` and gets rejected "
-                    + "because the hub is SYSTEM-protected.");
+                            + "`work_file_write`, etc. — the "
+                            + "default routes to `_tenant` and gets rejected "
+                            + "because the hub is SYSTEM-protected.");
         }
         return sb.toString();
     }
@@ -2766,8 +2713,7 @@ public class EddieEngine extends StructuredActionEngine {
     private @Nullable String composePersonaBlock(ThinkProcessDocument process) {
         String userProject = resolveUserProjectName(process);
         if (userProject == null) return null;
-        return userMemoryService.composePersonaBlock(
-                process.getTenantId(), userProject);
+        return userMemoryService.composePersonaBlock(process.getTenantId(), userProject);
     }
 
     /**
@@ -2778,8 +2724,7 @@ public class EddieEngine extends StructuredActionEngine {
     private @Nullable String composeFactsBlock(ThinkProcessDocument process) {
         String userProject = resolveUserProjectName(process);
         if (userProject == null) return null;
-        return userMemoryService.composeFactsBlock(
-                process.getTenantId(), userProject);
+        return userMemoryService.composeFactsBlock(process.getTenantId(), userProject);
     }
 
     /**
@@ -2795,7 +2740,8 @@ public class EddieEngine extends StructuredActionEngine {
     private @Nullable String resolveUserProjectName(ThinkProcessDocument process) {
         String sessionId = process.getSessionId();
         if (sessionId == null || sessionId.isBlank()) return null;
-        return sessionService.findBySessionId(sessionId)
+        return sessionService
+                .findBySessionId(sessionId)
                 .map(SessionDocument::getUserId)
                 .filter(uid -> uid != null && !uid.isBlank())
                 .map(HomeBootstrapService::hubProjectName)
@@ -2820,9 +2766,7 @@ public class EddieEngine extends StructuredActionEngine {
      */
     private @Nullable String composeDelegatedWorkersBlock(ThinkProcessDocument process) {
         return renderDelegatedWorkersBlock(
-                process.getWorkerLinks(),
-                DELEGATED_WORKERS_MAX_RENDER,
-                java.time.Instant.now());
+                process.getWorkerLinks(), DELEGATED_WORKERS_MAX_RENDER, java.time.Instant.now());
     }
 
     /**
@@ -2853,7 +2797,8 @@ public class EddieEngine extends StructuredActionEngine {
                     + "persona / chit-chat turns don't need a spot.");
             return sb.toString();
         }
-        sb.append("Currently coordinating: `").append(workingProjectId)
+        sb.append("Currently coordinating: `")
+                .append(workingProjectId)
                 .append("`. STEER_PROJECT and project_chat_send default ")
                 .append("here — no need to repeat the project name. Use ")
                 .append("`project_switch(name=...)` when the user shifts ")
@@ -2878,7 +2823,8 @@ public class EddieEngine extends StructuredActionEngine {
 
         var visible = links.stream()
                 .filter(l -> l.getWorkerStatus() != null
-                        || (l.getTriageSummary() != null && !l.getTriageSummary().isBlank()))
+                        || (l.getTriageSummary() != null
+                                && !l.getTriageSummary().isBlank()))
                 .sorted((a, b) -> {
                     java.time.Instant ai = a.getLastSeen();
                     java.time.Instant bi = b.getLastSeen();
@@ -2897,8 +2843,12 @@ public class EddieEngine extends StructuredActionEngine {
                 + "need to address something they've reported, but don't repeat the summary "
                 + "verbatim back to the user.\n\n");
         for (var link : visible) {
-            sb.append("- ").append(workerLabel(link)).append(' ')
-                    .append('(').append(linkStatus(link, now)).append(')');
+            sb.append("- ")
+                    .append(workerLabel(link))
+                    .append(' ')
+                    .append('(')
+                    .append(linkStatus(link, now))
+                    .append(')');
             if (link.getTriageSummary() != null && !link.getTriageSummary().isBlank()) {
                 // The summary originates from worker LLM output — escape it the
                 // same way process-event content is (renderForLlm) so worker
@@ -2931,17 +2881,14 @@ public class EddieEngine extends StructuredActionEngine {
      * mode (only when not {@link de.mhus.vance.api.thinkprocess.ProcessMode#NORMAL}),
      * and a relative timestamp.
      */
-    static String linkStatus(
-            de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot link,
-            java.time.Instant now) {
+    static String linkStatus(de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot link, java.time.Instant now) {
         StringBuilder s = new StringBuilder();
         if (link.getWorkerStatus() != null) {
             s.append(link.getWorkerStatus().name().toLowerCase(java.util.Locale.ROOT));
         } else {
             s.append("active");
         }
-        if (link.getWorkerMode() != null
-                && link.getWorkerMode() != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL) {
+        if (link.getWorkerMode() != null && link.getWorkerMode() != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL) {
             s.append('/').append(link.getWorkerMode().name().toLowerCase(java.util.Locale.ROOT));
         }
         if (link.getLastSeen() != null) {
@@ -2963,15 +2910,13 @@ public class EddieEngine extends StructuredActionEngine {
 
     private @Nullable String lookupProcessName(@Nullable String processId) {
         if (processId == null || processId.isBlank()) return null;
-        return thinkProcessService.findById(processId)
+        return thinkProcessService
+                .findById(processId)
                 .map(ThinkProcessDocument::getName)
                 .orElse(null);
     }
 
-    private @Nullable String renderForLlm(
-            SteerMessage m,
-            Map<String, String> eventIdToToken,
-            boolean multiEventDrain) {
+    private @Nullable String renderForLlm(SteerMessage m, Map<String, String> eventIdToToken, boolean multiEventDrain) {
         if (m instanceof SteerMessage.UserChatInput) {
             return null; // already in chat history
         }
@@ -2990,13 +2935,9 @@ public class EddieEngine extends StructuredActionEngine {
             // event — single-event drains auto-pick in resolveRelayEvent.
             // The token (ev1, ev2, ...) is what the LLM passes back; the
             // UUID stays internal for cross-pod logs.
-            String token = pe.eventId() == null
-                    ? null
-                    : eventIdToToken.get(pe.eventId());
+            String token = pe.eventId() == null ? null : eventIdToToken.get(pe.eventId());
             if (multiEventDrain && token != null) {
-                sb.append(" eventRef=\"")
-                        .append(escapeAttr(token))
-                        .append("\"");
+                sb.append(" eventRef=\"").append(escapeAttr(token)).append("\"");
             }
             if (pe.inResponseToAt() != null) {
                 sb.append(" respondingToTurnAt=\"")
@@ -3093,9 +3034,7 @@ public class EddieEngine extends StructuredActionEngine {
         int bodyStart = humanSummary.indexOf('\n', begin);
         if (bodyStart < 0) return humanSummary;
         int end = humanSummary.indexOf("--- END CHILD REPLY ---", bodyStart);
-        String inner = end < 0
-                ? humanSummary.substring(bodyStart + 1)
-                : humanSummary.substring(bodyStart + 1, end);
+        String inner = end < 0 ? humanSummary.substring(bodyStart + 1) : humanSummary.substring(bodyStart + 1, end);
         return inner.trim();
     }
 
@@ -3120,8 +3059,7 @@ public class EddieEngine extends StructuredActionEngine {
         return p == null ? null : p.get(key);
     }
 
-    private static @Nullable String paramString(
-            ThinkProcessDocument process, String key, @Nullable String fallback) {
+    private static @Nullable String paramString(ThinkProcessDocument process, String key, @Nullable String fallback) {
         Object v = param(process, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
     }
@@ -3130,8 +3068,11 @@ public class EddieEngine extends StructuredActionEngine {
         Object v = param(process, key);
         if (v instanceof Number n) return n.intValue();
         if (v instanceof String s) {
-            try { return Integer.parseInt(s.trim()); }
-            catch (NumberFormatException e) { return fallback; }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                return fallback;
+            }
         }
         return fallback;
     }
@@ -3162,8 +3103,7 @@ public class EddieEngine extends StructuredActionEngine {
      * {@code null} when no reachable tool carries a hint — engine
      * skips the block entirely in that case.
      */
-    private @org.jspecify.annotations.Nullable String composeToolHintsBlock(
-            ThinkEngineContext engineCtx) {
+    private @org.jspecify.annotations.Nullable String composeToolHintsBlock(ThinkEngineContext engineCtx) {
         if (engineCtx == null || engineCtx.tools() == null) return null;
         java.util.List<String> hints = engineCtx.tools().activePromptHints();
         if (hints.isEmpty()) return null;

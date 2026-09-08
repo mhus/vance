@@ -50,7 +50,7 @@ class FrankieTodoBlockTest {
                 mock(de.mhus.vance.brain.ai.ModelCatalog.class),
                 mock(de.mhus.vance.brain.memory.MemoryCompactionService.class),
                 new de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry(java.util.List.of()),
-                mock(de.mhus.vance.brain.guard.CompletionGuardService.class),
+                mock(de.mhus.vance.brain.guard.ShootyGuardService.class),
                 mock(de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.class),
                 mock(de.mhus.vance.brain.prompt.ClientTurnContextResolver.class));
     }
@@ -64,21 +64,29 @@ class FrankieTodoBlockTest {
         assertThat(block).contains("todo_create");
 
         process.setTodos(List.of());
-        assertThat(engine.buildTodoListBlock(process))
-                .isEqualTo(block);  // same shape whether null or empty
+        assertThat(engine.buildTodoListBlock(process)).isEqualTo(block); // same shape whether null or empty
     }
 
     @Test
     void populatedTodos_hidesCompleted_showsRest() {
         ThinkProcessDocument process = new ThinkProcessDocument();
         process.setTodos(List.of(
-                TodoItem.builder().id("1").status(TodoStatus.COMPLETED)
-                        .content("Read parser").build(),
-                TodoItem.builder().id("2").status(TodoStatus.IN_PROGRESS)
+                TodoItem.builder()
+                        .id("1")
+                        .status(TodoStatus.COMPLETED)
+                        .content("Read parser")
+                        .build(),
+                TodoItem.builder()
+                        .id("2")
+                        .status(TodoStatus.IN_PROGRESS)
                         .content("Add streaming variant")
-                        .activeForm("Adding streaming variant").build(),
-                TodoItem.builder().id("3").status(TodoStatus.PENDING)
-                        .content("Migrate callers").build()));
+                        .activeForm("Adding streaming variant")
+                        .build(),
+                TodoItem.builder()
+                        .id("3")
+                        .status(TodoStatus.PENDING)
+                        .content("Migrate callers")
+                        .build()));
 
         String block = engine.buildTodoListBlock(process);
 
@@ -102,8 +110,16 @@ class FrankieTodoBlockTest {
         // we still get here with all-COMPLETED, render the empty hint.
         ThinkProcessDocument process = new ThinkProcessDocument();
         process.setTodos(List.of(
-                TodoItem.builder().id("1").status(TodoStatus.COMPLETED).content("a").build(),
-                TodoItem.builder().id("2").status(TodoStatus.COMPLETED).content("b").build()));
+                TodoItem.builder()
+                        .id("1")
+                        .status(TodoStatus.COMPLETED)
+                        .content("a")
+                        .build(),
+                TodoItem.builder()
+                        .id("2")
+                        .status(TodoStatus.COMPLETED)
+                        .content("b")
+                        .build()));
 
         String block = engine.buildTodoListBlock(process);
 
@@ -115,9 +131,21 @@ class FrankieTodoBlockTest {
     void mixedStatus_currentInProgressShownWithActiveForm() {
         ThinkProcessDocument process = new ThinkProcessDocument();
         process.setTodos(List.of(
-                TodoItem.builder().id("1").status(TodoStatus.COMPLETED).content("a").build(),
-                TodoItem.builder().id("2").status(TodoStatus.PENDING).content("b").build(),
-                TodoItem.builder().id("3").status(TodoStatus.PENDING).content("c").build()));
+                TodoItem.builder()
+                        .id("1")
+                        .status(TodoStatus.COMPLETED)
+                        .content("a")
+                        .build(),
+                TodoItem.builder()
+                        .id("2")
+                        .status(TodoStatus.PENDING)
+                        .content("b")
+                        .build(),
+                TodoItem.builder()
+                        .id("3")
+                        .status(TodoStatus.PENDING)
+                        .content("c")
+                        .build()));
 
         String block = engine.buildTodoListBlock(process);
 

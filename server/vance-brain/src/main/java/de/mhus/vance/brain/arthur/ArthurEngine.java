@@ -1,60 +1,42 @@
 package de.mhus.vance.brain.arthur;
 
-import de.mhus.vance.api.chat.ChatMessageChunkData;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.CloseReason;
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
-import de.mhus.vance.brain.ai.AiChatException;
-import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
 import de.mhus.vance.brain.ai.VanceSystemMessage;
-import de.mhus.vance.brain.events.ChunkBatcher;
-import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.recipe.RecipeLoader;
-import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
-import de.mhus.vance.brain.tools.context.RespondTool;
-import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.usermemory.UserMemoryService;
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.request.ChatRequest;
-import dev.langchain4j.model.chat.response.ChatResponse;
-import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutionException;
-import java.util.regex.Pattern;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -86,8 +68,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     public static final String NAME = "arthur";
     public static final String VERSION = "0.1.0";
 
-    public static final String GREETING =
-            "Hi, I'm Arthur. What are we working on?";
+    public static final String GREETING = "Hi, I'm Arthur. What are we working on?";
 
     /**
      * Bare-minimum fallback when no recipe override is in play —
@@ -96,10 +77,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * tiny on purpose so a misconfigured spawn still produces a
      * coherent (if generic) bot rather than an unprompted LLM.
      */
-    private static final String ENGINE_FALLBACK_PROMPT =
-            "You are Arthur, the chat agent of a Vance session. "
-                    + "Delegate operational work to workers via process_create; "
-                    + "synthesise their replies for the user.";
+    private static final String ENGINE_FALLBACK_PROMPT = "You are Arthur, the chat agent of a Vance session. "
+            + "Delegate operational work to workers via process_create; "
+            + "synthesise their replies for the user.";
 
     /**
      * Cached final system prompt (engine-default base + bundled-recipe
@@ -170,9 +150,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * it ends the turn with an ASSISTANT message and BLOCKED status
      * waiting for user approval — the chain pauses there.
      */
-    private static final Set<String> CONTINUING_ACTIONS = Set.of(
-            ArthurActionSchema.TYPE_TODO_UPDATE,
-            ArthurActionSchema.TYPE_DISCOVER);
+    private static final Set<String> CONTINUING_ACTIONS =
+            Set.of(ArthurActionSchema.TYPE_TODO_UPDATE, ArthurActionSchema.TYPE_DISCOVER);
 
     // ──────────────────── End-of-turn marker ────────────────────
     // Arthur drives every turn through a single structured action
@@ -210,10 +189,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * body. See {@code specification/public/skills.md} §5.
      */
     private final de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport;
+
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
-    private final de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer
-            attachedUserMessageComposer;
+    private final de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer attachedUserMessageComposer;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     /**
      * Used by {@link #summarizeForParent} to pull the last ASSISTANT
@@ -223,6 +202,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * specification/eddie-engine.md §5.8).
      */
     private final de.mhus.vance.shared.chat.ChatMessageService chatMessageService;
+
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
     private final UserMemoryService userMemoryService;
@@ -246,8 +226,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * on different virtual threads via the lane scheduler. Entries are
      * cleaned up in the {@code finally} block of {@link #runTurnFor}.
      */
-    private final ConcurrentMap<String, Boolean> currentTurnHadUserInput =
-            new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Boolean> currentTurnHadUserInput = new ConcurrentHashMap<>();
 
     /**
      * Per-process map of {@code eventId → SteerMessage.ProcessEvent}
@@ -263,8 +242,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * entries are cleaned up in the {@code finally} block of
      * {@link #runTurnFor}.
      */
-    private final ConcurrentMap<String, Map<String, SteerMessage.ProcessEvent>>
-            currentTurnEventsByRef = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Map<String, SteerMessage.ProcessEvent>> currentTurnEventsByRef =
+            new ConcurrentHashMap<>();
 
     /**
      * Action types Arthur is forbidden from emitting on a turn that was
@@ -276,8 +255,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * plain conversational question that pauses the lane on BLOCKED —
      * no spawn, no cascade.
      */
-    private static final Set<String> SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS = Set.of(
-            ArthurActionSchema.TYPE_DELEGATE);
+    private static final Set<String> SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS = Set.of(ArthurActionSchema.TYPE_DELEGATE);
 
     public ArthurEngine(
             ThinkProcessService thinkProcessService,
@@ -294,8 +272,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport,
             de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter,
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
-            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer
-                    attachedUserMessageComposer,
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer attachedUserMessageComposer,
             de.mhus.vance.brain.thinkengine.SystemPromptComposer composer,
             de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
             de.mhus.vance.shared.chat.ChatMessageService chatMessageService,
@@ -309,11 +286,18 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
             de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor,
             de.mhus.vance.brain.notification.NotificationService notificationService,
-            de.mhus.vance.brain.guard.CompletionGuardService completionGuardService,
+            de.mhus.vance.brain.guard.ShootyGuardService completionGuardService,
             de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers) {
-        super(streamingProperties, llmCallTracker, objectMapper, composer,
-                completionGuardService, actionLoopJudgeService, thinkProcessService,
-                turnContextHandlers, attachedUserMessageComposer);
+        super(
+                streamingProperties,
+                llmCallTracker,
+                objectMapper,
+                composer,
+                completionGuardService,
+                actionLoopJudgeService,
+                thinkProcessService,
+                turnContextHandlers,
+                attachedUserMessageComposer);
         this.arthurProperties = arthurProperties;
         this.recipeLoader = recipeLoader;
         this.modelCatalog = modelCatalog;
@@ -380,8 +364,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * summary.
      */
     @Override
-    public ParentReport summarizeForParent(
-            ThinkProcessDocument process, ProcessEventType eventType) {
+    public ParentReport summarizeForParent(ThinkProcessDocument process, ProcessEventType eventType) {
         if (eventType != ProcessEventType.BLOCKED) {
             return ParentReport.of(genericChildSummary(process, eventType));
         }
@@ -397,10 +380,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /** Same text the {@link ThinkEngine#summarizeForParent default} produces. */
-    private static String genericChildSummary(
-            ThinkProcessDocument process, ProcessEventType eventType) {
-        return "Child process " + process.getId()
-                + " status=" + eventType.name().toLowerCase();
+    private static String genericChildSummary(ThinkProcessDocument process, ProcessEventType eventType) {
+        return "Child process " + process.getId() + " status="
+                + eventType.name().toLowerCase();
     }
 
     /**
@@ -413,10 +395,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private @Nullable Map<String, Object> extractAskUserOptionsPayload(ThinkProcessDocument process) {
         try {
             java.util.List<de.mhus.vance.shared.chat.ChatMessageDocument> history =
-                    chatMessageService.activeHistory(
-                            process.getTenantId(),
-                            process.getSessionId(),
-                            process.getId());
+                    chatMessageService.activeHistory(process.getTenantId(), process.getSessionId(), process.getId());
             de.mhus.vance.shared.chat.ChatMessageDocument lastAssistant = null;
             for (int i = history.size() - 1; i >= 0; i--) {
                 de.mhus.vance.shared.chat.ChatMessageDocument m = history.get(i);
@@ -428,19 +407,19 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             if (lastAssistant == null || lastAssistant.getMeta() == null) {
                 return null;
             }
-            Object rawOptions = lastAssistant.getMeta().get(
-                    de.mhus.vance.shared.chat.ChatMessageDocument.META_ASK_USER_OPTIONS);
+            Object rawOptions =
+                    lastAssistant.getMeta().get(de.mhus.vance.shared.chat.ChatMessageDocument.META_ASK_USER_OPTIONS);
             if (!(rawOptions instanceof java.util.List<?> list) || list.isEmpty()) {
                 return null;
             }
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(
-                    de.mhus.vance.shared.chat.ChatMessageDocument.META_ASK_USER_OPTIONS,
-                    list);
+            payload.put(de.mhus.vance.shared.chat.ChatMessageDocument.META_ASK_USER_OPTIONS, list);
             return payload;
         } catch (RuntimeException e) {
-            log.debug("Arthur.summarizeForParent: failed to extract askUserOptions for "
-                    + "process='{}': {}", process.getId(), e.toString());
+            log.debug(
+                    "Arthur.summarizeForParent: failed to extract askUserOptions for " + "process='{}': {}",
+                    process.getId(),
+                    e.toString());
             return null;
         }
     }
@@ -449,15 +428,19 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("Arthur.start tenant='{}' session='{}' id='{}'",
-                process.getTenantId(), process.getSessionId(), process.getId());
-        ctx.chatMessageService().append(ChatMessageDocument.builder()
-                .tenantId(process.getTenantId())
-                .sessionId(process.getSessionId())
-                .thinkProcessId(process.getId())
-                .role(ChatRole.ASSISTANT)
-                .content(GREETING)
-                .build());
+        log.info(
+                "Arthur.start tenant='{}' session='{}' id='{}'",
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId());
+        ctx.chatMessageService()
+                .append(ChatMessageDocument.builder()
+                        .tenantId(process.getTenantId())
+                        .sessionId(process.getSessionId())
+                        .thinkProcessId(process.getId())
+                        .role(ChatRole.ASSISTANT)
+                        .content(GREETING)
+                        .build());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
@@ -537,8 +520,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         while (true) {
             // Cooperative halt-check between drain iterations.
             if (thinkProcessService.isHaltRequested(process.getId())) {
-                log.info("Arthur.runTurn id='{}' — halt requested, yielding",
-                        process.getId());
+                log.info("Arthur.runTurn id='{}' — halt requested, yielding", process.getId());
                 return;
             }
             List<SteerMessage> drained = ctx.drainPending();
@@ -549,12 +531,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 continueWithEmptyInbox = false;
                 continuationsRemaining--;
                 if (continuationsRemaining < 0) {
-                    log.warn("Arthur.runTurn id='{}' — continuation budget "
-                            + "({}) exhausted; transitioning to BLOCKED so the "
-                            + "user can intervene",
-                            process.getId(), continuationBudget);
-                    thinkProcessService.updateStatus(
-                            process.getId(), ThinkProcessStatus.BLOCKED);
+                    log.warn(
+                            "Arthur.runTurn id='{}' — continuation budget "
+                                    + "({}) exhausted; transitioning to BLOCKED so the "
+                                    + "user can intervene",
+                            process.getId(),
+                            continuationBudget);
+                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
                     return;
                 }
             }
@@ -572,12 +555,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             } else {
                 silentTurnsInARow++;
                 if (silentTurnsInARow >= silentTurnsLimit) {
-                    log.warn("Arthur.runTurn id='{}' — {} silent turns in a row "
-                            + "(LLM stuck — no chat, no tool calls); transitioning "
-                            + "to BLOCKED so the user can intervene",
-                            process.getId(), silentTurnsLimit);
-                    thinkProcessService.updateStatus(
-                            process.getId(), ThinkProcessStatus.BLOCKED);
+                    log.warn(
+                            "Arthur.runTurn id='{}' — {} silent turns in a row "
+                                    + "(LLM stuck — no chat, no tool calls); transitioning "
+                                    + "to BLOCKED so the user can intervene",
+                            process.getId(),
+                            silentTurnsLimit);
+                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
                     return;
                 }
             }
@@ -590,8 +574,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     .map(ThinkProcessDocument::getStatus)
                     .orElse(ThinkProcessStatus.SUSPENDED);
             de.mhus.vance.api.thinkprocess.ProcessMode currentMode = process.getMode();
-            boolean activeMode = currentMode != null
-                    && currentMode != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
+            boolean activeMode =
+                    currentMode != null && currentMode != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
             // Continue if (a) mode changed (entered new plan-mode phase),
             // OR (b) we're in any active plan-mode and the engine isn't
             // waiting on user input (status=IDLE means "the action handler
@@ -599,8 +583,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // ASK_USER set awaiting=true → BLOCKED → no continuation,
             // user's next message reactivates via the regular pending
             // pipeline.
-            if (currentStatus == ThinkProcessStatus.IDLE
-                    && (currentMode != modeBefore || activeMode)) {
+            if (currentStatus == ThinkProcessStatus.IDLE && (currentMode != modeBefore || activeMode)) {
                 continueWithEmptyInbox = true;
             }
         }
@@ -632,10 +615,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * (no progress at all) without aborting on every productive but
      * silent turn (e.g. file writes in a long refactor).
      */
-    private TurnSignal runTurnFor(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            List<SteerMessage> inbox) {
+    private TurnSignal runTurnFor(ThinkProcessDocument process, ThinkEngineContext ctx, List<SteerMessage> inbox) {
 
         // ─── Routing-Schicht: auto-forward to the active delegated worker
         // when the user is just answering an outstanding clarification.
@@ -673,11 +653,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         int eventCounter = 0;
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci
-                    && uci.content() != null && !uci.content().isBlank()) {
+                    && uci.content() != null
+                    && !uci.content().isBlank()) {
                 hadUserInput = true;
             }
             if (m instanceof SteerMessage.ProcessEvent pe
-                    && pe.eventId() != null && !pe.eventId().isBlank()) {
+                    && pe.eventId() != null
+                    && !pe.eventId().isBlank()) {
                 String token = "ev" + (++eventCounter);
                 eventsByRef.put(token, pe);
             }
@@ -689,11 +671,11 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // synthetic event uses type=BLOCKED so the existing RELAY
             // path treats it identically to a worker BLOCKED-event.
             if (m instanceof SteerMessage.Reply r
-                    && r.content() != null && !r.content().isBlank()) {
+                    && r.content() != null
+                    && !r.content().isBlank()) {
                 String token = "ev" + (++eventCounter);
                 String wrapped = "Child reply from "
-                        + (r.sourceProcessName() == null
-                                ? r.sourceProcessId() : r.sourceProcessName())
+                        + (r.sourceProcessName() == null ? r.sourceProcessId() : r.sourceProcessName())
                         + "\n\nLast assistant reply from this child (verbatim):\n"
                         + "--- BEGIN CHILD REPLY ---\n"
                         + r.content()
@@ -712,10 +694,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         }
         currentTurnHadUserInput.put(process.getId(), hadUserInput);
         currentTurnEventsByRef.put(process.getId(), eventsByRef);
-        // Genuine user input restarts the completion-guard budget (see
-        // StructuredActionEngine#resetGuardBudgetForUserTurn) — the
+        // Genuine user input restarts the guard budget and runs the START-point guards (see
+        // StructuredActionEngine#guardsOnTurnStart) — the
         // guard's own follow-up injections don't.
-        resetGuardBudgetForUserTurn(process, inbox);
+        guardsOnTurnStart(process, inbox);
 
         // Reconcile workerLinks against the inbox: REPLY/PROGRESS-style
         // events refresh lastSeen + workerStatus; terminal events
@@ -772,8 +754,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             // two inputs sent from two different app tabs, and
                             // the reference belongs to the sentence that made
                             // it, not to the drain that delivered it.
-                            .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest
-                                    .metaFor(uci.activeApp()))
+                            .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest.metaFor(uci.activeApp()))
                             .build());
                     if (uci.content() != null && !uci.content().isBlank()) {
                         if (userTextForTriggers.length() > 0) userTextForTriggers.append('\n');
@@ -802,38 +783,39 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // freshly auto-activated skill counts for this turn. Their
             // tools: entries are add-only on top of the engine/recipe
             // whitelist (skills never remove a tool).
-            List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills =
-                    skillTurnSupport.resolveActive(process);
+            List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills = skillTurnSupport.resolveActive(process);
             java.util.Set<String> skillTools = skillTurnSupport.mergedTools(activeSkills);
-            ContextToolsApi tools = skillTools.isEmpty()
-                    ? ctx.tools() : ctx.tools().withAdditional(skillTools);
+            ContextToolsApi tools =
+                    skillTools.isEmpty() ? ctx.tools() : ctx.tools().withAdditional(skillTools);
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                    process.getTenantId(), process.getProjectId(),
-                    config.providerInstance(), config.provider(), config.modelName());
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    config.providerInstance(),
+                    config.provider(),
+                    config.modelName());
             // params.modelSize: SMALL/LARGE force the prompt variant
             // independently of the catalog; AUTO/missing falls back
             // to the catalog's classification.
-            ModelSize effectiveSize = ModelSize.parseOrAuto(
-                    paramString(process, "modelSize", null), modelInfo.size());
+            ModelSize effectiveSize = ModelSize.parseOrAuto(paramString(process, "modelSize", null), modelInfo.size());
 
-            List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, inbox, effectiveSize, ctx, config, modelInfo,
-                    activeSkills);
+            List<ChatMessage> messages =
+                    buildPromptMessages(process, chatLog, inbox, effectiveSize, ctx, config, modelInfo, activeSkills);
             // Strength-aware compaction trigger: SOFT/HARD/EMERGENCY
             // based on est-tokens vs context window. Compacts via
             // MemoryCompactionService and rebuilds the prompt if so.
             de.mhus.vance.brain.memory.CompactionResult cr =
                     memoryCompactionService.compactIfNeeded(process, config, messages, modelInfo);
             if (cr.compacted()) {
-                log.info("Arthur.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
-                        process.getId(), cr.messagesCompacted(),
-                        cr.summaryChars(), cr.memoryId());
+                log.info(
+                        "Arthur.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
+                        process.getId(),
+                        cr.messagesCompacted(),
+                        cr.summaryChars(),
+                        cr.memoryId());
                 messages = buildPromptMessages(
-                        process, chatLog, inbox, effectiveSize, ctx, config, modelInfo,
-                        activeSkills);
+                        process, chatLog, inbox, effectiveSize, ctx, config, modelInfo, activeSkills);
             }
-            int maxIters = paramInt(process, "maxIterations",
-                    arthurProperties.getMaxToolIterations());
+            int maxIters = paramInt(process, "maxIterations", arthurProperties.getMaxToolIterations());
             // Plan-Mode turns chain multiple read/write tool calls before
             // emitting the next action, so they get more room than a NORMAL
             // turn. These are floors, not additions: they only bite while
@@ -857,10 +839,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 maxIters = Math.max(maxIters, 24);
             }
             boolean validation = paramBool(process, "validation", false);
-            log.debug("Arthur.turn id='{}' inbox={} historyMsgs={} model={} maxIters={} validation={} mode={} allowedSize={} clientWriteAllowed={}",
-                    process.getId(), inbox.size(), messages.size(),
-                    config.modelName(), maxIters, validation,
-                    process.getMode(), tools.allowed().size(),
+            log.debug(
+                    "Arthur.turn id='{}' inbox={} historyMsgs={} model={} maxIters={} validation={} mode={} allowedSize={} clientWriteAllowed={}",
+                    process.getId(),
+                    inbox.size(),
+                    messages.size(),
+                    config.modelName(),
+                    maxIters,
+                    validation,
+                    process.getMode(),
+                    tools.allowed().size(),
                     tools.allowed().contains("client_file_write"));
 
             String modelAlias = config.provider() + ":" + config.modelName();
@@ -873,16 +861,24 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // re-derives this on every iteration so tool_description
             // activations propagate within the turn.
             ActionLoopResult loopResult = runActionLoopWithJudge(
-                    aiChat, ContextToolsApi::primaryAsLc4j,
-                    messages, ctx, process, maxIters, modelAlias,
-                    modelInfo.actionLoopCorrections(), inbox, skillTools,
+                    aiChat,
+                    ContextToolsApi::primaryAsLc4j,
+                    messages,
+                    ctx,
+                    process,
+                    maxIters,
+                    modelAlias,
+                    modelInfo.actionLoopCorrections(),
+                    inbox,
+                    skillTools,
                     // Lets a tool-produced image (MCP screenshot) reach
                     // the model between iterations.
                     new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.Context(
-                            process.getTenantId(), process.getProjectId(), process.getId(),
+                            process.getTenantId(),
+                            process.getProjectId(),
+                            process.getId(),
                             config.fullName(),
-                            de.mhus.vance.brain.ai.ProviderType.requireWireName(
-                                    config.provider()),
+                            de.mhus.vance.brain.ai.ProviderType.requireWireName(config.provider()),
                             modelInfo.capabilities()));
 
             // Mid-loop interrupt (ESC / /pause): the loop stopped before a
@@ -892,8 +888,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 interrupted = true;
                 interruptForcePause = loopResult.interruptForcesPause();
                 ctx.historyTagSink().discard();
-                log.info("Arthur.turn id='{}' interrupted (forcePause={}) — parking, no answer surfaced",
-                        process.getId(), interruptForcePause);
+                log.info(
+                        "Arthur.turn id='{}' interrupted (forcePause={}) — parking, no answer surfaced",
+                        process.getId(),
+                        interruptForcePause);
                 return new TurnSignal(false, loopResult.madeProgress());
             }
 
@@ -910,14 +908,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 // facts file. Same pattern as Eddie; runs only after a
                 // successful LEARN so other actions stay cheap.
                 if (ArthurActionSchema.TYPE_LEARN.equals(loopResult.action().type())) {
-                    runLearnConsolidation(loopResult.action(), aiChat,
-                            process, ctx, modelAlias);
+                    runLearnConsolidation(loopResult.action(), aiChat, process, ctx, modelAlias);
                 }
             } else if ("max-iters".equals(loopResult.fallbackReason())
                     && loopResult.madeProgress()
                     && (process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
-                        || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
-                        || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING)) {
+                            || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
+                            || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING)) {
                 // Plan-mode mid-refactor pause: the LLM was actively
                 // calling tools (file reads, file writes, exec runs,
                 // continuing actions) and just hit the per-turn cap
@@ -936,13 +933,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 // The narration acts as cross-turn memory so the LLM
                 // sees "I just refactored X, Y" in history.
                 String narration = loopResult.fallbackText();
-                String chatNote = (narration == null || narration.isBlank())
-                        ? null
-                        : narration;
-                log.info("Arthur.turn id='{}' max-iters with progress "
-                        + "({} tool invocations, narration={} chars) — "
-                        + "yielding for outer continuation",
-                        process.getId(), loopResult.toolInvocations(),
+                String chatNote = (narration == null || narration.isBlank()) ? null : narration;
+                log.info(
+                        "Arthur.turn id='{}' max-iters with progress "
+                                + "({} tool invocations, narration={} chars) — "
+                                + "yielding for outer continuation",
+                        process.getId(),
+                        loopResult.toolInvocations(),
                         narration == null ? 0 : narration.length());
                 outcome = new ActionTurnOutcome(chatNote, /*awaiting*/ false);
             } else {
@@ -958,8 +955,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     // state did not cleanly finish.
                     outcome = new ActionTurnOutcome(text, true);
                     workerGaveUp = true;
-                } else if (process.getMode()
-                        == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
+                } else if (process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
                         && allTodosCompleted(process)) {
                     // Graceful plan-completion close: tool calls ran
                     // until everything in the plan was done, then the
@@ -968,17 +964,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     // action loop ..." string — synthesise a brief
                     // summary from the TodoList so the user sees a
                     // real reply. Mirror of EddieEngine.runTurnFor.
-                    outcome = new ActionTurnOutcome(
-                            renderPlanCompletionSummary(process), true);
+                    outcome = new ActionTurnOutcome(renderPlanCompletionSummary(process), true);
                 } else {
                     outcome = new ActionTurnOutcome(
-                            "_I just lost track of things "
-                                    + "— tell me briefly where we should pick up._",
-                            true);
+                            "_I just lost track of things " + "— tell me briefly where we should pick up._", true);
                     workerGaveUp = true;
-                    log.warn("Arthur.turn id='{}' action-loop fallback with no usable "
+                    log.warn(
+                            "Arthur.turn id='{}' action-loop fallback with no usable "
                                     + "text (reason={}) — posting placeholder reply",
-                            process.getId(), loopResult.fallbackReason());
+                            process.getId(),
+                            loopResult.fallbackReason());
                 }
             }
             awaitingUserInput = outcome.awaitingUserInput();
@@ -992,7 +987,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         .thinkProcessId(process.getId())
                         .role(ChatRole.ASSISTANT)
                         .content(chatMessage)
-                        .thinking(ctx.reasoning() == null ? null : ctx.reasoning().snapshot());
+                        .thinking(
+                                ctx.reasoning() == null ? null : ctx.reasoning().snapshot());
                 Map<String, Object> outcomeMeta = outcome.chatMessageMeta();
                 Map<String, Object> mergedMeta = null;
                 if (outcomeMeta != null && !outcomeMeta.isEmpty()) {
@@ -1011,16 +1007,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 if (saved != null && saved.getId() != null) {
                     ctx.historyTagSink().flushTo(saved.getId(), chatLog);
                 }
-                String preview = chatMessage.length() > 120
-                        ? chatMessage.substring(0, 120) + "…" : chatMessage;
-                log.info("Arthur.turn id='{}' awaiting={} -> '{}'",
-                        process.getId(), awaitingUserInput, preview);
+                String preview = chatMessage.length() > 120 ? chatMessage.substring(0, 120) + "…" : chatMessage;
+                log.info("Arthur.turn id='{}' awaiting={} -> '{}'", process.getId(), awaitingUserInput, preview);
             } else {
                 // No assistant turn this round — drop any buffered tags
                 // rather than letting them leak onto the next turn.
                 ctx.historyTagSink().discard();
-                log.info("Arthur.turn id='{}' awaiting={} (silent — no chat append)",
-                        process.getId(), awaitingUserInput);
+                log.info(
+                        "Arthur.turn id='{}' awaiting={} (silent — no chat append)",
+                        process.getId(),
+                        awaitingUserInput);
             }
 
             // Delegation-pointer maintenance: same logic as before.
@@ -1048,11 +1044,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 // status-flip path leave the terminal status the pause
                 // handler already set (SUSPENDED / PAUSED / CLOSED).
                 if (interruptForcePause) {
-                    thinkProcessService.updateStatus(
-                            process.getId(), ThinkProcessStatus.PAUSED);
+                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
                 }
-            } else if (actionLoopFallback && awaitingUserInput
-                    && process.getParentProcessId() != null) {
+            } else if (actionLoopFallback && awaitingUserInput && process.getParentProcessId() != null) {
                 // Sub-process worker fell out of the action loop. The best
                 // reply has already been appended to chat history; close
                 // terminally so the parent's delegation pointer releases
@@ -1068,13 +1062,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 // DONE. Closing every fallback DONE would relay a stale
                 // progress note as if it were the answer.
                 CloseReason reason = workerGaveUp ? CloseReason.INCOMPLETE : CloseReason.DONE;
-                log.info("Arthur id='{}' worker action-loop fallback — closing {} so parent '{}' releases delegation pointer",
-                        process.getId(), reason, process.getParentProcessId());
+                log.info(
+                        "Arthur id='{}' worker action-loop fallback — closing {} so parent '{}' releases delegation pointer",
+                        process.getId(),
+                        reason,
+                        process.getParentProcessId());
                 thinkProcessService.closeProcess(process.getId(), reason);
             } else {
-                ThinkProcessStatus exitStatus = awaitingUserInput
-                        ? ThinkProcessStatus.BLOCKED
-                        : ThinkProcessStatus.IDLE;
+                ThinkProcessStatus exitStatus =
+                        awaitingUserInput ? ThinkProcessStatus.BLOCKED : ThinkProcessStatus.IDLE;
                 thinkProcessService.updateStatus(process.getId(), exitStatus);
             }
         }
@@ -1099,9 +1095,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * </ul>
      */
     private boolean tryAutoForwardToDelegatedWorker(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            List<SteerMessage> inbox) {
+            ThinkProcessDocument process, ThinkEngineContext ctx, List<SteerMessage> inbox) {
         String workerId = process.getActiveDelegationWorkerId();
         if (workerId == null || workerId.isBlank()) {
             return false;
@@ -1123,12 +1117,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (combined.length() == 0) {
             return false;
         }
-        Optional<ThinkProcessDocument> targetOpt =
-                thinkProcessService.findById(workerId);
+        Optional<ThinkProcessDocument> targetOpt = thinkProcessService.findById(workerId);
         if (targetOpt.isEmpty()) {
             log.info(
                     "Arthur id='{}' delegation pointer references missing worker '{}' — clearing and falling through to LLM",
-                    process.getId(), workerId);
+                    process.getId(),
+                    workerId);
             thinkProcessService.updateActiveDelegationWorkerId(process.getId(), null);
             return false;
         }
@@ -1153,7 +1147,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // analysis/sess_97483d45/FINDINGS.md Bug #2).
             log.info(
                     "Arthur id='{}' delegation target '{}' is {} (not BLOCKED) — falling through to LLM with pointer intact",
-                    process.getId(), target.getName(), target.getStatus());
+                    process.getId(),
+                    target.getName(),
+                    target.getStatus());
             return false;
         }
 
@@ -1185,7 +1181,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
         log.info(
                 "Arthur id='{}' auto-forwarded {} chars to delegated worker '{}' (id='{}')",
-                process.getId(), combined.length(), target.getName(), target.getId());
+                process.getId(),
+                combined.length(),
+                target.getName(),
+                target.getId());
 
         // Status: stay BLOCKED — Arthur is still waiting (just for
         // the worker now instead of the user). When the worker comes
@@ -1216,8 +1215,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * the helpers are no-op when the link doesn't exist, so older
      * processes degrade gracefully without crashing.
      */
-    private void reconcileWorkerLinksFromInbox(
-            ThinkProcessDocument process, List<SteerMessage> inbox) {
+    private void reconcileWorkerLinksFromInbox(ThinkProcessDocument process, List<SteerMessage> inbox) {
         java.time.Instant now = java.time.Instant.now();
         String pointer = process.getActiveDelegationWorkerId();
         for (SteerMessage m : inbox) {
@@ -1245,19 +1243,18 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 continue;
             }
             if (terminal) {
-                boolean removed = thinkProcessService.removeWorkerLink(
-                        process.getId(), sourceId);
+                boolean removed = thinkProcessService.removeWorkerLink(process.getId(), sourceId);
                 if (removed) {
-                    log.debug("Arthur id='{}' workerLink removed for terminated child '{}'",
-                            process.getId(), sourceId);
+                    log.debug("Arthur id='{}' workerLink removed for terminated child '{}'", process.getId(), sourceId);
                 }
                 if (sourceId.equals(pointer)) {
-                    thinkProcessService.updateActiveDelegationWorkerId(
-                            process.getId(), null);
+                    thinkProcessService.updateActiveDelegationWorkerId(process.getId(), null);
                     process.setActiveDelegationWorkerId(null);
                     pointer = null;
-                    log.info("Arthur id='{}' delegation pointer cleared (worker '{}' closed)",
-                            process.getId(), sourceId);
+                    log.info(
+                            "Arthur id='{}' delegation pointer cleared (worker '{}' closed)",
+                            process.getId(),
+                            sourceId);
                 }
                 continue;
             }
@@ -1266,14 +1263,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // Final aliases for the lambda — lookup happens per-iteration.
             final ThinkProcessStatus statusForLambda = sourceStatus;
             final java.time.Instant lastSeenForLambda = now;
-            thinkProcessService.findWorkerLink(process.getId(), sourceId)
-                    .ifPresent(snap -> {
-                        if (statusForLambda != null) {
-                            snap.setWorkerStatus(statusForLambda);
-                        }
-                        snap.setLastSeen(lastSeenForLambda);
-                        thinkProcessService.upsertWorkerLink(process.getId(), snap);
-                    });
+            thinkProcessService.findWorkerLink(process.getId(), sourceId).ifPresent(snap -> {
+                if (statusForLambda != null) {
+                    snap.setWorkerStatus(statusForLambda);
+                }
+                snap.setLastSeen(lastSeenForLambda);
+                thinkProcessService.upsertWorkerLink(process.getId(), snap);
+            });
         }
     }
 
@@ -1289,9 +1285,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * to add post-action policy.
      */
     private void updateDelegationPointer(
-            ThinkProcessDocument process,
-            List<SteerMessage> inbox,
-            boolean awaitingUserInput) {
+            ThinkProcessDocument process, List<SteerMessage> inbox, boolean awaitingUserInput) {
         // No-op — see javadoc. Intentionally kept for symmetry with
         // the runTurnFor call site so the action-handler contract
         // documents where pointer policy lives.
@@ -1327,15 +1321,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * DONE rather than INCOMPLETE.
      */
     @Override
-    protected de.mhus.vance.brain.thinkengine.action.@Nullable EngineAction
-            answerActionFromText(String text) {
+    protected de.mhus.vance.brain.thinkengine.action.@Nullable EngineAction answerActionFromText(String text) {
         if (text == null || text.isBlank()) {
             return null;
         }
         return new de.mhus.vance.brain.thinkengine.action.EngineAction(
                 ArthurActionSchema.TYPE_ANSWER,
-                "Model replied in prose without the action wrapper; "
-                        + "delivering it as ANSWER.",
+                "Model replied in prose without the action wrapper; " + "delivering it as ANSWER.",
                 java.util.Map.of(ArthurActionSchema.PARAM_MESSAGE, text));
     }
 
@@ -1360,9 +1352,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.ThinkEngineContext ctx) {
         if (!Boolean.TRUE.equals(currentTurnHadUserInput.get(process.getId()))
                 && SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS.contains(action.type())) {
-            log.warn("Arthur id='{}' rejected spawn-action '{}' on event-only turn"
+            log.warn(
+                    "Arthur id='{}' rejected spawn-action '{}' on event-only turn"
                             + " (no fresh user-input in inbox) — reason: '{}'",
-                    process.getId(), action.type(), action.reason());
+                    process.getId(),
+                    action.type(),
+                    action.reason());
             return "Action '" + action.type() + "' is not allowed on a turn "
                     + "triggered without fresh user-input. The current inbox carries "
                     + "only process-events (worker closed / tool-result / similar). "
@@ -1408,30 +1403,39 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // burns max-iters until it stumbles into START_EXECUTION.
         if (mode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING
                 && ArthurActionSchema.TYPE_TODO_UPDATE.equals(action.type())) {
-            log.info("Arthur id='{}' translating TODO_UPDATE in PLANNING → "
-                    + "START_EXECUTION (model conflated mode-transition with "
-                    + "status-update). reason: '{}'",
-                    process.getId(), action.reason());
+            log.info(
+                    "Arthur id='{}' translating TODO_UPDATE in PLANNING → "
+                            + "START_EXECUTION (model conflated mode-transition with "
+                            + "status-update). reason: '{}'",
+                    process.getId(),
+                    action.reason());
             return planModeService.dispatch(
                     new de.mhus.vance.brain.thinkengine.action.EngineAction(
-                            ArthurActionSchema.TYPE_START_EXECUTION,
-                            action.reason(),
-                            java.util.Map.of()),
-                    process, ctx);
+                            ArthurActionSchema.TYPE_START_EXECUTION, action.reason(), java.util.Map.of()),
+                    process,
+                    ctx);
         }
         if (!ArthurActionSchema.typesForMode(mode).contains(action.type())) {
             if (PLAN_MODE_IDEMPOTENT_ACTIONS.contains(action.type())) {
-                log.info("Arthur id='{}' action '{}' is idempotent in mode {} — "
-                        + "executing as no-op-or-redundant transition. reason: '{}'",
-                        process.getId(), action.type(), mode, action.reason());
+                log.info(
+                        "Arthur id='{}' action '{}' is idempotent in mode {} — "
+                                + "executing as no-op-or-redundant transition. reason: '{}'",
+                        process.getId(),
+                        action.type(),
+                        mode,
+                        action.reason());
                 // fall through — handler is idempotent
             } else {
                 String hint = "Action '" + action.type() + "' is not available "
                         + "in mode " + mode + ". Allowed in this mode: "
                         + ArthurActionSchema.typesForMode(mode)
                         + ". Re-emit a valid action.";
-                log.warn("Arthur id='{}' rejected action '{}' in mode {} — reason: '{}'",
-                        process.getId(), action.type(), mode, action.reason());
+                log.warn(
+                        "Arthur id='{}' rejected action '{}' in mode {} — reason: '{}'",
+                        process.getId(),
+                        action.type(),
+                        mode,
+                        action.reason());
                 // awaitingUserInput=true → status=BLOCKED so we don't loop
                 // re-emitting the same invalid action. The hint surfaces
                 // to the user so they can intervene if Arthur is stuck.
@@ -1444,31 +1448,28 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         ActionTurnOutcome planOutcome = planModeService.dispatch(action, process, ctx);
         if (planOutcome != null) return planOutcome;
         return switch (action.type()) {
-            case ArthurActionSchema.TYPE_ANSWER          -> handleAnswer(action);
-            case ArthurActionSchema.TYPE_ASK_USER        -> handleAskUser(action);
-            case ArthurActionSchema.TYPE_DELEGATE        -> handleDelegate(action, process, ctx);
-            case ArthurActionSchema.TYPE_RELAY           -> handleRelay(action, process, ctx);
-            case ArthurActionSchema.TYPE_WAIT            -> handleWait(action);
-            case ArthurActionSchema.TYPE_REJECT          -> handleReject(action);
-            case ArthurActionSchema.TYPE_LEARN           -> handleLearn(action, process, ctx);
-            case ArthurActionSchema.TYPE_NOTIFY_USER     -> handleNotifyUser(action, process, ctx);
+            case ArthurActionSchema.TYPE_ANSWER -> handleAnswer(action);
+            case ArthurActionSchema.TYPE_ASK_USER -> handleAskUser(action);
+            case ArthurActionSchema.TYPE_DELEGATE -> handleDelegate(action, process, ctx);
+            case ArthurActionSchema.TYPE_RELAY -> handleRelay(action, process, ctx);
+            case ArthurActionSchema.TYPE_WAIT -> handleWait(action);
+            case ArthurActionSchema.TYPE_REJECT -> handleReject(action);
+            case ArthurActionSchema.TYPE_LEARN -> handleLearn(action, process, ctx);
+            case ArthurActionSchema.TYPE_NOTIFY_USER -> handleNotifyUser(action, process, ctx);
             default -> {
                 // Should never happen — the base class validates against
                 // supportedActionTypes() before reaching here. Surface as
                 // a chat message so the user sees something.
-                log.warn("Arthur id='{}' unknown action type '{}'",
-                        process.getId(), action.type());
+                log.warn("Arthur id='{}' unknown action type '{}'", process.getId(), action.type());
                 yield new ActionTurnOutcome(
-                        "(internal: unknown action type '" + action.type()
-                                + "', reason was: " + action.reason() + ")",
+                        "(internal: unknown action type '" + action.type() + "', reason was: " + action.reason() + ")",
                         true);
             }
         };
     }
 
     @Override
-    protected boolean isTerminalAction(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action) {
+    protected boolean isTerminalAction(de.mhus.vance.brain.thinkengine.action.EngineAction action) {
         return !CONTINUING_ACTIONS.contains(action.type());
     }
 
@@ -1493,8 +1494,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // add a small user-visible chat note for COMPLETED transitions
         // (below) so the user sees plan progress live instead of
         // long silent runs. Mirror of EddieEngine.applyContinuingAction.
-        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todosBefore =
-                snapshotTodos(process);
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todosBefore = snapshotTodos(process);
         ActionTurnOutcome ignored = handleAction(action, process, ctx);
         if (ArthurActionSchema.TYPE_TODO_UPDATE.equals(action.type())) {
             appendProgressChatForCompletions(process, ctx, todosBefore);
@@ -1520,49 +1520,45 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ThinkEngineContext ctx) {
         Object raw = action.params().get(ArthurActionSchema.PARAM_INTENT);
         if (!(raw instanceof String intent) || intent.isBlank()) {
-            return "DISCOVER: missing 'intent' — emit a non-blank "
-                    + "user-mentioned term or phrase.";
+            return "DISCOVER: missing 'intent' — emit a non-blank " + "user-mentioned term or phrase.";
         }
         try {
-            de.mhus.vance.brain.discovery.DiscoveryResult result =
-                    discoveryService.discover(
-                            intent,
-                            process.getTenantId(),
-                            process.getProjectId(),
-                            process.getId(),
-                            ctx.tools().allowed(),
-                            // The session's callable tools are the
-                            // catalog's tool section — without this the
-                            // client's own tools (client_*, MCP packs)
-                            // are invisible to discovery.
-                            ctx.tools().listAll());
+            de.mhus.vance.brain.discovery.DiscoveryResult result = discoveryService.discover(
+                    intent,
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    process.getId(),
+                    ctx.tools().allowed(),
+                    // The session's callable tools are the
+                    // catalog's tool section — without this the
+                    // client's own tools (client_*, MCP packs)
+                    // are invisible to discovery.
+                    ctx.tools().listAll());
             String json = serializeDiscoveryResult(result);
-            log.info("Arthur id='{}' DISCOVER intent='{}' loaded={} alternatives={}",
-                    process.getId(), intent,
+            log.info(
+                    "Arthur id='{}' DISCOVER intent='{}' loaded={} alternatives={}",
+                    process.getId(),
+                    intent,
                     result.getLoaded() != null ? result.getLoaded().getName() : null,
-                    result.getAlternatives() == null ? 0
+                    result.getAlternatives() == null
+                            ? 0
                             : result.getAlternatives().size());
             return json;
         } catch (RuntimeException e) {
-            log.warn("Arthur id='{}' DISCOVER intent='{}' failed: {}",
-                    process.getId(), intent, e.toString());
+            log.warn("Arthur id='{}' DISCOVER intent='{}' failed: {}", process.getId(), intent, e.toString());
             return "DISCOVER failed: " + e.getMessage()
                     + " — fall back to manual_list / manual_read or just answer "
                     + "with what you know.";
         }
     }
 
-    private String serializeDiscoveryResult(
-            de.mhus.vance.brain.discovery.DiscoveryResult result) {
+    private String serializeDiscoveryResult(de.mhus.vance.brain.discovery.DiscoveryResult result) {
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("intent", result.getIntent());
-        out.put("loaded", result.getLoaded() == null
-                ? null : matchToMap(result.getLoaded()));
-        java.util.List<java.util.Map<String, Object>> alternatives =
-                new java.util.ArrayList<>();
+        out.put("loaded", result.getLoaded() == null ? null : matchToMap(result.getLoaded()));
+        java.util.List<java.util.Map<String, Object>> alternatives = new java.util.ArrayList<>();
         if (result.getAlternatives() != null) {
-            for (de.mhus.vance.brain.discovery.DiscoveryResult.Match m
-                    : result.getAlternatives()) {
+            for (de.mhus.vance.brain.discovery.DiscoveryResult.Match m : result.getAlternatives()) {
                 alternatives.add(matchToMap(m));
             }
         }
@@ -1576,8 +1572,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         }
     }
 
-    private static java.util.Map<String, Object> matchToMap(
-            de.mhus.vance.brain.discovery.DiscoveryResult.Match m) {
+    private static java.util.Map<String, Object> matchToMap(de.mhus.vance.brain.discovery.DiscoveryResult.Match m) {
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("type", m.getType());
         out.put("name", m.getName());
@@ -1593,8 +1588,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * inside {@link #applyContinuingAction}. Returns an empty list
      * when no todos are persisted yet.
      */
-    private static java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> snapshotTodos(
-            ThinkProcessDocument process) {
+    private static java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> snapshotTodos(ThinkProcessDocument process) {
         java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
         if (todos == null) return java.util.List.of();
         return new java.util.ArrayList<>(todos);
@@ -1610,8 +1604,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> before) {
-        java.util.Map<String, de.mhus.vance.api.thinkprocess.TodoStatus> prior =
-                new java.util.HashMap<>();
+        java.util.Map<String, de.mhus.vance.api.thinkprocess.TodoStatus> prior = new java.util.HashMap<>();
         for (de.mhus.vance.api.thinkprocess.TodoItem t : before) {
             if (t.getId() != null) prior.put(t.getId(), t.getStatus());
         }
@@ -1633,8 +1626,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             msg.append("✓ ").append(completedTitles.get(i));
         }
         try {
-            ctx.chatMessageService().append(
-                    de.mhus.vance.shared.chat.ChatMessageDocument.builder()
+            ctx.chatMessageService()
+                    .append(de.mhus.vance.shared.chat.ChatMessageDocument.builder()
                             .tenantId(process.getTenantId())
                             .sessionId(process.getSessionId())
                             .thinkProcessId(process.getId())
@@ -1642,8 +1635,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             .content(msg.toString())
                             .build());
         } catch (RuntimeException e) {
-            log.warn("Arthur id='{}' failed to append plan-progress chat note: {}",
-                    process.getId(), e.toString());
+            log.warn("Arthur id='{}' failed to append plan-progress chat note: {}", process.getId(), e.toString());
         }
     }
 
@@ -1697,19 +1689,21 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (todos == null) todos = java.util.List.of();
         de.mhus.vance.api.thinkprocess.TodoItem firstActive = null;
         for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
-            de.mhus.vance.api.thinkprocess.TodoStatus s = t.getStatus() == null
-                    ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING
-                    : t.getStatus();
-            String marker = switch (s) {
-                case PENDING -> "[ ]";
-                case IN_PROGRESS -> "[~]";
-                case COMPLETED -> "[✓]";
-            };
-            sb.append(marker).append(" (id=").append(t.getId() == null ? "" : t.getId())
-                    .append(") ").append(t.getContent() == null ? "" : t.getContent())
+            de.mhus.vance.api.thinkprocess.TodoStatus s =
+                    t.getStatus() == null ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING : t.getStatus();
+            String marker =
+                    switch (s) {
+                        case PENDING -> "[ ]";
+                        case IN_PROGRESS -> "[~]";
+                        case COMPLETED -> "[✓]";
+                    };
+            sb.append(marker)
+                    .append(" (id=")
+                    .append(t.getId() == null ? "" : t.getId())
+                    .append(") ")
+                    .append(t.getContent() == null ? "" : t.getContent())
                     .append('\n');
-            if (firstActive == null
-                    && s != de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) {
+            if (firstActive == null && s != de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) {
                 firstActive = t;
             }
         }
@@ -1717,8 +1711,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (firstActive == null) {
             sb.append("All todos COMPLETED. Emit ANSWER with a brief summary "
                     + "of what was done so the user can see the final result.");
-        } else if (firstActive.getStatus()
-                == de.mhus.vance.api.thinkprocess.TodoStatus.IN_PROGRESS) {
+        } else if (firstActive.getStatus() == de.mhus.vance.api.thinkprocess.TodoStatus.IN_PROGRESS) {
             sb.append("The first active item (id=")
                     .append(firstActive.getId())
                     .append(") is already IN_PROGRESS. Do NOT emit TODO_UPDATE "
@@ -1744,8 +1737,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * Direct user-facing reply. Most common action — Arthur knows the
      * answer (or has just synthesised one from a worker's results).
      */
-    private ActionTurnOutcome handleAnswer(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action) {
+    private ActionTurnOutcome handleAnswer(de.mhus.vance.brain.thinkengine.action.EngineAction action) {
         String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
         if (message == null || message.isBlank()) {
             // No message attached but type=ANSWER. Use the reason as
@@ -1757,8 +1749,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /** Clarification question to the user. Identical persistence to ANSWER but semantically different. */
-    private ActionTurnOutcome handleAskUser(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action) {
+    private ActionTurnOutcome handleAskUser(de.mhus.vance.brain.thinkengine.action.EngineAction action) {
         String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
         if (message == null || message.isBlank()) {
             message = action.reason();
@@ -1812,8 +1803,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * list — keeps the free-text question shape intact.
      */
     @SuppressWarnings("unchecked")
-    private static String renderAskUserOptions(
-            String baseMessage, @Nullable Object optionsRaw) {
+    private static String renderAskUserOptions(String baseMessage, @Nullable Object optionsRaw) {
         if (!(optionsRaw instanceof List<?> rawList) || rawList.isEmpty()) {
             return baseMessage;
         }
@@ -1868,18 +1858,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         String preset = action.stringParam(ArthurActionSchema.PARAM_PRESET);
         String prompt = action.stringParam(ArthurActionSchema.PARAM_PROMPT);
         if (prompt == null || prompt.isBlank()) {
-            log.warn("Arthur id='{}' DELEGATE missing prompt — reason='{}'",
-                    process.getId(), action.reason());
+            log.warn("Arthur id='{}' DELEGATE missing prompt — reason='{}'", process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — internal: tried to delegate without a prompt. "
-                            + "Reason was: " + action.reason(),
-                    true);
+                    "Sorry — internal: tried to delegate without a prompt. " + "Reason was: " + action.reason(), true);
         }
 
         boolean explicitRecipe = preset != null && !preset.isBlank();
         String workerNamePrefix = explicitRecipe ? preset : "delegated";
-        String workerName = workerNamePrefix + "-"
-                + java.util.UUID.randomUUID().toString().substring(0, 6);
+        String workerName =
+                workerNamePrefix + "-" + java.util.UUID.randomUUID().toString().substring(0, 6);
         try {
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("name", workerName);
@@ -1889,11 +1876,18 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
             ctx.tools().invokeInternal("process_spawn", params);
             if (explicitRecipe) {
-                log.info("Arthur id='{}' DELEGATE recipe='{}' worker='{}' reason='{}'",
-                        process.getId(), preset, workerName, summariseReason(action.reason()));
+                log.info(
+                        "Arthur id='{}' DELEGATE recipe='{}' worker='{}' reason='{}'",
+                        process.getId(),
+                        preset,
+                        workerName,
+                        summariseReason(action.reason()));
             } else {
-                log.info("Arthur id='{}' DELEGATE via selector worker='{}' reason='{}'",
-                        process.getId(), workerName, summariseReason(action.reason()));
+                log.info(
+                        "Arthur id='{}' DELEGATE via selector worker='{}' reason='{}'",
+                        process.getId(),
+                        workerName,
+                        summariseReason(action.reason()));
             }
             // Arm the delegation pointer immediately so subsequent
             // user input auto-forwards to the worker once it goes
@@ -1901,39 +1895,40 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // Active-Workers prompt block + lifecycle-cleanup paths
             // see it. See planning/process-engine-reply-channel.md
             // §9 (Arthur pointer + workerLinks consolidation).
-            thinkProcessService.findByName(
-                            process.getTenantId(),
-                            process.getSessionId(),
-                            workerName)
+            thinkProcessService
+                    .findByName(process.getTenantId(), process.getSessionId(), workerName)
                     .ifPresent(spawned -> {
-                        thinkProcessService.updateActiveDelegationWorkerId(
-                                process.getId(), spawned.getId());
+                        thinkProcessService.updateActiveDelegationWorkerId(process.getId(), spawned.getId());
                         process.setActiveDelegationWorkerId(spawned.getId());
                         de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot snapshot =
                                 de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
                                         .workerProcessId(spawned.getId())
-                                        .workerProcessName(spawned.getName() == null
-                                                ? workerName : spawned.getName())
-                                        .workerTenantId(spawned.getTenantId() == null
-                                                ? process.getTenantId() : spawned.getTenantId())
-                                        .workerProjectName(spawned.getProjectId() == null
-                                                ? process.getProjectId() : spawned.getProjectId())
-                                        .workerSessionId(spawned.getSessionId() == null
-                                                ? process.getSessionId() : spawned.getSessionId())
+                                        .workerProcessName(spawned.getName() == null ? workerName : spawned.getName())
+                                        .workerTenantId(
+                                                spawned.getTenantId() == null
+                                                        ? process.getTenantId()
+                                                        : spawned.getTenantId())
+                                        .workerProjectName(
+                                                spawned.getProjectId() == null
+                                                        ? process.getProjectId()
+                                                        : spawned.getProjectId())
+                                        .workerSessionId(
+                                                spawned.getSessionId() == null
+                                                        ? process.getSessionId()
+                                                        : spawned.getSessionId())
                                         .workerStatus(spawned.getStatus())
                                         .lastSeen(java.time.Instant.now())
                                         .build();
                         thinkProcessService.upsertWorkerLink(process.getId(), snapshot);
                         log.info(
                                 "Arthur id='{}' delegation pointer armed → worker '{}' (id='{}') on DELEGATE",
-                                process.getId(), workerName, spawned.getId());
+                                process.getId(),
+                                workerName,
+                                spawned.getId());
                     });
         } catch (RuntimeException e) {
             log.warn("Arthur id='{}' DELEGATE failed: {}", process.getId(), e.toString());
-            return new ActionTurnOutcome(
-                    "Internal: could not start the worker ("
-                            + e.getMessage() + ").",
-                    true);
+            return new ActionTurnOutcome("Internal: could not start the worker (" + e.getMessage() + ").", true);
         }
 
         // The whole point of structured DELEGATE: when message is
@@ -1943,8 +1938,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // ChatMessageNotificationDispatcher when ready.
         String preText = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
         return new ActionTurnOutcome(
-                preText == null || preText.isBlank() ? null : preText,
-                /*awaitingUserInput*/ false);
+                preText == null || preText.isBlank() ? null : preText, /*awaitingUserInput*/ false);
     }
 
     /**
@@ -1971,16 +1965,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
         SteerMessage.ProcessEvent event = resolveRelayEvent(action, available);
         if (event == null) {
-            log.warn("Arthur id='{}' RELAY could not be resolved "
+            log.warn(
+                    "Arthur id='{}' RELAY could not be resolved "
                             + "(drain size={}, eventRef='{}', legacy source='{}') "
                             + "— reason='{}'",
-                    process.getId(), available.size(),
+                    process.getId(),
+                    available.size(),
                     action.stringParam(ArthurActionSchema.PARAM_EVENT_REF),
                     action.stringParam("source"),
                     action.reason());
-            return new ActionTurnOutcome(
-                    relayFallbackMessage(available),
-                    true);
+            return new ActionTurnOutcome(relayFallbackMessage(available), true);
         }
         String eventRef = event.eventId();
 
@@ -1991,15 +1985,19 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // lookup against the worker's chat-history that could pick up
         // a fresher reply than the one this event captured.
         String sourceProcessId = event.sourceProcessId();
-        Optional<ThinkProcessDocument> targetOpt = thinkProcessService.findById(sourceProcessId)
+        Optional<ThinkProcessDocument> targetOpt = thinkProcessService
+                .findById(sourceProcessId)
                 .filter(p -> process.getTenantId().equals(p.getTenantId())
                         && process.getSessionId().equals(p.getSessionId()));
         String sourceName = targetOpt.map(ThinkProcessDocument::getName).orElse(sourceProcessId);
 
         String body = unwrapChildReply(event.humanSummary());
         if (body == null || body.isBlank()) {
-            log.warn("Arthur id='{}' RELAY eventRef '{}' has empty body — reason='{}'",
-                    process.getId(), eventRef, action.reason());
+            log.warn(
+                    "Arthur id='{}' RELAY eventRef '{}' has empty body — reason='{}'",
+                    process.getId(),
+                    eventRef,
+                    action.reason());
             return new ActionTurnOutcome(
                     "_The worker `" + sourceName + "` returned an empty "
                             + "response. Tell me briefly how we should proceed._",
@@ -2018,7 +2016,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
         log.info(
                 "Arthur id='{}' RELAY eventRef='{}' source='{}' ({} chars) reason='{}'",
-                process.getId(), eventRef, sourceName, body.length(),
+                process.getId(),
+                eventRef,
+                sourceName,
+                body.length(),
                 summariseReason(action.reason()));
 
         // The engine layer (runTurnFor) appends the chat message —
@@ -2054,8 +2055,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * unambiguous event from THIS drain — caller emits a user-
      * friendly fallback.
      */
-    private SteerMessage.@org.jspecify.annotations.Nullable ProcessEvent
-    resolveRelayEvent(
+    private SteerMessage.@org.jspecify.annotations.Nullable ProcessEvent resolveRelayEvent(
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
             Map<String, SteerMessage.ProcessEvent> available) {
         String eventRef = action.stringParam(ArthurActionSchema.PARAM_EVENT_REF);
@@ -2078,8 +2078,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (available.size() == 1) {
             return available.values().iterator().next();
         }
-        Map<String, SteerMessage.ProcessEvent> collapsed =
-                collapseBySourceProcessId(available);
+        Map<String, SteerMessage.ProcessEvent> collapsed = collapseBySourceProcessId(available);
         if (collapsed.size() == 1) {
             return collapsed.values().iterator().next();
         }
@@ -2126,8 +2125,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // insertion order by remembering the original token under
         // which the winner was rendered to the LLM, so Tier-2's
         // pick still matches what the LLM would see in the prompt.
-        Map<String, Map.Entry<String, SteerMessage.ProcessEvent>> bestByPid =
-                new LinkedHashMap<>();
+        Map<String, Map.Entry<String, SteerMessage.ProcessEvent>> bestByPid = new LinkedHashMap<>();
         for (Map.Entry<String, SteerMessage.ProcessEvent> entry : available.entrySet()) {
             SteerMessage.ProcessEvent ev = entry.getValue();
             String pid = ev.sourceProcessId();
@@ -2148,8 +2146,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         return result;
     }
 
-    private static boolean preferReplaceForRelay(
-            SteerMessage.ProcessEvent prev, SteerMessage.ProcessEvent next) {
+    private static boolean preferReplaceForRelay(SteerMessage.ProcessEvent prev, SteerMessage.ProcessEvent next) {
         int prevP = relayPriority(prev.type());
         int nextP = relayPriority(next.type());
         if (nextP < prevP) return true;
@@ -2165,7 +2162,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private static int relayPriority(de.mhus.vance.api.thinkprocess.ProcessEventType type) {
         if (type == null) return 99;
         return switch (type) {
-            case BLOCKED -> 0;   // synthesised from Reply — actual answer
+            case BLOCKED -> 0; // synthesised from Reply — actual answer
             case SUMMARY -> 1;
             case DONE -> 2;
             case FAILED -> 3;
@@ -2174,13 +2171,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         };
     }
 
-    private boolean matchesLegacySource(
-            SteerMessage.ProcessEvent event, String legacySource) {
+    private boolean matchesLegacySource(SteerMessage.ProcessEvent event, String legacySource) {
         if (legacySource.equals(event.sourceProcessId())) return true;
         // sourceProcessName isn't on the event record — resolve via
         // the registry. Tenant/session scope filter prevents matching
         // a same-named worker in a sibling session.
-        return thinkProcessService.findById(event.sourceProcessId())
+        return thinkProcessService
+                .findById(event.sourceProcessId())
                 .map(ThinkProcessDocument::getName)
                 .filter(legacySource::equals)
                 .isPresent();
@@ -2194,11 +2191,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * will re-evaluate on the next iteration (visible via warn-log
      * only).
      */
-    private String relayFallbackMessage(
-            Map<String, SteerMessage.ProcessEvent> available) {
+    private String relayFallbackMessage(Map<String, SteerMessage.ProcessEvent> available) {
         if (available.isEmpty()) {
-            return "_I have nothing to pass along right now — "
-                    + "tell me briefly where we should pick up._";
+            return "_I have nothing to pass along right now — " + "tell me briefly where we should pick up._";
         }
         return "_I just lost track while passing along the worker's "
                 + "response — if the answer is missing, tell me and "
@@ -2206,17 +2201,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /** Async work in flight, nothing to add. Engine goes IDLE. */
-    private ActionTurnOutcome handleWait(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action) {
+    private ActionTurnOutcome handleWait(de.mhus.vance.brain.thinkengine.action.EngineAction action) {
         String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
         return new ActionTurnOutcome(
-                message == null || message.isBlank() ? null : message,
-                /*awaitingUserInput*/ false);
+                message == null || message.isBlank() ? null : message, /*awaitingUserInput*/ false);
     }
 
     /** Out-of-scope refusal. */
-    private ActionTurnOutcome handleReject(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action) {
+    private ActionTurnOutcome handleReject(de.mhus.vance.brain.thinkengine.action.EngineAction action) {
         String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
         if (message == null || message.isBlank()) {
             message = "Unfortunately that won't work — " + action.reason();
@@ -2251,25 +2243,23 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ThinkEngineContext ctx) {
         String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
         if (message == null || message.isBlank()) {
-            log.warn("Arthur id='{}' NOTIFY_USER missing message — reason='{}'",
-                    process.getId(), action.reason());
+            log.warn("Arthur id='{}' NOTIFY_USER missing message — reason='{}'", process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Could not notify the user — the message text "
-                            + "was missing. (" + action.reason() + ")",
-                    true);
+                    "Could not notify the user — the message text " + "was missing. (" + action.reason() + ")", true);
         }
         de.mhus.vance.api.notification.NotificationSeverity severity =
-                parseNotifySeverity(
-                        action.stringParam(ArthurActionSchema.PARAM_SEVERITY),
-                        process);
+                parseNotifySeverity(action.stringParam(ArthurActionSchema.PARAM_SEVERITY), process);
         boolean delivered = notificationService.publish(process, message, severity);
-        log.info("Arthur id='{}' NOTIFY_USER severity={} delivered={} reason='{}'",
-                process.getId(), severity, delivered, summariseReason(action.reason()));
+        log.info(
+                "Arthur id='{}' NOTIFY_USER severity={} delivered={} reason='{}'",
+                process.getId(),
+                severity,
+                delivered,
+                summariseReason(action.reason()));
         return new ActionTurnOutcome(
                 delivered
                         ? "The user has been notified."
-                        : "The notification was created, but no "
-                                + "client was connected — it was not delivered.",
+                        : "The notification was created, but no " + "client was connected — it was not delivered.",
                 true);
     }
 
@@ -2280,8 +2270,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * debug log for the unrecognised case.
      */
     private de.mhus.vance.api.notification.NotificationSeverity parseNotifySeverity(
-            @org.jspecify.annotations.Nullable String raw,
-            ThinkProcessDocument process) {
+            @org.jspecify.annotations.Nullable String raw, ThinkProcessDocument process) {
         if (raw == null || raw.isBlank()) {
             return de.mhus.vance.api.notification.NotificationSeverity.INFO;
         }
@@ -2289,8 +2278,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             return de.mhus.vance.api.notification.NotificationSeverity.valueOf(
                     raw.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            log.debug("Arthur id='{}' NOTIFY_USER unknown severity '{}' — defaulting to INFO",
-                    process.getId(), raw);
+            log.debug("Arthur id='{}' NOTIFY_USER unknown severity '{}' — defaulting to INFO", process.getId(), raw);
             return de.mhus.vance.api.notification.NotificationSeverity.INFO;
         }
     }
@@ -2301,30 +2289,20 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ThinkEngineContext ctx) {
         String scope = action.stringParam(ArthurActionSchema.PARAM_SCOPE);
         String content = action.stringParam(ArthurActionSchema.PARAM_CONTENT);
-        if (scope == null || scope.isBlank()
-                || content == null || content.isBlank()) {
-            log.warn("Arthur id='{}' LEARN missing scope/content — reason='{}'",
-                    process.getId(), action.reason());
+        if (scope == null || scope.isBlank() || content == null || content.isBlank()) {
+            log.warn("Arthur id='{}' LEARN missing scope/content — reason='{}'", process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Could not save that — scope or content was missing. ("
-                            + action.reason() + ")",
-                    true);
+                    "Could not save that — scope or content was missing. (" + action.reason() + ")", true);
         }
         if (!ArthurActionSchema.LEARN_SCOPES.contains(scope)) {
-            log.warn("Arthur id='{}' LEARN unknown scope='{}' — reason='{}'",
-                    process.getId(), scope, action.reason());
+            log.warn("Arthur id='{}' LEARN unknown scope='{}' — reason='{}'", process.getId(), scope, action.reason());
             return new ActionTurnOutcome(
-                    "Could not save that — unknown scope '" + scope
-                            + "'. Allowed: 'persona', 'fact'.",
-                    true);
+                    "Could not save that — unknown scope '" + scope + "'. Allowed: 'persona', 'fact'.", true);
         }
         String userProject = resolveUserProjectName(ctx);
         if (userProject == null) {
-            log.warn("Arthur id='{}' LEARN cannot resolve user project — session/userId missing",
-                    process.getId());
-            return new ActionTurnOutcome(
-                    "Could not save that — no user project available.",
-                    true);
+            log.warn("Arthur id='{}' LEARN cannot resolve user project — session/userId missing", process.getId());
+            return new ActionTurnOutcome("Could not save that — no user project available.", true);
         }
         String tenantId = process.getTenantId();
         String authorTag = "arthur:" + process.getId();
@@ -2332,29 +2310,28 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         try {
             switch (scope) {
                 case ArthurActionSchema.LEARN_SCOPE_PERSONA -> {
-                    String mode = action.stringParamOr(
-                            ArthurActionSchema.PARAM_MODE,
-                            ArthurActionSchema.LEARN_MODE_REPLACE);
-                    int chars = userMemoryService.learnPersona(
-                            tenantId, userProject, content, mode, authorTag);
-                    log.info("Arthur id='{}' LEARN persona mode='{}' ({} chars total) reason='{}'",
-                            process.getId(), mode, chars,
+                    String mode =
+                            action.stringParamOr(ArthurActionSchema.PARAM_MODE, ArthurActionSchema.LEARN_MODE_REPLACE);
+                    int chars = userMemoryService.learnPersona(tenantId, userProject, content, mode, authorTag);
+                    log.info(
+                            "Arthur id='{}' LEARN persona mode='{}' ({} chars total) reason='{}'",
+                            process.getId(),
+                            mode,
+                            chars,
                             summariseReason(action.reason()));
                 }
                 case ArthurActionSchema.LEARN_SCOPE_FACT -> {
-                    int chars = userMemoryService.learnFact(
-                            tenantId, userProject, content, authorTag);
-                    log.info("Arthur id='{}' LEARN fact (journal now {} chars) reason='{}'",
-                            process.getId(), chars,
+                    int chars = userMemoryService.learnFact(tenantId, userProject, content, authorTag);
+                    log.info(
+                            "Arthur id='{}' LEARN fact (journal now {} chars) reason='{}'",
+                            process.getId(),
+                            chars,
                             summariseReason(action.reason()));
                 }
             }
         } catch (RuntimeException e) {
-            log.warn("Arthur id='{}' LEARN persistence failed: {}",
-                    process.getId(), e.toString());
-            return new ActionTurnOutcome(
-                    "Could not remember that right now — " + e.getMessage(),
-                    true);
+            log.warn("Arthur id='{}' LEARN persistence failed: {}", process.getId(), e.toString());
+            return new ActionTurnOutcome("Could not remember that right now — " + e.getMessage(), true);
         }
 
         // Optional spoken confirmation. Silent by default — the user
@@ -2387,17 +2364,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (userProject == null) return;
         String authorTag = "arthur:" + process.getId();
         userMemoryService.runConsolidation(
-                scope, process.getTenantId(), userProject, authorTag,
-                (systemPrompt, currentText) -> {
-                    List<ChatMessage> messages = List.of(
-                            SystemMessage.from(systemPrompt),
-                            UserMessage.from(currentText));
+                scope, process.getTenantId(), userProject, authorTag, (systemPrompt, currentText) -> {
+                    List<ChatMessage> messages =
+                            List.of(SystemMessage.from(systemPrompt), UserMessage.from(currentText));
                     dev.langchain4j.model.chat.request.ChatRequest req =
                             dev.langchain4j.model.chat.request.ChatRequest.builder()
                                     .messages(messages)
                                     .build();
-                    AiMessage reply = streamOneIteration(
-                            aiChat, req, ctx, process, modelAlias);
+                    AiMessage reply = streamOneIteration(aiChat, req, ctx, process, modelAlias);
                     return reply.text();
                 });
     }
@@ -2448,9 +2422,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         int bodyStart = humanSummary.indexOf('\n', begin);
         if (bodyStart < 0) return humanSummary;
         int end = humanSummary.indexOf("--- END CHILD REPLY ---", bodyStart);
-        String inner = end < 0
-                ? humanSummary.substring(bodyStart + 1)
-                : humanSummary.substring(bodyStart + 1, end);
+        String inner = end < 0 ? humanSummary.substring(bodyStart + 1) : humanSummary.substring(bodyStart + 1, end);
         return inner.trim();
     }
 
@@ -2480,8 +2452,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // specification/prompt-caching.md §5 and
         // planning/tool-schema-deferral.md §4.5 / §7.
         de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
-                de.mhus.vance.brain.prompt.PromptContextBuilder
-                        .forProcess(process, modelInfo)
+                de.mhus.vance.brain.prompt.PromptContextBuilder.forProcess(process, modelInfo)
                         .tier(modelSize)
                         .engine(NAME);
         // Per-turn client context: voice mode, the app the reader has
@@ -2493,13 +2464,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         de.mhus.vance.brain.prompt.ClientTurnContextResolver.ClientTurnContext client =
                 clientTurnContextResolver.resolve(process, inbox);
         client.applyTo(ctxBuilder);
-        ctxBuilder.withRootDirTypes(workspaceService.getRootDirTypes(
-                        process.getTenantId(), process.getProjectId()))
+        ctxBuilder
+                .withRootDirTypes(workspaceService.getRootDirTypes(process.getTenantId(), process.getProjectId()))
                 // This turn's manifest, so the template can gate
                 // tool-specific text on the tool being callable.
                 .withAvailableTools(ctx.tools().primary());
-        String base = composer.compose(process,
-                engineDefaultPrompt(process, modelSize), ctxBuilder);
+        String base = composer.compose(process, engineDefaultPrompt(process, modelSize), ctxBuilder);
         String discoveryBlock = ctx.tools().discoveryBlockMarkdown();
         if (discoveryBlock != null && !discoveryBlock.isBlank()) {
             base = base + discoveryBlock;
@@ -2520,8 +2490,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // this turn's Pebble context plus each skill's invocation
         // arguments. Its own message so a skill activation does not bust
         // the static prefix's cache marker.
-        String skillSection = skillTurnSupport.composeSection(
-                process, activeSkills, ctxBuilder.build());
+        String skillSection = skillTurnSupport.composeSection(process, activeSkills, ctxBuilder.build());
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }
@@ -2529,8 +2498,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour, default none). DYNAMIC — date rollover stays
         // behind the cache marker. See PromptDateBlock.
-        promptDateContextResolver.appendDynamicMessage(
-                messages, process, modelInfo == null ? null : modelInfo.size());
+        promptDateContextResolver.appendDynamicMessage(messages, process, modelInfo == null ? null : modelInfo.size());
         // Client environment (os/shell/cwd/sandbox) — tells the LLM which
         // command dialect its client_exec_run calls run on. DYNAMIC, no-op
         // when no CLIENT connection is bound. See PromptEnvironmentBlock.
@@ -2553,8 +2521,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // top-K hits in for any engine that hands it a userQuery.
         // Silent no-op when off / no RAG / empty user text. See
         // specification/rag.md §5.
-        String memoryBlock = memoryContextLoader.composeBlock(
-                process, latestUserInputText(inbox));
+        String memoryBlock = memoryContextLoader.composeBlock(process, latestUserInputText(inbox));
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(memoryBlock));
         }
@@ -2566,13 +2533,11 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // project explicitly — never via process.projectId.
         String userProject = resolveUserProjectName(ctx);
         if (userProject != null) {
-            String personaBlock = userMemoryService.composePersonaBlock(
-                    process.getTenantId(), userProject);
+            String personaBlock = userMemoryService.composePersonaBlock(process.getTenantId(), userProject);
             if (personaBlock != null && !personaBlock.isBlank()) {
                 messages.add(VanceSystemMessage.dynamic(personaBlock));
             }
-            String factsBlock = userMemoryService.composeFactsBlock(
-                    process.getTenantId(), userProject);
+            String factsBlock = userMemoryService.composeFactsBlock(process.getTenantId(), userProject);
             if (factsBlock != null && !factsBlock.isBlank()) {
                 messages.add(VanceSystemMessage.dynamic(factsBlock));
             }
@@ -2619,8 +2584,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // `vance.prak.contextFilterEnabled=true`; otherwise it's a pass-
         // through that returns the input list as-is.
         List<ChatMessageDocument> history = historyStrengthFilter.filter(
-                chatLog.activeHistory(
-                        process.getTenantId(), process.getSessionId(), process.getId()));
+                chatLog.activeHistory(process.getTenantId(), process.getSessionId(), process.getId()));
 
         // The inbox messages we just persisted (UserChatInput) are
         // already in `history`. Render the rest separately so the LLM
@@ -2648,8 +2612,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci) {
                 messages.add(buildUserMessageWithAttachments(
-                        uci, process, chatConfig.fullName(),
-                        providerType, modelInfo.capabilities(), client.collabActive()));
+                        uci,
+                        process,
+                        chatConfig.fullName(),
+                        providerType,
+                        modelInfo.capabilities(),
+                        client.collabActive()));
             }
         }
 
@@ -2658,8 +2626,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // wrapper Arthur's prompt is trained on. The token map drives
         // short eventRef attributes when more than one event is in
         // the drain (handleRelay validates against the same map).
-        Map<String, String> eventIdToToken = invertToShortTokens(
-                currentTurnEventsByRef.getOrDefault(process.getId(), Map.of()));
+        Map<String, String> eventIdToToken =
+                invertToShortTokens(currentTurnEventsByRef.getOrDefault(process.getId(), Map.of()));
         boolean multiEventDrain = eventIdToToken.size() > 1;
         // Coexistence dedup (process-engine-reply-channel migration):
         // when migrated engines (Ford, Marvin root, Zaphod, Slart, …)
@@ -2703,8 +2671,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * so the renderer can attach the short token to each
      * {@code <process-event>} marker.
      */
-    private static Map<String, String> invertToShortTokens(
-            Map<String, SteerMessage.ProcessEvent> eventsByToken) {
+    private static Map<String, String> invertToShortTokens(Map<String, SteerMessage.ProcessEvent> eventsByToken) {
         Map<String, String> out = new LinkedHashMap<>();
         for (var entry : eventsByToken.entrySet()) {
             String token = entry.getKey();
@@ -2731,12 +2698,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.ai.ProviderType providerType,
             java.util.Set<de.mhus.vance.brain.ai.ModelCapability> capabilities,
             boolean collabActive) {
-        String prefixedContent = de.mhus.vance.brain.chat.ChatHistoryRenderer
-                .applySenderPrefix(uci.fromUserDisplayName(), uci.content(), collabActive);
+        String prefixedContent = de.mhus.vance.brain.chat.ChatHistoryRenderer.applySenderPrefix(
+                uci.fromUserDisplayName(), uci.content(), collabActive);
         return attachedUserMessageComposer.compose(
                 new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.Context(
-                        process.getTenantId(), process.getProjectId(), process.getId(),
-                        chatName, providerType, capabilities),
+                        process.getTenantId(),
+                        process.getProjectId(),
+                        process.getId(),
+                        chatName,
+                        providerType,
+                        capabilities),
                 prefixedContent,
                 uci.attachments());
     }
@@ -2751,7 +2722,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (processId == null || processId.isBlank()) {
             return null;
         }
-        return thinkProcessService.findById(processId)
+        return thinkProcessService
+                .findById(processId)
                 .map(ThinkProcessDocument::getName)
                 .orElse(null);
     }
@@ -2786,11 +2758,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         List<de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot> links =
                 thinkProcessService.findWorkerLinks(process.getId());
         if (links != null && !links.isEmpty()) {
-            return renderActiveWorkersBlockFromLinks(
-                    links, ACTIVE_WORKERS_MAX_RENDER, java.time.Instant.now());
+            return renderActiveWorkersBlockFromLinks(links, ACTIVE_WORKERS_MAX_RENDER, java.time.Instant.now());
         }
-        List<ThinkProcessDocument> children = thinkProcessService
-                .findByParentProcessId(process.getId());
+        List<ThinkProcessDocument> children = thinkProcessService.findByParentProcessId(process.getId());
         return renderActiveWorkersBlock(children, ACTIVE_WORKERS_MAX_RENDER, java.time.Instant.now());
     }
 
@@ -2828,16 +2798,20 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 + "decide whether to spawn another one — never claim a worker has "
                 + "finished if it still appears here.\n\n");
         for (var l : visible) {
-            String name = l.getWorkerProcessName() == null
-                    || l.getWorkerProcessName().isBlank()
-                    ? l.getWorkerProcessId() : l.getWorkerProcessName();
+            String name =
+                    l.getWorkerProcessName() == null || l.getWorkerProcessName().isBlank()
+                            ? l.getWorkerProcessId()
+                            : l.getWorkerProcessName();
             sb.append("- ").append(name);
-            sb.append(" (status=").append(l.getWorkerStatus() == null
-                    ? "running"
-                    : l.getWorkerStatus().name().toLowerCase(java.util.Locale.ROOT));
+            sb.append(" (status=")
+                    .append(
+                            l.getWorkerStatus() == null
+                                    ? "running"
+                                    : l.getWorkerStatus().name().toLowerCase(java.util.Locale.ROOT));
             java.time.Instant updated = l.getLastSeen();
             if (updated != null && now != null) {
-                long ageSec = Math.max(0, java.time.Duration.between(updated, now).getSeconds());
+                long ageSec =
+                        Math.max(0, java.time.Duration.between(updated, now).getSeconds());
                 sb.append(", last activity ").append(formatAge(ageSec)).append(" ago");
             }
             sb.append(")\n");
@@ -2853,9 +2827,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * for unit-testability.
      */
     static @Nullable String renderActiveWorkersBlock(
-            @Nullable List<ThinkProcessDocument> children,
-            int maxRender,
-            java.time.Instant now) {
+            @Nullable List<ThinkProcessDocument> children, int maxRender, java.time.Instant now) {
         if (children == null || children.isEmpty()) return null;
         var visible = children.stream()
                 .filter(c -> c.getStatus() != ThinkProcessStatus.CLOSED)
@@ -2877,14 +2849,17 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 + "decide whether to spawn another one — never claim a worker has "
                 + "finished if it still appears here.\n\n");
         for (ThinkProcessDocument c : visible) {
-            String name = c.getName() == null || c.getName().isBlank()
-                    ? c.getId() : c.getName();
-            sb.append("- ").append(name)
-                    .append(" (").append(c.getThinkEngine())
-                    .append(", status=").append(c.getStatus().name().toLowerCase(java.util.Locale.ROOT));
+            String name = c.getName() == null || c.getName().isBlank() ? c.getId() : c.getName();
+            sb.append("- ")
+                    .append(name)
+                    .append(" (")
+                    .append(c.getThinkEngine())
+                    .append(", status=")
+                    .append(c.getStatus().name().toLowerCase(java.util.Locale.ROOT));
             java.time.Instant updated = c.getUpdatedAt();
             if (updated != null && now != null) {
-                long ageSec = Math.max(0, java.time.Duration.between(updated, now).getSeconds());
+                long ageSec =
+                        Math.max(0, java.time.Duration.between(updated, now).getSeconds());
                 sb.append(", last activity ").append(formatAge(ageSec)).append(" ago");
             }
             sb.append(")\n");
@@ -2903,10 +2878,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /** Rendering helper that needs access to the {@code thinkProcessService}. */
-    private String renderForLlm(
-            SteerMessage m,
-            Map<String, String> eventIdToToken,
-            boolean multiEventDrain) {
+    private String renderForLlm(SteerMessage m, Map<String, String> eventIdToToken, boolean multiEventDrain) {
         if (m instanceof SteerMessage.ProcessEvent pe) {
             StringBuilder sb = new StringBuilder();
             sb.append("<process-event sourceProcessId=\"")
@@ -2923,13 +2895,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // event is in the drain — single-event drains auto-pick
             // in handleRelay so the LLM doesn't need to copy any id
             // at all. UUID stays inside the engine for logs.
-            String token = pe.eventId() == null
-                    ? null
-                    : eventIdToToken.get(pe.eventId());
+            String token = pe.eventId() == null ? null : eventIdToToken.get(pe.eventId());
             if (multiEventDrain && token != null) {
-                sb.append(" eventRef=\"")
-                        .append(escapeAttr(token))
-                        .append("\"");
+                sb.append(" eventRef=\"").append(escapeAttr(token)).append("\"");
             }
             // respondingToTurnAt: the user-input turn the emitting
             // worker was processing. Lets the LLM see which user
@@ -2975,18 +2943,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         .append(escapeAttr(pe.sourceProcessId()))
                         .append("\"");
                 if (pe.eventId() != null && !pe.eventId().isBlank()) {
-                    sb.append(" eventId=\"")
-                            .append(escapeAttr(pe.eventId()))
-                            .append("\"");
+                    sb.append(" eventId=\"").append(escapeAttr(pe.eventId())).append("\"");
                 }
                 if (pe.inResponseToAt() != null) {
                     sb.append(" respondingToTurnAt=\"")
                             .append(escapeAttr(pe.inResponseToAt().toString()))
                             .append("\"");
                 }
-                sb.append(" type=\"")
-                        .append(pe.type().name().toLowerCase())
-                        .append("\">");
+                sb.append(" type=\"").append(pe.type().name().toLowerCase()).append("\">");
                 if (pe.humanSummary() != null) {
                     sb.append(escapeText(pe.humanSummary()));
                 }
@@ -3115,8 +3079,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
     private String engineDefaultPrompt(ThinkProcessDocument process, ModelSize modelSize) {
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
-        return enginePromptResolver.resolveForMode(
-                process, basePath, process.getMode(), ENGINE_FALLBACK_PROMPT);
+        return enginePromptResolver.resolveForMode(process, basePath, process.getMode(), ENGINE_FALLBACK_PROMPT);
     }
 
     /**
@@ -3133,8 +3096,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * embeds against. Returns {@code null} when the inbox carries no
      * user text (e.g. wakeup-only turn).
      */
-    private static @org.jspecify.annotations.Nullable String latestUserInputText(
-            java.util.List<SteerMessage> inbox) {
+    private static @org.jspecify.annotations.Nullable String latestUserInputText(java.util.List<SteerMessage> inbox) {
         StringBuilder sb = new StringBuilder();
         for (SteerMessage m : inbox) {
             if (m instanceof SteerMessage.UserChatInput uci
@@ -3154,23 +3116,26 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         }
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n## Current TodoList (mode=")
-                .append(process.getMode() == null
-                        ? "NORMAL" : process.getMode().name())
+                .append(process.getMode() == null ? "NORMAL" : process.getMode().name())
                 .append(")\n\n");
         for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
-            de.mhus.vance.api.thinkprocess.TodoStatus s = t.getStatus() == null
-                    ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING
-                    : t.getStatus();
-            String marker = switch (s) {
-                case PENDING -> "[ ]";
-                case IN_PROGRESS -> "[~]";
-                case COMPLETED -> "[✓]";
-            };
-            sb.append(marker).append(' ')
-                    .append("(id=").append(t.getId() == null ? "" : t.getId()).append(") ");
+            de.mhus.vance.api.thinkprocess.TodoStatus s =
+                    t.getStatus() == null ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING : t.getStatus();
+            String marker =
+                    switch (s) {
+                        case PENDING -> "[ ]";
+                        case IN_PROGRESS -> "[~]";
+                        case COMPLETED -> "[✓]";
+                    };
+            sb.append(marker)
+                    .append(' ')
+                    .append("(id=")
+                    .append(t.getId() == null ? "" : t.getId())
+                    .append(") ");
             String content = t.getContent() == null ? "" : t.getContent();
             if (s == de.mhus.vance.api.thinkprocess.TodoStatus.IN_PROGRESS
-                    && t.getActiveForm() != null && !t.getActiveForm().isBlank()) {
+                    && t.getActiveForm() != null
+                    && !t.getActiveForm().isBlank()) {
                 content = t.getActiveForm();
             }
             sb.append(content).append('\n');
@@ -3212,8 +3177,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // re-create them, which collides at PERSISTING.
         String projectId = process.getProjectId();
         java.util.List<ResolvedRecipe> recipes = recipeLoader.listAll(
-                process.getTenantId(),
-                projectId == null || projectId.isBlank() ? null : projectId);
+                process.getTenantId(), projectId == null || projectId.isBlank() ? null : projectId);
         if (recipes.isEmpty()) {
             return "";
         }
@@ -3222,8 +3186,11 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 .append("Use one of these names for `process_create(recipe=…)`. "
                         + "Call `recipe_list` at runtime if you want the live catalog.\n\n");
         for (ResolvedRecipe r : recipes) {
-            sb.append("- `").append(r.name()).append("` — ")
-                    .append(oneLine(r.description())).append("\n");
+            sb.append("- `")
+                    .append(r.name())
+                    .append("` — ")
+                    .append(oneLine(r.description()))
+                    .append("\n");
         }
         return sb.toString();
     }
@@ -3241,29 +3208,28 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         return p == null ? null : p.get(key);
     }
 
-    private static @Nullable String paramString(
-            ThinkProcessDocument process, String key, @Nullable String fallback) {
+    private static @Nullable String paramString(ThinkProcessDocument process, String key, @Nullable String fallback) {
         Object v = param(process, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
     }
 
-    private static int paramInt(
-            ThinkProcessDocument process, String key, int fallback) {
+    private static int paramInt(ThinkProcessDocument process, String key, int fallback) {
         Object v = param(process, key);
         if (v instanceof Number n) return n.intValue();
         if (v instanceof String s) {
-            try { return Integer.parseInt(s.trim()); }
-            catch (NumberFormatException e) { return fallback; }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                return fallback;
+            }
         }
         return fallback;
     }
 
-    private static boolean paramBool(
-            ThinkProcessDocument process, String key, boolean fallback) {
+    private static boolean paramBool(ThinkProcessDocument process, String key, boolean fallback) {
         Object v = param(process, key);
         if (v instanceof Boolean b) return b;
         if (v instanceof String s) return Boolean.parseBoolean(s.trim());
         return fallback;
     }
-
 }

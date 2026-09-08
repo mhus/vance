@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.command;
 
-import de.mhus.vance.brain.guard.CompletionGuardService;
+import de.mhus.vance.brain.guard.ShootyGuardService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.Locale;
@@ -30,7 +30,7 @@ import org.springframework.stereotype.Component;
 public class GuardCommandHandler implements EngineCommandHandler {
 
     private final ThinkProcessService thinkProcessService;
-    private final CompletionGuardService guardService;
+    private final ShootyGuardService guardService;
 
     @Override
     public String verb() {
@@ -48,9 +48,9 @@ public class GuardCommandHandler implements EngineCommandHandler {
             case "inline" -> setInline(process, rest);
             case "clear" -> clear(process);
             case "status" -> status(process, rest);
-            default -> EngineCommandResult.error(
-                    "unknown subcommand '" + sub
-                            + "' (script <path> | inline <script> | get | clear | status)");
+            default ->
+                EngineCommandResult.error(
+                        "unknown subcommand '" + sub + "' (script <path> | inline <script> | get | clear | status)");
         };
     }
 
@@ -78,31 +78,27 @@ public class GuardCommandHandler implements EngineCommandHandler {
             case "set" -> statusSet(process, session, opRest);
             case "del", "delete", "rm" -> statusDel(process, session, opRest);
             case "clear" -> statusClear(process, session);
-            default -> EngineCommandResult.error(
-                    "usage: //guard status [session] [set <key> <value> | del <key> | clear]");
+            default ->
+                EngineCommandResult.error("usage: //guard status [session] [set <key> <value> | del <key> | clear]");
         };
     }
 
-    private EngineCommandResult statusSet(
-            ThinkProcessDocument process, boolean session, String opRest) {
+    private EngineCommandResult statusSet(ThinkProcessDocument process, boolean session, String opRest) {
         String[] kv = splitFirstToken(opRest);
         if (kv[0].isEmpty() || kv[1].isEmpty()) {
             return EngineCommandResult.error("set requires a key and a value: set <key> <value>");
         }
         guardService.putScratch(process, session, kv[0], kv[1]);
-        return EngineCommandResult.ok(
-                scope(session) + " " + kv[0] + " = " + kv[1], null);
+        return EngineCommandResult.ok(scope(session) + " " + kv[0] + " = " + kv[1], null);
     }
 
-    private EngineCommandResult statusDel(
-            ThinkProcessDocument process, boolean session, String opRest) {
+    private EngineCommandResult statusDel(ThinkProcessDocument process, boolean session, String opRest) {
         String key = opRest.trim();
         if (key.isEmpty()) {
             return EngineCommandResult.error("del requires a key: del <key>");
         }
         boolean removed = guardService.removeScratch(process, session, key);
-        return EngineCommandResult.ok(
-                scope(session) + " " + key + (removed ? " removed" : " (not set)"), null);
+        return EngineCommandResult.ok(scope(session) + " " + key + (removed ? " removed" : " (not set)"), null);
     }
 
     private EngineCommandResult statusClear(ThinkProcessDocument process, boolean session) {
@@ -110,8 +106,7 @@ public class GuardCommandHandler implements EngineCommandHandler {
         return EngineCommandResult.ok(scope(session) + " scratch cleared", null);
     }
 
-    private EngineCommandResult showStatus(
-            ThinkProcessDocument process, boolean loop, boolean session) {
+    private EngineCommandResult showStatus(ThinkProcessDocument process, boolean loop, boolean session) {
         StringBuilder detail = new StringBuilder();
         int total = 0;
         if (loop) {
@@ -123,15 +118,20 @@ public class GuardCommandHandler implements EngineCommandHandler {
         String summary = "loop: " + guardService.loopScratchView(process).size() + " entries"
                 + (process.getSessionId() == null
                         ? "; session: (no session)"
-                        : "; session: " + guardService.sessionScratchView(process).size() + " entries");
-        return EngineCommandResult.ok(summary, total == 0 ? null : detail.toString().stripTrailing());
+                        : "; session: "
+                                + guardService.sessionScratchView(process).size() + " entries");
+        return EngineCommandResult.ok(
+                summary, total == 0 ? null : detail.toString().stripTrailing());
     }
 
-    private static int appendScope(
-            StringBuilder detail, String label, java.util.Map<String, Object> scratch) {
+    private static int appendScope(StringBuilder detail, String label, java.util.Map<String, Object> scratch) {
         for (java.util.Map.Entry<String, Object> e : scratch.entrySet()) {
-            detail.append(label).append('.').append(e.getKey())
-                    .append(" = ").append(e.getValue()).append('\n');
+            detail.append(label)
+                    .append('.')
+                    .append(e.getKey())
+                    .append(" = ")
+                    .append(e.getValue())
+                    .append('\n');
         }
         return scratch.size();
     }
@@ -181,10 +181,8 @@ public class GuardCommandHandler implements EngineCommandHandler {
     }
 
     private static boolean isRuntime(
-            de.mhus.vance.brain.recipe.GuardConfig g,
-            @Nullable String script, @Nullable String inline) {
-        return (script != null && script.equals(g.scriptPath()))
-                || (inline != null && inline.equals(g.scriptBody()));
+            de.mhus.vance.brain.recipe.GuardConfig g, @Nullable String script, @Nullable String inline) {
+        return (script != null && script.equals(g.scriptPath())) || (inline != null && inline.equals(g.scriptBody()));
     }
 
     private static boolean notBlank(@Nullable String s) {

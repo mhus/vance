@@ -101,13 +101,11 @@ class FrankieEngineSkeletonTest {
 
         AiChatConfig cfg = new AiChatConfig("test", "scripted", "stub-key");
         ChatBehavior behavior = ChatBehavior.single(cfg);
-        EngineChatFactory.EngineChatBundle bundle =
-                new EngineChatFactory.EngineChatBundle(aiChat, behavior);
+        EngineChatFactory.EngineChatBundle bundle = new EngineChatFactory.EngineChatBundle(aiChat, behavior);
         lenient().when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(bundle);
         // 4-arg overload: Frankie rebuilds the chat with the est-scaled
         // stream timeout after turn-start compaction.
-        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any()))
-                .thenReturn(bundle);
+        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any())).thenReturn(bundle);
 
         lenient().when(tools.primaryAsLc4j()).thenReturn(List.of());
         // Skills add no extra tools by default — the per-turn allow-set
@@ -116,16 +114,13 @@ class FrankieEngineSkeletonTest {
 
         enginePromptResolver = mock(EnginePromptResolver.class);
         systemPromptComposer = mock(SystemPromptComposer.class);
-        lenient().when(enginePromptResolver.resolve(any(), any(), any()))
-                .thenAnswer(inv -> inv.getArgument(2));
-        lenient().when(systemPromptComposer.compose(any(), any(), any()))
-                .thenAnswer(inv -> inv.getArgument(1));
+        lenient().when(enginePromptResolver.resolve(any(), any(), any())).thenAnswer(inv -> inv.getArgument(2));
+        lenient().when(systemPromptComposer.compose(any(), any(), any())).thenAnswer(inv -> inv.getArgument(1));
 
         skillResolver = mock(SkillResolver.class);
         skillPromptComposer = mock(SkillPromptComposer.class);
         sessionService = mock(SessionService.class);
-        lenient().when(skillPromptComposer.mergedTools(any()))
-                .thenReturn(java.util.Set.of());
+        lenient().when(skillPromptComposer.mergedTools(any())).thenReturn(java.util.Set.of());
         lenient().when(skillPromptComposer.compose(any(), any())).thenReturn(null);
         lenient().when(sessionService.findBySessionId(any())).thenReturn(Optional.empty());
 
@@ -135,7 +130,8 @@ class FrankieEngineSkeletonTest {
 
         modelCatalog = mock(de.mhus.vance.brain.ai.ModelCatalog.class);
         de.mhus.vance.brain.ai.ModelInfo fakeModelInfo = new de.mhus.vance.brain.ai.ModelInfo(
-                "test", "test-model",
+                "test",
+                "test-model",
                 /*contextWindowTokens*/ 128_000,
                 /*defaultMaxOutputTokens*/ 4096,
                 de.mhus.vance.brain.ai.ModelSize.LARGE,
@@ -146,38 +142,48 @@ class FrankieEngineSkeletonTest {
                 /*messageParser*/ null,
                 /*pricing*/ null,
                 de.mhus.vance.brain.ai.OutputTokenParam.MAX_TOKENS,
-                java.util.Set.of(), null);
-        lenient().when(modelCatalog.lookupOrDefault(
-                        any(), any(), any(), any(), any()))
+                java.util.Set.of(),
+                null);
+        lenient()
+                .when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
                 .thenReturn(fakeModelInfo);
         de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService =
                 mock(de.mhus.vance.brain.memory.MemoryCompactionService.class);
-        lenient().when(memoryCompactionService.compactIfNeeded(any(), any(), any(), any()))
+        lenient()
+                .when(memoryCompactionService.compactIfNeeded(any(), any(), any(), any()))
                 .thenReturn(de.mhus.vance.brain.memory.CompactionResult.noop("test"));
 
         attachmentResolver = mock(de.mhus.vance.brain.ai.attachment.AttachmentResolver.class);
-        de.mhus.vance.brain.guard.CompletionGuardService completionGuard =
-                mock(de.mhus.vance.brain.guard.CompletionGuardService.class);
-        lenient().when(completionGuard.evaluate(any(), any(), anyBoolean()))
+        de.mhus.vance.brain.guard.ShootyGuardService completionGuard =
+                mock(de.mhus.vance.brain.guard.ShootyGuardService.class);
+        lenient()
+                .when(completionGuard.evaluate(any(), any(), anyBoolean()))
                 .thenReturn(new de.mhus.vance.brain.guard.GuardEvaluation(false, null, null));
         de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver =
                 mock(de.mhus.vance.brain.prompt.ClientTurnContextResolver.class);
-        lenient().when(clientTurnContextResolver.resolve(any(), any()))
-                .thenReturn(de.mhus.vance.brain.prompt.ClientTurnContextResolver
-                        .ClientTurnContext.EMPTY);
+        lenient()
+                .when(clientTurnContextResolver.resolve(any(), any()))
+                .thenReturn(de.mhus.vance.brain.prompt.ClientTurnContextResolver.ClientTurnContext.EMPTY);
         engine = new FrankieEngine(
-                thinkProcessService, properties, engineChatFactory,
-                llmCallTracker, streaming, objectMapper,
-                enginePromptResolver, systemPromptComposer,
-                skillResolver, skillPromptComposer, sessionService,
+                thinkProcessService,
+                properties,
+                engineChatFactory,
+                llmCallTracker,
+                streaming,
+                objectMapper,
+                enginePromptResolver,
+                systemPromptComposer,
+                skillResolver,
+                skillPromptComposer,
+                sessionService,
                 mock(de.mhus.vance.brain.context.PromptDateContextResolver.class),
                 mock(de.mhus.vance.brain.prompt.ScratchpadPromptContributor.class),
                 memoryContextLoader,
-                modelCatalog, memoryCompactionService,
+                modelCatalog,
+                memoryCompactionService,
                 new de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry(java.util.List.of()),
                 completionGuard,
-                new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer(
-                                attachmentResolver),
+                new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer(attachmentResolver),
                 clientTurnContextResolver);
 
         process = new ThinkProcessDocument();
@@ -263,8 +269,7 @@ class FrankieEngineSkeletonTest {
         verify(chatMessageService).append(any());
         // Message names the real cause and the actionable knob, and does
         // NOT claim a transient glitch.
-        org.mockito.ArgumentCaptor<String> reply =
-                org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<String> reply = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(ctx).emitReply(reply.capture(), any(), any());
         assertThat(reply.getValue())
                 .contains("output-token limit")
@@ -285,9 +290,7 @@ class FrankieEngineSkeletonTest {
         chatModel.script(AiMessage.from("", List.of(call)));
 
         when(tools.invoke(eq("task_complete"), any()))
-                .thenReturn(java.util.Map.of(
-                        "summary", "all done",
-                        FrankieTermination.RESULT_TERMINATE_KEY, true));
+                .thenReturn(java.util.Map.of("summary", "all done", FrankieTermination.RESULT_TERMINATE_KEY, true));
 
         engine.runTurn(process, ctx);
 
@@ -308,9 +311,7 @@ class FrankieEngineSkeletonTest {
         chatModel.script(AiMessage.from("", List.of(call)));
 
         when(tools.invoke(eq("task_complete"), any()))
-                .thenReturn(java.util.Map.of(
-                        "summary", "all done",
-                        FrankieTermination.RESULT_TERMINATE_KEY, true));
+                .thenReturn(java.util.Map.of("summary", "all done", FrankieTermination.RESULT_TERMINATE_KEY, true));
 
         engine.runTurn(process, ctx);
 
@@ -365,16 +366,15 @@ class FrankieEngineSkeletonTest {
         // Frankie renders its prompt from the persisted chat log, which
         // stores text only — so an image attached to a coding session
         // used to be dropped between the inbox and the LLM call.
-        de.mhus.vance.brain.ai.AiChatConfig visionCfg =
-                new AiChatConfig("openai", "gpt-x", "stub-key");
+        de.mhus.vance.brain.ai.AiChatConfig visionCfg = new AiChatConfig("openai", "gpt-x", "stub-key");
         AiChat aiChat = mock(AiChat.class);
         lenient().when(aiChat.streamingChatModel()).thenReturn(chatModel);
         EngineChatFactory.EngineChatBundle visionBundle =
                 new EngineChatFactory.EngineChatBundle(aiChat, ChatBehavior.single(visionCfg));
         lenient().when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(visionBundle);
-        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any()))
-                .thenReturn(visionBundle);
-        lenient().when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
+        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any())).thenReturn(visionBundle);
+        lenient()
+                .when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
                 .thenReturn(visionModelInfo());
         when(attachmentResolver.resolveAll(any(), any(), any()))
                 .thenReturn(List.of(new de.mhus.vance.brain.ai.attachment.ResolvedAttachment(
@@ -397,8 +397,7 @@ class FrankieEngineSkeletonTest {
         assertThat(userMessage.contents())
                 .as("image block plus the user's text")
                 .hasSize(2);
-        assertThat(userMessage.contents().get(0).type())
-                .isEqualTo(dev.langchain4j.data.message.ContentType.IMAGE);
+        assertThat(userMessage.contents().get(0).type()).isEqualTo(dev.langchain4j.data.message.ContentType.IMAGE);
         assertThat(countUserMessages(chatModel.requests().get(0)))
                 .as("the rebuilt message replaces the history entry instead of doubling it")
                 .isEqualTo(1);
@@ -418,27 +417,39 @@ class FrankieEngineSkeletonTest {
 
     private static de.mhus.vance.brain.ai.ModelInfo visionModelInfo() {
         return new de.mhus.vance.brain.ai.ModelInfo(
-                "openai", "gpt-x", 128_000, 4096,
+                "openai",
+                "gpt-x",
+                128_000,
+                4096,
                 de.mhus.vance.brain.ai.ModelSize.LARGE,
                 java.util.Set.of(de.mhus.vance.brain.ai.ModelCapability.VISION),
-                60, 2, false, null, null,
+                60,
+                2,
+                false,
+                null,
+                null,
                 de.mhus.vance.brain.ai.OutputTokenParam.MAX_TOKENS,
-                java.util.Set.of(), null);
+                java.util.Set.of(),
+                null);
     }
 
-    private static de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput userInput(
-            String text) {
+    private static de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput userInput(String text) {
         return new de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput(
-                Instant.now(), null, "wile.coyote", null, text,
-                List.of(), false, null, null, null);
+                Instant.now(), null, "wile.coyote", null, text, List.of(), false, null, null, null);
     }
 
-    private static de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput
-            userInputWithAttachment(String text) {
+    private static de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput userInputWithAttachment(String text) {
         return new de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput(
-                Instant.now(), null, "wile.coyote", null, text,
+                Instant.now(),
+                null,
+                "wile.coyote",
+                null,
+                text,
                 List.of(new de.mhus.vance.api.attachment.AttachmentRef("doc-1")),
-                false, null, null, null);
+                false,
+                null,
+                null,
+                null);
     }
 
     private static int countUserMessages(ChatRequest request) {
@@ -464,32 +475,32 @@ class FrankieEngineSkeletonTest {
         // A screenshot arrives as an image content block, gets harvested
         // into a document, and can only reach the model on a message of
         // its own — a tool result is text in the OpenAI-compatible API.
-        de.mhus.vance.brain.ai.AiChatConfig visionCfg =
-                new AiChatConfig("openai", "gpt-x", "stub-key");
+        de.mhus.vance.brain.ai.AiChatConfig visionCfg = new AiChatConfig("openai", "gpt-x", "stub-key");
         AiChat aiChat = mock(AiChat.class);
         lenient().when(aiChat.streamingChatModel()).thenReturn(chatModel);
         EngineChatFactory.EngineChatBundle visionBundle =
                 new EngineChatFactory.EngineChatBundle(aiChat, ChatBehavior.single(visionCfg));
         lenient().when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(visionBundle);
-        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any()))
-                .thenReturn(visionBundle);
-        lenient().when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
+        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any())).thenReturn(visionBundle);
+        lenient()
+                .when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
                 .thenReturn(visionModelInfo());
         when(attachmentResolver.resolveAll(any(), any(), any()))
                 .thenReturn(List.of(new de.mhus.vance.brain.ai.attachment.ResolvedAttachment(
                         "doc-1", "image/png", new byte[] {1, 2, 3}, "screenshot.png")));
 
         ToolExecutionRequest shot = ToolExecutionRequest.builder()
-                .id("call-1").name("chrome__take_screenshot").arguments("{}").build();
+                .id("call-1")
+                .name("chrome__take_screenshot")
+                .arguments("{}")
+                .build();
         chatModel.script(AiMessage.from("", List.of(shot)));
         chatModel.script(AiMessage.from("I can see the page."));
         // The harvester runs inside the dispatch path; here the tool
         // invocation stands in for it by filling the sink.
         when(tools.invoke(eq("chrome__take_screenshot"), any())).thenAnswer(inv -> {
-            attachmentSink.emit(List.of(
-                    new de.mhus.vance.api.attachment.AttachmentRef("doc-1")));
-            return java.util.Map.of("content", List.of(
-                    java.util.Map.of("type", "image", "path", "_chatbox/shot.png")));
+            attachmentSink.emit(List.of(new de.mhus.vance.api.attachment.AttachmentRef("doc-1")));
+            return java.util.Map.of("content", List.of(java.util.Map.of("type", "image", "path", "_chatbox/shot.png")));
         });
 
         engine.runTurn(process, ctx);
@@ -507,31 +518,35 @@ class FrankieEngineSkeletonTest {
         // — that is what a message is. What draining guarantees is that
         // it is *appended* once: without it every later iteration would
         // add the same picture again and the context would fill up.
-        de.mhus.vance.brain.ai.AiChatConfig visionCfg =
-                new AiChatConfig("openai", "gpt-x", "stub-key");
+        de.mhus.vance.brain.ai.AiChatConfig visionCfg = new AiChatConfig("openai", "gpt-x", "stub-key");
         AiChat aiChat = mock(AiChat.class);
         lenient().when(aiChat.streamingChatModel()).thenReturn(chatModel);
         EngineChatFactory.EngineChatBundle visionBundle =
                 new EngineChatFactory.EngineChatBundle(aiChat, ChatBehavior.single(visionCfg));
         lenient().when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(visionBundle);
-        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any()))
-                .thenReturn(visionBundle);
-        lenient().when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
+        lenient().when(engineChatFactory.forProcess(any(), any(), any(), any())).thenReturn(visionBundle);
+        lenient()
+                .when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
                 .thenReturn(visionModelInfo());
         when(attachmentResolver.resolveAll(any(), any(), any()))
                 .thenReturn(List.of(new de.mhus.vance.brain.ai.attachment.ResolvedAttachment(
                         "doc-1", "image/png", new byte[] {1, 2, 3}, "screenshot.png")));
 
         ToolExecutionRequest shot = ToolExecutionRequest.builder()
-                .id("call-1").name("chrome__take_screenshot").arguments("{}").build();
+                .id("call-1")
+                .name("chrome__take_screenshot")
+                .arguments("{}")
+                .build();
         ToolExecutionRequest other = ToolExecutionRequest.builder()
-                .id("call-2").name("noop_tool").arguments("{}").build();
+                .id("call-2")
+                .name("noop_tool")
+                .arguments("{}")
+                .build();
         chatModel.script(AiMessage.from("", List.of(shot)));
         chatModel.script(AiMessage.from("", List.of(other)));
         chatModel.script(AiMessage.from("done"));
         when(tools.invoke(eq("chrome__take_screenshot"), any())).thenAnswer(inv -> {
-            attachmentSink.emit(List.of(
-                    new de.mhus.vance.api.attachment.AttachmentRef("doc-1")));
+            attachmentSink.emit(List.of(new de.mhus.vance.api.attachment.AttachmentRef("doc-1")));
             return java.util.Map.of("ok", true);
         });
         when(tools.invoke(eq("noop_tool"), any())).thenReturn(java.util.Map.of("ok", true));
@@ -564,11 +579,13 @@ class FrankieEngineSkeletonTest {
         // Frankie built its tool specs once before the loop, so the
         // activation stayed invisible until the next turn. It re-described
         // four more times and told the user the tools were unavailable.
-        ToolSpecification base = ToolSpecification.builder().name("tool_description").build();
-        ToolSpecification activated = ToolSpecification.builder().name("chrome__new_page").build();
+        ToolSpecification base =
+                ToolSpecification.builder().name("tool_description").build();
+        ToolSpecification activated =
+                ToolSpecification.builder().name("chrome__new_page").build();
         when(tools.primaryAsLc4j())
-                .thenReturn(List.of(base))          // turn start
-                .thenReturn(List.of(base, activated));  // after the batch
+                .thenReturn(List.of(base)) // turn start
+                .thenReturn(List.of(base, activated)); // after the batch
 
         ToolExecutionRequest describe = ToolExecutionRequest.builder()
                 .id("call-1")
@@ -577,8 +594,7 @@ class FrankieEngineSkeletonTest {
                 .build();
         chatModel.script(AiMessage.from("", List.of(describe)));
         chatModel.script(AiMessage.from("Opened the page."));
-        when(tools.invoke(eq("tool_description"), any()))
-                .thenReturn(java.util.Map.of("activated", true));
+        when(tools.invoke(eq("tool_description"), any())).thenReturn(java.util.Map.of("activated", true));
 
         engine.runTurn(process, ctx);
 
@@ -642,7 +658,7 @@ class FrankieEngineSkeletonTest {
 
     @Test
     void wallclockExceeded_setsBlocked() {
-        properties.setMaxWallclockMinutes(0);  // anything > 0 ms past createdAt trips it
+        properties.setMaxWallclockMinutes(0); // anything > 0 ms past createdAt trips it
         process.setCreatedAt(Instant.now().minusSeconds(60));
 
         engine.runTurn(process, ctx);
@@ -657,8 +673,8 @@ class FrankieEngineSkeletonTest {
         // One number cannot fit a coding worker chewing through a
         // refactor and a worker asked to list documents.
         properties.setMaxWallclockMinutes(60);
-        process.setEngineParams(new java.util.LinkedHashMap<>(java.util.Map.of(
-                FrankieEngine.PARAM_MAX_WALLCLOCK_MINUTES, 0)));
+        process.setEngineParams(
+                new java.util.LinkedHashMap<>(java.util.Map.of(FrankieEngine.PARAM_MAX_WALLCLOCK_MINUTES, 0)));
 
         engine.runTurn(process, ctx);
 
@@ -671,8 +687,8 @@ class FrankieEngineSkeletonTest {
         // A typo must not silently disable the safety net — the recipe
         // author meant to bound the worker, not to unbound it.
         properties.setMaxWallclockMinutes(0);
-        process.setEngineParams(new java.util.LinkedHashMap<>(java.util.Map.of(
-                FrankieEngine.PARAM_MAX_WALLCLOCK_MINUTES, "soon")));
+        process.setEngineParams(
+                new java.util.LinkedHashMap<>(java.util.Map.of(FrankieEngine.PARAM_MAX_WALLCLOCK_MINUTES, "soon")));
 
         engine.runTurn(process, ctx);
 
@@ -715,13 +731,11 @@ class FrankieEngineSkeletonTest {
         chatModel.script(AiMessage.from("", List.of(poll)));
         chatModel.script(AiMessage.from("", List.of(poll)));
         chatModel.script(AiMessage.from("Build still running — will keep polling."));
-        when(tools.invoke(eq("exec_status"), any()))
-                .thenReturn(java.util.Map.of("id", "job-1", "status", "RUNNING"));
+        when(tools.invoke(eq("exec_status"), any())).thenReturn(java.util.Map.of("id", "job-1", "status", "RUNNING"));
 
         engine.runTurn(process, ctx);
 
-        verify(thinkProcessService, never())
-                .updateStatus(PROC_ID, ThinkProcessStatus.BLOCKED);
+        verify(thinkProcessService, never()).updateStatus(PROC_ID, ThinkProcessStatus.BLOCKED);
         verify(thinkProcessService).updateStatus(PROC_ID, ThinkProcessStatus.IDLE);
     }
 
@@ -755,17 +769,28 @@ class FrankieEngineSkeletonTest {
         var set = engine.allowedTools();
         assertThat(set).isNotEmpty();
         // Discovery + intro essentials
-        assertThat(set).contains("tool_list", "tool_description", "how_do_i",
-                "manual_read", "tool_result_read");
+        assertThat(set).contains("tool_list", "tool_description", "how_do_i", "manual_read", "tool_result_read");
         // Sub-worker spawn — Frankie's escape hatch
         assertThat(set).contains("process_spawn");
         // User-facing signal
         assertThat(set).contains("vance_notify");
         // Generic work-target file / exec wrappers + work_target_get/set
-        assertThat(set).contains("file_read", "file_write", "file_edit",
-                "file_list", "file_find", "file_grep", "file_head_tail",
-                "file_count", "exec_run", "exec_status", "exec_tail",
-                "exec_kill", "work_target_get", "work_target_set");
+        assertThat(set)
+                .contains(
+                        "file_read",
+                        "file_write",
+                        "file_edit",
+                        "file_list",
+                        "file_find",
+                        "file_grep",
+                        "file_head_tail",
+                        "file_count",
+                        "exec_run",
+                        "exec_status",
+                        "exec_tail",
+                        "exec_kill",
+                        "work_target_get",
+                        "work_target_set");
         // Plan-tracking CRUD trio (reduced Plan-Mode variant, §9)
         assertThat(set).contains("todo_create", "todo_update", "todo_remove");
     }
@@ -818,8 +843,7 @@ class FrankieEngineSkeletonTest {
             } else if (!queue.isEmpty()) {
                 msg = queue.poll();
             } else {
-                handler.onError(new IllegalStateException(
-                        "ScriptedStreamingChatModel: no more scripted responses"));
+                handler.onError(new IllegalStateException("ScriptedStreamingChatModel: no more scripted responses"));
                 return;
             }
             ChatResponse.Builder builder = ChatResponse.builder().aiMessage(msg);

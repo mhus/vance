@@ -14,8 +14,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -72,14 +72,12 @@ public class RecipeLoader {
      *         is malformed, missing required fields, or carries a
      *         {@code promptPrefix} that fails Pebble compilation
      */
-    public Optional<ResolvedRecipe> load(
-            String tenantId, @Nullable String projectId, String name) {
+    public Optional<ResolvedRecipe> load(String tenantId, @Nullable String projectId, String name) {
         if (name == null || name.isBlank()) {
             return Optional.empty();
         }
         String path = pathFor(name);
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                tenantId, effectiveProjectId(projectId), path);
+        Optional<LookupResult> hit = documentService.lookupCascade(tenantId, effectiveProjectId(projectId), path);
         if (hit.isEmpty()) {
             return Optional.empty();
         }
@@ -96,8 +94,11 @@ public class RecipeLoader {
                 // another" — and a tenant with a recipe of its own under the
                 // same name already got that one, because the cascade starts
                 // with it.
-                log.debug("RecipeLoader: recipe '{}' is not for tenant '{}' (tenants={})",
-                        name, tenantId, recipe.tenants());
+                log.debug(
+                        "RecipeLoader: recipe '{}' is not for tenant '{}' (tenants={})",
+                        name,
+                        tenantId,
+                        recipe.tenants());
                 return Optional.empty();
             }
             return Optional.of(recipe);
@@ -105,7 +106,8 @@ public class RecipeLoader {
             throw new RecipeParseException(
                     "Failed to parse recipe '" + name + "' from "
                             + result.source() + " at path '" + result.path()
-                            + "': " + e.getMessage(), e);
+                            + "': " + e.getMessage(),
+                    e);
         }
     }
 
@@ -125,15 +127,14 @@ public class RecipeLoader {
         //    matchesOneLevel filter keeps subdirectory contents out
         //    of this slice.
         Map<String, LookupResult> hits = new java.util.LinkedHashMap<>(
-                documentService.listByPrefixCascade(
-                        tenantId, project, RECIPE_PATH_PREFIX));
+                documentService.listByPrefixCascade(tenantId, project, RECIPE_PATH_PREFIX));
         // 2. User-namespace recipes: recipes/_user/<name>.yaml (Slart
         //    Phase-D persists named CREATEs here). Without this
         //    explicit pass, recipe_list and the unknown-recipe error
         //    message hide them — LLMs that just named a recipe via
         //    Slart wouldn't see it on the next turn.
-        Map<String, LookupResult> userHits = documentService.listByPrefixCascade(
-                tenantId, project, RECIPE_PATH_PREFIX + "_user/");
+        Map<String, LookupResult> userHits =
+                documentService.listByPrefixCascade(tenantId, project, RECIPE_PATH_PREFIX + "_user/");
         for (Map.Entry<String, LookupResult> e : userHits.entrySet()) {
             hits.putIfAbsent(e.getKey(), e.getValue());
         }
@@ -149,8 +150,11 @@ public class RecipeLoader {
                 if (!recipe.appliesTo(tenantId)) continue;
                 out.add(recipe);
             } catch (RuntimeException ex) {
-                log.warn("RecipeLoader: skipping malformed recipe path='{}' source={}: {}",
-                        path, e.getValue().source(), ex.getMessage());
+                log.warn(
+                        "RecipeLoader: skipping malformed recipe path='{}' source={}: {}",
+                        path,
+                        e.getValue().source(),
+                        ex.getMessage());
             }
         }
         return out;
@@ -175,22 +179,18 @@ public class RecipeLoader {
     }
 
     private static String effectiveProjectId(@Nullable String projectId) {
-        return (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
+        return (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
     private static String nameFromPath(String path) {
         if (!path.startsWith(RECIPE_PATH_PREFIX)) return null;
         if (!path.endsWith(RECIPE_PATH_SUFFIX)) return null;
-        String stem = path.substring(
-                RECIPE_PATH_PREFIX.length(),
-                path.length() - RECIPE_PATH_SUFFIX.length());
+        String stem = path.substring(RECIPE_PATH_PREFIX.length(), path.length() - RECIPE_PATH_SUFFIX.length());
         return stem.isBlank() ? null : stem;
     }
 
     @SuppressWarnings("unchecked")
-    private static ResolvedRecipe parse(
-            String name, LookupResult hit, PromptTemplateRenderer renderer) {
+    private static ResolvedRecipe parse(String name, LookupResult hit, PromptTemplateRenderer renderer) {
         Yaml yaml = new Yaml();
         Object parsed = yaml.load(hit.content());
         if (!(parsed instanceof Map<?, ?> rawMap)) {
@@ -232,12 +232,10 @@ public class RecipeLoader {
         List<String> remove = stringList(spec.get("allowedToolsRemove"), "allowedToolsRemove");
         List<String> defer = stringList(spec.get("allowedToolsDefer"), "allowedToolsDefer");
         List<String> keep = stringList(spec.get("allowedToolsKeep"), "allowedToolsKeep");
-        List<String> dropFirst = stringList(
-                spec.get("allowedToolsDropFirst"), "allowedToolsDropFirst");
+        List<String> dropFirst = stringList(spec.get("allowedToolsDropFirst"), "allowedToolsDropFirst");
         Map<String, RecipeModeBlock> baseModes = parseModes(spec.get("modes"), "modes");
         Map<String, ProfileBlock> profiles = parseProfiles(spec.get("profiles"), renderer);
-        List<String> defaultActiveSkills = stringList(
-                spec.get("defaultActiveSkills"), "defaultActiveSkills");
+        List<String> defaultActiveSkills = stringList(spec.get("defaultActiveSkills"), "defaultActiveSkills");
         List<String> allowedSkills = parseAllowedSkills(spec.get("allowedSkills"));
         validateDefaultsAreAllowed(name, defaultActiveSkills, allowedSkills);
         List<String> triggerKeywords = parseTriggerKeywords(spec.get("triggers"));
@@ -256,21 +254,38 @@ public class RecipeLoader {
         warnOnMisplacedTopLevelKeys(name, params.keySet(), spec.readKeys());
 
         return new ResolvedRecipe(
-                name, description, engine, params,
-                promptPrefix, promptMode,
+                name,
+                description,
+                engine,
+                params,
+                promptPrefix,
+                promptMode,
                 dataRelayCorrection,
-                add, remove, defer, keep, dropFirst, baseModes, profiles,
-                defaultActiveSkills, allowedSkills,
+                add,
+                remove,
+                defer,
+                keep,
+                dropFirst,
+                baseModes,
+                profiles,
+                defaultActiveSkills,
+                allowedSkills,
                 triggerKeywords,
-                locked, internal, listed, web, title, tags,
-                guards, tenants,
+                locked,
+                internal,
+                listed,
+                web,
+                title,
+                tags,
+                guards,
+                tenants,
                 mapSource(hit.source()));
     }
 
     /**
-     * Parses the optional {@code guard:} block — a list of completion
-     * guards ({@code judge} + {@code prompt} + optional {@code trigger} /
-     * {@code maxRounds}). See {@code planning/completion-guard.md} §3.
+     * Parses the optional {@code guard:} block — a list of guard
+     * entries ({@code script}/{@code scriptBody} + optional {@code trigger} /
+     * {@code maxRounds}). See {@code planning/shooty.md} §2.
      */
     @SuppressWarnings("unchecked")
     private static List<GuardConfig> parseGuards(@Nullable Object raw) {
@@ -287,17 +302,14 @@ public class RecipeLoader {
             Map<String, Object> m = (Map<String, Object>) rawMap;
             String script = stringOrNull(m.get("script"));
             String scriptBody = stringOrNull(m.get("scriptBody"));
-            GuardTrigger trigger = parseGuardTrigger(m.get("trigger"), i);
+            GuardPoint trigger = parseGuardTrigger(m.get("trigger"), i);
             int maxRounds = m.get("maxRounds") == null ? 2 : parseMaxRounds(m.get("maxRounds"));
             boolean allowTools = Boolean.TRUE.equals(m.get("allowTools"))
                     || "true".equalsIgnoreCase(String.valueOf(m.get("allowTools")));
-            Map<String, Object> params = m.get("params") instanceof Map<?, ?> pm
-                    ? (Map<String, Object>) pm
-                    : Map.of();
+            Map<String, Object> params = m.get("params") instanceof Map<?, ?> pm ? (Map<String, Object>) pm : Map.of();
 
             if (script != null && scriptBody != null) {
-                throw new IllegalStateException(
-                        "'guard[" + i + "]' cannot set both 'script' and 'scriptBody'");
+                throw new IllegalStateException("'guard[" + i + "]' cannot set both 'script' and 'scriptBody'");
             }
             if (script != null) {
                 out.add(GuardConfig.scriptPath(script, params, allowTools, trigger, maxRounds));
@@ -311,17 +323,20 @@ public class RecipeLoader {
         return List.copyOf(out);
     }
 
-    private static GuardTrigger parseGuardTrigger(@Nullable Object raw, int idx) {
-        if (raw == null) return GuardTrigger.STOP;
+    private static GuardPoint parseGuardTrigger(@Nullable Object raw, int idx) {
+        if (raw == null) return GuardPoint.STOP;
         if (!(raw instanceof String s)) {
             throw new IllegalStateException("'guard[" + idx + "].trigger' must be a string");
         }
         return switch (s.trim().toLowerCase(java.util.Locale.ROOT)) {
-            case "stop", "naturalstop", "natural_stop" -> GuardTrigger.STOP;
-            case "terminate" -> GuardTrigger.TERMINATE;
-            case "both" -> GuardTrigger.BOTH;
-            default -> throw new IllegalStateException(
-                    "unknown guard[" + idx + "].trigger '" + s + "' (stop | terminate | both)");
+            case "stop", "naturalstop", "natural_stop" -> GuardPoint.STOP;
+            case "terminate" -> GuardPoint.TERMINATE;
+            case "both" -> GuardPoint.BOTH;
+            case "start" -> GuardPoint.START;
+            case "command", "exec" -> GuardPoint.COMMAND;
+            default ->
+                throw new IllegalStateException("unknown guard[" + idx + "].trigger '" + s + "' "
+                        + "(start | command | stop | terminate | both)");
         };
     }
 
@@ -330,13 +345,11 @@ public class RecipeLoader {
         if (raw instanceof Number n) {
             int v = n.intValue();
             if (v < 0) {
-                throw new IllegalStateException(
-                        "'guard.maxRounds' must be >= 0");
+                throw new IllegalStateException("'guard.maxRounds' must be >= 0");
             }
             return v;
         }
-        throw new IllegalStateException(
-                "'guard.maxRounds' must be a non-negative integer");
+        throw new IllegalStateException("'guard.maxRounds' must be a non-negative integer");
     }
 
     /**
@@ -363,8 +376,7 @@ public class RecipeLoader {
         List<String> out = new ArrayList<>(list.size());
         for (Object item : list) {
             if (!(item instanceof String s)) {
-                throw new IllegalStateException(
-                        "'triggers.keywords' contains a non-string entry");
+                throw new IllegalStateException("'triggers.keywords' contains a non-string entry");
             }
             String norm = s.trim().toLowerCase();
             if (norm.isEmpty()) continue;
@@ -380,16 +392,12 @@ public class RecipeLoader {
      * error. {@code null} / blank templates are no-ops (they mean "no
      * override" — there's nothing to compile).
      */
-    private static void compileTemplate(
-            PromptTemplateRenderer renderer,
-            @Nullable String template,
-            String fieldName) {
+    private static void compileTemplate(PromptTemplateRenderer renderer, @Nullable String template, String fieldName) {
         if (template == null || template.isBlank()) return;
         try {
             renderer.compile(template);
         } catch (PromptTemplateException e) {
-            throw new IllegalStateException(
-                    "'" + fieldName + "' is not a valid Pebble template: " + e.getMessage(), e);
+            throw new IllegalStateException("'" + fieldName + "' is not a valid Pebble template: " + e.getMessage(), e);
         }
     }
 
@@ -407,8 +415,7 @@ public class RecipeLoader {
         List<String> out = new ArrayList<>(list.size());
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
-                throw new IllegalStateException(
-                        "'allowedSkills' contains a non-string or blank entry");
+                throw new IllegalStateException("'allowedSkills' contains a non-string or blank entry");
             }
             out.add(s);
         }
@@ -416,22 +423,18 @@ public class RecipeLoader {
     }
 
     private static void validateDefaultsAreAllowed(
-            String recipeName,
-            List<String> defaultActiveSkills,
-            @Nullable List<String> allowedSkills) {
+            String recipeName, List<String> defaultActiveSkills, @Nullable List<String> allowedSkills) {
         if (allowedSkills == null) return;
         for (String name : defaultActiveSkills) {
             if (!allowedSkills.contains(name)) {
                 throw new IllegalStateException(
-                        "recipe '" + recipeName + "': defaultActiveSkill '"
-                                + name + "' is not in allowedSkills");
+                        "recipe '" + recipeName + "': defaultActiveSkill '" + name + "' is not in allowedSkills");
             }
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, ProfileBlock> parseProfiles(
-            Object raw, PromptTemplateRenderer renderer) {
+    private static Map<String, ProfileBlock> parseProfiles(Object raw, PromptTemplateRenderer renderer) {
         if (raw == null) return Map.of();
         if (!(raw instanceof Map<?, ?> rawMap)) {
             throw new IllegalStateException("'profiles' must be a map");
@@ -448,45 +451,45 @@ public class RecipeLoader {
                 continue;
             }
             if (!(blockRaw instanceof Map<?, ?>)) {
-                throw new IllegalStateException(
-                        "'profiles." + key + "' must be a map");
+                throw new IllegalStateException("'profiles." + key + "' must be a map");
             }
             Map<String, Object> blockMap = (Map<String, Object>) blockRaw;
-            List<String> blockAdd = stringList(
-                    blockMap.get("allowedToolsAdd"),
-                    "profiles." + key + ".allowedToolsAdd");
-            List<String> blockRemove = stringList(
-                    blockMap.get("allowedToolsRemove"),
-                    "profiles." + key + ".allowedToolsRemove");
-            List<String> blockDefer = stringList(
-                    blockMap.get("allowedToolsDefer"),
-                    "profiles." + key + ".allowedToolsDefer");
-            List<String> blockKeep = stringList(
-                    blockMap.get("allowedToolsKeep"),
-                    "profiles." + key + ".allowedToolsKeep");
-            List<String> blockDropFirst = stringList(
-                    blockMap.get("allowedToolsDropFirst"),
-                    "profiles." + key + ".allowedToolsDropFirst");
-            Map<String, RecipeModeBlock> blockModes = parseModes(
-                    blockMap.get("modes"), "profiles." + key + ".modes");
+            List<String> blockAdd = stringList(blockMap.get("allowedToolsAdd"), "profiles." + key + ".allowedToolsAdd");
+            List<String> blockRemove =
+                    stringList(blockMap.get("allowedToolsRemove"), "profiles." + key + ".allowedToolsRemove");
+            List<String> blockDefer =
+                    stringList(blockMap.get("allowedToolsDefer"), "profiles." + key + ".allowedToolsDefer");
+            List<String> blockKeep =
+                    stringList(blockMap.get("allowedToolsKeep"), "profiles." + key + ".allowedToolsKeep");
+            List<String> blockDropFirst =
+                    stringList(blockMap.get("allowedToolsDropFirst"), "profiles." + key + ".allowedToolsDropFirst");
+            Map<String, RecipeModeBlock> blockModes = parseModes(blockMap.get("modes"), "profiles." + key + ".modes");
             String blockAppend = stringOrNull(blockMap.get("promptPrefixAppend"));
             compileTemplate(renderer, blockAppend, "profiles." + key + ".promptPrefixAppend");
             Map<String, Object> blockParams = new LinkedHashMap<>();
             Object rawBlockParams = blockMap.get("params");
             if (rawBlockParams != null) {
                 if (!(rawBlockParams instanceof Map<?, ?> bp)) {
-                    throw new IllegalStateException(
-                            "'profiles." + key + ".params' must be a map");
+                    throw new IllegalStateException("'profiles." + key + ".params' must be a map");
                 }
                 for (Map.Entry<?, ?> p : bp.entrySet()) {
                     blockParams.put(String.valueOf(p.getKey()), p.getValue());
                 }
             }
-            SessionLifecycleConfig sessionCfg = parseSessionBlock(
-                    blockMap.get("session"), "profiles." + key + ".session");
-            out.put(key, new ProfileBlock(
-                    blockAdd, blockRemove, blockDefer, blockKeep, blockDropFirst,
-                    blockModes, blockAppend, Map.copyOf(blockParams), sessionCfg));
+            SessionLifecycleConfig sessionCfg =
+                    parseSessionBlock(blockMap.get("session"), "profiles." + key + ".session");
+            out.put(
+                    key,
+                    new ProfileBlock(
+                            blockAdd,
+                            blockRemove,
+                            blockDefer,
+                            blockKeep,
+                            blockDropFirst,
+                            blockModes,
+                            blockAppend,
+                            Map.copyOf(blockParams),
+                            sessionCfg));
         }
         return Map.copyOf(out);
     }
@@ -518,25 +521,18 @@ public class RecipeLoader {
                 continue;
             }
             if (!(blockRaw instanceof Map<?, ?>)) {
-                throw new IllegalStateException(
-                        "'" + fieldName + "." + key + "' must be a map");
+                throw new IllegalStateException("'" + fieldName + "." + key + "' must be a map");
             }
             Map<String, Object> blockMap = (Map<String, Object>) blockRaw;
-            List<String> add = stringList(
-                    blockMap.get("allowedToolsAdd"),
-                    fieldName + "." + key + ".allowedToolsAdd");
-            List<String> remove = stringList(
-                    blockMap.get("allowedToolsRemove"),
-                    fieldName + "." + key + ".allowedToolsRemove");
-            List<String> defer = stringList(
-                    blockMap.get("allowedToolsDefer"),
-                    fieldName + "." + key + ".allowedToolsDefer");
-            List<String> keep = stringList(
-                    blockMap.get("allowedToolsKeep"),
-                    fieldName + "." + key + ".allowedToolsKeep");
-            List<String> dropFirst = stringList(
-                    blockMap.get("allowedToolsDropFirst"),
-                    fieldName + "." + key + ".allowedToolsDropFirst");
+            List<String> add = stringList(blockMap.get("allowedToolsAdd"), fieldName + "." + key + ".allowedToolsAdd");
+            List<String> remove =
+                    stringList(blockMap.get("allowedToolsRemove"), fieldName + "." + key + ".allowedToolsRemove");
+            List<String> defer =
+                    stringList(blockMap.get("allowedToolsDefer"), fieldName + "." + key + ".allowedToolsDefer");
+            List<String> keep =
+                    stringList(blockMap.get("allowedToolsKeep"), fieldName + "." + key + ".allowedToolsKeep");
+            List<String> dropFirst =
+                    stringList(blockMap.get("allowedToolsDropFirst"), fieldName + "." + key + ".allowedToolsDropFirst");
             out.put(key, new RecipeModeBlock(add, remove, defer, keep, dropFirst));
         }
         return Map.copyOf(out);
@@ -548,15 +544,13 @@ public class RecipeLoader {
      * entirely missing block returns {@code null}.
      */
     @SuppressWarnings("unchecked")
-    private static @Nullable SessionLifecycleConfig parseSessionBlock(
-            @Nullable Object raw, String fieldName) {
+    private static @Nullable SessionLifecycleConfig parseSessionBlock(@Nullable Object raw, String fieldName) {
         if (raw == null) return null;
         if (!(raw instanceof Map<?, ?> rawMap)) {
             throw new IllegalStateException("'" + fieldName + "' must be a map");
         }
         Map<String, Object> sm = (Map<String, Object>) rawMap;
-        SessionLifecycleConfig.SessionLifecycleConfigBuilder b =
-                SessionLifecycleConfig.builder();
+        SessionLifecycleConfig.SessionLifecycleConfigBuilder b = SessionLifecycleConfig.builder();
         Object onDisconnect = sm.get("onDisconnect");
         if (onDisconnect != null) {
             b.onDisconnect(parseEnum(DisconnectPolicy.class, onDisconnect, fieldName + ".onDisconnect"));
@@ -616,7 +610,6 @@ public class RecipeLoader {
         return raw instanceof String s && !s.isBlank() ? s : null;
     }
 
-
     /**
      * The recipe map, plus a record of which top-level keys the loader
      * asked for.
@@ -670,10 +663,13 @@ public class RecipeLoader {
             String recipeName, Set<String> paramKeys, Set<String> topLevelFields) {
         for (String key : paramKeys) {
             if (topLevelFields.contains(key)) {
-                log.warn("Recipe '{}': 'params.{}' shadows the top-level recipe field '{}' — "
+                log.warn(
+                        "Recipe '{}': 'params.{}' shadows the top-level recipe field '{}' — "
                                 + "it is stored as an engine parameter and has NO effect as a "
                                 + "recipe field. Move it out of 'params' if that was the intent.",
-                        recipeName, key, key);
+                        recipeName,
+                        key,
+                        key);
             }
         }
     }
@@ -686,8 +682,7 @@ public class RecipeLoader {
         try {
             return PromptMode.valueOf(s.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalStateException(
-                    "unknown promptMode '" + s + "' — expected APPEND or OVERWRITE");
+            throw new IllegalStateException("unknown promptMode '" + s + "' — expected APPEND or OVERWRITE");
         }
     }
 
@@ -700,8 +695,7 @@ public class RecipeLoader {
         List<String> out = new ArrayList<>(list.size());
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
-                throw new IllegalStateException(
-                        "'" + fieldName + "' contains a non-string or blank entry");
+                throw new IllegalStateException("'" + fieldName + "' contains a non-string or blank entry");
             }
             out.add(s);
         }

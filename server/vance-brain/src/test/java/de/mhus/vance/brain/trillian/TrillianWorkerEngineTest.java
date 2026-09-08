@@ -51,8 +51,7 @@ class TrillianWorkerEngineTest {
 
         engine().onWorkerTerminate(process());
 
-        verify(processes, never()).setEngineParamOverride(
-                PROC, TrillianWorkerEngine.PARAM_ASK_PENDING, null);
+        verify(processes, never()).setEngineParamOverride(PROC, TrillianWorkerEngine.PARAM_ASK_PENDING, null);
     }
 
     @Test
@@ -64,14 +63,12 @@ class TrillianWorkerEngineTest {
         try {
             // Only the pre-loop side effect is under test; Frankie's turn
             // itself runs against unconfigured collaborators.
-            engine().runTurn(process(), mock(
-                    de.mhus.vance.brain.thinkengine.ThinkEngineContext.class));
+            engine().runTurn(process(), mock(de.mhus.vance.brain.thinkengine.ThinkEngineContext.class));
         } catch (RuntimeException expected) {
             // ignored on purpose
         }
 
-        verify(processes).setEngineParamOverride(
-                PROC, TrillianWorkerEngine.PARAM_ASK_PENDING, null);
+        verify(processes).setEngineParamOverride(PROC, TrillianWorkerEngine.PARAM_ASK_PENDING, null);
     }
 
     @Test
@@ -105,8 +102,7 @@ class TrillianWorkerEngineTest {
     private void givenAskPending(boolean pending) {
         ThinkProcessDocument doc = process();
         if (pending) {
-            doc.setEngineParamOverrides(new LinkedHashMap<>(
-                    Map.of(TrillianWorkerEngine.PARAM_ASK_PENDING, true)));
+            doc.setEngineParamOverrides(new LinkedHashMap<>(Map.of(TrillianWorkerEngine.PARAM_ASK_PENDING, true)));
         }
         when(processes.findById(PROC)).thenReturn(Optional.of(doc));
     }
@@ -121,7 +117,8 @@ class TrillianWorkerEngineTest {
     /** Only the seam is exercised, so the 19 unused collaborators are mocks. */
     private TrillianWorkerEngine engine() {
         return new TrillianWorkerEngine(
-                processes, mock(de.mhus.vance.brain.frankie.FrankieProperties.class),
+                processes,
+                mock(de.mhus.vance.brain.frankie.FrankieProperties.class),
                 mock(de.mhus.vance.brain.ai.EngineChatFactory.class),
                 mock(de.mhus.vance.brain.progress.LlmCallTracker.class),
                 mock(de.mhus.vance.brain.events.StreamingProperties.class),
@@ -137,7 +134,7 @@ class TrillianWorkerEngineTest {
                 mock(de.mhus.vance.brain.ai.ModelCatalog.class),
                 mock(de.mhus.vance.brain.memory.MemoryCompactionService.class),
                 mock(de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry.class),
-                mock(de.mhus.vance.brain.guard.CompletionGuardService.class),
+                mock(de.mhus.vance.brain.guard.ShootyGuardService.class),
                 mock(de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.class),
                 mock(de.mhus.vance.brain.prompt.ClientTurnContextResolver.class));
     }

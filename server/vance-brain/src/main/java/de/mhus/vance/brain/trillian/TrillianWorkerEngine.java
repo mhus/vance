@@ -1,16 +1,15 @@
 package de.mhus.vance.brain.trillian;
 
-import tools.jackson.databind.ObjectMapper;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.ai.EngineChatFactory;
-import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.frankie.FrankieEngine;
 import de.mhus.vance.brain.frankie.FrankieProperties;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
-import de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer;
+import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.skill.SkillPromptComposer;
 import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
@@ -22,6 +21,7 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * The per-task worker of a Trillian: Frankie's loop, with one thing
@@ -91,15 +91,30 @@ public class TrillianWorkerEngine extends FrankieEngine {
             ModelCatalog modelCatalog,
             MemoryCompactionService memoryCompactionService,
             de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers,
-            de.mhus.vance.brain.guard.CompletionGuardService completionGuardService,
+            de.mhus.vance.brain.guard.ShootyGuardService completionGuardService,
             AttachedUserMessageComposer attachedUserMessageComposer,
             de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver) {
-        super(thinkProcessService, properties, engineChatFactory, llmCallTracker,
-                streamingProperties, objectMapper, enginePromptResolver, systemPromptComposer,
-                skillResolver, skillPromptComposer, sessionService, promptDateContextResolver,
-                scratchpadPromptContributor, memoryContextLoader, modelCatalog,
-                memoryCompactionService, turnContextHandlers, completionGuardService,
-                attachedUserMessageComposer, clientTurnContextResolver);
+        super(
+                thinkProcessService,
+                properties,
+                engineChatFactory,
+                llmCallTracker,
+                streamingProperties,
+                objectMapper,
+                enginePromptResolver,
+                systemPromptComposer,
+                skillResolver,
+                skillPromptComposer,
+                sessionService,
+                promptDateContextResolver,
+                scratchpadPromptContributor,
+                memoryContextLoader,
+                modelCatalog,
+                memoryCompactionService,
+                turnContextHandlers,
+                completionGuardService,
+                attachedUserMessageComposer,
+                clientTurnContextResolver);
         this.processes = thinkProcessService;
     }
 
@@ -122,16 +137,14 @@ public class TrillianWorkerEngine extends FrankieEngine {
      * changes.
      */
     @Override
-    public void runTurn(ThinkProcessDocument process,
-                        de.mhus.vance.brain.thinkengine.ThinkEngineContext ctx) {
+    public void runTurn(ThinkProcessDocument process, de.mhus.vance.brain.thinkengine.ThinkEngineContext ctx) {
         if (askPending(process.getId())) {
             try {
                 processes.setEngineParamOverride(process.getId(), PARAM_ASK_PENDING, null);
             } catch (RuntimeException e) {
                 // A stale marker makes a later real termination park
                 // instead of close — bad, but not worth losing the turn.
-                log.warn("Trillian worker id='{}' could not clear its ask marker: {}",
-                        process.getId(), e.toString());
+                log.warn("Trillian worker id='{}' could not clear its ask marker: {}", process.getId(), e.toString());
             }
         }
         super.runTurn(process, ctx);
@@ -150,8 +163,7 @@ public class TrillianWorkerEngine extends FrankieEngine {
         if (!askPending(process.getId())) {
             return super.onWorkerTerminate(process);
         }
-        log.info("Trillian worker id='{}' asked a question — staying IDLE with its context",
-                process.getId());
+        log.info("Trillian worker id='{}' asked a question — staying IDLE with its context", process.getId());
         return ThinkProcessStatus.IDLE;
     }
 
@@ -159,16 +171,14 @@ public class TrillianWorkerEngine extends FrankieEngine {
     private boolean askPending(String processId) {
         try {
             ThinkProcessDocument fresh = processes.findById(processId).orElse(null);
-            Map<String, Object> overrides =
-                    fresh == null ? null : fresh.getEngineParamOverrides();
+            Map<String, Object> overrides = fresh == null ? null : fresh.getEngineParamOverrides();
             Object raw = overrides == null ? null : overrides.get(PARAM_ASK_PENDING);
             return Boolean.TRUE.equals(raw);
         } catch (RuntimeException e) {
             // Closing is the safe reading of an unclear state: a worker
             // wrongly kept alive waits forever, one wrongly closed costs
             // a re-spawn.
-            log.warn("Trillian worker id='{}' could not read its ask marker: {}",
-                    processId, e.toString());
+            log.warn("Trillian worker id='{}' could not read its ask marker: {}", processId, e.toString());
             return false;
         }
     }

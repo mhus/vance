@@ -58,8 +58,7 @@ public record ScriptRequest(
             throw new IllegalArgumentException("bindings must not be null (use Map.of() instead)");
         }
         if (bindings.containsKey("vance")) {
-            throw new IllegalArgumentException(
-                    "binding name 'vance' is reserved for the host API");
+            throw new IllegalArgumentException("binding name 'vance' is reserved for the host API");
         }
         if (scopeLevel == null) {
             throw new IllegalArgumentException("scopeLevel must not be null");
@@ -72,13 +71,8 @@ public record ScriptRequest(
      * defaults to {@link ScopeLevel#PROCESS_SCOPED}, no progress emitter.
      */
     public ScriptRequest(
-            String language,
-            String code,
-            @Nullable String sourceName,
-            ContextToolsApi tools,
-            Duration timeout) {
-        this(language, code, sourceName, tools, timeout, Map.of(), null,
-                ScopeLevel.PROCESS_SCOPED, null, null, null);
+            String language, String code, @Nullable String sourceName, ContextToolsApi tools, Duration timeout) {
+        this(language, code, sourceName, tools, timeout, Map.of(), null, ScopeLevel.PROCESS_SCOPED, null, null, null);
     }
 
     /**
@@ -93,8 +87,7 @@ public record ScriptRequest(
             ContextToolsApi tools,
             Duration timeout,
             Map<String, @Nullable Object> bindings) {
-        this(language, code, sourceName, tools, timeout, bindings, null,
-                ScopeLevel.PROCESS_SCOPED, null, null, null);
+        this(language, code, sourceName, tools, timeout, bindings, null, ScopeLevel.PROCESS_SCOPED, null, null, null);
     }
 
     /**
@@ -111,8 +104,18 @@ public record ScriptRequest(
             Duration timeout,
             Map<String, @Nullable Object> bindings,
             @Nullable String recipeName) {
-        this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                ScopeLevel.PROCESS_SCOPED, null, null, null);
+        this(
+                language,
+                code,
+                sourceName,
+                tools,
+                timeout,
+                bindings,
+                recipeName,
+                ScopeLevel.PROCESS_SCOPED,
+                null,
+                null,
+                null);
     }
 
     /**
@@ -129,8 +132,7 @@ public record ScriptRequest(
             Map<String, @Nullable Object> bindings,
             @Nullable String recipeName,
             ScopeLevel scopeLevel) {
-        this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                scopeLevel, null, null, null);
+        this(language, code, sourceName, tools, timeout, bindings, recipeName, scopeLevel, null, null, null);
     }
 
     /**
@@ -150,8 +152,7 @@ public record ScriptRequest(
             @Nullable String recipeName,
             ScopeLevel scopeLevel,
             @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter) {
-        this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                scopeLevel, progressEmitter, null, null);
+        this(language, code, sourceName, tools, timeout, bindings, recipeName, scopeLevel, progressEmitter, null, null);
     }
 
     /**
@@ -171,15 +172,25 @@ public record ScriptRequest(
             ScopeLevel scopeLevel,
             @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
             @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter) {
-        this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                scopeLevel, progressEmitter, notificationEmitter, null);
+        this(
+                language,
+                code,
+                sourceName,
+                tools,
+                timeout,
+                bindings,
+                recipeName,
+                scopeLevel,
+                progressEmitter,
+                notificationEmitter,
+                null);
     }
 
     /**
      * 11-argument convenience — the historical canonical shape before
      * {@code guardApi} was added. Defaults {@code guardApi} to
      * {@code null} (no {@code vance.guard} surface); only the
-     * {@code CompletionGuardService} sets it, via {@link #withGuardApi}.
+     * {@code ShootyGuardService} sets it, via {@link #withGuardApi}.
      */
     public ScriptRequest(
             String language,
@@ -193,8 +204,20 @@ public record ScriptRequest(
             @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
             @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
             @Nullable String documentBasePath) {
-        this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                scopeLevel, progressEmitter, notificationEmitter, documentBasePath, null, null);
+        this(
+                language,
+                code,
+                sourceName,
+                tools,
+                timeout,
+                bindings,
+                recipeName,
+                scopeLevel,
+                progressEmitter,
+                notificationEmitter,
+                documentBasePath,
+                null,
+                null);
     }
 
     /**
@@ -217,9 +240,20 @@ public record ScriptRequest(
             @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
             @Nullable String documentBasePath,
             VanceScriptApi.@Nullable ScriptGuardApi guardApi) {
-        this(language, code, sourceName, tools, timeout, bindings, recipeName,
-                scopeLevel, progressEmitter, notificationEmitter, documentBasePath,
-                guardApi, null);
+        this(
+                language,
+                code,
+                sourceName,
+                tools,
+                timeout,
+                bindings,
+                recipeName,
+                scopeLevel,
+                progressEmitter,
+                notificationEmitter,
+                documentBasePath,
+                guardApi,
+                null);
     }
 
     /**
@@ -230,8 +264,19 @@ public record ScriptRequest(
      * {@code null}/empty (the default) keeps paths project-root-relative.
      */
     public ScriptRequest withDocumentBasePath(@Nullable String dir) {
-        return new ScriptRequest(language, code, sourceName, tools, timeout, bindings,
-                recipeName, scopeLevel, progressEmitter, notificationEmitter, dir, guardApi,
+        return new ScriptRequest(
+                language,
+                code,
+                sourceName,
+                tools,
+                timeout,
+                bindings,
+                recipeName,
+                scopeLevel,
+                progressEmitter,
+                notificationEmitter,
+                dir,
+                guardApi,
                 workflowRun);
     }
 
@@ -242,20 +287,42 @@ public record ScriptRequest(
      * every other script run leaves it null.
      */
     public ScriptRequest withWorkflowRun(@Nullable ScriptWorkflowRun run) {
-        return new ScriptRequest(language, code, sourceName, tools, timeout, bindings,
-                recipeName, scopeLevel, progressEmitter, notificationEmitter,
-                documentBasePath, guardApi, run);
+        return new ScriptRequest(
+                language,
+                code,
+                sourceName,
+                tools,
+                timeout,
+                bindings,
+                recipeName,
+                scopeLevel,
+                progressEmitter,
+                notificationEmitter,
+                documentBasePath,
+                guardApi,
+                run);
     }
 
     /**
      * Copy with the {@code vance.guard} surface attached — the
      * completion-guard yield context, cap-aware continue hook and scratch
-     * stores. Set by the {@code CompletionGuardService} for guard runs;
+     * stores. Set by the {@code ShootyGuardService} for guard runs;
      * every other script run leaves {@code vance.guard} unset.
      */
     public ScriptRequest withGuardApi(VanceScriptApi.@Nullable ScriptGuardApi api) {
-        return new ScriptRequest(language, code, sourceName, tools, timeout, bindings,
-                recipeName, scopeLevel, progressEmitter, notificationEmitter, documentBasePath,
-                api, workflowRun);
+        return new ScriptRequest(
+                language,
+                code,
+                sourceName,
+                tools,
+                timeout,
+                bindings,
+                recipeName,
+                scopeLevel,
+                progressEmitter,
+                notificationEmitter,
+                documentBasePath,
+                api,
+                workflowRun);
     }
 }

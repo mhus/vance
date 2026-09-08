@@ -131,9 +131,9 @@ public record ResolvedRecipe(
         List<String> tags,
         /**
          * Completion guards (recipe {@code guard:} block). Engine-agnostic:
-         * any engine that calls {@code CompletionGuardService.evaluate} at
+         * any engine that calls {@code ShootyGuardService.evaluate} at
          * its yield point honours these. Empty list = no guards. See
-         * {@code planning/completion-guard.md}.
+         * {@code planning/shooty.md}.
          */
         List<GuardConfig> guards,
         /**
@@ -202,11 +202,32 @@ public record ResolvedRecipe(
             List<String> tags,
             List<GuardConfig> guards,
             RecipeSource source) {
-        this(name, description, engine, params, promptPrefix, promptMode,
-                dataRelayCorrection, allowedToolsAdd, allowedToolsRemove,
-                allowedToolsDefer, List.of(), List.of(), modes, profiles,
-                defaultActiveSkills, allowedSkills,
-                triggerKeywords, locked, internal, listed, false, title, tags,
-                guards, List.of(), source);
+        this(
+                name,
+                description,
+                engine,
+                params,
+                promptPrefix,
+                promptMode,
+                dataRelayCorrection,
+                allowedToolsAdd,
+                allowedToolsRemove,
+                allowedToolsDefer,
+                List.of(),
+                List.of(),
+                modes,
+                profiles,
+                defaultActiveSkills,
+                allowedSkills,
+                triggerKeywords,
+                locked,
+                internal,
+                listed,
+                false,
+                title,
+                tags,
+                guards,
+                List.of(),
+                source);
     }
 }

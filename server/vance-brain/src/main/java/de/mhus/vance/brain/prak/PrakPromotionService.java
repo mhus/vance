@@ -107,10 +107,7 @@ public class PrakPromotionService {
      * down to the memory store — analyser-emitted labels plus tool
      * labels become the final tag set.
      */
-    public PromotionResult promote(
-            EvaluationOutput evaluation,
-            PromotionContext ctx,
-            java.util.Set<String> auxLabels) {
+    public PromotionResult promote(EvaluationOutput evaluation, PromotionContext ctx, java.util.Set<String> auxLabels) {
         if (evaluation == null || evaluation.items().isEmpty()) {
             return PromotionResult.empty();
         }
@@ -139,13 +136,16 @@ public class PrakPromotionService {
                 }
                 case INBOX_OFFER -> {
                     inboxOffered++;
-                    log.info("Prak inboxOffer (deferred) run='{}' item='{}' type={} content='{}'",
-                            ctx.runId(), item.id(), item.type(), brief(item.content()));
+                    log.info(
+                            "Prak inboxOffer (deferred) run='{}' item='{}' type={} content='{}'",
+                            ctx.runId(),
+                            item.id(),
+                            item.type(),
+                            brief(item.content()));
                 }
                 case REFRESH -> {
                     refreshed++;
-                    log.info("Prak refresh (deferred — needs label-lookup) run='{}' item='{}'",
-                            ctx.runId(), item.id());
+                    log.info("Prak refresh (deferred — needs label-lookup) run='{}' item='{}'", ctx.runId(), item.id());
                 }
                 case SKIP -> skipped++;
             }
@@ -153,24 +153,29 @@ public class PrakPromotionService {
             // affectsExisting deferred to the label-lookup phase.
             affectsDeferred += item.affectsExisting().size();
             for (AffectsExisting a : item.affectsExisting()) {
-                log.debug("Prak affectsExisting (deferred) run='{}' item='{}' action={} target={}",
-                        ctx.runId(), item.id(), a.action(), a.targetRef().kind());
+                log.debug(
+                        "Prak affectsExisting (deferred) run='{}' item='{}' action={} target={}",
+                        ctx.runId(),
+                        item.id(),
+                        a.action(),
+                        a.targetRef().kind());
             }
         }
 
         // Emit Micrometer counters partitioned by outcome.
-        metricService.counter("vance.prak.promotion",
-                "outcome", "promote").increment(promoted);
-        metricService.counter("vance.prak.promotion",
-                "outcome", "inboxOffer").increment(inboxOffered);
-        metricService.counter("vance.prak.promotion",
-                "outcome", "skip").increment(skipped);
-        metricService.counter("vance.prak.promotion",
-                "outcome", "refresh").increment(refreshed);
+        metricService.counter("vance.prak.promotion", "outcome", "promote").increment(promoted);
+        metricService.counter("vance.prak.promotion", "outcome", "inboxOffer").increment(inboxOffered);
+        metricService.counter("vance.prak.promotion", "outcome", "skip").increment(skipped);
+        metricService.counter("vance.prak.promotion", "outcome", "refresh").increment(refreshed);
 
         return new PromotionResult(
-                promoted, inboxOffered, skipped, refreshed,
-                affectsResolved, affectsDeferred, List.copyOf(persistedIds));
+                promoted,
+                inboxOffered,
+                skipped,
+                refreshed,
+                affectsResolved,
+                affectsDeferred,
+                List.copyOf(persistedIds));
     }
 
     /**
@@ -185,8 +190,7 @@ public class PrakPromotionService {
             return LongTermMemoryAction.SKIP;
         }
         LongTermMemoryAction proposed = item.longTermMemory().action();
-        if (item.type() == ItemType.INSTRUCTION
-                && proposed == LongTermMemoryAction.PROMOTE) {
+        if (item.type() == ItemType.INSTRUCTION && proposed == LongTermMemoryAction.PROMOTE) {
             // Never silently promote instructions. The user must confirm.
             return LongTermMemoryAction.INBOX_OFFER;
         }
@@ -200,7 +204,7 @@ public class PrakPromotionService {
                     .tenantId(ctx.tenantId())
                     .projectId(resolveProjectId(item.scope(), ctx))
                     .sessionId(resolveSessionId(item.scope(), ctx))
-                    .thinkProcessId(resolveProcessId(item.scope(), ctx))
+                    .thinkProcessId(resolveProcessId(item.scope()))
                     .kind(MemoryKind.INSIGHT)
                     .title(makeTitle(item))
                     .content(item.content())
@@ -209,8 +213,7 @@ public class PrakPromotionService {
                     .build();
             return memoryService.save(fresh);
         } catch (RuntimeException e) {
-            log.warn("Prak.persistInsight failed for run='{}' item='{}': {}",
-                    ctx.runId(), item.id(), e.toString());
+            log.warn("Prak.persistInsight failed for run='{}' item='{}': {}", ctx.runId(), item.id(), e.toString());
             return null;
         }
     }
@@ -219,7 +222,9 @@ public class PrakPromotionService {
         if (scope == null || scope.kind() == ScopeKind.GLOBAL) {
             return "";
         }
-        if (scope.kind() == ScopeKind.PROJECT && scope.id() != null && !scope.id().isBlank()) {
+        if (scope.kind() == ScopeKind.PROJECT
+                && scope.id() != null
+                && !scope.id().isBlank()) {
             return scope.id();
         }
         // SESSION/TASK scopes inherit the project from the caller context.
@@ -228,7 +233,9 @@ public class PrakPromotionService {
 
     private static @Nullable String resolveSessionId(Scope scope, PromotionContext ctx) {
         if (scope == null) return null;
-        if (scope.kind() == ScopeKind.SESSION && scope.id() != null && !scope.id().isBlank()) {
+        if (scope.kind() == ScopeKind.SESSION
+                && scope.id() != null
+                && !scope.id().isBlank()) {
             return scope.id();
         }
         if (scope.kind() == ScopeKind.TASK) {
@@ -238,7 +245,7 @@ public class PrakPromotionService {
         return null;
     }
 
-    private static @Nullable String resolveProcessId(Scope scope, PromotionContext ctx) {
+    private static @Nullable String resolveProcessId(Scope scope) {
         if (scope == null) return null;
         if (scope.kind() == ScopeKind.TASK && scope.id() != null && !scope.id().isBlank()) {
             return scope.id();

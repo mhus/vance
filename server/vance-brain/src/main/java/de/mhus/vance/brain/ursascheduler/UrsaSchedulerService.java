@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ursascheduler;
 
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.ursascheduler.OverlapPolicy;
@@ -8,7 +9,6 @@ import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
@@ -16,11 +16,11 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonService;
-import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
-import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
+import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -79,12 +79,15 @@ public class UrsaSchedulerService {
      * tool registry → us. Mirror the trick used in {@code ProcessCreateTool}.
      */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
     /** Lazy-resolved — only used when a scheduler entry sets {@code workflow:}. May be absent when Magrathea is disabled. */
     private final ObjectProvider<de.mhus.vance.brain.magrathea.MagratheaWorkflowService> workflowServiceProvider;
+
     private final de.mhus.vance.shared.metric.MetricService metricService;
     /** LLM-facing materialised log of every run — see {@link SchedulerLogService}. */
     private final SchedulerLogService schedulerLogService;
+
     private final UrsaFireClaimService fireClaimService;
     /** Durable "already fired" state for {@code at:} schedulers. */
     private final UrsaOneShotFireService oneShotFireService;
@@ -139,8 +142,12 @@ public class UrsaSchedulerService {
                 ok++;
             }
         }
-        log.info("Scheduler bootstrap project='{}/{}' registered {}/{} entries",
-                tenantId, projectId, ok, entries.size());
+        log.info(
+                "Scheduler bootstrap project='{}/{}' registered {}/{} entries",
+                tenantId,
+                projectId,
+                ok,
+                entries.size());
         return ok;
     }
 
@@ -159,8 +166,7 @@ public class UrsaSchedulerService {
             cancelled++;
         }
         if (cancelled > 0) {
-            log.info("Scheduler unload project='{}/{}' cancelled {} entries",
-                    tenantId, projectId, cancelled);
+            log.info("Scheduler unload project='{}/{}' cancelled {} entries", tenantId, projectId, cancelled);
         }
     }
 
@@ -185,13 +191,11 @@ public class UrsaSchedulerService {
         try {
             reloaded = loader.load(tenantId, projectId, name);
         } catch (UrsaSchedulerLoader.SchedulerParseException ex) {
-            log.warn("Scheduler refreshOne parse failed '{}/{}/{}': {}",
-                    tenantId, projectId, name, ex.getMessage());
+            log.warn("Scheduler refreshOne parse failed '{}/{}/{}': {}", tenantId, projectId, name, ex.getMessage());
             return false;
         }
         if (reloaded.isEmpty()) {
-            log.info("Scheduler refreshOne — '{}/{}/{}' is gone after refresh",
-                    tenantId, projectId, name);
+            log.info("Scheduler refreshOne — '{}/{}/{}' is gone after refresh", tenantId, projectId, name);
             return false;
         }
         return registerOne(tenantId, projectId, reloaded.get());
@@ -212,8 +216,10 @@ public class UrsaSchedulerService {
                     reg.currentProcessId = null;
                     if (reg.pendingQueued) {
                         reg.pendingQueued = false;
-                        log.info("Scheduler queued re-fire '{}' after process '{}' terminated",
-                                reg.config.name(), processId);
+                        log.info(
+                                "Scheduler queued re-fire '{}' after process '{}' terminated",
+                                reg.config.name(),
+                                processId);
                         // Fire DIRECTLY (bypass the per-second cross-pod claim) —
                         // a QUEUE re-fire is a pod-local decision, not a cron
                         // tick. Routing it through safeFire()'s claim meant that
@@ -224,15 +230,21 @@ public class UrsaSchedulerService {
                         Registration fReg = reg;
                         String correlationId = "run_" + UUID.randomUUID();
                         Instant firedAt = Instant.now();
-                        taskScheduler.schedule(() -> {
-                            try {
-                                fire(fReg, "queued", correlationId, firedAt);
-                            } catch (RuntimeException ex) {
-                                log.error("Scheduler '{}/{}/{}' queued re-fire failed: {}",
-                                        fReg.tenantId, fReg.projectId, fReg.config.name(),
-                                        ex.toString(), ex);
-                            }
-                        }, firedAt);
+                        taskScheduler.schedule(
+                                () -> {
+                                    try {
+                                        fire(fReg, "queued", correlationId, firedAt);
+                                    } catch (RuntimeException ex) {
+                                        log.error(
+                                                "Scheduler '{}/{}/{}' queued re-fire failed: {}",
+                                                fReg.tenantId,
+                                                fReg.projectId,
+                                                fReg.config.name(),
+                                                ex.toString(),
+                                                ex);
+                                    }
+                                },
+                                firedAt);
                     }
                 }
             }
@@ -282,8 +294,7 @@ public class UrsaSchedulerService {
             if (at == null) return null;
             // Once the fire marker is set, the one-shot is considered
             // consumed regardless of what the YAML still says.
-            boolean fired = oneShotFireService.hasFired(
-                    reg.tenantId, reg.projectId, cfg.name(), at);
+            boolean fired = oneShotFireService.hasFired(reg.tenantId, reg.projectId, cfg.name(), at);
             return fired ? null : at;
         }
         String cron = cfg.cron();
@@ -302,11 +313,11 @@ public class UrsaSchedulerService {
 
     private boolean registerOne(String tenantId, String projectId, ResolvedUrsaScheduler config) {
         if (!config.enabled()) {
-            log.info("Scheduler '{}/{}/{}' is disabled — registration skipped",
-                    tenantId, projectId, config.name());
+            log.info("Scheduler '{}/{}/{}' is disabled — registration skipped", tenantId, projectId, config.name());
             // Still keep an entry so refresh detects the row exists,
             // but with future=null so no ticks fire.
-            registry.put(registryKey(tenantId, projectId, config.name()),
+            registry.put(
+                    registryKey(tenantId, projectId, config.name()),
                     new Registration(tenantId, projectId, config, ZoneId.of("UTC"), null));
             return false;
         }
@@ -314,13 +325,21 @@ public class UrsaSchedulerService {
         try {
             zone = resolveZone(config.timezone());
         } catch (RuntimeException ex) {
-            log.warn("Scheduler '{}/{}/{}' has invalid timezone '{}': {} — registration skipped",
-                    tenantId, projectId, config.name(), config.timezone(), ex.getMessage());
+            log.warn(
+                    "Scheduler '{}/{}/{}' has invalid timezone '{}': {} — registration skipped",
+                    tenantId,
+                    projectId,
+                    config.name(),
+                    config.timezone(),
+                    ex.getMessage());
             return false;
         }
         if (config.effectiveRunAs() == null) {
-            log.warn("Scheduler '{}/{}/{}' has no runAs (no `runAs:` field and document has no createdBy) — registration skipped",
-                    tenantId, projectId, config.name());
+            log.warn(
+                    "Scheduler '{}/{}/{}' has no runAs (no `runAs:` field and document has no createdBy) — registration skipped",
+                    tenantId,
+                    projectId,
+                    config.name());
             return false;
         }
         if (config.isOneShot()) {
@@ -329,28 +348,41 @@ public class UrsaSchedulerService {
         return registerCron(tenantId, projectId, config, zone);
     }
 
-    private boolean registerCron(
-            String tenantId, String projectId, ResolvedUrsaScheduler config, ZoneId zone) {
+    private boolean registerCron(String tenantId, String projectId, ResolvedUrsaScheduler config, ZoneId zone) {
         String cron = config.cron();
         if (cron == null || !CronExpression.isValidExpression(cron)) {
-            log.warn("Scheduler '{}/{}/{}' has invalid cron '{}' — registration skipped",
-                    tenantId, projectId, config.name(), cron);
+            log.warn(
+                    "Scheduler '{}/{}/{}' has invalid cron '{}' — registration skipped",
+                    tenantId,
+                    projectId,
+                    config.name(),
+                    cron);
             return false;
         }
         String effectiveCron = clampCronSecondsIfDisallowed(cron, allowSeconds);
         if (!effectiveCron.equals(cron)) {
-            log.warn("Scheduler '{}/{}/{}' seconds-field clamped to 0 — cron '{}' → '{}' "
+            log.warn(
+                    "Scheduler '{}/{}/{}' seconds-field clamped to 0 — cron '{}' → '{}' "
                             + "(set 'vance.scheduler.allow-seconds: true' to keep sub-minute precision)",
-                    tenantId, projectId, config.name(), cron, effectiveCron);
+                    tenantId,
+                    projectId,
+                    config.name(),
+                    cron,
+                    effectiveCron);
         }
         Registration reg = new Registration(tenantId, projectId, config, zone, null);
         CronTrigger trigger = new CronTrigger(effectiveCron, java.util.TimeZone.getTimeZone(zone));
         ScheduledFuture<?> future = taskScheduler.schedule(() -> safeFire(reg), trigger);
         reg.future = future;
         registry.put(registryKey(tenantId, projectId, config.name()), reg);
-        log.info("Scheduler '{}/{}/{}' registered cron='{}' tz={} runAs='{}'",
-                tenantId, projectId, config.name(),
-                effectiveCron, zone, config.effectiveRunAs());
+        log.info(
+                "Scheduler '{}/{}/{}' registered cron='{}' tz={} runAs='{}'",
+                tenantId,
+                projectId,
+                config.name(),
+                effectiveCron,
+                zone,
+                config.effectiveRunAs());
         return true;
     }
 
@@ -380,16 +412,17 @@ public class UrsaSchedulerService {
      * {@code schedule(Runnable, Instant)} which is automatically a
      * one-shot. See {@code specification/scheduler.md} §10a.
      */
-    private boolean registerOneShot(
-            String tenantId, String projectId, ResolvedUrsaScheduler config, ZoneId zone) {
+    private boolean registerOneShot(String tenantId, String projectId, ResolvedUrsaScheduler config, ZoneId zone) {
         Instant at = config.at();
         if (at == null) {
-            log.warn("Scheduler '{}/{}/{}' missing 'at' on one-shot — registration skipped",
-                    tenantId, projectId, config.name());
+            log.warn(
+                    "Scheduler '{}/{}/{}' missing 'at' on one-shot — registration skipped",
+                    tenantId,
+                    projectId,
+                    config.name());
             return false;
         }
-        boolean alreadyFired = oneShotFireService.hasFired(
-                tenantId, projectId, config.name(), at);
+        boolean alreadyFired = oneShotFireService.hasFired(tenantId, projectId, config.name(), at);
         Registration reg = new Registration(tenantId, projectId, config, zone, null);
         registry.put(registryKey(tenantId, projectId, config.name()), reg);
         if (alreadyFired) {
@@ -397,22 +430,34 @@ public class UrsaSchedulerService {
             // step never landed (crash between fire and move), push
             // the doc into _bin now so the next bootstrap doesn't see
             // it at the scheduler prefix anymore.
-            log.info("Scheduler '{}/{}/{}' one-shot already consumed — self-healing to trash",
-                    tenantId, projectId, config.name());
+            log.info(
+                    "Scheduler '{}/{}/{}' one-shot already consumed — self-healing to trash",
+                    tenantId,
+                    projectId,
+                    config.name());
             trashAfterFire(reg);
             return false;
         }
         Instant now = Instant.now();
         if (!at.isAfter(now)) {
-            log.info("Scheduler '{}/{}/{}' one-shot is past-due ({}); firing immediately for catch-up",
-                    tenantId, projectId, config.name(), at);
+            log.info(
+                    "Scheduler '{}/{}/{}' one-shot is past-due ({}); firing immediately for catch-up",
+                    tenantId,
+                    projectId,
+                    config.name(),
+                    at);
             taskScheduler.schedule(() -> safeFire(reg), now);
         } else {
             ScheduledFuture<?> future = taskScheduler.schedule(() -> safeFire(reg), at);
             reg.future = future;
-            log.info("Scheduler '{}/{}/{}' registered one-shot at={} tz={} runAs='{}'",
-                    tenantId, projectId, config.name(),
-                    at, zone, config.effectiveRunAs());
+            log.info(
+                    "Scheduler '{}/{}/{}' registered one-shot at={} tz={} runAs='{}'",
+                    tenantId,
+                    projectId,
+                    config.name(),
+                    at,
+                    zone,
+                    config.effectiveRunAs());
         }
         return true;
     }
@@ -420,8 +465,7 @@ public class UrsaSchedulerService {
     private void cancelRegistration(Registration reg, String reason) {
         ScheduledFuture<?> f = reg.future;
         if (f != null) f.cancel(false);
-        log.debug("Scheduler '{}/{}/{}' cancelled — {}",
-                reg.tenantId, reg.projectId, reg.config.name(), reason);
+        log.debug("Scheduler '{}/{}/{}' cancelled — {}", reg.tenantId, reg.projectId, reg.config.name(), reason);
     }
 
     private static ZoneId resolveZone(@Nullable String tz) {
@@ -447,17 +491,24 @@ public class UrsaSchedulerService {
             // per-(scheduler, second-slot) claim lets exactly one fire; the
             // loser skips. Manual fireNow bypasses this (calls fire directly).
             Instant slot = now.truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
-            if (!fireClaimService.claim(
-                    reg.tenantId, reg.projectId, reg.config.name(), slot)) {
-                log.debug("Scheduler '{}/{}/{}' tick slot {} already claimed by "
-                                + "another pod — skipping",
-                        reg.tenantId, reg.projectId, reg.config.name(), slot);
+            if (!fireClaimService.claim(reg.tenantId, reg.projectId, reg.config.name(), slot)) {
+                log.debug(
+                        "Scheduler '{}/{}/{}' tick slot {} already claimed by " + "another pod — skipping",
+                        reg.tenantId,
+                        reg.projectId,
+                        reg.config.name(),
+                        slot);
                 return;
             }
             fire(reg, "cron", "run_" + UUID.randomUUID(), now);
         } catch (RuntimeException ex) {
-            log.error("Scheduler '{}/{}/{}' tick failed: {}",
-                    reg.tenantId, reg.projectId, reg.config.name(), ex.toString(), ex);
+            log.error(
+                    "Scheduler '{}/{}/{}' tick failed: {}",
+                    reg.tenantId,
+                    reg.projectId,
+                    reg.config.name(),
+                    ex.toString(),
+                    ex);
         }
     }
 
@@ -502,14 +553,21 @@ public class UrsaSchedulerService {
         // path that doesn't exist (see ticket mhus/vance#1).
         String correlationId = "run_" + UUID.randomUUID();
         Instant firedAt = Instant.now();
-        taskScheduler.schedule(() -> {
-            try {
-                fire(reg, "manual", correlationId, firedAt);
-            } catch (RuntimeException ex) {
-                log.error("Scheduler '{}/{}/{}' manual fire failed: {}",
-                        reg.tenantId, reg.projectId, reg.config.name(), ex.toString(), ex);
-            }
-        }, firedAt);
+        taskScheduler.schedule(
+                () -> {
+                    try {
+                        fire(reg, "manual", correlationId, firedAt);
+                    } catch (RuntimeException ex) {
+                        log.error(
+                                "Scheduler '{}/{}/{}' manual fire failed: {}",
+                                reg.tenantId,
+                                reg.projectId,
+                                reg.config.name(),
+                                ex.toString(),
+                                ex);
+                    }
+                },
+                firedAt);
         return new FireOutcome(correlationId, firedAt);
     }
 
@@ -530,19 +588,16 @@ public class UrsaSchedulerService {
         try {
             loaded = loader.load(tenantId, projectId, name);
         } catch (UrsaSchedulerLoader.SchedulerParseException ex) {
-            throw new IllegalArgumentException(
-                    "Scheduler '" + name + "' could not be parsed: " + ex.getMessage());
+            throw new IllegalArgumentException("Scheduler '" + name + "' could not be parsed: " + ex.getMessage());
         }
         if (loaded.isEmpty()) {
             throw new IllegalArgumentException(
-                    "Scheduler '" + name + "' not found for project '"
-                            + tenantId + "/" + projectId + "'.");
+                    "Scheduler '" + name + "' not found for project '" + tenantId + "/" + projectId + "'.");
         }
         ResolvedUrsaScheduler cfg = loaded.get();
         if (cfg.effectiveRunAs() == null) {
-            throw new IllegalArgumentException(
-                    "Scheduler '" + name + "' has no runAs configured "
-                            + "(set `runAs:` in the document or rely on `createdBy`).");
+            throw new IllegalArgumentException("Scheduler '" + name + "' has no runAs configured "
+                    + "(set `runAs:` in the document or rely on `createdBy`).");
         }
         ZoneId zone;
         try {
@@ -550,9 +605,13 @@ public class UrsaSchedulerService {
         } catch (RuntimeException ex) {
             // Timezone is only used by the cron path — for an ad-hoc fire
             // we don't care; fall back to UTC and log.
-            log.debug("Scheduler '{}/{}/{}' ad-hoc fire — invalid timezone '{}', "
-                    + "falling back to UTC: {}",
-                    tenantId, projectId, name, cfg.timezone(), ex.getMessage());
+            log.debug(
+                    "Scheduler '{}/{}/{}' ad-hoc fire — invalid timezone '{}', " + "falling back to UTC: {}",
+                    tenantId,
+                    projectId,
+                    name,
+                    cfg.timezone(),
+                    ex.getMessage());
             zone = ZoneId.of("UTC");
         }
         return new Registration(tenantId, projectId, cfg, zone, null);
@@ -573,23 +632,26 @@ public class UrsaSchedulerService {
         String source = UrsaSchedulerSourceKeys.sourceFor(cfg.name());
         String runAs = cfg.effectiveRunAs();
         if (runAs == null) {
-            log.warn("Scheduler '{}' fired without runAs — should have been filtered at register",
-                    cfg.name());
+            log.warn("Scheduler '{}' fired without runAs — should have been filtered at register", cfg.name());
             return;
         }
-        schedulerLogService.onTriggered(reg.tenantId, reg.projectId, cfg.name(),
-                correlationId, trigger, runAs, firedAt);
+        schedulerLogService.onTriggered(
+                reg.tenantId, reg.projectId, cfg.name(), correlationId, trigger, runAs, firedAt);
         // Feed START. Emitted on the tick, not after the spawn: the reader
         // wants to see that something began, and the detail-log path is
         // only computable here where firedAt lives.
         megadodoService.schedulerRunStarted(
-                reg.tenantId, reg.projectId, cfg.name(), correlationId, runAs,
+                reg.tenantId,
+                reg.projectId,
+                cfg.name(),
+                correlationId,
+                runAs,
                 SchedulerLogService.pathFor(cfg.name(), firedAt, correlationId));
         countFire(cfg.name(), "triggered");
 
         synchronized (reg.lock) {
             if (reg.currentProcessId != null) {
-                if (handleOverlap(reg, source, correlationId, runAs)) {
+                if (handleOverlap(reg, correlationId)) {
                     return; // SKIP/QUEUE handled, no spawn
                 }
                 // CANCEL_PREVIOUS — fall through after cancelling the prior run
@@ -599,16 +661,17 @@ public class UrsaSchedulerService {
             // STARTED+FAILED counters fire inside spawn(); the
             // spawn-duration timer here covers the time from the
             // tick acknowledgement to either STARTED or FAILED.
-            metricService.timer(METRIC_SPAWN_DURATION, "scheduler", cfg.name())
+            metricService
+                    .timer(METRIC_SPAWN_DURATION, "scheduler", cfg.name())
                     .record(java.time.Duration.ofNanos(System.nanoTime() - spawnStartNanos));
         }
     }
 
     /** Increments {@link #METRIC_FIRES} with one of the canonical outcomes. */
     private void countFire(String schedulerName, String outcome) {
-        metricService.counter(METRIC_FIRES,
-                "scheduler", schedulerName,
-                "outcome", outcome).increment();
+        metricService
+                .counter(METRIC_FIRES, "scheduler", schedulerName, "outcome", outcome)
+                .increment();
     }
 
     /**
@@ -620,33 +683,40 @@ public class UrsaSchedulerService {
      *
      * <p>Must be called while holding {@code reg.lock}.
      */
-    private boolean handleOverlap(
-            Registration reg, String source, String correlationId, String runAs) {
-        OverlapPolicy policy = reg.config.overlap() == null
-                ? OverlapPolicy.SKIP : reg.config.overlap();
+    private boolean handleOverlap(Registration reg, String correlationId) {
+        OverlapPolicy policy = reg.config.overlap() == null ? OverlapPolicy.SKIP : reg.config.overlap();
         switch (policy) {
             case SKIP -> {
                 schedulerLogService.onSkipped(correlationId, "overlap");
-                megadodoService.schedulerRunSkipped(reg.tenantId, reg.projectId,
-                        reg.config.name(), correlationId, "previous run still active");
+                megadodoService.schedulerRunSkipped(
+                        reg.tenantId, reg.projectId, reg.config.name(), correlationId, "previous run still active");
                 countFire(reg.config.name(), "skipped_overlap");
-                log.info("Scheduler '{}/{}/{}' tick skipped — prior run still active",
-                        reg.tenantId, reg.projectId, reg.config.name());
+                log.info(
+                        "Scheduler '{}/{}/{}' tick skipped — prior run still active",
+                        reg.tenantId,
+                        reg.projectId,
+                        reg.config.name());
                 return true;
             }
             case QUEUE -> {
                 reg.pendingQueued = true;
                 schedulerLogService.onSkipped(correlationId, "overlap_queued");
-                megadodoService.schedulerRunSkipped(reg.tenantId, reg.projectId,
-                        reg.config.name(), correlationId,
+                megadodoService.schedulerRunSkipped(
+                        reg.tenantId,
+                        reg.projectId,
+                        reg.config.name(),
+                        correlationId,
                         "previous run still active, this tick queued");
                 countFire(reg.config.name(), "queued_overlap");
-                log.info("Scheduler '{}/{}/{}' tick queued — prior run still active",
-                        reg.tenantId, reg.projectId, reg.config.name());
+                log.info(
+                        "Scheduler '{}/{}/{}' tick queued — prior run still active",
+                        reg.tenantId,
+                        reg.projectId,
+                        reg.config.name());
                 return true;
             }
             case CANCEL_PREVIOUS -> {
-                cancelPriorRun(reg, source, correlationId, runAs);
+                cancelPriorRun(reg, correlationId);
                 countFire(reg.config.name(), "cancelled_previous");
                 return false;
             }
@@ -654,8 +724,7 @@ public class UrsaSchedulerService {
         return false;
     }
 
-    private void cancelPriorRun(
-            Registration reg, String source, String correlationId, String runAs) {
+    private void cancelPriorRun(Registration reg, String correlationId) {
         String victimId = reg.currentProcessId;
         if (victimId == null) return;
         Optional<ThinkProcessDocument> victimOpt = thinkProcessService.findById(victimId);
@@ -665,31 +734,39 @@ public class UrsaSchedulerService {
         }
         ThinkProcessDocument victim = victimOpt.get();
         try {
-            laneScheduler.submit(victim.getId(),
-                    () -> {
+            laneScheduler
+                    .submit(victim.getId(), () -> {
                         thinkEngineServiceProvider.getObject().stop(victim);
                         return null;
-                    }).get();
+                    })
+                    .get();
         } catch (Exception ex) {
-            log.warn("Scheduler cancelPrevious failed for process '{}': {}",
-                    victimId, ex.toString());
+            log.warn("Scheduler cancelPrevious failed for process '{}': {}", victimId, ex.toString());
         }
         schedulerLogService.onCancelled(correlationId, victimId);
         reg.currentProcessId = null;
     }
 
-    private void spawn(
-            Registration reg, ResolvedUrsaScheduler cfg,
-            String source, String correlationId, String runAs) {
+    private void spawn(Registration reg, ResolvedUrsaScheduler cfg, String source, String correlationId, String runAs) {
         TriggerAction action;
         try {
             action = cfg.toTriggerAction();
         } catch (RuntimeException ex) {
-            log.warn("Scheduler '{}/{}/{}' action build failed: {}",
-                    reg.tenantId, reg.projectId, cfg.name(), ex.toString());
+            log.warn(
+                    "Scheduler '{}/{}/{}' action build failed: {}",
+                    reg.tenantId,
+                    reg.projectId,
+                    cfg.name(),
+                    ex.toString());
             schedulerLogService.onFailed(correlationId, "action_build", ex.getMessage());
-            megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
-                    correlationId, false, "invalid action definition: " + ex.getMessage(), null);
+            megadodoService.schedulerRunFinished(
+                    reg.tenantId,
+                    reg.projectId,
+                    cfg.name(),
+                    correlationId,
+                    false,
+                    "invalid action definition: " + ex.getMessage(),
+                    null);
             countFire(cfg.name(), "failed");
             return;
         }
@@ -701,35 +778,42 @@ public class UrsaSchedulerService {
         // subsequent event-log rows that thread the session id through.
         String parentSessionId = null;
         if (action instanceof TriggerAction.Recipe) {
-            SessionDocument session = systemSessionResolver.resolve(
-                    reg.tenantId, reg.projectId, cfg.name(), runAs);
+            SessionDocument session = systemSessionResolver.resolve(reg.tenantId, reg.projectId, cfg.name(), runAs);
             parentSessionId = session.getSessionId();
         }
         TriggerContext context = parentSessionId != null
                 ? TriggerContext.sessioned(
-                        reg.tenantId, reg.projectId, runAs, correlationId, source,
-                        parentSessionId, /*parentProcessId*/ null)
+                        reg.tenantId,
+                        reg.projectId,
+                        runAs,
+                        correlationId,
+                        source,
+                        parentSessionId, /*parentProcessId*/
+                        null)
                 : TriggerContext.standalone(
-                        reg.tenantId, reg.projectId, runAs, correlationId, source,
-                        /*parentProcessId*/ null);
+                        reg.tenantId, reg.projectId, runAs, correlationId, source, /*parentProcessId*/ null);
 
         ActionResult result;
         try {
             result = actionExecutorRegistry.execute(action, context, TriggerKind.SCHEDULER);
         } catch (RuntimeException ex) {
-            log.warn("Scheduler '{}/{}/{}' executor dispatch failed: {}",
-                    reg.tenantId, reg.projectId, cfg.name(), ex.toString());
+            log.warn(
+                    "Scheduler '{}/{}/{}' executor dispatch failed: {}",
+                    reg.tenantId,
+                    reg.projectId,
+                    cfg.name(),
+                    ex.toString());
             schedulerLogService.onFailed(correlationId, "dispatch", ex.getMessage());
-            megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
-                    correlationId, false, ex.getMessage(), null);
+            megadodoService.schedulerRunFinished(
+                    reg.tenantId, reg.projectId, cfg.name(), correlationId, false, ex.getMessage(), null);
             countFire(cfg.name(), "failed");
             return;
         }
 
         if (result.outcome().isFailure()) {
             schedulerLogService.onFailed(correlationId, "execute", result.errorMessage());
-            megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
-                    correlationId, false, result.errorMessage(), null);
+            megadodoService.schedulerRunFinished(
+                    reg.tenantId, reg.projectId, cfg.name(), correlationId, false, result.errorMessage(), null);
             countFire(cfg.name(), "failed");
 
             // Recipe-resolution failures (typically a hallucinated or
@@ -738,8 +822,8 @@ public class UrsaSchedulerService {
             // runAs user via the inbox — they need to fix the recipe
             // reference before re-enabling. See specification/scheduler.md.
             if (isRecipeResolutionFailure(result.errorMessage())) {
-                autoDisableScheduler(reg, correlationId,
-                        result.errorMessage() == null ? "recipe missing" : result.errorMessage());
+                autoDisableScheduler(
+                        reg, correlationId, result.errorMessage() == null ? "recipe missing" : result.errorMessage());
             }
             return;
         }
@@ -771,28 +855,32 @@ public class UrsaSchedulerService {
         // of re-firing. A failed spawn returns earlier and stays re-armed.
         Instant oneShotAt = cfg.isOneShot() ? cfg.at() : null;
         if (oneShotAt != null) {
-            oneShotFireService.markFired(
-                    reg.tenantId, reg.projectId, cfg.name(), oneShotAt, correlationId);
+            oneShotFireService.markFired(reg.tenantId, reg.projectId, cfg.name(), oneShotAt, correlationId);
         }
         String startedDetails = startedPayload.isEmpty()
                 ? null
                 : startedPayload.entrySet().stream()
                         .map(e -> e.getKey() + "=" + e.getValue())
-                        .reduce((a, b) -> a + " " + b).orElse(null);
+                        .reduce((a, b) -> a + " " + b)
+                        .orElse(null);
         schedulerLogService.onStarted(correlationId, parentSessionId, spawnedProcessId, startedDetails);
         countFire(cfg.name(), "started");
-        log.info("Scheduler '{}/{}/{}' fired {} outcome='{}' spawnedId='{}'",
-                reg.tenantId, reg.projectId, cfg.name(),
+        log.info(
+                "Scheduler '{}/{}/{}' fired {} outcome='{}' spawnedId='{}'",
+                reg.tenantId,
+                reg.projectId,
+                cfg.name(),
                 action.getClass().getSimpleName(),
-                result.outcome(), result.spawnedId());
+                result.outcome(),
+                result.spawnedId());
 
         // Script runs synchronously — emit a matching COMPLETED row so
         // operators see the lifecycle end without waiting for an
         // external listener (there is none for scripts).
         if (action instanceof TriggerAction.Script && result.outcome() == ActionOutcome.SUCCESS) {
             schedulerLogService.onTerminated(correlationId, "completed", Instant.now());
-            megadodoService.schedulerRunFinished(reg.tenantId, reg.projectId, cfg.name(),
-                    correlationId, true, null, null);
+            megadodoService.schedulerRunFinished(
+                    reg.tenantId, reg.projectId, cfg.name(), correlationId, true, null, null);
             countFire(cfg.name(), "completed");
         }
 
@@ -822,17 +910,28 @@ public class UrsaSchedulerService {
     private void trashAfterFire(Registration reg) {
         String docId = reg.config.documentId();
         if (docId == null) {
-            log.debug("Scheduler '{}/{}/{}' has no documentId — skipping trash step",
-                    reg.tenantId, reg.projectId, reg.config.name());
+            log.debug(
+                    "Scheduler '{}/{}/{}' has no documentId — skipping trash step",
+                    reg.tenantId,
+                    reg.projectId,
+                    reg.config.name());
             return;
         }
         try {
             documentService.trash(docId, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-            log.info("Scheduler '{}/{}/{}' moved to trash after one-shot fire",
-                    reg.tenantId, reg.projectId, reg.config.name());
+            log.info(
+                    "Scheduler '{}/{}/{}' moved to trash after one-shot fire",
+                    reg.tenantId,
+                    reg.projectId,
+                    reg.config.name());
         } catch (RuntimeException ex) {
-            log.warn("Scheduler '{}/{}/{}' failed to trash document '{}': {}",
-                    reg.tenantId, reg.projectId, reg.config.name(), docId, ex.toString());
+            log.warn(
+                    "Scheduler '{}/{}/{}' failed to trash document '{}': {}",
+                    reg.tenantId,
+                    reg.projectId,
+                    reg.config.name(),
+                    docId,
+                    ex.toString());
         }
     }
 
@@ -849,8 +948,7 @@ public class UrsaSchedulerService {
      */
     private static boolean isRecipeResolutionFailure(@Nullable String error) {
         if (error == null) return false;
-        return error.startsWith("resolution:")
-                || error.startsWith("unknown recipe ");
+        return error.startsWith("resolution:") || error.startsWith("unknown recipe ");
     }
 
     /**
@@ -860,8 +958,7 @@ public class UrsaSchedulerService {
      * caught at register-time (where {@code enabled=false} short-circuits
      * before {@code registerCron}) and won't reach this method.
      */
-    private void autoDisableScheduler(
-            Registration reg, String correlationId, String reason) {
+    private void autoDisableScheduler(Registration reg, String correlationId, String reason) {
         String tenantId = reg.tenantId;
         String projectId = reg.projectId;
         String name = reg.config.name();
@@ -871,25 +968,35 @@ public class UrsaSchedulerService {
             // Cascade-resolved entries without a per-project document
             // can't be edited from here — the project owner would need
             // to override at their tier. Still notify the run-as user.
-            log.warn("Scheduler '{}/{}/{}' auto-disable skipped: cascade entry, no documentId. Reason: {}",
-                    tenantId, projectId, name, reason);
-            notifyAutoDisabled(reg, correlationId, reason, /*persisted=*/false);
+            log.warn(
+                    "Scheduler '{}/{}/{}' auto-disable skipped: cascade entry, no documentId. Reason: {}",
+                    tenantId,
+                    projectId,
+                    name,
+                    reason);
+            notifyAutoDisabled(reg, correlationId, reason, /*persisted=*/ false);
             return;
         }
 
         try {
             String mutated = disableInYaml(reg.config.yaml());
-            documentService.update(docId,
-                    /*newTitle*/ null, /*newTags*/ null,
-                    /*newInlineText*/ mutated, /*newPath*/ null,
+            documentService.update(
+                    docId,
+                    /*newTitle*/ null, /*newTags*/
+                    null,
+                    /*newInlineText*/ mutated, /*newPath*/
+                    null,
                     de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             refreshOne(tenantId, projectId, name);
-            log.warn("Scheduler '{}/{}/{}' auto-disabled after recipe-resolution failure: {}",
-                    tenantId, projectId, name, reason);
-            notifyAutoDisabled(reg, correlationId, reason, /*persisted=*/true);
+            log.warn(
+                    "Scheduler '{}/{}/{}' auto-disabled after recipe-resolution failure: {}",
+                    tenantId,
+                    projectId,
+                    name,
+                    reason);
+            notifyAutoDisabled(reg, correlationId, reason, /*persisted=*/ true);
         } catch (RuntimeException ex) {
-            log.error("Scheduler '{}/{}/{}' auto-disable failed: {}",
-                    tenantId, projectId, name, ex.toString(), ex);
+            log.error("Scheduler '{}/{}/{}' auto-disable failed: {}", tenantId, projectId, name, ex.toString(), ex);
         }
     }
 
@@ -901,8 +1008,7 @@ public class UrsaSchedulerService {
      */
     static String disableInYaml(String yaml) {
         java.util.regex.Pattern p = java.util.regex.Pattern.compile(
-                "^(\\s*enabled\\s*:\\s*)(true|false)(\\s*)$",
-                java.util.regex.Pattern.MULTILINE);
+                "^(\\s*enabled\\s*:\\s*)(true|false)(\\s*)$", java.util.regex.Pattern.MULTILINE);
         java.util.regex.Matcher m = p.matcher(yaml);
         if (m.find()) {
             return m.replaceFirst("$1false$3");
@@ -919,19 +1025,19 @@ public class UrsaSchedulerService {
      * {@code requiresAction=true} so it surfaces in the assignee's inbox
      * but doesn't block the originating process (there is none).
      */
-    private void notifyAutoDisabled(
-            Registration reg, String correlationId, String reason, boolean persisted) {
+    private void notifyAutoDisabled(Registration reg, String correlationId, String reason, boolean persisted) {
         String assignee = reg.config.effectiveRunAs();
         if (assignee == null || assignee.isBlank()) {
-            log.warn("Scheduler '{}/{}/{}' auto-disable: no runAs to notify",
-                    reg.tenantId, reg.projectId, reg.config.name());
+            log.warn(
+                    "Scheduler '{}/{}/{}' auto-disable: no runAs to notify",
+                    reg.tenantId,
+                    reg.projectId,
+                    reg.config.name());
             return;
         }
-        String logPath = SchedulerLogService.pathFor(
-                reg.config.name(), Instant.now(), correlationId);
+        String logPath = SchedulerLogService.pathFor(reg.config.name(), Instant.now(), correlationId);
         StringBuilder body = new StringBuilder();
-        body.append("The scheduler `").append(reg.config.name())
-                .append("` was ");
+        body.append("The scheduler `").append(reg.config.name()).append("` was ");
         body.append(persisted ? "automatically disabled" : "marked failing (cascade entry — disable not persisted)");
         body.append(" because its configured recipe could not be resolved.\n\n");
         body.append("**Error:** ").append(reason).append("\n\n");
@@ -943,7 +1049,8 @@ public class UrsaSchedulerService {
         body.append("1. Create the missing recipe under `_vance/recipes/<name>.yaml`, "
                 + "or update the scheduler's `recipe:` field to an existing recipe name.\n");
         body.append("2. Set `enabled: true` in `_vance/scheduler/")
-                .append(reg.config.name()).append(".yaml` to re-arm the schedule.\n");
+                .append(reg.config.name())
+                .append(".yaml` to re-arm the schedule.\n");
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schedulerName", reg.config.name());
@@ -970,8 +1077,13 @@ public class UrsaSchedulerService {
                     .requiresAction(true)
                     .build());
         } catch (RuntimeException ex) {
-            log.error("Scheduler '{}/{}/{}' inbox notify failed: {}",
-                    reg.tenantId, reg.projectId, reg.config.name(), ex.toString(), ex);
+            log.error(
+                    "Scheduler '{}/{}/{}' inbox notify failed: {}",
+                    reg.tenantId,
+                    reg.projectId,
+                    reg.config.name(),
+                    ex.toString(),
+                    ex);
         }
     }
 
@@ -984,13 +1096,20 @@ public class UrsaSchedulerService {
         final ResolvedUrsaScheduler config;
         final ZoneId zoneId;
         final Object lock = new Object();
-        @Nullable volatile ScheduledFuture<?> future;
-        @Nullable String currentProcessId;
+
+        @Nullable
+        volatile ScheduledFuture<?> future;
+
+        @Nullable
+        String currentProcessId;
+
         boolean pendingQueued;
 
         Registration(
-                String tenantId, String projectId,
-                ResolvedUrsaScheduler config, ZoneId zoneId,
+                String tenantId,
+                String projectId,
+                ResolvedUrsaScheduler config,
+                ZoneId zoneId,
                 @Nullable ScheduledFuture<?> future) {
             this.tenantId = tenantId;
             this.projectId = projectId;

@@ -1758,7 +1758,7 @@ public class EddieEngine extends StructuredActionEngine {
      * verbatim, with an optional short prefix from Eddie.
      */
     private ActionTurnOutcome handleRelay(EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
-        EventRelayResolution res = resolveRelayEvent(action, process, ctx);
+        EventRelayResolution res = resolveRelayEvent(action, process);
         if (res.error() != null) {
             return new ActionTurnOutcome(res.error(), true);
         }
@@ -1810,8 +1810,7 @@ public class EddieEngine extends StructuredActionEngine {
      * humanSummary. Symmetric to {@code ArthurEngine.handleRelay} —
      * see the planning doc for the full rationale.
      */
-    private EventRelayResolution resolveRelayEvent(
-            EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
+    private EventRelayResolution resolveRelayEvent(EngineAction action, ThinkProcessDocument process) {
         Map<String, SteerMessage.ProcessEvent> available =
                 currentTurnEventsByRef.getOrDefault(process.getId(), Map.of());
         SteerMessage.ProcessEvent event = pickRelayEvent(action, process, available);
@@ -1977,7 +1976,7 @@ public class EddieEngine extends StructuredActionEngine {
             return new ActionTurnOutcome(
                     "Sorry — internal error: inbox title or announcement was missing. (" + action.reason() + ")", true);
         }
-        EventRelayResolution res = resolveRelayEvent(action, process, ctx);
+        EventRelayResolution res = resolveRelayEvent(action, process);
         if (res.error() != null) {
             return new ActionTurnOutcome(res.error(), true);
         }

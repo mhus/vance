@@ -1,11 +1,11 @@
 package de.mhus.vance.brain.tools.eddie;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,13 +28,17 @@ public class TeamListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional. If given (or an active "
-                                    + "project is set), filter to teams with "
-                                    + "access to that project. Pass 'all' to "
-                                    + "force the unfiltered tenant-wide list.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional. If given (or an active "
+                                            + "project is set), filter to teams with "
+                                            + "access to that project. Pass 'all' to "
+                                            + "force the unfiltered tenant-wide list.")),
             "required", List.of());
 
     private final EddieContext eddieContext;
@@ -106,10 +110,9 @@ public class TeamListTool implements Tool {
                 // of failing on first call.
                 filtered = tenantWideVisibleTo(ctx, teams);
                 scope = "tenant";
-                return buildOut(filtered, scope, null);
+                return buildOut(filtered, scope);
             }
-            List<String> projectTeamIds = project.getTeamIds() == null
-                    ? List.of() : project.getTeamIds();
+            List<String> projectTeamIds = project.getTeamIds() == null ? List.of() : project.getTeamIds();
             filtered = new ArrayList<>();
             for (TeamDocument t : teams) {
                 if (projectTeamIds.contains(t.getName())) {
@@ -119,11 +122,10 @@ public class TeamListTool implements Tool {
             scope = "project:" + project.getName();
         }
 
-        return buildOut(filtered, scope, null);
+        return buildOut(filtered, scope);
     }
 
-    private static Map<String, Object> buildOut(List<TeamDocument> teams, String scope,
-            @org.jspecify.annotations.Nullable String projectName) {
+    private static Map<String, Object> buildOut(List<TeamDocument> teams, String scope) {
         List<Map<String, Object>> rows = new ArrayList<>(teams.size());
         for (TeamDocument t : teams) {
             Map<String, Object> row = new LinkedHashMap<>();
@@ -139,8 +141,7 @@ public class TeamListTool implements Tool {
         return out;
     }
 
-    private static @org.jspecify.annotations.Nullable String paramString(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String paramString(Map<String, Object> params, String key) {
         if (params == null) return null;
         Object v = params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;

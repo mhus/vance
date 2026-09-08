@@ -7,7 +7,6 @@ import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.magrathea.MagratheaGateChatAnswerService;
-import de.mhus.vance.brain.magrathea.MagratheaOwnerNotifier;
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -70,10 +69,7 @@ import org.springframework.stereotype.Component;
  * {@code planning/vogon-magrathea-merge.md}.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class VogonEngine implements ThinkEngine {
@@ -174,8 +170,7 @@ public class VogonEngine implements ThinkEngine {
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
         if (deferStart(process)) {
-            log.debug("Vogon id='{}' waiting for its task before starting a plan",
-                    process.getId());
+            log.debug("Vogon id='{}' waiting for its task before starting a plan", process.getId());
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
             return;
         }
@@ -204,8 +199,7 @@ public class VogonEngine implements ThinkEngine {
         if (VogonIntake.INTAKE_NONE.equalsIgnoreCase(stringParam(process, PARAM_INTAKE))) {
             return false;
         }
-        Optional<de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow> plan =
-                namedPlan(process);
+        Optional<de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow> plan = namedPlan(process);
         if (plan.isEmpty()) {
             // Nothing resolved: wait only when nothing was declared either.
             return declaredPath(process) == null && declaredName(process) == null;
@@ -215,12 +209,10 @@ public class VogonEngine implements ThinkEngine {
     }
 
     /** The plan this process names, by path or by name, if it names one. */
-    private Optional<de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow> namedPlan(
-            ThinkProcessDocument process) {
+    private Optional<de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow> namedPlan(ThinkProcessDocument process) {
         String path = declaredPath(process);
         if (path != null) {
-            return intake.loadPlanFromPath(
-                    process.getTenantId(), process.getProjectId(), path);
+            return intake.loadPlanFromPath(process.getTenantId(), process.getProjectId(), path);
         }
         String name = declaredName(process);
         if (name == null) return Optional.empty();
@@ -246,15 +238,16 @@ public class VogonEngine implements ThinkEngine {
             throw ex;
         }
         rememberRunId(process, runId);
-        log.info("Vogon id='{}' started run '{}' (session='{}', capabilities={})",
-                process.getId(), runId, process.getSessionId(), binding.capabilities());
+        log.info(
+                "Vogon id='{}' started run '{}' (session='{}', capabilities={})",
+                process.getId(),
+                runId,
+                process.getSessionId(),
+                binding.capabilities());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
-    private String startRun(
-            ThinkProcessDocument process,
-            MagratheaRunBinding binding,
-            @Nullable String taskText) {
+    private String startRun(ThinkProcessDocument process, MagratheaRunBinding binding, @Nullable String taskText) {
         Map<String, Object> params = callerParams(process);
         String intakeMode = stringParam(process, PARAM_INTAKE);
         String effectiveTask = taskText != null ? taskText : process.getGoal();
@@ -274,20 +267,20 @@ public class VogonEngine implements ThinkEngine {
         // and when the model answered path-shaped, the run started the
         // document *it* picked instead of the one that was declared.
         if ((path != null || name != null) && plan.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Vogon cannot resolve the plan it was given: "
-                            + (path != null
-                                    ? PARAM_WORKFLOW_PATH + "='" + path + "'"
-                                    : PARAM_WORKFLOW + "='" + name + "'")
-                            + " — no such plan here, or the plan document does not parse.");
+            throw new IllegalArgumentException("Vogon cannot resolve the plan it was given: "
+                    + (path != null ? PARAM_WORKFLOW_PATH + "='" + path + "'" : PARAM_WORKFLOW + "='" + name + "'")
+                    + " — no such plan here, or the plan document does not parse.");
         }
 
         // Only ask about the plan when neither form was declared.
         VogonIntake.Outcome intook = intake.resolve(
-                process.getTenantId(), process.getProjectId(),
+                process.getTenantId(),
+                process.getProjectId(),
                 plan.orElse(null),
                 path != null ? null : name,
-                params, effectiveTask, intakeMode);
+                params,
+                effectiveTask,
+                intakeMode);
 
         Map<String, Object> planParams = withTask(intook.params(), effectiveTask);
         MagratheaRunBinding withOrigin = binding.withDerivedParams(intook.derivedKeys());
@@ -295,21 +288,29 @@ public class VogonEngine implements ThinkEngine {
         String effectivePath = path != null ? path : intook.planPath();
         if (effectivePath != null) {
             return workflowService.startFromDocument(
-                    process.getTenantId(), process.getProjectId(), effectivePath,
-                    planParams, startedBy(process), withOrigin);
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    effectivePath,
+                    planParams,
+                    startedBy(process),
+                    withOrigin);
         }
 
         String effectiveName = name != null ? name : intook.planName();
         if (effectiveName == null) {
-            throw new IllegalArgumentException(
-                    "Vogon needs a plan: set engineParams." + PARAM_WORKFLOW
-                            + " (name) or " + PARAM_WORKFLOW_PATH + " (document path), "
-                            + "or name the plan in the task.");
+            throw new IllegalArgumentException("Vogon needs a plan: set engineParams." + PARAM_WORKFLOW
+                    + " (name) or " + PARAM_WORKFLOW_PATH + " (document path), "
+                    + "or name the plan in the task.");
         }
         return workflowService.start(
-                process.getTenantId(), process.getProjectId(), effectiveName,
-                planParams, startedBy(process),
-                /* parentRun */ null, /* parentState */ null, withOrigin);
+                process.getTenantId(),
+                process.getProjectId(),
+                effectiveName,
+                planParams,
+                startedBy(process),
+                /* parentRun */ null, /* parentState */
+                null,
+                withOrigin);
     }
 
     /**
@@ -338,8 +339,7 @@ public class VogonEngine implements ThinkEngine {
      * The task text also travels as {@code params.task}, so a plan can read what
      * was asked even when it names its own parameters differently.
      */
-    private static Map<String, Object> withTask(
-            Map<String, Object> params, @Nullable String taskText) {
+    private static Map<String, Object> withTask(Map<String, Object> params, @Nullable String taskText) {
         if (taskText == null || taskText.isBlank() || params.containsKey(PARAM_TASK)) {
             return params;
         }
@@ -360,15 +360,16 @@ public class VogonEngine implements ThinkEngine {
     private MagratheaRunBinding bindingFor(ThinkProcessDocument process) {
         Set<RunCapability> caps = new java.util.LinkedHashSet<>();
         caps.add(RunCapability.OWNER_PROCESS);
-        if (hasHumanOwner(process.getTenantId(), process.getSessionId())) {
+        if (hasHumanOwner(process.getSessionId())) {
             caps.add(RunCapability.USER_SESSION);
         }
         return new MagratheaRunBinding(process.getSessionId(), process.getId(), caps);
     }
 
-    private boolean hasHumanOwner(String tenantId, @Nullable String sessionId) {
+    private boolean hasHumanOwner(@Nullable String sessionId) {
         if (sessionId == null || sessionId.isBlank()) return false;
-        return sessionService.findBySessionId(sessionId)
+        return sessionService
+                .findBySessionId(sessionId)
                 .filter(s -> !s.isSystem())
                 .map(SessionDocument::getUserId)
                 .filter(u -> u != null && !u.isBlank())
@@ -413,8 +414,7 @@ public class VogonEngine implements ThinkEngine {
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         withRun(process, runId -> {
-            workflowService.stopRun(process.getTenantId(), process.getProjectId(), runId,
-                    "owner process stopped");
+            workflowService.stopRun(process.getTenantId(), process.getProjectId(), runId, "owner process stopped");
             log.info("Vogon id='{}' stopped run '{}'", process.getId(), runId);
         });
         thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
@@ -423,8 +423,7 @@ public class VogonEngine implements ThinkEngine {
     // ──────────────────── turns ────────────────────
 
     @Override
-    public void steer(
-            ThinkProcessDocument process, ThinkEngineContext ctx, SteerMessage message) {
+    public void steer(ThinkProcessDocument process, ThinkEngineContext ctx, SteerMessage message) {
         handle(process, message);
     }
 
@@ -443,8 +442,11 @@ public class VogonEngine implements ThinkEngine {
         switch (message) {
             case SteerMessage.UserChatInput input -> onUserSaid(process, input);
             case SteerMessage.ProcessEvent event -> onRunReported(process, event);
-            default -> log.trace("Vogon id='{}' ignoring {}",
-                    process.getId(), message.getClass().getSimpleName());
+            default ->
+                log.trace(
+                        "Vogon id='{}' ignoring {}",
+                        process.getId(),
+                        message.getClass().getSimpleName());
         }
     }
 
@@ -484,17 +486,17 @@ public class VogonEngine implements ThinkEngine {
         }
 
         if (!isHumanSender(input.fromUser())) {
-            log.debug("Vogon id='{}' — '{}' is not a person, so it cannot answer a gate",
-                    process.getId(), input.fromUser());
+            log.debug(
+                    "Vogon id='{}' — '{}' is not a person, so it cannot answer a gate",
+                    process.getId(),
+                    input.fromUser());
             return;
         }
-        boolean answered = gateChatAnswerService.tryAnswer(
-                process.getTenantId(), runId, text, input.fromUser());
+        boolean answered = gateChatAnswerService.tryAnswer(process.getTenantId(), runId, text, input.fromUser());
         if (answered) {
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         } else {
-            log.debug("Vogon id='{}' — nothing in run '{}' was waiting for that",
-                    process.getId(), runId);
+            log.debug("Vogon id='{}' — nothing in run '{}' was waiting for that", process.getId(), runId);
         }
     }
 
@@ -567,8 +569,7 @@ public class VogonEngine implements ThinkEngine {
             try {
                 thinkProcessService.removeWorkerLink(parentId, process.getId());
             } catch (RuntimeException ex) {
-                log.warn("Vogon id='{}' could not release its parent's watch: {}",
-                        process.getId(), ex.toString());
+                log.warn("Vogon id='{}' could not release its parent's watch: {}", process.getId(), ex.toString());
             }
         }
         thinkProcessService.closeProcess(process.getId(), reason);
@@ -584,14 +585,12 @@ public class VogonEngine implements ThinkEngine {
      * a second answer that might disagree.
      */
     @Override
-    public ParentReport summarizeForParent(
-            ThinkProcessDocument process, ProcessEventType eventType) {
+    public ParentReport summarizeForParent(ThinkProcessDocument process, ProcessEventType eventType) {
         String runId = runId(process);
         if (runId == null) {
             return ParentReport.of("The plan never started.");
         }
-        Optional<MagratheaProcessDto> run = projector.project(
-                process.getTenantId(), process.getProjectId(), runId);
+        Optional<MagratheaProcessDto> run = projector.project(process.getTenantId(), process.getProjectId(), runId);
         if (run.isEmpty()) {
             return ParentReport.of("Plan run " + runId + " left no journal.");
         }
@@ -618,8 +617,9 @@ public class VogonEngine implements ThinkEngine {
         sb.append('.');
         if (dto.getResult() != null && !dto.getResult().isEmpty()) {
             sb.append("\n\nResult:\n");
-            dto.getResult().forEach((k, v) -> sb.append("- ").append(k)
-                    .append(": ").append(v).append('\n'));
+            dto.getResult()
+                    .forEach((k, v) ->
+                            sb.append("- ").append(k).append(": ").append(v).append('\n'));
         }
         return sb.toString();
     }
@@ -635,15 +635,12 @@ public class VogonEngine implements ThinkEngine {
         try {
             action.accept(runId);
         } catch (RuntimeException ex) {
-            log.warn("Vogon id='{}' run control failed for '{}': {}",
-                    process.getId(), runId, ex.toString());
+            log.warn("Vogon id='{}' run control failed for '{}': {}", process.getId(), runId, ex.toString());
         }
     }
 
     private void emitStatus(
-            ThinkProcessDocument process,
-            de.mhus.vance.api.progress.StatusTag tag,
-            @Nullable String text) {
+            ThinkProcessDocument process, de.mhus.vance.api.progress.StatusTag tag, @Nullable String text) {
         var emitter = progressEmitter.getIfAvailable();
         if (emitter == null) return;
         try {
@@ -655,7 +652,8 @@ public class VogonEngine implements ThinkEngine {
 
     private void rememberRunId(ThinkProcessDocument process, String runId) {
         Map<String, Object> params = process.getEngineParams() == null
-                ? new LinkedHashMap<>() : new LinkedHashMap<>(process.getEngineParams());
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(process.getEngineParams());
         params.put(PARAM_RUN_ID, runId);
         thinkProcessService.replaceEngineParams(process.getId(), params);
     }
@@ -671,7 +669,8 @@ public class VogonEngine implements ThinkEngine {
     private @Nullable String runId(ThinkProcessDocument process) {
         // Re-read: the id is written after this document was loaded, and a
         // later turn may be looking at a stale copy.
-        String fromDoc = thinkProcessService.findById(process.getId())
+        String fromDoc = thinkProcessService
+                .findById(process.getId())
                 .map(p -> stringParam(p, PARAM_RUN_ID))
                 .orElse(null);
         return fromDoc != null ? fromDoc : stringParam(process, PARAM_RUN_ID);
@@ -704,7 +703,8 @@ public class VogonEngine implements ThinkEngine {
      * a process running in a system session.
      */
     private String startedBy(ThinkProcessDocument process) {
-        return sessionService.findBySessionId(process.getSessionId())
+        return sessionService
+                .findBySessionId(process.getSessionId())
                 .map(SessionDocument::getUserId)
                 .filter(u -> u != null && !u.isBlank())
                 .orElse("@system");

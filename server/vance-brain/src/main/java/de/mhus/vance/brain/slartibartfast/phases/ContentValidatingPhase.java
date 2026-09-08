@@ -21,7 +21,6 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,8 +57,7 @@ public class ContentValidatingPhase {
 
     private static final String ENGINE_NAME = "slartibartfast";
 
-    public static final String RULE_USER_CRITERIA_SATISFIED =
-            "user-stated-criteria-satisfied";
+    public static final String RULE_USER_CRITERIA_SATISFIED = "user-stated-criteria-satisfied";
 
     /** Total character budget across all artifacts in the judge
      *  prompt. Replaces the older top-N + per-doc truncation
@@ -105,12 +103,8 @@ public class ContentValidatingPhase {
      *  fall-throughs for any documents that still sit at the old
      *  pre-migration root paths; the canonical layout now puts them
      *  under {@code _vance/}, which the first entry already covers. */
-    private static final List<String> EXCLUDED_PREFIXES = List.of(
-            "_vance/",
-            "_vogon-drafts/",
-            "manuals/",
-            "recipes/",
-            "skills/");
+    private static final List<String> EXCLUDED_PREFIXES =
+            List.of("_vance/", "_vogon-drafts/", "manuals/", "recipes/", "skills/");
 
     private static final String SYSTEM_PROMPT = """
             You are a strict content validator. The user requested
@@ -161,14 +155,11 @@ public class ContentValidatingPhase {
      * {@link RecoveryRequest} routing back to PROPOSING. On all-
      * satisfied, appends a PASSED iteration.
      */
-    public boolean executeIfApplicable(
-            ArchitectState state,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    public boolean executeIfApplicable(ArchitectState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
         List<Criterion> userCriteria = collectUserCriteria(state);
         if (userCriteria.isEmpty()) {
-            log.info("Slartibartfast id='{}' content-validation skipped — "
-                            + "no USER_STATED/USER_CONFIRMED criteria",
+            log.info(
+                    "Slartibartfast id='{}' content-validation skipped — " + "no USER_STATED/USER_CONFIRMED criteria",
                     process.getId());
             return false;
         }
@@ -179,43 +170,46 @@ public class ContentValidatingPhase {
         // this ramp the recovery budget gets eaten by yes/partial
         // jitter rather than real bugs.
         if (state.getRecoveryCount() >= SKIP_JUDGE_AT_RECOVERY) {
-            log.info("Slartibartfast id='{}' content-validation SKIPPED — "
+            log.info(
+                    "Slartibartfast id='{}' content-validation SKIPPED — "
                             + "recoveryCount={} >= SKIP_JUDGE_AT_RECOVERY={}, "
                             + "passing through (only structural fails will "
                             + "still trigger recovery)",
-                    process.getId(), state.getRecoveryCount(),
+                    process.getId(),
+                    state.getRecoveryCount(),
                     SKIP_JUDGE_AT_RECOVERY);
-            appendIteration(state, userCriteria.size() + " user criteria",
-                    "tolerance-ramp: judge skipped at recovery "
-                            + state.getRecoveryCount(),
+            appendIteration(
+                    state,
+                    userCriteria.size() + " user criteria",
+                    "tolerance-ramp: judge skipped at recovery " + state.getRecoveryCount(),
                     PhaseIteration.IterationOutcome.PASSED);
             return false;
         }
 
-        List<DocumentDocument> artifacts = loadOutputArtifacts(
-                process.getTenantId(), process.getProjectId());
+        List<DocumentDocument> artifacts = loadOutputArtifacts(process.getTenantId(), process.getProjectId());
         if (artifacts.isEmpty()) {
             // No output documents — but structural check should
             // have caught this. Defensive: set a recovery so the
             // recipe gets another shot.
-            recordUnsatisfied(state,
-                    "No output documents found to validate against.",
-                    userCriteria,
-                    /*verdicts*/ List.of());
+            recordUnsatisfied(
+                    state, "No output documents found to validate against.", userCriteria, /*verdicts*/ List.of());
             return true;
         }
 
-        List<Verdict> verdicts = runJudge(state, process, ctx,
-                userCriteria, artifacts);
+        List<Verdict> verdicts = runJudge(state, process, ctx, userCriteria, artifacts);
         if (verdicts == null) {
             // Judge failed to produce parseable JSON after retries.
             // Don't block the run on the judge's own brittleness —
             // log + pass through.
-            log.warn("Slartibartfast id='{}' content-validation: judge "
+            log.warn(
+                    "Slartibartfast id='{}' content-validation: judge "
                             + "produced no parseable verdict after {} "
                             + "tries; passing through",
-                    process.getId(), MAX_CORRECTIONS + 1);
-            appendIteration(state, userCriteria.size() + " user criteria",
+                    process.getId(),
+                    MAX_CORRECTIONS + 1);
+            appendIteration(
+                    state,
+                    userCriteria.size() + " user criteria",
                     "judge-malformed, passed through",
                     PhaseIteration.IterationOutcome.PASSED);
             return true;
@@ -226,14 +220,12 @@ public class ContentValidatingPhase {
         // to partial because the model re-reads a sentence
         // differently) shouldn't reset the loop after we've made
         // good progress.
-        boolean partialIsAcceptable =
-                state.getRecoveryCount() >= PARTIAL_TOLERATED_AT_RECOVERY;
+        boolean partialIsAcceptable = state.getRecoveryCount() >= PARTIAL_TOLERATED_AT_RECOVERY;
         List<Verdict> unsatisfied = new ArrayList<>();
         List<Verdict> satisfied = new ArrayList<>();
         for (Verdict v : verdicts) {
             boolean fails = "no".equalsIgnoreCase(v.satisfied)
-                    || ("partial".equalsIgnoreCase(v.satisfied)
-                            && !partialIsAcceptable);
+                    || ("partial".equalsIgnoreCase(v.satisfied) && !partialIsAcceptable);
             if (fails) {
                 unsatisfied.add(v);
             } else {
@@ -251,24 +243,26 @@ public class ContentValidatingPhase {
         state.setValidationReport(report);
 
         if (unsatisfied.isEmpty()) {
-            appendIteration(state, userCriteria.size() + " user criteria",
+            appendIteration(
+                    state,
+                    userCriteria.size() + " user criteria",
                     "all satisfied — passed",
                     PhaseIteration.IterationOutcome.PASSED);
-            log.info("Slartibartfast id='{}' content-validation passed — "
-                            + "{} user criteria all satisfied",
-                    process.getId(), userCriteria.size());
+            log.info(
+                    "Slartibartfast id='{}' content-validation passed — " + "{} user criteria all satisfied",
+                    process.getId(),
+                    userCriteria.size());
             return true;
         }
 
-        recordUnsatisfied(state,
-                buildCheckMessage(verdicts, unsatisfied),
-                userCriteria,
-                unsatisfied,
-                satisfied);
-        log.info("Slartibartfast id='{}' content-validation failed — "
+        recordUnsatisfied(state, buildCheckMessage(verdicts, unsatisfied), userCriteria, unsatisfied, satisfied);
+        log.info(
+                "Slartibartfast id='{}' content-validation failed — "
                         + "{} of {} user criteria unsatisfied, "
                         + "requesting PROPOSING re-run",
-                process.getId(), unsatisfied.size(), userCriteria.size());
+                process.getId(),
+                unsatisfied.size(),
+                userCriteria.size());
         return true;
     }
 
@@ -287,18 +281,15 @@ public class ContentValidatingPhase {
         }
         if (primary == null) return out;
         for (Criterion c : primary) {
-            if (c.getOrigin() == CriterionOrigin.USER_STATED
-                    || c.getOrigin() == CriterionOrigin.USER_CONFIRMED) {
+            if (c.getOrigin() == CriterionOrigin.USER_STATED || c.getOrigin() == CriterionOrigin.USER_CONFIRMED) {
                 out.add(c);
             }
         }
         return out;
     }
 
-    private List<DocumentDocument> loadOutputArtifacts(
-            String tenantId, String projectId) {
-        List<DocumentDocument> all = documentService.listByProject(
-                tenantId, projectId);
+    private List<DocumentDocument> loadOutputArtifacts(String tenantId, String projectId) {
+        List<DocumentDocument> all = documentService.listByProject(tenantId, projectId);
         List<DocumentDocument> output = new ArrayList<>();
         for (DocumentDocument doc : all) {
             String path = doc.getPath();
@@ -353,22 +344,18 @@ public class ContentValidatingPhase {
         // to overwrite with engineParams.temperature which drives
         // the worker phases (where creativity may help).
         double judgeTemperature = readJudgeTemperature(process);
-        de.mhus.vance.brain.ai.AiChatOptions judgeOptions =
-                de.mhus.vance.brain.ai.AiChatOptions.builder()
-                        .temperature(judgeTemperature)
-                        .lockSampling(true)
-                        .build();
+        de.mhus.vance.brain.ai.AiChatOptions judgeOptions = de.mhus.vance.brain.ai.AiChatOptions.builder()
+                .temperature(judgeTemperature)
+                .lockSampling(true)
+                .build();
         EngineChatFactory.EngineChatBundle bundle =
-                engineChatFactory.forProcess(process, ctx, ENGINE_NAME,
-                        judgeOptions);
-        String modelAlias = bundle.primaryConfig().provider() + ":"
-                + bundle.primaryConfig().modelName();
+                engineChatFactory.forProcess(process, ctx, ENGINE_NAME, judgeOptions);
+        String modelAlias =
+                bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
 
         List<ChatMessage> messages = new ArrayList<>();
         String langBlock = languageContextResolver.formatBlock(process);
-        messages.add(SystemMessage.from(langBlock.isEmpty()
-                ? SYSTEM_PROMPT
-                : SYSTEM_PROMPT + "\n\n" + langBlock));
+        messages.add(SystemMessage.from(langBlock.isEmpty() ? SYSTEM_PROMPT : SYSTEM_PROMPT + "\n\n" + langBlock));
         messages.add(UserMessage.from(buildUserPrompt(userCriteria, artifacts)));
 
         for (int attempt = 0; attempt <= MAX_CORRECTIONS; attempt++) {
@@ -387,29 +374,25 @@ public class ContentValidatingPhase {
             }
 
             try {
-                return parseVerdicts(text, userCriteria);
+                return parseVerdicts(text);
             } catch (RuntimeException e) {
                 if (attempt == MAX_CORRECTIONS) return null;
                 messages.add(AiMessage.from(text));
-                messages.add(UserMessage.from(
-                        "Your previous response was rejected: "
-                                + e.getMessage()
-                                + ". Emit ONLY the JSON object with "
-                                + "the exact shape described in the "
-                                + "system prompt. Try again."));
+                messages.add(UserMessage.from("Your previous response was rejected: "
+                        + e.getMessage()
+                        + ". Emit ONLY the JSON object with "
+                        + "the exact shape described in the "
+                        + "system prompt. Try again."));
             }
         }
         return null;
     }
 
-    private String buildUserPrompt(
-            List<Criterion> userCriteria,
-            List<DocumentDocument> artifacts) {
+    private String buildUserPrompt(List<Criterion> userCriteria, List<DocumentDocument> artifacts) {
         StringBuilder sb = new StringBuilder();
         sb.append("USER CRITERIA (judge each one separately):\n\n");
         for (Criterion c : userCriteria) {
-            sb.append("- ").append(c.getId()).append(": ")
-                    .append(c.getText()).append('\n');
+            sb.append("- ").append(c.getId()).append(": ").append(c.getText()).append('\n');
         }
         sb.append("\nPRODUCED ARTIFACTS:\n\n");
 
@@ -432,20 +415,24 @@ public class ContentValidatingPhase {
             if (trueLen <= cap) {
                 content = full;
             } else {
-                content = full.substring(0, cap)
-                        + "\n…[truncated, "
-                        + (trueLen - cap) + " chars omitted]";
+                content = full.substring(0, cap) + "\n…[truncated, " + (trueLen - cap) + " chars omitted]";
             }
-            sb.append("=== ").append(doc.getPath()).append(" (")
-                    .append(trueLen).append(" chars total)")
-                    .append(" ===\n").append(content).append("\n\n");
+            sb.append("=== ")
+                    .append(doc.getPath())
+                    .append(" (")
+                    .append(trueLen)
+                    .append(" chars total)")
+                    .append(" ===\n")
+                    .append(content)
+                    .append("\n\n");
             remainingBudget -= Math.min(trueLen, cap);
         }
         if (!deferredByName.isEmpty()) {
-            sb.append("=== Additional artifacts exist (judge by name "
-                    + "only — budget exhausted) ===\n");
+            sb.append("=== Additional artifacts exist (judge by name " + "only — budget exhausted) ===\n");
             for (DocumentDocument doc : deferredByName) {
-                sb.append("- ").append(doc.getPath()).append(" (")
+                sb.append("- ")
+                        .append(doc.getPath())
+                        .append(" (")
                         .append(documentService.readContent(doc).length())
                         .append(" chars, content not shown)\n");
             }
@@ -455,8 +442,7 @@ public class ContentValidatingPhase {
         return sb.toString();
     }
 
-    private List<Verdict> parseVerdicts(
-            String text, List<Criterion> userCriteria) {
+    private List<Verdict> parseVerdicts(String text) {
         String json = extractJsonObject(text);
         if (json == null) {
             throw new RuntimeException("no JSON object found in response");
@@ -474,25 +460,23 @@ public class ContentValidatingPhase {
         List<Verdict> out = new ArrayList<>();
         for (int i = 0; i < criteriaArr.size(); i++) {
             JsonNode entry = criteriaArr.get(i);
-            String id = entry.get("id") == null
-                    ? null : entry.get("id").asText();
+            String id = entry.get("id") == null ? null : entry.get("id").asText();
             String satisfied = entry.get("satisfied") == null
-                    ? null : entry.get("satisfied").asText();
+                    ? null
+                    : entry.get("satisfied").asText();
             String reasoning = entry.get("reasoning") == null
-                    ? null : entry.get("reasoning").asText();
+                    ? null
+                    : entry.get("reasoning").asText();
             if (id == null || satisfied == null) {
-                throw new RuntimeException(
-                        "criteria[" + i + "] missing id / satisfied");
+                throw new RuntimeException("criteria[" + i + "] missing id / satisfied");
             }
             if (!"yes".equalsIgnoreCase(satisfied)
                     && !"no".equalsIgnoreCase(satisfied)
                     && !"partial".equalsIgnoreCase(satisfied)) {
                 throw new RuntimeException(
-                        "criteria[" + i + "].satisfied '" + satisfied
-                                + "' is not one of yes/no/partial");
+                        "criteria[" + i + "].satisfied '" + satisfied + "' is not one of yes/no/partial");
             }
-            out.add(new Verdict(id, satisfied,
-                    reasoning == null ? "" : reasoning));
+            out.add(new Verdict(id, satisfied, reasoning == null ? "" : reasoning));
         }
         return out;
     }
@@ -507,13 +491,19 @@ public class ContentValidatingPhase {
         boolean escape = false;
         for (int i = start; i < raw.length(); i++) {
             char c = raw.charAt(i);
-            if (escape) { escape = false; continue; }
+            if (escape) {
+                escape = false;
+                continue;
+            }
             if (inString) {
                 if (c == '\\') escape = true;
                 else if (c == '"') inString = false;
                 continue;
             }
-            if (c == '"') { inString = true; continue; }
+            if (c == '"') {
+                inString = true;
+                continue;
+            }
             if (c == '{') depth++;
             else if (c == '}') {
                 depth--;
@@ -524,12 +514,8 @@ public class ContentValidatingPhase {
     }
 
     private void recordUnsatisfied(
-            ArchitectState state,
-            String message,
-            List<Criterion> allUserCriteria,
-            List<Verdict> unsatisfied) {
-        recordUnsatisfied(state, message, allUserCriteria, unsatisfied,
-                List.of());
+            ArchitectState state, String message, List<Criterion> allUserCriteria, List<Verdict> unsatisfied) {
+        recordUnsatisfied(state, message, allUserCriteria, unsatisfied, List.of());
     }
 
     private void recordUnsatisfied(
@@ -556,21 +542,19 @@ public class ContentValidatingPhase {
                 .hint(buildRecoveryHint(allUserCriteria, unsatisfied, satisfied))
                 .build());
 
-        appendIteration(state, allUserCriteria.size() + " user criteria",
-                "FAILED — " + unsatisfied.size() + " unsatisfied; "
-                        + "rollback to PROPOSING",
+        appendIteration(
+                state,
+                allUserCriteria.size() + " user criteria",
+                "FAILED — " + unsatisfied.size() + " unsatisfied; " + "rollback to PROPOSING",
                 PhaseIteration.IterationOutcome.REQUESTED_RECOVERY);
     }
 
-    private String buildCheckMessage(
-            List<Verdict> verdicts, List<Verdict> unsatisfied) {
+    private String buildCheckMessage(List<Verdict> verdicts, List<Verdict> unsatisfied) {
         if (unsatisfied.isEmpty()) {
             return verdicts.size() + " user criteria all satisfied";
         }
         StringBuilder sb = new StringBuilder();
-        sb.append(unsatisfied.size()).append(" of ")
-                .append(verdicts.size())
-                .append(" user criteria not satisfied: ");
+        sb.append(unsatisfied.size()).append(" of ").append(verdicts.size()).append(" user criteria not satisfied: ");
         for (int i = 0; i < unsatisfied.size(); i++) {
             Verdict v = unsatisfied.get(i);
             if (i > 0) sb.append("; ");
@@ -580,9 +564,7 @@ public class ContentValidatingPhase {
     }
 
     private String buildRecoveryHint(
-            List<Criterion> allUserCriteria,
-            List<Verdict> unsatisfied,
-            List<Verdict> satisfied) {
+            List<Criterion> allUserCriteria, List<Verdict> unsatisfied, List<Verdict> satisfied) {
         // Build an id-to-text lookup so the hint surfaces what
         // each missing criterion ACTUALLY asked for, not just
         // the cryptic id.
@@ -604,21 +586,23 @@ public class ContentValidatingPhase {
                     + "should be kept as-is):\n");
             for (Verdict v : satisfied) {
                 String text = idToText.getOrDefault(v.id, "(unknown)");
-                sb.append("- ").append(v.id).append(": \"")
-                        .append(text).append("\"\n");
+                sb.append("- ").append(v.id).append(": \"").append(text).append("\"\n");
             }
             sb.append("\n");
         }
-        sb.append("✗ UNSATISFIED — fix ONLY these (verdict + judge "
-                + "reasoning):\n");
+        sb.append("✗ UNSATISFIED — fix ONLY these (verdict + judge " + "reasoning):\n");
         for (Verdict v : unsatisfied) {
             String text = idToText.getOrDefault(v.id, "(unknown)");
-            sb.append("- ").append(v.id).append(" [").append(v.satisfied)
-                    .append("] \"").append(text).append("\"\n");
+            sb.append("- ")
+                    .append(v.id)
+                    .append(" [")
+                    .append(v.satisfied)
+                    .append("] \"")
+                    .append(text)
+                    .append("\"\n");
             sb.append("  judge: ").append(v.reasoning).append("\n");
         }
-        sb.append("\nPOSSIBLE OPTIONS to fix this — choose one or "
-                + "combine:\n");
+        sb.append("\nPOSSIBLE OPTIONS to fix this — choose one or " + "combine:\n");
         sb.append("- Add a dedicated review/lektorat phase AFTER the "
                 + "drafting phases that explicitly enforces the failed "
                 + "criteria — e.g. 'check every chapter against criterion "
@@ -649,8 +633,7 @@ public class ContentValidatingPhase {
     }
 
     private void appendLlmRecord(
-            ArchitectState state, String response, String modelAlias,
-            long durationMs, int attempt) {
+            ArchitectState state, String response, String modelAlias, long durationMs, int attempt) {
         int id = state.getLlmCallRecords().size() + 1;
         LlmCallRecord record = LlmCallRecord.builder()
                 .id("llm" + id)
@@ -666,12 +649,11 @@ public class ContentValidatingPhase {
     }
 
     private void appendIteration(
-            ArchitectState state, String inputSummary,
-            String outputSummary, PhaseIteration.IterationOutcome outcome) {
+            ArchitectState state, String inputSummary, String outputSummary, PhaseIteration.IterationOutcome outcome) {
         int attempt = (int) state.getIterations().stream()
-                .filter(it -> it.getPhase()
-                        == ArchitectStatus.EXECUTION_VALIDATING)
-                .count() + 1;
+                        .filter(it -> it.getPhase() == ArchitectStatus.EXECUTION_VALIDATING)
+                        .count()
+                + 1;
         PhaseIteration it = PhaseIteration.builder()
                 .iteration(attempt)
                 .phase(ArchitectStatus.EXECUTION_VALIDATING)
@@ -693,8 +675,11 @@ public class ContentValidatingPhase {
         Object v = p.get(JUDGE_TEMPERATURE_KEY);
         if (v instanceof Number n) return n.doubleValue();
         if (v instanceof String s && !s.isBlank()) {
-            try { return Double.parseDouble(s); }
-            catch (NumberFormatException ignored) { return 0.0; }
+            try {
+                return Double.parseDouble(s);
+            } catch (NumberFormatException ignored) {
+                return 0.0;
+            }
         }
         return 0.0;
     }

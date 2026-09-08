@@ -64,8 +64,7 @@ public class GatheringPhase {
      *  in addition to the project's own {@code _vance/manuals/} folder,
      *  so Slart can plan its three architect schemas even on
      *  greenfield projects without an installed kit. */
-    public static final String BUNDLED_MANUALS_ROOT =
-            "classpath:vance-defaults/_vance/manuals/slartibartfast/";
+    public static final String BUNDLED_MANUALS_ROOT = "classpath:vance-defaults/_vance/manuals/slartibartfast/";
 
     /** Per-source content cap. Manuals over this size get
      *  truncated with a marker — protects engineParams against
@@ -80,10 +79,7 @@ public class GatheringPhase {
      * {@code state.rationales}; appends one
      * {@link PhaseIteration} entry. Caller advances the status.
      */
-    public void execute(
-            ArchitectState state,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    public void execute(ArchitectState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
         String tenantId = process.getTenantId();
         String projectId = process.getProjectId();
 
@@ -92,7 +88,7 @@ public class GatheringPhase {
         // Rebuild from scratch — recovery rollback must not pile.
         List<EvidenceSource> sources = new ArrayList<>(manuals.size());
         List<Rationale> rationalePool = new ArrayList<>(state.getRationales());
-        int seq = nextEvidenceSeq(state);
+        int seq = nextEvidenceSeq();
         int rationaleSeq = rationalePool.size() + 1;
 
         for (DocumentDocument doc : manuals) {
@@ -150,16 +146,20 @@ public class GatheringPhase {
         state.setEvidenceSources(sources);
         state.setRationales(rationalePool);
 
-        appendIteration(state,
+        appendIteration(
+                state,
                 "scanned project for manuals/ documents",
                 manuals.size() + " project manual"
                         + (manuals.size() == 1 ? "" : "s")
                         + " + " + bundled.size() + " bundled self-knowledge",
                 PhaseIteration.IterationOutcome.PASSED);
 
-        log.info("Slartibartfast id='{}' GATHERING ingested {} project manual(s) "
+        log.info(
+                "Slartibartfast id='{}' GATHERING ingested {} project manual(s) "
                         + "+ {} bundled self-knowledge file(s) for schema {}",
-                process.getId(), manuals.size(), bundled.size(),
+                process.getId(),
+                manuals.size(),
+                bundled.size(),
                 state.getOutputSchemaType());
     }
 
@@ -218,8 +218,11 @@ public class GatheringPhase {
             Resource[] resources = resolver.getResources(pattern);
             // Sort by URI for stable ev-id assignment across runs.
             java.util.Arrays.sort(resources, Comparator.comparing(r -> {
-                try { return r.getURI().toString(); }
-                catch (IOException e) { return ""; }
+                try {
+                    return r.getURI().toString();
+                } catch (IOException e) {
+                    return "";
+                }
             }));
             for (Resource resource : resources) {
                 try (InputStream in = resource.getInputStream()) {
@@ -227,19 +230,21 @@ public class GatheringPhase {
                     String content = new String(bytes, StandardCharsets.UTF_8);
                     String filename = resource.getFilename();
                     if (filename == null) continue;
-                    String displayPath = "vance-defaults/_vance/manuals/slartibartfast/"
-                            + bundledSchemaDir(schemaType) + "/" + filename;
+                    String displayPath = "vance-defaults/_vance/manuals/slartibartfast/" + bundledSchemaDir(schemaType)
+                            + "/" + filename;
                     out.add(new BundledManual(displayPath, content));
                 } catch (IOException e) {
-                    log.warn("Slartibartfast GATHERING failed reading bundled "
-                                    + "manual '{}': {}",
-                            resource.getDescription(), e.toString());
+                    log.warn(
+                            "Slartibartfast GATHERING failed reading bundled " + "manual '{}': {}",
+                            resource.getDescription(),
+                            e.toString());
                 }
             }
         } catch (IOException e) {
-            log.warn("Slartibartfast GATHERING failed listing bundled manuals "
-                            + "under '{}': {}",
-                    pattern, e.toString());
+            log.warn(
+                    "Slartibartfast GATHERING failed listing bundled manuals " + "under '{}': {}",
+                    pattern,
+                    e.toString());
         }
         return out;
     }
@@ -261,18 +266,16 @@ public class GatheringPhase {
             }
             String content = buf.toString(StandardCharsets.UTF_8);
             if (in.read() != -1) {
-                content = content + "\n\n[…content truncated at "
-                        + MAX_CONTENT_CHARS + " chars…]";
+                content = content + "\n\n[…content truncated at " + MAX_CONTENT_CHARS + " chars…]";
             }
             return content;
         } catch (IOException e) {
-            log.warn("Slartibartfast GATHERING: failed to read manual '{}': {}",
-                    doc.getPath(), e.toString());
+            log.warn("Slartibartfast GATHERING: failed to read manual '{}': {}", doc.getPath(), e.toString());
             return "";
         }
     }
 
-    private static int nextEvidenceSeq(ArchitectState state) {
+    private static int nextEvidenceSeq() {
         // ev-ids are assigned sequentially; on a fresh GATHERING
         // pass we start from 1. We DON'T preserve old ev-ids on
         // recovery — the source list is rebuilt and downstream
@@ -282,12 +285,11 @@ public class GatheringPhase {
     }
 
     private static void appendIteration(
-            ArchitectState state,
-            String inputSummary,
-            String outputSummary,
-            PhaseIteration.IterationOutcome outcome) {
+            ArchitectState state, String inputSummary, String outputSummary, PhaseIteration.IterationOutcome outcome) {
         int attempt = (int) state.getIterations().stream()
-                .filter(it -> it.getPhase() == ArchitectStatus.GATHERING).count() + 1;
+                        .filter(it -> it.getPhase() == ArchitectStatus.GATHERING)
+                        .count()
+                + 1;
         List<PhaseIteration> log = new ArrayList<>(state.getIterations());
         log.add(PhaseIteration.builder()
                 .iteration(attempt)

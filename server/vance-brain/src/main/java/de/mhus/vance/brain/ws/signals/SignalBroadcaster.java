@@ -58,9 +58,7 @@ public class SignalBroadcaster {
     /** Per-process identity used to ignore our own Redis pub/sub echoes. */
     private final String podId = UUID.randomUUID().toString();
 
-    public SignalBroadcaster(WebSocketSender sender,
-                             VanceRedisMessagingService redis,
-                             ObjectMapper objectMapper) {
+    public SignalBroadcaster(WebSocketSender sender, VanceRedisMessagingService redis, ObjectMapper objectMapper) {
         this.sender = sender;
         this.redis = redis;
         this.objectMapper = objectMapper;
@@ -70,7 +68,7 @@ public class SignalBroadcaster {
 
     @PostConstruct
     public void start() {
-        redis.subscribeAcrossTenants(CHANNEL, this::onRemote);
+        redis.subscribeAcrossTenants(CHANNEL, (topic, body) -> onRemote(body));
         log.debug("SignalBroadcaster: podId={} redis.enabled={}", podId, redis.isEnabled());
     }
 
@@ -85,7 +83,9 @@ public class SignalBroadcaster {
         String wsId = wsSession.getId();
         bySession.computeIfAbsent(wsId, k -> ConcurrentHashMap.newKeySet()).add(path);
         bySessionInfo.putIfAbsent(wsId, new LocalSubscriber(wsSession, ctx));
-        localSubsByPath.computeIfAbsent(path, k -> ConcurrentHashMap.newKeySet()).add(wsId);
+        localSubsByPath
+                .computeIfAbsent(path, k -> ConcurrentHashMap.newKeySet())
+                .add(wsId);
         log.trace("signals.subscribe: ws='{}' user='{}' path='{}'", wsId, ctx.getUserId(), path);
     }
 
@@ -144,8 +144,7 @@ public class SignalBroadcaster {
         try {
             redis.publish(tenantId, CHANNEL, encode(tenantId, frame));
         } catch (RuntimeException ex) {
-            log.debug("signals redis publish failed for '{}/{}': {}",
-                    tenantId, frame.getPath(), ex.toString());
+            log.debug("signals redis publish failed for '{}/{}': {}", tenantId, frame.getPath(), ex.toString());
         }
     }
 
@@ -168,22 +167,21 @@ public class SignalBroadcaster {
         try {
             sender.sendOnChannel(wsSession, CHANNEL, envelope);
         } catch (IOException e) {
-            log.debug("signals push failed ws='{}' path='{}': {}",
-                    wsSession.getId(), path, e.toString());
+            log.debug("signals push failed ws='{}' path='{}': {}", wsSession.getId(), path, e.toString());
         }
     }
 
     // ─── cross-pod receive ──────────────────────────────────────────────
 
-    private void onRemote(String topic, String body) {
+    private void onRemote(String body) {
         // {podId}|{tenantId}|{base64(json(SignalFrame))}
         String[] parts = body.split("\\|", -1);
         if (parts.length < 3) return;
-        if (Objects.equals(parts[0], podId)) return;  // own echo
+        if (Objects.equals(parts[0], podId)) return; // own echo
         String tenantId = parts[1];
         SignalFrame frame = decode(parts[2]);
         if (frame == null || frame.getPath() == null) return;
-        if (localSubsByPath.get(frame.getPath()) == null) return;  // nobody local cares
+        if (localSubsByPath.get(frame.getPath()) == null) return; // nobody local cares
         broadcastLocal(tenantId, frame);
     }
 

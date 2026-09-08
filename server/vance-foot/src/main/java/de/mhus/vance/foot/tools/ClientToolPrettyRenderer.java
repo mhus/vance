@@ -53,8 +53,7 @@ public class ClientToolPrettyRenderer {
         FootConfig.ToolOutput cfg = config.getUi().getToolOutput();
         this.headerStyle = StyleParser.parse(cfg.getHeader());
         this.resultStyle = StyleParser.parse(cfg.getResult());
-        this.diffRenderer = new FileDiffRenderer(
-                terminal, cfg, config.getUi().getSyntaxHighlight());
+        this.diffRenderer = new FileDiffRenderer(terminal, cfg, config.getUi().getSyntaxHighlight());
     }
 
     public boolean isEnabled() {
@@ -71,6 +70,7 @@ public class ClientToolPrettyRenderer {
         final String toolName;
         final Map<String, Object> params;
         final @Nullable String preContent;
+
         State(String toolName, Map<String, Object> params, @Nullable String preContent) {
             this.toolName = toolName;
             this.params = params;
@@ -108,7 +108,7 @@ public class ClientToolPrettyRenderer {
         line.append("  ⎿  ").append(oneLine(tail));
         terminal.printlnStyled(Verbosity.INFO, line.toAttributedString());
         if (config.getUi().getToolOutput().isDiffEnabled()) {
-            renderDiff(state, result);
+            renderDiff(state);
         }
     }
 
@@ -150,8 +150,8 @@ public class ClientToolPrettyRenderer {
         }
     }
 
-    private void renderDiff(State state, Map<String, Object> result) {
-        String postContent = computePostContent(state, result);
+    private void renderDiff(State state) {
+        String postContent = computePostContent(state);
         if (postContent == null) return;
         String pre = state.preContent == null ? "" : state.preContent;
         SourceLanguage language = SourceLanguage.fromPath(string(state.params, "path"));
@@ -164,7 +164,7 @@ public class ClientToolPrettyRenderer {
      * full content is in the params; for {@code client_file_edit} we
      * reconstruct it by applying the unique replace to {@link State#preContent}.
      */
-    private static @Nullable String computePostContent(State state, Map<String, Object> result) {
+    private static @Nullable String computePostContent(State state) {
         return switch (state.toolName) {
             case "client_file_write" -> string(state.params, "content");
             case "client_file_edit" -> {
@@ -174,9 +174,7 @@ public class ClientToolPrettyRenderer {
                 if (oldText.isEmpty()) yield null;
                 int at = state.preContent.indexOf(oldText);
                 if (at < 0) yield null;
-                yield state.preContent.substring(0, at)
-                        + newText
-                        + state.preContent.substring(at + oldText.length());
+                yield state.preContent.substring(0, at) + newText + state.preContent.substring(at + oldText.length());
             }
             default -> null;
         };
@@ -213,45 +211,40 @@ public class ClientToolPrettyRenderer {
      * etc.) the leading fragments stay readable and the long ones get
      * the ellipsis.
      */
-    private static String summariseParams(String toolName,
-                                          Map<String, Object> params,
-                                          int maxLen) {
+    private static String summariseParams(String toolName, Map<String, Object> params, int maxLen) {
         if (params == null || params.isEmpty()) return "";
-        String raw = switch (toolName) {
-            case "client_file_read", "client_file_list", "client_file_count",
-                    "client_file_head_tail" ->
-                    pathOnly(params);
-            case "client_file_write" -> {
-                String path = string(params, "path");
-                Object content = params.get("content");
-                int chars = content instanceof String s ? s.length() : 0;
-                yield path + (chars > 0 ? ", " + chars + " chars" : "");
-            }
-            case "client_file_edit" -> {
-                String path = string(params, "path");
-                Object oldS = params.get("oldText");
-                int oldLen = oldS instanceof String s ? s.length() : 0;
-                yield path + (oldLen > 0 ? ", replace " + oldLen + " chars" : "");
-            }
-            case "client_file_grep" -> {
-                String pattern = string(params, "pattern");
-                String path = string(params, "path");
-                yield (pattern.isEmpty() ? "" : "/" + pattern + "/ ")
-                        + (path.isEmpty() ? "." : path);
-            }
-            case "client_file_find" -> {
-                String glob = string(params, "pathGlob");
-                String path = string(params, "path");
-                yield (glob.isEmpty() ? "*" : glob)
-                        + " in " + (path.isEmpty() ? "." : path);
-            }
-            case "client_exec_run" -> oneLine(string(params, "command"));
-            case "client_exec_status", "client_exec_stat", "client_exec_kill",
-                    "client_exec_tail" ->
-                    string(params, "id");
-            case "client_javascript" -> oneLine(string(params, "code"));
-            default -> shortDescribe(params, maxLen);
-        };
+        String raw =
+                switch (toolName) {
+                    case "client_file_read", "client_file_list", "client_file_count", "client_file_head_tail" ->
+                        pathOnly(params);
+                    case "client_file_write" -> {
+                        String path = string(params, "path");
+                        Object content = params.get("content");
+                        int chars = content instanceof String s ? s.length() : 0;
+                        yield path + (chars > 0 ? ", " + chars + " chars" : "");
+                    }
+                    case "client_file_edit" -> {
+                        String path = string(params, "path");
+                        Object oldS = params.get("oldText");
+                        int oldLen = oldS instanceof String s ? s.length() : 0;
+                        yield path + (oldLen > 0 ? ", replace " + oldLen + " chars" : "");
+                    }
+                    case "client_file_grep" -> {
+                        String pattern = string(params, "pattern");
+                        String path = string(params, "path");
+                        yield (pattern.isEmpty() ? "" : "/" + pattern + "/ ") + (path.isEmpty() ? "." : path);
+                    }
+                    case "client_file_find" -> {
+                        String glob = string(params, "pathGlob");
+                        String path = string(params, "path");
+                        yield (glob.isEmpty() ? "*" : glob) + " in " + (path.isEmpty() ? "." : path);
+                    }
+                    case "client_exec_run" -> oneLine(string(params, "command"));
+                    case "client_exec_status", "client_exec_stat", "client_exec_kill", "client_exec_tail" ->
+                        string(params, "id");
+                    case "client_javascript" -> oneLine(string(params, "code"));
+                    default -> shortDescribe(params, maxLen);
+                };
         return truncate(raw, maxLen);
     }
 
@@ -261,8 +254,7 @@ public class ClientToolPrettyRenderer {
             case "client_file_read" -> {
                 Object total = r.get("totalChars");
                 Object trunc = r.get("truncated");
-                yield "Read " + total + " chars"
-                        + (Boolean.TRUE.equals(trunc) ? " (truncated)" : "");
+                yield "Read " + total + " chars" + (Boolean.TRUE.equals(trunc) ? " (truncated)" : "");
             }
             case "client_file_write" -> {
                 Object chars = r.get("chars");
@@ -285,7 +277,8 @@ public class ClientToolPrettyRenderer {
             case "client_file_find" -> {
                 Object matches = r.get("matchCount");
                 Object returned = r.get("returned");
-                yield "Found " + matches + (matches != null && matches.equals(returned) ? "" : ", returned " + returned);
+                yield "Found " + matches
+                        + (matches != null && matches.equals(returned) ? "" : ", returned " + returned);
             }
             case "client_file_count" -> {
                 Object lines = r.get("lines");
@@ -294,8 +287,7 @@ public class ClientToolPrettyRenderer {
             }
             case "client_file_head_tail" -> {
                 Object total = r.get("totalLines");
-                List<?> rows = r.get("head") instanceof List<?> h ? h
-                        : r.get("tail") instanceof List<?> t ? t : null;
+                List<?> rows = r.get("head") instanceof List<?> h ? h : r.get("tail") instanceof List<?> t ? t : null;
                 yield (rows == null ? 0 : rows.size()) + " rows of " + total + " total";
             }
             case "client_exec_run", "client_exec_status" -> {
@@ -336,7 +328,8 @@ public class ClientToolPrettyRenderer {
         // AttributedString → terminal (screen spoof, OSC-52 clipboard, hidden
         // text). summariseParams + renderError both funnel through here.
         return de.mhus.vance.foot.ui.TerminalSanitizer.sanitizeContent(s)
-                .replace('\n', ' ').replace('\r', ' ');
+                .replace('\n', ' ')
+                .replace('\r', ' ');
     }
 
     /**
@@ -357,7 +350,10 @@ public class ClientToolPrettyRenderer {
         int i = 0;
         for (Map.Entry<String, Object> e : params.entrySet()) {
             if (i++ > 0) sb.append(", ");
-            if (i > 3) { sb.append("…"); break; }
+            if (i > 3) {
+                sb.append("…");
+                break;
+            }
             sb.append(e.getKey()).append("=");
             Object v = e.getValue();
             // Per-value cap is a third of the overall budget — keeps a

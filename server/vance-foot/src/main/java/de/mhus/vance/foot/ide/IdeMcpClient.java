@@ -72,12 +72,13 @@ public final class IdeMcpClient {
     private final AtomicReference<Set<String>> toolsRef = new AtomicReference<>(Set.of());
     private final StringBuilder textBuffer = new StringBuilder();
 
-    public IdeMcpClient(URI uri,
-                        String authToken,
-                        long pid,
-                        String clientName,
-                        String clientVersion,
-                        Consumer<Notification> notificationSink) {
+    public IdeMcpClient(
+            URI uri,
+            String authToken,
+            long pid,
+            String clientName,
+            String clientVersion,
+            Consumer<Notification> notificationSink) {
         this.uri = uri;
         this.authToken = authToken;
         this.pid = pid;
@@ -91,7 +92,8 @@ public final class IdeMcpClient {
      * initialized → ide_connected → tools/list). Throws on any failure.
      */
     public void connect() throws Exception {
-        WebSocket socket = HttpClient.newHttpClient().newWebSocketBuilder()
+        WebSocket socket = HttpClient.newHttpClient()
+                .newWebSocketBuilder()
                 .subprotocols(MCP_SUBPROTOCOL)
                 .header(AUTH_HEADER, authToken)
                 .connectTimeout(Duration.ofSeconds(5))
@@ -99,14 +101,12 @@ public final class IdeMcpClient {
                 .get(10, TimeUnit.SECONDS);
         wsRef.set(socket);
 
-        ObjectNode initParams = json.createObjectNode()
-                .put("protocolVersion", MCP_PROTOCOL_VERSION);
-        initParams.set("capabilities", json.createObjectNode()
-                .set("roots", json.createObjectNode())
-                .set("sampling", json.createObjectNode()));
-        initParams.set("clientInfo", json.createObjectNode()
-                .put("name", clientName)
-                .put("version", clientVersion));
+        ObjectNode initParams = json.createObjectNode().put("protocolVersion", MCP_PROTOCOL_VERSION);
+        initParams.set(
+                "capabilities",
+                json.createObjectNode().set("roots", json.createObjectNode()).set("sampling", json.createObjectNode()));
+        initParams.set(
+                "clientInfo", json.createObjectNode().put("name", clientName).put("version", clientVersion));
         request("initialize", initParams, Duration.ofSeconds(10));
 
         notify("notifications/initialized", null);
@@ -154,18 +154,15 @@ public final class IdeMcpClient {
             throw new IllegalStateException("not connected");
         }
         long id = nextId.incrementAndGet();
-        ObjectNode envelope = json.createObjectNode()
-                .put("jsonrpc", "2.0")
-                .put("id", id)
-                .put("method", method);
+        ObjectNode envelope =
+                json.createObjectNode().put("jsonrpc", "2.0").put("id", id).put("method", method);
         if (params != null) {
             envelope.set("params", params);
         }
         CompletableFuture<JsonNode> future = new CompletableFuture<>();
         pending.put(id, future);
         try {
-            ws.sendText(json.writeValueAsString(envelope), true)
-                    .get(2, TimeUnit.SECONDS);
+            ws.sendText(json.writeValueAsString(envelope), true).get(2, TimeUnit.SECONDS);
         } catch (ExecutionException e) {
             pending.remove(id);
             throw new IdeRpcException(-1, "send failed: " + cause(e), null);
@@ -192,15 +189,12 @@ public final class IdeMcpClient {
         if (ws == null) {
             return;
         }
-        ObjectNode envelope = json.createObjectNode()
-                .put("jsonrpc", "2.0")
-                .put("method", method);
+        ObjectNode envelope = json.createObjectNode().put("jsonrpc", "2.0").put("method", method);
         if (params != null) {
             envelope.set("params", params);
         }
         try {
-            ws.sendText(json.writeValueAsString(envelope), true)
-                    .get(2, TimeUnit.SECONDS);
+            ws.sendText(json.writeValueAsString(envelope), true).get(2, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("notification {} failed: {}", method, e.toString());
         }
@@ -242,7 +236,7 @@ public final class IdeMcpClient {
         JsonNode idNode = message.get("id");
         String method = textOrNull(message, "method");
         if (method != null && idNode != null && !idNode.isNull()) {
-            handleServerRequest(method, idNode, message.get("params"));
+            handleServerRequest(method, idNode);
             return;
         }
         if (method != null) {
@@ -254,14 +248,13 @@ public final class IdeMcpClient {
         }
     }
 
-    private void handleServerRequest(String method, JsonNode idNode, @Nullable JsonNode params) {
+    private void handleServerRequest(String method, JsonNode idNode) {
         WebSocket ws = wsRef.get();
         if (ws == null) {
             return;
         }
         if ("ping".equals(method)) {
-            ObjectNode reply = json.createObjectNode()
-                    .put("jsonrpc", "2.0");
+            ObjectNode reply = json.createObjectNode().put("jsonrpc", "2.0");
             reply.set("id", idNode);
             reply.set("result", json.createObjectNode());
             try {
@@ -273,9 +266,8 @@ public final class IdeMcpClient {
         }
         ObjectNode err = json.createObjectNode().put("jsonrpc", "2.0");
         err.set("id", idNode);
-        ObjectNode errBody = json.createObjectNode()
-                .put("code", -32_601)
-                .put("message", "Method not implemented: " + method);
+        ObjectNode errBody =
+                json.createObjectNode().put("code", -32_601).put("message", "Method not implemented: " + method);
         err.set("error", errBody);
         try {
             ws.sendText(json.writeValueAsString(err), true);
@@ -298,8 +290,8 @@ public final class IdeMcpClient {
         if (error != null && !error.isNull()) {
             int code = error.has("code") ? error.get("code").asInt(-1) : -1;
             String msg = textOrNull(error, "message");
-            future.completeExceptionally(new IdeRpcException(code,
-                    msg == null ? "(no message)" : msg, error.get("data")));
+            future.completeExceptionally(
+                    new IdeRpcException(code, msg == null ? "(no message)" : msg, error.get("data")));
             return;
         }
         future.complete(message.get("result"));
@@ -311,8 +303,7 @@ public final class IdeMcpClient {
     }
 
     /** Server-pushed JSON-RPC notification, delivered to the sink. */
-    public record Notification(String method, @Nullable JsonNode params) {
-    }
+    public record Notification(String method, @Nullable JsonNode params) {}
 
     private final class Listener implements WebSocket.Listener {
 

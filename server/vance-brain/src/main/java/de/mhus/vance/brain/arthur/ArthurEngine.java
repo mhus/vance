@@ -1451,11 +1451,11 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             case ArthurActionSchema.TYPE_ANSWER -> handleAnswer(action);
             case ArthurActionSchema.TYPE_ASK_USER -> handleAskUser(action);
             case ArthurActionSchema.TYPE_DELEGATE -> handleDelegate(action, process, ctx);
-            case ArthurActionSchema.TYPE_RELAY -> handleRelay(action, process, ctx);
+            case ArthurActionSchema.TYPE_RELAY -> handleRelay(action, process);
             case ArthurActionSchema.TYPE_WAIT -> handleWait(action);
             case ArthurActionSchema.TYPE_REJECT -> handleReject(action);
             case ArthurActionSchema.TYPE_LEARN -> handleLearn(action, process, ctx);
-            case ArthurActionSchema.TYPE_NOTIFY_USER -> handleNotifyUser(action, process, ctx);
+            case ArthurActionSchema.TYPE_NOTIFY_USER -> handleNotifyUser(action, process);
             default -> {
                 // Should never happen — the base class validates against
                 // supportedActionTypes() before reaching here. Surface as
@@ -1957,9 +1957,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * {@code planning/arthur-process-event-attribution.md}.
      */
     private ActionTurnOutcome handleRelay(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+            de.mhus.vance.brain.thinkengine.action.EngineAction action, ThinkProcessDocument process) {
         Map<String, SteerMessage.ProcessEvent> available =
                 currentTurnEventsByRef.getOrDefault(process.getId(), Map.of());
 
@@ -2238,9 +2236,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * task or on a blocking problem.
      */
     private ActionTurnOutcome handleNotifyUser(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+            de.mhus.vance.brain.thinkengine.action.EngineAction action, ThinkProcessDocument process) {
         String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
         if (message == null || message.isBlank()) {
             log.warn("Arthur id='{}' NOTIFY_USER missing message — reason='{}'", process.getId(), action.reason());
@@ -2469,7 +2465,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 // This turn's manifest, so the template can gate
                 // tool-specific text on the tool being callable.
                 .withAvailableTools(ctx.tools().primary());
-        String base = composer.compose(process, engineDefaultPrompt(process, modelSize), ctxBuilder);
+        String base = composer.compose(process, engineDefaultPrompt(process), ctxBuilder);
         String discoveryBlock = ctx.tools().discoveryBlockMarkdown();
         if (discoveryBlock != null && !discoveryBlock.isBlank()) {
             base = base + discoveryBlock;
@@ -3077,7 +3073,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * to maintain two separate files unless they want differentiated
      * tiers.
      */
-    private String engineDefaultPrompt(ThinkProcessDocument process, ModelSize modelSize) {
+    private String engineDefaultPrompt(ThinkProcessDocument process) {
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
         return enginePromptResolver.resolveForMode(process, basePath, process.getMode(), ENGINE_FALLBACK_PROMPT);
     }

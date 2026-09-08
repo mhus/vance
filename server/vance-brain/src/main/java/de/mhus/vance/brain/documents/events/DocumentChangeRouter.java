@@ -15,7 +15,6 @@ import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -89,15 +88,20 @@ public class DocumentChangeRouter {
             // and any cache-refresh side effect. A failure here must not
             // unwind the write — log it loudly and let the next read fall
             // back to a lazy bootstrap.
-            log.warn("DocumentChangeRouter: failed to route '{}/{}/{}': {}",
-                    event.tenantId(), event.projectId(), event.path(), ex.toString(), ex);
+            log.warn(
+                    "DocumentChangeRouter: failed to route '{}/{}/{}': {}",
+                    event.tenantId(),
+                    event.projectId(),
+                    event.path(),
+                    ex.toString(),
+                    ex);
         }
     }
 
     private void route(DocumentChangedEvent event) {
         Classification classification = classify(event);
-        metrics.counter("vance.document.routing.classified",
-                "target", classification.kind.tag).increment();
+        metrics.counter("vance.document.routing.classified", "target", classification.kind.tag)
+                .increment();
 
         // Self fires inline: the publisher's own pod must see the refresh
         // before its next read on the same thread / request, and it is the one
@@ -125,20 +129,18 @@ public class DocumentChangeRouter {
         // The tenant-scope project cascade — every live pod in the tenant has
         // a stale cascade-view if it has loaded any project in this tenant.
         if (HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
-            return broadcast(event);
+            return broadcast();
         }
 
         // _user_<login> hub projects are podless by design (per memory
         // user_projects_no_home_pod): Eddie sits on a random WS-pod, so there
         // is no remote holder to notify — but this pod is very likely the one
         // Eddie runs on, so the local refresh matters.
-        if (projectId != null
-                && projectId.startsWith(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX)) {
+        if (projectId != null && projectId.startsWith(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX)) {
             return Classification.selfOnly();
         }
 
-        Optional<ProjectDocument> projectOpt =
-                projectService.findByTenantAndName(event.tenantId(), projectId);
+        Optional<ProjectDocument> projectOpt = projectService.findByTenantAndName(event.tenantId(), projectId);
         if (projectOpt.isEmpty()) {
             // Unknown project — happens for tenant-bootstrap writes that race
             // the project document write itself. Nobody to notify remotely;
@@ -146,8 +148,8 @@ public class DocumentChangeRouter {
             return Classification.selfOnly();
         }
 
-        Optional<String> holder = ProjectOwnership.liveOwnerPodId(
-                projectOpt.get(), Instant.now(), clusterService.leaseTtl());
+        Optional<String> holder =
+                ProjectOwnership.liveOwnerPodId(projectOpt.get(), Instant.now(), clusterService.leaseTtl());
         if (holder.isEmpty() || holder.get().equals(clusterService.selfPodId())) {
             // No valid lease, or it is ours — either way there is no second
             // pod that needs telling.
@@ -159,15 +161,18 @@ public class DocumentChangeRouter {
         // next claim; we still refresh locally.
         Optional<String> endpoint = clusterService.resolveEndpointByPodId(holder.get());
         if (endpoint.isEmpty()) {
-            log.warn("DocumentChangeRouter: lease holder '{}' for '{}/{}' has no endpoint row — "
+            log.warn(
+                    "DocumentChangeRouter: lease holder '{}' for '{}/{}' has no endpoint row — "
                             + "local refresh only, the holder reloads on its next claim",
-                    projectOpt.get().getHomeNode(), event.tenantId(), projectId);
+                    projectOpt.get().getHomeNode(),
+                    event.tenantId(),
+                    projectId);
             return Classification.selfOnly();
         }
         return Classification.selfAndRemote(endpoint.get());
     }
 
-    private Classification broadcast(DocumentChangedEvent event) {
+    private Classification broadcast() {
         List<BrainPodDocument> live = clusterService.liveClusterPods();
         Set<String> remoteEndpoints = new LinkedHashSet<>();
         String self = clusterService.selfNodeName();
@@ -194,12 +199,13 @@ public class DocumentChangeRouter {
     }
 
     private void publishRouted(DocumentChangedEvent event) {
-        RoutedDocumentChangedEvent routed = switch (event) {
-            case DocumentChangedEvent.Upserted u -> new RoutedDocumentChangedEvent.Upserted(
-                    u.tenantId(), u.projectId(), u.path(), u.documentId());
-            case DocumentChangedEvent.Deleted d -> new RoutedDocumentChangedEvent.Deleted(
-                    d.tenantId(), d.projectId(), d.path(), d.documentId());
-        };
+        RoutedDocumentChangedEvent routed =
+                switch (event) {
+                    case DocumentChangedEvent.Upserted u ->
+                        new RoutedDocumentChangedEvent.Upserted(u.tenantId(), u.projectId(), u.path(), u.documentId());
+                    case DocumentChangedEvent.Deleted d ->
+                        new RoutedDocumentChangedEvent.Deleted(d.tenantId(), d.projectId(), d.path(), d.documentId());
+                };
         eventPublisher.publishEvent(routed);
     }
 
@@ -215,7 +221,10 @@ public class DocumentChangeRouter {
         BROADCAST("broadcast");
 
         final String tag;
-        Kind(String tag) { this.tag = tag; }
+
+        Kind(String tag) {
+            this.tag = tag;
+        }
     }
 
     /**
@@ -230,6 +239,7 @@ public class DocumentChangeRouter {
         static Classification selfOnly() {
             return new Classification(Kind.SELF, true, List.of());
         }
+
         static Classification selfAndRemote(String endpoint) {
             return new Classification(Kind.REMOTE, true, List.of(endpoint));
         }

@@ -107,7 +107,13 @@ public class SettingFormPlanBuilder {
                 continue;
             }
             PlannedSettingAction action = planForField(
-                    form, field, binding, values, ctx, projectId, userId, tenantId,
+                    form,
+                    field,
+                    binding,
+                    values,
+                    ctx,
+                    projectId,
+                    userId,
                     liveStates.getOrDefault(field.getName(), FieldLiveState.ABSENT));
             if (action == null) continue;
             recordPlanned(seen, out, action);
@@ -116,8 +122,7 @@ public class SettingFormPlanBuilder {
         // 2) Computed settings.
         for (int i = 0; i < form.computedSettings().size(); i++) {
             ResolvedComputedSetting cs = form.computedSettings().get(i);
-            PlannedSettingAction action = planForComputed(
-                    form, cs, i, ctx, projectId, userId, tenantId);
+            PlannedSettingAction action = planForComputed(form, cs, i, ctx, projectId, userId);
             recordPlanned(seen, out, action);
         }
 
@@ -131,9 +136,7 @@ public class SettingFormPlanBuilder {
      * {@code showIf}/{@code writeIf} evaluation.
      */
     public List<PlannedSettingAction> buildResetPlan(
-            ResolvedSettingForm form,
-            @Nullable String projectId,
-            @Nullable String userId) {
+            ResolvedSettingForm form, @Nullable String projectId, @Nullable String userId) {
         Map<TupleKey, PlannedSettingAction> seen = new LinkedHashMap<>();
         List<PlannedSettingAction> out = new ArrayList<>();
 
@@ -183,7 +186,6 @@ public class SettingFormPlanBuilder {
             Map<String, Object> ctx,
             @Nullable String projectId,
             @Nullable String userId,
-            String tenantId,
             FieldLiveState live) {
         String wireScope = binding.getScope() == null ? form.defaultScope() : binding.getScope();
         ResolvedScope scope = resolveScope(wireScope, projectId, userId);
@@ -191,17 +193,22 @@ public class SettingFormPlanBuilder {
         String sourceLabel = "fields[" + field.getName() + "]";
         boolean masked = "password".equals(field.getType()) || settingType.encrypted();
 
-        boolean writeAllowed = evaluateBooleanExpression(
-                field.getWriteIf(), ctx, "fields[" + field.getName() + "].writeIf");
+        boolean writeAllowed =
+                evaluateBooleanExpression(field.getWriteIf(), ctx, "fields[" + field.getName() + "].writeIf");
 
         if (!writeAllowed) {
             // Conditional-Reset outranks the unchanged-check below: a falsy
             // writeIf is an explicit "remove this key", not a no-op.
             return new PlannedSettingAction(
-                    binding.getKey(), wireScope,
-                    scope.referenceType(), scope.referenceId(),
+                    binding.getKey(),
+                    wireScope,
+                    scope.referenceType(),
+                    scope.referenceId(),
                     PlannedSettingAction.Action.DELETE,
-                    null, null, masked, sourceLabel);
+                    null,
+                    null,
+                    masked,
+                    sourceLabel);
         }
 
         // Value equals what the cascade already yields → nothing to write.
@@ -209,10 +216,15 @@ public class SettingFormPlanBuilder {
         // scope being edited.
         if (live.unchanged()) {
             return new PlannedSettingAction(
-                    binding.getKey(), wireScope,
-                    scope.referenceType(), scope.referenceId(),
+                    binding.getKey(),
+                    wireScope,
+                    scope.referenceType(),
+                    scope.referenceId(),
                     PlannedSettingAction.Action.SKIP,
-                    null, null, masked, sourceLabel);
+                    null,
+                    null,
+                    masked,
+                    sourceLabel);
         }
 
         @Nullable Object submitted = values.get(field.getName());
@@ -220,15 +232,19 @@ public class SettingFormPlanBuilder {
 
         if (raw == null) {
             return planForEmptySubmission(
-                    binding, wireScope, scope, settingType, masked, sourceLabel,
-                    live, submitted != null);
+                    binding, wireScope, scope, settingType, masked, sourceLabel, live, submitted != null);
         }
 
         return new PlannedSettingAction(
-                binding.getKey(), wireScope,
-                scope.referenceType(), scope.referenceId(),
+                binding.getKey(),
+                wireScope,
+                scope.referenceType(),
+                scope.referenceId(),
                 PlannedSettingAction.Action.WRITE,
-                raw, settingType, masked, sourceLabel);
+                raw,
+                settingType,
+                masked,
+                sourceLabel);
     }
 
     /**
@@ -296,12 +312,15 @@ public class SettingFormPlanBuilder {
         }
         boolean write = action == PlannedSettingAction.Action.WRITE;
         return new PlannedSettingAction(
-                binding.getKey(), wireScope,
-                scope.referenceType(), scope.referenceId(),
+                binding.getKey(),
+                wireScope,
+                scope.referenceType(),
+                scope.referenceId(),
                 action,
                 write ? "" : null,
                 write ? settingType : null,
-                masked, sourceLabel);
+                masked,
+                sourceLabel);
     }
 
     /**
@@ -316,8 +335,7 @@ public class SettingFormPlanBuilder {
                 return SettingType.valueOf(binding.getSettingType().trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
                 throw new IllegalStateException(
-                        "fields[" + field.getName() + "].bindsTo.settingType invalid: "
-                                + binding.getSettingType());
+                        "fields[" + field.getName() + "].bindsTo.settingType invalid: " + binding.getSettingType());
             }
         }
         return switch (field.getType()) {
@@ -325,14 +343,13 @@ public class SettingFormPlanBuilder {
             case "password" -> SettingType.PASSWORD;
             case "integer" -> SettingType.INT;
             case "boolean" -> SettingType.BOOLEAN;
-            default -> throw new IllegalStateException(
-                    "fields[" + field.getName() + "] is not bindable: type '"
-                            + field.getType() + "'");
+            default ->
+                throw new IllegalStateException(
+                        "fields[" + field.getName() + "] is not bindable: type '" + field.getType() + "'");
         };
     }
 
-    private static @Nullable String coerceScalar(
-            @Nullable Object raw, FormFieldDto field, SettingType settingType) {
+    private static @Nullable String coerceScalar(@Nullable Object raw, FormFieldDto field, SettingType settingType) {
         if (raw == null) return null;
         String s = String.valueOf(raw).trim();
         if (s.isEmpty()) {
@@ -346,22 +363,19 @@ public class SettingFormPlanBuilder {
                 try {
                     yield Long.toString(Long.parseLong(s));
                 } catch (NumberFormatException e) {
-                    throw new IllegalStateException(
-                            "fields[" + field.getName() + "] is not an integer: " + s);
+                    throw new IllegalStateException("fields[" + field.getName() + "] is not an integer: " + s);
                 }
             }
             case DOUBLE -> {
                 try {
                     yield Double.toString(Double.parseDouble(s));
                 } catch (NumberFormatException e) {
-                    throw new IllegalStateException(
-                            "fields[" + field.getName() + "] is not a number: " + s);
+                    throw new IllegalStateException("fields[" + field.getName() + "] is not a number: " + s);
                 }
             }
             case BOOLEAN -> {
                 String low = s.toLowerCase(Locale.ROOT);
-                yield Boolean.toString(
-                        "true".equals(low) || "1".equals(low) || "yes".equals(low) || "on".equals(low));
+                yield Boolean.toString("true".equals(low) || "1".equals(low) || "yes".equals(low) || "on".equals(low));
             }
         };
     }
@@ -374,48 +388,59 @@ public class SettingFormPlanBuilder {
             int index,
             Map<String, Object> ctx,
             @Nullable String projectId,
-            @Nullable String userId,
-            String tenantId) {
+            @Nullable String userId) {
         String wireScope = cs.scope() == null ? form.defaultScope() : cs.scope();
         ResolvedScope scope = resolveScope(wireScope, projectId, userId);
         String sourceLabel = "settings[" + index + "]";
         boolean masked = cs.settingType().encrypted();
 
-        boolean writeAllowed = evaluateBooleanExpression(
-                cs.writeIfExpression(), ctx, sourceLabel + ".writeIf");
+        boolean writeAllowed = evaluateBooleanExpression(cs.writeIfExpression(), ctx, sourceLabel + ".writeIf");
         if (!writeAllowed) {
             return new PlannedSettingAction(
-                    cs.key(), wireScope,
-                    scope.referenceType(), scope.referenceId(),
+                    cs.key(),
+                    wireScope,
+                    scope.referenceType(),
+                    scope.referenceId(),
                     PlannedSettingAction.Action.DELETE,
-                    null, null, masked, sourceLabel);
+                    null,
+                    null,
+                    masked,
+                    sourceLabel);
         }
 
         String rendered;
         try {
             rendered = templateRenderer.render(cs.valueTemplate(), ctx);
         } catch (PromptTemplateException e) {
-            throw new IllegalStateException(
-                    sourceLabel + ".value render failed: " + e.getMessage(), e);
+            throw new IllegalStateException(sourceLabel + ".value render failed: " + e.getMessage(), e);
         }
         if (rendered == null) rendered = "";
         String coerced = coerceComputed(rendered, cs.settingType(), sourceLabel);
         if (coerced == null) {
             return new PlannedSettingAction(
-                    cs.key(), wireScope,
-                    scope.referenceType(), scope.referenceId(),
+                    cs.key(),
+                    wireScope,
+                    scope.referenceType(),
+                    scope.referenceId(),
                     PlannedSettingAction.Action.SKIP,
-                    null, null, masked, sourceLabel);
+                    null,
+                    null,
+                    masked,
+                    sourceLabel);
         }
         return new PlannedSettingAction(
-                cs.key(), wireScope,
-                scope.referenceType(), scope.referenceId(),
+                cs.key(),
+                wireScope,
+                scope.referenceType(),
+                scope.referenceId(),
                 PlannedSettingAction.Action.WRITE,
-                coerced, cs.settingType(), masked, sourceLabel);
+                coerced,
+                cs.settingType(),
+                masked,
+                sourceLabel);
     }
 
-    private static @Nullable String coerceComputed(
-            String rendered, SettingType settingType, String sourceLabel) {
+    private static @Nullable String coerceComputed(String rendered, SettingType settingType, String sourceLabel) {
         String trimmed = rendered.trim();
         if (trimmed.isEmpty()) return null;
         return switch (settingType) {
@@ -424,22 +449,19 @@ public class SettingFormPlanBuilder {
                 try {
                     yield Long.toString(Long.parseLong(trimmed));
                 } catch (NumberFormatException e) {
-                    throw new IllegalStateException(
-                            sourceLabel + ".value did not render to an integer: " + trimmed);
+                    throw new IllegalStateException(sourceLabel + ".value did not render to an integer: " + trimmed);
                 }
             }
             case DOUBLE -> {
                 try {
                     yield Double.toString(Double.parseDouble(trimmed));
                 } catch (NumberFormatException e) {
-                    throw new IllegalStateException(
-                            sourceLabel + ".value did not render to a number: " + trimmed);
+                    throw new IllegalStateException(sourceLabel + ".value did not render to a number: " + trimmed);
                 }
             }
             case BOOLEAN -> {
                 String low = trimmed.toLowerCase(Locale.ROOT);
-                yield Boolean.toString(
-                        "true".equals(low) || "1".equals(low) || "yes".equals(low) || "on".equals(low));
+                yield Boolean.toString("true".equals(low) || "1".equals(low) || "yes".equals(low) || "on".equals(low));
             }
         };
     }
@@ -467,54 +489,46 @@ public class SettingFormPlanBuilder {
      * @throws IllegalStateException when {@code userId} is not provided
      *         for the {@code user} scope, or the scope is unknown.
      */
-    public ResolvedScope resolveScope(
-            String wireScope,
-            @Nullable String projectId,
-            @Nullable String userId) {
+    public ResolvedScope resolveScope(String wireScope, @Nullable String projectId, @Nullable String userId) {
         return switch (wireScope) {
-            case SettingService.SCOPE_PROJECT -> new ResolvedScope(
-                    SettingService.SCOPE_PROJECT,
-                    (projectId == null || projectId.isBlank())
-                            ? HomeBootstrapService.TENANT_PROJECT_NAME
-                            : projectId);
+            case SettingService.SCOPE_PROJECT ->
+                new ResolvedScope(
+                        SettingService.SCOPE_PROJECT,
+                        (projectId == null || projectId.isBlank())
+                                ? HomeBootstrapService.TENANT_PROJECT_NAME
+                                : projectId);
             case SettingService.SCOPE_USER -> {
                 if (userId == null || userId.isBlank()) {
-                    throw new IllegalStateException(
-                            "scope 'user' requires an authenticated user");
+                    throw new IllegalStateException("scope 'user' requires an authenticated user");
                 }
-                yield new ResolvedScope(SettingService.SCOPE_PROJECT,
-                        HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId);
+                yield new ResolvedScope(
+                        SettingService.SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId);
             }
-            case SettingService.SCOPE_TENANT -> new ResolvedScope(
-                    SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME);
-            default -> throw new IllegalStateException(
-                    "unsupported scope '" + wireScope + "'");
+            case SettingService.SCOPE_TENANT ->
+                new ResolvedScope(SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME);
+            default -> throw new IllegalStateException("unsupported scope '" + wireScope + "'");
         };
     }
 
     // ──────────────────── showIf / writeIf ────────────────────
 
-    private Map<String, Boolean> evaluateShowIf(
-            List<FormFieldDto> fields, Map<String, Object> ctx) {
+    private Map<String, Boolean> evaluateShowIf(List<FormFieldDto> fields, Map<String, Object> ctx) {
         Map<String, Boolean> out = new HashMap<>();
         for (FormFieldDto f : fields) {
-            boolean shown = evaluateBooleanExpression(
-                    f.getShowIf(), ctx, "fields[" + f.getName() + "].showIf");
+            boolean shown = evaluateBooleanExpression(f.getShowIf(), ctx, "fields[" + f.getName() + "].showIf");
             out.put(f.getName(), shown);
         }
         return out;
     }
 
-    private boolean evaluateBooleanExpression(
-            @Nullable String expression, Map<String, Object> ctx, String label) {
+    private boolean evaluateBooleanExpression(@Nullable String expression, Map<String, Object> ctx, String label) {
         if (expression == null || expression.isBlank()) return true;
         String probe = "{% if " + expression + " %}1{% endif %}";
         try {
             String result = templateRenderer.render(probe, ctx);
             return result != null && !result.isBlank();
         } catch (PromptTemplateException e) {
-            throw new IllegalStateException(
-                    label + " evaluation failed: " + e.getMessage(), e);
+            throw new IllegalStateException(label + " evaluation failed: " + e.getMessage(), e);
         }
     }
 
@@ -588,21 +602,18 @@ public class SettingFormPlanBuilder {
      * {@link SettingService#getStringValueCascade}.
      */
     private Map<String, String> loadCurrentValues(
-            ResolvedSettingForm form, String tenantId,
-            @Nullable String projectId, @Nullable String userId) {
+            ResolvedSettingForm form, String tenantId, @Nullable String projectId, @Nullable String userId) {
         Map<String, String> out = new HashMap<>();
         for (FormFieldDto f : form.fields()) {
             BindsToDto b = f.getBindsTo();
             if (b == null) continue;
             if ("password".equals(f.getType())) continue;
-            String value = settingService.getStringValueCascade(
-                    tenantId, projectId, null, b.getKey());
+            String value = settingService.getStringValueCascade(tenantId, projectId, null, b.getKey());
             if (value != null) out.put(b.getKey(), value);
         }
         for (ResolvedComputedSetting cs : form.computedSettings()) {
             if (cs.settingType().encrypted()) continue;
-            String value = settingService.getStringValueCascade(
-                    tenantId, projectId, null, cs.key());
+            String value = settingService.getStringValueCascade(tenantId, projectId, null, cs.key());
             if (value != null) out.putIfAbsent(cs.key(), value);
         }
         // User-scope keys live under _user_<user>; not part of the project cascade,
@@ -636,9 +647,7 @@ public class SettingFormPlanBuilder {
      * collision that the planner rejects.
      */
     private static void recordPlanned(
-            Map<TupleKey, PlannedSettingAction> seen,
-            List<PlannedSettingAction> out,
-            PlannedSettingAction action) {
+            Map<TupleKey, PlannedSettingAction> seen, List<PlannedSettingAction> out, PlannedSettingAction action) {
         Objects.requireNonNull(action);
         TupleKey k = new TupleKey(action.referenceType(), action.referenceId(), action.key());
         PlannedSettingAction prior = seen.get(k);
@@ -649,12 +658,11 @@ public class SettingFormPlanBuilder {
         }
         if (prior.action() == PlannedSettingAction.Action.WRITE
                 && action.action() == PlannedSettingAction.Action.WRITE) {
-            throw new IllegalStateException(
-                    "duplicate WRITE plan entries for key '" + action.key() + "' on "
-                            + action.referenceType() + ":" + action.referenceId()
-                            + " — sources: " + prior.sourceLabel()
-                            + " and " + action.sourceLabel()
-                            + ". Use writeIf to make the entries mutually exclusive.");
+            throw new IllegalStateException("duplicate WRITE plan entries for key '" + action.key() + "' on "
+                    + action.referenceType() + ":" + action.referenceId()
+                    + " — sources: " + prior.sourceLabel()
+                    + " and " + action.sourceLabel()
+                    + ". Use writeIf to make the entries mutually exclusive.");
         }
         // Strongest action wins; verbs are ordered WRITE > DELETE > SKIP.
         if (strength(action.action()) > strength(prior.action())) {

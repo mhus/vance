@@ -80,17 +80,18 @@ public class WikiIndexRenderer {
             bySpace.computeIfAbsent(p.space(), k -> new java.util.ArrayList<>()).add(p);
         }
         List<WikiPage> topLevel = bySpace.remove("");
-        boolean showDesc = scan.config().index().showDescriptions();
         if (topLevel != null && !topLevel.isEmpty()) {
             sb.append("## Pages\n\n");
-            renderList(topLevel, sb, showDesc);
+            renderList(topLevel, sb);
             sb.append("\n");
         }
         List<String> spaceKeys = new java.util.ArrayList<>(bySpace.keySet());
         java.util.Collections.sort(spaceKeys);
         for (String space : spaceKeys) {
-            sb.append("## ").append(WikiFolderReader.humanise(space.replace('/', ' '))).append("\n\n");
-            renderList(bySpace.get(space), sb, showDesc);
+            sb.append("## ")
+                    .append(WikiFolderReader.humanise(space.replace('/', ' ')))
+                    .append("\n\n");
+            renderList(bySpace.get(space), sb);
             sb.append("\n");
         }
         if ((topLevel == null || topLevel.isEmpty()) && spaceKeys.isEmpty()) {
@@ -110,10 +111,10 @@ public class WikiIndexRenderer {
             sb.append("No pages in this space yet.\n");
             return;
         }
-        renderList(pages, sb, scan.config().index().showDescriptions());
+        renderList(pages, sb);
     }
 
-    private void renderList(List<WikiPage> pages, StringBuilder sb, boolean showDescriptions) {
+    private void renderList(List<WikiPage> pages, StringBuilder sb) {
         for (WikiPage p : pages) {
             sb.append("- ").append(wikiLink(p, true)).append("\n");
         }
@@ -144,7 +145,9 @@ public class WikiIndexRenderer {
     private static String escape(String s) {
         // Backslash first, then quote, then newline — see WikiApplication.escape.
         // Prevents an unterminated double-quoted YAML scalar (title ending in '\').
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "");
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "");
     }
 }

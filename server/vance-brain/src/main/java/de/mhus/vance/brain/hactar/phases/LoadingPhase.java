@@ -5,17 +5,16 @@ import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.brain.hactar.HactarArgsResolver;
 import de.mhus.vance.brain.hactar.HactarService;
 import de.mhus.vance.brain.hactar.HactarService.ValidationRequest;
-import de.mhus.vance.brain.hactar.phases.ExecutingPhase;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -57,32 +56,25 @@ public class LoadingPhase {
     private final HactarService hactarService;
     private final HactarArgsResolver argsResolver;
 
-    public HactarStatus execute(
-            HactarState state,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    public HactarStatus execute(HactarState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
         String path = state.getScriptRef();
         if (path == null || path.isBlank()) {
             state.setFailureReason(
-                    "LOADING entered without a scriptRef — "
-                            + "buildInitialState should have caught this");
+                    "LOADING entered without a scriptRef — " + "buildInitialState should have caught this");
             return HactarStatus.FAILED;
         }
 
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                process.getTenantId(), process.getProjectId(), path);
+        Optional<LookupResult> hit = documentService.lookupCascade(process.getTenantId(), process.getProjectId(), path);
         if (hit.isEmpty()) {
             state.setFailureReason("Script document not found: " + path);
-            log.warn("Hactar.runLoading id='{}' document not found at '{}'",
-                    process.getId(), path);
+            log.warn("Hactar.runLoading id='{}' document not found at '{}'", process.getId(), path);
             return HactarStatus.FAILED;
         }
 
         String content = hit.get().content();
         if (content == null || content.isBlank()) {
             state.setFailureReason("Script document is empty: " + path);
-            log.warn("Hactar.runLoading id='{}' document at '{}' is empty",
-                    process.getId(), path);
+            log.warn("Hactar.runLoading id='{}' document at '{}' is empty", process.getId(), path);
             return HactarStatus.FAILED;
         }
 
@@ -103,17 +95,15 @@ public class LoadingPhase {
                     process.getId()));
         } catch (RuntimeException e) {
             state.setFailureReason("LOADING validate threw: " + e.getMessage());
-            log.warn("Hactar.runLoading id='{}' HactarService.validate threw: {}",
-                    process.getId(), e.toString());
+            log.warn("Hactar.runLoading id='{}' HactarService.validate threw: {}", process.getId(), e.toString());
             return HactarStatus.FAILED;
         }
 
         // Translate HactarService issues into the API DTO so callers
         // (parent, Cortex run-panel) see them without depending on
         // the brain-internal record.
-        state.setValidationIssues(result.issues().stream()
-                .map(LoadingPhase::toApi)
-                .toList());
+        state.setValidationIssues(
+                result.issues().stream().map(LoadingPhase::toApi).toList());
 
         if (!result.ok()) {
             StringBuilder reason = new StringBuilder("Script failed pre-flight validation (");
@@ -134,9 +124,11 @@ public class LoadingPhase {
             return HactarStatus.FAILED;
         }
 
-        log.info("Hactar.runLoading id='{}' loaded {} chars from '{}' "
-                        + "(source={}, validateBeforeRun={})",
-                process.getId(), content.length(), path,
+        log.info(
+                "Hactar.runLoading id='{}' loaded {} chars from '{}' " + "(source={}, validateBeforeRun={})",
+                process.getId(),
+                content.length(),
+                path,
                 hit.get().source().name().toLowerCase(),
                 state.isValidateBeforeRun());
 
@@ -146,17 +138,14 @@ public class LoadingPhase {
         // terminal — we'd rather FAIL loudly than execute with
         // undefined inputs and produce a confusing GraalJS TypeError.
         try {
-            resolveAndPersistScriptParams(state, process, content);
+            resolveAndPersistScriptParams(process, content);
         } catch (HactarArgsResolver.MissingParamException ex) {
-            log.warn("Hactar.runLoading id='{}' args resolution failed: {}",
-                    process.getId(), ex.getMessage());
+            log.warn("Hactar.runLoading id='{}' args resolution failed: {}", process.getId(), ex.getMessage());
             state.setFailureReason(ex.getMessage());
             return HactarStatus.FAILED;
         }
 
-        return state.isValidateBeforeRun()
-                ? HactarStatus.VALIDATING
-                : HactarStatus.EXECUTING;
+        return state.isValidateBeforeRun() ? HactarStatus.VALIDATING : HactarStatus.EXECUTING;
     }
 
     /**
@@ -168,14 +157,11 @@ public class LoadingPhase {
      * callers may set it explicitly too.
      */
     @SuppressWarnings("unchecked")
-    private void resolveAndPersistScriptParams(
-            HactarState state, ThinkProcessDocument process, String code) {
+    private void resolveAndPersistScriptParams(ThinkProcessDocument process, String code) {
         Map<String, Object> engineParams = process.getEngineParams();
         if (engineParams == null) engineParams = new LinkedHashMap<>();
         Object rawParams = engineParams.get(ExecutingPhase.SCRIPT_PARAMS_KEY);
-        Map<String, Object> supplied = rawParams instanceof Map<?, ?> m
-                ? (Map<String, Object>) m
-                : Map.of();
+        Map<String, Object> supplied = rawParams instanceof Map<?, ?> m ? (Map<String, Object>) m : Map.of();
 
         Map<String, Object> resolved = argsResolver.resolve(
                 code,
@@ -188,14 +174,13 @@ public class LoadingPhase {
         if (resolved.equals(supplied)) {
             return;
         }
-        log.info("Hactar.runLoading id='{}' resolved {} script param(s) "
-                        + "(caller-supplied={}, auto-resolved={})",
+        log.info(
+                "Hactar.runLoading id='{}' resolved {} script param(s) " + "(caller-supplied={}, auto-resolved={})",
                 process.getId(),
                 resolved.size(),
                 supplied.size(),
                 resolved.size() - supplied.size());
-        engineParams.put(ExecutingPhase.SCRIPT_PARAMS_KEY,
-                new LinkedHashMap<>(resolved));
+        engineParams.put(ExecutingPhase.SCRIPT_PARAMS_KEY, new LinkedHashMap<>(resolved));
         process.setEngineParams(engineParams);
     }
 
@@ -215,8 +200,7 @@ public class LoadingPhase {
         return Set.of();
     }
 
-    private static HactarState.ValidationIssue toApi(
-            HactarService.ValidationIssue issue) {
+    private static HactarState.ValidationIssue toApi(HactarService.ValidationIssue issue) {
         return HactarState.ValidationIssue.builder()
                 .severity(issue.severity() == null ? null : issue.severity().name())
                 .code(issue.code())

@@ -244,15 +244,7 @@ public class ProcessSteerHandler implements WsHandler {
             return;
         }
 
-        // Snapshot before lane work so the appended-notification diff
-        // doesn't include messages that already lived in the log.
-        int beforeSize =
-                chatMessageService.history(tenantId, sessionId, processId).size();
-
-        laneScheduler.submit(
-                processId,
-                () -> runLaneTurn(
-                        wsSession, envelope, processId, request.getProcessName(), tenantId, sessionId, beforeSize));
+        laneScheduler.submit(processId, () -> runLaneTurn(wsSession, envelope, processId, request.getProcessName()));
     }
 
     /**
@@ -262,13 +254,7 @@ public class ProcessSteerHandler implements WsHandler {
      * concurrent steers targeting the same process.
      */
     private void runLaneTurn(
-            WebSocketSession wsSession,
-            WebSocketEnvelope envelope,
-            String processId,
-            String processName,
-            String tenantId,
-            String sessionId,
-            int beforeSize) {
+            WebSocketSession wsSession, WebSocketEnvelope envelope, String processId, String processName) {
         try {
             eventEmitter.runTurnNow(processId);
         } catch (Throwable e) {

@@ -64,9 +64,8 @@ public class TrillianCommandHandler implements EngineCommandHandler {
 
         Optional<ThinkProcessDocument> peerOpt = api.findPeer(process.getId());
         if (peerOpt.isEmpty()) {
-            return EngineCommandResult.error(
-                    "No Trillian worker paired with this process — //trillian only works "
-                            + "in a Trillian-Control session");
+            return EngineCommandResult.error("No Trillian worker paired with this process — //trillian only works "
+                    + "in a Trillian-Control session");
         }
         ThinkProcessDocument peer = peerOpt.get();
 
@@ -79,10 +78,10 @@ public class TrillianCommandHandler implements EngineCommandHandler {
             case "stop" -> stop(peer);
             case "continue", "resume" -> resume(peer);
             case "clear" -> clear(peer, rest);
-            default -> EngineCommandResult.error(
-                    "unknown subcommand '" + sub
-                            + "' (info | queue | task <description> | attr [set|del|clear] "
-                            + "| stop | continue | clear [all])");
+            default ->
+                EngineCommandResult.error("unknown subcommand '" + sub
+                        + "' (info | queue | task <description> | attr [set|del|clear] "
+                        + "| stop | continue | clear [all])");
         };
     }
 
@@ -104,8 +103,8 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         out.put("control", controlInfo);
 
         Map<String, Object> workerInfo = new LinkedHashMap<>();
-        String account = java.util.Objects.toString(
-                param(peer, TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME), null);
+        String account =
+                java.util.Objects.toString(param(peer, TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME), null);
         workerInfo.put("account", account);
         // The name a human gave this worker. It lives on the account
         // title, so renaming it in the user editor is all it takes — the
@@ -134,7 +133,8 @@ public class TrillianCommandHandler implements EngineCommandHandler {
             return null;
         }
         try {
-            return userService.findByTenantAndName(tenantId, account)
+            return userService
+                    .findByTenantAndName(tenantId, account)
                     .map(de.mhus.vance.shared.user.UserDocument::getTitle)
                     .orElse(null);
         } catch (RuntimeException e) {
@@ -150,8 +150,8 @@ public class TrillianCommandHandler implements EngineCommandHandler {
      */
     private List<Map<String, Object>> spawnedWorkers(ThinkProcessDocument peer) {
         List<Map<String, Object>> workers = new ArrayList<>();
-        List<ThinkProcessDocument> inSession = thinkProcessService.findBySession(
-                peer.getTenantId(), peer.getSessionId());
+        List<ThinkProcessDocument> inSession =
+                thinkProcessService.findBySession(peer.getTenantId(), peer.getSessionId());
         for (ThinkProcessDocument p : inSession) {
             if (p.getId().equals(peer.getId()) || p.getStatus() == ThinkProcessStatus.CLOSED) {
                 continue;
@@ -190,8 +190,8 @@ public class TrillianCommandHandler implements EngineCommandHandler {
                 .filter(e -> TrillianInternalApi.TASK_EVENT_REQUEST.equals(e.taskEvent()))
                 .count();
         return EngineCommandResult.ok(
-                pending.size() + " queued (" + requests + " waiting task(s), "
-                        + (pending.size() - requests) + " other)",
+                pending.size() + " queued (" + requests + " waiting task(s), " + (pending.size() - requests)
+                        + " other)",
                 Map.of("pending", rows));
     }
 
@@ -200,20 +200,16 @@ public class TrillianCommandHandler implements EngineCommandHandler {
      * wording is already settled — and the only way to exercise the
      * worker loop when the chat side is wedged or slow.
      */
-    private EngineCommandResult task(
-            ThinkProcessDocument control, ThinkProcessDocument peer, String description) {
+    private EngineCommandResult task(ThinkProcessDocument control, ThinkProcessDocument peer, String description) {
         String desc = description.trim();
         if (desc.isEmpty()) {
             return EngineCommandResult.error("usage: //trillian task <description>");
         }
         Optional<String> taskId = api.enqueueTask(control.getId(), peer, desc);
         if (taskId.isEmpty()) {
-            return EngineCommandResult.error(
-                    "Failed to queue the task — see brain logs for detail");
+            return EngineCommandResult.error("Failed to queue the task — see brain logs for detail");
         }
-        return EngineCommandResult.ok(
-                "Queued (taskId=" + taskId.get() + ").",
-                Map.of("taskId", taskId.get()));
+        return EngineCommandResult.ok("Queued (taskId=" + taskId.get() + ").", Map.of("taskId", taskId.get()));
     }
 
     /**
@@ -224,19 +220,18 @@ public class TrillianCommandHandler implements EngineCommandHandler {
      * <p>{@code set} takes the rest of the line as the value, so spaces
      * need no quoting: {@code //trillian attr set persona a dry Swabian}.
      */
-    private EngineCommandResult attr(
-            ThinkProcessDocument control, ThinkProcessDocument peer, String rest) {
+    private EngineCommandResult attr(ThinkProcessDocument control, ThinkProcessDocument peer, String rest) {
         String[] head = splitFirstToken(rest);
         String sub = head[0].isEmpty() ? "list" : head[0].toLowerCase(Locale.ROOT);
         String args = head[1];
         return switch (sub) {
             case "list" -> listAttributes(peer);
-            case "set" -> setAttribute(control, peer, args);
+            case "set" -> setAttribute(control, args);
             case "del", "delete", "remove" -> deleteAttribute(control, args);
             case "clear" -> clearAttributes(control);
-            default -> EngineCommandResult.error(
-                    "unknown attr subcommand '" + sub
-                            + "' (list | set <name> <value> | del <name> | clear)");
+            default ->
+                EngineCommandResult.error(
+                        "unknown attr subcommand '" + sub + "' (list | set <name> <value> | del <name> | clear)");
         };
     }
 
@@ -248,8 +243,7 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         return EngineCommandResult.ok(message, Map.of("attributes", attributes));
     }
 
-    private EngineCommandResult setAttribute(
-            ThinkProcessDocument control, ThinkProcessDocument peer, String args) {
+    private EngineCommandResult setAttribute(ThinkProcessDocument control, String args) {
         String[] parts = splitFirstToken(args);
         String name = parts[0];
         String value = parts[1].trim();
@@ -259,8 +253,7 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         if (!api.setPeerAttribute(control.getId(), name, value)) {
             return EngineCommandResult.error("Could not set '" + name + "' on the worker");
         }
-        return EngineCommandResult.ok("Set " + name + " = " + abbreviate(value),
-                Map.of("name", name, "value", value));
+        return EngineCommandResult.ok("Set " + name + " = " + abbreviate(value), Map.of("name", name, "value", value));
     }
 
     private EngineCommandResult deleteAttribute(ThinkProcessDocument control, String args) {
@@ -270,8 +263,7 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         }
         boolean removed = api.removePeerAttribute(control.getId(), name);
         return EngineCommandResult.ok(
-                removed ? "Removed " + name + "." : "'" + name + "' was not set.",
-                Map.of("removed", removed));
+                removed ? "Removed " + name + "." : "'" + name + "' was not set.", Map.of("removed", removed));
     }
 
     private EngineCommandResult clearAttributes(ThinkProcessDocument control) {
@@ -279,8 +271,7 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         if (cleared < 0) {
             return EngineCommandResult.error("No worker to clear attributes on");
         }
-        return EngineCommandResult.ok("Cleared " + cleared + " attribute(s).",
-                Map.of("cleared", cleared));
+        return EngineCommandResult.ok("Cleared " + cleared + " attribute(s).", Map.of("cleared", cleared));
     }
 
     private EngineCommandResult stop(ThinkProcessDocument peer) {
@@ -299,8 +290,7 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         try {
             ThinkProcessStatus now = api.resumePeer(peer);
             return EngineCommandResult.ok(
-                    "Worker '" + peer.getName() + "' is " + now + ".",
-                    Map.of("status", nameOf(now)));
+                    "Worker '" + peer.getName() + "' is " + now + ".", Map.of("status", nameOf(now)));
         } catch (RuntimeException e) {
             return EngineCommandResult.error("continue failed: " + e.getMessage());
         }
@@ -319,14 +309,15 @@ public class TrillianCommandHandler implements EngineCommandHandler {
                 ? "Dropped " + result.total() + " message(s) — the whole inbox, results included."
                 : "Dropped " + result.taskRequests() + " waiting task(s); "
                         + "result events left in place (//trillian clear all drops those too).";
-        return EngineCommandResult.ok(message, Map.of(
-                "dropped", result.total(),
-                "taskRequests", result.taskRequests(),
-                "other", result.other()));
+        return EngineCommandResult.ok(
+                message,
+                Map.of(
+                        "dropped", result.total(),
+                        "taskRequests", result.taskRequests(),
+                        "other", result.other()));
     }
 
-    private static @org.jspecify.annotations.Nullable String abbreviate(
-            @org.jspecify.annotations.Nullable String s) {
+    private static @org.jspecify.annotations.Nullable String abbreviate(@org.jspecify.annotations.Nullable String s) {
         if (s == null) {
             return null;
         }
@@ -343,9 +334,10 @@ public class TrillianCommandHandler implements EngineCommandHandler {
                 + ", " + workers.size() + " running task worker(s)";
     }
 
-    private @org.jspecify.annotations.Nullable Object param(
-            ThinkProcessDocument process, String key) {
-        return process.getEngineParams() == null ? null : process.getEngineParams().get(key);
+    private @org.jspecify.annotations.Nullable Object param(ThinkProcessDocument process, String key) {
+        return process.getEngineParams() == null
+                ? null
+                : process.getEngineParams().get(key);
     }
 
     private static @org.jspecify.annotations.Nullable String nameOf(
@@ -353,8 +345,7 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         return status == null ? null : status.name();
     }
 
-    private static @org.jspecify.annotations.Nullable String age(
-            @org.jspecify.annotations.Nullable Instant since) {
+    private static @org.jspecify.annotations.Nullable String age(@org.jspecify.annotations.Nullable Instant since) {
         if (since == null) {
             return null;
         }

@@ -33,29 +33,41 @@ public class ThreadMessageAddTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "threadId", Map.of(
-                            "type", "string",
-                            "description", "From inbox_list."),
-                    "body", Map.of(
-                            "type", "string",
-                            "description", "Markdown, up to "
-                                    + InboxMessagePostRequest.MAX_BODY_CHARS + " characters. "
-                                    + "Say what you found or checked; do not state a "
-                                    + "decision as if it were made."),
-                    "parentId", Map.of(
-                            "type", "string",
-                            "description", "Optional: a root-level contribution you are "
-                                    + "replying to. Depth is one level — omit it to post "
-                                    + "at the root.")),
+            "properties",
+                    Map.of(
+                            "threadId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "From inbox_list."),
+                            "body",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Markdown, up to "
+                                                    + InboxMessagePostRequest.MAX_BODY_CHARS + " characters. "
+                                                    + "Say what you found or checked; do not state a "
+                                                    + "decision as if it were made."),
+                            "parentId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional: a root-level contribution you are "
+                                                    + "replying to. Depth is one level — omit it to post "
+                                                    + "at the root.")),
             "required", List.of("threadId", "body"));
 
     private final MaximegalonService threads;
     private final InboxToolSupport support;
 
-    @Override public String name() { return "thread_message_add"; }
+    @Override
+    public String name() {
+        return "thread_message_add";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Add one contribution to an inbox thread's clarification — a finding, a "
                 + "check, a reason something is now moot. THIS DOES NOT ANSWER THE THREAD: "
                 + "an ask stays open until a person decides it, and there is no tool that "
@@ -63,21 +75,41 @@ public class ThreadMessageAddTool implements Tool {
                 + "to bring a forgotten matter back into view.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return true; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
+
+    @Override
+    public String searchHint() {
         return "Contribute a finding or note to an inbox thread without answering it";
     }
 
-    @Override public String troubleshootingHint() {
+    @Override
+    public String troubleshootingHint() {
         return "Thread ids come from inbox_list. A contribution is not an answer — if the "
                 + "thread is waiting on a decision, it still is afterwards.";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -101,7 +133,7 @@ public class ThreadMessageAddTool implements Tool {
             updated = threads.postMessage(tenantId, doc.getId(), owner, body, parentId)
                     .orElseThrow(() -> InboxToolSupport.notVisible(threadId));
         } catch (MaximegalonRuleException e) {
-            throw new ToolException(explain(e, threadId, parentId));
+            throw new ToolException(explain(e, parentId));
         }
 
         List<?> messages = updated.getMessages() == null ? List.of() : updated.getMessages();
@@ -124,20 +156,18 @@ public class ThreadMessageAddTool implements Tool {
      * The reason codes are stable; the wording is this layer's job, because
      * "message_limit_reached" tells a model nothing about its next move.
      */
-    private static String explain(MaximegalonRuleException e, String threadId,
-            @org.jspecify.annotations.Nullable String parentId) {
+    private static String explain(MaximegalonRuleException e, @org.jspecify.annotations.Nullable String parentId) {
         return switch (e.getReason()) {
             case MaximegalonRuleException.MESSAGE_LIMIT_REACHED ->
-                    "this thread holds " + MaximegalonService.MAX_MESSAGES
-                            + " contributions, its limit. A matter that needs more is a new "
-                            + "matter — open one with inbox_post.";
+                "this thread holds " + MaximegalonService.MAX_MESSAGES
+                        + " contributions, its limit. A matter that needs more is a new "
+                        + "matter — open one with inbox_post.";
             case MaximegalonRuleException.INVALID_PARENT ->
-                    "'" + parentId + "' cannot be replied to: it is either unknown in this "
-                            + "thread or already a reply, and replies go one level deep. "
-                            + "Post at the root level instead (omit parentId).";
-            default -> e.getMessage() == null
-                    ? "the thread refused this contribution: " + e.getReason()
-                    : e.getMessage();
+                "'" + parentId + "' cannot be replied to: it is either unknown in this "
+                        + "thread or already a reply, and replies go one level deep. "
+                        + "Post at the root level instead (omit parentId).";
+            default ->
+                e.getMessage() == null ? "the thread refused this contribution: " + e.getReason() : e.getMessage();
         };
     }
 
@@ -149,8 +179,7 @@ public class ThreadMessageAddTool implements Tool {
         return s.trim();
     }
 
-    private static @org.jspecify.annotations.Nullable String optString(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String optString(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         return raw instanceof String s && !s.isBlank() ? s.trim() : null;
     }

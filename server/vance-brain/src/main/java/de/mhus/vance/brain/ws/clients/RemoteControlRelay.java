@@ -81,7 +81,7 @@ public class RemoteControlRelay {
 
     @PostConstruct
     public void start() {
-        redis.subscribeAcrossTenants(CHANNEL, this::onRemote);
+        redis.subscribeAcrossTenants(CHANNEL, (topic, body) -> onRemote(body));
         log.debug("RemoteControlRelay: podId={} redis.enabled={}", podId, redis.isEnabled());
     }
 
@@ -240,7 +240,7 @@ public class RemoteControlRelay {
         }
     }
 
-    private void onRemote(String topic, String body) {
+    private void onRemote(String body) {
         // {podId}|{direction}|{tenantId}|{userId}|{clientId}|{base64(json(envelope))}
         String[] parts = body.split("\\|", -1);
         if (parts.length < 6) return;

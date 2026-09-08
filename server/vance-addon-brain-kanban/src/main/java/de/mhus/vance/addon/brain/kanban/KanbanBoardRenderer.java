@@ -39,12 +39,10 @@ public final class KanbanBoardRenderer {
      * @param fallbackTitle title to use when the manifest has none.
      */
     public static String render(KanbanFolderReader.Scan scan, String fallbackTitle) {
-        String title = scan.manifest().title() != null
-                ? scan.manifest().title() : fallbackTitle;
+        String title = scan.manifest().title() != null ? scan.manifest().title() : fallbackTitle;
 
         KanbanAppConfig cfg = scan.kanbanConfig();
-        Map<String, List<KanbanFolderReader.CardFile>> grouped = groupByColumn(
-                scan.cards(), cfg);
+        Map<String, List<KanbanFolderReader.CardFile>> grouped = groupByColumn(scan.cards());
         List<String> orderedColumns = orderedColumnNames(cfg, grouped);
 
         return switch (cfg.board().style()) {
@@ -55,10 +53,11 @@ public final class KanbanBoardRenderer {
 
     // ── Mermaid ───────────────────────────────────────────────────
 
-    private static String renderMermaid(String title,
-                                        List<String> orderedColumns,
-                                        Map<String, List<KanbanFolderReader.CardFile>> grouped,
-                                        KanbanAppConfig cfg) {
+    private static String renderMermaid(
+            String title,
+            List<String> orderedColumns,
+            Map<String, List<KanbanFolderReader.CardFile>> grouped,
+            KanbanAppConfig cfg) {
         StringBuilder mermaid = new StringBuilder();
         mermaid.append("kanban\n");
         for (String col : orderedColumns) {
@@ -82,8 +81,11 @@ public final class KanbanBoardRenderer {
                 mermaid.append('\n');
             }
             if (cards.size() > shown) {
-                mermaid.append("    overflow_").append(sanitiseMermaidId(col))
-                        .append("[+ ").append(cards.size() - shown).append(" more]\n");
+                mermaid.append("    overflow_")
+                        .append(sanitiseMermaidId(col))
+                        .append("[+ ")
+                        .append(cards.size() - shown)
+                        .append(" more]\n");
             }
         }
         return wrapAsDiagramMarkdown(mermaid.toString(), title);
@@ -122,10 +124,11 @@ public final class KanbanBoardRenderer {
 
     // ── Markdown table ────────────────────────────────────────────
 
-    private static String renderTable(String title,
-                                      List<String> orderedColumns,
-                                      Map<String, List<KanbanFolderReader.CardFile>> grouped,
-                                      KanbanAppConfig cfg) {
+    private static String renderTable(
+            String title,
+            List<String> orderedColumns,
+            Map<String, List<KanbanFolderReader.CardFile>> grouped,
+            KanbanAppConfig cfg) {
         StringBuilder out = new StringBuilder();
         out.append("---\n");
         out.append("kind: text\n");
@@ -177,8 +180,11 @@ public final class KanbanBoardRenderer {
         for (String col : orderedColumns) {
             int size = grouped.getOrDefault(col, List.of()).size();
             if (size > cfg.board().maxCardsPerColumn()) {
-                out.append("\n_+").append(size - cfg.board().maxCardsPerColumn())
-                        .append(" more in ").append(col).append("._\n");
+                out.append("\n_+")
+                        .append(size - cfg.board().maxCardsPerColumn())
+                        .append(" more in ")
+                        .append(col)
+                        .append("._\n");
             }
         }
         return out.toString();
@@ -209,14 +215,14 @@ public final class KanbanBoardRenderer {
     // ── Column ordering / grouping ────────────────────────────────
 
     private static Map<String, List<KanbanFolderReader.CardFile>> groupByColumn(
-            List<KanbanFolderReader.CardFile> cards, KanbanAppConfig cfg) {
+            List<KanbanFolderReader.CardFile> cards) {
         Map<String, List<KanbanFolderReader.CardFile>> grouped = new LinkedHashMap<>();
         for (KanbanFolderReader.CardFile cf : cards) {
             grouped.computeIfAbsent(cf.column(), k -> new ArrayList<>()).add(cf);
         }
         // Sort each column's cards: priority desc, then dueDate asc, then title asc.
-        Comparator<KanbanFolderReader.CardFile> cmp = Comparator
-                .comparingInt((KanbanFolderReader.CardFile cf) -> -priorityWeight(cf.card().priority()))
+        Comparator<KanbanFolderReader.CardFile> cmp = Comparator.comparingInt((KanbanFolderReader.CardFile cf) ->
+                        -priorityWeight(cf.card().priority()))
                 .thenComparing((KanbanFolderReader.CardFile cf) ->
                         cf.card().dueDate() != null ? cf.card().dueDate() : "9999-99-99")
                 .thenComparing(cf -> displayTitle(cf.card(), cf.doc().getPath()));
@@ -227,8 +233,7 @@ public final class KanbanBoardRenderer {
     }
 
     private static List<String> orderedColumnNames(
-            KanbanAppConfig cfg,
-            Map<String, List<KanbanFolderReader.CardFile>> grouped) {
+            KanbanAppConfig cfg, Map<String, List<KanbanFolderReader.CardFile>> grouped) {
         List<String> out = new ArrayList<>();
         Set<String> seen = new java.util.HashSet<>();
 
@@ -276,8 +281,7 @@ public final class KanbanBoardRenderer {
     private static String sanitiseMermaidId(String path) {
         StringBuilder sb = new StringBuilder(path.length());
         for (char c : path.toCharArray()) {
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-                    || (c >= '0' && c <= '9')) {
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
                 sb.append(c);
             } else {
                 sb.append('_');

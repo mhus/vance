@@ -96,8 +96,7 @@ public class MarvinEngine implements ThinkEngine {
     public static final String WORKER_RECIPE_NAME = "marvin-worker";
 
     /** Document-cascade path for the marvin-worker system prompt. */
-    private static final String WORKER_SYSTEM_PROMPT_PATH =
-            "prompts/marvin-worker-system.md";
+    private static final String WORKER_SYSTEM_PROMPT_PATH = "prompts/marvin-worker-system.md";
 
     /** Fallback embedded system prompt — bundled marvin-worker
      *  recipe normally supplies a richer one via the document
@@ -162,17 +161,38 @@ public class MarvinEngine implements ThinkEngine {
 
     // ──────────────────── Metadata ────────────────────
 
-    @Override public String name() { return NAME; }
-    @Override public String title() { return "Marvin (Deep-Think)"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return NAME;
+    }
+
+    @Override
+    public String title() {
+        return "Marvin (Deep-Think)";
+    }
+
+    @Override
+    public String description() {
         return "Autonomous-worker deep-think engine. Every node runs the "
                 + "5-phase state-machine (SCOPE → REFLECT → POST_CHILDREN → "
                 + "CONCLUDE → VALIDATE). The tree grows dynamically; "
                 + "specialist recipes are invoked via CALL_RECIPE.";
     }
-    @Override public String version() { return VERSION; }
-    @Override public Set<String> allowedTools() { return ALLOWED_TOOLS; }
-    @Override public boolean asyncSteer() { return true; }
+
+    @Override
+    public String version() {
+        return VERSION;
+    }
+
+    @Override
+    public Set<String> allowedTools() {
+        return ALLOWED_TOOLS;
+    }
+
+    @Override
+    public boolean asyncSteer() {
+        return true;
+    }
 
     /**
      * Parent-report path. The deliverable of a Marvin process is the
@@ -180,18 +200,14 @@ public class MarvinEngine implements ThinkEngine {
      * the root hasn't reached DONE.
      */
     @Override
-    public ParentReport summarizeForParent(
-            ThinkProcessDocument process, ProcessEventType eventType) {
+    public ParentReport summarizeForParent(ThinkProcessDocument process, ProcessEventType eventType) {
         Map<String, Object> payload = new LinkedHashMap<>();
         Optional<MarvinNodeDocument> rootOpt = nodeService.findRoot(process.getId());
         if (rootOpt.isEmpty()) {
-            return new ParentReport(
-                    "Marvin process '" + process.getId() + "' has no tree yet.",
-                    payload);
+            return new ParentReport("Marvin process '" + process.getId() + "' has no tree yet.", payload);
         }
         MarvinNodeDocument root = rootOpt.get();
-        List<MarvinNodeDocument> rootChildren =
-                nodeService.findChildren(process.getId(), root.getId());
+        List<MarvinNodeDocument> rootChildren = nodeService.findChildren(process.getId(), root.getId());
 
         List<MarvinNodeDocument> failedChildren = new ArrayList<>();
         for (MarvinNodeDocument c : rootChildren) {
@@ -202,8 +218,9 @@ public class MarvinEngine implements ThinkEngine {
             for (MarvinNodeDocument c : failedChildren) {
                 Map<String, Object> entry = new LinkedHashMap<>();
                 entry.put("nodeId", c.getId());
-                entry.put("taskKind", c.getTaskKind() == null
-                        ? null : c.getTaskKind().name());
+                entry.put(
+                        "taskKind",
+                        c.getTaskKind() == null ? null : c.getTaskKind().name());
                 entry.put("goal", c.getGoal());
                 if (c.getFailureReason() != null) {
                     entry.put("failureReason", c.getFailureReason());
@@ -220,10 +237,8 @@ public class MarvinEngine implements ThinkEngine {
             Object res = rootArtifacts.get("result");
             if (res instanceof String s && !s.isBlank()) {
                 payload.put("rootNodeId", root.getId());
-                payload.put("nodeCount",
-                        nodeService.listAll(process.getId()).size());
-                return new ParentReport(
-                        appendFailureBlock(s, failedChildren), payload);
+                payload.put("nodeCount", nodeService.listAll(process.getId()).size());
+                return new ParentReport(appendFailureBlock(s, failedChildren), payload);
             }
         }
 
@@ -233,8 +248,11 @@ public class MarvinEngine implements ThinkEngine {
             if (c.getStatus() == NodeStatus.DONE) doneChildren++;
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("Marvin tree finished (").append(eventType.name().toLowerCase())
-                .append(") — ").append(doneChildren).append(" of ")
+        sb.append("Marvin tree finished (")
+                .append(eventType.name().toLowerCase())
+                .append(") — ")
+                .append(doneChildren)
+                .append(" of ")
                 .append(rootChildren.size())
                 .append(" child(ren) succeeded:\n");
         int included = 0;
@@ -243,9 +261,13 @@ public class MarvinEngine implements ThinkEngine {
             Map<String, Object> a = c.getArtifacts();
             Object res = a == null ? null : a.get("result");
             if (res instanceof String s && !s.isBlank()) {
-                sb.append("\n--- ").append(c.getTaskKind())
-                        .append(" / ").append(abbrev(c.getGoal())).append(" ---\n")
-                        .append(s).append('\n');
+                sb.append("\n--- ")
+                        .append(c.getTaskKind())
+                        .append(" / ")
+                        .append(abbrev(c.getGoal()))
+                        .append(" ---\n")
+                        .append(s)
+                        .append('\n');
                 included++;
             }
         }
@@ -255,12 +277,10 @@ public class MarvinEngine implements ThinkEngine {
         payload.put("includedChildCount", included);
         payload.put("doneChildCount", doneChildren);
         payload.put("nodeCount", nodeService.listAll(process.getId()).size());
-        return new ParentReport(
-                appendFailureBlock(sb.toString(), failedChildren), payload);
+        return new ParentReport(appendFailureBlock(sb.toString(), failedChildren), payload);
     }
 
-    private static String appendFailureBlock(
-            String mainText, List<MarvinNodeDocument> failures) {
+    private static String appendFailureBlock(String mainText, List<MarvinNodeDocument> failures) {
         if (failures.isEmpty()) return mainText;
         StringBuilder sb = new StringBuilder(mainText);
         if (!mainText.endsWith("\n")) sb.append('\n');
@@ -287,20 +307,20 @@ public class MarvinEngine implements ThinkEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("Marvin.start tenant='{}' session='{}' id='{}' goal='{}'",
-                process.getTenantId(), process.getSessionId(), process.getId(),
+        log.info(
+                "Marvin.start tenant='{}' session='{}' id='{}' goal='{}'",
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId(),
                 abbrev(process.getGoal()));
         String goal = process.getGoal();
         if (goal == null || goal.isBlank()) {
-            throw new IllegalStateException(
-                    "Marvin.start requires process.goal — id='" + process.getId() + "'");
+            throw new IllegalStateException("Marvin.start requires process.goal — id='" + process.getId() + "'");
         }
         // The root is ALWAYS a WORKER in v2 — there's no separate
         // PLAN node anymore. The worker's SCOPE decides whether to
         // call recipes, decompose, or answer directly.
-        nodeService.createRoot(
-                process.getTenantId(), process.getId(), goal,
-                TaskKind.WORKER, new LinkedHashMap<>());
+        nodeService.createRoot(process.getTenantId(), process.getId(), goal, TaskKind.WORKER, new LinkedHashMap<>());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
@@ -321,8 +341,11 @@ public class MarvinEngine implements ThinkEngine {
     @Override
     public void steer(ThinkProcessDocument process, ThinkEngineContext ctx, SteerMessage message) {
         if (message instanceof SteerMessage.UserChatInput uci) {
-            log.info("Marvin id='{}' steer (async) from='{}' content='{}'",
-                    process.getId(), uci.fromUser(), abbrev(uci.content()));
+            log.info(
+                    "Marvin id='{}' steer (async) from='{}' content='{}'",
+                    process.getId(),
+                    uci.fromUser(),
+                    abbrev(uci.content()));
         }
         eventEmitter.scheduleTurn(process.getId());
     }
@@ -344,8 +367,7 @@ public class MarvinEngine implements ThinkEngine {
             try {
                 emitPlanSnapshot(process);
             } catch (RuntimeException pe) {
-                log.debug("Marvin id='{}' plan-snapshot push failed: {}",
-                        process.getId(), pe.toString());
+                log.debug("Marvin id='{}' plan-snapshot push failed: {}", process.getId(), pe.toString());
             }
         }
     }
@@ -354,8 +376,7 @@ public class MarvinEngine implements ThinkEngine {
         try {
             // Bail immediately when ESC / /pause already halted this
             // process before the turn walked the tree.
-            de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(
-                    thinkProcessService, process.getId());
+            de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(thinkProcessService, process.getId());
             List<SteerMessage> drained = ctx.drainPending();
             for (SteerMessage msg : drained) {
                 consumePending(process, msg);
@@ -368,18 +389,18 @@ public class MarvinEngine implements ThinkEngine {
             reactivatePostChildrenParents(process);
 
             Optional<MarvinNodeDocument> nextOpt =
-                    nodeService.findNextActionableNode(
-                            process.getId(), process.getEngineParams());
+                    nodeService.findNextActionableNode(process.getId(), process.getEngineParams());
             if (nextOpt.isEmpty()) {
                 emitFinalReplyIfTreeTerminal(process, ctx);
                 finalizeIdle(process);
                 return;
             }
             if (nodeBudgetExceeded(process)) {
-                log.warn("Marvin id='{}' tree exceeded maxTreeNodes={} — stopping",
-                        process.getId(), properties.getMaxTreeNodes());
-                nodeService.markFailed(nextOpt.get(),
-                        "tree exceeded maxTreeNodes=" + properties.getMaxTreeNodes());
+                log.warn(
+                        "Marvin id='{}' tree exceeded maxTreeNodes={} — stopping",
+                        process.getId(),
+                        properties.getMaxTreeNodes());
+                nodeService.markFailed(nextOpt.get(), "tree exceeded maxTreeNodes=" + properties.getMaxTreeNodes());
                 finalizeIdle(process);
                 return;
             }
@@ -400,12 +421,10 @@ public class MarvinEngine implements ThinkEngine {
                 thinkProcessService.clearHalt(process.getId());
                 thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
             } else {
-                log.info("Marvin id='{}' interrupted (status) — leaving pause-handler status",
-                        process.getId());
+                log.info("Marvin id='{}' interrupted (status) — leaving pause-handler status", process.getId());
             }
         } catch (RuntimeException e) {
-            log.warn("Marvin runTurn failed id='{}': {}",
-                    process.getId(), e.toString(), e);
+            log.warn("Marvin runTurn failed id='{}': {}", process.getId(), e.toString(), e);
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
         }
@@ -430,8 +449,10 @@ public class MarvinEngine implements ThinkEngine {
             if (n.getStatus() != NodeStatus.DONE) continue;
             if (n.getId() == null) continue;
             if (!nodeService.allChildrenTerminal(process.getId(), n.getId())) continue;
-            log.info("Marvin id='{}' reactivating node='{}' for POST_CHILDREN — children terminal",
-                    process.getId(), n.getId());
+            log.info(
+                    "Marvin id='{}' reactivating node='{}' for POST_CHILDREN — children terminal",
+                    process.getId(),
+                    n.getId());
             n.setAwaitingPostChildren(false);
             n.setStatus(NodeStatus.PENDING);
             n.setCurrentPhase(WorkerPhase.POST_CHILDREN);
@@ -443,27 +464,28 @@ public class MarvinEngine implements ThinkEngine {
         switch (msg) {
             case SteerMessage.ProcessEvent pe -> handleProcessEvent(process, pe);
             case SteerMessage.Reply r ->
-                    // Marvin keeps child state in the tree-node Mongo doc;
-                    // it doesn't need the REPLY mirror here. The
-                    // accompanying DONE/FAILED ProcessEvent (when the
-                    // child terminates) is the trigger for tree-state
-                    // advancement.
-                    log.debug("Marvin id='{}' Reply from child='{}' length={} — tree-state owns reply text",
-                            process.getId(), r.sourceProcessId(),
-                            r.content() == null ? 0 : r.content().length());
+                // Marvin keeps child state in the tree-node Mongo doc;
+                // it doesn't need the REPLY mirror here. The
+                // accompanying DONE/FAILED ProcessEvent (when the
+                // child terminates) is the trigger for tree-state
+                // advancement.
+                log.debug(
+                        "Marvin id='{}' Reply from child='{}' length={} — tree-state owns reply text",
+                        process.getId(),
+                        r.sourceProcessId(),
+                        r.content() == null ? 0 : r.content().length());
             case SteerMessage.InboxAnswer ia -> handleInboxAnswer(process, ia);
             case SteerMessage.UserChatInput uci ->
-                    log.debug("Marvin id='{}' ignoring UserChatInput from='{}' — Marvin doesn't talk directly",
-                            process.getId(), uci.fromUser());
+                log.debug(
+                        "Marvin id='{}' ignoring UserChatInput from='{}' — Marvin doesn't talk directly",
+                        process.getId(),
+                        uci.fromUser());
             case SteerMessage.ToolResult tr ->
-                    log.debug("Marvin id='{}' ignoring ToolResult tool='{}'",
-                            process.getId(), tr.toolName());
+                log.debug("Marvin id='{}' ignoring ToolResult tool='{}'", process.getId(), tr.toolName());
             case SteerMessage.ExternalCommand ec ->
-                    log.info("Marvin id='{}' external command '{}' — not yet routed",
-                            process.getId(), ec.command());
+                log.info("Marvin id='{}' external command '{}' — not yet routed", process.getId(), ec.command());
             case SteerMessage.PeerEvent pe ->
-                    log.debug("Marvin id='{}' ignoring PeerEvent type='{}'",
-                            process.getId(), pe.type());
+                log.debug("Marvin id='{}' ignoring PeerEvent type='{}'", process.getId(), pe.type());
         }
     }
 
@@ -482,45 +504,51 @@ public class MarvinEngine implements ThinkEngine {
      *       {@code awaitingPostChildren} flag).</li>
      * </ul>
      */
-    private void handleProcessEvent(
-            ThinkProcessDocument process, SteerMessage.ProcessEvent event) {
-        Optional<MarvinNodeDocument> bySpawn =
-                nodeService.findBySpawnedProcessId(event.sourceProcessId());
+    private void handleProcessEvent(ThinkProcessDocument process, SteerMessage.ProcessEvent event) {
+        Optional<MarvinNodeDocument> bySpawn = nodeService.findBySpawnedProcessId(event.sourceProcessId());
         if (bySpawn.isPresent()) {
             // Spawned-by-WORKER (a recursive Marvin sub-process or
             // EXPAND-promoted child). Most of these don't apply in
             // v2 since WORKER nodes drive themselves via the
             // state-machine; we keep the hook for engines that
             // genuinely spawn children — log and move on.
-            log.debug("Marvin id='{}' ProcessEvent for spawned node='{}' type={}",
-                    process.getId(), bySpawn.get().getId(), event.type());
+            log.debug(
+                    "Marvin id='{}' ProcessEvent for spawned node='{}' type={}",
+                    process.getId(),
+                    bySpawn.get().getId(),
+                    event.type());
         }
         // The POST_CHILDREN trigger is checked in runTurn rather than
         // here — a child's DONE event is also queued, which means
         // runTurn will see it and re-evaluate the parent.
     }
 
-    private void handleInboxAnswer(
-            ThinkProcessDocument process, SteerMessage.InboxAnswer answer) {
-        Optional<MarvinNodeDocument> nodeOpt =
-                nodeService.findByInboxItemId(answer.inboxItemId());
+    private void handleInboxAnswer(ThinkProcessDocument process, SteerMessage.InboxAnswer answer) {
+        Optional<MarvinNodeDocument> nodeOpt = nodeService.findByInboxItemId(answer.inboxItemId());
         if (nodeOpt.isEmpty()) {
-            log.warn("Marvin id='{}' got InboxAnswer for unknown item='{}'",
-                    process.getId(), answer.inboxItemId());
+            log.warn("Marvin id='{}' got InboxAnswer for unknown item='{}'", process.getId(), answer.inboxItemId());
             return;
         }
         MarvinNodeDocument node = nodeOpt.get();
         switch (answer.answer().getOutcome()) {
             case DECIDED -> {
                 Map<String, Object> artifacts = new LinkedHashMap<>();
-                artifacts.put("userAnswer",
+                artifacts.put(
+                        "userAnswer",
                         answer.answer().getValue() == null
-                                ? Map.of() : answer.answer().getValue());
+                                ? Map.of()
+                                : answer.answer().getValue());
                 artifacts.put("answeredBy", answer.answer().getAnsweredBy());
                 nodeService.markDone(node, artifacts);
-                log.info("Marvin id='{}' user-input DONE node='{}' item='{}'",
-                        process.getId(), node.getId(), answer.inboxItemId());
-                appendNodeNote(process, node, "user-input answered",
+                log.info(
+                        "Marvin id='{}' user-input DONE node='{}' item='{}'",
+                        process.getId(),
+                        node.getId(),
+                        answer.inboxItemId());
+                appendNodeNote(
+                        process,
+                        node,
+                        "user-input answered",
                         String.valueOf(answer.answer().getValue()));
             }
             case INSUFFICIENT_INFO, UNDECIDABLE -> {
@@ -529,11 +557,16 @@ public class MarvinEngine implements ThinkEngine {
                         : answer.answer().getOutcome().name() + ": "
                                 + answer.answer().getReason();
                 nodeService.markFailed(node, reason);
-                log.info("Marvin id='{}' user-input {} node='{}' item='{}': {}",
-                        process.getId(), answer.answer().getOutcome(),
-                        node.getId(), answer.inboxItemId(),
+                log.info(
+                        "Marvin id='{}' user-input {} node='{}' item='{}': {}",
+                        process.getId(),
+                        answer.answer().getOutcome(),
+                        node.getId(),
+                        answer.inboxItemId(),
                         answer.answer().getReason());
-                appendNodeNote(process, node,
+                appendNodeNote(
+                        process,
+                        node,
                         "user-input " + answer.answer().getOutcome(),
                         answer.answer().getReason());
             }
@@ -547,13 +580,14 @@ public class MarvinEngine implements ThinkEngine {
      * or completed fully; {@code false} if synchronous and the
      * lane should pick the next node immediately.
      */
-    private boolean executeNode(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            MarvinNodeDocument node) {
-        log.info("Marvin id='{}' executing node='{}' kind={} pos={} goal='{}'",
-                process.getId(), node.getId(), node.getTaskKind(),
-                node.getPosition(), abbrev(node.getGoal()));
+    private boolean executeNode(ThinkProcessDocument process, ThinkEngineContext ctx, MarvinNodeDocument node) {
+        log.info(
+                "Marvin id='{}' executing node='{}' kind={} pos={} goal='{}'",
+                process.getId(),
+                node.getId(),
+                node.getTaskKind(),
+                node.getPosition(),
+                abbrev(node.getGoal()));
         return switch (node.getTaskKind()) {
             case WORKER -> driveWorkerNode(process, ctx, node);
             case EXPAND_FROM_DOC -> {
@@ -584,10 +618,7 @@ public class MarvinEngine implements ThinkEngine {
      * call happens in {@code runPhase} below; the dispatch here
      * is just bookkeeping + transition routing.
      */
-    private boolean driveWorkerNode(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            MarvinNodeDocument node) {
+    private boolean driveWorkerNode(ThinkProcessDocument process, ThinkEngineContext ctx, MarvinNodeDocument node) {
         // Resume or initialise the phase cursor. A fresh PENDING node
         // without phase starts at SCOPE; a reactivated node (set to
         // PENDING by reactivatePostChildrenParents) already carries
@@ -600,8 +631,7 @@ public class MarvinEngine implements ThinkEngine {
 
         MarvinNodeStateMachine.Caps caps = readCaps(process);
         MarvinNodeStateMachine.Counters counters = new MarvinNodeStateMachine.Counters(
-                node.getReflectIter(), node.getValidateIter(), node.getConcludeRetries(),
-                node.getNeedMoreDataIter());
+                node.getReflectIter(), node.getValidateIter(), node.getConcludeRetries(), node.getNeedMoreDataIter());
 
         try {
             // Loop drives the worker through as many synchronous
@@ -610,12 +640,16 @@ public class MarvinEngine implements ThinkEngine {
             while (true) {
                 WorkerPhase phase = node.getCurrentPhase();
                 if (phase == null) phase = WorkerPhase.SCOPE;
-                log.info("Marvin id='{}' node='{}' phase={} iter(reflect={}/val={}/conc={})",
-                        process.getId(), node.getId(), phase,
-                        counters.reflectIter(), counters.validateIter(), counters.concludeRetries());
+                log.info(
+                        "Marvin id='{}' node='{}' phase={} iter(reflect={}/val={}/conc={})",
+                        process.getId(),
+                        node.getId(),
+                        phase,
+                        counters.reflectIter(),
+                        counters.validateIter(),
+                        counters.concludeRetries());
 
-                MarvinNodeStateMachine.Transition trans =
-                        runPhase(process, ctx, node, phase, caps, counters);
+                MarvinNodeStateMachine.Transition trans = runPhase(process, ctx, node, phase, caps, counters);
 
                 if (trans instanceof MarvinNodeStateMachine.ContinueWithPhase cont) {
                     counters = cont.newCounters();
@@ -627,7 +661,8 @@ public class MarvinEngine implements ThinkEngine {
                     // and clears it after rendering.
                     if (cont.hintForNextPhase() != null) {
                         Map<String, Object> spec = node.getTaskSpec() == null
-                                ? new LinkedHashMap<>() : new LinkedHashMap<>(node.getTaskSpec());
+                                ? new LinkedHashMap<>()
+                                : new LinkedHashMap<>(node.getTaskSpec());
                         spec.put("_phaseHint", cont.hintForNextPhase());
                         node.setTaskSpec(spec);
                         nodeService.save(node);
@@ -660,8 +695,8 @@ public class MarvinEngine implements ThinkEngine {
                             : new LinkedHashMap<>(node.getArtifacts());
                     art.put("spawnedChildren", sc.children().size());
                     nodeService.markDone(node, art);
-                    appendNodeNote(process, node, "spawned subtasks",
-                            sc.children().size() + " child task(s)");
+                    appendNodeNote(
+                            process, node, "spawned subtasks", sc.children().size() + " child task(s)");
                     // Self-wakeup: spawned children are PENDING and
                     // have no listener that would re-fire the lane on
                     // their own. Without this scheduleTurn the lane
@@ -690,7 +725,8 @@ public class MarvinEngine implements ThinkEngine {
                     Map<String, Object> artifacts = new LinkedHashMap<>();
                     artifacts.put("result", done.result());
                     if (done.validatorForced()) {
-                        artifacts.put("validatorAuditWarning",
+                        artifacts.put(
+                                "validatorAuditWarning",
                                 "validator not satisfied after caps — accepted last candidate");
                     }
                     nodeService.markDone(node, artifacts);
@@ -702,22 +738,23 @@ public class MarvinEngine implements ThinkEngine {
                     if (done.postActions() != null && !done.postActions().isEmpty()) {
                         runPostActions(process, node, done.postActions(), artifacts);
                     }
-                    log.info("Marvin id='{}' node='{}' DONE ({} chars){}",
-                            process.getId(), node.getId(),
+                    log.info(
+                            "Marvin id='{}' node='{}' DONE ({} chars){}",
+                            process.getId(),
+                            node.getId(),
                             done.result() == null ? 0 : done.result().length(),
                             done.validatorForced() ? " [forced]" : "");
-                    emitNodeDoneStatus(process, node,
+                    emitNodeDoneStatus(
+                            process,
+                            node,
                             (done.result() == null ? 0 : done.result().length()) + " chars");
-                    appendNodeNote(process, node,
-                            done.validatorForced() ? "DONE (forced)" : "DONE",
-                            done.result());
+                    appendNodeNote(process, node, done.validatorForced() ? "DONE (forced)" : "DONE", done.result());
                     return false;
                 }
                 if (trans instanceof MarvinNodeStateMachine.FinishFailed ff) {
                     persistCounters(node, counters);
                     nodeService.markFailed(node, ff.reason());
-                    log.info("Marvin id='{}' node='{}' FAILED — {}",
-                            process.getId(), node.getId(), ff.reason());
+                    log.info("Marvin id='{}' node='{}' FAILED — {}", process.getId(), node.getId(), ff.reason());
                     appendNodeNote(process, node, "FAILED", ff.reason());
                     return false;
                 }
@@ -728,15 +765,13 @@ public class MarvinEngine implements ThinkEngine {
         } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
             throw ie;
         } catch (RuntimeException e) {
-            log.warn("Marvin id='{}' node='{}' phase loop crashed: {}",
-                    process.getId(), node.getId(), e.toString(), e);
+            log.warn("Marvin id='{}' node='{}' phase loop crashed: {}", process.getId(), node.getId(), e.toString(), e);
             nodeService.markFailed(node, "phase loop crashed: " + e.getMessage());
             return false;
         }
     }
 
-    private void persistCounters(
-            MarvinNodeDocument node, MarvinNodeStateMachine.Counters c) {
+    private void persistCounters(MarvinNodeDocument node, MarvinNodeStateMachine.Counters c) {
         node.setReflectIter(c.reflectIter());
         node.setValidateIter(c.validateIter());
         node.setConcludeRetries(c.concludeRetries());
@@ -745,18 +780,12 @@ public class MarvinEngine implements ThinkEngine {
     }
 
     private MarvinNodeStateMachine.Caps readCaps(ThinkProcessDocument process) {
-        int reflectMax = paramInt(process, "reflectMaxIterations",
-                properties.getReflectMaxIterations());
-        int validateMax = paramInt(process, "validateMaxIterations",
-                properties.getValidateMaxIterations());
-        int concludeRetries = paramInt(process, "concludeMaxRetries",
-                properties.getConcludeMaxRetries());
-        int treeDepth = paramInt(process, "maxTreeDepth",
-                properties.getMaxTreeDepth());
-        int needMoreDataMax = paramInt(process, "needMoreDataMaxIterations",
-                properties.getNeedMoreDataMaxIterations());
-        return new MarvinNodeStateMachine.Caps(
-                reflectMax, validateMax, concludeRetries, treeDepth, needMoreDataMax);
+        int reflectMax = paramInt(process, "reflectMaxIterations", properties.getReflectMaxIterations());
+        int validateMax = paramInt(process, "validateMaxIterations", properties.getValidateMaxIterations());
+        int concludeRetries = paramInt(process, "concludeMaxRetries", properties.getConcludeMaxRetries());
+        int treeDepth = paramInt(process, "maxTreeDepth", properties.getMaxTreeDepth());
+        int needMoreDataMax = paramInt(process, "needMoreDataMaxIterations", properties.getNeedMoreDataMaxIterations());
+        return new MarvinNodeStateMachine.Caps(reflectMax, validateMax, concludeRetries, treeDepth, needMoreDataMax);
     }
 
     /**
@@ -772,12 +801,10 @@ public class MarvinEngine implements ThinkEngine {
             WorkerPhase phase,
             MarvinNodeStateMachine.Caps caps,
             MarvinNodeStateMachine.Counters counters) {
-        if (phase == WorkerPhase.VALIDATE
-                && counters.validateIter() >= caps.validateMax()) {
+        if (phase == WorkerPhase.VALIDATE && counters.validateIter() >= caps.validateMax()) {
             // Hit the validate cap — force DONE on the last candidate.
             String candidate = nullSafe(node.getCandidateResult());
-            return MarvinNodeStateMachine.validateCapExhausted(
-                    candidate, lastPostActionsFromHistory(node));
+            return MarvinNodeStateMachine.validateCapExhausted(candidate, lastPostActionsFromHistory(node));
         }
 
         // Read the optional one-shot hint stored by the previous phase.
@@ -789,15 +816,14 @@ public class MarvinEngine implements ThinkEngine {
         AiChat ai = bundle.chat();
         AiChatConfig config = bundle.primaryConfig();
 
-        String systemPrompt = enginePromptResolver.resolve(
-                process, WORKER_SYSTEM_PROMPT_PATH, FALLBACK_WORKER_SYSTEM_PROMPT);
+        String systemPrompt =
+                enginePromptResolver.resolve(process, WORKER_SYSTEM_PROMPT_PATH, FALLBACK_WORKER_SYSTEM_PROMPT);
         de.mhus.vance.brain.prompt.PromptContextBuilder sysCtxBuilder =
-                de.mhus.vance.brain.prompt.PromptContextBuilder
-                        .forProcess(process, null)
+                de.mhus.vance.brain.prompt.PromptContextBuilder.forProcess(process, null)
                         .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
                         .engine(NAME)
-                        .withRootDirTypes(workspaceService.getRootDirTypes(
-                                process.getTenantId(), process.getProjectId()))
+                        .withRootDirTypes(
+                                workspaceService.getRootDirTypes(process.getTenantId(), process.getProjectId()))
                         // This turn's manifest, so the template can gate
                         // tool-specific text on the tool being callable.
                         .withAvailableTools(ctx.tools().primary());
@@ -808,8 +834,7 @@ public class MarvinEngine implements ThinkEngine {
         String planSnapshot = planSnapshotRenderer.render(allNodes, node.getId());
         int nodeDepth = computeDepth(node, allNodes);
 
-        String userBody = buildPhaseUserMessage(
-                process, node, phase, counters, caps, planSnapshot, nodeDepth, hint);
+        String userBody = buildPhaseUserMessage(process, node, phase, counters, caps, planSnapshot, nodeDepth, hint);
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(renderedSystem));
@@ -819,17 +844,15 @@ public class MarvinEngine implements ThinkEngine {
         long startMs = System.currentTimeMillis();
         ChatRequest request = ChatRequest.builder().messages(messages).build();
         ChatResponse response = ai.chatModel().chat(request);
-        llmCallTracker.record(
-                process, request, response, System.currentTimeMillis() - startMs, modelAlias);
+        llmCallTracker.record(process, request, response, System.currentTimeMillis() - startMs, modelAlias);
         AiMessage reply = response.aiMessage();
         String text = reply == null ? "" : nullSafe(reply.text());
 
         // Parse the output per phase.
-        return parseAndRoute(process, node, phase, text, counters, caps, modelAlias);
+        return parseAndRoute(node, phase, text, counters, caps, modelAlias);
     }
 
     private MarvinNodeStateMachine.Transition parseAndRoute(
-            ThinkProcessDocument process,
             MarvinNodeDocument node,
             WorkerPhase phase,
             String llmText,
@@ -841,8 +864,7 @@ public class MarvinEngine implements ThinkEngine {
             case SCOPE -> {
                 PhaseOutputParser.Result<ScopeOutput> r = phaseParser.parseScope(llmText);
                 if (!r.ok()) {
-                    return new MarvinNodeStateMachine.FinishFailed(
-                            "SCOPE parse failed: " + r.error());
+                    return new MarvinNodeStateMachine.FinishFailed("SCOPE parse failed: " + r.error());
                 }
                 recordPhaseIteration(node, WorkerPhase.SCOPE, 0, r.output(), modelAlias, now);
                 return MarvinNodeStateMachine.afterScope(r.output(), counters, caps);
@@ -850,33 +872,27 @@ public class MarvinEngine implements ThinkEngine {
             case REFLECT -> {
                 PhaseOutputParser.Result<ReflectOutput> r = phaseParser.parseReflect(llmText);
                 if (!r.ok()) {
-                    return new MarvinNodeStateMachine.FinishFailed(
-                            "REFLECT parse failed: " + r.error());
+                    return new MarvinNodeStateMachine.FinishFailed("REFLECT parse failed: " + r.error());
                 }
-                recordPhaseIteration(node, WorkerPhase.REFLECT,
-                        counters.reflectIter(), r.output(), modelAlias, now);
+                recordPhaseIteration(node, WorkerPhase.REFLECT, counters.reflectIter(), r.output(), modelAlias, now);
                 return MarvinNodeStateMachine.afterReflect(r.output(), counters, caps);
             }
             case POST_CHILDREN -> {
                 PhaseOutputParser.Result<PostChildrenOutput> r = phaseParser.parsePostChildren(llmText);
                 if (!r.ok()) {
-                    return new MarvinNodeStateMachine.FinishFailed(
-                            "POST_CHILDREN parse failed: " + r.error());
+                    return new MarvinNodeStateMachine.FinishFailed("POST_CHILDREN parse failed: " + r.error());
                 }
-                recordPhaseIteration(node, WorkerPhase.POST_CHILDREN, 0,
-                        r.output(), modelAlias, now);
+                recordPhaseIteration(node, WorkerPhase.POST_CHILDREN, 0, r.output(), modelAlias, now);
                 int depth = nodeService.depthOf(node);
-                return MarvinNodeStateMachine.afterPostChildren(
-                        r.output(), counters, caps, depth);
+                return MarvinNodeStateMachine.afterPostChildren(r.output(), counters, caps, depth);
             }
             case CONCLUDE -> {
                 PhaseOutputParser.Result<ConcludeOutput> r = phaseParser.parseConclude(llmText);
                 if (!r.ok()) {
-                    return new MarvinNodeStateMachine.FinishFailed(
-                            "CONCLUDE parse failed: " + r.error());
+                    return new MarvinNodeStateMachine.FinishFailed("CONCLUDE parse failed: " + r.error());
                 }
-                recordPhaseIteration(node, WorkerPhase.CONCLUDE,
-                        counters.concludeRetries(), r.output(), modelAlias, now);
+                recordPhaseIteration(
+                        node, WorkerPhase.CONCLUDE, counters.concludeRetries(), r.output(), modelAlias, now);
                 node.setCandidateResult(r.output().result());
                 stashPostActions(node, r.output().postActions());
                 nodeService.save(node);
@@ -885,40 +901,29 @@ public class MarvinEngine implements ThinkEngine {
             case VALIDATE -> {
                 PhaseOutputParser.Result<ValidateOutput> r = phaseParser.parseValidate(llmText);
                 if (!r.ok()) {
-                    return new MarvinNodeStateMachine.FinishFailed(
-                            "VALIDATE parse failed: " + r.error());
+                    return new MarvinNodeStateMachine.FinishFailed("VALIDATE parse failed: " + r.error());
                 }
-                recordPhaseIteration(node, WorkerPhase.VALIDATE,
-                        counters.validateIter(), r.output(), modelAlias, now);
+                recordPhaseIteration(node, WorkerPhase.VALIDATE, counters.validateIter(), r.output(), modelAlias, now);
                 // Always increment validate iter — it's consumed once
                 // a verdict is rendered.
                 counters = counters.incValidate();
                 persistCounters(node, counters);
                 String candidate = nullSafe(node.getCandidateResult());
                 List<PostActionSpec> pa = lastPostActionsFromHistory(node);
-                return MarvinNodeStateMachine.afterValidate(
-                        r.output(), counters, caps, candidate, pa);
+                return MarvinNodeStateMachine.afterValidate(r.output(), counters, caps, candidate, pa);
             }
         }
-        return new MarvinNodeStateMachine.FinishFailed(
-                "unknown phase: " + phase);
+        return new MarvinNodeStateMachine.FinishFailed("unknown phase: " + phase);
     }
 
     private void recordPhaseIteration(
-            MarvinNodeDocument node,
-            WorkerPhase phase,
-            int iter,
-            Object output,
-            String modelAlias,
-            Instant timestamp) {
+            MarvinNodeDocument node, WorkerPhase phase, int iter, Object output, String modelAlias, Instant timestamp) {
         try {
             String json = objectMapper.writeValueAsString(output);
             nodeService.appendPhaseHistory(
-                    node,
-                    new PhaseIteration(phase, iter, json, modelAlias, null, null, timestamp));
+                    node, new PhaseIteration(phase, iter, json, modelAlias, null, null, timestamp));
         } catch (RuntimeException e) {
-            log.debug("Marvin phaseHistory serialise failed node='{}' phase={}: {}",
-                    node.getId(), phase, e.toString());
+            log.debug("Marvin phaseHistory serialise failed node='{}' phase={}: {}", node.getId(), phase, e.toString());
         }
     }
 
@@ -935,8 +940,8 @@ public class MarvinEngine implements ThinkEngine {
      *  / cap-forced exits can still find them. */
     private void stashPostActions(MarvinNodeDocument node, @Nullable List<PostActionSpec> pa) {
         if (pa == null || pa.isEmpty()) return;
-        Map<String, Object> spec = node.getTaskSpec() == null
-                ? new LinkedHashMap<>() : new LinkedHashMap<>(node.getTaskSpec());
+        Map<String, Object> spec =
+                node.getTaskSpec() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(node.getTaskSpec());
         // Store as raw maps so Jackson roundtrip works without custom
         // (de)serialisers.
         List<Map<String, Object>> raw = new ArrayList<>(pa.size());
@@ -951,8 +956,7 @@ public class MarvinEngine implements ThinkEngine {
     }
 
     @SuppressWarnings("unchecked")
-    private static @Nullable List<PostActionSpec> lastPostActionsFromHistory(
-            MarvinNodeDocument node) {
+    private static @Nullable List<PostActionSpec> lastPostActionsFromHistory(MarvinNodeDocument node) {
         if (node.getTaskSpec() == null) return null;
         Object raw = node.getTaskSpec().get("_pendingPostActions");
         if (!(raw instanceof List<?> list)) return null;
@@ -1011,7 +1015,8 @@ public class MarvinEngine implements ThinkEngine {
             }
             sb.append('\n');
         } else {
-            sb.append("(no recipes available for CALL_RECIPE — answer directly via PROCEED_TO_CONCLUDE or decompose via NEEDS_SUBTASKS)\n\n");
+            sb.append(
+                    "(no recipes available for CALL_RECIPE — answer directly via PROCEED_TO_CONCLUDE or decompose via NEEDS_SUBTASKS)\n\n");
         }
 
         sb.append(planSnapshot).append("\n\n");
@@ -1046,12 +1051,18 @@ public class MarvinEngine implements ThinkEngine {
 
         sb.append("Phase: ").append(phase.name());
         if (phase == WorkerPhase.REFLECT) {
-            sb.append(" (iteration ").append(counters.reflectIter())
-                    .append("/").append(caps.reflectMax()).append(")");
+            sb.append(" (iteration ")
+                    .append(counters.reflectIter())
+                    .append("/")
+                    .append(caps.reflectMax())
+                    .append(")");
         }
         if (phase == WorkerPhase.VALIDATE) {
-            sb.append(" (iteration ").append(counters.validateIter())
-                    .append("/").append(caps.validateMax()).append(")");
+            sb.append(" (iteration ")
+                    .append(counters.validateIter())
+                    .append("/")
+                    .append(caps.validateMax())
+                    .append(")");
         }
         sb.append('\n');
         sb.append(phaseInstruction(phase));
@@ -1123,7 +1134,10 @@ public class MarvinEngine implements ThinkEngine {
             return null;
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("Branch depth: ").append(depth).append('/').append(maxDepth)
+        sb.append("Branch depth: ")
+                .append(depth)
+                .append('/')
+                .append(maxDepth)
                 .append(" (this node's level in the tree).");
         if (pct < 70) {
             sb.append(" You are mid-branch — sub-tasks here are usually "
@@ -1210,26 +1224,26 @@ public class MarvinEngine implements ThinkEngine {
         };
     }
 
-    private String renderChildrenResultsBlock(
-            ThinkProcessDocument process, MarvinNodeDocument parent) {
-        List<MarvinNodeDocument> kids = nodeService.findChildren(
-                process.getId(), parent.getId());
+    private String renderChildrenResultsBlock(ThinkProcessDocument process, MarvinNodeDocument parent) {
+        List<MarvinNodeDocument> kids = nodeService.findChildren(process.getId(), parent.getId());
         if (kids.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         sb.append("Children results:\n");
         int i = 1;
         for (MarvinNodeDocument k : kids) {
-            sb.append("\n<<< Child #").append(i).append(" '")
-                    .append(abbrev(k.getGoal())).append("' (")
-                    .append(k.getStatus()).append(")");
+            sb.append("\n<<< Child #")
+                    .append(i)
+                    .append(" '")
+                    .append(abbrev(k.getGoal()))
+                    .append("' (")
+                    .append(k.getStatus())
+                    .append(")");
             if (k.getStatus() == NodeStatus.FAILED && k.getFailureReason() != null) {
                 sb.append("\n    failureReason: ").append(k.getFailureReason());
             } else {
-                Object res = k.getArtifacts() == null ? null
-                        : k.getArtifacts().get("result");
+                Object res = k.getArtifacts() == null ? null : k.getArtifacts().get("result");
                 if (res instanceof String s && !s.isBlank()) {
-                    sb.append("\n    result: ")
-                            .append(truncate(s, 4000));
+                    sb.append("\n    result: ").append(truncate(s, 4000));
                 }
             }
             sb.append("\n>>>\n");
@@ -1256,55 +1270,48 @@ public class MarvinEngine implements ThinkEngine {
      * in v1 to prevent unbounded cross-Marvin nesting.
      */
     private void runCallRecipe(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            MarvinNodeDocument node,
-            RecipeCall call) {
+            ThinkProcessDocument process, ThinkEngineContext ctx, MarvinNodeDocument node, RecipeCall call) {
         String recipe = call.recipe();
         AppliedRecipe applied;
         try {
             applied = recipeResolver.apply(
-                    process.getTenantId(), ctx.projectId(), recipe,
-                    process.getConnectionProfile(),
-                    /* params */ null);
+                    process.getTenantId(), ctx.projectId(), recipe, process.getConnectionProfile(), /* params */ null);
         } catch (RecipeResolver.UnknownRecipeException ure) {
-            appendCallReply(process, node, recipe,
-                    "[CALL_RECIPE failed: unknown recipe '" + recipe + "']");
-            log.warn("Marvin id='{}' CALL_RECIPE unknown recipe='{}'",
-                    process.getId(), recipe);
+            appendCallReply(process, node, recipe, "[CALL_RECIPE failed: unknown recipe '" + recipe + "']");
+            log.warn("Marvin id='{}' CALL_RECIPE unknown recipe='{}'", process.getId(), recipe);
             return;
         } catch (RecipeResolver.UnknownEngineException uee) {
-            appendCallReply(process, node, recipe,
-                    "[CALL_RECIPE failed: " + uee.getMessage() + "]");
-            log.warn("Marvin id='{}' CALL_RECIPE unknown engine for '{}': {}",
-                    process.getId(), recipe, uee.getMessage());
+            appendCallReply(process, node, recipe, "[CALL_RECIPE failed: " + uee.getMessage() + "]");
+            log.warn(
+                    "Marvin id='{}' CALL_RECIPE unknown engine for '{}': {}",
+                    process.getId(),
+                    recipe,
+                    uee.getMessage());
             return;
         } catch (RuntimeException e) {
-            appendCallReply(process, node, recipe,
-                    "[CALL_RECIPE resolve failed: " + e.getMessage() + "]");
-            log.warn("Marvin id='{}' CALL_RECIPE resolve failed: {}",
-                    process.getId(), e.toString());
+            appendCallReply(process, node, recipe, "[CALL_RECIPE resolve failed: " + e.getMessage() + "]");
+            log.warn("Marvin id='{}' CALL_RECIPE resolve failed: {}", process.getId(), e.toString());
             return;
         }
         // Block Marvin-via-CALL_RECIPE (v1 hard rule).
         if (NAME.equalsIgnoreCase(applied.engine())) {
-            appendCallReply(process, node, recipe,
+            appendCallReply(
+                    process,
+                    node,
+                    recipe,
                     "[CALL_RECIPE rejected: recipe '" + recipe
                             + "' uses engine marvin — calling another Marvin "
                             + "via CALL_RECIPE is blocked in v1. Use NEEDS_SUBTASKS "
                             + "to decompose within the current Marvin tree.]");
-            log.info("Marvin id='{}' CALL_RECIPE rejected — marvin-on-marvin '{}'",
-                    process.getId(), recipe);
+            log.info("Marvin id='{}' CALL_RECIPE rejected — marvin-on-marvin '{}'", process.getId(), recipe);
             return;
         }
         // Self-recursion block: same recipe as the calling Marvin
         // process's recipe is not useful here.
         String currentRecipe = process.getRecipeName();
         if (currentRecipe != null && currentRecipe.equalsIgnoreCase(applied.name())) {
-            appendCallReply(process, node, recipe,
-                    "[CALL_RECIPE rejected: cannot call own recipe '" + recipe + "']");
-            log.info("Marvin id='{}' CALL_RECIPE self-recursion blocked '{}'",
-                    process.getId(), recipe);
+            appendCallReply(process, node, recipe, "[CALL_RECIPE rejected: cannot call own recipe '" + recipe + "']");
+            log.info("Marvin id='{}' CALL_RECIPE self-recursion blocked '{}'", process.getId(), recipe);
             return;
         }
 
@@ -1312,12 +1319,13 @@ public class MarvinEngine implements ThinkEngine {
         try {
             String childName = "marvin-call-" + node.getId() + "-"
                     + (node.getCalledSubProcessIds() == null
-                            ? 0 : node.getCalledSubProcessIds().size());
-            ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
+                            ? 0
+                            : node.getCalledSubProcessIds().size());
+            ThinkEngine targetEngine = thinkEngineServiceProvider
+                    .getObject()
                     .resolve(applied.engine())
                     .orElseThrow(() -> new IllegalStateException(
-                            "Recipe '" + applied.name() + "' references unknown engine '"
-                                    + applied.engine() + "'"));
+                            "Recipe '" + applied.name() + "' references unknown engine '" + applied.engine() + "'"));
             child = thinkProcessService.create(
                     process.getTenantId(),
                     process.getProjectId(),
@@ -1337,26 +1345,24 @@ public class MarvinEngine implements ThinkEngine {
                     applied.effectiveAllowedTools(),
                     applied.connectionProfile(),
                     applied.defaultActiveSkills(),
-                    applied.allowedSkills() == null
-                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
+                    applied.allowedSkills() == null ? null : java.util.Set.copyOf(applied.allowedSkills()));
             nodeService.addCalledSubProcessId(node, child.getId());
             thinkEngineServiceProvider.getObject().start(child);
-            log.info("Marvin id='{}' CALL_RECIPE spawn child='{}' recipe='{}' async={}",
-                    process.getId(), child.getId(), applied.name(),
+            log.info(
+                    "Marvin id='{}' CALL_RECIPE spawn child='{}' recipe='{}' async={}",
+                    process.getId(),
+                    child.getId(),
+                    applied.name(),
                     targetEngine.asyncSteer());
             try {
-                progressEmitter.emitStatus(process,
-                        de.mhus.vance.api.progress.StatusTag.DELEGATING,
-                        "CALL_RECIPE → " + applied.name());
+                progressEmitter.emitStatus(
+                        process, de.mhus.vance.api.progress.StatusTag.DELEGATING, "CALL_RECIPE → " + applied.name());
             } catch (RuntimeException pe) {
-                log.debug("Marvin id='{}' DELEGATING progress emit failed: {}",
-                        process.getId(), pe.toString());
+                log.debug("Marvin id='{}' DELEGATING progress emit failed: {}", process.getId(), pe.toString());
             }
         } catch (RuntimeException e) {
-            appendCallReply(process, node, recipe,
-                    "[CALL_RECIPE spawn failed: " + e.getMessage() + "]");
-            log.warn("Marvin id='{}' CALL_RECIPE spawn failed: {}",
-                    process.getId(), e.toString(), e);
+            appendCallReply(process, node, recipe, "[CALL_RECIPE spawn failed: " + e.getMessage() + "]");
+            log.warn("Marvin id='{}' CALL_RECIPE spawn failed: {}", process.getId(), e.toString(), e);
             return;
         }
 
@@ -1378,19 +1384,16 @@ public class MarvinEngine implements ThinkEngine {
         }
         String steerContent;
         try {
-            steerContent = parentContextSpawnHelper.wrap(
-                    inheritContextRaw, process.getId(), call.steerContent());
+            steerContent = parentContextSpawnHelper.wrap(inheritContextRaw, process.getId(), call.steerContent());
         } catch (RuntimeException e) {
-            log.warn("Marvin id='{}' CALL_RECIPE inheritContext wrap failed: {}",
-                    process.getId(), e.toString());
+            log.warn("Marvin id='{}' CALL_RECIPE inheritContext wrap failed: {}", process.getId(), e.toString());
             steerContent = call.steerContent();
         }
 
         String reply;
         try {
             driveSubProcessOnce(child, process.getId(), steerContent);
-            reply = readLastAssistantText(
-                    process.getTenantId(), process.getSessionId(), child.getId());
+            reply = readLastAssistantText(process.getTenantId(), process.getSessionId(), child.getId());
             if (reply == null || reply.isBlank()) {
                 reply = "[CALL_RECIPE returned no assistant text]";
             }
@@ -1398,54 +1401,55 @@ public class MarvinEngine implements ThinkEngine {
             throw ie;
         } catch (RuntimeException e) {
             reply = "[CALL_RECIPE drive failed: " + e.getMessage() + "]";
-            log.warn("Marvin id='{}' CALL_RECIPE drive failed child='{}': {}",
-                    process.getId(), child.getId(), e.toString());
+            log.warn(
+                    "Marvin id='{}' CALL_RECIPE drive failed child='{}': {}",
+                    process.getId(),
+                    child.getId(),
+                    e.toString());
         } finally {
             try {
                 thinkEngineServiceProvider.getObject().stop(child);
             } catch (RuntimeException e) {
-                log.warn("Marvin id='{}' CALL_RECIPE stop failed child='{}': {}",
-                        process.getId(), child.getId(), e.toString());
+                log.warn(
+                        "Marvin id='{}' CALL_RECIPE stop failed child='{}': {}",
+                        process.getId(),
+                        child.getId(),
+                        e.toString());
             }
         }
         appendCallReply(process, node, recipe, reply);
     }
 
-    private void driveSubProcessOnce(
-            ThinkProcessDocument child, String marvinProcessId, String content) {
+    private void driveSubProcessOnce(ThinkProcessDocument child, String marvinProcessId, String content) {
         // Mid-orchestration interrupt: bail before driving another
         // CALL_RECIPE sub-turn when ESC / /pause halted this Marvin
         // process. Unwinds the node phase-loop (its catch re-throws) to
         // the turn-boundary handler in runTurnInner.
-        de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(
-                thinkProcessService, marvinProcessId);
+        de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(thinkProcessService, marvinProcessId);
         SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
-                java.time.Instant.now(),
-                /*idempotencyKey*/ null,
-                "marvin:" + marvinProcessId,
-                content);
+                java.time.Instant.now(), /*idempotencyKey*/ null, "marvin:" + marvinProcessId, content);
         try {
-            laneScheduler.submit(child.getId(),
-                    () -> thinkEngineServiceProvider.getObject().steer(child, message)).get();
+            laneScheduler
+                    .submit(
+                            child.getId(),
+                            () -> thinkEngineServiceProvider.getObject().steer(child, message))
+                    .get();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            throw new AiChatException(
-                    "Marvin CALL_RECIPE interrupted child='" + child.getId() + "'", ie);
+            throw new AiChatException("Marvin CALL_RECIPE interrupted child='" + child.getId() + "'", ie);
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
             throw new AiChatException(
-                    "Marvin CALL_RECIPE turn failed child='" + child.getId()
-                            + "': " + cause.getMessage(), cause);
+                    "Marvin CALL_RECIPE turn failed child='" + child.getId() + "': " + cause.getMessage(), cause);
         }
     }
 
-    private @Nullable String readLastAssistantText(
-            String tenantId, String sessionId, String workerProcessId) {
-        List<ChatMessageDocument> history = chatMessageService.history(
-                tenantId, sessionId, workerProcessId);
+    private @Nullable String readLastAssistantText(String tenantId, String sessionId, String workerProcessId) {
+        List<ChatMessageDocument> history = chatMessageService.history(tenantId, sessionId, workerProcessId);
         for (int i = history.size() - 1; i >= 0; i--) {
             ChatMessageDocument m = history.get(i);
-            if (m.getRole() == ChatRole.ASSISTANT && m.getContent() != null
+            if (m.getRole() == ChatRole.ASSISTANT
+                    && m.getContent() != null
                     && !m.getContent().isBlank()) {
                 return m.getContent();
             }
@@ -1463,24 +1467,18 @@ public class MarvinEngine implements ThinkEngine {
      * passes the latest phase user msg), so we ALSO persist the
      * reply onto the node so the next REFLECT phase can read it.
      */
-    private void appendCallReply(
-            ThinkProcessDocument process,
-            MarvinNodeDocument node,
-            String recipe,
-            String reply) {
+    private void appendCallReply(ThinkProcessDocument process, MarvinNodeDocument node, String recipe, String reply) {
         String marker = "<<< Result of CALL_RECIPE('" + recipe + "'):\n";
         String capped = reply;
         int cap = properties.getRecipeReplyTruncateChars();
         if (capped.length() > cap) {
-            capped = capped.substring(0, cap)
-                    + "\n[truncated; full reply persisted in sub-process history]";
+            capped = capped.substring(0, cap) + "\n[truncated; full reply persisted in sub-process history]";
         }
         String block = marker + capped + "\n>>>";
 
         // Persist on the node as a structured artifact for later
         // phases to access via the user-message builder.
-        Map<String, Object> art = node.getArtifacts() == null
-                ? new LinkedHashMap<>() : node.getArtifacts();
+        Map<String, Object> art = node.getArtifacts() == null ? new LinkedHashMap<>() : node.getArtifacts();
         @SuppressWarnings("unchecked")
         List<String> calls = (List<String>) art.get("recipeReplies");
         if (calls == null) {
@@ -1505,8 +1503,10 @@ public class MarvinEngine implements ThinkEngine {
                     .build();
             chatMessageService.append(msg);
         } catch (RuntimeException e) {
-            log.debug("Marvin id='{}' chat-history append for CALL_RECIPE reply failed: {}",
-                    process.getId(), e.toString());
+            log.debug(
+                    "Marvin id='{}' chat-history append for CALL_RECIPE reply failed: {}",
+                    process.getId(),
+                    e.toString());
         }
     }
 
@@ -1518,23 +1518,21 @@ public class MarvinEngine implements ThinkEngine {
      * carries the required {@code documentRef}+{@code childTemplate};
      * other TaskKinds are rejected by the spec parser.
      */
-    private void spawnChildren(
-            ThinkProcessDocument process,
-            MarvinNodeDocument parent,
-            List<NewTaskSpec> children) {
+    private void spawnChildren(ThinkProcessDocument process, MarvinNodeDocument parent, List<NewTaskSpec> children) {
         if (children == null || children.isEmpty()) return;
         List<NodeSpec> specs = new ArrayList<>(children.size());
         for (NewTaskSpec c : children) {
             TaskKind kind = c.taskKind() == null ? TaskKind.WORKER : c.taskKind();
-            Map<String, Object> spec = c.taskSpec() == null
-                    ? new LinkedHashMap<>() : new LinkedHashMap<>(c.taskSpec());
+            Map<String, Object> spec = c.taskSpec() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(c.taskSpec());
             specs.add(new NodeSpec(c.goal(), kind, spec));
         }
         nodeService.appendChildren(
-                process.getTenantId(), process.getId(),
-                parent.getId() == null ? "" : parent.getId(), specs);
-        log.info("Marvin id='{}' node='{}' spawned {} children (NEEDS_SUBTASKS)",
-                process.getId(), parent.getId(), specs.size());
+                process.getTenantId(), process.getId(), parent.getId() == null ? "" : parent.getId(), specs);
+        log.info(
+                "Marvin id='{}' node='{}' spawned {} children (NEEDS_SUBTASKS)",
+                process.getId(),
+                parent.getId(),
+                specs.size());
     }
 
     // ──────────────────── NEEDS_USER_INPUT ────────────────────
@@ -1546,13 +1544,9 @@ public class MarvinEngine implements ThinkEngine {
      * via the inbox-item id.
      */
     private boolean spawnUserInputSibling(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            MarvinNodeDocument node,
-            UserInputSpec spec) {
+            ThinkProcessDocument process, ThinkEngineContext ctx, MarvinNodeDocument node, UserInputSpec spec) {
         if (ctx.userId() == null) {
-            nodeService.markFailed(node,
-                    "NEEDS_USER_INPUT requires session-owner userId; none resolved");
+            nodeService.markFailed(node, "NEEDS_USER_INPUT requires session-owner userId; none resolved");
             return false;
         }
         Map<String, Object> taskSpec = new LinkedHashMap<>();
@@ -1564,39 +1558,35 @@ public class MarvinEngine implements ThinkEngine {
             taskSpec.put("payload", spec.payload());
         }
         NodeSpec ns = new NodeSpec(
-                spec.title() == null || spec.title().isBlank()
-                        ? "User input requested by worker" : spec.title(),
+                spec.title() == null || spec.title().isBlank() ? "User input requested by worker" : spec.title(),
                 TaskKind.USER_INPUT,
                 taskSpec);
-        MarvinNodeDocument inputNode = nodeService.insertSiblingAfter(
-                process.getTenantId(), node, ns);
+        MarvinNodeDocument inputNode = nodeService.insertSiblingAfter(process.getTenantId(), node, ns);
 
         Map<String, Object> artifacts = new LinkedHashMap<>();
         artifacts.put("awaitingUserInputNode", inputNode.getId());
         nodeService.markDone(node, artifacts);
-        log.info("Marvin id='{}' NEEDS_USER_INPUT node='{}' inserted USER_INPUT sibling='{}'",
-                process.getId(), node.getId(), inputNode.getId());
+        log.info(
+                "Marvin id='{}' NEEDS_USER_INPUT node='{}' inserted USER_INPUT sibling='{}'",
+                process.getId(),
+                node.getId(),
+                inputNode.getId());
         return false;
     }
 
     // ──────────────────── EXPAND_FROM_DOC ────────────────────
 
-    private void runExpandFromDoc(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            MarvinNodeDocument node) {
+    private void runExpandFromDoc(ThinkProcessDocument process, ThinkEngineContext ctx, MarvinNodeDocument node) {
         @SuppressWarnings("unchecked")
         Map<String, Object> documentRef = paramMap(node, "documentRef");
         if (documentRef == null || documentRef.isEmpty()) {
-            nodeService.markFailed(node,
-                    "EXPAND_FROM_DOC missing taskSpec.documentRef");
+            nodeService.markFailed(node, "EXPAND_FROM_DOC missing taskSpec.documentRef");
             return;
         }
         @SuppressWarnings("unchecked")
         Map<String, Object> childTemplate = paramMap(node, "childTemplate");
         if (childTemplate == null || childTemplate.isEmpty()) {
-            nodeService.markFailed(node,
-                    "EXPAND_FROM_DOC missing taskSpec.childTemplate");
+            nodeService.markFailed(node, "EXPAND_FROM_DOC missing taskSpec.childTemplate");
             return;
         }
         String treeMode = paramString(node, "treeMode", "RECURSIVE");
@@ -1605,9 +1595,13 @@ public class MarvinEngine implements ThinkEngine {
         DocumentExpander.ExpansionPlan plan;
         try {
             plan = documentExpander.expand(
-                    process.getTenantId(), ctx.projectId(),
-                    documentRef, childTemplate, treeMode,
-                    node.getGoal(), strictMissing);
+                    process.getTenantId(),
+                    ctx.projectId(),
+                    documentRef,
+                    childTemplate,
+                    treeMode,
+                    node.getGoal(),
+                    strictMissing);
         } catch (DocumentExpander.ExpandError ee) {
             nodeService.markFailed(node, ee.getMessage());
             return;
@@ -1617,8 +1611,7 @@ public class MarvinEngine implements ThinkEngine {
         }
         if (plan.nodes().isEmpty()) {
             if (failOnEmpty) {
-                nodeService.markFailed(node,
-                        "EXPAND_FROM_DOC: document yielded 0 items (failOnEmpty=true)");
+                nodeService.markFailed(node, "EXPAND_FROM_DOC: document yielded 0 items (failOnEmpty=true)");
                 return;
             }
             Map<String, Object> artifacts = new LinkedHashMap<>();
@@ -1632,20 +1625,18 @@ public class MarvinEngine implements ThinkEngine {
         artifacts.put("expanded", true);
         artifacts.put("childCount", total);
         nodeService.markDone(node, artifacts);
-        log.info("Marvin id='{}' EXPAND node='{}' materialized {} node(s)",
-                process.getId(), node.getId(), total);
+        log.info("Marvin id='{}' EXPAND node='{}' materialized {} node(s)", process.getId(), node.getId(), total);
     }
 
     private int appendExpansionPlan(
-            ThinkProcessDocument process, String parentId,
-            List<DocumentExpander.TemplatedNode> templated) {
+            ThinkProcessDocument process, String parentId, List<DocumentExpander.TemplatedNode> templated) {
         if (templated.isEmpty()) return 0;
         List<NodeSpec> directSpecs = new ArrayList<>(templated.size());
         for (DocumentExpander.TemplatedNode tn : templated) {
             directSpecs.add(tn.spec());
         }
-        List<MarvinNodeDocument> directNodes = nodeService.appendChildren(
-                process.getTenantId(), process.getId(), parentId, directSpecs);
+        List<MarvinNodeDocument> directNodes =
+                nodeService.appendChildren(process.getTenantId(), process.getId(), parentId, directSpecs);
         int total = directNodes.size();
         for (int i = 0; i < directNodes.size(); i++) {
             DocumentExpander.TemplatedNode tn = templated.get(i);
@@ -1658,20 +1649,14 @@ public class MarvinEngine implements ThinkEngine {
 
     // ──────────────────── USER_INPUT ────────────────────
 
-    private boolean runUserInput(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            MarvinNodeDocument node) {
+    private boolean runUserInput(ThinkProcessDocument process, ThinkEngineContext ctx, MarvinNodeDocument node) {
         String targetUserId = ctx.userId();
         if (targetUserId == null) {
-            nodeService.markFailed(node,
-                    "USER_INPUT requires session-owner userId; none resolved");
+            nodeService.markFailed(node, "USER_INPUT requires session-owner userId; none resolved");
             return false;
         }
-        MaximegalonType type = parseInboxItemType(
-                paramString(node, "type", null), MaximegalonType.FEEDBACK);
-        Criticality crit = parseCriticality(
-                paramString(node, "criticality", null), Criticality.NORMAL);
+        MaximegalonType type = parseInboxItemType(paramString(node, "type", null), MaximegalonType.FEEDBACK);
+        Criticality crit = parseCriticality(paramString(node, "criticality", null), Criticality.NORMAL);
         String title = paramString(node, "title", node.getGoal());
         String body = paramString(node, "body", null);
         @SuppressWarnings("unchecked")
@@ -1694,8 +1679,13 @@ public class MarvinEngine implements ThinkEngine {
             MaximegalonDocument saved = inboxItemService.create(toCreate);
             nodeService.setInboxItemId(node, saved.getId());
             nodeService.markWaiting(node);
-            log.info("Marvin id='{}' USER_INPUT node='{}' item='{}' type={} crit={}",
-                    process.getId(), node.getId(), saved.getId(), type, crit);
+            log.info(
+                    "Marvin id='{}' USER_INPUT node='{}' item='{}' type={} crit={}",
+                    process.getId(),
+                    node.getId(),
+                    saved.getId(),
+                    type,
+                    crit);
             return true;
         } catch (RuntimeException e) {
             nodeService.markFailed(node, "USER_INPUT failed: " + e.getMessage());
@@ -1718,10 +1708,7 @@ public class MarvinEngine implements ThinkEngine {
      * raw result Markdown. Failures are logged at WARN and
      * swallowed — drafts must never break the engine.
      */
-    private void writeNodeDraft(
-            ThinkProcessDocument process,
-            MarvinNodeDocument node,
-            @Nullable String result) {
+    private void writeNodeDraft(ThinkProcessDocument process, MarvinNodeDocument node, @Nullable String result) {
         if (result == null || result.isBlank()) return;
         try {
             String positionPath = buildPositionPath(node);
@@ -1735,21 +1722,35 @@ public class MarvinEngine implements ThinkEngine {
             var existing = documentService.findByPath(tenantId, projectId, path);
             if (existing.isPresent()) {
                 documentService.update(
-                        existing.get().getId(), title, /*tags*/ null, body, /*newPath*/ null,
+                        existing.get().getId(),
+                        title, /*tags*/
+                        null,
+                        body, /*newPath*/
+                        null,
                         de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             } else {
                 documentService.createText(
-                        tenantId, projectId, path, title,
+                        tenantId,
+                        projectId,
+                        path,
+                        title,
                         List.of("marvin", "draft", "process-" + process.getId()),
                         body,
                         "marvin:" + process.getId(),
                         de.mhus.vance.shared.permission.WriteActor.SYSTEM);
             }
-            log.info("Marvin id='{}' wrote draft node='{}' path='{}' ({} chars)",
-                    process.getId(), node.getId(), path, result.length());
+            log.info(
+                    "Marvin id='{}' wrote draft node='{}' path='{}' ({} chars)",
+                    process.getId(),
+                    node.getId(),
+                    path,
+                    result.length());
         } catch (RuntimeException e) {
-            log.warn("Marvin id='{}' draft persistence failed node='{}': {}",
-                    process.getId(), node.getId(), e.toString());
+            log.warn(
+                    "Marvin id='{}' draft persistence failed node='{}': {}",
+                    process.getId(),
+                    node.getId(),
+                    e.toString());
         }
     }
 
@@ -1791,9 +1792,12 @@ public class MarvinEngine implements ThinkEngine {
         if (node.getPhaseHistory() != null && !node.getPhaseHistory().isEmpty()) {
             sb.append("phaseHistory:\n");
             for (var ph : node.getPhaseHistory()) {
-                sb.append("  - ").append(ph.phase())
-                        .append(" iter=").append(ph.iterationIndex())
-                        .append(" at ").append(ph.timestamp())
+                sb.append("  - ")
+                        .append(ph.phase())
+                        .append(" iter=")
+                        .append(ph.iterationIndex())
+                        .append(" at ")
+                        .append(ph.timestamp())
                         .append('\n');
             }
         }
@@ -1835,12 +1839,16 @@ public class MarvinEngine implements ThinkEngine {
             try {
                 switch (tool.trim()) {
                     case "doc_write" -> execDocWrite(process, node, a.args(), renderContext);
-                    default -> log.warn("Marvin id='{}' postAction tool='{}' unknown — skipping",
-                            process.getId(), tool);
+                    default ->
+                        log.warn("Marvin id='{}' postAction tool='{}' unknown — skipping", process.getId(), tool);
                 }
             } catch (RuntimeException e) {
-                log.warn("Marvin id='{}' postAction tool='{}' node='{}' failed: {}",
-                        process.getId(), tool, node.getId(), e.toString());
+                log.warn(
+                        "Marvin id='{}' postAction tool='{}' node='{}' failed: {}",
+                        process.getId(),
+                        tool,
+                        node.getId(),
+                        e.toString());
             }
         }
     }
@@ -1852,51 +1860,61 @@ public class MarvinEngine implements ThinkEngine {
             Map<String, Object> renderContext) {
         String rawPath = optString(args, "path");
         if (rawPath == null || rawPath.isBlank()) {
-            throw new IllegalArgumentException(
-                    "doc_write postAction requires non-blank args.path");
+            throw new IllegalArgumentException("doc_write postAction requires non-blank args.path");
         }
         Object contentObj = args == null ? null : args.get("content");
         String rawContent = contentObj instanceof String cs ? cs : null;
         if (rawContent == null) {
-            throw new IllegalArgumentException(
-                    "doc_write postAction requires args.content (string)");
+            throw new IllegalArgumentException("doc_write postAction requires args.content (string)");
         }
         String path = renderPostActionTemplate(rawPath, renderContext);
         String content = renderPostActionTemplate(rawContent, renderContext);
         String rawTitle = optString(args, "title");
-        String title = rawTitle == null
-                ? null : renderPostActionTemplate(rawTitle, renderContext);
+        String title = rawTitle == null ? null : renderPostActionTemplate(rawTitle, renderContext);
 
         String tenantId = process.getTenantId();
         String projectId = process.getProjectId();
         var existing = documentService.findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
             documentService.update(
-                    existing.get().getId(), title, /*tags*/ null, content, /*newPath*/ null,
+                    existing.get().getId(),
+                    title, /*tags*/
+                    null,
+                    content, /*newPath*/
+                    null,
                     de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-            log.info("Marvin id='{}' postAction doc_write node='{}' updated path='{}' ({} chars)",
-                    process.getId(), node.getId(), path, content.length());
+            log.info(
+                    "Marvin id='{}' postAction doc_write node='{}' updated path='{}' ({} chars)",
+                    process.getId(),
+                    node.getId(),
+                    path,
+                    content.length());
         } else {
             documentService.createText(
-                    tenantId, projectId, path, title,
-                    List.of("marvin", "post-action"), content,
+                    tenantId,
+                    projectId,
+                    path,
+                    title,
+                    List.of("marvin", "post-action"),
+                    content,
                     "marvin:" + process.getId(),
                     de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-            log.info("Marvin id='{}' postAction doc_write node='{}' created path='{}' ({} chars)",
-                    process.getId(), node.getId(), path, content.length());
+            log.info(
+                    "Marvin id='{}' postAction doc_write node='{}' created path='{}' ({} chars)",
+                    process.getId(),
+                    node.getId(),
+                    path,
+                    content.length());
         }
     }
 
     private Map<String, Object> buildPostActionContext(
-            ThinkProcessDocument process,
-            MarvinNodeDocument node,
-            Map<String, Object> nodeArtifacts) {
+            ThinkProcessDocument process, MarvinNodeDocument node, Map<String, Object> nodeArtifacts) {
         Map<String, Object> nodeCtx = new LinkedHashMap<>();
         Object nodeResult = nodeArtifacts.get("result");
         nodeCtx.put("result", nodeResult == null ? "" : nodeResult);
         nodeCtx.put("goal", nullSafe(node.getGoal()));
-        nodeCtx.put("summary", nullSafe(
-                (String) nodeArtifacts.getOrDefault("summary", "")));
+        nodeCtx.put("summary", nullSafe((String) nodeArtifacts.getOrDefault("summary", "")));
         Map<String, Object> processParams = new LinkedHashMap<>();
         String goalStr = nullSafe(process.getGoal());
         processParams.put("topic", goalStr);
@@ -1914,15 +1932,13 @@ public class MarvinEngine implements ThinkEngine {
         return root;
     }
 
-    private String renderPostActionTemplate(
-            String template, Map<String, Object> ctx) {
+    private String renderPostActionTemplate(String template, Map<String, Object> ctx) {
         try {
             String rendered = composer.render(template, ctx);
             return rendered == null ? "" : rendered;
         } catch (RuntimeException e) {
             throw new IllegalArgumentException(
-                    "postAction template render failed for '" + template
-                            + "': " + e.getMessage(), e);
+                    "postAction template render failed for '" + template + "': " + e.getMessage(), e);
         }
     }
 
@@ -1938,8 +1954,8 @@ public class MarvinEngine implements ThinkEngine {
             if (n.getParentId() == null) {
                 root = n;
             } else {
-                byParent.computeIfAbsent(n.getParentId(),
-                        k -> new ArrayList<>()).add(n);
+                byParent.computeIfAbsent(n.getParentId(), k -> new ArrayList<>())
+                        .add(n);
             }
         }
         if (root == null) return;
@@ -1955,15 +1971,15 @@ public class MarvinEngine implements ThinkEngine {
     }
 
     private de.mhus.vance.api.progress.PlanNode toPlanNode(
-            MarvinNodeDocument node,
-            Map<String, List<MarvinNodeDocument>> byParent) {
+            MarvinNodeDocument node, Map<String, List<MarvinNodeDocument>> byParent) {
         List<MarvinNodeDocument> kids = byParent.getOrDefault(node.getId(), List.of());
         List<de.mhus.vance.api.progress.PlanNode> childPlans = kids.isEmpty()
                 ? null
                 : kids.stream().map(k -> toPlanNode(k, byParent)).toList();
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("position", node.getPosition());
-        if (node.getCurrentPhase() != null) meta.put("phase", node.getCurrentPhase().name());
+        if (node.getCurrentPhase() != null)
+            meta.put("phase", node.getCurrentPhase().name());
         if (node.getFailureReason() != null) {
             meta.put("failureReason", node.getFailureReason());
         }
@@ -2011,10 +2027,8 @@ public class MarvinEngine implements ThinkEngine {
      * tree cannot emit a second ParentReport.
      * See {@code planning/process-engine-reply-channel.md} §4.4.
      */
-    private void emitFinalReplyIfTreeTerminal(
-            ThinkProcessDocument process, ThinkEngineContext ctx) {
-        if (process.getParentProcessId() == null
-                || process.getParentProcessId().isBlank()) {
+    private void emitFinalReplyIfTreeTerminal(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (process.getParentProcessId() == null || process.getParentProcessId().isBlank()) {
             return;
         }
         if (!nodeService.isTreeTerminal(process.getId())) {
@@ -2036,8 +2050,7 @@ public class MarvinEngine implements ThinkEngine {
             }
             ctx.emitReply(body, /*inResponseToAt*/ null, report.payload());
         } catch (RuntimeException e) {
-            log.warn("Marvin id='{}' emitFinalReply failed: {}",
-                    process.getId(), e.toString());
+            log.warn("Marvin id='{}' emitFinalReply failed: {}", process.getId(), e.toString());
         }
     }
 
@@ -2045,15 +2058,14 @@ public class MarvinEngine implements ThinkEngine {
         return nodeService.listAll(process.getId()).size() > properties.getMaxTreeNodes();
     }
 
-    private void emitNodeDoneStatus(
-            ThinkProcessDocument process, MarvinNodeDocument node, String detail) {
+    private void emitNodeDoneStatus(ThinkProcessDocument process, MarvinNodeDocument node, String detail) {
         try {
-            progressEmitter.emitStatus(process,
+            progressEmitter.emitStatus(
+                    process,
                     de.mhus.vance.api.progress.StatusTag.NODE_DONE,
                     "Node '" + abbrev(node.getGoal()) + "' done — " + detail);
         } catch (RuntimeException pe) {
-            log.debug("Marvin id='{}' NODE_DONE progress emit failed: {}",
-                    process.getId(), pe.toString());
+            log.debug("Marvin id='{}' NODE_DONE progress emit failed: {}", process.getId(), pe.toString());
         }
     }
 
@@ -2071,15 +2083,14 @@ public class MarvinEngine implements ThinkEngine {
      * {@code planning/vogon-result-spec.md} §1 has the rationale.
      */
     private void appendNodeNote(
-            ThinkProcessDocument process,
-            MarvinNodeDocument node,
-            String headerSuffix,
-            @Nullable String body) {
+            ThinkProcessDocument process, MarvinNodeDocument node, String headerSuffix, @Nullable String body) {
         if (chatMessageService == null) return;
         StringBuilder content = new StringBuilder();
         content.append("**[Node ")
-                .append(node.getTaskKind() == null
-                        ? "?" : node.getTaskKind().name().toLowerCase())
+                .append(
+                        node.getTaskKind() == null
+                                ? "?"
+                                : node.getTaskKind().name().toLowerCase())
                 .append(" / ")
                 .append(abbrev(node.getGoal()))
                 .append(" — ")
@@ -2089,18 +2100,20 @@ public class MarvinEngine implements ThinkEngine {
             content.append("\n\n").append(body);
         }
         try {
-            chatMessageService.append(
-                    de.mhus.vance.shared.chat.ChatMessageDocument.builder()
-                            .tenantId(process.getTenantId())
-                            .sessionId(process.getSessionId())
-                            .thinkProcessId(process.getId())
-                            .role(de.mhus.vance.api.chat.ChatRole.ASSISTANT)
-                            .content(content.toString())
-                            .build());
+            chatMessageService.append(de.mhus.vance.shared.chat.ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(de.mhus.vance.api.chat.ChatRole.ASSISTANT)
+                    .content(content.toString())
+                    .build());
         } catch (RuntimeException e) {
-            log.debug("Marvin id='{}' chat-history append failed for node='{}' "
-                            + "header='{}': {}",
-                    process.getId(), node.getId(), headerSuffix, e.toString());
+            log.debug(
+                    "Marvin id='{}' chat-history append failed for node='{}' " + "header='{}': {}",
+                    process.getId(),
+                    node.getId(),
+                    headerSuffix,
+                    e.toString());
         }
     }
 
@@ -2112,31 +2125,30 @@ public class MarvinEngine implements ThinkEngine {
         return v instanceof String s && !s.isBlank() ? s : null;
     }
 
-    private static @Nullable Object processParam(
-            ThinkProcessDocument process, String key) {
+    private static @Nullable Object processParam(ThinkProcessDocument process, String key) {
         Map<String, Object> p = process.getEngineParams();
         return p == null ? null : p.get(key);
     }
 
-    private static int paramInt(
-            ThinkProcessDocument process, String key, int fallback) {
+    private static int paramInt(ThinkProcessDocument process, String key, int fallback) {
         Object v = processParam(process, key);
         if (v instanceof Number n) return n.intValue();
         if (v instanceof String s) {
-            try { return Integer.parseInt(s.trim()); }
-            catch (NumberFormatException e) { return fallback; }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                return fallback;
+            }
         }
         return fallback;
     }
 
-    private static @Nullable Object nodeSpecParam(
-            MarvinNodeDocument node, String key) {
+    private static @Nullable Object nodeSpecParam(MarvinNodeDocument node, String key) {
         Map<String, Object> p = node.getTaskSpec();
         return p == null ? null : p.get(key);
     }
 
-    private static @Nullable String paramString(
-            MarvinNodeDocument node, String key, @Nullable String fallback) {
+    private static @Nullable String paramString(MarvinNodeDocument node, String key, @Nullable String fallback) {
         Object v = nodeSpecParam(node, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
     }
@@ -2149,8 +2161,7 @@ public class MarvinEngine implements ThinkEngine {
     }
 
     @SuppressWarnings("unchecked")
-    private static @Nullable Map<String, Object> paramMap(
-            MarvinNodeDocument node, String key) {
+    private static @Nullable Map<String, Object> paramMap(MarvinNodeDocument node, String key) {
         Object v = nodeSpecParam(node, key);
         if (v instanceof Map<?, ?> m) {
             Map<String, Object> out = new LinkedHashMap<>();
@@ -2175,8 +2186,7 @@ public class MarvinEngine implements ThinkEngine {
 
     private @Nullable String describeRecipe(ThinkProcessDocument process, String name) {
         try {
-            var resolved = recipeLoader.load(
-                    process.getTenantId(), process.getProjectId(), name);
+            var resolved = recipeLoader.load(process.getTenantId(), process.getProjectId(), name);
             if (resolved.isEmpty()) return null;
             String desc = resolved.get().description();
             return desc == null ? null : desc.lines().findFirst().orElse(desc);
@@ -2185,8 +2195,7 @@ public class MarvinEngine implements ThinkEngine {
         }
     }
 
-    private static MaximegalonType parseInboxItemType(
-            @Nullable String raw, MaximegalonType fallback) {
+    private static MaximegalonType parseInboxItemType(@Nullable String raw, MaximegalonType fallback) {
         if (raw == null || raw.isBlank()) return fallback;
         try {
             return MaximegalonType.valueOf(raw.trim().toUpperCase());
@@ -2195,8 +2204,7 @@ public class MarvinEngine implements ThinkEngine {
         }
     }
 
-    private static Criticality parseCriticality(
-            @Nullable String raw, Criticality fallback) {
+    private static Criticality parseCriticality(@Nullable String raw, Criticality fallback) {
         if (raw == null || raw.isBlank()) return fallback;
         try {
             return Criticality.valueOf(raw.trim().toUpperCase());
@@ -2223,16 +2231,13 @@ public class MarvinEngine implements ThinkEngine {
         if (params == null) return null;
         Object raw = params.get("inheritContext");
         String levelRaw = raw instanceof String s ? s : null;
-        de.mhus.vance.brain.inherit.InheritLevel level =
-                de.mhus.vance.brain.inherit.InheritLevel.parse(levelRaw);
+        de.mhus.vance.brain.inherit.InheritLevel level = de.mhus.vance.brain.inherit.InheritLevel.parse(levelRaw);
         if (level instanceof de.mhus.vance.brain.inherit.InheritLevel.None) return null;
         try {
             return parentContextRenderer.render(
-                    parentId, process.getTenantId(), process.getSessionId(),
-                    level, /*maxChars*/ 15_000);
+                    parentId, process.getTenantId(), process.getSessionId(), level, /*maxChars*/ 15_000);
         } catch (RuntimeException e) {
-            log.warn("Marvin id='{}' parent-context render failed: {}",
-                    process.getId(), e.toString());
+            log.warn("Marvin id='{}' parent-context render failed: {}", process.getId(), e.toString());
             return null;
         }
     }

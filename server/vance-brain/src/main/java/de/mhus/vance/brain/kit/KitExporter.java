@@ -39,10 +39,7 @@ public class KitExporter {
     private final KitTreeWriter treeWriter;
 
     public KitOperationResultDto export(
-            String tenantId,
-            String projectId,
-            KitExportRequestDto request,
-            @Nullable String actor) {
+            String tenantId, String projectId, KitExportRequestDto request, @Nullable String actor) {
 
         KitManifestDto manifest = recordStore.loadManifest(tenantId, projectId);
         if (manifest == null) {
@@ -59,13 +56,13 @@ public class KitExporter {
         String subPath = firstNonBlank(request.getPath(), manifest.getOrigin().getPath());
 
         if (manifest.isHasEncryptedSecrets()
-                && (request.getVaultPassword() == null || request.getVaultPassword().isBlank())) {
+                && (request.getVaultPassword() == null
+                        || request.getVaultPassword().isBlank())) {
             throw new KitException("vault password is required to export password-settings");
         }
 
         Path clonePath = workspace.allocate("kit-export");
-        try (WriteableTarget clone =
-                     repoLoader.openForWrite(url, branch, request.getToken(), clonePath)) {
+        try (WriteableTarget clone = repoLoader.openForWrite(url, branch, request.getToken(), clonePath)) {
             Path workTree = clone.workTree();
             // Containment before createDirectories, not after: an unchecked
             // `path: ../../..` used to escape the work tree, and every guard
@@ -90,15 +87,14 @@ public class KitExporter {
             // VAULT: this tree is about to sit in a repository anyone reaching
             // it can clone, which is the one case a vault passphrase is for.
             KitTreeWriter.Written written = treeWriter.write(
-                    tenantId, projectId, manifest, kitRoot,
-                    KitTreeWriter.SecretMode.VAULT, request.getVaultPassword());
+                    tenantId, projectId, manifest, kitRoot, KitTreeWriter.SecretMode.VAULT, request.getVaultPassword());
             // Tools are no longer a kit-level concept — they live under
             // documents/server-tools/<name>.yaml and ride the documents
             // writer. The result still reports a tools list for API stability.
             List<String> writtenTools = new ArrayList<>();
 
-            return commitAndPush(clone, manifest, request,
-                    written.documents(), written.settings(), writtenTools, branch, actor);
+            return commitAndPush(
+                    clone, manifest, request, written.documents(), written.settings(), writtenTools, actor);
         } finally {
             workspace.remove(clonePath);
         }
@@ -113,29 +109,30 @@ public class KitExporter {
             List<String> writtenDocs,
             List<String> writtenSettings,
             List<String> writtenTools,
-            @Nullable String branch,
             @Nullable String actor) {
 
         String message = request.getCommitMessage();
         if (message == null || message.isBlank()) {
             String commitShort = manifest.getOrigin().getCommit() == null
-                    ? "" : "@" + shortSha(manifest.getOrigin().getCommit());
+                    ? ""
+                    : "@" + shortSha(manifest.getOrigin().getCommit());
             message = "vance-export: " + manifest.getKit().getName() + commitShort;
         }
 
         Optional<String> pushedSha = clone.commitAndPublish(message, actor);
-        log.info("Exported kit '{}' to {} (commit {})",
-                manifest.getKit().getName(), request.getUrl(),
+        log.info(
+                "Exported kit '{}' to {} (commit {})",
+                manifest.getKit().getName(),
+                request.getUrl(),
                 pushedSha.orElse("none"));
 
-        KitOperationResultDto.KitOperationResultDtoBuilder result =
-                KitOperationResultDto.builder()
-                        .kitName(manifest.getKit().getName())
-                        .version(manifest.getKit().getVersion())
-                        .mode("EXPORT")
-                        .documentsAdded(writtenDocs)
-                        .settingsAdded(writtenSettings)
-                        .toolsAdded(writtenTools);
+        KitOperationResultDto.KitOperationResultDtoBuilder result = KitOperationResultDto.builder()
+                .kitName(manifest.getKit().getName())
+                .version(manifest.getKit().getVersion())
+                .mode("EXPORT")
+                .documentsAdded(writtenDocs)
+                .settingsAdded(writtenSettings)
+                .toolsAdded(writtenTools);
         pushedSha.ifPresent(result::sourceCommit);
         return result.build();
     }

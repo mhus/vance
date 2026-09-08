@@ -100,8 +100,7 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
         if (!(rawCtx instanceof TriggerContext.Sessioned ctx)) {
             String msg = "SpawnActionExecutor requires a TriggerContext.Sessioned "
                     + "(caller must resolve the session before spawning)";
-            log.warn("{} — action='{}' source='{}'",
-                    msg, action.recipe(), rawCtx.sourceTag());
+            log.warn("{} — action='{}' source='{}'", msg, action.recipe(), rawCtx.sourceTag());
             return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR, msg, null);
         }
 
@@ -114,44 +113,35 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
         ThinkEngine engine;
         try {
             applied = recipeResolver.applyDefaulting(
-                    ctx.tenantId(), ctx.projectId(),
-                    action.recipe(),
-                    effectiveProfile, action.params());
-            engine = thinkEngineServiceProvider.getObject()
+                    ctx.tenantId(), ctx.projectId(), action.recipe(), effectiveProfile, action.params());
+            engine = thinkEngineServiceProvider
+                    .getObject()
                     .resolve(applied.engine())
                     .orElseThrow(() -> new IllegalStateException(
-                            "Recipe '" + applied.name() + "' references unknown engine '"
-                                    + applied.engine() + "'"));
+                            "Recipe '" + applied.name() + "' references unknown engine '" + applied.engine() + "'"));
         } catch (RecipeResolver.UnknownRecipeException ure) {
-            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
+            return ActionResult.failure(
+                    ActionOutcome.TECHNICAL_ERROR,
                     ure.getMessage(),
-                    buildUnknownRecipeOutput(action.recipe(),
-                            ctx.tenantId(), ctx.projectId()));
+                    buildUnknownRecipeOutput(action.recipe(), ctx.tenantId(), ctx.projectId()));
         } catch (RecipeResolver.UnknownEngineException uee) {
-            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
-                    uee.getMessage(), null);
+            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR, uee.getMessage(), null);
         } catch (RuntimeException ex) {
-            log.warn("SpawnActionExecutor: resolution failed (recipe='{}'): {}",
-                    action.recipe(), ex.toString());
-            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
-                    "resolution: " + ex.getMessage(), null);
+            log.warn("SpawnActionExecutor: resolution failed (recipe='{}'): {}", action.recipe(), ex.toString());
+            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR, "resolution: " + ex.getMessage(), null);
         }
 
         // ── Determine process name + title ───────────────────────────────
-        String processName = StringUtils.isNotBlank(action.processName())
-                ? action.processName()
-                : autoGenerateProcessName();
-        String title = StringUtils.isNotBlank(action.title())
-                ? action.title()
-                : titleFor(invocation);
+        String processName =
+                StringUtils.isNotBlank(action.processName()) ? action.processName() : autoGenerateProcessName();
+        String title = StringUtils.isNotBlank(action.title()) ? action.title() : titleFor(invocation);
 
         // ── Inherit the parent's WorkTarget when the recipe didn't
         // pin one explicitly. Sub-workers spawned from a coding
         // worker land in the same backend by default; a recipe that
         // wants its own (e.g. sandbox-experiment with WORK) keeps
         // precedence.
-        Map<String, Object> spawnParams = workTargetService.resolveSpawnParams(
-                applied.params(), ctx.parentProcessId());
+        Map<String, Object> spawnParams = workTargetService.resolveSpawnParams(applied.params(), ctx.parentProcessId());
 
         // ── Create think-process — handle name-collision as soft-success ─
         ThinkProcessDocument fresh;
@@ -175,16 +165,16 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
                     applied.effectiveAllowedTools(),
                     applied.connectionProfile(),
                     applied.defaultActiveSkills(),
-                    applied.allowedSkills() == null
-                            ? null : Set.copyOf(applied.allowedSkills()));
+                    applied.allowedSkills() == null ? null : Set.copyOf(applied.allowedSkills()));
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException ae) {
-            return buildAlreadyExistsSoftSuccess(
-                    ctx.tenantId(), ctx.parentSessionId(), processName);
+            return buildAlreadyExistsSoftSuccess(ctx.tenantId(), ctx.parentSessionId(), processName);
         } catch (RuntimeException ex) {
-            log.warn("SpawnActionExecutor: process_create failed (name='{}' recipe='{}'): {}",
-                    processName, action.recipe(), ex.toString());
-            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
-                    "process_create: " + ex.getMessage(), null);
+            log.warn(
+                    "SpawnActionExecutor: process_create failed (name='{}' recipe='{}'): {}",
+                    processName,
+                    action.recipe(),
+                    ex.toString());
+            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR, "process_create: " + ex.getMessage(), null);
         }
 
         // Record what started this process. Two readers, both of which used
@@ -196,41 +186,45 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
         //     to close the matching run log.
         // Written for every trigger kind, not just HOOK: the cost is one
         // field, and "who started this?" is worth answering for all of them.
-        thinkProcessService.setTriggerOrigin(fresh.getId(), TriggerOrigin.builder()
-                .kind(invocation.triggerKind())
-                .source(ctx.sourceTag())
-                .runId(ctx.correlationId())
-                .runAs(ctx.resolvedRunAs())
-                .build());
+        thinkProcessService.setTriggerOrigin(
+                fresh.getId(),
+                TriggerOrigin.builder()
+                        .kind(invocation.triggerKind())
+                        .source(ctx.sourceTag())
+                        .runId(ctx.correlationId())
+                        .runAs(ctx.resolvedRunAs())
+                        .build());
 
         // ── Start engine ─────────────────────────────────────────────────
         try {
             thinkEngineServiceProvider.getObject().start(fresh);
         } catch (RuntimeException ex) {
-            log.warn("SpawnActionExecutor: engine.start failed for id='{}' recipe='{}': {}",
-                    fresh.getId(), action.recipe(), ex.toString());
+            log.warn(
+                    "SpawnActionExecutor: engine.start failed for id='{}' recipe='{}': {}",
+                    fresh.getId(),
+                    action.recipe(),
+                    ex.toString());
             // Roll back the persisted INIT row so it does not linger as an
             // orphan in the session listing (never started, never closed).
             // Mirrors the AgentTaskExecutor cleanup.
             try {
-                thinkProcessService.closeProcess(
-                        fresh.getId(), de.mhus.vance.api.thinkprocess.CloseReason.ABANDONED);
+                thinkProcessService.closeProcess(fresh.getId(), de.mhus.vance.api.thinkprocess.CloseReason.ABANDONED);
             } catch (RuntimeException closeEx) {
-                log.warn("SpawnActionExecutor: could not close orphaned process '{}': {}",
-                        fresh.getId(), closeEx.toString());
+                log.warn(
+                        "SpawnActionExecutor: could not close orphaned process '{}': {}",
+                        fresh.getId(),
+                        closeEx.toString());
             }
-            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
+            return ActionResult.failure(
+                    ActionOutcome.TECHNICAL_ERROR,
                     "engine_start: " + ex.getMessage(),
                     Map.of("processId", fresh.getId()));
         }
 
         // ── Inherit-context wrap on initialMessage ───────────────────────
-        @Nullable String wrappedInitial = wrapInitialMessage(
-                action.initialMessage(),
-                action.inheritContextLevel(),
-                applied,
-                ctx.parentProcessId(),
-                fresh.getId());
+        @Nullable
+        String wrappedInitial = wrapInitialMessage(
+                action.initialMessage(), action.inheritContextLevel(), applied, ctx.parentProcessId(), fresh.getId());
 
         // ── Push wrapped initialMessage as USER_CHAT_INPUT ───────────────
         boolean steered = false;
@@ -238,14 +232,18 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
             steered = pushInitialMessage(invocation, fresh.getId(), wrappedInitial);
         }
 
-        log.debug("SpawnActionExecutor: spawned id='{}' name='{}' recipe='{}' engine='{}' "
+        log.debug(
+                "SpawnActionExecutor: spawned id='{}' name='{}' recipe='{}' engine='{}' "
                         + "session='{}' source='{}' steered={}",
-                fresh.getId(), processName,
-                action.recipe(), engine.name(),
-                ctx.parentSessionId(), ctx.sourceTag(), steered);
-        return ActionResult.scheduled(fresh.getId(),
-                buildSpawnOutput(fresh, applied,
-                        StringUtils.isNotBlank(action.initialMessage()), steered));
+                fresh.getId(),
+                processName,
+                action.recipe(),
+                engine.name(),
+                ctx.parentSessionId(),
+                ctx.sourceTag(),
+                steered);
+        return ActionResult.scheduled(
+                fresh.getId(), buildSpawnOutput(fresh, StringUtils.isNotBlank(action.initialMessage()), steered));
     }
 
     // ──────────────────── Helpers ────────────────────
@@ -280,19 +278,19 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
         try {
             return parentContextSpawnHelper.wrap(level, parentProcessId, initialMessage);
         } catch (RuntimeException e) {
-            log.warn("SpawnActionExecutor: inheritContext wrap failed for id='{}': {}",
-                    freshId, e.toString());
+            log.warn("SpawnActionExecutor: inheritContext wrap failed for id='{}': {}", freshId, e.toString());
             return initialMessage;
         }
     }
 
     private boolean pushInitialMessage(
-            ActionInvocation<TriggerAction.Recipe> invocation,
-            String processId, String content) {
+            ActionInvocation<TriggerAction.Recipe> invocation, String processId, String content) {
         EngineMessageRouter router = messageRouterProvider.getIfAvailable();
         if (router == null) {
-            log.warn("SpawnActionExecutor: EngineMessageRouter unavailable — "
-                    + "initialMessage skipped for process '{}'", processId);
+            log.warn(
+                    "SpawnActionExecutor: EngineMessageRouter unavailable — "
+                            + "initialMessage skipped for process '{}'",
+                    processId);
             return false;
         }
         TriggerContext ctx = invocation.context();
@@ -312,23 +310,24 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
                 .build();
         boolean delivered = router.dispatch(ctx.parentProcessId(), processId, msg);
         if (!delivered) {
-            log.warn("SpawnActionExecutor: initialMessage dispatch failed for process '{}' (source='{}')",
-                    processId, from);
+            log.warn(
+                    "SpawnActionExecutor: initialMessage dispatch failed for process '{}' (source='{}')",
+                    processId,
+                    from);
         }
         return delivered;
     }
 
     private Map<String, Object> buildSpawnOutput(
-            ThinkProcessDocument fresh,
-            AppliedRecipe applied,
-            boolean initialMessageSet,
-            boolean steered) {
-        ThinkProcessDocument refreshed = thinkProcessService.findById(fresh.getId())
-                .orElse(fresh);
+            ThinkProcessDocument fresh, boolean initialMessageSet, boolean steered) {
+        ThinkProcessDocument refreshed =
+                thinkProcessService.findById(fresh.getId()).orElse(fresh);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("processId", refreshed.getId());
         out.put("name", refreshed.getName());
-        out.put("status", refreshed.getStatus() == null ? null : refreshed.getStatus().name());
+        out.put(
+                "status",
+                refreshed.getStatus() == null ? null : refreshed.getStatus().name());
         out.put("engine", refreshed.getThinkEngine());
         out.put("engineVersion", refreshed.getThinkEngineVersion());
         if (refreshed.getRecipeName() != null) {
@@ -345,32 +344,31 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
      * existing process's id, status, engine, recipe are included so the
      * caller (typically {@code ProcessCreateTool}) can render its hint.
      */
-    private ActionResult buildAlreadyExistsSoftSuccess(
-            String tenantId, String sessionId, String name) {
+    private ActionResult buildAlreadyExistsSoftSuccess(String tenantId, String sessionId, String name) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("status", "already_exists");
         out.put("name", name);
-        thinkProcessService.findByName(tenantId, sessionId, name)
-                .ifPresent(existing -> {
-                    out.put("existingProcessId", existing.getId());
-                    if (existing.getStatus() != null) {
-                        out.put("existingStatus", existing.getStatus().name());
-                    }
-                    if (existing.getThinkEngine() != null) {
-                        out.put("existingEngine", existing.getThinkEngine());
-                    }
-                    if (existing.getRecipeName() != null) {
-                        out.put("existingRecipe", existing.getRecipeName());
-                    }
-                });
-        out.put("hint", "A process with this name already exists in the "
-                + "current session. To send additional input to it, call "
-                + "`process_steer(name=\"" + name + "\", content=…)`. To run "
-                + "a SECOND process in parallel on a similar topic, retry "
-                + "with a different `name`. Do NOT silently retry with the "
-                + "same name — the original spawn already succeeded.");
-        log.info("SpawnActionExecutor: name='{}' already exists in session='{}' — soft-success",
-                name, sessionId);
+        thinkProcessService.findByName(tenantId, sessionId, name).ifPresent(existing -> {
+            out.put("existingProcessId", existing.getId());
+            if (existing.getStatus() != null) {
+                out.put("existingStatus", existing.getStatus().name());
+            }
+            if (existing.getThinkEngine() != null) {
+                out.put("existingEngine", existing.getThinkEngine());
+            }
+            if (existing.getRecipeName() != null) {
+                out.put("existingRecipe", existing.getRecipeName());
+            }
+        });
+        out.put(
+                "hint",
+                "A process with this name already exists in the "
+                        + "current session. To send additional input to it, call "
+                        + "`process_steer(name=\"" + name + "\", content=…)`. To run "
+                        + "a SECOND process in parallel on a similar topic, retry "
+                        + "with a different `name`. Do NOT silently retry with the "
+                        + "same name — the original spawn already succeeded.");
+        log.info("SpawnActionExecutor: name='{}' already exists in session='{}' — soft-success", name, sessionId);
         return ActionResult.success(out);
     }
 
@@ -396,27 +394,25 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
             out.put("available", all);
             return out;
         } catch (RuntimeException e) {
-            log.warn("SpawnActionExecutor: failed to build unknown-recipe output for '{}': {}",
-                    requested, e.toString());
+            log.warn(
+                    "SpawnActionExecutor: failed to build unknown-recipe output for '{}': {}", requested, e.toString());
             return null;
         }
     }
 
     static List<String> closeMatches(String requested, List<String> candidates) {
-        String needle = requested == null ? "" : requested.toLowerCase(Locale.ROOT).trim();
+        String needle =
+                requested == null ? "" : requested.toLowerCase(Locale.ROOT).trim();
         if (needle.isEmpty() || candidates.isEmpty()) return List.of();
         List<String[]> ranked = new ArrayList<>(candidates.size());
         for (String c : candidates) {
             int d = levenshtein(needle, c.toLowerCase(Locale.ROOT));
             if (d <= CLOSE_MATCH_DISTANCE) {
-                ranked.add(new String[]{c, Integer.toString(d)});
+                ranked.add(new String[] {c, Integer.toString(d)});
             }
         }
         ranked.sort(Comparator.comparingInt(a -> Integer.parseInt(a[1])));
-        return ranked.stream()
-                .limit(SUGGESTION_LIMIT)
-                .map(a -> a[0])
-                .toList();
+        return ranked.stream().limit(SUGGESTION_LIMIT).map(a -> a[0]).toList();
     }
 
     /** Two-row Levenshtein — fine for short recipe names. */
@@ -433,11 +429,11 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
             curr[0] = i;
             for (int j = 1; j <= m; j++) {
                 int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
-                curr[j] = Math.min(
-                        Math.min(curr[j - 1] + 1, prev[j] + 1),
-                        prev[j - 1] + cost);
+                curr[j] = Math.min(Math.min(curr[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
             }
-            int[] tmp = prev; prev = curr; curr = tmp;
+            int[] tmp = prev;
+            prev = curr;
+            curr = tmp;
         }
         return prev[m];
     }

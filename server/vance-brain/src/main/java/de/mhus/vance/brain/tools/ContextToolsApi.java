@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools;
 
-import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.api.toolhealth.ToolHealthStatus;
+import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.history.HistoryTagBuilder;
 import de.mhus.vance.brain.history.HistoryTagSink;
 import de.mhus.vance.brain.tools.budget.ToolBudget;
@@ -107,8 +107,7 @@ public final class ContextToolsApi implements ToolBus {
      * declared surface under-report what the engine actually gets. The
      * floor makes the declaration optional, not wrong.
      */
-    public static final Set<String> MANDATORY_TOOLS =
-            Set.of("tool_list", "tool_description");
+    public static final Set<String> MANDATORY_TOOLS = Set.of("tool_list", "tool_description");
 
     private final ToolDispatcher dispatcher;
     private final ToolInvocationContext ctx;
@@ -130,14 +129,15 @@ public final class ContextToolsApi implements ToolBus {
      * {@code specification/public/server-tools.md} §14.
      */
     private final Set<String> demoted;
+
     private final Set<String> activatedDeferred;
     private final ToolInvocationListener listener;
     private final java.util.function.Consumer<String> activationRefresh;
     private final HistoryTagBuilder historyTagBuilder;
     private final HistoryTagSink historyTagSink;
     private final @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage;
-    private final de.mhus.vance.brain.ai.attachment.@org.jspecify.annotations.Nullable
-            ToolImageHarvester imageHarvester;
+    private final de.mhus.vance.brain.ai.attachment.@org.jspecify.annotations.Nullable ToolImageHarvester
+            imageHarvester;
     private final de.mhus.vance.brain.ai.attachment.ToolAttachmentSink attachmentSink;
     /**
      * Optional — when set, {@link #primaryAsLc4j()} suffixes the
@@ -164,16 +164,33 @@ public final class ContextToolsApi implements ToolBus {
     private record BudgetContext(ToolBudget budget, ToolTriage.Hints hints) {}
 
     public ContextToolsApi(ToolDispatcher dispatcher, ToolInvocationContext ctx) {
-        this(dispatcher, ctx, Set.of(), Set.of(), Set.of(), Set.of(),
-                ToolInvocationListener.NOOP, null, null, HistoryTagSink.NOOP, null);
+        this(
+                dispatcher,
+                ctx,
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                ToolInvocationListener.NOOP,
+                null,
+                null,
+                HistoryTagSink.NOOP,
+                null);
     }
 
-    public ContextToolsApi(
-            ToolDispatcher dispatcher,
-            ToolInvocationContext ctx,
-            Set<String> allowed) {
-        this(dispatcher, ctx, allowed, allowed, Set.of(), Set.of(),
-                ToolInvocationListener.NOOP, null, null, HistoryTagSink.NOOP, null);
+    public ContextToolsApi(ToolDispatcher dispatcher, ToolInvocationContext ctx, Set<String> allowed) {
+        this(
+                dispatcher,
+                ctx,
+                allowed,
+                allowed,
+                Set.of(),
+                Set.of(),
+                ToolInvocationListener.NOOP,
+                null,
+                null,
+                HistoryTagSink.NOOP,
+                null);
     }
 
     public ContextToolsApi(
@@ -181,8 +198,7 @@ public final class ContextToolsApi implements ToolBus {
             ToolInvocationContext ctx,
             Set<String> allowed,
             ToolInvocationListener listener) {
-        this(dispatcher, ctx, allowed, allowed, Set.of(), Set.of(),
-                listener, null, null, HistoryTagSink.NOOP, null);
+        this(dispatcher, ctx, allowed, allowed, Set.of(), Set.of(), listener, null, null, HistoryTagSink.NOOP, null);
     }
 
     public ContextToolsApi(
@@ -193,8 +209,18 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> deferred,
             Set<String> activatedDeferred,
             ToolInvocationListener listener) {
-        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred,
-                listener, null, null, HistoryTagSink.NOOP, null);
+        this(
+                dispatcher,
+                ctx,
+                allowed,
+                primary,
+                deferred,
+                activatedDeferred,
+                listener,
+                null,
+                null,
+                HistoryTagSink.NOOP,
+                null);
     }
 
     public ContextToolsApi(
@@ -206,8 +232,18 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> activatedDeferred,
             ToolInvocationListener listener,
             java.util.function.@org.jspecify.annotations.Nullable Consumer<String> activationRefresh) {
-        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred,
-                listener, activationRefresh, null, HistoryTagSink.NOOP, null);
+        this(
+                dispatcher,
+                ctx,
+                allowed,
+                primary,
+                deferred,
+                activatedDeferred,
+                listener,
+                activationRefresh,
+                null,
+                HistoryTagSink.NOOP,
+                null);
     }
 
     public ContextToolsApi(
@@ -221,8 +257,18 @@ public final class ContextToolsApi implements ToolBus {
             java.util.function.@org.jspecify.annotations.Nullable Consumer<String> activationRefresh,
             @org.jspecify.annotations.Nullable HistoryTagBuilder historyTagBuilder,
             @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink) {
-        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred,
-                listener, activationRefresh, historyTagBuilder, historyTagSink, null);
+        this(
+                dispatcher,
+                ctx,
+                allowed,
+                primary,
+                deferred,
+                activatedDeferred,
+                listener,
+                activationRefresh,
+                historyTagBuilder,
+                historyTagSink,
+                null);
     }
 
     /**
@@ -272,9 +318,19 @@ public final class ContextToolsApi implements ToolBus {
             @org.jspecify.annotations.Nullable HistoryTagBuilder historyTagBuilder,
             @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink,
             @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage) {
-        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred,
-                listener, activationRefresh, historyTagBuilder, historyTagSink,
-                toolResultStorage, null);
+        this(
+                dispatcher,
+                ctx,
+                allowed,
+                primary,
+                deferred,
+                activatedDeferred,
+                listener,
+                activationRefresh,
+                historyTagBuilder,
+                historyTagSink,
+                toolResultStorage,
+                null);
     }
 
     /**
@@ -296,9 +352,21 @@ public final class ContextToolsApi implements ToolBus {
             @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink,
             @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage,
             @org.jspecify.annotations.Nullable ToolHealthService toolHealthService) {
-        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred, listener,
-                activationRefresh, historyTagBuilder, historyTagSink, toolResultStorage,
-                toolHealthService, null, null);
+        this(
+                dispatcher,
+                ctx,
+                allowed,
+                primary,
+                deferred,
+                activatedDeferred,
+                listener,
+                activationRefresh,
+                historyTagBuilder,
+                historyTagSink,
+                toolResultStorage,
+                toolHealthService,
+                null,
+                null);
     }
 
     /**
@@ -320,10 +388,8 @@ public final class ContextToolsApi implements ToolBus {
             @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink,
             @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage,
             @org.jspecify.annotations.Nullable ToolHealthService toolHealthService,
-            de.mhus.vance.brain.ai.attachment.@org.jspecify.annotations.Nullable
-                    ToolImageHarvester imageHarvester,
-            de.mhus.vance.brain.ai.attachment.@org.jspecify.annotations.Nullable
-                    ToolAttachmentSink attachmentSink) {
+            de.mhus.vance.brain.ai.attachment.@org.jspecify.annotations.Nullable ToolImageHarvester imageHarvester,
+            de.mhus.vance.brain.ai.attachment.@org.jspecify.annotations.Nullable ToolAttachmentSink attachmentSink) {
         this.dispatcher = dispatcher;
         this.ctx = ctx;
         this.allowed = allowed == null ? Set.of() : Set.copyOf(allowed);
@@ -337,8 +403,8 @@ public final class ContextToolsApi implements ToolBus {
         this.toolResultStorage = toolResultStorage;
         this.toolHealthService = toolHealthService;
         this.imageHarvester = imageHarvester;
-        this.attachmentSink = attachmentSink == null
-                ? de.mhus.vance.brain.ai.attachment.ToolAttachmentSink.NOOP : attachmentSink;
+        this.attachmentSink =
+                attachmentSink == null ? de.mhus.vance.brain.ai.attachment.ToolAttachmentSink.NOOP : attachmentSink;
         this.budgetContext = null;
         this.demoted = Set.of();
     }
@@ -347,9 +413,12 @@ public final class ContextToolsApi implements ToolBus {
      * Private copy-constructor used by {@link #copyWith} — same state,
      * new visibility sets, budget carried forward.
      */
-    private ContextToolsApi(ContextToolsApi src,
-            Set<String> allowed, Set<String> primary,
-            Set<String> deferred, Set<String> activatedDeferred,
+    private ContextToolsApi(
+            ContextToolsApi src,
+            Set<String> allowed,
+            Set<String> primary,
+            Set<String> deferred,
+            Set<String> activatedDeferred,
             Set<String> demoted,
             @org.jspecify.annotations.Nullable BudgetContext budgetContext) {
         this.dispatcher = src.dispatcher;
@@ -357,12 +426,10 @@ public final class ContextToolsApi implements ToolBus {
         this.allowed = allowed == null ? Set.of() : Set.copyOf(allowed);
         this.primary = primary == null ? Set.of() : Set.copyOf(primary);
         this.deferred = deferred == null ? Set.of() : Set.copyOf(deferred);
-        this.activatedDeferred = activatedDeferred == null
-                ? Set.of() : Set.copyOf(activatedDeferred);
+        this.activatedDeferred = activatedDeferred == null ? Set.of() : Set.copyOf(activatedDeferred);
         // Demotion only ever names tools that ended up deferred; keeping
         // the two consistent here means no renderer has to re-check it.
-        Set<String> demotedCopy = demoted == null
-                ? new LinkedHashSet<>() : new LinkedHashSet<>(demoted);
+        Set<String> demotedCopy = demoted == null ? new LinkedHashSet<>() : new LinkedHashSet<>(demoted);
         demotedCopy.retainAll(this.deferred);
         this.demoted = Set.copyOf(demotedCopy);
         this.listener = src.listener;
@@ -403,13 +470,12 @@ public final class ContextToolsApi implements ToolBus {
             @org.jspecify.annotations.Nullable Set<String> demotedByBudget) {
         boolean hasDemoted = demotedByBudget != null && !demotedByBudget.isEmpty();
         if ((budget == null || !budget.hasLimit()) && !hasDemoted) return this;
-        BudgetContext bc = budget == null || !budget.hasLimit() ? budgetContext
-                : new BudgetContext(
-                        budget, familyHints == null ? ToolTriage.Hints.EMPTY : familyHints);
+        BudgetContext bc = budget == null || !budget.hasLimit()
+                ? budgetContext
+                : new BudgetContext(budget, familyHints == null ? ToolTriage.Hints.EMPTY : familyHints);
         Set<String> merged = new LinkedHashSet<>(demoted);
         if (hasDemoted) merged.addAll(demotedByBudget);
-        return new ContextToolsApi(
-                this, allowed, primary, deferred, activatedDeferred, merged, bc);
+        return new ContextToolsApi(this, allowed, primary, deferred, activatedDeferred, merged, bc);
     }
 
     /** All tools visible in this scope (after the engine's allow-filter). */
@@ -441,11 +507,10 @@ public final class ContextToolsApi implements ToolBus {
      */
     public List<ToolSpec> listDeferredForDiscovery() {
         if (deferred.isEmpty()) return List.of();
-        return ToolDispatcher.specs(
-                dispatcher.resolveAll(ctx).stream()
-                        .filter(r -> deferred.contains(r.tool().name()))
-                        .sorted(java.util.Comparator.comparing(r -> r.tool().name()))
-                        .toList());
+        return ToolDispatcher.specs(dispatcher.resolveAll(ctx).stream()
+                .filter(r -> deferred.contains(r.tool().name()))
+                .sorted(java.util.Comparator.comparing(r -> r.tool().name()))
+                .toList());
     }
 
     /**
@@ -478,7 +543,8 @@ public final class ContextToolsApi implements ToolBus {
     public String discoveryBlockMarkdown() {
         Set<String> stable = new LinkedHashSet<>(deferred);
         stable.removeAll(demoted);
-        return renderDiscoveryBlock(stable,
+        return renderDiscoveryBlock(
+                stable,
                 "\n\n## Available deferred tools\n\n"
                         + "These tools are listed by name + hint only (full schemas "
                         + "are kept out of the manifest to save tokens). You can "
@@ -502,7 +568,8 @@ public final class ContextToolsApi implements ToolBus {
      * nothing — the common case.
      */
     public String demotedDiscoveryBlockMarkdown() {
-        return renderDiscoveryBlock(demoted,
+        return renderDiscoveryBlock(
+                demoted,
                 "\n\n## Tools not in this turn's manifest\n\n"
                         + "These are also available, but their schemas did not fit "
                         + "the endpoint's tool limit this turn. Calling one by name "
@@ -562,10 +629,15 @@ public final class ContextToolsApi implements ToolBus {
             sb.append('\n');
             for (ToolDispatcher.Resolved r : packTools) {
                 ToolSpec spec = r.tool().toSpec(r.source().sourceId());
-                String hint = spec.getSearchHint() == null || spec.getSearchHint().isBlank()
-                        ? spec.getDescription()
-                        : spec.getSearchHint();
-                sb.append("- `").append(spec.getName()).append("` — ").append(hint).append('\n');
+                String hint =
+                        spec.getSearchHint() == null || spec.getSearchHint().isBlank()
+                                ? spec.getDescription()
+                                : spec.getSearchHint();
+                sb.append("- `")
+                        .append(spec.getName())
+                        .append("` — ")
+                        .append(hint)
+                        .append('\n');
             }
         }
         return sb.toString();
@@ -622,8 +694,7 @@ public final class ContextToolsApi implements ToolBus {
             }
             return doInvoke(name, params);
         }
-        throw new ToolException(
-                "Tool '" + name + "' is not available to this engine");
+        throw new ToolException("Tool '" + name + "' is not available to this engine");
     }
 
     /**
@@ -636,8 +707,7 @@ public final class ContextToolsApi implements ToolBus {
     @Override
     public Map<String, Object> invokeDelegate(String name, Map<String, Object> params) {
         if (!isInDispatch(name)) {
-            throw new ToolException(
-                    "Tool '" + name + "' is not in this engine's dispatch pool");
+            throw new ToolException("Tool '" + name + "' is not in this engine's dispatch pool");
         }
         // Marked as delegated so demand-measuring listeners can skip it —
         // the wrapper call was already counted, and the backend leg is a
@@ -657,8 +727,7 @@ public final class ContextToolsApi implements ToolBus {
      */
     public Map<String, Object> invokeInternal(String name, Map<String, Object> params) {
         if (!isInDispatch(name)) {
-            throw new ToolException(
-                    "Tool '" + name + "' is not in this engine's dispatch pool");
+            throw new ToolException("Tool '" + name + "' is not in this engine's dispatch pool");
         }
         return doInvoke(name, params);
     }
@@ -667,8 +736,7 @@ public final class ContextToolsApi implements ToolBus {
         return doInvoke(name, params, /*delegated*/ false);
     }
 
-    private Map<String, Object> doInvoke(
-            String name, Map<String, Object> params, boolean delegated) {
+    private Map<String, Object> doInvoke(String name, Map<String, Object> params, boolean delegated) {
         if (delegated) listener.beforeDelegate(name);
         else listener.before(name);
         long startMs = System.currentTimeMillis();
@@ -676,8 +744,7 @@ public final class ContextToolsApi implements ToolBus {
         // tool's labels without a second resolve. Cheap (map lookup).
         Optional<ToolDispatcher.Resolved> resolved = dispatcher.resolve(name, ctx);
         try {
-            Map<String, Object> result = harvestImages(
-                    name, dispatcher.invoke(name, params, ctx, this));
+            Map<String, Object> result = harvestImages(name, dispatcher.invoke(name, params, ctx, this));
             notifyAfter(delegated, name, System.currentTimeMillis() - startMs, null);
             // Sliding TTL: bump the activation timestamp on every use of
             // an activated deferred tool so the discovery cycle doesn't
@@ -691,20 +758,17 @@ public final class ContextToolsApi implements ToolBus {
                 }
             }
             emitHistoryTags(historyTagBuilder.onSuccess(
-                    name,
-                    resolved.map(ToolDispatcher.Resolved::tool).orElse(null),
-                    params, result, ctx));
+                    name, resolved.map(ToolDispatcher.Resolved::tool).orElse(null), params, result, ctx));
             // Output-truncation comes AFTER tag extraction — the
             // builder needs the full result to find a documentId /
             // path. The LLM only sees the (possibly stubbed) form
             // returned here. Tools that surface previously-stored
             // results (tool_result_read) opt out — re-truncating their
             // output would spawn a fresh stub and loop forever.
-            boolean bypass = resolved
-                    .map(ToolDispatcher.Resolved::tool)
+            boolean bypass = resolved.map(ToolDispatcher.Resolved::tool)
                     .map(Tool::bypassOutputTruncation)
                     .orElse(false);
-            return bypass ? result : maybeTruncateResult(name, result);
+            return bypass ? result : maybeTruncateResult(result);
         } catch (RuntimeException e) {
             notifyAfter(delegated, name, System.currentTimeMillis() - startMs, e);
             emitHistoryTags(historyTagBuilder.onError(name));
@@ -755,8 +819,7 @@ public final class ContextToolsApi implements ToolBus {
         if (imageHarvester == null) return result;
         try {
             de.mhus.vance.brain.ai.attachment.ToolImageHarvester.Harvest harvest =
-                    imageHarvester.harvest(
-                            result, ctx.tenantId(), ctx.projectId(), toolName, ctx.userId());
+                    imageHarvester.harvest(result, ctx.tenantId(), ctx.projectId(), toolName, ctx.userId());
             attachmentSink.emit(harvest.attachments());
             return harvest.result();
         } catch (RuntimeException e) {
@@ -764,15 +827,13 @@ public final class ContextToolsApi implements ToolBus {
             // the tool result it already has — but it must not vanish
             // silently either, or a permanently broken image path looks
             // like a model that simply never asks for screenshots.
-            log.warn("Image harvest failed for tool '{}' — returning the raw result: {}",
-                    toolName, e.toString());
+            log.warn("Image harvest failed for tool '{}' — returning the raw result: {}", toolName, e.toString());
             return result;
         }
     }
 
     private void notifyAfter(
-            boolean delegated, String name, long elapsedMs,
-            @org.jspecify.annotations.Nullable Throwable error) {
+            boolean delegated, String name, long elapsedMs, @org.jspecify.annotations.Nullable Throwable error) {
         if (delegated) listener.afterDelegate(name, elapsedMs, error);
         else listener.after(name, elapsedMs, error);
     }
@@ -784,7 +845,7 @@ public final class ContextToolsApi implements ToolBus {
      * storage path (large result). No-op when storage is null
      * (e.g. test ctors).
      */
-    private Map<String, Object> maybeTruncateResult(String toolName, Map<String, Object> result) {
+    private Map<String, Object> maybeTruncateResult(Map<String, Object> result) {
         if (toolResultStorage == null) return result;
         try {
             ToolResultPayload p = toolResultStorage.truncateIfLarge(result, ctx);
@@ -825,9 +886,7 @@ public final class ContextToolsApi implements ToolBus {
         if (toolHealthService == null) return base;
         Optional<ToolHealthDocument> doc;
         try {
-            doc = toolHealthService.lookup(
-                    ctx.tenantId(), ctx.sessionId(), ctx.userId(),
-                    ctx.projectId(), tool.name());
+            doc = toolHealthService.lookup(ctx.tenantId(), ctx.sessionId(), ctx.userId(), ctx.projectId(), tool.name());
         } catch (RuntimeException e) {
             return base;
         }
@@ -847,11 +906,12 @@ public final class ContextToolsApi implements ToolBus {
             DateTimeFormatter.ofPattern("HH:mm 'UTC'").withZone(ZoneId.of("UTC"));
 
     private static String healthSuffix(ToolHealthDocument h, @org.jspecify.annotations.Nullable Instant eta) {
-        String head = switch (h.getStatus()) {
-            case DOWN -> "⚠ Currently unavailable";
-            case DEGRADED -> "⚠ Intermittent — recent failures detected";
-            case OK -> "";
-        };
+        String head =
+                switch (h.getStatus()) {
+                    case DOWN -> "⚠ Currently unavailable";
+                    case DEGRADED -> "⚠ Intermittent — recent failures detected";
+                    case OK -> "";
+                };
         if (head.isEmpty()) return "";
         StringBuilder sb = new StringBuilder(head);
         if (eta != null) {
@@ -900,9 +960,8 @@ public final class ContextToolsApi implements ToolBus {
         java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
         for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
             String name = r.tool().name();
-            boolean included = unclassified
-                    ? r.tool().primary()
-                    : primary.contains(name) || activatedDeferred.contains(name);
+            boolean included =
+                    unclassified ? r.tool().primary() : primary.contains(name) || activatedDeferred.contains(name);
             if (!included) continue;
             String hint = r.tool().promptHint();
             if (hint == null || hint.isBlank()) continue;
@@ -969,7 +1028,8 @@ public final class ContextToolsApi implements ToolBus {
     public boolean allNonPrak(@org.jspecify.annotations.Nullable Set<String> toolNames) {
         if (toolNames == null || toolNames.isEmpty()) return false;
         for (String name : toolNames) {
-            boolean contributes = dispatcher.resolve(name, ctx)
+            boolean contributes = dispatcher
+                    .resolve(name, ctx)
                     .map(r -> r.tool().contributesPrak())
                     .orElse(true);
             if (contributes) return false;
@@ -989,8 +1049,7 @@ public final class ContextToolsApi implements ToolBus {
         if (toolNames == null || toolNames.isEmpty()) return Set.of();
         LinkedHashSet<String> out = new LinkedHashSet<>();
         for (String name : toolNames) {
-            dispatcher.resolve(name, ctx)
-                    .ifPresent(r -> out.addAll(r.tool().prakLabels()));
+            dispatcher.resolve(name, ctx).ifPresent(r -> out.addAll(r.tool().prakLabels()));
         }
         return out;
     }
@@ -1054,18 +1113,23 @@ public final class ContextToolsApi implements ToolBus {
      * not mutated, so a later re-fit starts from the same baseline.
      */
     private ContextToolsApi refitToBudget(
-            Set<String> mergedAllowed, Set<String> mergedPrimary,
-            Set<String> deferredIn, Set<String> activatedIn, Set<String> priorityNames) {
+            Set<String> mergedAllowed,
+            Set<String> mergedPrimary,
+            Set<String> deferredIn,
+            Set<String> activatedIn,
+            Set<String> priorityNames) {
         BudgetContext bc = budgetContext;
         Set<String> keep = new LinkedHashSet<>(bc.hints().keep());
         keep.addAll(priorityNames);
         ToolTriage.Hints hints = new ToolTriage.Hints(
-                keep, bc.hints().add(), bc.hints().dropFirst(),
-                bc.hints().keepFamilies(), bc.hints().dropFirstFamilies());
+                keep,
+                bc.hints().add(),
+                bc.hints().dropFirst(),
+                bc.hints().keepFamilies(),
+                bc.hints().dropFirstFamilies());
         Set<String> floor = new LinkedHashSet<>(MANDATORY_TOOLS);
         floor.retainAll(mergedPrimary);
-        ToolTriage.Result triaged = ToolTriage.apply(
-                mergedPrimary, activatedIn, floor, hints, bc.budget());
+        ToolTriage.Result triaged = ToolTriage.apply(mergedPrimary, activatedIn, floor, hints, bc.budget());
         if (!triaged.changed()) {
             return copyWith(mergedAllowed, mergedPrimary, deferredIn, activatedIn);
         }
@@ -1077,10 +1141,8 @@ public final class ContextToolsApi implements ToolBus {
                 mergedDemoted.add(name);
             }
         }
-        logDemotion(ctx, triaged,
-                mergedPrimary.size() + activatedDeferred.size(), bc.budget());
-        return copyWith(mergedAllowed, triaged.primary(), mergedDeferred,
-                triaged.activated(), mergedDemoted);
+        logDemotion(ctx, triaged, mergedPrimary.size() + activatedDeferred.size(), bc.budget());
+        return copyWith(mergedAllowed, triaged.primary(), mergedDeferred, triaged.activated(), mergedDemoted);
     }
 
     /**
@@ -1092,18 +1154,18 @@ public final class ContextToolsApi implements ToolBus {
      * silently lost all four — including the 32 KB result cap.
      */
     private ContextToolsApi copyWith(
-            Set<String> newAllowed, Set<String> newPrimary,
-            Set<String> newDeferred, Set<String> newActivated) {
+            Set<String> newAllowed, Set<String> newPrimary, Set<String> newDeferred, Set<String> newActivated) {
         return copyWith(newAllowed, newPrimary, newDeferred, newActivated, demoted);
     }
 
     /** {@link #copyWith} with an explicit budget-demoted set. */
     private ContextToolsApi copyWith(
-            Set<String> newAllowed, Set<String> newPrimary,
-            Set<String> newDeferred, Set<String> newActivated, Set<String> newDemoted) {
-        return new ContextToolsApi(
-                this, newAllowed, newPrimary, newDeferred, newActivated,
-                newDemoted, budgetContext);
+            Set<String> newAllowed,
+            Set<String> newPrimary,
+            Set<String> newDeferred,
+            Set<String> newActivated,
+            Set<String> newDemoted) {
+        return new ContextToolsApi(this, newAllowed, newPrimary, newDeferred, newActivated, newDemoted, budgetContext);
     }
 
     /**
@@ -1176,9 +1238,7 @@ public final class ContextToolsApi implements ToolBus {
 
     private List<ToolDispatcher.Resolved> filter(List<ToolDispatcher.Resolved> resolved) {
         if (allowed.isEmpty()) return resolved;
-        return resolved.stream()
-                .filter(r -> allowed.contains(r.tool().name()))
-                .toList();
+        return resolved.stream().filter(r -> allowed.contains(r.tool().name())).toList();
     }
 
     /**
@@ -1279,8 +1339,16 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> activatedDeferred,
             @org.jspecify.annotations.Nullable String profile,
             @org.jspecify.annotations.Nullable Set<String> engineRoles) {
-        return classify(dispatcher, ctx, base, filter, activatedDeferred, profile, engineRoles,
-                /*budget*/ null, /*familyHints*/ null);
+        return classify(
+                dispatcher,
+                ctx,
+                base,
+                filter,
+                activatedDeferred,
+                profile,
+                engineRoles,
+                /*budget*/ null, /*familyHints*/
+                null);
     }
 
     /**
@@ -1324,8 +1392,7 @@ public final class ContextToolsApi implements ToolBus {
                 // materialise the same set the fallback would produce —
                 // but only when it actually overflows, so an unrestricted
                 // engine under a comfortable limit keeps the cheap path.
-                Classification unrestricted =
-                        new Classification(Set.of(), Set.of(), Set.of(), Set.of());
+                Classification unrestricted = new Classification(Set.of(), Set.of(), Set.of(), Set.of());
                 if (budget == null || !budget.hasLimit()) {
                     return unrestricted;
                 }
@@ -1333,8 +1400,7 @@ public final class ContextToolsApi implements ToolBus {
                 // keep/dropFirst — those are ranking-only and have to
                 // survive into the triage.
                 return budgetUnrestricted(
-                        dispatcher, ctx, filter, activatedDeferred, budget,
-                        familyHints, unrestricted);
+                        dispatcher, ctx, filter, activatedDeferred, budget, familyHints, unrestricted);
             }
             // Engine doesn't restrict, but the recipe carries a filter.
             // Expand the base to every dispatchable tool so add/remove/defer
@@ -1376,7 +1442,8 @@ public final class ContextToolsApi implements ToolBus {
         Set<String> roleFiltered = new LinkedHashSet<>(pool);
         Set<String> effectiveRoles = engineRoles == null ? Set.of() : engineRoles;
         roleFiltered.removeIf(name -> {
-            Set<String> required = dispatcher.resolve(name, ctx)
+            Set<String> required = dispatcher
+                    .resolve(name, ctx)
                     .map(r -> r.tool().requiresEngineRoles())
                     .orElse(Set.of());
             if (required == null || required.isEmpty()) return false;
@@ -1388,7 +1455,8 @@ public final class ContextToolsApi implements ToolBus {
         Set<String> profileFiltered = new LinkedHashSet<>(roleFiltered);
         if (profile != null) {
             profileFiltered.removeIf(name -> {
-                Set<String> allowed = dispatcher.resolve(name, ctx)
+                Set<String> allowed = dispatcher
+                        .resolve(name, ctx)
                         .map(r -> r.tool().allowedForProfile())
                         .orElse(Set.of());
                 return allowed != null && !allowed.isEmpty() && !allowed.contains(profile);
@@ -1421,7 +1489,8 @@ public final class ContextToolsApi implements ToolBus {
             } else if (defer.contains(name)) {
                 isDeferred = true;
             } else {
-                isDeferred = dispatcher.resolve(name, ctx)
+                isDeferred = dispatcher
+                        .resolve(name, ctx)
                         .map(r -> r.tool().deferred())
                         .orElse(false);
             }
@@ -1450,9 +1519,8 @@ public final class ContextToolsApi implements ToolBus {
         if (budget != null && budget.hasLimit()) {
             Set<String> floor = new LinkedHashSet<>(MANDATORY_TOOLS);
             floor.retainAll(primary);
-            ToolTriage.Result triaged = ToolTriage.apply(
-                    primary, activated, floor,
-                    hintsFrom(filter, familyHints), budget);
+            ToolTriage.Result triaged =
+                    ToolTriage.apply(primary, activated, floor, hintsFrom(filter, familyHints), budget);
             if (triaged.changed()) {
                 Set<String> cut = new LinkedHashSet<>(triaged.demoted());
                 cut.retainAll(primary);
@@ -1485,8 +1553,7 @@ public final class ContextToolsApi implements ToolBus {
     private static Classification budgetUnrestricted(
             ToolDispatcher dispatcher,
             ToolInvocationContext ctx,
-            de.mhus.vance.brain.recipe.RecipeResolver.@org.jspecify.annotations.Nullable
-                    ToolFilter filter,
+            de.mhus.vance.brain.recipe.RecipeResolver.@org.jspecify.annotations.Nullable ToolFilter filter,
             @org.jspecify.annotations.Nullable Set<String> activatedDeferred,
             ToolBudget budget,
             ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints,
@@ -1511,15 +1578,12 @@ public final class ContextToolsApi implements ToolBus {
         }
         Set<String> floor = new LinkedHashSet<>(MANDATORY_TOOLS);
         floor.retainAll(primary);
-        ToolTriage.Result triaged = ToolTriage.apply(
-                primary, activated, floor,
-                hintsFrom(filter, familyHints), budget);
+        ToolTriage.Result triaged = ToolTriage.apply(primary, activated, floor, hintsFrom(filter, familyHints), budget);
         Set<String> demotedToDeferred = new LinkedHashSet<>(triaged.demoted());
         demotedToDeferred.retainAll(primary);
         deferred.addAll(demotedToDeferred);
         logDemotion(ctx, triaged, primary.size() + activated.size(), budget);
-        return new Classification(all, triaged.primary(), deferred, triaged.activated(),
-                demotedToDeferred);
+        return new Classification(all, triaged.primary(), deferred, triaged.activated(), demotedToDeferred);
     }
 
     /**
@@ -1527,15 +1591,13 @@ public final class ContextToolsApi implements ToolBus {
      * family-level overrides into one {@link ToolTriage.Hints}.
      */
     private static ToolTriage.Hints hintsFrom(
-            de.mhus.vance.brain.recipe.RecipeResolver.@org.jspecify.annotations.Nullable
-                    ToolFilter filter,
+            de.mhus.vance.brain.recipe.RecipeResolver.@org.jspecify.annotations.Nullable ToolFilter filter,
             ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints) {
         Set<String> keep = filter == null ? Set.of() : Set.copyOf(filter.keep());
         Set<String> add = filter == null ? Set.of() : Set.copyOf(filter.add());
         Set<String> dropFirst = filter == null ? Set.of() : Set.copyOf(filter.dropFirst());
         Set<String> keepFamilies = familyHints == null ? Set.of() : familyHints.keepFamilies();
-        Set<String> dropFirstFamilies =
-                familyHints == null ? Set.of() : familyHints.dropFirstFamilies();
+        Set<String> dropFirstFamilies = familyHints == null ? Set.of() : familyHints.dropFirstFamilies();
         return new ToolTriage.Hints(keep, add, dropFirst, keepFamilies, dropFirstFamilies);
     }
 
@@ -1549,27 +1611,30 @@ public final class ContextToolsApi implements ToolBus {
      * tool.
      */
     private static void logDemotion(
-            ToolInvocationContext ctx,
-            ToolTriage.Result triaged,
-            int surfaceBefore,
-            ToolBudget budget) {
-        log.info("Tool-surface budget: {} → {} schemas (maxTools={} reserved={}) "
+            ToolInvocationContext ctx, ToolTriage.Result triaged, int surfaceBefore, ToolBudget budget) {
+        log.info(
+                "Tool-surface budget: {} → {} schemas (maxTools={} reserved={}) "
                         + "tenant='{}' project='{}' process='{}' — demoted {} tool(s) "
                         + "in families {} to deferred; still reachable via tool_list",
-                surfaceBefore, triaged.primary().size() + triaged.activated().size(),
-                budget.maxTools(), budget.reserved(),
+                surfaceBefore,
+                triaged.primary().size() + triaged.activated().size(),
+                budget.maxTools(),
+                budget.reserved(),
                 ctx == null ? "?" : ctx.tenantId(),
                 ctx == null ? "?" : ctx.projectId(),
                 ctx == null ? "?" : ctx.processId(),
-                triaged.demoted().size(), triaged.demotedFamilies());
+                triaged.demoted().size(),
+                triaged.demotedFamilies());
         if (log.isTraceEnabled()) {
             // Demotion order = the order the families were given up, so
             // the list reads as "this went first, then this".
-            log.trace("Tool-surface budget: demoted process='{}' limit={} → {}",
+            log.trace(
+                    "Tool-surface budget: demoted process='{}' limit={} → {}",
                     ctx == null ? "?" : ctx.processId(),
                     triaged.limit(),
                     String.join(",", triaged.demoted()));
-            log.trace("Tool-surface budget: kept process='{}' primary={} activated={}",
+            log.trace(
+                    "Tool-surface budget: kept process='{}' primary={} activated={}",
                     ctx == null ? "?" : ctx.processId(),
                     String.join(",", triaged.primary()),
                     String.join(",", triaged.activated()));
@@ -1595,8 +1660,8 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> demoted) {
 
         /** Nothing was demoted — the common case outside the budget stage. */
-        public Classification(Set<String> allowed, Set<String> primary,
-                Set<String> deferred, Set<String> activatedDeferred) {
+        public Classification(
+                Set<String> allowed, Set<String> primary, Set<String> deferred, Set<String> activatedDeferred) {
             this(allowed, primary, deferred, activatedDeferred, Set.of());
         }
     }

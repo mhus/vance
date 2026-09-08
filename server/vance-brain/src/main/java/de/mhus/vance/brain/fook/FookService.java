@@ -84,6 +84,7 @@ public class FookService {
      *  triaged ticket. Read at triage-time so the ticket can be
      *  stamped with the right {@code transportApproval} value. */
     static final String SETTING_UPSTREAM_MODE = "fook.upstream.mode";
+
     static final String MODE_NEVER = "never";
     static final String MODE_AUTOMATIC = "automatic";
     static final String MODE_MANUAL = "manual";
@@ -128,8 +129,7 @@ public class FookService {
             // Reporting surfaces are expected to short-circuit before
             // calling submit; reaching here with Fook disabled is a
             // programming error, not a user-visible path.
-            throw new IllegalStateException(
-                    "Fook is disabled (vance.fook.enabled=false)");
+            throw new IllegalStateException("Fook is disabled (vance.fook.enabled=false)");
         }
         if (request == null) {
             throw new IllegalArgumentException("submission request is null");
@@ -144,7 +144,8 @@ public class FookService {
         Submission sub = new Submission(submissionId, request, Instant.now());
         queue.add(sub);
         inFlight.incrementAndGet();
-        log.info("Fook: queued submissionId={} reporter={}/{}/{} textChars={}",
+        log.info(
+                "Fook: queued submissionId={} reporter={}/{}/{} textChars={}",
                 submissionId,
                 request.getReporter().getKind(),
                 request.getReporter().getTenantId(),
@@ -189,8 +190,7 @@ public class FookService {
             try {
                 processSubmission(sub);
             } catch (RuntimeException e) {
-                log.warn("Fook: triage failed for submissionId={}: {}",
-                        sub.id(), e.toString());
+                log.warn("Fook: triage failed for submissionId={}: {}", sub.id(), e.toString());
                 safeWriteFailureInbox(sub, e);
             } finally {
                 inFlight.decrementAndGet();
@@ -203,8 +203,7 @@ public class FookService {
     private void processSubmission(Submission sub) {
         SubmissionRequest req = sub.request();
 
-        List<TicketCandidate> candidates = ticketService.searchSimilar(
-                req.getText(), CANDIDATE_LIMIT);
+        List<TicketCandidate> candidates = ticketService.searchSimilar(req.getText(), CANDIDATE_LIMIT);
 
         Map<String, Object> pebbleVars = new LinkedHashMap<>();
         pebbleVars.put("text", req.getText());
@@ -219,8 +218,11 @@ public class FookService {
         Map<String, Object> raw = callTriage(pebbleVars, req);
 
         TriageResult result = parseTriageResult(raw);
-        log.info("Fook: triage submissionId={} decision={} target={} reason={}",
-                sub.id(), result.getDecision(), result.getTargetTicketId(),
+        log.info(
+                "Fook: triage submissionId={} decision={} target={} reason={}",
+                sub.id(),
+                result.getDecision(),
+                result.getTargetTicketId(),
                 result.getReason());
 
         switch (result.getDecision()) {
@@ -243,29 +245,33 @@ public class FookService {
                 .reporter(req.getReporter())
                 .context(req.getContext())
                 .triageNote(result.getTriageNote())
-                .relatedTickets(result.getRelatedTickets() == null
-                        ? List.of() : result.getRelatedTickets())
+                .relatedTickets(result.getRelatedTickets() == null ? List.of() : result.getRelatedTickets())
                 .transportApproval(transportApproval)
-                .inboxItemId(null)        // filled in after inbox-item is created
+                .inboxItemId(null) // filled in after inbox-item is created
                 .build();
         String ticketId = ticketService.createTicket(payload);
 
         String body = initialInboxBody(ticketId, mode, result);
-        MaximegalonDocument item = writeInboxItem(sub,
+        MaximegalonDocument item = writeInboxItem(
+                sub,
                 "Ticket created",
                 body,
-                Map.of("decision", "new_ticket",
-                        "ticketId", ticketId,
-                        "submissionId", sub.id(),
-                        "transportMode", mode));
+                Map.of(
+                        "decision",
+                        "new_ticket",
+                        "ticketId",
+                        ticketId,
+                        "submissionId",
+                        sub.id(),
+                        "transportMode",
+                        mode));
         // Back-pointer for FookUpstreamService: the same inbox-item is
         // later patched in-place with the upstream URL.
         if (item != null && item.getId() != null) {
             try {
                 ticketService.setInboxItemId(ticketId, item.getId());
             } catch (RuntimeException e) {
-                log.warn("Fook: could not stamp inboxItemId on ticket {}: {}",
-                        ticketId, e.getMessage());
+                log.warn("Fook: could not stamp inboxItemId on ticket {}: {}", ticketId, e.getMessage());
             }
         }
 
@@ -281,52 +287,52 @@ public class FookService {
      * so Lunkwill can tell "asked, but nothing to analyse" apart from
      * "never asked". Never fatal to ticket creation.
      */
-    private void maybeEnqueueSessionAnalysis(
-            Submission sub, TriageResult result, String ticketId) {
+    private void maybeEnqueueSessionAnalysis(Submission sub, TriageResult result, String ticketId) {
         if (!result.isNeedSessionReport()) {
             return;
         }
         TicketContext ctx = sub.request().getContext();
         String tenantId = sub.request().getReporter().getTenantId();
         boolean analysable = ctx != null
-                && ctx.getSessionId() != null && !ctx.getSessionId().isBlank()
-                && ctx.getProcessId() != null && !ctx.getProcessId().isBlank()
-                && tenantId != null && !tenantId.isBlank();
+                && ctx.getSessionId() != null
+                && !ctx.getSessionId().isBlank()
+                && ctx.getProcessId() != null
+                && !ctx.getProcessId().isBlank()
+                && tenantId != null
+                && !tenantId.isBlank();
         if (!analysable) {
-            log.info("Fook: session report requested for ticket {} but no "
-                    + "session/process context — skipping analysis", ticketId);
+            log.info(
+                    "Fook: session report requested for ticket {} but no "
+                            + "session/process context — skipping analysis",
+                    ticketId);
             safeSetAnalysisSkipped(ticketId);
             return;
         }
         try {
-            sessionAnalysisService.enqueue(
-                    FookSessionAnalysisService.AnalysisJob.builder()
-                            .ticketId(ticketId)
-                            .submissionId(sub.id())
-                            .tenantId(tenantId)
-                            .projectId(ctx.getProjectId())
-                            .sessionId(ctx.getSessionId())
-                            .processId(ctx.getProcessId())
-                            .reason(result.getReason())
-                            .triageNote(result.getTriageNote())
-                            .ticketTitle(result.getDerivedTitle())
-                            .ticketType(result.getDerivedType())
-                            .engine(ctx.getEngine())
-                            .recipe(ctx.getRecipe())
-                            .build());
+            sessionAnalysisService.enqueue(FookSessionAnalysisService.AnalysisJob.builder()
+                    .ticketId(ticketId)
+                    .submissionId(sub.id())
+                    .tenantId(tenantId)
+                    .projectId(ctx.getProjectId())
+                    .sessionId(ctx.getSessionId())
+                    .processId(ctx.getProcessId())
+                    .reason(result.getReason())
+                    .triageNote(result.getTriageNote())
+                    .ticketTitle(result.getDerivedTitle())
+                    .ticketType(result.getDerivedType())
+                    .engine(ctx.getEngine())
+                    .recipe(ctx.getRecipe())
+                    .build());
         } catch (RuntimeException e) {
-            log.warn("Fook: could not enqueue session analysis for ticket {}: {}",
-                    ticketId, e.getMessage());
+            log.warn("Fook: could not enqueue session analysis for ticket {}: {}", ticketId, e.getMessage());
         }
     }
 
     private void safeSetAnalysisSkipped(String ticketId) {
         try {
-            ticketService.setAnalysisStatus(
-                    ticketId, FookTicketService.ANALYSIS_SKIPPED);
+            ticketService.setAnalysisStatus(ticketId, FookTicketService.ANALYSIS_SKIPPED);
         } catch (RuntimeException e) {
-            log.warn("Fook: could not stamp analysisStatus on ticket {}: {}",
-                    ticketId, e.getMessage());
+            log.warn("Fook: could not stamp analysisStatus on ticket {}: {}", ticketId, e.getMessage());
         }
     }
 
@@ -334,8 +340,7 @@ public class FookService {
         // Cascade-read: resolves to (tenant=_vance, scope=project,
         // refId=_tenant) — the same place the setting-form writes to
         // when the admin picks "tenant" scope.
-        String v = settingService.getStringValueCascade(
-                TenantService.SYSTEM_TENANT, null, null, SETTING_UPSTREAM_MODE);
+        String v = settingService.getStringValueCascade(TenantService.SYSTEM_TENANT, null, null, SETTING_UPSTREAM_MODE);
         return (v == null || v.isBlank()) ? MODE_NEVER : v;
     }
 
@@ -347,35 +352,33 @@ public class FookService {
         };
     }
 
-    private static String initialInboxBody(
-            String ticketId, String mode, TriageResult result) {
+    private static String initialInboxBody(String ticketId, String mode, TriageResult result) {
         String reason = result.getReason() == null ? "" : " " + result.getReason();
         return switch (mode == null ? MODE_NEVER : mode.toLowerCase()) {
-            case MODE_AUTOMATIC -> "Your submission was opened as ticket `"
-                    + ticketId + "`. It is being forwarded to the upstream "
-                    + "ticket system; this item updates with the link once "
-                    + "the transfer completes." + reason;
-            case MODE_MANUAL -> "Your submission was opened as ticket `"
-                    + ticketId + "`. It is waiting for an admin to approve "
-                    + "forwarding to the upstream ticket system." + reason;
-            default -> "Your submission was opened as ticket `"
-                    + ticketId + "`. It stays local — upstream forwarding "
-                    + "is disabled on this brain." + reason;
+            case MODE_AUTOMATIC ->
+                "Your submission was opened as ticket `"
+                        + ticketId + "`. It is being forwarded to the upstream "
+                        + "ticket system; this item updates with the link once "
+                        + "the transfer completes." + reason;
+            case MODE_MANUAL ->
+                "Your submission was opened as ticket `"
+                        + ticketId + "`. It is waiting for an admin to approve "
+                        + "forwarding to the upstream ticket system." + reason;
+            default ->
+                "Your submission was opened as ticket `"
+                        + ticketId + "`. It stays local — upstream forwarding "
+                        + "is disabled on this brain." + reason;
         };
     }
 
     private void handleMergeInto(Submission sub, TriageResult result) {
         String target = result.getTargetTicketId();
         if (target == null || target.isBlank()) {
-            throw new IllegalStateException(
-                    "merge_into decision without targetTicketId");
+            throw new IllegalStateException("merge_into decision without targetTicketId");
         }
         RelationsPatch.RelationsPatchBuilder patchBuilder =
-                RelationsPatch.builder()
-                        .addRootCauseOf(List.of())
-                        .addRelatedTo(List.of());
-        String relation = result.getRelation() == null
-                ? "duplicateOf" : result.getRelation();
+                RelationsPatch.builder().addRootCauseOf(List.of()).addRelatedTo(List.of());
+        String relation = result.getRelation() == null ? "duplicateOf" : result.getRelation();
         // The LLM tells us which slot to fill on the TARGET ticket
         // (target's relation to the current submission is the
         // mirrored statement: "this old ticket duplicates this new
@@ -390,73 +393,70 @@ public class FookService {
         // just record relatedTickets on the target. The exact
         // semantics get tightened by Frankie — see §10 planning.
         switch (relation) {
-            case "duplicateOf" -> patchBuilder = patchBuilder
-                    .addRelatedTo(joinIds(sub, result));
-            case "rootCauseOf" -> patchBuilder = patchBuilder
-                    .addRootCauseOf(joinIds(sub, result));
-            case "relatedTo" -> patchBuilder = patchBuilder
-                    .addRelatedTo(joinIds(sub, result));
-            default -> patchBuilder = patchBuilder
-                    .addRelatedTo(joinIds(sub, result));
+            case "duplicateOf" -> patchBuilder = patchBuilder.addRelatedTo(joinIds(result));
+            case "rootCauseOf" -> patchBuilder = patchBuilder.addRootCauseOf(joinIds(result));
+            case "relatedTo" -> patchBuilder = patchBuilder.addRelatedTo(joinIds(result));
+            default -> patchBuilder = patchBuilder.addRelatedTo(joinIds(result));
         }
         ticketService.updateRelations(target, patchBuilder.build());
-        writeInboxItem(sub, "Merged into existing ticket",
+        writeInboxItem(
+                sub,
+                "Merged into existing ticket",
                 "Your submission was folded into ticket `" + target + "`"
                         + " (" + relation + "). "
                         + (result.getReason() == null ? "" : result.getReason()),
-                Map.of("decision", "merge_into",
-                        "ticketId", target,
-                        "submissionId", sub.id()));
+                Map.of("decision", "merge_into", "ticketId", target, "submissionId", sub.id()));
     }
 
     private void handleDiscard(Submission sub, TriageResult result) {
-        String reason = result.getReason() == null
-                ? "(no reason given)" : result.getReason();
-        String category = result.getCategory() == null
-                ? "other" : result.getCategory();
-        writeInboxItem(sub, "Submission not opened as a ticket",
-                "Fook did not open a ticket for your submission. "
-                        + "Category: `" + category + "`. " + reason,
-                Map.of("decision", "discard",
-                        "category", category,
-                        "submissionId", sub.id()));
+        String reason = result.getReason() == null ? "(no reason given)" : result.getReason();
+        String category = result.getCategory() == null ? "other" : result.getCategory();
+        writeInboxItem(
+                sub,
+                "Submission not opened as a ticket",
+                "Fook did not open a ticket for your submission. " + "Category: `" + category + "`. " + reason,
+                Map.of("decision", "discard", "category", category, "submissionId", sub.id()));
     }
 
     private void safeWriteFailureInbox(Submission sub, RuntimeException cause) {
         try {
-            writeInboxItem(sub, "Submission could not be triaged",
+            writeInboxItem(
+                    sub,
+                    "Submission could not be triaged",
                     "Fook hit an error while triaging your submission. "
                             + "Try again or escalate to an admin. "
                             + "(`" + cause.getClass().getSimpleName() + "`)",
-                    Map.of("decision", "failed",
-                            "submissionId", sub.id(),
-                            "error", cause.getClass().getSimpleName()));
+                    Map.of(
+                            "decision",
+                            "failed",
+                            "submissionId",
+                            sub.id(),
+                            "error",
+                            cause.getClass().getSimpleName()));
         } catch (RuntimeException ignored) {
             // Inbox write itself failed — already in a degraded
             // path, just log. The submission is lost.
-            log.warn("Fook: failure-inbox-write also failed for submissionId={}",
-                    sub.id());
+            log.warn("Fook: failure-inbox-write also failed for submissionId={}", sub.id());
         }
     }
 
     private @Nullable MaximegalonDocument writeInboxItem(
-            Submission sub,
-            String title,
-            String body,
-            Map<String, Object> payload) {
+            Submission sub, String title, String body, Map<String, Object> payload) {
         TicketReporter reporter = sub.request().getReporter();
         if (reporter.getKind() == TicketReporter.Kind.SERVICE_ACCOUNT) {
             // v1: service-account submissions don't get an inbox
             // item — there's no user behind them.
-            log.info("Fook: skipping inbox for service-account submission " +
-                            "submissionId={} serviceAccount={}",
-                    sub.id(), reporter.getServiceAccount());
+            log.info(
+                    "Fook: skipping inbox for service-account submission " + "submissionId={} serviceAccount={}",
+                    sub.id(),
+                    reporter.getServiceAccount());
             return null;
         }
         if (reporter.getUserId() == null || reporter.getTenantId() == null) {
-            log.warn("Fook: cannot write inbox item — reporter missing " +
-                            "userId/tenantId, submissionId={} kind={}",
-                    sub.id(), reporter.getKind());
+            log.warn(
+                    "Fook: cannot write inbox item — reporter missing " + "userId/tenantId, submissionId={} kind={}",
+                    sub.id(),
+                    reporter.getKind());
             return null;
         }
         TicketContext ctx = sub.request().getContext();
@@ -485,8 +485,7 @@ public class FookService {
      * failures (model error, schema-validation exhausted, …) bubble
      * straight up.
      */
-    private Map<String, Object> callTriage(
-            Map<String, Object> pebbleVars, SubmissionRequest req) {
+    private Map<String, Object> callTriage(Map<String, Object> pebbleVars, SubmissionRequest req) {
         try {
             return lightLlm.callForJson(LightLlmRequest.builder()
                     .recipeName(RECIPE_NAME)
@@ -504,13 +503,15 @@ public class FookService {
                 // in the failure-inbox path with a clear error.
                 throw centralMissing;
             }
-            log.info("Fook: system tenant '{}' has no LLM credentials, " +
-                            "falling back to reporter tenant '{}' for triage " +
-                            "({})",
-                    TenantService.SYSTEM_TENANT, reporterTenant,
+            log.info(
+                    "Fook: system tenant '{}' has no LLM credentials, "
+                            + "falling back to reporter tenant '{}' for triage "
+                            + "({})",
+                    TenantService.SYSTEM_TENANT,
+                    reporterTenant,
                     centralMissing.getMessage());
-            String reporterProject = req.getContext() == null
-                    ? null : req.getContext().getProjectId();
+            String reporterProject =
+                    req.getContext() == null ? null : req.getContext().getProjectId();
             return lightLlm.callForJson(LightLlmRequest.builder()
                     .recipeName(RECIPE_NAME)
                     .userPrompt("Triage this submission.")
@@ -535,14 +536,11 @@ public class FookService {
      * <p>Upstream maintainers see English first; reporters retain
      * full audit access to what they actually wrote.
      */
-    static String bilingualDescription(
-            String original, @Nullable String englishTranslation) {
+    static String bilingualDescription(String original, @Nullable String englishTranslation) {
         if (englishTranslation == null || englishTranslation.isBlank()) {
             return original;
         }
-        return englishTranslation.trim()
-                + "\n\n--- Original:\n\n"
-                + original;
+        return englishTranslation.trim() + "\n\n--- Original:\n\n" + original;
     }
 
     /**
@@ -562,8 +560,7 @@ public class FookService {
         return "(untitled)";
     }
 
-    static List<Map<String, Object>> candidatesAsPebbleList(
-            List<TicketCandidate> candidates) {
+    static List<Map<String, Object>> candidatesAsPebbleList(List<TicketCandidate> candidates) {
         List<Map<String, Object>> out = new ArrayList<>(candidates.size());
         for (TicketCandidate c : candidates) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -576,10 +573,8 @@ public class FookService {
             Map<String, Object> rel = new LinkedHashMap<>();
             TicketRelations r = c.getRelations();
             rel.put("duplicateOf", r == null ? null : r.getDuplicateOf());
-            rel.put("rootCauseOf",
-                    r == null ? List.of() : r.getRootCauseOf());
-            rel.put("relatedTo",
-                    r == null ? List.of() : r.getRelatedTo());
+            rel.put("rootCauseOf", r == null ? List.of() : r.getRootCauseOf());
+            rel.put("relatedTo", r == null ? List.of() : r.getRelatedTo());
             m.put("relations", rel);
             out.add(m);
         }
@@ -591,16 +586,16 @@ public class FookService {
     static TriageResult parseTriageResult(Map<String, Object> raw) {
         String decisionStr = stringOrNull(raw.get("decision"));
         if (decisionStr == null) {
-            throw new IllegalArgumentException(
-                    "triage response missing 'decision' field");
+            throw new IllegalArgumentException("triage response missing 'decision' field");
         }
-        TriageResult.Decision decision = switch (decisionStr.toLowerCase()) {
-            case "new_ticket" -> TriageResult.Decision.NEW_TICKET;
-            case "merge_into" -> TriageResult.Decision.MERGE_INTO;
-            case "discard" -> TriageResult.Decision.DISCARD;
-            default -> throw new IllegalArgumentException(
-                    "triage response has unknown decision: " + decisionStr);
-        };
+        TriageResult.Decision decision =
+                switch (decisionStr.toLowerCase()) {
+                    case "new_ticket" -> TriageResult.Decision.NEW_TICKET;
+                    case "merge_into" -> TriageResult.Decision.MERGE_INTO;
+                    case "discard" -> TriageResult.Decision.DISCARD;
+                    default ->
+                        throw new IllegalArgumentException("triage response has unknown decision: " + decisionStr);
+                };
         return TriageResult.builder()
                 .decision(decision)
                 .derivedType(stringOrNull(raw.get("derivedType")))
@@ -619,14 +614,13 @@ public class FookService {
 
     // ─── helpers ────────────────────────────────────────────────────
 
-    private static List<String> joinIds(Submission sub, TriageResult result) {
+    private static List<String> joinIds(TriageResult result) {
         // The triage LLM's relatedTickets list is the canonical set
         // of extra links to attach to the target ticket on a merge.
         // We don't auto-inject sub.id() because submissionIds and
         // ticketIds are different namespaces — Frankie traces back
         // through the inbox payload if it needs to.
-        return result.getRelatedTickets() == null
-                ? List.of() : result.getRelatedTickets();
+        return result.getRelatedTickets() == null ? List.of() : result.getRelatedTickets();
     }
 
     private static @Nullable String stringOrNull(@Nullable Object o) {

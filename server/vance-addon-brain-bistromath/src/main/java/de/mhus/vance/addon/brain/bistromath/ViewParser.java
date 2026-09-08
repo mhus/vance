@@ -52,8 +52,7 @@ public final class ViewParser {
     /** Node bound, so one runaway document cannot exhaust the renderer. */
     static final int MAX_NODES = 500;
 
-    private static final Pattern FUNCTION_NAME =
-            Pattern.compile("^[A-Za-z_$][A-Za-z0-9_$]*$");
+    private static final Pattern FUNCTION_NAME = Pattern.compile("^[A-Za-z_$][A-Za-z0-9_$]*$");
 
     /** The drawing surface takes whatever space is left. */
     static final String REGION_FILL = "fill";
@@ -74,8 +73,7 @@ public final class ViewParser {
      * something about the message. An open string would let a document ask for
      * a colour, and a colour in an app document is the line §1.3 draws.
      */
-    static final List<String> VARIANTS =
-            List.of("neutral", "info", "success", "warning", "error");
+    static final List<String> VARIANTS = List.of("neutral", "info", "success", "warning", "error");
 
     /**
      * Author's word → mime type, for a {@code code} widget.
@@ -108,15 +106,13 @@ public final class ViewParser {
             Map.entry("text", "text/plain"));
 
     /** Field keys that only a setting form reads. See {@code rejectSettingFormKeys}. */
-    private static final List<String> SETTING_FORM_ONLY_KEYS =
-            List.of("showIf", "writeIf", "bindsTo", "choicesFrom");
+    private static final List<String> SETTING_FORM_ONLY_KEYS = List.of("showIf", "writeIf", "bindsTo", "choicesFrom");
 
     private static final String SETTING_FORM_HINT =
             "A view's fields read the record in the state key named by `from`; a condition"
                     + " on a whole widget is `show: <state key>`.";
 
-    private ViewParser() {
-    }
+    private ViewParser() {}
 
     /**
      * @param yamlText the view document body.
@@ -126,28 +122,24 @@ public final class ViewParser {
     public static ViewNode parse(String yamlText, String docPath) {
         Object root = BistromathYaml.load(yamlText, docPath);
         if (!(root instanceof Map<?, ?> map)) {
-            throw new ToolException("View '" + docPath
-                    + "' is not a YAML mapping — a view starts with `type: page`.");
+            throw new ToolException("View '" + docPath + "' is not a YAML mapping — a view starts with `type: page`.");
         }
         int[] budget = {MAX_NODES};
         return node(map, docPath, "", 0, budget, new java.util.HashSet<>());
     }
 
-    private static ViewNode node(Map<?, ?> raw, String docPath, String at, int depth,
-                                 int[] budget, java.util.Set<String> budgetIds) {
+    private static ViewNode node(
+            Map<?, ?> raw, String docPath, String at, int depth, int[] budget, java.util.Set<String> budgetIds) {
         if (depth > MAX_DEPTH) {
-            throw new ToolException(where(docPath, at) + ": nested deeper than "
-                    + MAX_DEPTH + " levels.");
+            throw new ToolException(where(docPath, at) + ": nested deeper than " + MAX_DEPTH + " levels.");
         }
         if (--budget[0] < 0) {
-            throw new ToolException("View '" + docPath + "' has more than "
-                    + MAX_NODES + " widgets.");
+            throw new ToolException("View '" + docPath + "' has more than " + MAX_NODES + " widgets.");
         }
 
         String typeRaw = str(raw.get("type"));
         if (typeRaw == null) {
-            throw new ToolException(where(docPath, at)
-                    + ": missing `type`. Every widget declares one.");
+            throw new ToolException(where(docPath, at) + ": missing `type`. Every widget declares one.");
         }
         WidgetType type = WidgetType.parse(typeRaw);
         if (type == null) {
@@ -156,8 +148,7 @@ public final class ViewParser {
                         + "` is part of the schema but is not rendered yet — it arrives"
                         + " with the script sandbox.");
             }
-            throw new ToolException(where(docPath, at) + ": unknown widget `" + typeRaw
-                    + "`. Known: " + known() + ".");
+            throw new ToolException(where(docPath, at) + ": unknown widget `" + typeRaw + "`. Known: " + known() + ".");
         }
 
         if (raw.get("visibleIf") != null) {
@@ -197,8 +188,8 @@ public final class ViewParser {
         boolean agent = agentFlag(raw.get("agent"), docPath, at);
         String accept = str(raw.get("accept"));
         if (accept != null && type != WidgetType.FILE) {
-            throw new ToolException(where(docPath, at) + ": `accept` belongs to a `file`,"
-                    + " not to a `" + type.wire() + "`.");
+            throw new ToolException(
+                    where(docPath, at) + ": `accept` belongs to a `file`," + " not to a `" + type.wire() + "`.");
         }
         Map<String, ViewAction> on = handlers(raw.get("on"), docPath, at);
 
@@ -207,8 +198,8 @@ public final class ViewParser {
             rejectSettingFormKeys(raw.get("fields"), docPath, at + ".fields");
             fields = FormFieldYamlParser.parseFields(raw.get("fields"), where(docPath, at));
             if (fields.isEmpty()) {
-                throw new ToolException(where(docPath, at) + ": a `" + type.wire()
-                        + "` needs at least one entry under `fields`.");
+                throw new ToolException(
+                        where(docPath, at) + ": a `" + type.wire() + "` needs at least one entry under `fields`.");
             }
         } else if (raw.get("fields") != null) {
             throw new ToolException(where(docPath, at) + ": `fields` belongs to a `form` or a"
@@ -219,19 +210,32 @@ public final class ViewParser {
         // it would never run for a `form`, so a stray `options:` on one would be
         // dropped without a word — the failure this parser exists to prevent.
         if (type != WidgetType.SELECT && raw.get("options") != null) {
-            throw new ToolException(where(docPath, at) + ": `options` belongs to a `select`,"
-                    + " not to a `" + type.wire() + "`.");
+            throw new ToolException(
+                    where(docPath, at) + ": `options` belongs to a `select`," + " not to a `" + type.wire() + "`.");
         }
 
-        List<ViewNode> children =
-                children(raw.get("children"), type, docPath, at, depth, budget, budgetIds);
+        List<ViewNode> children = children(raw.get("children"), type, docPath, at, depth, budget, budgetIds);
 
         rejectRemovedKeys(raw, docPath, at);
-        requireShape(type, label, text, from, show, options,
-                raw.containsKey("options"), agent, on, docPath, at);
+        requireShape(type, label, text, from, show, raw.containsKey("options"), agent, on, docPath, at);
 
-        return new ViewNode(type.wire(), label, text, from, id, region, show, columns, options,
-                variant, mimeType, accept, fields, agent, on, children);
+        return new ViewNode(
+                type.wire(),
+                label,
+                text,
+                from,
+                id,
+                region,
+                show,
+                columns,
+                options,
+                variant,
+                mimeType,
+                accept,
+                fields,
+                agent,
+                on,
+                children);
     }
 
     /**
@@ -262,17 +266,22 @@ public final class ViewParser {
     private static boolean agentFlag(@Nullable Object raw, String docPath, String at) {
         if (raw == null) return false;
         if (raw instanceof Boolean b) return b;
-        throw new ToolException(where(docPath, at) + ": `agent` is true or false, not `"
-                + raw + "`. It says whether a chat beside the app may trigger this action.");
+        throw new ToolException(where(docPath, at) + ": `agent` is true or false, not `" + raw
+                + "`. It says whether a chat beside the app may trigger this action.");
     }
 
     /** Per-widget requirements, in one place so the messages stay uniform. */
-    private static void requireShape(WidgetType type, @Nullable String label,
-                                     @Nullable String text, @Nullable String from,
-                                     @Nullable String show, List<ViewOption> options,
-                                     boolean optionsWritten, boolean agent,
-                                     Map<String, ViewAction> on,
-                                     String docPath, String at) {
+    private static void requireShape(
+            WidgetType type,
+            @Nullable String label,
+            @Nullable String text,
+            @Nullable String from,
+            @Nullable String show,
+            boolean optionsWritten,
+            boolean agent,
+            Map<String, ViewAction> on,
+            String docPath,
+            String at) {
         // `agent: true` on something with nothing to trigger is not harmless
         // noise: it reads as a granted permission, so the author believes an
         // agent can drive a widget that has no action at all.
@@ -283,8 +292,8 @@ public final class ViewParser {
         switch (type) {
             case TABLE -> {
                 if (from == null) {
-                    throw new ToolException(where(docPath, at) + ": a `table` needs `from`,"
-                            + " the state key holding its rows.");
+                    throw new ToolException(
+                            where(docPath, at) + ": a `table` needs `from`," + " the state key holding its rows.");
                 }
             }
             case FORM, DETAILS -> {
@@ -373,8 +382,7 @@ public final class ViewParser {
             }
             case BUTTON -> {
                 if (label == null) {
-                    throw new ToolException(where(docPath, at)
-                            + ": a `button` needs a `label`.");
+                    throw new ToolException(where(docPath, at) + ": a `button` needs a `label`.");
                 }
             }
             default -> {
@@ -401,8 +409,7 @@ public final class ViewParser {
      * <p>Recursive, because a {@code repeat} field nests its own fields under
      * {@code item}.
      */
-    private static void rejectSettingFormKeys(@Nullable Object rawFields, String docPath,
-                                              String at) {
+    private static void rejectSettingFormKeys(@Nullable Object rawFields, String docPath, String at) {
         if (!(rawFields instanceof List<?> list)) return;
         for (int i = 0; i < list.size(); i++) {
             if (!(list.get(i) instanceof Map<?, ?> field)) continue;
@@ -419,13 +426,17 @@ public final class ViewParser {
         }
     }
 
-    private static List<ViewNode> children(@Nullable Object raw, WidgetType type,
-                                           String docPath, String at, int depth,
-                                           int[] budget, java.util.Set<String> budgetIds) {
+    private static List<ViewNode> children(
+            @Nullable Object raw,
+            WidgetType type,
+            String docPath,
+            String at,
+            int depth,
+            int[] budget,
+            java.util.Set<String> budgetIds) {
         if (raw == null) return List.of();
         if (!type.allowsChildren()) {
-            throw new ToolException(where(docPath, at) + ": a `" + type.wire()
-                    + "` carries no `children`.");
+            throw new ToolException(where(docPath, at) + ": a `" + type.wire() + "` carries no `children`.");
         }
         if (!(raw instanceof List<?> list)) {
             throw new ToolException(where(docPath, at + ".children") + ": expected a list.");
@@ -435,20 +446,17 @@ public final class ViewParser {
             Object child = list.get(i);
             String childAt = at + ".children[" + i + "]";
             if (!(child instanceof Map<?, ?> m)) {
-                throw new ToolException(where(docPath, childAt)
-                        + ": expected a widget mapping.");
+                throw new ToolException(where(docPath, childAt) + ": expected a widget mapping.");
             }
             out.add(node(m, docPath, childAt, depth + 1, budget, budgetIds));
         }
         return List.copyOf(out);
     }
 
-    private static Map<String, ViewAction> handlers(@Nullable Object raw, String docPath,
-                                                   String at) {
+    private static Map<String, ViewAction> handlers(@Nullable Object raw, String docPath, String at) {
         if (raw == null) return Map.of();
         if (!(raw instanceof Map<?, ?> map)) {
-            throw new ToolException(where(docPath, at + ".on")
-                    + ": expected a mapping of event name to handler.");
+            throw new ToolException(where(docPath, at + ".on") + ": expected a mapping of event name to handler.");
         }
         Map<String, ViewAction> out = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : map.entrySet()) {
@@ -456,8 +464,7 @@ public final class ViewParser {
             if (event == null) continue;
             String handler = str(e.getValue());
             if (handler == null) {
-                throw new ToolException(where(docPath, at + ".on." + event)
-                        + ": handler is empty.");
+                throw new ToolException(where(docPath, at + ".on." + event) + ": handler is empty.");
             }
             out.put(event, action(handler, docPath, at + ".on." + event));
         }
@@ -479,8 +486,7 @@ public final class ViewParser {
         if (s.startsWith(NAVIGATE_PREFIX)) {
             String handle = s.substring(NAVIGATE_PREFIX.length()).trim();
             if (handle.isEmpty()) {
-                throw new ToolException(where(docPath, at)
-                        + ": `navigate:` needs a view handle.");
+                throw new ToolException(where(docPath, at) + ": `navigate:` needs a view handle.");
             }
             return ViewAction.navigate(handle, s);
         }
@@ -494,12 +500,10 @@ public final class ViewParser {
         String ref = s.substring(0, colon).trim();
         String function = s.substring(colon + 1).trim();
         if (ref.isEmpty()) {
-            throw new ToolException(where(docPath, at) + ": handler `" + s
-                    + "` names no script document.");
+            throw new ToolException(where(docPath, at) + ": handler `" + s + "` names no script document.");
         }
         if (!FUNCTION_NAME.matcher(function).matches()) {
-            throw new ToolException(where(docPath, at) + ": `" + function
-                    + "` is not a function name.");
+            throw new ToolException(where(docPath, at) + ": `" + function + "` is not a function name.");
         }
         return ViewAction.script(ref, function, s);
     }
@@ -512,8 +516,7 @@ public final class ViewParser {
      * sits. Accepting the key there and rendering elsewhere would be the
      * "almost right" this parser exists to prevent.
      */
-    private static @Nullable String region(@Nullable Object raw, int depth, String docPath,
-                                           String at) {
+    private static @Nullable String region(@Nullable Object raw, int depth, String docPath, String at) {
         if (raw == null) return null;
         if (depth > 0) {
             throw new ToolException(where(docPath, at) + ": `region` belongs on the view's"
@@ -533,8 +536,7 @@ public final class ViewParser {
                 + " space. Got `" + raw + "`.");
     }
 
-    private static @Nullable String variant(@Nullable Object raw, WidgetType type,
-                                            String docPath, String at) {
+    private static @Nullable String variant(@Nullable Object raw, WidgetType type, String docPath, String at) {
         String value = str(raw);
         if (value == null) return null;
         if (type != WidgetType.ALERT && type != WidgetType.BADGE) {
@@ -543,19 +545,18 @@ public final class ViewParser {
         }
         String norm = value.trim().toLowerCase(java.util.Locale.ROOT);
         if (!VARIANTS.contains(norm)) {
-            throw new ToolException(where(docPath, at) + ": unknown `variant` `" + value
-                    + "`. One of: " + String.join(", ", VARIANTS) + ".");
+            throw new ToolException(where(docPath, at) + ": unknown `variant` `" + value + "`. One of: "
+                    + String.join(", ", VARIANTS) + ".");
         }
         return norm;
     }
 
-    private static @Nullable String codeMime(@Nullable Object raw, WidgetType type,
-                                             String docPath, String at) {
+    private static @Nullable String codeMime(@Nullable Object raw, WidgetType type, String docPath, String at) {
         String value = str(raw);
         if (value == null) return null;
         if (type != WidgetType.CODE) {
-            throw new ToolException(where(docPath, at) + ": `language` belongs to a `code`,"
-                    + " not to a `" + type.wire() + "`.");
+            throw new ToolException(
+                    where(docPath, at) + ": `language` belongs to a `code`," + " not to a `" + type.wire() + "`.");
         }
         String norm = value.trim().toLowerCase(java.util.Locale.ROOT);
         String mime = CODE_LANGUAGES.get(norm);
@@ -594,8 +595,8 @@ public final class ViewParser {
             }
             String value = str(entry);
             if (value == null) {
-                throw new ToolException(where(docPath, entryAt) + ": expected a value or a"
-                        + " `{value, label}` mapping.");
+                throw new ToolException(
+                        where(docPath, entryAt) + ": expected a value or a" + " `{value, label}` mapping.");
             }
             out.add(new ViewOption(value, value));
         }

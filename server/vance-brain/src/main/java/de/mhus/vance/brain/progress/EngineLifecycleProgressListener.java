@@ -54,11 +54,11 @@ public class EngineLifecycleProgressListener {
         StatusTag tag = mapTransition(prior, next);
         if (tag == null) return;
 
-        ThinkProcessDocument process = thinkProcessService.findById(event.processId())
-                .orElse(null);
+        ThinkProcessDocument process =
+                thinkProcessService.findById(event.processId()).orElse(null);
         if (process == null) return;
 
-        String text = describe(tag, prior, next, process);
+        String text = describe(tag, next, process);
         progressEmitter.emitStatus(process, tag, text);
     }
 
@@ -70,18 +70,15 @@ public class EngineLifecycleProgressListener {
         return switch (next) {
             case PAUSED -> StatusTag.ENGINE_PAUSED;
             case CLOSED -> StatusTag.ENGINE_CLOSED;
-            case IDLE -> (prior == ThinkProcessStatus.PAUSED
-                    || prior == ThinkProcessStatus.SUSPENDED)
-                    ? StatusTag.ENGINE_RESUMED : null;
+            case IDLE ->
+                (prior == ThinkProcessStatus.PAUSED || prior == ThinkProcessStatus.SUSPENDED)
+                        ? StatusTag.ENGINE_RESUMED
+                        : null;
             default -> null;
         };
     }
 
-    private static String describe(
-            StatusTag tag,
-            ThinkProcessStatus prior,
-            ThinkProcessStatus next,
-            ThinkProcessDocument process) {
+    private static String describe(StatusTag tag, ThinkProcessStatus next, ThinkProcessDocument process) {
         String name = process.getName();
         return switch (tag) {
             case ENGINE_PAUSED -> name + " paused";

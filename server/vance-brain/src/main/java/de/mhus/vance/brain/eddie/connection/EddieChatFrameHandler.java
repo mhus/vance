@@ -13,11 +13,11 @@ import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -91,8 +91,10 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
         try {
             data = objectMapper.convertValue(envelope.getData(), ChatMessageAppendedData.class);
         } catch (RuntimeException e) {
-            log.debug("EddieChatFrameHandler: malformed chat-message-appended for worker={}: {}",
-                    link.getWorkerProcessId(), e.toString());
+            log.debug(
+                    "EddieChatFrameHandler: malformed chat-message-appended for worker={}: {}",
+                    link.getWorkerProcessId(),
+                    e.toString());
             return;
         }
         if (data == null || data.getContent() == null || data.getContent().isBlank()) {
@@ -112,15 +114,12 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
         // any markdown → INBOX) on text-mode users too, making the whole
         // text-mode column of the triage design dead.
         TriageInput input = new TriageInput(
-                data.getContent(),
-                /*outputHint=*/ null,
-                link.getWorkerProcessName(),
-                /*voiceMode=*/ false);
+                data.getContent(), /*outputHint=*/ null, link.getWorkerProcessName(), /*voiceMode=*/ false);
         // Resolve the Eddie process so the LLM-stage of the triage can
         // run with the right tenant/project for settings cascade. The
         // pool reverse-lookup is the canonical mapping.
-        String eddieIdForLlm = pool.findEddieIdForWorker(link.getWorkerProcessId())
-                .orElse(null);
+        String eddieIdForLlm =
+                pool.findEddieIdForWorker(link.getWorkerProcessId()).orElse(null);
         ThinkProcessDocument eddieContext = eddieIdForLlm == null
                 ? null
                 : thinkProcessService.findById(eddieIdForLlm).orElse(null);
@@ -134,8 +133,7 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
                     ? triageService.classifyWithContext(input, eddieContext)
                     : triageService.applyHardOverrides(triageService.classify(input), input);
         } catch (RuntimeException e) {
-            log.warn("EddieChatFrameHandler: triage failed for worker={}: {}",
-                    link.getWorkerProcessId(), e.toString());
+            log.warn("EddieChatFrameHandler: triage failed for worker={}: {}", link.getWorkerProcessId(), e.toString());
             return;
         }
 
@@ -146,18 +144,22 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
         link.setLastCriticality(result.criticality());
         link.setLastSeen(Instant.now());
 
-        String eddieProcessId = pool.findEddieIdForWorker(link.getWorkerProcessId())
-                .orElse(null);
+        String eddieProcessId =
+                pool.findEddieIdForWorker(link.getWorkerProcessId()).orElse(null);
         if (eddieProcessId == null) {
-            log.debug("EddieChatFrameHandler: no Eddie owner for worker={}, snapshot updated in-memory only",
+            log.debug(
+                    "EddieChatFrameHandler: no Eddie owner for worker={}, snapshot updated in-memory only",
                     link.getWorkerProcessId());
             return;
         }
         try {
             thinkProcessService.upsertWorkerLink(eddieProcessId, link);
         } catch (RuntimeException e) {
-            log.warn("EddieChatFrameHandler: upsertWorkerLink failed eddie={} worker={}: {}",
-                    eddieProcessId, link.getWorkerProcessId(), e.toString());
+            log.warn(
+                    "EddieChatFrameHandler: upsertWorkerLink failed eddie={} worker={}: {}",
+                    eddieProcessId,
+                    link.getWorkerProcessId(),
+                    e.toString());
         }
 
         // Deterministic action mapping — the part the LLM doesn't have
@@ -176,15 +178,11 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
             // PROCESS_EVENT in her pending queue + schedule a turn.
             // Without this hand-off Eddie would never speak again
             // after a long worker reply.
-            wakeEddieForWorkerReply(eddieProcessId, link, data, result);
+            wakeEddieForWorkerReply(eddieProcessId, link, data);
         }
     }
 
-    private void wakeEddieForWorkerReply(
-            String eddieProcessId,
-            WorkerLinkSnapshot link,
-            ChatMessageAppendedData data,
-            TriageResult result) {
+    private void wakeEddieForWorkerReply(String eddieProcessId, WorkerLinkSnapshot link, ChatMessageAppendedData data) {
         // Carry the FULL worker reply in the relay event. RELAY/RELAY_INBOX
         // posts this verbatim to the inbox; memorySummary is the ~120-char
         // triage gist meant only for the <delegated_workers> render
@@ -201,17 +199,18 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
                 .eventId(java.util.UUID.randomUUID().toString())
                 .build();
         try {
-            boolean appended = thinkProcessService.appendPending(
-                    eddieProcessId, event, link.getWorkerProcessId());
+            boolean appended = thinkProcessService.appendPending(eddieProcessId, event, link.getWorkerProcessId());
             if (!appended) {
-                log.debug("wakeEddieForWorkerReply: Eddie process gone id='{}'",
-                        eddieProcessId);
+                log.debug("wakeEddieForWorkerReply: Eddie process gone id='{}'", eddieProcessId);
                 return;
             }
             processEventEmitter.scheduleTurn(eddieProcessId);
         } catch (RuntimeException e) {
-            log.warn("wakeEddieForWorkerReply: failed eddie={} worker={}: {}",
-                    eddieProcessId, link.getWorkerProcessId(), e.toString());
+            log.warn(
+                    "wakeEddieForWorkerReply: failed eddie={} worker={}: {}",
+                    eddieProcessId,
+                    link.getWorkerProcessId(),
+                    e.toString());
         }
     }
 
@@ -222,7 +221,8 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
      * Eddie (the actual carrier — keeps the chat thread coherent).
      */
     private void forwardVerbatim(String eddieProcessId, ChatMessageAppendedData workerData) {
-        ThinkProcessDocument eddie = thinkProcessService.findById(eddieProcessId).orElse(null);
+        ThinkProcessDocument eddie =
+                thinkProcessService.findById(eddieProcessId).orElse(null);
         if (eddie == null) return;
         String sessionId = eddie.getSessionId();
         if (sessionId == null || sessionId.isBlank()) return;
@@ -248,8 +248,7 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
                     .addressedToAgent(workerData.isAddressedToAgent())
                     .build());
         } catch (RuntimeException e) {
-            log.warn("EddieChatFrameHandler: verbatim persist to session='{}' failed: {}",
-                    sessionId, e.toString());
+            log.warn("EddieChatFrameHandler: verbatim persist to session='{}' failed: {}", sessionId, e.toString());
             return;
         }
 
@@ -270,8 +269,7 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
         try {
             clientEventPublisher.publish(sessionId, MessageType.CHAT_MESSAGE_APPENDED, out);
         } catch (RuntimeException e) {
-            log.debug("EddieChatFrameHandler: verbatim forward to session='{}' failed: {}",
-                    sessionId, e.toString());
+            log.debug("EddieChatFrameHandler: verbatim forward to session='{}' failed: {}", sessionId, e.toString());
         }
     }
 }

@@ -1,9 +1,9 @@
 package de.mhus.vance.toolpack.rest;
 
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import de.mhus.vance.toolpack.core.PackJson;
 import de.mhus.vance.toolpack.core.SecretResolver;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -50,10 +50,7 @@ public final class RestHttpInvoker {
     private final SecretResolver secretResolver;
 
     public RestHttpInvoker(
-            PackHttpClient httpClient,
-            RestApiConfig config,
-            String baseUrl,
-            SecretResolver secretResolver) {
+            PackHttpClient httpClient, RestApiConfig config, String baseUrl, SecretResolver secretResolver) {
         this.httpClient = Objects.requireNonNull(httpClient);
         this.config = Objects.requireNonNull(config);
         this.baseUrl = baseUrl == null ? "" : stripTrailingSlash(baseUrl);
@@ -66,28 +63,24 @@ public final class RestHttpInvoker {
      * request body are extracted from {@code params} per the operation
      * schema. Auth header is appended live (secret resolution).
      */
-    public Map<String, Object> execute(
-            OpenApiOperation op,
-            Map<String, Object> params,
-            ToolInvocationContext ctx) {
+    public Map<String, Object> execute(OpenApiOperation op, Map<String, Object> params, ToolInvocationContext ctx) {
         Map<String, Object> safe = params == null ? Map.of() : params;
         String url = buildUrl(op, safe, ctx);
-        HttpRequest.Builder rb = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(config.timeoutSeconds()));
+        HttpRequest.Builder rb =
+                HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(config.timeoutSeconds()));
 
         // Header params + auth.
         for (String h : op.headerParamNames()) {
             Object v = safe.get(h);
             if (v != null) rb.header(h, String.valueOf(v));
         }
-        applyAuthHeader(rb, op, safe, ctx, urlBuilderState(op, safe, ctx));
+        applyAuthHeader(rb, ctx);
 
         // Body & method.
         String method = op.httpMethod();
         HttpRequest.BodyPublisher body = HttpRequest.BodyPublishers.noBody();
         if (op.bodyParamName() != null && safe.containsKey(op.bodyParamName())) {
-            String contentType = op.bodyContentType() == null
-                    ? "application/json" : op.bodyContentType();
+            String contentType = op.bodyContentType() == null ? "application/json" : op.bodyContentType();
             String bodyStr = serialiseBody(safe.get(op.bodyParamName()), contentType);
             body = HttpRequest.BodyPublishers.ofString(bodyStr, StandardCharsets.UTF_8);
             rb.header("Content-Type", contentType);
@@ -97,12 +90,13 @@ public final class RestHttpInvoker {
         HttpClient client = httpClient.client(config.tls());
         HttpResponse<String> response;
         try {
-            response = client.send(rb.build(), de.mhus.vance.toolpack.core.PackHttpLimits.cappedString(
-                    de.mhus.vance.toolpack.core.PackHttpLimits.DEFAULT_MAX_RESPONSE_BYTES));
+            response = client.send(
+                    rb.build(),
+                    de.mhus.vance.toolpack.core.PackHttpLimits.cappedString(
+                            de.mhus.vance.toolpack.core.PackHttpLimits.DEFAULT_MAX_RESPONSE_BYTES));
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw new RestInvocationException(
-                    "REST call failed (" + method + " " + url + "): " + e.getMessage(), e);
+            throw new RestInvocationException("REST call failed (" + method + " " + url + "): " + e.getMessage(), e);
         }
         return toResultMap(response);
     }
@@ -112,18 +106,13 @@ public final class RestHttpInvoker {
      * fully-resolved request URL (path-template substitution + query
      * string + secret expansion in path/query if any).
      */
-    public String buildUrl(
-            OpenApiOperation op,
-            Map<String, Object> params,
-            ToolInvocationContext ctx) {
+    public String buildUrl(OpenApiOperation op, Map<String, Object> params, ToolInvocationContext ctx) {
         UrlBuilderState state = urlBuilderState(op, params, ctx);
         return state.url();
     }
 
     private UrlBuilderState urlBuilderState(
-            OpenApiOperation op,
-            Map<String, Object> params,
-            ToolInvocationContext ctx) {
+            OpenApiOperation op, Map<String, Object> params, ToolInvocationContext ctx) {
         // Path template substitution: replace {var} with URL-encoded value
         String path = op.pathTemplate();
         for (String pp : op.pathParamNames()) {
@@ -135,8 +124,7 @@ public final class RestHttpInvoker {
         StringBuilder query = new StringBuilder();
         appendQuery(query, op.queryParamNames(), params);
         // API-key auth as query param.
-        if (config.auth().type() == AuthSpec.Type.API_KEY
-                && config.auth().queryParamName() != null) {
+        if (config.auth().type() == AuthSpec.Type.API_KEY && config.auth().queryParamName() != null) {
             String resolved = resolveValue(config.auth().value(), ctx);
             appendQueryPair(query, config.auth().queryParamName(), resolved);
         }
@@ -173,15 +161,12 @@ public final class RestHttpInvoker {
                 .append(URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8));
     }
 
-    private void applyAuthHeader(
-            HttpRequest.Builder rb,
-            OpenApiOperation op,
-            Map<String, Object> params,
-            ToolInvocationContext ctx,
-            UrlBuilderState state) {
+    private void applyAuthHeader(HttpRequest.Builder rb, ToolInvocationContext ctx) {
         AuthSpec auth = config.auth();
         switch (auth.type()) {
-            case NONE -> { /* no auth */ }
+            case NONE -> {
+                /* no auth */
+            }
             case BEARER -> {
                 String token = resolveValue(auth.token(), ctx);
                 if (token != null) rb.header("Authorization", PackHttpClient.bearerAuthHeader(token));
@@ -189,7 +174,8 @@ public final class RestHttpInvoker {
             case BASIC -> {
                 String user = resolveValue(auth.user(), ctx);
                 String pwd = resolveValue(auth.password(), ctx);
-                rb.header("Authorization",
+                rb.header(
+                        "Authorization",
                         PackHttpClient.basicAuthHeader(user == null ? "" : user, pwd == null ? "" : pwd));
             }
             case API_KEY -> {
@@ -233,13 +219,15 @@ public final class RestHttpInvoker {
         String bodyStr = response.body() == null ? "" : response.body();
         out.put("body", bodyStr);
         // Try to parse JSON body for convenience.
-        String contentType = headers.getOrDefault("content-type",
-                headers.getOrDefault("Content-Type", "")).toLowerCase();
+        String contentType = headers.getOrDefault("content-type", headers.getOrDefault("Content-Type", ""))
+                .toLowerCase();
         if (contentType.contains("json") && !bodyStr.isBlank()) {
             try {
                 Object parsed = PackJson.read(bodyStr);
                 out.put("json", parsed);
-            } catch (RuntimeException ignored) { /* leave json key out */ }
+            } catch (RuntimeException ignored) {
+                /* leave json key out */
+            }
         }
         return out;
     }
@@ -248,8 +236,7 @@ public final class RestHttpInvoker {
         return s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
     }
 
-    private record UrlBuilderState(String url) {
-    }
+    private record UrlBuilderState(String url) {}
 
     /** Wraps non-recoverable network failures (DNS, TCP, TLS handshake). */
     public static final class RestInvocationException extends RuntimeException {

@@ -220,7 +220,7 @@ public class ProcessSpawnTool implements Tool {
             throw new ToolException("process_spawn requires a session scope");
         }
         String name = stringOrThrow(params, "name");
-        String task = resolveTask(params, name);
+        String task = resolveTask(params);
         String recipeName = normaliseRecipeParam(optString(params, "recipe"));
         String title = optString(params, "title");
         boolean wait = optBoolean(params, "wait", false);
@@ -349,15 +349,14 @@ public class ProcessSpawnTool implements Tool {
 
         ActionResult result = actionRegistry.execute(action, triggerCtx, TriggerKind.TOOL);
         if (!wait) {
-            return mapAsyncResult(result, recipeName, ctx.tenantId(), ctx.projectId());
+            return mapAsyncResult(result, recipeName);
         }
         return runSync(ctx, name, task, timeout, result, recipeName);
     }
 
     // ── async (wait=false) ────────────────────────────────────────────────
 
-    private Map<String, Object> mapAsyncResult(
-            ActionResult result, @Nullable String requestedRecipe, String tenantId, @Nullable String projectId) {
+    private Map<String, Object> mapAsyncResult(ActionResult result, @Nullable String requestedRecipe) {
         switch (result.outcome()) {
             case SCHEDULED -> {
                 Map<String, Object> out = result.output();
@@ -550,7 +549,7 @@ public class ProcessSpawnTool implements Tool {
      * / {@code prompt} / {@code steerContent} aliases weak tool-use models
      * (and the older create/run schemas) tend to send.
      */
-    private String resolveTask(Map<String, Object> params, String name) {
+    private String resolveTask(Map<String, Object> params) {
         String task = optString(params, "task");
         if (task == null) task = optString(params, "goal");
         if (task == null) task = optString(params, "prompt");

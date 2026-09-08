@@ -32,8 +32,10 @@ public class IssuesService {
     private final IssuesFolderReader folderReader;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
 
-    public IssuesService(DocumentService documentService, IssuesFolderReader folderReader,
-                         de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
+    public IssuesService(
+            DocumentService documentService,
+            IssuesFolderReader folderReader,
+            de.mhus.vance.brain.permission.SecurityContextFactory contextFactory) {
         this.documentService = documentService;
         this.folderReader = folderReader;
         this.contextFactory = contextFactory;
@@ -62,10 +64,16 @@ public class IssuesService {
      * {@code (tenant,project,path)} index is the hard guard against a
      * concurrent duplicate — a clash retries with the next number.
      */
-    public DocumentDocument createIssue(String tenantId, String projectId, String folder,
-                                        String title, @Nullable List<String> labels,
-                                        @Nullable String assignee, @Nullable String priority,
-                                        @Nullable String body, @Nullable String userId) {
+    public DocumentDocument createIssue(
+            String tenantId,
+            String projectId,
+            String folder,
+            String title,
+            @Nullable List<String> labels,
+            @Nullable String assignee,
+            @Nullable String priority,
+            @Nullable String body,
+            @Nullable String userId) {
         if (title == null || title.isBlank()) throw new ToolException("title is required");
         String normalized = IssuesFolderReader.normaliseFolder(folder);
 
@@ -79,13 +87,27 @@ public class IssuesService {
             if (slug.isEmpty()) slug = "issue";
             String path = normalized + "/" + config.itemsDir() + "/" + number + "-" + slug + PAGE_EXT;
 
-            IssueDocument issue = new IssueDocument(IssueDocument.KIND, number, title.trim(),
-                    IssueDocument.STATE_OPEN, cleanList(labels), nullIfBlank(assignee),
-                    nullIfBlank(priority), body == null ? "" : body, new java.util.LinkedHashMap<>());
+            IssueDocument issue = new IssueDocument(
+                    IssueDocument.KIND,
+                    number,
+                    title.trim(),
+                    IssueDocument.STATE_OPEN,
+                    cleanList(labels),
+                    nullIfBlank(assignee),
+                    nullIfBlank(priority),
+                    body == null ? "" : body,
+                    new java.util.LinkedHashMap<>());
             String serialized = IssueCodec.serialize(issue, MD_MIME);
             try (InputStream in = new ByteArrayInputStream(serialized.getBytes(StandardCharsets.UTF_8))) {
-                DocumentDocument stored = documentService.create(tenantId, projectId, path,
-                        title.trim(), nativeTags(issue), MD_MIME, in, userId,
+                DocumentDocument stored = documentService.create(
+                        tenantId,
+                        projectId,
+                        path,
+                        title.trim(),
+                        nativeTags(issue),
+                        MD_MIME,
+                        in,
+                        userId,
                         contextFactory.writeActor(tenantId, userId, path));
                 bumpNextNumber(scan.manifest(), config, number + 1);
                 log.info("IssuesService.createIssue tenant='{}' #{} path='{}'", tenantId, number, path);
@@ -96,16 +118,22 @@ public class IssuesService {
                 throw new ToolException("Could not write issue '" + path + "': " + e.getMessage());
             }
         }
-        throw new ToolException("Could not reserve a free issue number after "
-                + MAX_NUMBER_ATTEMPTS + " attempts.");
+        throw new ToolException("Could not reserve a free issue number after " + MAX_NUMBER_ATTEMPTS + " attempts.");
     }
 
     private void bumpNextNumber(DocumentDocument manifest, IssuesConfig config, int next) {
         if (next <= config.nextNumber()) return; // never decrease
         try {
-            documentService.update(manifest.getId(),
-                    manifest.getTitle(), List.of("application", "issues"),
-                    config.withNextNumber(next).render(), null, null, null, null, YAML_MIME,
+            documentService.update(
+                    manifest.getId(),
+                    manifest.getTitle(),
+                    List.of("application", "issues"),
+                    config.withNextNumber(next).render(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    YAML_MIME,
                     DocumentService.TOOL_IDENTITY,
                     contextFactory.writeActor(manifest.getTenantId(), null, manifest.getPath()));
         } catch (RuntimeException e) {
@@ -117,14 +145,23 @@ public class IssuesService {
 
     // ── Update (in-place field patch) ─────────────────────────────
 
-    public DocumentDocument updateIssue(String tenantId, String projectId, String path,
-                                        @Nullable String state, @Nullable List<String> labels,
-                                        @Nullable String assignee, @Nullable String priority,
-                                        @Nullable String title, @Nullable String body) {
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+    public DocumentDocument updateIssue(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String state,
+            @Nullable List<String> labels,
+            @Nullable String assignee,
+            @Nullable String priority,
+            @Nullable String title,
+            @Nullable String body) {
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException("No issue at '" + path + "'"));
         IssueDocument base = readIssue(doc);
-        IssueDocument merged = new IssueDocument(IssueDocument.KIND, base.number(),
+        IssueDocument merged = new IssueDocument(
+                IssueDocument.KIND,
+                base.number(),
                 title != null && !title.isBlank() ? title.trim() : base.title(),
                 state != null && !state.isBlank() ? state.trim() : base.state(),
                 labels != null ? cleanList(labels) : base.labels(),
@@ -133,8 +170,16 @@ public class IssuesService {
                 body != null ? body : base.body(),
                 base.extra());
         String serialized = IssueCodec.serialize(merged, MD_MIME);
-        return documentService.update(doc.getId(), merged.title(), nativeTags(merged),
-                serialized, null, null, null, null, MD_MIME,
+        return documentService.update(
+                doc.getId(),
+                merged.title(),
+                nativeTags(merged),
+                serialized,
+                null,
+                null,
+                null,
+                null,
+                MD_MIME,
                 DocumentService.TOOL_IDENTITY,
                 contextFactory.writeActor(tenantId, null, doc.getPath()));
     }
@@ -145,13 +190,18 @@ public class IssuesService {
 
     // ── Comments (DocumentNotes) ──────────────────────────────────
 
-    public DocumentNote addComment(String tenantId, String projectId, String path,
-                                   String text, @Nullable String userId) {
+    public DocumentNote addComment(
+            String tenantId, String projectId, String path, String text, @Nullable String userId) {
         if (text == null || text.isBlank()) throw new ToolException("comment text is required");
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException("No issue at '" + path + "'"));
-        return documentService.addNote(doc.getId(), text.trim(),
-                userId == null ? "unknown" : userId, null, null,
+        return documentService.addNote(
+                doc.getId(),
+                text.trim(),
+                userId == null ? "unknown" : userId,
+                null,
+                null,
                 contextFactory.writeActor(tenantId, userId, doc.getPath()));
     }
 
@@ -163,35 +213,44 @@ public class IssuesService {
     }
 
     public boolean deleteComment(String tenantId, String projectId, String path, String commentId) {
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException("No issue at '" + path + "'"));
-        return documentService.deleteNote(doc.getId(), commentId, null,
-                contextFactory.writeActor(tenantId, null, doc.getPath()));
+        return documentService.deleteNote(
+                doc.getId(), commentId, null, contextFactory.writeActor(tenantId, null, doc.getPath()));
     }
 
     // ── Archive / unarchive (file move) ───────────────────────────
 
-    public DocumentDocument archive(String tenantId, String projectId, String folder,
-                                    IssuesConfig config, String path) {
-        return relocate(tenantId, projectId, folder, config, path, config.archiveDir());
+    public DocumentDocument archive(
+            String tenantId, String projectId, String folder, IssuesConfig config, String path) {
+        return relocate(tenantId, projectId, folder, path, config.archiveDir());
     }
 
-    public DocumentDocument unarchive(String tenantId, String projectId, String folder,
-                                      IssuesConfig config, String path) {
-        return relocate(tenantId, projectId, folder, config, path, config.itemsDir());
+    public DocumentDocument unarchive(
+            String tenantId, String projectId, String folder, IssuesConfig config, String path) {
+        return relocate(tenantId, projectId, folder, path, config.itemsDir());
     }
 
-    private DocumentDocument relocate(String tenantId, String projectId, String folder,
-                                      IssuesConfig config, String path, String targetDir) {
+    private DocumentDocument relocate(String tenantId, String projectId, String folder, String path, String targetDir) {
         String normalized = IssuesFolderReader.normaliseFolder(folder);
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
                 .orElseThrow(() -> new ToolException("No issue at '" + path + "'"));
         String leaf = path.substring(path.lastIndexOf('/') + 1);
         String base = normalized + "/" + targetDir + "/" + leaf;
         if (base.equals(path)) return doc; // already there
         String newPath = uniquePath(tenantId, projectId, stripExt(base));
-        DocumentDocument moved = documentService.update(doc.getId(),
-                null, null, null, newPath, null, null, null, null,
+        DocumentDocument moved = documentService.update(
+                doc.getId(),
+                null,
+                null,
+                null,
+                newPath,
+                null,
+                null,
+                null,
+                null,
                 DocumentService.TOOL_IDENTITY,
                 contextFactory.writeActor(tenantId, null, doc.getPath()));
         log.info("IssuesService.relocate '{}' -> '{}'", path, newPath);
@@ -199,16 +258,21 @@ public class IssuesService {
     }
 
     public void trash(String tenantId, String projectId, String path, @Nullable String userId) {
-        documentService.findByPath(tenantId, projectId, path)
-                .ifPresent(d -> documentService.trash(d.getId(),
-                        contextFactory.writeActor(tenantId, userId, d.getPath())));
+        documentService
+                .findByPath(tenantId, projectId, path)
+                .ifPresent(d ->
+                        documentService.trash(d.getId(), contextFactory.writeActor(tenantId, userId, d.getPath())));
     }
 
     // ── Search ────────────────────────────────────────────────────
 
-    public DocumentService.DocumentMetaListing search(String tenantId, String projectId, String folder,
-                                                       @Nullable String query, @Nullable String label,
-                                                       int limit) {
+    public DocumentService.DocumentMetaListing search(
+            String tenantId,
+            String projectId,
+            String folder,
+            @Nullable String query,
+            @Nullable String label,
+            int limit) {
         String normalized = IssuesFolderReader.normaliseFolder(folder);
         IssuesConfig config = folderReader.scan(tenantId, projectId, normalized).config();
         // Scope to the items dir — excludes archive/ and the _app.yaml/_index.md/

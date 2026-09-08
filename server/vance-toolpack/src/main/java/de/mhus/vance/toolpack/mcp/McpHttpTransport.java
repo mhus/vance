@@ -1,10 +1,10 @@
 package de.mhus.vance.toolpack.mcp;
 
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.McpJsonRpc;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import de.mhus.vance.toolpack.core.SecretResolver;
 import de.mhus.vance.toolpack.rest.AuthSpec;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -70,16 +70,14 @@ public final class McpHttpTransport implements McpTransport {
      * {@code tools/list} returns 0 tools.
      */
     private final AtomicReference<@Nullable String> sessionId = new AtomicReference<>();
+
     private volatile boolean open;
 
     /** Header name from the MCP Streamable-HTTP transport spec. Case-insensitive on the wire. */
     static final String SESSION_HEADER = "Mcp-Session-Id";
 
     public McpHttpTransport(
-            McpConfig config,
-            McpJsonRpc rpc,
-            PackHttpClient httpClient,
-            SecretResolver secretResolver) {
+            McpConfig config, McpJsonRpc rpc, PackHttpClient httpClient, SecretResolver secretResolver) {
         this.config = config;
         this.rpc = rpc;
         this.httpClient = httpClient;
@@ -94,9 +92,8 @@ public final class McpHttpTransport implements McpTransport {
                     "McpHttpTransport: config.transport must be HTTP, got " + config.transport());
         }
         if (config.url() == null) {
-            throw new IllegalStateException(
-                    "McpHttpTransport: legacy HTTP+SSE (postUrl/sseUrl split) is not "
-                            + "implemented yet — use Streamable HTTP (single 'url')");
+            throw new IllegalStateException("McpHttpTransport: legacy HTTP+SSE (postUrl/sseUrl split) is not "
+                    + "implemented yet — use Streamable HTTP (single 'url')");
         }
         open = true;
         log.info("McpHttpTransport opened: url={}", config.url());
@@ -117,10 +114,7 @@ public final class McpHttpTransport implements McpTransport {
 
     @Override
     public @Nullable Object sendRequest(
-            String method,
-            @Nullable Map<String, Object> params,
-            Duration timeout,
-            ToolInvocationContext ctx) {
+            String method, @Nullable Map<String, Object> params, Duration timeout, ToolInvocationContext ctx) {
         if (!open) throw new IllegalStateException("MCP HTTP transport not open");
         long id = rpc.allocId();
         String body = rpc.buildRequest(id, method, params);
@@ -129,15 +123,16 @@ public final class McpHttpTransport implements McpTransport {
     }
 
     @Override
-    public void sendNotification(
-            String method, @Nullable Map<String, Object> params, ToolInvocationContext ctx) {
+    public void sendNotification(String method, @Nullable Map<String, Object> params, ToolInvocationContext ctx) {
         if (!open) throw new IllegalStateException("MCP HTTP transport not open");
         String body = rpc.buildNotification(method, params);
         // Notifications still POST; server returns 202 / 200 with no body.
-        HttpResponse<InputStream> response = post(body,
-                Duration.ofSeconds(Math.min(10, config.timeoutSeconds())), ctx);
+        HttpResponse<InputStream> response = post(body, Duration.ofSeconds(Math.min(10, config.timeoutSeconds())), ctx);
         // Drain whatever came back so the connection releases.
-        try { response.body().close(); } catch (IOException ignored) { }
+        try {
+            response.body().close();
+        } catch (IOException ignored) {
+        }
     }
 
     @Override
@@ -149,8 +144,9 @@ public final class McpHttpTransport implements McpTransport {
             // carried a request reply, so the queue may already be primed.
             McpJsonRpc.Frame.Notification n;
             while ((n = pendingNotifications.poll()) != null) {
-                try { handler.accept(n); }
-                catch (RuntimeException e) {
+                try {
+                    handler.accept(n);
+                } catch (RuntimeException e) {
                     log.warn("MCP HTTP notification handler threw: {}", e.toString());
                 }
             }
@@ -159,15 +155,16 @@ public final class McpHttpTransport implements McpTransport {
 
     // ─────── Internals ───────
 
-    private HttpResponse<InputStream> post(
-            String body, Duration timeout, ToolInvocationContext ctx) {
+    private HttpResponse<InputStream> post(String body, Duration timeout, ToolInvocationContext ctx) {
         if (log.isTraceEnabled()) {
             // Permanent dev-trace of outgoing JSON-RPC bodies. Keep at
             // TRACE — debug is too chatty for routine runs but this is
             // exactly the line you want when an MCP server returns a
             // generic "trouble completing this action" and you need to
             // see what arguments actually went over the wire.
-            log.trace("MCP HTTP POST {} body={}", config.url(),
+            log.trace(
+                    "MCP HTTP POST {} body={}",
+                    config.url(),
                     body.length() > 800 ? body.substring(0, 800) + "…" : body);
         }
         HttpRequest.Builder rb = HttpRequest.newBuilder(URI.create(config.url()))
@@ -185,14 +182,12 @@ public final class McpHttpTransport implements McpTransport {
 
         HttpClient client = httpClient.client(config.tls());
         try {
-            HttpResponse<InputStream> response = client.send(
-                    rb.build(), HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response = client.send(rb.build(), HttpResponse.BodyHandlers.ofInputStream());
             captureSessionId(response);
             return response;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw new IllegalStateException(
-                    "MCP HTTP POST failed (" + config.url() + "): " + e.getMessage(), e);
+            throw new IllegalStateException("MCP HTTP POST failed (" + config.url() + "): " + e.getMessage(), e);
         }
     }
 
@@ -205,7 +200,8 @@ public final class McpHttpTransport implements McpTransport {
      * Header lookup is case-insensitive via {@link java.net.http.HttpHeaders}.
      */
     private void captureSessionId(HttpResponse<?> response) {
-        response.headers().firstValue(SESSION_HEADER)
+        response.headers()
+                .firstValue(SESSION_HEADER)
                 .filter(s -> !s.isBlank())
                 .ifPresent(value -> sessionId.compareAndSet(null, value));
     }
@@ -213,7 +209,9 @@ public final class McpHttpTransport implements McpTransport {
     private void applyAuthHeader(HttpRequest.Builder rb, ToolInvocationContext ctx) {
         AuthSpec auth = config.auth();
         switch (auth.type()) {
-            case NONE -> { /* no auth */ }
+            case NONE -> {
+                /* no auth */
+            }
             case BEARER -> {
                 String token = secretResolver.resolveForConnector(auth.token(), ctx);
                 if (token != null) rb.header("Authorization", PackHttpClient.bearerAuthHeader(token));
@@ -221,7 +219,8 @@ public final class McpHttpTransport implements McpTransport {
             case BASIC -> {
                 String user = secretResolver.resolveForConnector(auth.user(), ctx);
                 String pwd = secretResolver.resolveForConnector(auth.password(), ctx);
-                rb.header("Authorization",
+                rb.header(
+                        "Authorization",
                         PackHttpClient.basicAuthHeader(user == null ? "" : user, pwd == null ? "" : pwd));
             }
             case API_KEY -> {
@@ -235,16 +234,15 @@ public final class McpHttpTransport implements McpTransport {
         }
     }
 
-    private @Nullable Object parseResponse(
-            HttpResponse<InputStream> response, long requestId, String requestMethod) {
-        String contentType = response.headers().firstValue("Content-Type")
+    private @Nullable Object parseResponse(HttpResponse<InputStream> response, long requestId, String requestMethod) {
+        String contentType = response.headers()
+                .firstValue("Content-Type")
                 .or(() -> response.headers().firstValue("content-type"))
                 .orElse("application/json");
         int status = response.statusCode();
         if (status < 200 || status >= 300) {
             String body = readAllText(response.body());
-            throw new IllegalStateException(
-                    "MCP HTTP " + status + " from " + config.url() + ": " + truncate(body));
+            throw new IllegalStateException("MCP HTTP " + status + " from " + config.url() + ": " + truncate(body));
         }
         if (contentType.toLowerCase().contains("text/event-stream")) {
             return parseSseStream(response.body(), requestId, requestMethod);
@@ -252,7 +250,8 @@ public final class McpHttpTransport implements McpTransport {
         // Single JSON frame.
         String body = readAllText(response.body());
         if (log.isTraceEnabled()) {
-            log.trace("MCP HTTP {} response body={}",
+            log.trace(
+                    "MCP HTTP {} response body={}",
                     requestMethod,
                     body.length() > 800 ? body.substring(0, 800) + "…" : body);
         }
@@ -267,8 +266,7 @@ public final class McpHttpTransport implements McpTransport {
             return r.result();
         }
         throw new IllegalStateException(
-                "MCP HTTP unexpected frame for request method='" + requestMethod
-                        + "': " + truncate(body));
+                "MCP HTTP unexpected frame for request method='" + requestMethod + "': " + truncate(body));
     }
 
     /**
@@ -281,10 +279,8 @@ public final class McpHttpTransport implements McpTransport {
      * synchronous request/response that's discarded — connection-layer
      * SSE keep-open is a future feature).
      */
-    private @Nullable Object parseSseStream(
-            InputStream stream, long requestId, String requestMethod) {
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+    private @Nullable Object parseSseStream(InputStream stream, long requestId, String requestMethod) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             StringBuilder dataBuf = new StringBuilder();
             String line;
             while ((line = br.readLine()) != null) {
@@ -293,11 +289,12 @@ public final class McpHttpTransport implements McpTransport {
                     if (dataBuf.length() > 0) {
                         String frame = dataBuf.toString();
                         if (log.isTraceEnabled()) {
-                            log.trace("MCP HTTP {} SSE frame body={}",
+                            log.trace(
+                                    "MCP HTTP {} SSE frame body={}",
                                     requestMethod,
                                     frame.length() > 800 ? frame.substring(0, 800) + "…" : frame);
                         }
-                        Object result = handleSseFrame(frame, requestId, requestMethod);
+                        Object result = handleSseFrame(frame, requestId);
                         dataBuf.setLength(0);
                         if (result != SSE_NOT_RESPONSE) return result;
                     }
@@ -309,8 +306,7 @@ public final class McpHttpTransport implements McpTransport {
                     // A frame with no boundary (or an endless data: line) must not
                     // grow the buffer without limit → heap exhaustion.
                     if (dataBuf.length() > MAX_SSE_FRAME_CHARS) {
-                        throw new IllegalStateException(
-                                "MCP HTTP SSE frame exceeds " + MAX_SSE_FRAME_CHARS + " chars");
+                        throw new IllegalStateException("MCP HTTP SSE frame exceeds " + MAX_SSE_FRAME_CHARS + " chars");
                     }
                 }
                 // Ignore other SSE fields (event:, id:, retry:) — MCP-HTTP
@@ -318,11 +314,9 @@ public final class McpHttpTransport implements McpTransport {
             }
             // Stream ended without a matching response.
             throw new IllegalStateException(
-                    "MCP HTTP SSE stream closed before response for method='"
-                            + requestMethod + "' id=" + requestId);
+                    "MCP HTTP SSE stream closed before response for method='" + requestMethod + "' id=" + requestId);
         } catch (IOException e) {
-            throw new IllegalStateException(
-                    "MCP HTTP SSE read failed: " + e.getMessage(), e);
+            throw new IllegalStateException("MCP HTTP SSE read failed: " + e.getMessage(), e);
         }
     }
 
@@ -333,7 +327,7 @@ public final class McpHttpTransport implements McpTransport {
      */
     private static final Object SSE_NOT_RESPONSE = new Object();
 
-    private Object handleSseFrame(String json, long requestId, String requestMethod) {
+    private Object handleSseFrame(String json, long requestId) {
         McpJsonRpc.Frame frame;
         try {
             frame = McpJsonRpc.parse(json);
@@ -348,8 +342,9 @@ public final class McpHttpTransport implements McpTransport {
         if (frame instanceof McpJsonRpc.Frame.Notification n) {
             Consumer<McpJsonRpc.Frame.Notification> h = notificationHandler.get();
             if (h != null) {
-                try { h.accept(n); }
-                catch (RuntimeException e) {
+                try {
+                    h.accept(n);
+                } catch (RuntimeException e) {
                     log.warn("MCP HTTP SSE notification handler threw: {}", e.toString());
                 }
             } else if (pendingNotifications.size() < MAX_PENDING_NOTIFICATIONS) {
@@ -357,8 +352,7 @@ public final class McpHttpTransport implements McpTransport {
             } else {
                 // Bounded — a server that floods notifications while no handler
                 // is registered must not grow this queue without limit.
-                log.warn("MCP HTTP SSE: dropping notification, pending queue at cap ({})",
-                        MAX_PENDING_NOTIFICATIONS);
+                log.warn("MCP HTTP SSE: dropping notification, pending queue at cap ({})", MAX_PENDING_NOTIFICATIONS);
             }
         }
         return SSE_NOT_RESPONSE;
@@ -381,5 +375,4 @@ public final class McpHttpTransport implements McpTransport {
         if (s == null) return "";
         return s.length() <= 200 ? s : s.substring(0, 197) + "...";
     }
-
 }

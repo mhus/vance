@@ -4,7 +4,6 @@ import de.mhus.vance.brain.tools.web.ImageValidatorService;
 import de.mhus.vance.brain.tools.web.YouTubeValidatorService;
 import de.mhus.vance.brain.zarniwoop.protocols.SerperHttpClient.SerperResponse;
 import de.mhus.vance.brain.zarniwoop.protocols.SerperPdfHeadProbe.Verdict;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.ProviderInstanceConfig;
 import de.mhus.vance.toolpack.research.QuotaStatus;
@@ -55,12 +54,13 @@ class SerperInstance implements SearchProviderInstance {
     private final YouTubeValidatorService youtubeValidator;
     private final SerperPdfHeadProbe pdfHeadProbe;
 
-    SerperInstance(ProviderInstanceConfig cfg,
-                   ObjectMapper objectMapper,
-                   SerperHttpClient http,
-                   ImageValidatorService imageValidator,
-                   YouTubeValidatorService youtubeValidator,
-                   SerperPdfHeadProbe pdfHeadProbe) {
+    SerperInstance(
+            ProviderInstanceConfig cfg,
+            ObjectMapper objectMapper,
+            SerperHttpClient http,
+            ImageValidatorService imageValidator,
+            YouTubeValidatorService youtubeValidator,
+            SerperPdfHeadProbe pdfHeadProbe) {
         this.cfg = cfg;
         this.objectMapper = objectMapper;
         this.http = http;
@@ -102,9 +102,7 @@ class SerperInstance implements SearchProviderInstance {
     @Override
     public ProviderAvailability availability(SearchScope scope) {
         String key = resolveApiKey(scope);
-        return StringUtils.isBlank(key)
-                ? ProviderAvailability.NO_CREDENTIALS
-                : ProviderAvailability.READY;
+        return StringUtils.isBlank(key) ? ProviderAvailability.NO_CREDENTIALS : ProviderAvailability.READY;
     }
 
     @Override
@@ -127,11 +125,9 @@ class SerperInstance implements SearchProviderInstance {
         String apiKey = resolveApiKey(scope);
         if (StringUtils.isBlank(apiKey)) return Optional.empty();
         try {
-            SerperResponse response = http.get(
-                    URI.create(baseUrl() + "/account"), apiKey, REQUEST_TIMEOUT);
+            SerperResponse response = http.get(URI.create(baseUrl() + "/account"), apiKey, REQUEST_TIMEOUT);
             if (response.statusCode() != 200) {
-                log.debug("Serper /account for '{}' returned status {}",
-                        cfg.instanceId(), response.statusCode());
+                log.debug("Serper /account for '{}' returned status {}", cfg.instanceId(), response.statusCode());
                 return Optional.empty();
             }
             JsonNode root = objectMapper.readTree(response.body());
@@ -148,26 +144,27 @@ class SerperInstance implements SearchProviderInstance {
     public SearchResult search(SearchRequest req, SearchScope scope) {
         String apiKey = resolveApiKey(scope);
         if (StringUtils.isBlank(apiKey)) {
-            return softFailure(req, "Serper API key not configured for endpoint '"
-                    + cfg.instanceId() + "'");
+            return softFailure(req, "Serper API key not configured for endpoint '" + cfg.instanceId() + "'");
         }
         return switch (req.modality()) {
-            case WEB -> doWebSearch(req, scope, apiKey);
-            case NEWS -> doNewsSearch(req, scope, apiKey);
+            case WEB -> doWebSearch(req, apiKey);
+            case NEWS -> doNewsSearch(req, apiKey);
             case IMAGE -> doImageSearch(req, scope, apiKey);
-            case VIDEO -> doVideoSearch(req, scope, apiKey);
-            case PDF -> doPdfSearch(req, scope, apiKey);
-            default -> softFailure(req, "modality " + req.modality()
-                    + " not supported by Serper endpoint '" + cfg.instanceId() + "'");
+            case VIDEO -> doVideoSearch(req, apiKey);
+            case PDF -> doPdfSearch(req, apiKey);
+
+            default ->
+                softFailure(
+                        req,
+                        "modality " + req.modality() + " not supported by Serper endpoint '" + cfg.instanceId() + "'");
         };
     }
 
     // ── WEB ───────────────────────────────────────────────────────────
 
-    private SearchResult doWebSearch(SearchRequest req, SearchScope scope, String apiKey) {
-        SerperResponse response = postSerper("/search",
-                Map.of("q", req.query(), "num", clampNum(req.maxResults())),
-                apiKey);
+    private SearchResult doWebSearch(SearchRequest req, String apiKey) {
+        SerperResponse response =
+                postSerper("/search", Map.of("q", req.query(), "num", clampNum(req.maxResults())), apiKey);
         List<SearchHit> hits = parseHits(response.body(), SearchModality.WEB);
         return successResult(req, hits, 0, response.headers(), null);
     }
@@ -189,27 +186,25 @@ class SerperInstance implements SearchProviderInstance {
      * file" link under a news story and offer the lead photo as though it
      * were the thing found.
      */
-    private SearchResult doNewsSearch(SearchRequest req, SearchScope scope, String apiKey) {
-        SerperResponse response = postSerper("/news",
-                Map.of("q", req.query(), "num", clampNum(req.maxResults())),
-                apiKey);
+    private SearchResult doNewsSearch(SearchRequest req, String apiKey) {
+        SerperResponse response =
+                postSerper("/news", Map.of("q", req.query(), "num", clampNum(req.maxResults())), apiKey);
         return successResult(req, parseNews(response.body()), 0, response.headers(), null);
     }
 
     // ── IMAGE ─────────────────────────────────────────────────────────
 
     private SearchResult doImageSearch(SearchRequest req, SearchScope scope, String apiKey) {
-        SerperResponse response = postSerper("/images",
-                Map.of("q", req.query(), "num", clampNum(req.maxResults())),
-                apiKey);
+        SerperResponse response =
+                postSerper("/images", Map.of("q", req.query(), "num", clampNum(req.maxResults())), apiKey);
         List<RawImage> raw = parseImages(response.body());
         if (raw.isEmpty()) {
             return successResult(req, List.of(), 0, response.headers(), null);
         }
         List<String> urls = new ArrayList<>(raw.size());
         for (RawImage r : raw) urls.add(r.imageUrl);
-        List<ImageValidatorService.ValidationResult> verdicts = imageValidator.validate(
-                urls, scope.tenantId(), scope.projectId(), scope.processId());
+        List<ImageValidatorService.ValidationResult> verdicts =
+                imageValidator.validate(urls, scope.tenantId(), scope.projectId(), scope.processId());
         Map<String, ImageValidatorService.ValidationResult> byUrl = new HashMap<>();
         for (ImageValidatorService.ValidationResult v : verdicts) byUrl.put(v.getUrl(), v);
 
@@ -234,18 +229,15 @@ class SerperInstance implements SearchProviderInstance {
                     null,
                     extras));
         }
-        String note = (hits.isEmpty() && dropped > 0)
-                ? "All " + dropped + " image URLs failed validation"
-                : null;
+        String note = (hits.isEmpty() && dropped > 0) ? "All " + dropped + " image URLs failed validation" : null;
         return successResult(req, hits, dropped, response.headers(), note);
     }
 
     // ── VIDEO ─────────────────────────────────────────────────────────
 
-    private SearchResult doVideoSearch(SearchRequest req, SearchScope scope, String apiKey) {
-        SerperResponse response = postSerper("/videos",
-                Map.of("q", req.query(), "num", clampNum(req.maxResults())),
-                apiKey);
+    private SearchResult doVideoSearch(SearchRequest req, String apiKey) {
+        SerperResponse response =
+                postSerper("/videos", Map.of("q", req.query(), "num", clampNum(req.maxResults())), apiKey);
         List<RawVideo> raw = parseVideos(response.body());
         List<SearchHit> hits = new ArrayList<>();
         int dropped = 0;
@@ -262,8 +254,7 @@ class SerperInstance implements SearchProviderInstance {
             if (!StringUtils.isBlank(r.duration)) extras.put("duration", r.duration);
             if (!StringUtils.isBlank(r.channel)) extras.put("channel", r.channel);
             if (!StringUtils.isBlank(r.date)) extras.put("date", r.date);
-            extras.put("embedFence",
-                    "```youtube\nhttps://youtu.be/" + videoId + "\n```");
+            extras.put("embedFence", "```youtube\nhttps://youtu.be/" + videoId + "\n```");
             hits.add(new SearchHit(
                     isBlankOr(r.title, "(untitled video)"),
                     "https://youtu.be/" + videoId,
@@ -273,20 +264,17 @@ class SerperInstance implements SearchProviderInstance {
                     null,
                     extras));
         }
-        String note = (hits.isEmpty() && dropped > 0)
-                ? "All " + dropped + " video URLs failed embeddability check"
-                : null;
+        String note =
+                (hits.isEmpty() && dropped > 0) ? "All " + dropped + " video URLs failed embeddability check" : null;
         return successResult(req, hits, dropped, response.headers(), note);
     }
 
     // ── PDF ───────────────────────────────────────────────────────────
 
-    private SearchResult doPdfSearch(SearchRequest req, SearchScope scope, String apiKey) {
+    private SearchResult doPdfSearch(SearchRequest req, String apiKey) {
         // Serper has no /pdfs endpoint — we append filetype:pdf to a /search call.
-        SerperResponse response = postSerper("/search",
-                Map.of("q", req.query() + " filetype:pdf",
-                        "num", clampNum(req.maxResults())),
-                apiKey);
+        SerperResponse response = postSerper(
+                "/search", Map.of("q", req.query() + " filetype:pdf", "num", clampNum(req.maxResults())), apiKey);
         List<RawPdf> raw = parsePdfRows(response.body());
         List<SearchHit> hits = new ArrayList<>();
         int dropped = 0;
@@ -313,9 +301,8 @@ class SerperInstance implements SearchProviderInstance {
                     null,
                     extras));
         }
-        String note = (hits.isEmpty() && dropped > 0)
-                ? "All " + dropped + " PDF URLs failed the content-type check"
-                : null;
+        String note =
+                (hits.isEmpty() && dropped > 0) ? "All " + dropped + " PDF URLs failed the content-type check" : null;
         return successResult(req, hits, dropped, response.headers(), note);
     }
 
@@ -336,8 +323,7 @@ class SerperInstance implements SearchProviderInstance {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Interrupted while calling Serper '" + cfg.instanceId() + "'");
         } catch (Exception e) {
-            throw new RuntimeException(
-                    "Serper '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
+            throw new RuntimeException("Serper '" + cfg.instanceId() + "' call failed: " + e.getMessage(), e);
         }
         if (response.statusCode() != 200) {
             throw new RuntimeException("Serper '" + cfg.instanceId() + "' " + path
@@ -347,9 +333,12 @@ class SerperInstance implements SearchProviderInstance {
         return response;
     }
 
-    private SearchResult successResult(SearchRequest req, List<SearchHit> hits,
-                                       int dropped, Map<String, String> headers,
-                                       @org.jspecify.annotations.Nullable String note) {
+    private SearchResult successResult(
+            SearchRequest req,
+            List<SearchHit> hits,
+            int dropped,
+            Map<String, String> headers,
+            @org.jspecify.annotations.Nullable String note) {
         return new SearchResult(
                 req.query(),
                 req.modality(),
@@ -559,8 +548,7 @@ class SerperInstance implements SearchProviderInstance {
             }
             return rows;
         } catch (Exception e) {
-            log.warn("Serper '{}': failed to parse response body: {}",
-                    cfg.instanceId(), e.toString());
+            log.warn("Serper '{}': failed to parse response body: {}", cfg.instanceId(), e.toString());
             return List.of();
         }
     }
@@ -573,16 +561,7 @@ class SerperInstance implements SearchProviderInstance {
 
     private SearchResult softFailure(SearchRequest req, String message) {
         return new SearchResult(
-                req.query(),
-                req.modality(),
-                cfg.instanceId(),
-                req.tier(),
-                List.of(),
-                0,
-                0,
-                null,
-                message,
-                Map.of());
+                req.query(), req.modality(), cfg.instanceId(), req.tier(), List.of(), 0, 0, null, message, Map.of());
     }
 
     private static String truncate(String s, int max) {

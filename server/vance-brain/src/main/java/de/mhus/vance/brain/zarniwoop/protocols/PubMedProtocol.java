@@ -68,10 +68,23 @@ public class PubMedProtocol implements SearchProtocol {
         this.http = http;
     }
 
-    @Override public String id() { return ID; }
-    @Override public String displayName() { return "PubMed (NCBI E-utilities)"; }
-    @Override public Set<SearchModality> modalitiesSupported() { return Set.of(SearchModality.ACADEMIC); }
-    @Override public Set<SearchTier> tiersSupported() {
+    @Override
+    public String id() {
+        return ID;
+    }
+
+    @Override
+    public String displayName() {
+        return "PubMed (NCBI E-utilities)";
+    }
+
+    @Override
+    public Set<SearchModality> modalitiesSupported() {
+        return Set.of(SearchModality.ACADEMIC);
+    }
+
+    @Override
+    public Set<SearchTier> tiersSupported() {
         return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
     }
 
@@ -80,8 +93,7 @@ public class PubMedProtocol implements SearchProtocol {
         if (cfg == null) throw new IllegalArgumentException("cfg is required");
         if (!ID.equals(cfg.protocolId())) {
             throw new IllegalArgumentException(
-                    "PubMedProtocol cannot instantiate config with protocol '"
-                            + cfg.protocolId() + "'");
+                    "PubMedProtocol cannot instantiate config with protocol '" + cfg.protocolId() + "'");
         }
         return new PubMedInstance(cfg, objectMapper, http);
     }
@@ -98,19 +110,34 @@ public class PubMedProtocol implements SearchProtocol {
         private final ObjectMapper objectMapper;
         private final SimpleHttpClient http;
 
-        PubMedInstance(ProviderInstanceConfig cfg,
-                       ObjectMapper objectMapper,
-                       SimpleHttpClient http) {
+        PubMedInstance(ProviderInstanceConfig cfg, ObjectMapper objectMapper, SimpleHttpClient http) {
             this.cfg = cfg;
             this.objectMapper = objectMapper;
             this.http = http;
         }
 
-        @Override public String id() { return cfg.instanceId(); }
-        @Override public String displayName() { return "PubMed (" + cfg.instanceId() + ")"; }
-        @Override public Set<SearchModality> modalities() { return Set.of(SearchModality.ACADEMIC); }
-        @Override public Set<SearchDomain> domains() { return Set.of(SearchDomain.ACADEMIC); }
-        @Override public Set<SearchTier> tiers() {
+        @Override
+        public String id() {
+            return cfg.instanceId();
+        }
+
+        @Override
+        public String displayName() {
+            return "PubMed (" + cfg.instanceId() + ")";
+        }
+
+        @Override
+        public Set<SearchModality> modalities() {
+            return Set.of(SearchModality.ACADEMIC);
+        }
+
+        @Override
+        public Set<SearchDomain> domains() {
+            return Set.of(SearchDomain.ACADEMIC);
+        }
+
+        @Override
+        public Set<SearchTier> tiers() {
             return Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
         }
 
@@ -122,13 +149,14 @@ public class PubMedProtocol implements SearchProtocol {
             return ProviderAvailability.READY;
         }
 
-        @Override public Optional<QuotaStatus> currentQuota(SearchScope scope) {
+        @Override
+        public Optional<QuotaStatus> currentQuota(SearchScope scope) {
             return Optional.empty();
         }
 
         @Override
         public String statusText(SearchScope scope) {
-            if (!StringUtils.isBlank(resolveApiKey(scope))) {
+            if (!StringUtils.isBlank(resolveApiKey())) {
                 return "10 req/sec (api_key configured)";
             }
             String mail = contactEmail();
@@ -161,21 +189,37 @@ public class PubMedProtocol implements SearchProtocol {
         @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             if (req.modality() != SearchModality.ACADEMIC) {
-                return softFailure(req, "modality " + req.modality()
-                        + " not supported by PubMed '" + cfg.instanceId() + "'");
+                return softFailure(
+                        req, "modality " + req.modality() + " not supported by PubMed '" + cfg.instanceId() + "'");
             }
             int num = clampNum(req.maxResults());
-            String apiKey = resolveApiKey(scope);
+            String apiKey = resolveApiKey();
             List<String> pmids = esearch(req.query(), num, apiKey);
             if (pmids.isEmpty()) {
                 return new SearchResult(
-                        req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                        List.of(), 0, 0, null, null, Map.of());
+                        req.query(),
+                        req.modality(),
+                        cfg.instanceId(),
+                        req.tier(),
+                        List.of(),
+                        0,
+                        0,
+                        null,
+                        null,
+                        Map.of());
             }
             List<SearchHit> hits = esummary(pmids, apiKey);
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    hits, hits.size(), 0, null, null, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    hits,
+                    hits.size(),
+                    0,
+                    null,
+                    null,
+                    Map.of());
         }
 
         // ── Step 1 — esearch ────────────────────────────────────────
@@ -191,8 +235,7 @@ public class PubMedProtocol implements SearchProtocol {
             if (!StringUtils.isBlank(mail)) params.put("email", mail);
             if (!StringUtils.isBlank(apiKey)) params.put("api_key", apiKey);
 
-            String url = SimpleHttpClient.buildQuery(
-                    URI.create(baseUrl() + "/esearch.fcgi"), params);
+            String url = SimpleHttpClient.buildQuery(URI.create(baseUrl() + "/esearch.fcgi"), params);
             Response response = call(url, "esearch");
             try {
                 JsonNode root = objectMapper.readTree(response.body());
@@ -205,8 +248,7 @@ public class PubMedProtocol implements SearchProtocol {
                 }
                 return out;
             } catch (Exception e) {
-                log.warn("PubMed '{}': esearch parse failed: {}",
-                        cfg.instanceId(), e.toString());
+                log.warn("PubMed '{}': esearch parse failed: {}", cfg.instanceId(), e.toString());
                 return List.of();
             }
         }
@@ -223,8 +265,7 @@ public class PubMedProtocol implements SearchProtocol {
             if (!StringUtils.isBlank(mail)) params.put("email", mail);
             if (!StringUtils.isBlank(apiKey)) params.put("api_key", apiKey);
 
-            String url = SimpleHttpClient.buildQuery(
-                    URI.create(baseUrl() + "/esummary.fcgi"), params);
+            String url = SimpleHttpClient.buildQuery(URI.create(baseUrl() + "/esummary.fcgi"), params);
             Response response = call(url, "esummary");
             return parseHits(response.body(), pmids);
         }
@@ -264,12 +305,13 @@ public class PubMedProtocol implements SearchProtocol {
                             "https://pubmed.ncbi.nlm.nih.gov/" + pmid + "/",
                             composeSnippet(authors, year, journal),
                             "PubMed",
-                            SearchModality.ACADEMIC, null, extras));
+                            SearchModality.ACADEMIC,
+                            null,
+                            extras));
                 }
                 return out;
             } catch (Exception e) {
-                log.warn("PubMed '{}': parseHits failed: {}",
-                        cfg.instanceId(), e.toString());
+                log.warn("PubMed '{}': parseHits failed: {}", cfg.instanceId(), e.toString());
                 return List.of();
             }
         }
@@ -280,20 +322,18 @@ public class PubMedProtocol implements SearchProtocol {
             try {
                 Response r = http.get(URI.create(url), USER_AGENT, TIMEOUT);
                 if (r.statusCode() != 200) {
-                    throw new RuntimeException("PubMed '" + cfg.instanceId()
-                            + "' " + step + " returned HTTP " + r.statusCode());
+                    throw new RuntimeException(
+                            "PubMed '" + cfg.instanceId() + "' " + step + " returned HTTP " + r.statusCode());
                 }
                 return r;
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException(
-                        "Interrupted while calling PubMed '" + cfg.instanceId() + "'");
+                throw new RuntimeException("Interrupted while calling PubMed '" + cfg.instanceId() + "'");
             } catch (RuntimeException re) {
                 throw re;
             } catch (Exception e) {
                 throw new RuntimeException(
-                        "PubMed '" + cfg.instanceId() + "' " + step
-                                + " call failed: " + e.getMessage(), e);
+                        "PubMed '" + cfg.instanceId() + "' " + step + " call failed: " + e.getMessage(), e);
             }
         }
 
@@ -379,13 +419,12 @@ public class PubMedProtocol implements SearchProtocol {
          * inline {@code apiKey:} extra still wins nothing and is kept only as a
          * second place to look for an operator who put it there.
          */
-        private String resolveApiKey(SearchScope scope) {
+        private String resolveApiKey() {
             String credential = cfg.credential();
             if (!StringUtils.isBlank(credential)) return credential;
             Object raw = cfg.extras() == null ? null : cfg.extras().get("apiKey");
             return raw == null ? "" : raw.toString().trim();
         }
-
 
         private String baseUrl() {
             String base = cfg.baseUrl();
@@ -395,8 +434,16 @@ public class PubMedProtocol implements SearchProtocol {
 
         private SearchResult softFailure(SearchRequest req, String message) {
             return new SearchResult(
-                    req.query(), req.modality(), cfg.instanceId(), req.tier(),
-                    List.of(), 0, 0, null, message, Map.of());
+                    req.query(),
+                    req.modality(),
+                    cfg.instanceId(),
+                    req.tier(),
+                    List.of(),
+                    0,
+                    0,
+                    null,
+                    message,
+                    Map.of());
         }
 
         private static int clampNum(int requested) {

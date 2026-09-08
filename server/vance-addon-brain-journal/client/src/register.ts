@@ -16,7 +16,7 @@ import { registerKind } from '@vance/kind-registry';
 const JournalAppKind = defineAsyncComponent(() => import('./JournalAppKind.vue'));
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/journal] register() called');
 
   registerKind({

@@ -107,7 +107,6 @@ export interface KindEntry<TDoc = unknown> {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __VANCE_KIND_REGISTRY__: Map<string, KindEntry> | undefined;
 }
 

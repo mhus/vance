@@ -118,6 +118,7 @@ watch(() => url.value, () => { void loadXlsx(); });
         </div>
       </div>
       <!-- SheetJS HTML is already DOMPurify-sanitised; v-html is OK. -->
+      <!-- eslint-disable-next-line vue/no-v-html -- sanitised via DOMPurify above -->
       <div class="xlsx-stage" v-html="currentHtml"></div>
     </template>
   </div>

@@ -241,12 +241,12 @@ defineExpose({ open: openPicker });
             <span class="text-xs opacity-60">{{ t('canvas.picker.appItself') }}</span>
           </button>
           <button
-            v-for="t in filteredTargets"
-            :key="t.handle"
+            v-for="target in filteredTargets"
+            :key="target.handle"
             class="flex w-full flex-col items-start gap-0.5 border-b border-base-200 px-3 py-2 text-left hover:bg-base-200"
-            @click="pickTarget(t)"
+            @click="pickTarget(target)"
           >
-            <span class="text-sm font-medium">{{ t.label }}</span>
+            <span class="text-sm font-medium">{{ target.label }}</span>
           </button>
           <div v-if="filteredTargets.length === 0" class="p-3 text-sm opacity-60">
             {{ t('canvas.picker.noCanvasMatch') }}
@@ -315,12 +315,12 @@ defineExpose({ open: openPicker });
                 {{ g.name }}
               </div>
               <button
-                v-for="t in g.items"
-                :key="t.handle"
+                v-for="target in g.items"
+                :key="target.handle"
                 class="flex w-full flex-col items-start gap-0.5 border-b border-base-200 px-3 py-2 text-left hover:bg-base-200"
-                @click="pickForeign(apps.openApp.value, t.handle)"
+                @click="pickForeign(apps.openApp.value, target.handle)"
               >
-                <span class="text-sm font-medium">{{ t.label }}</span>
+                <span class="text-sm font-medium">{{ target.label }}</span>
               </button>
             </template>
           </div>

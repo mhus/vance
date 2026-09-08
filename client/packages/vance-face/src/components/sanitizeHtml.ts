@@ -23,7 +23,7 @@ import DOMPurify from 'dompurify';
 // default — keep it in sync if upstream changes (there is no programmatic way
 // to "append a scheme to the default allowlist").
 export const ALLOWED_URI_REGEXP =
-  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|vance):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|vance):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i;
 
 /**
  * `<form>` and the submit-target attributes, removed.

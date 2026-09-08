@@ -1068,11 +1068,11 @@ const breadcrumbs = computed<string[]>(() => {
           </div>
           <div v-if="item.tags && item.tags.length" class="mt-1 flex gap-1 flex-wrap">
             <VBadge
-              v-for="t in item.tags"
-              :key="t"
+              v-for="tag in item.tags"
+              :key="tag"
               variant="ghost"
               size="sm"
-            >{{ t }}</VBadge>
+            >{{ tag }}</VBadge>
           </div>
           <!-- Reactions, right here. Clicks stop at the bar: the row opens the
                item, and agreeing with a question is not the same gesture as
@@ -1376,10 +1376,10 @@ const breadcrumbs = computed<string[]>(() => {
             {{ $t('inbox.bulkArchive.typesLegend') }}
           </legend>
           <VCheckbox
-            v-for="t in inboxItemTypeValues"
-            :key="t"
-            v-model="bulkArchiveTypes[t]"
-            :label="t"
+            v-for="type in inboxItemTypeValues"
+            :key="type"
+            v-model="bulkArchiveTypes[type]"
+            :label="type"
             :disabled="bulkArchiveBusy"
           />
         </fieldset>

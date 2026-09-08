@@ -496,6 +496,7 @@ function copyLink(): void {
       </div>
       <!-- Otherwise (no kind): render image / markdown / text ourselves. -->
       <img v-else-if="imgSrc" :src="imgSrc" class="canvas-embed-img" alt="" />
+      <!-- eslint-disable-next-line vue/no-v-html -- markdown, sanitised via DOMPurify -->
       <div v-else-if="mdHtml" class="canvas-embed-md" v-html="mdHtml"></div>
       <template v-else>
         <div class="canvas-card-title">📄 {{ docMeta?.title || basename(node.ref ?? '') }}</div>

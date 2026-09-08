@@ -50,7 +50,7 @@ function isTimelineParseError(e: unknown): boolean {
 }
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/calendar] register() called');
   registerKind<CalendarDocument>({
     id: 'calendar',

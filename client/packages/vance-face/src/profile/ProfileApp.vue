@@ -303,7 +303,7 @@ const timezoneOptions = computed(() => {
   const intlWithSupported = Intl as typeof Intl & {
     supportedValuesOf?: (key: string) => string[];
   };
-  let zones: string[] = [];
+  let zones: string[];
   try {
     zones = intlWithSupported.supportedValuesOf?.('timeZone') ?? [];
   } catch {

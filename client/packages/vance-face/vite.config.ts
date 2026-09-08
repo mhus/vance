@@ -59,7 +59,7 @@ const editorEntries = {
 // `client/dist/remoteEntry.js` reachable under `/addons/<id>/` — the
 // dev-server middleware below already path-scans for that, the
 // production Docker entrypoint symlinks `/shared/addons/<id>/<ver>/face`.
-const addonRemotes: Record<string, any> = {};
+const addonRemotes: Record<string, string> = {};
 
 /**
  * Dev-server middleware that resolves `/addons/<id>/<path>` to the
@@ -111,7 +111,7 @@ function vanceAddonDevServe(): Plugin {
           let entries: {
             name: string; path: string; tile?: unknown; profile?: unknown; menu?: unknown;
             kinds?: unknown; eager?: unknown;
-          }[] = [];
+          }[];
           try {
             entries = readdirSync(addonsRoot, { withFileTypes: true })
               .filter((d) => d.isDirectory() && d.name.startsWith('vance-addon-brain-'))

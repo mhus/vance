@@ -9,14 +9,16 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), { variant: 'info' });
 
-const variantClass = computed<string>(() => {
-  switch (props.variant) {
-    case 'info': return 'alert-info';
-    case 'warning': return 'alert-warning';
-    case 'error': return 'alert-error';
-    case 'success': return 'alert-success';
-  }
-});
+// Record lookup instead of a switch: a missing variant would fail vue-tsc,
+// so exhaustiveness stays type-enforced and the computed always returns.
+const VARIANT_CLASSES: Record<Variant, string> = {
+  info: 'alert-info',
+  warning: 'alert-warning',
+  error: 'alert-error',
+  success: 'alert-success',
+};
+
+const variantClass = computed<string>(() => VARIANT_CLASSES[props.variant]);
 </script>
 
 <template>

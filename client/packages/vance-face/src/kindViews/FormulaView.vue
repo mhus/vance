@@ -144,11 +144,14 @@ const segments = computed<MathSegment[]>(() => {
 <template>
   <div class="formula-view">
     <template v-for="(seg, i) in segments" :key="i">
+      <!-- eslint-disable vue/no-v-html -- KaTeX output; trust defaults to false, plain text is escaped -->
       <div
         v-if="seg.isDisplay"
         class="formula-display"
         v-html="seg.html"
       />
+      <!-- eslint-enable vue/no-v-html -->
+      <!-- eslint-disable-next-line vue/no-v-html -- KaTeX output; trust defaults to false, plain text is escaped -->
       <span v-else v-html="seg.html" />
     </template>
     <div v-if="segments.length === 0" class="formula-empty">

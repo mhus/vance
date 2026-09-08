@@ -50,7 +50,7 @@ async function check(): Promise<void> {
   // here — the point is to see a *changed* file. Fetched directly, and a
   // failure is silence: an unreachable config.json says nothing about the
   // deployed version.
-  let current: string | null = null;
+  let current: string | null;
   try {
     const res = await fetch('./config.json', { cache: 'no-store' });
     if (!res.ok) return;

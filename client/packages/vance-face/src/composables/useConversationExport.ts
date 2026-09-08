@@ -80,7 +80,7 @@ function turnHeadingLabel(turn: ExportTurn): string {
  * safe unquoted, but defensive quoting protects against the few legal
  * names that happen to start with a YAML control char.
  */
-const YAML_UNSAFE = /[:#\[\]{}&*!|>'"%@`,\n\r\t]/;
+const YAML_UNSAFE = /[:#[\]{}&*!|>'"%@`,\n\r\t]/;
 
 function yamlScalar(value: string): string {
   if (!YAML_UNSAFE.test(value) && value.trim() === value && value.length > 0) {

@@ -237,7 +237,7 @@ describe('snapshotView', () => {
 
     const lines = out.split('\n');
     expect(lines[0]).toMatch(/^page/);
-    expect(lines[1]).toMatch(/^  card/);
-    expect(lines[2]).toMatch(/^    text/);
+    expect(lines[1]).toMatch(/^ {2}card/);
+    expect(lines[2]).toMatch(/^ {4}text/);
   });
 });

@@ -117,7 +117,7 @@ async function httpGet(options: HttpGetOptions): Promise<HttpGetResult> {
     const cause = (e as { cause?: { message?: string } }).cause;
     const detail =
       cause?.message ?? (e instanceof Error ? e.message : 'network error');
-    throw new Error(detail);
+    throw new Error(detail, { cause: e });
   } finally {
     clearTimeout(timer);
   }

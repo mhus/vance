@@ -90,7 +90,7 @@ export function registerBlock(ext: BlockExtension): void {
   if (map.has(ext.fence)) {
     // Last-write-wins, consistent with @vance/kind-registry. The
     // situation is meant to be avoided, not resolved elegantly.
-    // eslint-disable-next-line no-console
+
     console.warn(`[block-registry] block "${ext.fence}" re-registered — replacing`);
   }
   map.set(ext.fence, ext);

@@ -269,65 +269,65 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
               {{ $t('insights.projectTools.noMatch') }}
             </td>
           </tr>
-          <template v-for="t in filteredTools" :key="t.name">
-            <tr :class="t.disabledByInnerLayer ? 'opacity-50 line-through' : ''">
-              <td class="font-mono">{{ t.name }}</td>
+          <template v-for="tool in filteredTools" :key="tool.name">
+            <tr :class="tool.disabledByInnerLayer ? 'opacity-50 line-through' : ''">
+              <td class="font-mono">{{ tool.name }}</td>
               <td>
-                <span :class="sourceClass(t.source)">{{ sourceLabel(t.source) }}</span>
+                <span :class="sourceClass(tool.source)">{{ sourceLabel(tool.source) }}</span>
               </td>
-              <td class="text-xs opacity-80">{{ t.type ?? '—' }}</td>
+              <td class="text-xs opacity-80">{{ tool.type ?? '—' }}</td>
               <td class="text-xs opacity-80">
-                {{ t.description }}
+                {{ tool.description }}
                 <div
-                  v-if="t.deferred && t.searchHint"
+                  v-if="tool.deferred && tool.searchHint"
                   class="text-[0.65rem] opacity-60 italic mt-0.5"
-                  :title="t.searchHint"
+                  :title="tool.searchHint"
                 >
-                  {{ $t('insights.projectTools.hint', { text: t.searchHint }) }}
+                  {{ $t('insights.projectTools.hint', { text: tool.searchHint }) }}
                 </div>
               </td>
               <td class="text-xs">
                 <span
-                  v-if="t.deferred"
+                  v-if="tool.deferred"
                   class="badge-deferred"
                   :title="$t('insights.projectTools.deferredTitle')"
                 >{{ $t('insights.projectTools.deferred') }}</span>
-                <span v-else-if="t.primary" class="text-success">{{ $t('insights.projectTools.primary') }}</span>
+                <span v-else-if="tool.primary" class="text-success">{{ $t('insights.projectTools.primary') }}</span>
                 <span v-else class="opacity-50">{{ $t('insights.projectTools.onDemand') }}</span>
               </td>
               <td class="text-xs">
-                <template v-if="healthByTool.get(t.name)">
+                <template v-if="healthByTool.get(tool.name)">
                   <button
                     type="button"
                     class="inline-flex items-center gap-1.5 cursor-pointer"
-                    @click="toggleExpand(t.name)"
-                    :title="healthByTool.get(t.name)?.note ?? ''"
+                    @click="toggleExpand(tool.name)"
+                    :title="healthByTool.get(tool.name)?.note ?? ''"
                   >
-                    <span :class="statusBadgeClass(healthByTool.get(t.name)?.status)">
-                      {{ healthByTool.get(t.name)?.status }}
+                    <span :class="statusBadgeClass(healthByTool.get(tool.name)?.status)">
+                      {{ healthByTool.get(tool.name)?.status }}
                     </span>
                     <span
-                      v-if="(healthByTool.get(t.name)?.activeCooldowns?.length ?? 0) > 0"
+                      v-if="(healthByTool.get(tool.name)?.activeCooldowns?.length ?? 0) > 0"
                       class="text-warning text-[0.65rem]"
                       :title="$t('insights.projectTools.activeCooldowns', {
-                        count: healthByTool.get(t.name)?.activeCooldowns?.length,
+                        count: healthByTool.get(tool.name)?.activeCooldowns?.length,
                       })"
                     >
-                      ⏳ {{ healthByTool.get(t.name)?.activeCooldowns?.length }}
+                      ⏳ {{ healthByTool.get(tool.name)?.activeCooldowns?.length }}
                     </span>
                   </button>
                 </template>
                 <span v-else class="opacity-40">—</span>
               </td>
               <td class="text-xs">
-                <span v-if="t.labels && t.labels.length" class="font-mono opacity-70">
-                  {{ t.labels.join(', ') }}
+                <span v-if="tool.labels && tool.labels.length" class="font-mono opacity-70">
+                  {{ tool.labels.join(', ') }}
                 </span>
                 <span v-else class="opacity-50">—</span>
               </td>
               <td>
                 <span
-                  v-if="t.disabledByInnerLayer"
+                  v-if="tool.disabledByInnerLayer"
                   class="text-xs text-error"
                   :title="$t('insights.projectTools.disabledByInner')"
                 >
@@ -336,26 +336,26 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
               </td>
             </tr>
             <tr
-              v-if="expanded.has(t.name) && healthByTool.get(t.name)"
+              v-if="expanded.has(tool.name) && healthByTool.get(tool.name)"
               class="health-detail-row"
             >
               <td colspan="8" class="p-3">
                 <div class="bg-base-200 rounded p-3 space-y-2 text-xs">
-                  <div v-if="healthByTool.get(t.name)?.note" class="opacity-80">
+                  <div v-if="healthByTool.get(tool.name)?.note" class="opacity-80">
                     <span class="opacity-60">{{ $t('insights.projectTools.note') }}</span>
-                    {{ healthByTool.get(t.name)?.note }}
+                    {{ healthByTool.get(tool.name)?.note }}
                   </div>
                   <div
-                    v-if="healthByTool.get(t.name)?.expectedRecoveryAt"
+                    v-if="healthByTool.get(tool.name)?.expectedRecoveryAt"
                     class="opacity-80"
                   >
                     <span class="opacity-60">{{ $t('insights.projectTools.recovery') }}</span>
-                    {{ healthByTool.get(t.name)?.expectedRecoveryAt }}
+                    {{ healthByTool.get(tool.name)?.expectedRecoveryAt }}
                     {{ $t('insights.projectTools.recoveryIn', {
-                      countdown: formatCountdown(healthByTool.get(t.name)?.expectedRecoveryAt),
+                      countdown: formatCountdown(healthByTool.get(tool.name)?.expectedRecoveryAt),
                     }) }}
                   </div>
-                  <div v-if="(healthByTool.get(t.name)?.activeCooldowns?.length ?? 0) === 0" class="opacity-60">
+                  <div v-if="(healthByTool.get(tool.name)?.activeCooldowns?.length ?? 0) === 0" class="opacity-60">
                     {{ $t('insights.projectTools.noCooldowns') }}
                   </div>
                   <table v-else class="table table-xs">
@@ -372,7 +372,7 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
                     </thead>
                     <tbody>
                       <tr
-                        v-for="cd in (healthByTool.get(t.name)?.activeCooldowns ?? [])"
+                        v-for="cd in (healthByTool.get(tool.name)?.activeCooldowns ?? [])"
                         :key="cd.errorSignature + '|' + (cd.userId ?? '*')"
                       >
                         <td class="font-mono">{{ cd.errorSignature }}</td>
@@ -389,7 +389,7 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
                             variant="neutral"
                             size="xs"
                             :outline="true"
-                            @click="onClearCooldown(t.name, cd)"
+                            @click="onClearCooldown(tool.name, cd)"
                             :title="$t('insights.projectTools.clearTitle')"
                           >
                             {{ $t('insights.projectTools.clear') }}

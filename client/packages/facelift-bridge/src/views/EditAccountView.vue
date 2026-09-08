@@ -40,7 +40,7 @@ async function onSubmit(): Promise<void> {
     return;
   }
   try {
-    // eslint-disable-next-line no-new
+
     new URL(url);
   } catch {
     error.value = 'Not a valid URL.';

@@ -61,7 +61,7 @@ function isHtml(contentType: string): boolean {
  * covers PDFs on the browsers where the viewer is not scriptable.
  */
 export async function readTab(tabId: number, url: string): Promise<PageContent> {
-  let snapshot: Probe | null = null;
+  let snapshot: Probe | null;
   try {
     const [result] = await api.scripting.executeScript({ target: { tabId }, func: probe });
     snapshot = (result?.result as Probe | undefined) ?? null;

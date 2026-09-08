@@ -200,7 +200,7 @@ function rewriteHrefIfRelative(href: string | undefined | null): string {
   if (!href) return href ?? '';
   const trimmed = href.trim();
   if (!trimmed) return href;
-  if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed)) return href;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return href;
   if (trimmed.startsWith('#') || trimmed.startsWith('//')) return href;
   return `vance:${trimmed.replace(/^(\.\/)+/, '')}`;
 }
@@ -311,7 +311,7 @@ marked.use({
       tokenizer(src: string): MathToken | undefined {
         // $...$ (inline) — reject if the content starts or ends with
         // whitespace to avoid false positives like "$ 5 off".
-        const m = src.match(/^\$([^\$\n]+?)\$/);
+        const m = src.match(/^\$([^$\n]+?)\$/);
         if (m && !m[1].startsWith(' ') && !m[1].endsWith(' ')) {
           // Second guard, and it only became necessary with `start` above:
           // now that the tokenizer is offered every `$` in a paragraph, a
@@ -516,7 +516,7 @@ function extractExternalUrls(token: Tokens.Generic): string[] {
   const seen = new Set<string>();
   const CAP = 3;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const walk = (ts: Tokens.Generic[] | undefined): void => {
     if (!ts || urls.length >= CAP) return;
     for (const t of ts) {
@@ -586,7 +586,7 @@ function extractVanceMediaRefs(token: Tokens.Generic, referrerDir: string): Embe
   const seen = new Set<string>();
   const CAP = 3;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const walk = (ts: Tokens.Generic[] | undefined): void => {
     if (!ts || refs.length >= CAP) return;
     for (const t of ts) {

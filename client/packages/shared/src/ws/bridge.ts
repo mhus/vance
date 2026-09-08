@@ -68,7 +68,6 @@ export interface VanceWsApi {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __VANCE_WS__: VanceWsApi | null | undefined;
 }
 

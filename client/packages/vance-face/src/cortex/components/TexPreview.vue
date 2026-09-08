@@ -56,7 +56,7 @@ function parseSegments(source: string): MathSegment[] {
   // Regex: matches $$...$$, \[...\], $...$, \(...\) in priority order.
   // Group 1 = display $$, group 2 = display \[\], group 3 = inline $, group 4 = inline \(\)
   const re =
-    /(\$\$([\s\S]+?)\$\$)|(\\\[([\s\S]+?)\\\])|(\$([^\$\n]+?)\$)|(\\\(([\s\S]+?)\\\))/g;
+    /(\$\$([\s\S]+?)\$\$)|(\\\[([\s\S]+?)\\\])|(\$([^$\n]+?)\$)|(\\\(([\s\S]+?)\\\))/g;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -164,11 +164,14 @@ const errorCount = computed(
     <!-- Rendered segments -->
     <div class="tex-preview-body">
       <template v-for="(seg, i) in segments" :key="i">
+        <!-- eslint-disable vue/no-v-html -- KaTeX output; trust defaults to false, plain text is escaped -->
         <div
           v-if="seg.isDisplay"
           class="tex-display-math my-2 text-center"
           v-html="seg.html"
         />
+        <!-- eslint-enable vue/no-v-html -->
+        <!-- eslint-disable-next-line vue/no-v-html -- KaTeX output; trust defaults to false, plain text is escaped -->
         <span v-else v-html="seg.html" />
       </template>
     </div>

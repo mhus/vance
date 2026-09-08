@@ -19,7 +19,7 @@ import { registerKind } from '@vance/kind-registry';
 const KanbanAppKind = defineAsyncComponent(() => import('./KanbanAppKind.vue'));
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/kanban] register() called');
   registerKind({
     id: 'application:kanban',

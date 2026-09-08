@@ -39,7 +39,7 @@ export async function setShareCredentials(
   await mkdir(dir, { recursive: true });
   const file = path.join(dir, 'credentials.json');
 
-  let merged: Record<string, unknown> = {};
+  let merged: Record<string, unknown>;
   try {
     merged = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
   } catch {

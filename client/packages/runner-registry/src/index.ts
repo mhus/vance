@@ -121,7 +121,6 @@ export interface RunAdapter {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __VANCE_RUNNER_REGISTRY__: Map<string, RunAdapter> | undefined;
 }
 

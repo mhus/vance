@@ -122,6 +122,7 @@ function randomIdPart(): string {
  * sanitisation collapses two source filenames to the same string.
  */
 function sanitiseFilename(name: string): string {
+  // eslint-disable-next-line no-control-regex -- stripping control characters from filenames is the point
   const trimmed = name.replace(/^\.+/, '').replace(/[/\\\u0000-\u001f]/g, '_').trim();
   return trimmed.length > 0 ? trimmed : 'attachment';
 }

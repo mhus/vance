@@ -26,7 +26,6 @@
 export type VanceNavigate = (url: string) => void;
 
 declare global {
-  // eslint-disable-next-line no-var
   var __VANCE_NAVIGATE__: VanceNavigate | null | undefined;
 }
 

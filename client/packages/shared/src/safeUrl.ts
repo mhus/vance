@@ -47,6 +47,9 @@ const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
  * Kept in step with the server-side twin
  * `vance-shared/.../net/SafeLink.java`, which refuses the same set.
  */
+// Intentional: rejecting control characters is the entire point of this
+// sanitizer — see the SafeLink.java twin above.
+// eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = new RegExp('[\\u0000-\\u001F\\u007F]');
 
 /**

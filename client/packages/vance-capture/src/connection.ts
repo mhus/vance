@@ -295,7 +295,7 @@ export async function requestHostAccess(blob: ConnectionBlob): Promise<boolean> 
     // into a value is what lets the caller say something instead of dying
     // silently inside a click handler.
     throw new Error(`The browser refused the access request for ${origin}: `
-      + `${(e as Error).message}`);
+      + `${(e as Error).message}`, { cause: e });
   }
 }
 

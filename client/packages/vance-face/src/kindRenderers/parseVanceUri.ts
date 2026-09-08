@@ -184,7 +184,7 @@ export function parseVanceUri(href: string, opts: ParseVanceUriOptions): EmbedRe
   let url: URL;
   try {
     url = new URL(href);
-  } catch (e) {
+  } catch {
     throw new VanceUriParseError('Invalid URI', href);
   }
   if (url.protocol !== 'vance:') {

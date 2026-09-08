@@ -11,7 +11,7 @@ import { registerKind } from '@vance/kind-registry';
 const GtdAppKind = defineAsyncComponent(() => import('./GtdAppKind.vue'));
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/gtd] register() called');
 
   registerKind({

@@ -7,7 +7,7 @@ const BistromathAppKind = defineAsyncComponent(() => import('./BistromathAppKind
 const AppViewKind = defineAsyncComponent(() => import('./AppViewKind.vue'));
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/bistromath] register() called');
 
   // Application kind: _app.yaml manifests with app: custom.

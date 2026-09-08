@@ -111,7 +111,7 @@ export default {
         // problem is a styling problem, not a content problem. Not cached
         // either: a failed fetch is a moment, not an answer.
         themeCss.value = '';
-        // eslint-disable-next-line no-console
+
         console.warn(
           'MarkdownDocumentPreview: theme-css fetch failed, rendering without theme',
           e,

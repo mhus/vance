@@ -128,10 +128,10 @@ onMounted(() => {
     <!-- Scope selector -->
     <div class="flex flex-wrap items-end gap-3">
       <div class="w-40">
-        <VSelect v-model="scopeType" :options="scopeTypeOptions" :label="t('simpleauth.scope')" @update:modelValue="load" />
+        <VSelect v-model="scopeType" :options="scopeTypeOptions" :label="t('simpleauth.scope')" @update:model-value="load" />
       </div>
       <div v-if="scopeType === 'PROJECT'" class="flex-1 min-w-48">
-        <VInput v-model="scopeId" :label="t('simpleauth.project')" @update:modelValue="notice = ''" />
+        <VInput v-model="scopeId" :label="t('simpleauth.project')" @update:model-value="notice = ''" />
       </div>
       <VButton variant="secondary" :loading="loading" @click="load">{{ t('simpleauth.load') }}</VButton>
     </div>

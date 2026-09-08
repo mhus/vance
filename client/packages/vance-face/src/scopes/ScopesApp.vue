@@ -627,21 +627,22 @@ async function onPickerDataChanged(
 
 // ─── Kit actions ───
 
-const kitDialogTitle = computed(() => {
-  switch (kitDialogMode.value) {
-    case 'install': return t('scopes.kit.dialog.installTitle');
-    case 'update': return t('scopes.kit.dialog.updateTitle');
-    case 'export': return t('scopes.kit.dialog.exportTitle');
-  }
-});
+// Record lookups instead of switches: a missing mode would fail vue-tsc,
+// so exhaustiveness stays type-enforced and the computeds always return.
+const KIT_DIALOG_TITLES: Record<KitDialogMode, string> = {
+  install: 'scopes.kit.dialog.installTitle',
+  update: 'scopes.kit.dialog.updateTitle',
+  export: 'scopes.kit.dialog.exportTitle',
+};
+const KIT_DIALOG_SUBMIT_LABELS: Record<KitDialogMode, string> = {
+  install: 'scopes.kit.dialog.submitInstall',
+  update: 'scopes.kit.dialog.submitUpdate',
+  export: 'scopes.kit.dialog.submitExport',
+};
 
-const kitDialogSubmitLabel = computed(() => {
-  switch (kitDialogMode.value) {
-    case 'install': return t('scopes.kit.dialog.submitInstall');
-    case 'update': return t('scopes.kit.dialog.submitUpdate');
-    case 'export': return t('scopes.kit.dialog.submitExport');
-  }
-});
+const kitDialogTitle = computed(() => t(KIT_DIALOG_TITLES[kitDialogMode.value]));
+
+const kitDialogSubmitLabel = computed(() => t(KIT_DIALOG_SUBMIT_LABELS[kitDialogMode.value]));
 
 const kitNeedsUrl = computed(() => kitDialogMode.value === 'install');
 

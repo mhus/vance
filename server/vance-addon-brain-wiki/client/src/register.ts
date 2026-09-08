@@ -22,7 +22,7 @@ import { registerKind } from '@vance/kind-registry';
 const WikiAppKind = defineAsyncComponent(() => import('./WikiAppKind.vue'));
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/wiki] register() called');
 
   // Application kind: _app.yaml manifests with app: wiki. Resolved via

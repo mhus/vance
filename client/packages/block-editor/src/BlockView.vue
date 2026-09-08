@@ -229,10 +229,12 @@ const items = computed(() => props.blocks ?? []);
         </template>
       </blockquote>
 
+      <!-- eslint-disable vue/no-v-html -- hljs escapes its input; output is safe by construction -->
       <pre v-else-if="block.kind === 'code'" class="block-view__code hljs"><code
         :class="block.lang ? `language-${block.lang}` : ''"
         v-html="highlightCode(block.code, block.lang)"
       /></pre>
+      <!-- eslint-enable vue/no-v-html -->
 
       <hr v-else-if="block.kind === 'divider'" class="block-view__divider" />
 

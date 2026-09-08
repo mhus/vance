@@ -27,7 +27,7 @@ const html = computed(() => sanitizeHtml(String(props.content ?? '')));
 </script>
 
 <template>
-  <!-- eslint-disable-next-line vue/no-v-html -->
+  <!-- eslint-disable-next-line vue/no-v-html -- this component IS the sanitisation boundary (DOMPurify in `html` computed) -->
   <div class="sanitized-html" v-html="html" />
 </template>
 

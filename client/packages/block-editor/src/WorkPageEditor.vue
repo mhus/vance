@@ -1239,7 +1239,7 @@ function blockRectAtPos(pos: number): { left: number; top: number; width: number
   const view = editor.value?.view;
   if (!view) return null;
   if (pos < 0 || pos >= view.state.doc.content.size) return null;
-  let dom: Node | null = null;
+  let dom: Node | null;
   try {
     dom = view.nodeDOM(pos);
   } catch {

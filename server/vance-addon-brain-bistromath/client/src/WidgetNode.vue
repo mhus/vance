@@ -626,6 +626,7 @@ const headingClass = computed(() =>
          kinds render. The local `marked` fallback is plain markdown — correct
          for a surface with no Cortex around it, and visibly less. -->
     <component :is="markdownComponent" v-if="markdownComponent" :source="textValue" />
+    <!-- eslint-disable-next-line vue/no-v-html -- local marked fallback, sanitised via DOMPurify -->
     <div v-else class="prose prose-sm max-w-none" v-html="mdHtml" />
   </div>
 

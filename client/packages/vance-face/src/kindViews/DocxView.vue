@@ -111,6 +111,7 @@ watch(() => url.value, () => { void loadDocx(); });
       </div>
       <!-- mammoth's HTML is already DOMPurify-sanitised; v-html
            is appropriate here. -->
+      <!-- eslint-disable-next-line vue/no-v-html -- sanitised via DOMPurify above -->
       <div class="docx-stage" v-html="html"></div>
     </template>
   </div>

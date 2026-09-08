@@ -841,12 +841,12 @@ function message(e: unknown): string {
     >
       <div class="mb-2 font-semibold">{{ t('bistromath.app.loadOrder') }}</div>
       <ol v-if="scan.requires.scripts.length > 0" class="flex list-decimal flex-col gap-1 pl-6">
-        <li v-for="entry in scan.requires.scripts" :key="entry.path">
-          <code class="font-mono">{{ entry.path }}</code>
-          <span v-if="entry.name" class="opacity-70">
-            — {{ entry.name }}@{{ entry.version }} ({{ entry.origin }})</span>
-          <span v-else class="opacity-70"> — {{ entry.kind }}</span>
-          <span v-if="entry.askedBy" class="opacity-50"> ← {{ entry.askedBy }}</span>
+        <li v-for="script in scan.requires.scripts" :key="script.path">
+          <code class="font-mono">{{ script.path }}</code>
+          <span v-if="script.name" class="opacity-70">
+            — {{ script.name }}@{{ script.version }} ({{ script.origin }})</span>
+          <span v-else class="opacity-70"> — {{ script.kind }}</span>
+          <span v-if="script.askedBy" class="opacity-50"> ← {{ script.askedBy }}</span>
         </li>
       </ol>
       <p v-else class="opacity-70">{{ t('bistromath.app.noProgram') }}</p>

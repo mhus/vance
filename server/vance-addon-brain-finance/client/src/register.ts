@@ -6,7 +6,7 @@ import { registerKind } from '@vance/kind-registry';
 const FinanceKind = defineAsyncComponent(() => import('./FinanceKind.vue'));
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/finance] register() called');
 
   // Top-level kind: one finance-tree = one document, edited in Cortex.

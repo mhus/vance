@@ -16,7 +16,7 @@ import { registerKind } from '@vance/kind-registry';
 const DesktopAppKind = defineAsyncComponent(() => import('./DesktopAppKind.vue'));
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/common-desktop] register() called');
   registerKind({
     id: 'application:common-desktop',

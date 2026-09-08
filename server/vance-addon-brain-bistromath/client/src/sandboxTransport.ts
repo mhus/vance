@@ -155,7 +155,7 @@ export const GUEST_BOOTSTRAP = `<!doctype html><meta charset="utf-8">
   });
   parent.postMessage({ t: 'ready' }, '*');
 })();
-<\/script>`;
+</script>`;
 
 /**
  * The program in a hidden `<iframe sandbox="allow-scripts">` with `srcdoc`.

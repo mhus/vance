@@ -34,7 +34,6 @@ import {
   addonRemoteEntry,
   addonRemoteName,
   loadAddonManifest,
-  type AddonManifestEntry,
 } from './addonManifest';
 
 interface RegisterExpose {

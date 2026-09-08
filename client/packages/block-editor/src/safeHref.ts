@@ -21,6 +21,7 @@ const ALLOWED_SCHEMES = new Set(['http', 'https', 'mailto', 'tel', 'vance']);
 // from URLs, so "java<TAB>script:…" would still execute — remove them
 // before inspecting the scheme. Built from a string to keep literal
 // control characters out of the source.
+// eslint-disable-next-line no-control-regex -- rejecting control characters is the point
 const CONTROL_CHARS_RE = new RegExp('[\\u0000-\\u001F\\u007F]', 'g');
 
 /**

@@ -76,7 +76,7 @@ export function loadLibraries<T extends string>(
     const names = opts.sources
       .map((s) => ('code' in s ? '<inline>' : s.library))
       .join(', ');
-    throw new Error(`Loading [${names}] failed: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`Loading [${names}] failed: ${e instanceof Error ? e.message : String(e)}`, { cause: e });
   }
 }
 

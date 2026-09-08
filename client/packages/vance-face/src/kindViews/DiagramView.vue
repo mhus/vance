@@ -244,7 +244,7 @@ function filenameForDownload(): string {
   const d = props.document;
   const base = (d?.title || d?.name || 'diagram')
     .replace(/\.[^.]+$/, '')
-    .replace(/[^A-Za-z0-9_\-]+/g, '-')
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return (base || 'diagram') + '.svg';
 }

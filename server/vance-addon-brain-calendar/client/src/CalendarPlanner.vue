@@ -276,11 +276,13 @@ defineExpose({ reload: load });
             <VAlert v-if="ganttError" variant="error">
               {{ t('calendar.planner.ganttRenderError', { message: ganttError }) }}
             </VAlert>
+            <!-- eslint-disable vue/no-v-html -- mermaid output; securityLevel 'strict' sanitises the SVG -->
             <div
               v-else-if="ganttSvg"
               class="bg-base-100 border border-base-300 rounded p-4 overflow-x-auto"
               v-html="ganttSvg"
             />
+            <!-- eslint-enable vue/no-v-html -->
             <VEmptyState
               v-else
               :headline="t('calendar.planner.noGanttHeadline')"

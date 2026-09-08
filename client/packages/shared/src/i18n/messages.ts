@@ -38,7 +38,6 @@ interface Registry {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __VANCE_I18N_MESSAGES__: Registry | undefined;
 }
 

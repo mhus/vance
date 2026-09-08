@@ -87,7 +87,7 @@ export function rememberProject(name: string | null | undefined): void {
  * while its name sits in this tab's storage, and the brain answers 404.
  */
 export function recallProject(selectable?: readonly string[]): string | null {
-  let stored: string | null = null;
+  let stored: string | null;
   try {
     stored = window.sessionStorage.getItem(storageKey());
   } catch {

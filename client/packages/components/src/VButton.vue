@@ -28,24 +28,26 @@ const props = withDefaults(defineProps<Props>(), {
 
 defineEmits<{ (e: 'click', event: MouseEvent): void }>();
 
-const variantClass = computed<string>(() => {
-  switch (props.variant) {
-    case 'primary': return 'btn-primary';
-    case 'secondary': return 'btn-secondary';
-    case 'ghost': return 'btn-ghost';
-    case 'danger': return 'btn-error';
-    case 'link': return 'btn-link';
-    case 'neutral': return '';
-  }
-});
+// Record lookups instead of switches: a missing variant would fail vue-tsc,
+// so exhaustiveness stays type-enforced and the computed always returns.
+const VARIANT_CLASSES: Record<Variant, string> = {
+  primary: 'btn-primary',
+  secondary: 'btn-secondary',
+  ghost: 'btn-ghost',
+  danger: 'btn-error',
+  link: 'btn-link',
+  neutral: '',
+};
 
-const sizeClass = computed<string>(() => {
-  switch (props.size) {
-    case 'xs': return 'btn-xs';
-    case 'sm': return 'btn-sm';
-    default: return '';
-  }
-});
+const SIZE_CLASSES: Record<'xs' | 'sm' | 'md', string> = {
+  xs: 'btn-xs',
+  sm: 'btn-sm',
+  md: '',
+};
+
+const variantClass = computed<string>(() => VARIANT_CLASSES[props.variant]);
+
+const sizeClass = computed<string>(() => SIZE_CLASSES[props.size]);
 </script>
 
 <template>

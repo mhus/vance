@@ -10,7 +10,7 @@ const CanvasKind = defineAsyncComponent(() => import('./CanvasKind.vue'));
 const CanvasbookAppKind = defineAsyncComponent(() => import('./CanvasbookAppKind.vue'));
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/canvas] register() called');
 
   // Top-level kind: one spatial board = one document. Read-only view;

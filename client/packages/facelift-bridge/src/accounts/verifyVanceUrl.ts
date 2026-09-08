@@ -54,7 +54,7 @@ export async function verifyVanceUrl(url: string): Promise<VerifyResult> {
   const base = url.trim().replace(/\/+$/, '');
   if (base.length === 0) return { ok: false, reason: 'empty URL' };
   try {
-    // eslint-disable-next-line no-new
+
     new URL(base);
   } catch {
     return { ok: false, reason: 'not a valid URL' };

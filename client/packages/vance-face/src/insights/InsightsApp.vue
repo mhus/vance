@@ -1200,10 +1200,10 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   class="mt-2 flex flex-wrap gap-1 text-xs opacity-70"
                 >
                   <span
-                    v-for="t in otherTags(m.tags)"
-                    :key="t"
+                    v-for="tag in otherTags(m.tags)"
+                    :key="tag"
                     class="badge badge--secondary font-mono"
-                  >{{ t }}</span>
+                  >{{ tag }}</span>
                 </div>
               </li>
             </ul>

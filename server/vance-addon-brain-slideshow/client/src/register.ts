@@ -19,7 +19,7 @@ import { registerKind } from '@vance/kind-registry';
 const SlideshowAppKind = defineAsyncComponent(() => import('./SlideshowAppKind.vue'));
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/slideshow] register() called');
   registerKind({
     id: 'application:slideshow',

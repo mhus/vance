@@ -30,7 +30,6 @@ interface PlatformBindings {
 // the well-known string key keeps debugging trivial (devtools shows
 // `window.__VANCE_PLATFORM__` directly).
 declare global {
-  // eslint-disable-next-line no-var
   var __VANCE_PLATFORM__: PlatformBindings | null | undefined;
 }
 

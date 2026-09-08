@@ -40,7 +40,7 @@ export function setDocumentDraft(draft: DocumentDraft): void {
  * avoid stale prefills after a refresh / back-nav.
  */
 export function consumeDocumentDraft(): DocumentDraft | null {
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = window.localStorage.getItem(DOCUMENT_DRAFT_KEY);
     if (raw !== null) {

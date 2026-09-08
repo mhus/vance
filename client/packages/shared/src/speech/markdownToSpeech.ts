@@ -24,11 +24,11 @@ const NUMBERS_DE = [
 
 // Same patterns as Java side; flags differ slightly for JS regex.
 const FENCED       = /^( {0,3})(```+|~~~+)([^\n]*)\n([\s\S]*?)\n\1\2[^\n]*$/gm;
-const TABLE        = /^\|.+\|[ \t]*\n[ \t]*\|[\s|:\-]+\|[ \t]*\n(?:[ \t]*\|.+\|[ \t]*\n?)*/gm;
+const TABLE        = /^\|.+\|[ \t]*\n[ \t]*\|[\s|:-]+\|[ \t]*\n(?:[ \t]*\|.+\|[ \t]*\n?)*/gm;
 const IMAGE_LINK   = /!\[([^\]]*)\]\(([^)]*)\)/g;
 const LINK         = /\[([^\]]*)\]\(([^)]*)\)/g;
 const HEADING      = /^ {0,3}#{1,6}\s+(.*?)\s*#*\s*$/gm;
-const BULLET_ITEM  = /^ {0,3}[*+\-]\s+(.*)$/;
+const BULLET_ITEM  = /^ {0,3}[*+-]\s+(.*)$/;
 const ORDERED_ITEM = /^ {0,3}\d+[.)]\s+(.*)$/;
 const HRULE        = /^ {0,3}([-*_])(?:\s*\1){2,}\s*$/gm;
 const INLINE_CODE  = /`([^`]+)`/g;
@@ -56,7 +56,7 @@ export function markdownToSpeech(markdown: string | null | undefined): string {
     for (let i = 0; i < lines.length; i++) {
       const ln = lines[i].trim();
       if (!ln) continue;
-      if (i === 1 && /^\|[\s|:\-]+\|$/.test(ln)) continue;
+      if (i === 1 && /^\|[\s|:-]+\|$/.test(ln)) continue;
       rows++;
       if (cols === 0) {
         const inner = ln.replace(/^\||\|$/g, '');

@@ -1339,7 +1339,7 @@ function onNew(): void {
   // `documents` — the conventional user-content folder — instead of
   // leaving the field blank.
   const ref = activeTab.value;
-  let path = '';
+  let path: string;
   if (ref) {
     const idx = ref.path.lastIndexOf('/');
     path = idx >= 0 ? ref.path.slice(0, idx) : '';

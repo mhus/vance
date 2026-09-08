@@ -184,7 +184,7 @@ function parseParamValue(
         throw new Error(t('insights.workflows.paramNotJson', {
           key,
           error: e instanceof Error ? e.message : String(e),
-        }));
+        }), { cause: e });
       }
     }
     default:

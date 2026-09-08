@@ -21,7 +21,7 @@ const WorkbookAppKind = defineAsyncComponent(() => import('./WorkbookAppKind.vue
 const WorkbookIndexReadonlyView = defineAsyncComponent(() => import('./WorkbookIndexReadonlyView.vue'));
 
 export function register(): void {
-  // eslint-disable-next-line no-console
+
   console.log('[vance-addon/workbook] register() called');
 
   // Top-level kind: one workpage = one document. Resolved via the

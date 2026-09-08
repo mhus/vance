@@ -163,11 +163,15 @@ public class DocEncryptTool implements Tool {
             plaintext = content;
         }
 
-        String armored = AgeCipher.encryptArmored(plaintext, recipients);
-
+        // Fail fast: the write gate runs before any crypto work — a
+        // refused send should cost neither the scrypt/X25519 cycles nor
+        // the latency, and permission is not something to earn by doing
+        // work first.
         var project = support.eddieContext().resolveProject(params, ctx, false);
         support.enforceDocWrite(ctx, project.getName(), toPath,
                 de.mhus.vance.shared.permission.Action.CREATE);
+
+        String armored = AgeCipher.encryptArmored(plaintext, recipients);
 
         DocumentDocument created;
         try {

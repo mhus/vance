@@ -36,8 +36,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class JsScriptArchitect implements SchemaArchitect {
 
-    public static final String RULE_SCRIPT_JS_VALID =
-            "script-js-validates-via-hactar";
+    public static final String RULE_SCRIPT_JS_VALID = "script-js-validates-via-hactar";
 
     private static final String SYSTEM_PROMPT = """
             You are the PROPOSING node of the Slartibartfast engine.
@@ -285,9 +284,7 @@ public class JsScriptArchitect implements SchemaArchitect {
     }
 
     @Override
-    public void appendProposingContext(
-            StringBuilder sb, ArchitectState state,
-            List<ResolvedRecipe> availableRecipes) {
+    public void appendProposingContext(StringBuilder sb, ArchitectState state, List<ResolvedRecipe> availableRecipes) {
         // UPDATE-mode payload: existing script body + optional
         // failure reason from the prior Hactar run. The architect
         // is the single point where these reach the LLM — the
@@ -300,20 +297,15 @@ public class JsScriptArchitect implements SchemaArchitect {
         if (existingCode != null && !existingCode.isBlank()) {
             sb.append("\n\n## EXISTING SCRIPT\n\n");
             if (state.getExistingScriptRef() != null) {
-                sb.append("Source path: `")
-                        .append(state.getExistingScriptRef())
-                        .append("`\n\n");
+                sb.append("Source path: `").append(state.getExistingScriptRef()).append("`\n\n");
             }
-            sb.append("```javascript\n")
-                    .append(existingCode)
-                    .append("\n```\n");
+            sb.append("```javascript\n").append(existingCode).append("\n```\n");
         }
 
         String priorFailureReason = state.getPriorFailureReason();
         if (priorFailureReason != null && !priorFailureReason.isBlank()) {
             sb.append("\n## FAILURE REASON\n\n")
-                    .append("The previous Hactar execution of this "
-                            + "script failed with:\n\n> ")
+                    .append("The previous Hactar execution of this " + "script failed with:\n\n> ")
                     .append(priorFailureReason.replace("\n", "\n> "))
                     .append("\n\nAddress this failure in your update.\n");
         }
@@ -330,14 +322,16 @@ public class JsScriptArchitect implements SchemaArchitect {
 
     @Override
     public @Nullable ValidationCheck validateDraftShape(
-            RecipeDraft draft, @Nullable Map<String, Object> recipeMap,
-            ThinkProcessDocument process, List<ValidationCheck> report) {
+            RecipeDraft draft,
+            @Nullable Map<String, Object> recipeMap,
+            ThinkProcessDocument process,
+            List<ValidationCheck> report) {
         // recipeMap is always null for SCRIPT_JS — ValidatingPhase
         // doesn't YAML-parse a script body. Work off draft.getYaml()
         // (carries the raw JS source) directly.
         String code = draft.getYaml();
-        String sourceName = draft.getName() == null || draft.getName().isBlank()
-                ? "<slart-script>" : draft.getName() + ".js";
+        String sourceName =
+                draft.getName() == null || draft.getName().isBlank() ? "<slart-script>" : draft.getName() + ".js";
 
         HactarService.ValidationResult result;
         try {
@@ -351,7 +345,8 @@ public class JsScriptArchitect implements SchemaArchitect {
                     process.getId()));
         } catch (RuntimeException e) {
             ValidationCheck v = ValidationCheck.builder()
-                    .rule(RULE_SCRIPT_JS_VALID).passed(false)
+                    .rule(RULE_SCRIPT_JS_VALID)
+                    .passed(false)
                     .message("HactarService.validate threw: " + e.getMessage())
                     .build();
             report.add(v);
@@ -360,13 +355,13 @@ public class JsScriptArchitect implements SchemaArchitect {
 
         if (result.ok()) {
             report.add(ValidationCheck.builder()
-                    .rule(RULE_SCRIPT_JS_VALID).passed(true)
+                    .rule(RULE_SCRIPT_JS_VALID)
+                    .passed(true)
                     .message("script parses cleanly and header tags are well-formed")
                     .build());
             return null;
         }
 
-        ValidationCheck firstFail = null;
         StringBuilder summary = new StringBuilder();
         summary.append("HactarService.validate rejected the script (")
                 .append(result.issues().size())
@@ -383,12 +378,12 @@ public class JsScriptArchitect implements SchemaArchitect {
             summary.append(issue.message()).append("\n");
         }
         ValidationCheck aggregate = ValidationCheck.builder()
-                .rule(RULE_SCRIPT_JS_VALID).passed(false)
+                .rule(RULE_SCRIPT_JS_VALID)
+                .passed(false)
                 .message(summary.toString())
                 .build();
         report.add(aggregate);
-        firstFail = aggregate;
-        return firstFail;
+        return aggregate;
     }
 
     @Override
@@ -414,17 +409,12 @@ public class JsScriptArchitect implements SchemaArchitect {
         // _vance/scripts/_slart/<runId>/<name>.js (see Phase 2a's
         // PersistingPhase wiring through architect.outputPathSegment).
         Map<String, Object> params = new java.util.LinkedHashMap<>();
-        params.put(
-                de.mhus.vance.brain.hactar.HactarEngine.SCRIPT_REF_KEY,
-                state.getPersistedRecipePath());
-        params.put(
-                de.mhus.vance.brain.hactar.HactarEngine.LANGUAGE_KEY,
-                "js");
+        params.put(de.mhus.vance.brain.hactar.HactarEngine.SCRIPT_REF_KEY, state.getPersistedRecipePath());
+        params.put(de.mhus.vance.brain.hactar.HactarEngine.LANGUAGE_KEY, "js");
         // validateBeforeRun stays at Hactar's default false — the
         // script just survived Slart's own VALIDATING loop, no
         // point paying LLM tokens for a redundant deep-validate.
-        return new DirectExecutionSpawn(
-                de.mhus.vance.brain.hactar.HactarEngine.NAME, params);
+        return new DirectExecutionSpawn(de.mhus.vance.brain.hactar.HactarEngine.NAME, params);
     }
 
     @Override
@@ -437,10 +427,9 @@ public class JsScriptArchitect implements SchemaArchitect {
         // agnostic phases.
         Object c = jsonRoot.get("code");
         if (!(c instanceof String code) || code.isBlank()) {
-            throw new IllegalArgumentException(
-                    "required field 'code' missing or blank — the "
-                            + "JSON must carry the JS source under a "
-                            + "top-level 'code' key");
+            throw new IllegalArgumentException("required field 'code' missing or blank — the "
+                    + "JSON must carry the JS source under a "
+                    + "top-level 'code' key");
         }
         return code;
     }

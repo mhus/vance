@@ -1,12 +1,12 @@
 package de.mhus.vance.brain.tools.process;
 
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.delegate.RecipeSelectorService;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -85,63 +85,90 @@ public class ProcessSpawnTool implements Tool {
 
     /** Synchronous ({@code wait=true}) lane-wait bounds. */
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(300);
+
     private static final Duration MAX_TIMEOUT = Duration.ofMinutes(15);
 
     private static final Map<String, Object> SCHEMA;
 
     static {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("name", Map.of(
-                "type", "string",
-                "description", "Stable process name, unique per session."));
-        properties.put("task", Map.of(
-                "type", "string",
-                "description", "What the worker should do. This is both the "
-                        + "process's goal AND its first user-message — the "
-                        + "worker starts working on it immediately (no "
-                        + "separate steer needed). When `recipe` is omitted "
-                        + "the selector also routes from this text, so be "
-                        + "specific: 'write a research report on gRPC vs REST' "
-                        + "beats 'do something with research'. Aliases `goal` / "
-                        + "`prompt` / `steerContent` are accepted."));
-        properties.put("recipe", Map.of(
-                "type", "string",
-                "description", "Preferred routing: recipe name for cascade "
-                        + "resolution. Empty / null / 'auto' → the selector "
-                        + "picks a recipe from `task`. Unknown names fail "
-                        + "strict with a suggestion list — consult "
-                        + "`recipe_list` if unsure."));
-        properties.put("wait", Map.of(
-                "type", "boolean",
-                "description", "false (default) → async: return spawn "
-                        + "metadata immediately; the worker runs on its own "
-                        + "and reports back when done. true → block until the "
-                        + "worker finishes one turn and return its reply under "
-                        + "`reply`. Use true only for tight script "
-                        + "orchestration that needs each reply inline."));
-        properties.put("title", Map.of(
-                "type", "string",
-                "description", "Optional human-readable title."));
-        properties.put("params", Map.of(
-                "type", "object",
-                "description", "Engine-specific runtime parameters (model, "
-                        + "validation, maxIterations, …), override recipe "
-                        + "defaults per-key.",
-                "additionalProperties", true));
-        properties.put("fallbackOnNone", Map.of(
-                "type", "boolean",
-                "description", "Selector-routed mode only: when the selector "
-                        + "returns NONE, spawn the tenant fallback recipe "
-                        + "(default slart-and-run). Default true."));
-        properties.put("timeoutSeconds", Map.of(
-                "type", "integer",
-                "description", "wait=true only: per-call wall-clock timeout "
-                        + "(default " + DEFAULT_TIMEOUT.toSeconds() + "s, max "
-                        + MAX_TIMEOUT.toSeconds() + "s)."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("name", "task"));
+        properties.put(
+                "name",
+                Map.of(
+                        "type", "string",
+                        "description", "Stable process name, unique per session."));
+        properties.put(
+                "task",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "What the worker should do. This is both the "
+                                + "process's goal AND its first user-message — the "
+                                + "worker starts working on it immediately (no "
+                                + "separate steer needed). When `recipe` is omitted "
+                                + "the selector also routes from this text, so be "
+                                + "specific: 'write a research report on gRPC vs REST' "
+                                + "beats 'do something with research'. Aliases `goal` / "
+                                + "`prompt` / `steerContent` are accepted."));
+        properties.put(
+                "recipe",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Preferred routing: recipe name for cascade "
+                                + "resolution. Empty / null / 'auto' → the selector "
+                                + "picks a recipe from `task`. Unknown names fail "
+                                + "strict with a suggestion list — consult "
+                                + "`recipe_list` if unsure."));
+        properties.put(
+                "wait",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "false (default) → async: return spawn "
+                                + "metadata immediately; the worker runs on its own "
+                                + "and reports back when done. true → block until the "
+                                + "worker finishes one turn and return its reply under "
+                                + "`reply`. Use true only for tight script "
+                                + "orchestration that needs each reply inline."));
+        properties.put(
+                "title",
+                Map.of(
+                        "type", "string",
+                        "description", "Optional human-readable title."));
+        properties.put(
+                "params",
+                Map.of(
+                        "type",
+                        "object",
+                        "description",
+                        "Engine-specific runtime parameters (model, "
+                                + "validation, maxIterations, …), override recipe "
+                                + "defaults per-key.",
+                        "additionalProperties",
+                        true));
+        properties.put(
+                "fallbackOnNone",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "Selector-routed mode only: when the selector "
+                                + "returns NONE, spawn the tenant fallback recipe "
+                                + "(default slart-and-run). Default true."));
+        properties.put(
+                "timeoutSeconds",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "wait=true only: per-call wall-clock timeout "
+                                + "(default " + DEFAULT_TIMEOUT.toSeconds() + "s, max "
+                                + MAX_TIMEOUT.toSeconds() + "s)."));
+        SCHEMA = Map.of("type", "object", "properties", properties, "required", List.of("name", "task"));
     }
 
     private final ActionExecutorRegistry actionRegistry;
@@ -203,8 +230,7 @@ public class ProcessSpawnTool implements Tool {
 
         // ── Selector-routed mode (decide recipe before dispatch) ─────────
         if (recipeName == null) {
-            return invokeSelectorRouted(
-                    ctx, name, task, title, callerParams, fallbackOnNone, wait, timeout);
+            return invokeSelectorRouted(ctx, name, task, title, callerParams, fallbackOnNone, wait, timeout);
         }
 
         // ── Explicit recipe dispatch ─────────────────────────────────────
@@ -212,9 +238,14 @@ public class ProcessSpawnTool implements Tool {
     }
 
     private Map<String, Object> invokeSelectorRouted(
-            ToolInvocationContext ctx, String name, String task,
-            @Nullable String title, @Nullable Map<String, Object> callerParams,
-            boolean fallbackOnNone, boolean wait, Duration timeout) {
+            ToolInvocationContext ctx,
+            String name,
+            String task,
+            @Nullable String title,
+            @Nullable Map<String, Object> callerParams,
+            boolean fallbackOnNone,
+            boolean wait,
+            Duration timeout) {
         ThinkProcessDocument caller = resolveCaller(ctx);
         RecipeSelectorService.Result result = selector.select(caller, task);
 
@@ -225,51 +256,56 @@ public class ProcessSpawnTool implements Tool {
         out.put("rationale", result.rationale());
 
         if (result.decision() == RecipeSelectorService.Result.Decision.MATCH) {
-            Map<String, Object> spawn = dispatch(ctx, name, title, task,
-                    result.recipeName(), callerParams, wait, timeout);
+            Map<String, Object> spawn =
+                    dispatch(ctx, name, title, task, result.recipeName(), callerParams, wait, timeout);
             out.put("process", spawn);
-            log.info("process_spawn name='{}' → spawned recipe='{}' via selector",
-                    name, result.recipeName());
+            log.info("process_spawn name='{}' → spawned recipe='{}' via selector", name, result.recipeName());
             return out;
         }
 
         if (!fallbackOnNone) {
-            log.info("process_spawn name='{}' task='{}' → NONE (fallbackOnNone=false): {}",
-                    name, abbrev(task, 80), result.rationale());
+            log.info(
+                    "process_spawn name='{}' task='{}' → NONE (fallbackOnNone=false): {}",
+                    name,
+                    abbrev(task, 80),
+                    result.rationale());
             return out;
         }
 
         if (!result.triggerObserved()) {
-            log.info("process_spawn name='{}' → NONE without trigger, "
+            log.info(
+                    "process_spawn name='{}' → NONE without trigger, "
                             + "falling through to default recipe (rationale: {})",
-                    name, result.rationale());
+                    name,
+                    result.rationale());
             Map<String, Object> fallbackInfo = new LinkedHashMap<>();
             fallbackInfo.put("recipe", DEFAULT_RECIPE);
             fallbackInfo.put("source", "default-recipe (no trigger)");
             out.put("fallback", fallbackInfo);
-            Map<String, Object> spawn = dispatch(ctx, name, title, task,
-                    DEFAULT_RECIPE, callerParams, wait, timeout);
+            Map<String, Object> spawn = dispatch(ctx, name, title, task, DEFAULT_RECIPE, callerParams, wait, timeout);
             out.put("process", spawn);
             return out;
         }
 
         String fallbackRecipe = resolveFallbackRecipe(ctx);
         if (fallbackRecipe == null) {
-            log.info("process_spawn name='{}' → NONE after trigger, "
-                            + "fallback disabled by setting: {}",
-                    name, result.rationale());
+            log.info(
+                    "process_spawn name='{}' → NONE after trigger, " + "fallback disabled by setting: {}",
+                    name,
+                    result.rationale());
             return out;
         }
-        log.info("process_spawn name='{}' → NONE after trigger, "
-                        + "spawning fallback recipe '{}' (rationale: {})",
-                name, fallbackRecipe, result.rationale());
+        log.info(
+                "process_spawn name='{}' → NONE after trigger, " + "spawning fallback recipe '{}' (rationale: {})",
+                name,
+                fallbackRecipe,
+                result.rationale());
         Map<String, Object> fallbackInfo = new LinkedHashMap<>();
         fallbackInfo.put("recipe", fallbackRecipe);
         fallbackInfo.put("source", SETTING_FALLBACK_RECIPE);
         out.put("fallback", fallbackInfo);
 
-        Map<String, Object> spawn = dispatch(ctx, name, title, task,
-                fallbackRecipe, callerParams, wait, timeout);
+        Map<String, Object> spawn = dispatch(ctx, name, title, task, fallbackRecipe, callerParams, wait, timeout);
         out.put("process", spawn);
         return out;
     }
@@ -283,25 +319,33 @@ public class ProcessSpawnTool implements Tool {
      * reply.
      */
     private Map<String, Object> dispatch(
-            ToolInvocationContext ctx, String name, @Nullable String title,
-            String task, @Nullable String recipeName,
-            @Nullable Map<String, Object> callerParams, boolean wait, Duration timeout) {
+            ToolInvocationContext ctx,
+            String name,
+            @Nullable String title,
+            String task,
+            @Nullable String recipeName,
+            @Nullable Map<String, Object> callerParams,
+            boolean wait,
+            Duration timeout) {
         String parentProfile = parentConnectionProfile(ctx.processId());
         TriggerAction.Recipe action = new TriggerAction.Recipe(
                 recipeName,
                 name,
                 title,
                 task,
-                /*inheritContextLevel*/ null,  // executor reads from recipe.params
+                /*inheritContextLevel*/ null, // executor reads from recipe.params
                 parentProfile,
                 /*initialMessage*/ wait ? null : task,
                 callerParams,
                 /*runAs*/ null);
         TriggerContext triggerCtx = TriggerContext.sessioned(
-                ctx.tenantId(), ctx.projectId(),
-                /*resolvedRunAs*/ null, /*correlationId*/ null,
+                ctx.tenantId(),
+                ctx.projectId(),
+                /*resolvedRunAs*/ null, /*correlationId*/
+                null,
                 /*sourceTag*/ "tool:process_spawn",
-                ctx.sessionId(), ctx.processId());
+                ctx.sessionId(),
+                ctx.processId());
 
         ActionResult result = actionRegistry.execute(action, triggerCtx, TriggerKind.TOOL);
         if (!wait) {
@@ -313,8 +357,7 @@ public class ProcessSpawnTool implements Tool {
     // ── async (wait=false) ────────────────────────────────────────────────
 
     private Map<String, Object> mapAsyncResult(
-            ActionResult result, @Nullable String requestedRecipe,
-            String tenantId, @Nullable String projectId) {
+            ActionResult result, @Nullable String requestedRecipe, String tenantId, @Nullable String projectId) {
         switch (result.outcome()) {
             case SCHEDULED -> {
                 Map<String, Object> out = result.output();
@@ -327,8 +370,7 @@ public class ProcessSpawnTool implements Tool {
                 return out != null ? out : Map.of("status", "already_exists");
             }
             case TECHNICAL_ERROR, BUSINESS_ERROR, TIMEOUT, PERMISSION_ERROR, CANCELLED -> {
-                String msg = result.errorMessage() == null
-                        ? "process_spawn failed" : result.errorMessage();
+                String msg = result.errorMessage() == null ? "process_spawn failed" : result.errorMessage();
                 Map<String, Object> output = result.output();
                 if (output != null && isUnknownRecipeOutput(output)) {
                     throw new ToolException(composeUnknownRecipeMessage(requestedRecipe, output));
@@ -342,8 +384,12 @@ public class ProcessSpawnTool implements Tool {
     // ── sync (wait=true) ──────────────────────────────────────────────────
 
     private Map<String, Object> runSync(
-            ToolInvocationContext ctx, String name, String task, Duration timeout,
-            ActionResult result, @Nullable String requestedRecipe) {
+            ToolInvocationContext ctx,
+            String name,
+            String task,
+            Duration timeout,
+            ActionResult result,
+            @Nullable String requestedRecipe) {
         String childId;
         if (result.outcome() == ActionOutcome.SCHEDULED) {
             childId = result.spawnedId();
@@ -352,33 +398,33 @@ public class ProcessSpawnTool implements Tool {
             Map<String, Object> out = result.output();
             Object existing = out == null ? null : out.get("existingProcessId");
             if (!(existing instanceof String existingId) || existingId.isBlank()) {
-                throw new ToolException(
-                        "process_spawn: a process named '" + name + "' already "
-                                + "exists in this session but its id is unavailable "
-                                + "— steer it by name instead");
+                throw new ToolException("process_spawn: a process named '" + name + "' already "
+                        + "exists in this session but its id is unavailable "
+                        + "— steer it by name instead");
             }
             childId = existingId;
         } else {
-            String msg = result.errorMessage() == null
-                    ? "process_spawn failed" : result.errorMessage();
+            String msg = result.errorMessage() == null ? "process_spawn failed" : result.errorMessage();
             Map<String, Object> output = result.output();
             if (output != null && isUnknownRecipeOutput(output)) {
                 throw new ToolException(composeUnknownRecipeMessage(requestedRecipe, output));
             }
-            throw new ToolException("process_spawn: spawn failed (" + result.outcome()
-                    + "): " + msg);
+            throw new ToolException("process_spawn: spawn failed (" + result.outcome() + "): " + msg);
         }
-        ThinkProcessDocument child = thinkProcessService.findById(childId)
-                .orElseThrow(() -> new ToolException(
-                        "process_spawn: spawned process '" + childId + "' is gone"));
+        ThinkProcessDocument child = thinkProcessService
+                .findById(childId)
+                .orElseThrow(() -> new ToolException("process_spawn: spawned process '" + childId + "' is gone"));
 
-        log.info("process_spawn(wait) child='{}' name='{}' engine='{}' recipe='{}' timeoutSec={}",
-                child.getId(), name, child.getThinkEngine(),
+        log.info(
+                "process_spawn(wait) child='{}' name='{}' engine='{}' recipe='{}' timeoutSec={}",
+                child.getId(),
+                name,
+                child.getThinkEngine(),
                 child.getRecipeName() == null ? "(none)" : child.getRecipeName(),
                 timeout.toSeconds());
 
         ThinkEngineService engineService = thinkEngineServiceProvider.getObject();
-        @Nullable String reply = null;
+        @Nullable String reply;
         String terminalStatus;
         try {
             SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
@@ -387,47 +433,48 @@ public class ProcessSpawnTool implements Tool {
                     "process_spawn:" + (ctx.processId() == null ? "anon" : ctx.processId()),
                     task);
             try {
-                laneScheduler.submit(child.getId(),
-                                () -> engineService.steer(child, message))
+                laneScheduler
+                        .submit(child.getId(), () -> engineService.steer(child, message))
                         .get(timeout.toMillis(), TimeUnit.MILLISECONDS);
             } catch (TimeoutException te) {
                 throw new ToolException(
-                        "process_spawn: worker '" + child.getId() + "' didn't complete "
-                                + "within " + timeout.toSeconds() + "s", te);
+                        "process_spawn: worker '" + child.getId() + "' didn't complete " + "within "
+                                + timeout.toSeconds() + "s",
+                        te);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                throw new ToolException(
-                        "process_spawn interrupted waiting for child='" + child.getId() + "'", ie);
+                throw new ToolException("process_spawn interrupted waiting for child='" + child.getId() + "'", ie);
             } catch (ExecutionException ee) {
                 Throwable cause = ee.getCause() == null ? ee : ee.getCause();
                 throw new ToolException(
-                        "process_spawn: worker turn failed for child='" + child.getId()
-                                + "': " + cause.getMessage(), cause);
+                        "process_spawn: worker turn failed for child='" + child.getId() + "': " + cause.getMessage(),
+                        cause);
             }
-            reply = readLastAssistantText(
-                    child.getTenantId(), child.getSessionId(), child.getId());
-            ThinkProcessDocument refreshed = thinkProcessService.findById(child.getId())
-                    .orElse(child);
+            reply = readLastAssistantText(child.getTenantId(), child.getSessionId(), child.getId());
+            ThinkProcessDocument refreshed =
+                    thinkProcessService.findById(child.getId()).orElse(child);
             terminalStatus = refreshed.getStatus() == null
-                    ? "UNKNOWN" : refreshed.getStatus().name();
+                    ? "UNKNOWN"
+                    : refreshed.getStatus().name();
         } finally {
             // Serialize the stop onto the CHILD lane (never off-lane).
             try {
-                laneScheduler.submit(child.getId(),
-                                () -> {
-                                    engineService.stop(child);
-                                    return null;
-                                })
+                laneScheduler
+                        .submit(child.getId(), () -> {
+                            engineService.stop(child);
+                            return null;
+                        })
                         .get(30, TimeUnit.SECONDS);
             } catch (TimeoutException te) {
-                log.warn("process_spawn: stop for child='{}' enqueued behind a still-running "
-                        + "turn; it will run on-lane once the turn yields", child.getId());
+                log.warn(
+                        "process_spawn: stop for child='{}' enqueued behind a still-running "
+                                + "turn; it will run on-lane once the turn yields",
+                        child.getId());
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
             } catch (ExecutionException ee) {
                 Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-                log.warn("process_spawn: stop failed for child='{}': {}",
-                        child.getId(), cause.getMessage());
+                log.warn("process_spawn: stop failed for child='{}': {}", child.getId(), cause.getMessage());
             }
         }
 
@@ -440,13 +487,12 @@ public class ProcessSpawnTool implements Tool {
         return out;
     }
 
-    private @Nullable String readLastAssistantText(
-            String tenantId, String sessionId, String workerProcessId) {
-        List<ChatMessageDocument> history = chatMessageService.history(
-                tenantId, sessionId, workerProcessId);
+    private @Nullable String readLastAssistantText(String tenantId, String sessionId, String workerProcessId) {
+        List<ChatMessageDocument> history = chatMessageService.history(tenantId, sessionId, workerProcessId);
         for (int i = history.size() - 1; i >= 0; i--) {
             ChatMessageDocument m = history.get(i);
-            if (m.getRole() == ChatRole.ASSISTANT && m.getContent() != null
+            if (m.getRole() == ChatRole.ASSISTANT
+                    && m.getContent() != null
                     && !m.getContent().isBlank()) {
                 return m.getContent();
             }
@@ -465,19 +511,16 @@ public class ProcessSpawnTool implements Tool {
      * {@link #composeUnknownRecipeMessage} unreachable.
      */
     private static boolean isUnknownRecipeOutput(Map<String, Object> output) {
-        return output.containsKey("requested")
-                && output.containsKey("suggestions")
-                && output.containsKey("available");
+        return output.containsKey("requested") && output.containsKey("suggestions") && output.containsKey("available");
     }
 
-    private static String composeUnknownRecipeMessage(
-            @Nullable String requested, Map<String, Object> output) {
+    private static String composeUnknownRecipeMessage(@Nullable String requested, Map<String, Object> output) {
         @SuppressWarnings("unchecked")
         List<String> suggestions = (List<String>) output.getOrDefault("suggestions", List.of());
         @SuppressWarnings("unchecked")
         List<String> available = (List<String>) output.getOrDefault("available", List.of());
-        StringBuilder sb = new StringBuilder()
-                .append("Unknown recipe '").append(requested).append("'. ");
+        StringBuilder sb =
+                new StringBuilder().append("Unknown recipe '").append(requested).append("'. ");
         if (available.isEmpty()) {
             sb.append("No recipes are loaded in this project — omit `recipe` to ")
                     .append("let the selector route from `task`.");
@@ -486,7 +529,8 @@ public class ProcessSpawnTool implements Tool {
         if (!suggestions.isEmpty()) {
             sb.append("Did you mean: ").append(String.join(", ", suggestions)).append("? ");
         }
-        sb.append("Available: ").append(String.join(", ", available))
+        sb.append("Available: ")
+                .append(String.join(", ", available))
                 .append(". Use `recipe_list` for descriptions, or omit `recipe` ")
                 .append("to let the selector pick from `task`.");
         return sb.toString();
@@ -494,8 +538,7 @@ public class ProcessSpawnTool implements Tool {
 
     private @Nullable String resolveFallbackRecipe(ToolInvocationContext ctx) {
         String configured = settingService.getStringValueCascade(
-                ctx.tenantId(), ctx.projectId(), /*processId*/ null,
-                SETTING_FALLBACK_RECIPE);
+                ctx.tenantId(), ctx.projectId(), /*processId*/ null, SETTING_FALLBACK_RECIPE);
         if (configured == null) return DEFAULT_FALLBACK_RECIPE;
         String trimmed = configured.trim();
         if (trimmed.isEmpty()) return null;
@@ -522,7 +565,8 @@ public class ProcessSpawnTool implements Tool {
 
     private @Nullable String parentConnectionProfile(@Nullable String parentProcessId) {
         if (parentProcessId == null || parentProcessId.isBlank()) return null;
-        return thinkProcessService.findById(parentProcessId)
+        return thinkProcessService
+                .findById(parentProcessId)
                 .map(ThinkProcessDocument::getConnectionProfile)
                 .orElse(null);
     }
@@ -530,13 +574,12 @@ public class ProcessSpawnTool implements Tool {
     private ThinkProcessDocument resolveCaller(ToolInvocationContext ctx) {
         String pid = ctx.processId();
         if (pid == null || pid.isBlank()) {
-            throw new ToolException(
-                    "process_spawn in selector-routed mode must be invoked from a "
-                            + "running process (no processId in context)");
+            throw new ToolException("process_spawn in selector-routed mode must be invoked from a "
+                    + "running process (no processId in context)");
         }
-        return thinkProcessService.findById(pid)
-                .orElseThrow(() -> new ToolException(
-                        "calling process '" + pid + "' not found"));
+        return thinkProcessService
+                .findById(pid)
+                .orElseThrow(() -> new ToolException("calling process '" + pid + "' not found"));
     }
 
     private static @Nullable String normaliseRecipeParam(@Nullable String raw) {

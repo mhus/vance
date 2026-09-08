@@ -76,11 +76,14 @@ public final class LlmTraceRecorder {
                 seq = recordRequestMessage(service, process, engineName, turnId, seq, msg);
             }
             if (response != null) {
-                seq = recordResponse(service, process, engineName, turnId, seq, response, elapsedMs);
+                recordResponse(service, process, engineName, turnId, seq, response, elapsedMs);
             }
         } catch (RuntimeException e) {
-            LOG.warn("LlmTraceRecorder.record failed for process='{}' turn='{}': {}",
-                    process.getId(), turnId, e.toString());
+            LOG.warn(
+                    "LlmTraceRecorder.record failed for process='{}' turn='{}': {}",
+                    process.getId(),
+                    turnId,
+                    e.toString());
         }
     }
 
@@ -205,8 +208,7 @@ public final class LlmTraceRecorder {
         if (a.hasToolExecutionRequests()) {
             for (ToolExecutionRequest req : a.toolExecutionRequests()) {
                 if (sb.length() > 0) sb.append('\n');
-                sb.append("[tool-call ").append(req.name()).append("] ")
-                        .append(req.arguments());
+                sb.append("[tool-call ").append(req.name()).append("] ").append(req.arguments());
             }
         }
         return sb.toString();

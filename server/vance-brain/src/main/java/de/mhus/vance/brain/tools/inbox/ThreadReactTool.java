@@ -57,32 +57,46 @@ public class ThreadReactTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "threadId", Map.of(
-                            "type", "string",
-                            "description", "From inbox_list or a self-check finding."),
-                    "key", Map.of(
-                            "type", "string",
-                            "enum", List.copyOf(ALLOWED.keySet()),
-                            "description", "eyes = seen, nothing needed. thumbsup = agreed. "
-                                    + "white_check_mark = done. question = unclear to me. "
-                                    + "warning = there is a problem. hourglass = picked up, "
-                                    + "still running."),
-                    "messageId", Map.of(
-                            "type", "string",
-                            "description", "Optional: react to one contribution instead of "
-                                    + "the thread itself. Ids come from thread_get."),
-                    "on", Map.of(
-                            "type", "boolean",
-                            "description", "Omit or true to add it, false to take yours back.")),
+            "properties",
+                    Map.of(
+                            "threadId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "From inbox_list or a self-check finding."),
+                            "key",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.copyOf(ALLOWED.keySet()),
+                                            "description",
+                                            "eyes = seen, nothing needed. thumbsup = agreed. "
+                                                    + "white_check_mark = done. question = unclear to me. "
+                                                    + "warning = there is a problem. hourglass = picked up, "
+                                                    + "still running."),
+                            "messageId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional: react to one contribution instead of "
+                                                    + "the thread itself. Ids come from thread_get."),
+                            "on",
+                                    Map.of(
+                                            "type", "boolean",
+                                            "description", "Omit or true to add it, false to take yours back.")),
             "required", List.of("threadId", "key"));
 
     private final MaximegalonService threads;
     private final InboxToolSupport support;
 
-    @Override public String name() { return "thread_react"; }
+    @Override
+    public String name() {
+        return "thread_react";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Put one emoji reaction on an inbox thread or one of its contributions — the "
                 + "quiet way to tell the people on it what you did with it. A REACTION IS A "
                 + "RECEIPT, NOT A RESULT: it decides nothing, answers nothing, and notifies "
@@ -91,21 +105,41 @@ public class ThreadReactTool implements Tool {
                 + "a report.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return false; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("write");
+    }
+
+    @Override
+    public String searchHint() {
         return "Acknowledge an inbox thread with an emoji without writing a message";
     }
 
-    @Override public String troubleshootingHint() {
+    @Override
+    public String troubleshootingHint() {
         return "Only six keys are accepted, and they are shortcodes ('thumbsup'), not "
                 + "characters. Reacting never answers an ask and never notifies anyone.";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -124,9 +158,8 @@ public class ThreadReactTool implements Tool {
         // maySee, not mayDecide: reacting is taking part, not settling.
         MaximegalonDocument doc = support.loadVisible(tenantId, threadId, ctx);
 
-        MaximegalonDocument updated;
         try {
-            updated = threads.react(tenantId, doc.getId(), messageId, key, owner, on)
+            threads.react(tenantId, doc.getId(), messageId, key, owner, on)
                     .orElseThrow(() -> InboxToolSupport.notVisible(threadId));
         } catch (MaximegalonRuleException e) {
             if (MaximegalonRuleException.REACTION_LIMIT_REACHED.equals(e.getReason())) {
@@ -158,13 +191,13 @@ public class ThreadReactTool implements Tool {
         throw new ToolException("'" + key + "' is required");
     }
 
-    private static @org.jspecify.annotations.Nullable String optString(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String optString(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         if (raw instanceof String s && !s.isBlank()) {
             String trimmed = s.trim();
             return trimmed.length() > InboxReactRequest.MAX_KEY_CHARS
-                    ? trimmed.substring(0, InboxReactRequest.MAX_KEY_CHARS) : trimmed;
+                    ? trimmed.substring(0, InboxReactRequest.MAX_KEY_CHARS)
+                    : trimmed;
         }
         return null;
     }

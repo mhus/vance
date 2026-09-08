@@ -33,8 +33,7 @@ import tools.jackson.databind.ObjectMapper;
 public final class CardCodec {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final TypeReference<LinkedHashMap<String, Object>> JSON_MAP =
-            new TypeReference<>() {};
+    private static final TypeReference<LinkedHashMap<String, Object>> JSON_MAP = new TypeReference<>() {};
 
     private CardCodec() {
         // utility class
@@ -80,14 +79,12 @@ public final class CardCodec {
     private static final String MD_FENCE = "---";
 
     /** Counts GFM checkbox lines in a Markdown body. Group 1 = char. */
-    private static final Pattern CHECKBOX_LINE =
-            Pattern.compile("^\\s*[-*] \\[([ xX])] ", Pattern.MULTILINE);
+    private static final Pattern CHECKBOX_LINE = Pattern.compile("^\\s*[-*] \\[([ xX])] ", Pattern.MULTILINE);
 
     private static CardDocument parseMarkdown(String body) {
         String[] lines = body.split("\\R", -1);
         int cursor = 0;
         Map<String, String> values = new LinkedHashMap<>();
-        String kind = "";
 
         if (lines.length > 0 && MD_FENCE.equals(lines[0].trim())) {
             cursor = 1;
@@ -97,7 +94,8 @@ public final class CardCodec {
                 if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
                 int colon = trimmed.indexOf(':');
                 if (colon <= 0) continue;
-                values.put(trimmed.substring(0, colon).trim(),
+                values.put(
+                        trimmed.substring(0, colon).trim(),
                         trimmed.substring(colon + 1).trim());
             }
             if (cursor < lines.length && MD_FENCE.equals(lines[cursor].trim())) {
@@ -105,7 +103,7 @@ public final class CardCodec {
             }
         }
 
-        kind = values.remove("kind");
+        String kind = values.remove("kind");
         if (kind == null) kind = "";
 
         // Skip a blank line directly after the closing fence so the
@@ -121,8 +119,7 @@ public final class CardCodec {
         }
         // Drop a single trailing newline coming from the split — round-
         // trip cleaner that way.
-        while (bodyBuf.length() > 0
-                && bodyBuf.charAt(bodyBuf.length() - 1) == '\n') {
+        while (bodyBuf.length() > 0 && bodyBuf.charAt(bodyBuf.length() - 1) == '\n') {
             bodyBuf.setLength(bodyBuf.length() - 1);
         }
 
@@ -160,14 +157,18 @@ public final class CardCodec {
             // preserved verbatim in extra — emit it here so it round-trips
             // (the extra loop below skips it as a known field).
             out.append("estimate: ")
-                    .append(stringifyScalar(doc.extra().get("estimate"))).append('\n');
+                    .append(stringifyScalar(doc.extra().get("estimate")))
+                    .append('\n');
         }
         if (doc.blocked()) {
             out.append("blocked: true").append('\n');
         }
         for (Map.Entry<String, Object> e : doc.extra().entrySet()) {
             if (isKnownField(e.getKey())) continue;
-            out.append(e.getKey()).append(": ").append(stringifyScalar(e.getValue())).append('\n');
+            out.append(e.getKey())
+                    .append(": ")
+                    .append(stringifyScalar(e.getValue()))
+                    .append('\n');
         }
         out.append(MD_FENCE).append('\n');
         if (!doc.body().isEmpty()) {
@@ -237,14 +238,19 @@ public final class CardCodec {
         }
         return new CardDocument(
                 kind.isEmpty() ? "card" : kind,
-                title, priority, assignee, labels, dueDate,
-                estimate, blocked, bodyText, extra);
+                title,
+                priority,
+                assignee,
+                labels,
+                dueDate,
+                estimate,
+                blocked,
+                bodyText,
+                extra);
     }
 
     /** Markdown-specific lift: front-matter is flat strings, body is verbatim. */
-    private static CardDocument promoteFromValues(String kind,
-                                                  Map<String, String> values,
-                                                  String mdBody) {
+    private static CardDocument promoteFromValues(String kind, Map<String, String> values, String mdBody) {
         String title = values.getOrDefault("title", "");
         String priority = nullIfBlank(values.get("priority"));
         String assignee = nullIfBlank(values.get("assignee"));
@@ -273,14 +279,20 @@ public final class CardCodec {
         }
         return new CardDocument(
                 kind.isEmpty() ? "card" : kind,
-                title, priority, assignee, labels, dueDate,
-                estimate, blocked, mdBody, extra);
+                title,
+                priority,
+                assignee,
+                labels,
+                dueDate,
+                estimate,
+                blocked,
+                mdBody,
+                extra);
     }
 
     private static boolean isKnownField(String key) {
         return switch (key) {
-            case "kind", "title", "priority", "assignee", "labels",
-                 "dueDate", "estimate", "blocked", "body" -> true;
+            case "kind", "title", "priority", "assignee", "labels", "dueDate", "estimate", "blocked", "body" -> true;
             default -> false;
         };
     }
@@ -314,7 +326,7 @@ public final class CardCodec {
 
     /** Count GFM checkboxes in a card body. Returns {@code [total, done]}. */
     public static int[] countCheckboxes(String body) {
-        if (body == null || body.isEmpty()) return new int[]{0, 0};
+        if (body == null || body.isEmpty()) return new int[] {0, 0};
         int total = 0;
         int done = 0;
         Matcher m = CHECKBOX_LINE.matcher(body);
@@ -323,7 +335,7 @@ public final class CardCodec {
             char c = m.group(1).charAt(0);
             if (c == 'x' || c == 'X') done++;
         }
-        return new int[]{total, done};
+        return new int[] {total, done};
     }
 
     // ── Helpers ───────────────────────────────────────────────────
@@ -337,8 +349,11 @@ public final class CardCodec {
     private static @Nullable Double coerceDouble(@Nullable Object v) {
         if (v instanceof Number n) return n.doubleValue();
         if (v instanceof String s && !s.isBlank()) {
-            try { return Double.parseDouble(s.trim()); }
-            catch (NumberFormatException e) { return null; }
+            try {
+                return Double.parseDouble(s.trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
         }
         return null;
     }

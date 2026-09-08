@@ -11,17 +11,17 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.ToolException;
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -63,8 +63,7 @@ public class WorkbookAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        return WorkbookValidationResponse.from(
-                validationService.validate(tenant, projectId, path));
+        return WorkbookValidationResponse.from(validationService.validate(tenant, projectId, path));
     }
 
     @GetMapping("/brain/{tenant}/addon/workbook/scan")
@@ -81,8 +80,14 @@ public class WorkbookAppController {
         List<WorkbookPageView> pages = new ArrayList<>();
         for (WorkbookPage p : scan.pages()) {
             pages.add(new WorkbookPageView(
-                    p.doc().getId(), p.doc().getPath(), p.relativePath(), p.section(),
-                    p.title(), p.description(), p.icon(), p.sortIndex()));
+                    p.doc().getId(),
+                    p.doc().getPath(),
+                    p.relativePath(),
+                    p.section(),
+                    p.title(),
+                    p.description(),
+                    p.icon(),
+                    p.sortIndex()));
         }
 
         String indexPath = WorkbookFolderReader.resolveOutputPath(
@@ -93,9 +98,7 @@ public class WorkbookAppController {
         @Nullable String landingPageId = null;
         if (scan.config().landingPage() != null && !scan.config().landingPage().isBlank()) {
             String lp = scan.config().landingPage();
-            landingPagePath = lp.startsWith("/")
-                    ? lp.substring(1)
-                    : normalised + "/" + lp;
+            landingPagePath = lp.startsWith("/") ? lp.substring(1) : normalised + "/" + lp;
             landingPageId = resolveId(tenant, projectId, landingPagePath);
         }
 
@@ -136,28 +139,24 @@ public class WorkbookAppController {
         }
         String normalised = WorkbookFolderReader.normaliseFolder(folder);
         String section = sanitiseSegment(request.section());
-        String slug = sanitiseSegment(
-                request.slug() != null && !request.slug().isBlank()
-                        ? request.slug() : request.title());
+        String slug =
+                sanitiseSegment(request.slug() != null && !request.slug().isBlank() ? request.slug() : request.title());
         if (slug.isEmpty()) slug = "page";
 
-        String basePath = section.isEmpty()
-                ? normalised + "/" + slug
-                : normalised + "/" + section + "/" + slug;
+        String basePath = section.isEmpty() ? normalised + "/" + slug : normalised + "/" + section + "/" + slug;
         String path = uniquePath(tenant, projectId, basePath);
 
         DocumentDocument doc = workPageService.create(
-                tenant, projectId, path,
-                request.title(), request.description(),
-                List.of(),
-                currentUser(httpRequest));
+                tenant, projectId, path, request.title(), request.description(), List.of(), currentUser(httpRequest));
 
         String relativePath = doc.getPath().substring(normalised.length() + 1);
-        log.info("WorkbookAppController.createPage tenant='{}' folder='{}' path='{}'",
-                tenant, normalised, doc.getPath());
+        log.info(
+                "WorkbookAppController.createPage tenant='{}' folder='{}' path='{}'",
+                tenant,
+                normalised,
+                doc.getPath());
         return new WorkbookPageView(
-                doc.getId(), doc.getPath(), relativePath, section,
-                request.title(), request.description(), null, null);
+                doc.getId(), doc.getPath(), relativePath, section, request.title(), request.description(), null, null);
     }
 
     private String uniquePath(String tenant, String projectId, String basePath) {
@@ -222,8 +221,8 @@ public class WorkbookAppController {
         if (request == null) throw new ToolException("body is required");
 
         String normalised = WorkbookFolderReader.normaliseFolder(folder);
-        DocumentDocument doc = documentService.findById(id)
-                .orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
+        DocumentDocument doc =
+                documentService.findById(id).orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
         if (!doc.getPath().startsWith(normalised + "/")) {
             throw new ToolException("Page is not inside workbook '" + normalised + "'");
         }
@@ -239,16 +238,23 @@ public class WorkbookAppController {
         if (request.section() != null) {
             String newSection = sanitiseSegment(request.section());
             String leaf = doc.getPath().substring(doc.getPath().lastIndexOf('/') + 1);
-            String newPath = newSection.isEmpty()
-                    ? normalised + "/" + leaf
-                    : normalised + "/" + newSection + "/" + leaf;
+            String newPath =
+                    newSection.isEmpty() ? normalised + "/" + leaf : normalised + "/" + newSection + "/" + leaf;
             if (!newPath.equals(doc.getPath())) {
                 // Avoid clobbering an existing page at the destination.
                 if (documentService.findByPath(tenant, projectId, newPath).isPresent()) {
                     throw new ToolException("Target path already exists: '" + newPath + "'");
                 }
-                doc = documentService.update(
-                        id, null, null, null, newPath, null, null, null, null,
+                documentService.update(
+                        id,
+                        null,
+                        null,
+                        null,
+                        newPath,
+                        null,
+                        null,
+                        null,
+                        null,
                         DocumentService.WriterIdentity.of(currentUser(httpRequest), null, null),
                         actor(httpRequest));
             }
@@ -259,9 +265,14 @@ public class WorkbookAppController {
         for (WorkbookPage p : scan.pages()) {
             if (p.doc().getId().equals(id)) {
                 return new WorkbookPageView(
-                        p.doc().getId(), p.doc().getPath(), p.relativePath(),
-                        p.section(), p.title(), p.description(),
-                        p.icon(), p.sortIndex());
+                        p.doc().getId(),
+                        p.doc().getPath(),
+                        p.relativePath(),
+                        p.section(),
+                        p.title(),
+                        p.description(),
+                        p.icon(),
+                        p.sortIndex());
             }
         }
         throw new ToolException("Page disappeared after update id='" + id + "'");
@@ -282,16 +293,18 @@ public class WorkbookAppController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.DELETE);
         String normalised = WorkbookFolderReader.normaliseFolder(folder);
-        DocumentDocument doc = documentService.findById(id)
-                .orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
+        DocumentDocument doc =
+                documentService.findById(id).orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
         if (!doc.getPath().startsWith(normalised + "/")) {
             throw new ToolException("Page is not inside workbook '" + normalised + "'");
         }
-        documentService.trash(id,
-                DocumentService.WriterIdentity.of(currentUser(httpRequest), null, null),
-                actor(httpRequest));
-        log.info("WorkbookAppController.deletePage tenant='{}' folder='{}' path='{}'",
-                tenant, normalised, doc.getPath());
+        documentService.trash(
+                id, DocumentService.WriterIdentity.of(currentUser(httpRequest), null, null), actor(httpRequest));
+        log.info(
+                "WorkbookAppController.deletePage tenant='{}' folder='{}' path='{}'",
+                tenant,
+                normalised,
+                doc.getPath());
         return ResponseEntity.noContent().build();
     }
 
@@ -370,7 +383,9 @@ public class WorkbookAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        if (request == null || request.orderedIds() == null || request.orderedIds().isEmpty()) {
+        if (request == null
+                || request.orderedIds() == null
+                || request.orderedIds().isEmpty()) {
             return;
         }
         String normalised = WorkbookFolderReader.normaliseFolder(folder);
@@ -381,8 +396,7 @@ public class WorkbookAppController {
         for (String id : request.orderedIds()) {
             DocumentDocument doc = documentService.findById(id).orElse(null);
             if (doc == null || !doc.getPath().startsWith(normalised + "/")) continue;
-            patchFrontMatter(doc, new WorkbookUpdatePageRequest(null, null, idx), editorId,
-                    actor(httpRequest));
+            patchFrontMatter(doc, new WorkbookUpdatePageRequest(null, null, idx), editorId, actor(httpRequest));
             idx += step;
         }
     }
@@ -412,8 +426,8 @@ public class WorkbookAppController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.CREATE);
         String normalised = WorkbookFolderReader.normaliseFolder(folder);
-        DocumentDocument src = documentService.findById(id)
-                .orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
+        DocumentDocument src =
+                documentService.findById(id).orElseThrow(() -> new ToolException("Unknown page id='" + id + "'"));
         if (!src.getPath().startsWith(normalised + "/")) {
             throw new ToolException("Page is not inside workbook '" + normalised + "'");
         }
@@ -439,23 +453,25 @@ public class WorkbookAppController {
         String newBody = patchTitleSuffix(body, " (Copy)");
 
         DocumentDocument copy = documentService.createText(
-                tenant, projectId, newPath, null, null, newBody, currentUser(httpRequest),
-                actor(httpRequest));
+                tenant, projectId, newPath, null, null, newBody, currentUser(httpRequest), actor(httpRequest));
 
         // Re-scan to read the canonical view fields back (icon, section, …).
         WorkbookFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalised);
         for (WorkbookPage p : scan.pages()) {
             if (p.doc().getId().equals(copy.getId())) {
                 return new WorkbookPageView(
-                        p.doc().getId(), p.doc().getPath(), p.relativePath(),
-                        p.section(), p.title(), p.description(),
-                        p.icon(), p.sortIndex());
+                        p.doc().getId(),
+                        p.doc().getPath(),
+                        p.relativePath(),
+                        p.section(),
+                        p.title(),
+                        p.description(),
+                        p.icon(),
+                        p.sortIndex());
             }
         }
         String relativePath = copy.getPath().substring(normalised.length() + 1);
-        return new WorkbookPageView(
-                copy.getId(), copy.getPath(), relativePath, "",
-                copy.getTitle(), null, null, null);
+        return new WorkbookPageView(copy.getId(), copy.getPath(), relativePath, "", copy.getTitle(), null, null, null);
     }
 
     @SuppressWarnings("unchecked")
@@ -496,12 +512,14 @@ public class WorkbookAppController {
         if (request == null) throw new ToolException("body is required");
         String normalised = WorkbookFolderReader.normaliseFolder(folder);
         String manifestPath = normalised + "/_app.yaml";
-        DocumentDocument manifest = documentService.findByPath(tenant, projectId, manifestPath)
+        DocumentDocument manifest = documentService
+                .findByPath(tenant, projectId, manifestPath)
                 .orElseThrow(() -> new ToolException("No workbook manifest at '" + manifestPath + "'."));
 
         @Nullable String newLanding = null;
         if (request.pageId() != null && !request.pageId().isBlank()) {
-            DocumentDocument page = documentService.findById(request.pageId())
+            DocumentDocument page = documentService
+                    .findById(request.pageId())
                     .orElseThrow(() -> new ToolException("Unknown page id='" + request.pageId() + "'"));
             if (!page.getPath().startsWith(normalised + "/")) {
                 throw new ToolException("Page is not inside workbook '" + normalised + "'");
@@ -530,13 +548,11 @@ public class WorkbookAppController {
     private String patchManifestLanding(String body, @Nullable String newLanding) {
         // The manifest is pure YAML — no `---` front-matter wrapper.
         Object loaded = new Yaml().load(body);
-        Map<String, Object> root = loaded instanceof Map<?, ?> m
-                ? new LinkedHashMap<>((Map<String, Object>) m)
-                : new LinkedHashMap<>();
+        Map<String, Object> root =
+                loaded instanceof Map<?, ?> m ? new LinkedHashMap<>((Map<String, Object>) m) : new LinkedHashMap<>();
         Object wsRaw = root.get("workbook");
-        Map<String, Object> ws = wsRaw instanceof Map<?, ?> wm
-                ? new LinkedHashMap<>((Map<String, Object>) wm)
-                : new LinkedHashMap<>();
+        Map<String, Object> ws =
+                wsRaw instanceof Map<?, ?> wm ? new LinkedHashMap<>((Map<String, Object>) wm) : new LinkedHashMap<>();
         if (newLanding == null) ws.remove("landingPage");
         else ws.put("landingPage", newLanding);
         root.put("workbook", ws);
@@ -567,9 +583,7 @@ public class WorkbookAppController {
             if (!fromSection.equals(page.section())) continue;
             DocumentDocument doc = page.doc();
             String leaf = doc.getPath().substring(doc.getPath().lastIndexOf('/') + 1);
-            String newPath = toSection.isEmpty()
-                    ? normalised + "/" + leaf
-                    : normalised + "/" + toSection + "/" + leaf;
+            String newPath = toSection.isEmpty() ? normalised + "/" + leaf : normalised + "/" + toSection + "/" + leaf;
             if (newPath.equals(doc.getPath())) continue;
             // Refuse to clobber an unrelated page that already sits at
             // the destination path.
@@ -579,7 +593,15 @@ public class WorkbookAppController {
                 }
             });
             documentService.update(
-                    doc.getId(), null, null, null, newPath, null, null, null, null,
+                    doc.getId(),
+                    null,
+                    null,
+                    null,
+                    newPath,
+                    null,
+                    null,
+                    null,
+                    null,
                     DocumentService.WriterIdentity.of(editorId, null, null),
                     actor(httpRequest));
         }
@@ -602,12 +624,10 @@ public class WorkbookAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
-        DocumentService.ImageListing listing = documentService.listImages(
-                tenant, projectId, pathPrefix, query, size);
+        DocumentService.ImageListing listing = documentService.listImages(tenant, projectId, pathPrefix, query, size);
         List<WorkbookImageItem> items = new ArrayList<>(listing.items().size());
         for (DocumentService.ImageMatch m : listing.items()) {
-            items.add(new WorkbookImageItem(
-                    m.id(), m.path(), m.name(), m.mimeType()));
+            items.add(new WorkbookImageItem(m.id(), m.path(), m.name(), m.mimeType()));
         }
         return new WorkbookImageSearchResponse(items, listing.total());
     }
@@ -635,8 +655,7 @@ public class WorkbookAppController {
                 documentService.searchProjectDocuments(tenant, projectId, pathPrefix, query, size);
         List<WorkbookDocumentItem> items = new ArrayList<>(listing.items().size());
         for (DocumentService.DocumentMatch m : listing.items()) {
-            items.add(new WorkbookDocumentItem(
-                    m.id(), m.path(), m.title(), m.kind(), m.mimeType()));
+            items.add(new WorkbookDocumentItem(m.id(), m.path(), m.title(), m.kind(), m.mimeType()));
         }
         return new WorkbookDocumentSearchResponse(items, listing.total());
     }
@@ -668,10 +687,15 @@ public class WorkbookAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        formService.saveForm(tenant, projectId, doc,
+        formService.saveForm(
+                tenant,
+                projectId,
+                doc,
                 request != null ? request.records() : null,
                 request != null ? request.schema() : null,
-                saveScript, session, currentUser(httpRequest));
+                saveScript,
+                session,
+                currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -692,8 +716,12 @@ public class WorkbookAppController {
             throw new ToolException("form name must not be empty");
         }
         String configPath = formService.createForm(
-                tenant, projectId, WorkbookFolderReader.normaliseFolder(folder),
-                request.name(), request.title(), currentUser(httpRequest));
+                tenant,
+                projectId,
+                WorkbookFolderReader.normaliseFolder(folder),
+                request.name(),
+                request.title(),
+                currentUser(httpRequest));
         return new WorkbookFormCreateResponse(configPath);
     }
 
@@ -724,8 +752,13 @@ public class WorkbookAppController {
             HttpServletRequest httpRequest) {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
-        inputService.saveInput(tenant, projectId, doc,
-                request != null ? request.content() : null, saveScript, session,
+        inputService.saveInput(
+                tenant,
+                projectId,
+                doc,
+                request != null ? request.content() : null,
+                saveScript,
+                session,
                 currentUser(httpRequest));
         return ResponseEntity.noContent().build();
     }
@@ -741,8 +774,7 @@ public class WorkbookAppController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String path = inputService.createInput(
-                tenant, projectId, WorkbookFolderReader.normaliseFolder(folder),
-                name, currentUser(httpRequest));
+                tenant, projectId, WorkbookFolderReader.normaliseFolder(folder), name, currentUser(httpRequest));
         return new WorkbookInputCreateResponse(path);
     }
 
@@ -768,20 +800,17 @@ public class WorkbookAppController {
 
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         String normalised = WorkbookFolderReader.normaliseFolder(folder);
-        VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                tenant, projectId, normalised, null, null);
+        VanceApplication.RefreshContext rc =
+                new VanceApplication.RefreshContext(tenant, projectId, normalised, null, null);
         VanceApplication.RefreshResult result = application.refresh(rc);
 
-        VanceApplication.ArtefactResult index = result.artefacts().isEmpty()
-                ? null : result.artefacts().get(0);
+        VanceApplication.ArtefactResult index =
+                result.artefacts().isEmpty() ? null : result.artefacts().get(0);
         int pages = 0;
         if (index != null && index.stats() != null && index.stats().get("pageCount") instanceof Number n) {
             pages = n.intValue();
         }
         return new WorkbookRebuildResponse(
-                normalised,
-                index != null ? index.path() : "",
-                index != null ? index.markdownLink() : null,
-                pages);
+                normalised, index != null ? index.path() : "", index != null ? index.markdownLink() : null, pages);
     }
 }

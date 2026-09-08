@@ -390,7 +390,6 @@ public class FrankieEngine implements ThinkEngine {
 
             // 2) Build the LLM bundle + initial message list.
             EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, NAME);
-            AiChat aiChat = bundle.chat();
             String modelAlias = bundle.primaryConfig().provider() + ":"
                     + bundle.primaryConfig().modelName();
 
@@ -458,7 +457,7 @@ public class FrankieEngine implements ThinkEngine {
             // Floored at 300s in ModelInfo#scaledStreamTimeoutSeconds, so
             // this can only lengthen the budget. See planning/shooty.md.
             int estInputTokens = memoryCompactionService.estimateTokens(messages);
-            aiChat = engineChatFactory
+            AiChat aiChat = engineChatFactory
                     .forProcess(
                             process,
                             ctx,

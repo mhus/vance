@@ -1,12 +1,12 @@
 package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import java.time.Duration;
@@ -94,8 +94,7 @@ public class UrsaHookDispatcher implements DisposableBean {
 
     /** Entry point — exposed for direct invocation in tests. */
     public void dispatch(UrsaHookFireableEvent event) {
-        List<UrsaHookDef> defs = registry.hooksFor(
-                event.tenantId(), event.projectId(), event.event());
+        List<UrsaHookDef> defs = registry.hooksFor(event.tenantId(), event.projectId(), event.event());
         if (defs.isEmpty()) return;
 
         for (UrsaHookDef def : defs) {
@@ -106,10 +105,12 @@ public class UrsaHookDispatcher implements DisposableBean {
 
     private void runOne(UrsaHookDef def, UrsaHookFireableEvent event) {
         String correlationId = "hook_" + UUID.randomUUID();
-        Instant firedAt = event.firedAt() == null ? Instant.now() : event.firedAt();
 
         megadodoService.hookRunStarted(
-                event.tenantId(), event.projectId(), def.name(), correlationId,
+                event.tenantId(),
+                event.projectId(),
+                def.name(),
+                correlationId,
                 def.event().wireName());
 
         // Merge the lifecycle-event payload into the action's params
@@ -126,13 +127,20 @@ public class UrsaHookDispatcher implements DisposableBean {
         if (action instanceof TriggerAction.Recipe) {
             String parentSessionId = resolveSystemSession(event, def, runAs);
             ctx = TriggerContext.sessioned(
-                    event.tenantId(), event.projectId(),
-                    runAs, correlationId, def.sourceKey(),
-                    parentSessionId, /*parentProcessId*/ null);
+                    event.tenantId(),
+                    event.projectId(),
+                    runAs,
+                    correlationId,
+                    def.sourceKey(),
+                    parentSessionId, /*parentProcessId*/
+                    null);
         } else {
             ctx = TriggerContext.standalone(
-                    event.tenantId(), event.projectId(),
-                    runAs, correlationId, def.sourceKey(),
+                    event.tenantId(),
+                    event.projectId(),
+                    runAs,
+                    correlationId,
+                    def.sourceKey(),
                     /*parentProcessId*/ null);
         }
 
@@ -141,29 +149,33 @@ public class UrsaHookDispatcher implements DisposableBean {
         try {
             result = executeBounded(action, ctx, def);
         } catch (RuntimeException ex) {
-            log.warn("hook '{}' raised an unexpected exception during dispatch: {}",
-                    def.sourceKey(), ex.toString(), ex);
-            result = ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
+            log.warn(
+                    "hook '{}' raised an unexpected exception during dispatch: {}", def.sourceKey(), ex.toString(), ex);
+            result = ActionResult.failure(
+                    ActionOutcome.TECHNICAL_ERROR,
                     ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
                     null);
         }
         Duration duration = Duration.between(start, Instant.now());
 
         ActionOutcome outcome = result.outcome();
-        boolean succeeded =
-                outcome == ActionOutcome.SCHEDULED || outcome == ActionOutcome.SUCCESS;
+        boolean succeeded = outcome == ActionOutcome.SCHEDULED || outcome == ActionOutcome.SUCCESS;
 
         megadodoService.hookRunFinished(
-                event.tenantId(), event.projectId(), def.name(), correlationId,
+                event.tenantId(),
+                event.projectId(),
+                def.name(),
+                correlationId,
                 succeeded,
                 result.errorMessage() == null ? outcome.name().toLowerCase() : result.errorMessage());
 
         if (!succeeded) {
-            log.info("hook '{}' FAILED outcome={} error={}",
-                    def.sourceKey(), outcome, result.errorMessage());
+            log.info("hook '{}' FAILED outcome={} error={}", def.sourceKey(), outcome, result.errorMessage());
         } else {
-            log.debug("hook '{}' {} durationMs={}{}",
-                    def.sourceKey(), outcome,
+            log.debug(
+                    "hook '{}' {} durationMs={}{}",
+                    def.sourceKey(),
+                    outcome,
                     duration.toMillis(),
                     result.spawnedId() == null ? "" : " spawnedId=" + result.spawnedId());
         }
@@ -177,11 +189,10 @@ public class UrsaHookDispatcher implements DisposableBean {
      * its userId field; Inbox-routing and downstream notifications
      * resolve from there.
      */
-    private String resolveSystemSession(
-            UrsaHookFireableEvent event, UrsaHookDef def, @Nullable String runAs) {
+    private String resolveSystemSession(UrsaHookFireableEvent event, UrsaHookDef def, @Nullable String runAs) {
         String displayName = "_hook_" + def.event().wireName() + "_" + def.name();
-        return sessionService.findSystemSession(
-                        event.tenantId(), event.projectId(), displayName)
+        return sessionService
+                .findSystemSession(event.tenantId(), event.projectId(), displayName)
                 .map(SessionDocument::getSessionId)
                 .orElseGet(() -> {
                     SessionDocument created = sessionService.create(
@@ -194,8 +205,12 @@ public class UrsaHookDispatcher implements DisposableBean {
                             /*clientName*/ null,
                             /*system*/ true);
                     sessionService.markBootstrapped(created.getSessionId());
-                    log.info("Hook system-session created project='{}' name='{}' sessionId='{}' runAs='{}'",
-                            event.projectId(), displayName, created.getSessionId(), runAs);
+                    log.info(
+                            "Hook system-session created project='{}' name='{}' sessionId='{}' runAs='{}'",
+                            event.projectId(),
+                            displayName,
+                            created.getSessionId(),
+                            runAs);
                     return created.getSessionId();
                 });
     }
@@ -224,24 +239,27 @@ public class UrsaHookDispatcher implements DisposableBean {
      */
     @SuppressWarnings("unchecked")
     private static TriggerAction withEventInParams(
-            TriggerAction action,
-            @Nullable Map<String, @Nullable Object> eventPayload) {
+            TriggerAction action, @Nullable Map<String, @Nullable Object> eventPayload) {
         Map<String, Object> merged = new LinkedHashMap<>();
         if (action.params() != null) merged.putAll(action.params());
         if (eventPayload != null && !eventPayload.isEmpty()) {
             merged.put("event", new LinkedHashMap<>(eventPayload));
         }
         return switch (action) {
-            case TriggerAction.Recipe r -> new TriggerAction.Recipe(
-                    r.recipe(), r.processName(),
-                    r.title(), r.goal(), r.inheritContextLevel(),
-                    r.connectionProfile(), r.initialMessage(),
-                    merged, r.runAs());
-            case TriggerAction.Script s -> new TriggerAction.Script(
-                    s.source(), s.dirName(), s.path(),
-                    s.timeoutSeconds(), merged, s.runAs());
-            case TriggerAction.Workflow w -> new TriggerAction.Workflow(
-                    w.workflow(), merged, w.runAs());
+            case TriggerAction.Recipe r ->
+                new TriggerAction.Recipe(
+                        r.recipe(),
+                        r.processName(),
+                        r.title(),
+                        r.goal(),
+                        r.inheritContextLevel(),
+                        r.connectionProfile(),
+                        r.initialMessage(),
+                        merged,
+                        r.runAs());
+            case TriggerAction.Script s ->
+                new TriggerAction.Script(s.source(), s.dirName(), s.path(), s.timeoutSeconds(), merged, s.runAs());
+            case TriggerAction.Workflow w -> new TriggerAction.Workflow(w.workflow(), merged, w.runAs());
         };
     }
 
@@ -259,18 +277,19 @@ public class UrsaHookDispatcher implements DisposableBean {
         if (to == null || to.isZero() || to.isNegative()) {
             return actionRegistry.execute(action, ctx, TriggerKind.HOOK);
         }
-        Future<ActionResult> fut = timeoutPool.submit(
-                () -> actionRegistry.execute(action, ctx, TriggerKind.HOOK));
+        Future<ActionResult> fut = timeoutPool.submit(() -> actionRegistry.execute(action, ctx, TriggerKind.HOOK));
         try {
             return fut.get(to.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException te) {
             fut.cancel(true);
-            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
-                    "hook exceeded its timeout of " + to.toMillis() + "ms", null);
+            return ActionResult.failure(
+                    ActionOutcome.TECHNICAL_ERROR, "hook exceeded its timeout of " + to.toMillis() + "ms", null);
         } catch (ExecutionException ee) {
             Throwable c = ee.getCause() != null ? ee.getCause() : ee;
-            return ActionResult.failure(ActionOutcome.TECHNICAL_ERROR,
-                    c.getMessage() == null ? c.getClass().getSimpleName() : c.getMessage(), null);
+            return ActionResult.failure(
+                    ActionOutcome.TECHNICAL_ERROR,
+                    c.getMessage() == null ? c.getClass().getSimpleName() : c.getMessage(),
+                    null);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             fut.cancel(true);

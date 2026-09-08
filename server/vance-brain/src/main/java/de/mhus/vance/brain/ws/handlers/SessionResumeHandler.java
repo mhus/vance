@@ -1,16 +1,17 @@
 package de.mhus.vance.brain.ws.handlers;
 
+import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.thinkprocess.ActiveProcessRef;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.SessionResumeResponse;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
@@ -25,7 +26,6 @@ import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import de.mhus.vance.api.session.SessionStatus;
 import java.io.IOException;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -86,51 +86,53 @@ public class SessionResumeHandler implements WsHandler {
 
         Optional<SessionDocument> existing = sessionService.findBySessionId(request.getSessionId());
         if (existing.isEmpty() || existing.get().getStatus() == SessionStatus.CLOSED) {
-            sender.sendError(wsSession, envelope, 404,
-                    "Session '" + request.getSessionId() + "' not found");
+            sender.sendError(wsSession, envelope, 404, "Session '" + request.getSessionId() + "' not found");
             return;
         }
         SessionDocument doc = existing.get();
         if (!doc.getTenantId().equals(ctx.getTenantId())) {
-            sender.sendError(wsSession, envelope, 403,
-                    "Session '" + request.getSessionId() + "' belongs to another tenant");
+            sender.sendError(
+                    wsSession, envelope, 403, "Session '" + request.getSessionId() + "' belongs to another tenant");
             return;
         }
         // Same access rule as the REST surfaces — kept in one place so the
         // call sites cannot drift apart (that drift is what let
         // SessionProcessController hand out foreign transcripts).
         if (!SessionAccess.mayAccess(doc, ctx.getUserId())) {
-            sender.sendError(wsSession, envelope, 403,
-                    "Session '" + request.getSessionId() + "' belongs to another user");
+            sender.sendError(
+                    wsSession, envelope, 403, "Session '" + request.getSessionId() + "' belongs to another user");
             return;
         }
         // Being allowed in is not the same as owning it: only the owner
         // takes the bind, sets the session profile and resumes engines.
         // A guest on an allowMultipleClients session gets neither.
         boolean isOwner = doc.getUserId().equals(ctx.getUserId());
-        authority.enforce(ctx,
-                new Resource.Session(doc.getTenantId(), doc.getProjectId(), doc.getSessionId()),
-                Action.START);
+        authority.enforce(
+                ctx, new Resource.Session(doc.getTenantId(), doc.getProjectId(), doc.getSessionId()), Action.START);
         // Eligibility before claiming — see SessionCreateHandler. Capacity is
         // not asked here either: a resume that fails over a soft score cap is
         // worse than a slightly overbooked pod.
         if (!placementService.isEligibleHere(doc.getTenantId(), doc.getProjectId())) {
-            Optional<String> owner = projectManager.findProjectEndpoint(
-                    doc.getTenantId(), doc.getProjectId());
-            sender.sendError(wsSession, envelope, 409, owner
-                    .map(endpoint -> "Session '" + doc.getSessionId() + "' belongs to project '"
-                            + doc.getProjectId() + "' on another brain process ("
-                            + endpoint + ")")
-                    .orElse("Session '" + doc.getSessionId() + "' belongs to project '"
-                            + doc.getProjectId() + "', which cannot run on this brain "
-                            + "process and is waiting for a matching one "
-                            + "(placement_pending)"));
+            Optional<String> owner = projectManager.findProjectEndpoint(doc.getTenantId(), doc.getProjectId());
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    409,
+                    owner.map(endpoint -> "Session '" + doc.getSessionId() + "' belongs to project '"
+                                    + doc.getProjectId() + "' on another brain process ("
+                                    + endpoint + ")")
+                            .orElse("Session '" + doc.getSessionId() + "' belongs to project '"
+                                    + doc.getProjectId() + "', which cannot run on this brain "
+                                    + "process and is waiting for a matching one "
+                                    + "(placement_pending)"));
             return;
         }
-        ClaimResult claim = projectManager.claimForLocalPodOrRedirect(
-                doc.getTenantId(), doc.getProjectId());
+        ClaimResult claim = projectManager.claimForLocalPodOrRedirect(doc.getTenantId(), doc.getProjectId());
         if (claim instanceof ClaimResult.Redirect redirect) {
-            sender.sendError(wsSession, envelope, 409,
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    409,
                     "Session '" + doc.getSessionId() + "' belongs to project '"
                             + doc.getProjectId() + "' on another brain process ("
                             + redirect.endpoint() + ")");
@@ -160,13 +162,16 @@ public class SessionResumeHandler implements WsHandler {
         // conflict — fall through and bind, so plain network reconnects
         // never prompt.
         if (isOwner && !request.isTakeover()) {
-            boolean liveSibling = connectionRegistry.findForUser(doc.getSessionId(), ctx.getUserId())
+            boolean liveSibling = connectionRegistry
+                    .findForUser(doc.getSessionId(), ctx.getUserId())
                     .map(WebSocketSession::isOpen)
                     .orElse(false);
             if (liveSibling) {
-                sender.sendError(wsSession, envelope, 409,
-                        "Session '" + doc.getSessionId()
-                                + "' is open in another connection of the same user",
+                sender.sendError(
+                        wsSession,
+                        envelope,
+                        409,
+                        "Session '" + doc.getSessionId() + "' is open in another connection of the same user",
                         de.mhus.vance.api.ws.ErrorData.REASON_SESSION_BOUND_ELSEWHERE);
                 return;
             }
@@ -184,18 +189,16 @@ public class SessionResumeHandler implements WsHandler {
         //    broadcast paths reach it.
         boolean bound;
         if (isOwner) {
-            bound = sessionService.tryBindWithUserTakeover(
-                    doc.getSessionId(), ctx.getEditorId());
+            bound = sessionService.tryBindWithUserTakeover(doc.getSessionId(), ctx.getEditorId());
             if (!bound) {
-                sender.sendError(wsSession, envelope, 409,
-                        "Session '" + doc.getSessionId() + "' is closed or archived");
+                sender.sendError(
+                        wsSession, envelope, 409, "Session '" + doc.getSessionId() + "' is closed or archived");
                 return;
             }
         } else {
             // Best-effort: gladly take the bind if nobody holds it.
             // Failure is fine — we'll attach as a secondary participant.
-            bound = sessionService.tryBind(
-                    doc.getSessionId(), ctx.getEditorId());
+            sessionService.tryBind(doc.getSessionId(), ctx.getEditorId());
         }
 
         ctx.bindSession(doc);
@@ -211,9 +214,11 @@ public class SessionResumeHandler implements WsHandler {
             // resumes, so this should be unreachable for a private session.
             // If we do land here, fall back to a 409 so the client knows
             // not to retry blindly.
-            sender.sendError(wsSession, envelope, 409,
-                    "Session '" + doc.getSessionId()
-                            + "' is private and already held by another user");
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    409,
+                    "Session '" + doc.getSessionId() + "' is private and already held by another user");
             ctx.unbindSession();
             return;
         }
@@ -229,13 +234,14 @@ public class SessionResumeHandler implements WsHandler {
         // surface) and must not wake suspended engines (only the owner
         // controls suspend/resume).
         if (isOwner) {
-            thinkProcessService.updateBoundProfileForSession(
-                    doc.getSessionId(), ctx.getProfile());
+            thinkProcessService.updateBoundProfileForSession(doc.getSessionId(), ctx.getProfile());
             try {
                 sessionLifecycle.resumeSessionCascade(doc.getSessionId(), processEventEmitter);
             } catch (RuntimeException e) {
-                log.warn("Resume cascade failed during session-resume sessionId='{}': {}",
-                        doc.getSessionId(), e.toString());
+                log.warn(
+                        "Resume cascade failed during session-resume sessionId='{}': {}",
+                        doc.getSessionId(),
+                        e.toString());
             }
         }
         inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
@@ -247,7 +253,8 @@ public class SessionResumeHandler implements WsHandler {
         // trip — same convenience SessionBootstrapResponse provides.
         String chatProcessName = null;
         if (doc.getChatProcessId() != null && !doc.getChatProcessId().isBlank()) {
-            chatProcessName = thinkProcessService.findById(doc.getChatProcessId())
+            chatProcessName = thinkProcessService
+                    .findById(doc.getChatProcessId())
                     .map(p -> p.getName())
                     .orElse(null);
         }

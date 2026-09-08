@@ -60,16 +60,24 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class OdtReportRenderer implements MarkdownReportRenderer {
 
-    private static final List<Extension> EXTENSIONS = List.of(
-            TablesExtension.create());
+    private static final List<Extension> EXTENSIONS = List.of(TablesExtension.create());
 
-    private final Parser parser = Parser.builder()
-            .extensions(EXTENSIONS)
-            .build();
+    private final Parser parser = Parser.builder().extensions(EXTENSIONS).build();
 
-    @Override public String format()        { return "odt"; }
-    @Override public String mimeType()      { return "application/vnd.oasis.opendocument.text"; }
-    @Override public String fileExtension() { return "odt"; }
+    @Override
+    public String format() {
+        return "odt";
+    }
+
+    @Override
+    public String mimeType() {
+        return "application/vnd.oasis.opendocument.text";
+    }
+
+    @Override
+    public String fileExtension() {
+        return "odt";
+    }
 
     @Override
     public byte[] render(MarkdownReportContext context) {
@@ -81,8 +89,7 @@ public class OdtReportRenderer implements MarkdownReportRenderer {
 
             if (context.title() != null && !context.title().isBlank()) {
                 OdfTextHeading h = new OdfTextHeading(
-                        (org.odftoolkit.odfdom.pkg.OdfFileDom) root.getOwnerDocument(),
-                        "Title", context.title());
+                        (org.odftoolkit.odfdom.pkg.OdfFileDom) root.getOwnerDocument(), "Title", context.title());
                 root.appendChild(h);
             }
             applyCoreProperties(doc, context);
@@ -93,8 +100,7 @@ public class OdtReportRenderer implements MarkdownReportRenderer {
             doc.save(out);
             return out.toByteArray();
         } catch (Exception e) {
-            throw new ToolException(
-                    "ODT rendering failed: " + e.getMessage());
+            throw new ToolException("ODT rendering failed: " + e.getMessage());
         }
     }
 
@@ -111,8 +117,7 @@ public class OdtReportRenderer implements MarkdownReportRenderer {
 
     private static void applyCoreProperties(OdfTextDocument doc, MarkdownReportContext context) {
         try {
-            var meta = new org.odftoolkit.odfdom.incubator.meta.OdfOfficeMeta(
-                    doc.getMetaDom());
+            var meta = new org.odftoolkit.odfdom.incubator.meta.OdfOfficeMeta(doc.getMetaDom());
             if (context.title() != null && !context.title().isBlank()) {
                 meta.setTitle(context.title());
             }
@@ -149,8 +154,7 @@ public class OdtReportRenderer implements MarkdownReportRenderer {
         public void visit(Heading h) {
             int level = Math.max(1, Math.min(6, h.getLevel()));
             String text = plaintextOf(h);
-            OdfTextHeading heading = new OdfTextHeading(
-                    contentDom, "Heading_20_" + level, text);
+            OdfTextHeading heading = new OdfTextHeading(contentDom, "Heading_20_" + level, text);
             root.appendChild(heading);
             currentParagraph = null;
         }
@@ -162,7 +166,6 @@ public class OdtReportRenderer implements MarkdownReportRenderer {
             // recurse here. Top-level paragraphs append fresh.
             OdfTextParagraph par = new OdfTextParagraph(contentDom);
             root.appendChild(par);
-            currentParagraph = par;
             par.addContent(plaintextOf(p));
             currentParagraph = null;
         }
@@ -322,8 +325,7 @@ public class OdtReportRenderer implements MarkdownReportRenderer {
             // -off as the DOCX renderer.
             String text = plaintextOf(link);
             String dest = link.getDestination();
-            String full = (dest != null && !dest.isBlank())
-                    ? text + " (" + dest + ")" : text;
+            String full = (dest != null && !dest.isBlank()) ? text + " (" + dest + ")" : text;
             if (currentParagraph == null) {
                 currentParagraph = new OdfTextParagraph(contentDom);
                 root.appendChild(currentParagraph);
@@ -331,12 +333,23 @@ public class OdtReportRenderer implements MarkdownReportRenderer {
             currentParagraph.addContent(full);
         }
 
-        @Override public void visit(Emphasis e)        { visitChildren(e); }
-        @Override public void visit(StrongEmphasis s)  { visitChildren(s); }
-        @Override public void visit(Code c) {
+        @Override
+        public void visit(Emphasis e) {
+            visitChildren(e);
+        }
+
+        @Override
+        public void visit(StrongEmphasis s) {
+            visitChildren(s);
+        }
+
+        @Override
+        public void visit(Code c) {
             if (currentParagraph != null) currentParagraph.addContent(c.getLiteral());
         }
-        @Override public void visit(SoftLineBreak b) {
+
+        @Override
+        public void visit(SoftLineBreak b) {
             if (currentParagraph != null) currentParagraph.addContent(" ");
         }
 
@@ -346,9 +359,20 @@ public class OdtReportRenderer implements MarkdownReportRenderer {
         private static String plaintextOf(Node node) {
             StringBuilder sb = new StringBuilder();
             node.accept(new AbstractVisitor() {
-                @Override public void visit(Text t)          { sb.append(t.getLiteral()); }
-                @Override public void visit(Code c)          { sb.append(c.getLiteral()); }
-                @Override public void visit(SoftLineBreak b) { sb.append(' '); }
+                @Override
+                public void visit(Text t) {
+                    sb.append(t.getLiteral());
+                }
+
+                @Override
+                public void visit(Code c) {
+                    sb.append(c.getLiteral());
+                }
+
+                @Override
+                public void visit(SoftLineBreak b) {
+                    sb.append(' ');
+                }
             });
             return sb.toString();
         }

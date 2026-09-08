@@ -18,7 +18,6 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -92,8 +91,7 @@ public class ProjectLifecycleService {
      * provider or an external governor — {@code ifAvailable} makes the seed a
      * no-op there. See {@code planning/permission-system-concept.md} §7.0.
      */
-    private final ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap>
-            permissionBootstrapProvider;
+    private final ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider;
 
     /**
      * Create a new project and bring it to RUNNING in one shot —
@@ -123,8 +121,7 @@ public class ProjectLifecycleService {
             @Nullable List<String> teamIds,
             ProjectKind kind,
             @Nullable String createdBy) {
-        ProjectDocument created =
-                projectService.create(tenantId, name, title, projectGroupId, teamIds, kind);
+        ProjectDocument created = projectService.create(tenantId, name, title, projectGroupId, teamIds, kind);
         // Where it runs is the placement service's call — local-first when this
         // pod has room, otherwise the least-loaded pod that does. HOMELESS and
         // podless projects short-circuit to a local bring inside it.
@@ -138,18 +135,21 @@ public class ProjectLifecycleService {
             // state instead of an error, or a correctly refused selector reads
             // as a broken create
             // (planning/project-placement-labels.md §7).
-            log.info("Project '{}/{}' created but not placed ({}) — waiting for a matching pod",
-                    tenantId, name, e.getGap());
+            log.info(
+                    "Project '{}/{}' created but not placed ({}) — waiting for a matching pod",
+                    tenantId,
+                    name,
+                    e.getGap());
         }
         // Re-read: the bring behind place() moved the lease and the status.
-        ProjectDocument saved = projectService.findByTenantAndName(tenantId, name)
-                .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
-                        "Project '" + name + "' vanished during create"));
+        ProjectDocument saved = projectService
+                .findByTenantAndName(tenantId, name)
+                .orElseThrow(() ->
+                        new ProjectService.ProjectNotFoundException("Project '" + name + "' vanished during create"));
         // Seed the creator as PROJECT-ADMIN so they can manage the project
         // they just made. No-op unless a grant-storing provider is loaded.
         if (createdBy != null && !createdBy.isBlank() && kind != ProjectKind.SYSTEM) {
-            permissionBootstrapProvider.ifAvailable(
-                    pb -> pb.grantProjectAdmin(tenantId, saved.getName(), createdBy));
+            permissionBootstrapProvider.ifAvailable(pb -> pb.grantProjectAdmin(tenantId, saved.getName(), createdBy));
         }
         return saved;
     }
@@ -169,10 +169,10 @@ public class ProjectLifecycleService {
      * on the worker's Home Pod.
      */
     public BootstrapResult bootstrapChat(BootstrapChatRequest req) {
-        ProjectDocument project = projectService.findByTenantAndName(req.tenantId(), req.projectName())
+        ProjectDocument project = projectService
+                .findByTenantAndName(req.tenantId(), req.projectName())
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
-                        "Project '" + req.projectName() + "' not found in tenant '"
-                                + req.tenantId() + "'"));
+                        "Project '" + req.projectName() + "' not found in tenant '" + req.tenantId() + "'"));
 
         SessionDocument session = sessionService.create(
                 req.tenantId(),
@@ -183,7 +183,8 @@ public class ProjectLifecycleService {
                 req.clientVersion(),
                 req.clientName());
 
-        ThinkProcessDocument chat = chatBootstrapperProvider.getObject()
+        ThinkProcessDocument chat = chatBootstrapperProvider
+                .getObject()
                 .ensureChatProcess(session, req.parentProcessId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Chat-process bootstrap failed for session '" + session.getSessionId() + "'"));
@@ -192,21 +193,22 @@ public class ProjectLifecycleService {
             PendingMessageDocument msg = PendingMessageDocument.builder()
                     .type(PendingMessageType.USER_CHAT_INPUT)
                     .at(Instant.now())
-                    .fromUser(req.senderProcessId() == null
-                            ? req.userId()
-                            : "process:" + req.senderProcessId())
+                    .fromUser(req.senderProcessId() == null ? req.userId() : "process:" + req.senderProcessId())
                     .content(req.initialPrompt())
                     .build();
-            boolean ok = messageRouterProvider.getObject()
-                    .dispatch(req.senderProcessId(), chat.getId(), msg);
+            boolean ok = messageRouterProvider.getObject().dispatch(req.senderProcessId(), chat.getId(), msg);
             if (!ok) {
                 log.warn("bootstrapChat: initialPrompt dispatch failed for chat='{}'", chat.getId());
             }
         }
 
-        log.info("bootstrapChat: tenant='{}' project='{}' session='{}' chat='{}' parent='{}' withPrompt={}",
-                req.tenantId(), project.getName(), session.getSessionId(),
-                chat.getId(), req.parentProcessId(),
+        log.info(
+                "bootstrapChat: tenant='{}' project='{}' session='{}' chat='{}' parent='{}' withPrompt={}",
+                req.tenantId(),
+                project.getName(),
+                session.getSessionId(),
+                chat.getId(),
+                req.parentProcessId(),
                 req.initialPrompt() != null);
         return new BootstrapResult(project, session, chat);
     }
@@ -238,10 +240,7 @@ public class ProjectLifecycleService {
             @Nullable String senderProcessId) {}
 
     /** Triple of artefacts {@link #bootstrapChat(BootstrapChatRequest)} produces. */
-    public record BootstrapResult(
-            ProjectDocument project,
-            SessionDocument session,
-            ThinkProcessDocument chatProcess) {}
+    public record BootstrapResult(ProjectDocument project, SessionDocument session, ThinkProcessDocument chatProcess) {}
 
     /**
      * Move a project onto this pod: take the lease, transition to RECOVERING,
@@ -275,11 +274,9 @@ public class ProjectLifecycleService {
             return bringPodless(tenantId, projectName);
         }
         ProjectDocument doc = projectManager.claimForLocalPod(tenantId, projectName);
-        if (doc.getStatus() == ProjectStatus.RUNNING
-                && activationRegistry.isActive(tenantId, projectName)) {
+        if (doc.getStatus() == ProjectStatus.RUNNING && activationRegistry.isActive(tenantId, projectName)) {
             // Already up *on this pod*: lease refreshed, nothing to do.
-            log.debug("Project '{}/{}' already active here — lease refreshed",
-                    tenantId, projectName);
+            log.debug("Project '{}/{}' already active here — lease refreshed", tenantId, projectName);
             return doc;
         }
         // Bring = the project is coming online on *this* pod. No client can be
@@ -290,16 +287,18 @@ public class ProjectLifecycleService {
         // covers every path: self-pull, distributor, locator, direct-spawn.
         long unbound = sessionService.unbindAllForProjects(List.of(projectName));
         if (unbound > 0) {
-            log.info("Project '{}/{}' bring: cleared {} stale session binding(s)",
-                    tenantId, projectName, unbound);
+            log.info("Project '{}/{}' bring: cleared {} stale session binding(s)", tenantId, projectName, unbound);
         }
         ProjectStatus from = doc.getStatus();
-        doc = projectService.transitionStatus(tenantId, projectName, from, ProjectStatus.RECOVERING);
+        projectService.transitionStatus(tenantId, projectName, from, ProjectStatus.RECOVERING);
         try {
             workspaceService.init(tenantId, projectName);
         } catch (RuntimeException e) {
-            log.error("Workspace init failed for '{}/{}' (status remains RECOVERING): {}",
-                    tenantId, projectName, e.toString());
+            log.error(
+                    "Workspace init failed for '{}/{}' (status remains RECOVERING): {}",
+                    tenantId,
+                    projectName,
+                    e.toString());
             throw e;
         }
         ensureProjectRag(tenantId, projectName);
@@ -308,22 +307,20 @@ public class ProjectLifecycleService {
         // the project un-activated and the next bring retries the whole pass
         // rather than short-circuiting on a half-started project.
         activationRegistry.activate(tenantId, projectName);
-        doc = projectService.transitionStatus(
-                tenantId, projectName, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
+        doc = projectService.transitionStatus(tenantId, projectName, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
         log.info("Project '{}/{}' brought to RUNNING (was {})", tenantId, projectName, from);
         return doc;
     }
 
     private ProjectDocument bringPodless(String tenantId, String projectName) {
-        ProjectDocument doc = projectService.findByTenantAndName(tenantId, projectName)
+        ProjectDocument doc = projectService
+                .findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
-                        "Project '" + projectName + "' not found in tenant '"
-                                + tenantId + "'"));
+                        "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
         try {
             workspaceService.init(tenantId, projectName);
         } catch (RuntimeException e) {
-            log.error("Workspace init failed for podless project '{}/{}': {}",
-                    tenantId, projectName, e.toString());
+            log.error("Workspace init failed for podless project '{}/{}': {}", tenantId, projectName, e.toString());
             throw e;
         }
         eventPublisher.publishEvent(new ProjectEnginesStartRequested(tenantId, projectName));
@@ -334,8 +331,7 @@ public class ProjectLifecycleService {
         // No short-circuit is derived from this: the branch above returns
         // before bring's registry check, so a repeated bring still re-inits.
         activationRegistry.activate(tenantId, projectName);
-        log.debug("Podless project '{}/{}' brought up locally (no lease, status unchanged)",
-                tenantId, projectName);
+        log.debug("Podless project '{}/{}' brought up locally (no lease, status unchanged)", tenantId, projectName);
         return doc;
     }
 
@@ -389,13 +385,19 @@ public class ProjectLifecycleService {
         } catch (RuntimeException e) {
             // Keep the lease: a project whose workspace we could not snapshot
             // must not be handed to a pod that would then restore an older one.
-            log.error("Project '{}/{}' release aborted — workspace snapshot failed, "
-                    + "keeping the lease: {}", tenantId, projectName, e.toString());
+            log.error(
+                    "Project '{}/{}' release aborted — workspace snapshot failed, " + "keeping the lease: {}",
+                    tenantId,
+                    projectName,
+                    e.toString());
             throw e;
         }
         boolean released = projectManager.releaseLocalLease(tenantId, projectName);
-        log.info("Project '{}/{}' released by this pod (status unchanged, released={})",
-                tenantId, projectName, released);
+        log.info(
+                "Project '{}/{}' released by this pod (status unchanged, released={})",
+                tenantId,
+                projectName,
+                released);
         return released;
     }
 
@@ -407,7 +409,8 @@ public class ProjectLifecycleService {
      * Idempotent on already-SUSPENDED projects.
      */
     public ProjectDocument suspend(String tenantId, String projectName) {
-        ProjectDocument doc = projectService.findByTenantAndName(tenantId, projectName)
+        ProjectDocument doc = projectService
+                .findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
         if (ProjectService.isPodless(projectName)) {
@@ -415,8 +418,7 @@ public class ProjectLifecycleService {
             // and ephemeral — there is nothing to snapshot to Mongo and
             // no pod-affinity to release. Engine teardown happens via
             // SessionLifecycleService cascades.
-            log.debug("Podless project '{}/{}' — suspend is a no-op",
-                    tenantId, projectName);
+            log.debug("Podless project '{}/{}' — suspend is a no-op", tenantId, projectName);
             return doc;
         }
         switch (doc.getStatus()) {
@@ -424,14 +426,13 @@ public class ProjectLifecycleService {
                 log.debug("Project '{}/{}' already SUSPENDED", tenantId, projectName);
                 return doc;
             }
-            case CLOSED -> throw new ProjectService.ProjectStatusConflictException(
-                    "Project '" + projectName + "' is CLOSED — cannot suspend");
-            case SUSPENDING -> log.info(
-                    "Project '{}/{}' was in SUSPENDING (prior crash) — completing suspend",
-                    tenantId, projectName);
+            case CLOSED ->
+                throw new ProjectService.ProjectStatusConflictException(
+                        "Project '" + projectName + "' is CLOSED — cannot suspend");
+            case SUSPENDING ->
+                log.info("Project '{}/{}' was in SUSPENDING (prior crash) — completing suspend", tenantId, projectName);
             default -> {
-                doc = projectService.transitionStatus(
-                        tenantId, projectName, doc.getStatus(), ProjectStatus.SUSPENDING);
+                projectService.transitionStatus(tenantId, projectName, doc.getStatus(), ProjectStatus.SUSPENDING);
             }
         }
         eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
@@ -441,12 +442,14 @@ public class ProjectLifecycleService {
         try {
             workspaceService.suspendAll(tenantId, projectName);
         } catch (RuntimeException e) {
-            log.error("Workspace suspendAll failed for '{}/{}' (status remains SUSPENDING): {}",
-                    tenantId, projectName, e.toString());
+            log.error(
+                    "Workspace suspendAll failed for '{}/{}' (status remains SUSPENDING): {}",
+                    tenantId,
+                    projectName,
+                    e.toString());
             throw e;
         }
-        doc = projectService.transitionStatus(
-                tenantId, projectName, ProjectStatus.SUSPENDING, ProjectStatus.SUSPENDED);
+        doc = projectService.transitionStatus(tenantId, projectName, ProjectStatus.SUSPENDING, ProjectStatus.SUSPENDED);
         log.info("Project '{}/{}' suspended", tenantId, projectName);
         return doc;
     }
@@ -492,8 +495,11 @@ public class ProjectLifecycleService {
         try {
             rag.ensureDefaultRag(tenantId, projectName);
         } catch (RuntimeException e) {
-            log.warn("Project-RAG ensureDefaultRag failed for '{}/{}' — continuing: {}",
-                    tenantId, projectName, e.toString());
+            log.warn(
+                    "Project-RAG ensureDefaultRag failed for '{}/{}' — continuing: {}",
+                    tenantId,
+                    projectName,
+                    e.toString());
         }
     }
 
@@ -504,8 +510,7 @@ public class ProjectLifecycleService {
         try {
             rag.disposeDefaultRag(tenantId, projectName);
         } catch (RuntimeException e) {
-            log.warn("Project-RAG disposeDefaultRag failed for '{}/{}': {}",
-                    tenantId, projectName, e.toString());
+            log.warn("Project-RAG disposeDefaultRag failed for '{}/{}': {}", tenantId, projectName, e.toString());
         }
     }
 }

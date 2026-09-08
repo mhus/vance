@@ -40,28 +40,45 @@ public class RserveHealth {
 
     /** Cheap reachability check (no eval). */
     public boolean isReachable() {
-        try (CloseableR c = open()) {
+        try (var _ = open()) {
             return true;
         } catch (Exception e) {
             return false;
         }
     }
 
-    public @Nullable String version() { return version; }
-    public RserveProperties properties() { return props; }
+    public @Nullable String version() {
+        return version;
+    }
+
+    public RserveProperties properties() {
+        return props;
+    }
 
     private CloseableR open() throws Exception {
         return new CloseableR(new RConnection(props.getHost(), props.getPort()));
     }
 
-    public record Status(boolean ok, @Nullable String versionString, @Nullable String errorMessage) {}
+    public record Status(
+            boolean ok,
+            @Nullable String versionString,
+            @Nullable String errorMessage) {}
 
     /** Try-with-resources wrapper around RConnection (which has close() but no AutoCloseable). */
     private static final class CloseableR implements AutoCloseable {
         final RConnection conn;
-        CloseableR(RConnection conn) { this.conn = conn; }
-        @Override public void close() {
-            try { conn.close(); } catch (Exception ignored) { /* best-effort */ }
+
+        CloseableR(RConnection conn) {
+            this.conn = conn;
+        }
+
+        @Override
+        public void close() {
+            try {
+                conn.close();
+            } catch (Exception ignored) {
+                /* best-effort */
+            }
         }
     }
 }

@@ -12,7 +12,6 @@ import de.mhus.vance.foot.ui.Verbosity;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -52,9 +51,7 @@ public class NotifyHandler implements MessageHandler {
         if (dto == null || dto.getText() == null || dto.getText().isBlank()) {
             return;
         }
-        NotificationSeverity severity = dto.getSeverity() == null
-                ? NotificationSeverity.INFO
-                : dto.getSeverity();
+        NotificationSeverity severity = dto.getSeverity() == null ? NotificationSeverity.INFO : dto.getSeverity();
 
         // Terminate any in-flight chat stream so the toast lands on its
         // own line. The bell rings unconditionally — a stuck stream
@@ -77,21 +74,19 @@ public class NotifyHandler implements MessageHandler {
         if (!src.isEmpty()) {
             AttributedStyle dimStyle = colorResolver.dim();
             if (dimStyle != null) sb.style(dimStyle);
-            sb.append(src)
-                    .append(" · ")
-                    .style(AttributedStyle.DEFAULT);
+            sb.append(src).append(" · ").style(AttributedStyle.DEFAULT);
         }
         sb.append(dto.getText());
         return sb.toAttributedString();
     }
 
     private AttributedStyle headerStyleFor(NotificationSeverity severity) {
-        AttributedStyle base = colorResolver.notifyInfo();
-        AttributedStyle s = switch (severity) {
-            case INFO -> colorResolver.notifyInfo();
-            case WARN -> colorResolver.notifyWarn();
-            case ERROR -> colorResolver.notifyError();
-        };
+        AttributedStyle s =
+                switch (severity) {
+                    case INFO -> colorResolver.notifyInfo();
+                    case WARN -> colorResolver.notifyWarn();
+                    case ERROR -> colorResolver.notifyError();
+                };
         return s != null ? s : AttributedStyle.DEFAULT;
     }
 

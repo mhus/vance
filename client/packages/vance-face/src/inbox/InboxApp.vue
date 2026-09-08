@@ -577,6 +577,10 @@ function openCompose(): void {
   composeQuery.value = '';
   composeTitle.value = '';
   composeBody.value = '';
+  // A stale error from before the dialog (a failed list load, a refused
+  // mutation) is not a compose error — the modal shows the error channel and
+  // would present it as if this send had failed.
+  inbox.error.value = null;
   // The initial page: teams plus the first users, no query needed.
   void inbox.searchRecipients('');
   composeOpen.value = true;

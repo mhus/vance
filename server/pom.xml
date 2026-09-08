@@ -454,6 +454,39 @@
                     </execution>
                 </executions>
             </plugin>
+            <!--
+                PMD static analysis — bug patterns only, curated in
+                pmd-ruleset.xml (repo root of the reactor, next to this POM;
+                style/perf noise is excluded there with measured reasons).
+                The `check` goal forks the `pmd` analysis itself.
+
+                Baseline: pmd-baseline.properties grandfathers known
+                violations per (class, rule) — new violations fail the build
+                at `validate`, shrinking the baseline is a deliberate
+                cleanup act. Rules and mechanics: agent/java.md +
+                agent/build-test.md. qa/ skips PMD (test sources only).
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <version>3.28.0</version>
+                <configuration>
+                    <rulesets>
+                        <ruleset>${project.basedir}/../pmd-ruleset.xml</ruleset>
+                    </rulesets>
+                    <excludeFromFailureFile>${project.basedir}/../pmd-baseline.properties</excludeFromFailureFile>
+                    <linkXRef>false</linkXRef>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>pmd-check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <phase>process-classes</phase>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

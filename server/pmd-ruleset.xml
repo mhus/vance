@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<ruleset name="vance"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.github.io/schema/ruleset_2_0_0.xsd">
+
+  <description>
+    Vance PMD ruleset — bug patterns only. Formatting is Spotless's job,
+    naming/design rules were rejected along with Checkstyle (decision trail:
+    agent/java.md "Source formatting" and agent/build-test.md). Every exclude
+    below carries the violation count measured over the full tree (vance + ee,
+    2026-09-08) that motivated it. Rules that are NOT excluded and still have
+    findings are grandfathered in pmd-baseline.properties next to this file;
+    shrinking that file is a deliberate cleanup act.
+
+    The check itself is bound to `validate` in the parent POM — see
+    agent/build-test.md. qa/ skips PMD entirely (test sources only).
+  </description>
+
+  <rule ref="category/java/errorprone.xml">
+    <!-- 1292: log/key strings repeated 3+ times; constant extraction is not a bug fix -->
+    <exclude name="AvoidDuplicateLiterals"/>
+    <!-- 478: magic-number style, not a bug -->
+    <exclude name="AvoidLiteralsInIfCondition"/>
+    <!-- 370: Lombok/DTO idiom (field + accessor of the same name) -->
+    <exclude name="AvoidFieldNameMatchingMethodName"/>
+    <!-- 28: style; break-at-loop-end is sometimes the clearer form -->
+    <exclude name="AvoidBranchingStatementAsLastInLoop"/>
+    <!-- 12: deliberate error classification by instanceof in catch -->
+    <exclude name="AvoidInstanceofChecksInCatchClause"/>
+    <!-- 23: deliberate identity checks (no-op optimizations) -->
+    <exclude name="CompareObjectsWithEquals"/>
+    <!-- 21: commented best-effort catches are house style -->
+    <exclude name="EmptyCatchBlock"/>
+    <!-- 14: file-permission literals (0644 et al) are intentional octal -->
+    <exclude name="AvoidUsingOctalValues"/>
+    <!-- 149: no Java serialization in the stack (Mongo/Jackson) -->
+    <exclude name="MissingSerialVersionUID"/>
+    <!-- 1: Serializable-compat field — no Java serialization in the stack -->
+    <exclude name="NonSerializableClass"/>
+    <!-- 4: utility-class accessor style, not a bug -->
+    <exclude name="MissingStaticMethodInNonInstantiatableClass"/>
+    <!-- 134: while ((line = read())) idiom is deliberate -->
+    <exclude name="AssignmentInOperand"/>
+    <!-- 159: state reset to null is a legitimate pattern -->
+    <exclude name="NullAssignment"/>
+    <!-- 1: misfires on a *Test-named helper; tests are not analyzed anyway -->
+    <exclude name="TestClassWithoutTestCases"/>
+    <!-- 20/1/1: Date/Calendar usage lives in external APIs (mail, jgit); no bug value -->
+    <exclude name="ReplaceJavaUtilDate"/>
+    <exclude name="ReplaceJavaUtilCalendar"/>
+    <exclude name="SimpleDateFormatNeedsLocale"/>
+    <!-- 133: null returns are the documented JSpecify @Nullable contract -->
+    <exclude name="ReturnEmptyCollectionRatherThanNull"/>
+    <!-- 7: own-classloader lookups are correct in a CLI (foot) -->
+    <exclude name="UseProperClassLoader"/>
+    <!-- 286: protocol/MIME matching is locale-free by design -->
+    <exclude name="UseLocaleWithCaseConversions"/>
+    <!-- 1: toLowerCase-then-equalsIgnoreCase micro style -->
+    <exclude name="UnnecessaryCaseChange"/>
+  </rule>
+
+  <rule ref="category/java/multithreading.xml">
+    <!-- 372: raw threads are deliberate in foot (TUI) and tool execution -->
+    <exclude name="DoNotUseThreads"/>
+    <!-- 1676: HashMap fields in Spring singletons without concurrent access -->
+    <exclude name="UseConcurrentHashMap"/>
+    <!-- 128: volatile is the right tool for status flags -->
+    <exclude name="AvoidUsingVolatile"/>
+    <!-- 92: method-level synchronization is sometimes the simplest correct choice -->
+    <exclude name="AvoidSynchronizedAtMethodLevel"/>
+    <!-- 63: synchronized statements for short critical sections are fine -->
+    <exclude name="AvoidSynchronizedStatement"/>
+  </rule>
+
+  <rule ref="category/java/performance.xml">
+    <!-- 491: small object creation in loops is not a bug in 2026 -->
+    <exclude name="AvoidInstantiatingObjectsInLoops"/>
+    <!-- 366/267/186/178/18/7/3/1: StringBuilder micro-optimizations -->
+    <exclude name="ConsecutiveAppendsShouldReuse"/>
+    <exclude name="ConsecutiveLiteralAppends"/>
+    <exclude name="InsufficientStringBufferDeclaration"/>
+    <exclude name="AppendCharacterWithChar"/>
+    <exclude name="InefficientEmptyStringCheck"/>
+    <exclude name="UseStringBufferForStringAppends"/>
+    <exclude name="InefficientStringBuffering"/>
+    <exclude name="AddEmptyString"/>
+    <!-- 111: explicit = null / = 0 initializers are documentation, not waste -->
+    <exclude name="RedundantFieldInitializer"/>
+    <!-- 6: two-branch switch as if — style -->
+    <exclude name="TooFewBranchesForSwitch"/>
+  </rule>
+
+</ruleset>

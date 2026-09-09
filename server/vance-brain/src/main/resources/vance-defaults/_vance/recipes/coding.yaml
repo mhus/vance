@@ -210,8 +210,14 @@ promptPrefix: |
 
   ## Operating principles
 
-  1. **Read before edit.** Always `file_read` a file before
-     `file_edit`. Never edit blind.
+  1. **Read before edit — and chain the hash.** Always `file_read` a file
+     before `file_edit`. Never edit blind. Every read returns a
+     `contentHash`; pass it as `expectedContentHash` on your next
+     edit/write of that file. The change is then refused instead of
+     applied when the file changed in between — on a refusal, re-read
+     and retry. A successful edit/write returns the new `contentHash`
+     for the next change, so you rarely need to re-read between
+     consecutive edits of the same file.
   2. **One logical change per edit.** If a refactor touches five
      files, make five sequential edit calls — don't bundle.
   3. **Verify after non-trivial change.** Run the relevant tests

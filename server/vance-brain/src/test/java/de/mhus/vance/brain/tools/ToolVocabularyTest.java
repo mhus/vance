@@ -53,8 +53,7 @@ class ToolVocabularyTest {
      * The content families this rule covers: generic wrappers plus their two
      * backends, and the document tools. Deliberately not "every tool".
      */
-    private static final List<String> COVERED_PREFIXES = List.of(
-            "doc_", "file_", "work_file_", "client_file_");
+    private static final List<String> COVERED_PREFIXES = List.of("doc_", "file_", "work_file_", "client_file_");
 
     /** Deprecated spelling → the name that replaced it, and why it exists. */
     private static final Map<String, String> RENAMED = Map.of(
@@ -106,24 +105,35 @@ class ToolVocabularyTest {
         // A vocabulary test that silently scanned nothing would pass forever.
         Map<String, Tool> covered = coveredTools();
         assertThat(covered).hasSizeGreaterThan(40);
-        assertThat(covered).containsKeys(
-                "doc_read_lines", "doc_get_selection", "doc_edit", "doc_concat",
-                "doc_list_in_folder", "doc_list_folders", "doc_version_restore",
-                "file_read", "file_grep", "work_file_read");
+        assertThat(covered)
+                .containsKeys(
+                        "doc_read_lines",
+                        "doc_get_selection",
+                        "doc_edit",
+                        "doc_concat",
+                        "doc_list_in_folder",
+                        "doc_list_folders",
+                        "doc_version_restore",
+                        "file_read",
+                        "file_grep",
+                        "work_file_read");
     }
 
     @Test
     void theCanonicalNamesAreTheOnesActuallyInUse() {
         Map<String, Tool> tools = coveredTools();
-        assertThat(declaredParams(tools.get("doc_read_lines")))
-                .contains("startLine", "maxLines");
+        assertThat(declaredParams(tools.get("doc_read_lines"))).contains("startLine", "maxLines");
         // Character offsets, so *Char — not the *Line spelling used for line
         // windows. See the RENAMED note above.
         assertThat(declaredParams(tools.get("doc_get_selection")))
                 .contains("fromChar", "toChar")
                 .doesNotContain("fromLine", "toLine");
-        assertThat(declaredParams(tools.get("doc_edit")))
-                .contains("oldText", "newText", "replaceAll");
+        assertThat(declaredParams(tools.get("doc_edit"))).contains("oldText", "newText", "replaceAll");
+        // The If-Match guard param is part of the same vocabulary: one name
+        // on the wrapper and both backends, mirroring the whole-file
+        // contentHash every read returns.
+        assertThat(declaredParams(tools.get("file_edit"))).contains("expectedContentHash");
+        assertThat(declaredParams(tools.get("file_write"))).contains("expectedContentHash");
         assertThat(declaredParams(tools.get("doc_concat"))).contains("newPath");
         assertThat(declaredParams(tools.get("doc_version_restore"))).contains("newPath");
         assertThat(declaredParams(tools.get("doc_list_in_folder"))).contains("pathPrefix");
@@ -155,8 +165,7 @@ class ToolVocabularyTest {
      * {@link #theSuiteActuallySeesTheToolsItClaimsToGuard} notices.
      */
     private static Map<String, Tool> coveredTools() {
-        ClassPathScanningCandidateComponentProvider scanner =
-                new ClassPathScanningCandidateComponentProvider(false);
+        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
         scanner.addIncludeFilter(new AssignableTypeFilter(Tool.class));
         Map<String, Tool> out = new LinkedHashMap<>();
         for (BeanDefinition bd : scanner.findCandidateComponents("de.mhus.vance.brain.tools")) {

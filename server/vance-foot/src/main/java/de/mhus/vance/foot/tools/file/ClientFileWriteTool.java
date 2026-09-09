@@ -1,6 +1,7 @@
 package de.mhus.vance.foot.tools.file;
 
 import de.mhus.vance.foot.tools.ClientTool;
+import de.mhus.vance.toolpack.core.ContentHashes;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,19 +16,38 @@ import org.springframework.stereotype.Component;
  * directories are created as needed. Use this for fresh files or
  * complete rewrites — for targeted edits prefer
  * {@link ClientFileEditTool}.
+ *
+ * <p>Optional If-Match guard: pass the {@code contentHash} from the
+ * last read as {@code expectedContentHash} and the write is refused
+ * when the file changed (or vanished) meanwhile — the overwrite of a
+ * concurrently modified file becomes a readable error instead of a
+ * silent lost update. The result carries the {@code contentHash} of
+ * the written content so a following edit can chain without
+ * re-reading.
  */
 @Component
 public class ClientFileWriteTool implements ClientTool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Absolute or working-dir relative file path."),
-                    "content", Map.of(
-                            "type", "string",
-                            "description", "Full file content. Replaces any existing content.")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Absolute or working-dir relative file path."),
+                            "content",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Full file content. Replaces any existing content."),
+                            "expectedContentHash",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional If-Match guard: the contentHash "
+                                                    + "from your last read of this file. The write "
+                                                    + "is refused when the file changed meanwhile.")),
             "required", List.of("path", "content"));
 
     @Override
@@ -50,7 +70,10 @@ public class ClientFileWriteTool implements ClientTool {
                 + "later inside Vance (use doc_write), or "
                 + "scriptable data for project-side "
                 + "processing (use work_file_write). "
-                + "Parent directories are created as needed.";
+                + "Parent directories are created as needed. Pass the "
+                + "contentHash from your last client_file_read as "
+                + "expectedContentHash to refuse the write when the file "
+                + "changed since that read.";
     }
 
     @Override
@@ -83,7 +106,8 @@ public class ClientFileWriteTool implements ClientTool {
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
-        return "Requires CLIENT target — Foot must be connected. Permission denied = check path/owner; disk full = clean workspace.";
+        return "Requires CLIENT target — Foot must be connected. Permission denied = check path/owner; disk full = clean workspace; "
+                + "contentHash mismatch = file changed since your read, read it again before overwriting.";
     }
 
     @Override
@@ -101,19 +125,60 @@ public class ClientFileWriteTool implements ClientTool {
         if (!(rawContent instanceof String content)) {
             throw new IllegalArgumentException("'content' is required");
         }
+        String expectedContentHash = expectedContentHashOrNull(params);
         Path p = ClientFilePaths.resolve(path);
         try {
+            // If-Match before the write: the guard's whole point is that
+            // nothing is overwritten on a stale expectation. A missing
+            // file counts as stale too — the caller expected content that
+            // is no longer there.
+            if (expectedContentHash != null) {
+                if (!Files.isRegularFile(p)) {
+                    throw new IllegalArgumentException("File changed since it was read (it no longer exists) — "
+                            + "re-check with client_file_read before writing");
+                }
+                String actual = ContentHashes.sha256Hex(p);
+                if (!expectedContentHash.equals(actual)) {
+                    throw new IllegalArgumentException("File changed since it was read (contentHash mismatch: expected "
+                            + ContentHashes.abbreviate(expectedContentHash)
+                            + ", found " + ContentHashes.abbreviate(actual)
+                            + ") — read the file again before overwriting it");
+                }
+            }
             if (p.getParent() != null) {
                 Files.createDirectories(p.getParent());
             }
-            Files.writeString(p, content, StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            Files.writeString(
+                    p,
+                    content,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException(ClientFilePaths.describeFailure(p, e, "Write"), e);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("path", p.toAbsolutePath().toString());
         out.put("chars", content.length());
+        out.put("contentHash", ContentHashes.sha256Hex(content));
         return out;
+    }
+
+    /**
+     * Parses the optional If-Match guard: absent or {@code null} means
+     * "no guard" (the pre-If-Match behaviour), a present value must be
+     * a non-blank string — a blank one signals a confused caller and
+     * is refused rather than silently ignored.
+     */
+    private static String expectedContentHashOrNull(Map<String, Object> params) {
+        Object raw = params == null ? null : params.get("expectedContentHash");
+        if (raw == null) return null;
+        if (!(raw instanceof String s) || s.isBlank()) {
+            throw new IllegalArgumentException("'expectedContentHash' must be a non-empty string — pass the "
+                    + "contentHash from your last read, or omit it");
+        }
+        return s;
     }
 }

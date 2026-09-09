@@ -1,6 +1,7 @@
 package de.mhus.vance.foot.tools.file;
 
 import de.mhus.vance.foot.tools.ClientTool;
+import de.mhus.vance.toolpack.core.ContentHashes;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +22,12 @@ import org.springframework.stereotype.Component;
  * whole file for an unwindowed read, the selected line window
  * otherwise. That keeps {@code truncated} and {@code totalChars}
  * talking about the same thing.
+ *
+ * <p>Every result carries {@code contentHash}: SHA-256 of the <em>whole
+ * file</em>, independent of the served window or cap. Pass it as
+ * {@code expectedContentHash} to {@code client_file_edit} /
+ * {@code client_file_write} to make the change fail when the file
+ * changed since this read.
  */
 @Component
 public class ClientFileReadTool implements ClientTool {
@@ -29,21 +36,27 @@ public class ClientFileReadTool implements ClientTool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Absolute or working-dir relative path on the foot host."),
-                    "startLine", Map.of(
-                            "type", "integer",
-                            "description", "1-based start line. Omit to start from the beginning."),
-                    "maxLines", Map.of(
-                            "type", "integer",
-                            "description", "Maximum lines to return. Omit for the default char cap."),
-                    "maxChars", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Maximum characters to return. 0 or negative means "
-                                            + "the default cap of " + DEFAULT_CHAR_CAP + ".")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Absolute or working-dir relative path on the foot host."),
+                            "startLine",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "1-based start line. Omit to start from the beginning."),
+                            "maxLines",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Maximum lines to return. Omit for the default char cap."),
+                            "maxChars",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Maximum characters to return. 0 or negative means " + "the default cap of "
+                                                    + DEFAULT_CHAR_CAP + ".")),
             "required", List.of("path"));
 
     @Override
@@ -111,9 +124,7 @@ public class ClientFileReadTool implements ClientTool {
                 int from = startLine == null ? 1 : Math.max(1, startLine);
                 int count = maxLines == null ? Integer.MAX_VALUE : Math.max(0, maxLines);
                 try (Stream<String> lines = Files.lines(p, StandardCharsets.UTF_8)) {
-                    region = lines.skip(from - 1)
-                            .limit(count)
-                            .collect(Collectors.joining("\n"));
+                    region = lines.skip(from - 1).limit(count).collect(Collectors.joining("\n"));
                 }
             } else {
                 region = Files.readString(p, StandardCharsets.UTF_8);
@@ -121,11 +132,21 @@ public class ClientFileReadTool implements ClientTool {
             int totalChars = region.length();
             boolean truncated = totalChars > cap;
             String content = truncated ? region.substring(0, cap) : region;
+            // Whole-file hash, not window hash: it identifies the file's
+            // state for the edit/write If-Match guard, so it must be the
+            // same value no matter which window this call served. For an
+            // unwindowed read the full content is already in hand; a
+            // windowed read streams the file so a large one never has to
+            // be held in memory just to be hashed.
+            String contentHash = startLine != null || maxLines != null
+                    ? ContentHashes.sha256Hex(p)
+                    : ContentHashes.sha256Hex(region);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", ClientFilePaths.toToolPath(p));
             out.put("content", content);
             out.put("truncated", truncated);
             out.put("totalChars", totalChars);
+            out.put("contentHash", contentHash);
             return out;
         } catch (Exception e) {
             throw new RuntimeException(ClientFilePaths.describeFailure(p, e), e);

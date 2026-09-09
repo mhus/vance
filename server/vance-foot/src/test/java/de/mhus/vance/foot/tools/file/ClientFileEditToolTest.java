@@ -3,6 +3,7 @@ package de.mhus.vance.foot.tools.file;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.mhus.vance.toolpack.core.ContentHashes;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -56,8 +57,7 @@ class ClientFileEditToolTest {
     void edit_uniqueMatch_replacesAndReportsCounts() throws IOException {
         Path file = write("a.txt", "alpha\nbeta\ngamma\n");
 
-        Map<String, Object> out = tool.invoke(Map.of(
-                "path", file.toString(), "oldText", "beta", "newText", "BETA"));
+        Map<String, Object> out = tool.invoke(Map.of("path", file.toString(), "oldText", "beta", "newText", "BETA"));
 
         assertThat(Files.readString(file)).isEqualTo("alpha\nBETA\ngamma\n");
         assertThat(out).containsEntry("replaced", 1);
@@ -68,8 +68,7 @@ class ClientFileEditToolTest {
     void edit_missingFile_namesTheMissingFileAndNotJustThePath() {
         Path missing = root.resolve("nope.vue");
 
-        assertThatThrownBy(() -> tool.invoke(Map.of(
-                "path", missing.toString(), "oldText", "x", "newText", "y")))
+        assertThatThrownBy(() -> tool.invoke(Map.of("path", missing.toString(), "oldText", "x", "newText", "y")))
                 .hasMessageContaining("No such file")
                 .hasMessageContaining(missing.toAbsolutePath().normalize().toString());
     }
@@ -78,8 +77,7 @@ class ClientFileEditToolTest {
     void edit_snippetNotFound_saysSoAndKeepsFileUntouched() throws IOException {
         Path file = write("a.txt", "alpha\n");
 
-        assertThatThrownBy(() -> tool.invoke(Map.of(
-                "path", file.toString(), "oldText", "beta", "newText", "BETA")))
+        assertThatThrownBy(() -> tool.invoke(Map.of("path", file.toString(), "oldText", "beta", "newText", "BETA")))
                 .hasMessageContaining("oldText not found")
                 .hasMessageNotContaining("No such file");
         assertThat(Files.readString(file)).isEqualTo("alpha\n");
@@ -89,17 +87,74 @@ class ClientFileEditToolTest {
     void edit_snippetAmbiguous_saysSoAndKeepsFileUntouched() throws IOException {
         Path file = write("a.txt", "dup\nother\ndup\n");
 
-        assertThatThrownBy(() -> tool.invoke(Map.of(
-                "path", file.toString(), "oldText", "dup", "newText", "X")))
+        assertThatThrownBy(() -> tool.invoke(Map.of("path", file.toString(), "oldText", "dup", "newText", "X")))
                 .hasMessageContaining("appears multiple times")
                 .hasMessageContaining("unique");
         assertThat(Files.readString(file)).isEqualTo("dup\nother\ndup\n");
     }
 
+    // ──────────────── If-Match guard ────────────────
+
+    @Test
+    void edit_matchingContentHash_appliesAndReturnsTheNewHash() throws IOException {
+        Path file = write("a.txt", "alpha\nbeta\ngamma\n");
+        String hash = ContentHashes.sha256Hex("alpha\nbeta\ngamma\n");
+
+        Map<String, Object> out = tool.invoke(
+                Map.of("path", file.toString(), "oldText", "beta", "newText", "BETA", "expectedContentHash", hash));
+
+        assertThat(Files.readString(file)).isEqualTo("alpha\nBETA\ngamma\n");
+        assertThat(out).containsEntry("contentHash", ContentHashes.sha256Hex("alpha\nBETA\ngamma\n"));
+    }
+
+    @Test
+    void edit_staleContentHash_refusesWithoutTouchingTheFile() throws IOException {
+        Path file = write("a.txt", "alpha\nbeta\ngamma\n");
+        String stale = ContentHashes.sha256Hex("something else entirely");
+
+        assertThatThrownBy(() -> tool.invoke(Map.of(
+                        "path", file.toString(), "oldText", "beta", "newText", "BETA", "expectedContentHash", stale)))
+                .hasMessageContaining("contentHash mismatch")
+                .hasMessageContaining("read the file again");
+        // Nothing was written: the whole point of the guard.
+        assertThat(Files.readString(file)).isEqualTo("alpha\nbeta\ngamma\n");
+    }
+
+    @Test
+    void edit_staleContentHash_beatsTheSnippetFailure() throws IOException {
+        Path file = write("a.txt", "alpha\n");
+        String stale = ContentHashes.sha256Hex("old content");
+
+        // A stale file usually also makes oldText unfindable. The hash
+        // check runs first so the model gets the right advice (re-read)
+        // instead of the wrong one ("copy the snippet verbatim").
+        assertThatThrownBy(() -> tool.invoke(Map.of(
+                        "path",
+                        file.toString(),
+                        "oldText",
+                        "was-there-before",
+                        "newText",
+                        "x",
+                        "expectedContentHash",
+                        stale)))
+                .hasMessageContaining("contentHash mismatch")
+                .hasMessageNotContaining("oldText not found");
+        assertThat(Files.readString(file)).isEqualTo("alpha\n");
+    }
+
+    @Test
+    void edit_blankExpectedContentHash_isRejectedNotIgnored() throws IOException {
+        Path file = write("a.txt", "alpha\n");
+
+        assertThatThrownBy(() -> tool.invoke(Map.of(
+                        "path", file.toString(), "oldText", "alpha", "newText", "x", "expectedContentHash", " ")))
+                .hasMessageContaining("'expectedContentHash' must be a non-empty string");
+        assertThat(Files.readString(file)).isEqualTo("alpha\n");
+    }
+
     @Test
     void edit_pathIsDirectory_pointsAtTheRightProblem() {
-        assertThatThrownBy(() -> tool.invoke(Map.of(
-                "path", root.toString(), "oldText", "x", "newText", "y")))
+        assertThatThrownBy(() -> tool.invoke(Map.of("path", root.toString(), "oldText", "x", "newText", "y")))
                 .hasMessageContaining("directory");
     }
 }

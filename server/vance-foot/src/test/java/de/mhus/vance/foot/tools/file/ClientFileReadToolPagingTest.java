@@ -2,6 +2,7 @@ package de.mhus.vance.foot.tools.file;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.toolpack.core.ContentHashes;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -39,8 +40,12 @@ class ClientFileReadToolPagingTest {
     void tearDown() throws IOException {
         if (root != null && Files.exists(root)) {
             try (Stream<Path> walk = Files.walk(root)) {
-                walk.sorted(Comparator.reverseOrder())
-                        .forEach(p -> { try { Files.delete(p); } catch (IOException ignored) { } });
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        Files.delete(p);
+                    } catch (IOException ignored) {
+                    }
+                });
             }
         }
     }
@@ -60,8 +65,7 @@ class ClientFileReadToolPagingTest {
     void lineWindow_reachesTheMiddleOfTheFile() throws IOException {
         Path p = bigFile();
 
-        Map<String, Object> out = tool.invoke(Map.of(
-                "path", p.toString(), "startLine", 300, "maxLines", 3));
+        Map<String, Object> out = tool.invoke(Map.of("path", p.toString(), "startLine", 300, "maxLines", 3));
 
         assertThat(out.get("content")).isEqualTo("line-300\nline-301\nline-302");
         assertThat(out.get("truncated")).isEqualTo(false);
@@ -71,8 +75,7 @@ class ClientFileReadToolPagingTest {
     void maxChars_isHonoured_notJustTheDefaultCap() throws IOException {
         Path p = bigFile();
 
-        Map<String, Object> out = tool.invoke(Map.of(
-                "path", p.toString(), "maxChars", 20));
+        Map<String, Object> out = tool.invoke(Map.of("path", p.toString(), "maxChars", 20));
 
         // The whole point: a caller-supplied cap changes the result. Passing
         // maxChars used to be a no-op on this backend.
@@ -84,8 +87,8 @@ class ClientFileReadToolPagingTest {
     void wideLineWindow_isStillCapped() throws IOException {
         Path p = bigFile();
 
-        Map<String, Object> out = tool.invoke(Map.of(
-                "path", p.toString(), "startLine", 1, "maxLines", 400, "maxChars", 50));
+        Map<String, Object> out =
+                tool.invoke(Map.of("path", p.toString(), "startLine", 1, "maxLines", 400, "maxChars", 50));
 
         // A line window is just as capable of returning a megabyte as an
         // uncapped whole-file read, so the cap applies to both paths.
@@ -99,13 +102,27 @@ class ClientFileReadToolPagingTest {
         int fileChars = Files.readString(p, StandardCharsets.UTF_8).length();
 
         Map<String, Object> whole = tool.invoke(Map.of("path", p.toString()));
-        Map<String, Object> window = tool.invoke(Map.of(
-                "path", p.toString(), "startLine", 1, "maxLines", 2));
+        Map<String, Object> window = tool.invoke(Map.of("path", p.toString(), "startLine", 1, "maxLines", 2));
 
         assertThat(whole.get("totalChars")).isEqualTo(fileChars);
         // Window read: totalChars counts the window ("line-1\nline-2"), which
         // is what its truncated flag refers to.
         assertThat(window.get("totalChars")).isEqualTo("line-1\nline-2".length());
+    }
+
+    @Test
+    void contentHash_coversTheWholeFile_notTheServedWindow() throws IOException {
+        Path p = bigFile();
+        String wholeContent = Files.readString(p, StandardCharsets.UTF_8);
+
+        Map<String, Object> unwindowed = tool.invoke(Map.of("path", p.toString(), "maxChars", 20));
+        Map<String, Object> windowed = tool.invoke(Map.of("path", p.toString(), "startLine", 300, "maxLines", 3));
+
+        // Both calls serve wildly different views, but the If-Match guard
+        // compares against the file on disk — so both must report the hash
+        // of the same full content.
+        assertThat(unwindowed).containsEntry("contentHash", ContentHashes.sha256Hex(wholeContent));
+        assertThat(windowed).containsEntry("contentHash", ContentHashes.sha256Hex(wholeContent));
     }
 
     @Test

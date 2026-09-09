@@ -1,11 +1,12 @@
 package de.mhus.vance.brain.tools.workspace;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.ContentHashes;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,6 +22,12 @@ import org.springframework.stereotype.Component;
  * unique. Symmetric to {@code client_file_edit} on the foot side,
  * so the generic {@code file_edit} wrapper can dispatch to either
  * backend without semantic surprises.
+ *
+ * <p>Optional If-Match guard: pass the {@code contentHash} from the
+ * last read as {@code expectedContentHash} and the edit is refused
+ * when the file changed meanwhile. The result carries the
+ * {@code contentHash} of the updated content so consecutive edits
+ * can chain without re-reading.
  */
 @Component
 @RequiredArgsConstructor
@@ -28,21 +35,35 @@ public class WorkspaceEditTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Relative path inside the RootDir."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional RootDir name. Defaults to the "
-                                            + "current process's temp RootDir."),
-                    "oldText", Map.of(
-                            "type", "string",
-                            "description", "Exact snippet to replace. Whitespace-sensitive."),
-                    "newText", Map.of(
-                            "type", "string",
-                            "description", "Replacement text.")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Relative path inside the RootDir."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional RootDir name. Defaults to the "
+                                                    + "current process's temp RootDir."),
+                            "oldText",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Exact snippet to replace. Whitespace-sensitive."),
+                            "newText",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Replacement text."),
+                            "expectedContentHash",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional If-Match guard: the contentHash "
+                                                    + "from your last read of this file. The edit "
+                                                    + "is refused when the file changed meanwhile.")),
             "required", List.of("path", "oldText", "newText"));
 
     private final WorkspaceService workspace;
@@ -59,7 +80,10 @@ public class WorkspaceEditTool implements Tool {
                 + "file in a project workspace RootDir. Fails if oldText "
                 + "is not found or appears more than once — add surrounding "
                 + "context until the match is unique. Preferred over "
-                + "rewriting the whole file via work_file_write.";
+                + "rewriting the whole file via work_file_write. Pass the "
+                + "contentHash from your last work_file_read as "
+                + "expectedContentHash to refuse the edit when the file "
+                + "changed since that read.";
     }
 
     @Override
@@ -98,27 +122,37 @@ public class WorkspaceEditTool implements Tool {
             throw new ToolException("'newText' is required");
         }
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
+        String expectedContentHash = expectedContentHashOrNull(params);
         try {
             int cap = properties.getDefaultReadCharCap();
-            WorkspaceService.ReadResult r =
-                    workspace.read(ctx.tenantId(), ctx.projectId(), dirName, path, cap);
+            WorkspaceService.ReadResult r = workspace.read(ctx.tenantId(), ctx.projectId(), dirName, path, cap);
             if (r.truncated()) {
-                throw new ToolException(
-                        "File too large to edit safely (truncated at " + cap
-                                + " chars). Use work_file_write to rewrite or split the change.");
+                throw new ToolException("File too large to edit safely (truncated at " + cap
+                        + " chars). Use work_file_write to rewrite or split the change.");
             }
             String content = r.text();
+            // If-Match before the snippet match: a stale file is the
+            // precondition failure — telling the model to re-read is the
+            // right advice, not "expand your snippet context".
+            if (expectedContentHash != null) {
+                String actual = ContentHashes.sha256Hex(content);
+                if (!expectedContentHash.equals(actual)) {
+                    throw new ToolException("File changed since it was read (contentHash mismatch: expected "
+                            + ContentHashes.abbreviate(expectedContentHash)
+                            + ", found " + ContentHashes.abbreviate(actual)
+                            + ") — read the file again and retry with the "
+                            + "current contentHash");
+                }
+            }
             int first = content.indexOf(oldText);
             if (first < 0) {
                 throw new ToolException("oldText not found in " + path);
             }
             int second = content.indexOf(oldText, first + oldText.length());
             if (second >= 0) {
-                throw new ToolException(
-                        "oldText appears multiple times — add context until unique");
+                throw new ToolException("oldText appears multiple times — add context until unique");
             }
-            String updated = content.substring(0, first) + newText
-                    + content.substring(first + oldText.length());
+            String updated = content.substring(0, first) + newText + content.substring(first + oldText.length());
             Path written = workspace.write(ctx.tenantId(), ctx.projectId(), dirName, path, updated);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
@@ -126,6 +160,7 @@ public class WorkspaceEditTool implements Tool {
             out.put("absolutePath", written.toString());
             out.put("replaced", 1);
             out.put("totalChars", updated.length());
+            out.put("contentHash", ContentHashes.sha256Hex(updated));
             return out;
         } catch (WorkspaceException e) {
             throw new ToolException(e.getMessage(), e);
@@ -143,5 +178,21 @@ public class WorkspaceEditTool implements Tool {
     private static String stringOrNull(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         return raw instanceof String s && !s.isBlank() ? s : null;
+    }
+
+    /**
+     * Parses the optional If-Match guard: absent or {@code null} means
+     * "no guard" (the pre-If-Match behaviour), a present value must be
+     * a non-blank string — a blank one signals a confused caller and
+     * is refused rather than silently ignored.
+     */
+    private static String expectedContentHashOrNull(Map<String, Object> params) {
+        Object raw = params == null ? null : params.get("expectedContentHash");
+        if (raw == null) return null;
+        if (!(raw instanceof String s) || s.isBlank()) {
+            throw new ToolException("'expectedContentHash' must be a non-empty string — pass the "
+                    + "contentHash from your last read, or omit it");
+        }
+        return s;
     }
 }

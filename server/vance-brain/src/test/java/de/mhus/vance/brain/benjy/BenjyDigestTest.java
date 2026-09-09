@@ -52,6 +52,24 @@ class BenjyDigestTest {
     }
 
     @Test
+    void render_countsCompletedAttemptsNotTheNextOne() {
+        BenjyState state = new BenjyState();
+        state.setGoal("g");
+        BenjyState.Item once = BenjyState.Item.of("1", "i");
+        once.setAttempts(1);
+        BenjyState.Item twice = BenjyState.Item.of("2", "j");
+        twice.setAttempts(2);
+        state.getItems().add(once);
+        state.getItems().add(twice);
+
+        String digest = BenjyDigest.render(state, null);
+
+        // The count names finished attempts — a route model must not read
+        // an attempt as in progress that has not started.
+        assertThat(digest).contains("(1 attempt done)").contains("(2 attempts done)");
+    }
+
+    @Test
     void renderItem_carriesItemGoalCriteriaResultAndFacts() {
         BenjyState state = new BenjyState();
         state.setInterpretedGoal("Implement login validation");

@@ -98,6 +98,7 @@ public class BenjyEngine implements ThinkEngine {
 
     private static final String METRIC_CYCLES = "vance.benjy.cycles";
     private static final String METRIC_LLM_CALLS = "vance.benjy.llm.calls";
+    private static final String METRIC_OUTCOMES = "vance.benjy.outcomes";
 
     private static final String OUTCOME_SUCCESS = "success";
     private static final String OUTCOME_BLOCKED = "blocked";
@@ -358,6 +359,7 @@ public class BenjyEngine implements ThinkEngine {
         journal(
                 ctx,
                 process,
+                state,
                 "do #" + inFlight.getItemId() + ": worker replied (" + (workerReply == null ? 0 : workerReply.length())
                         + " chars)");
         try {
@@ -375,6 +377,15 @@ public class BenjyEngine implements ThinkEngine {
 
     private void runLoop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         BenjyState state = loadState(process);
+        // One continuous runLoop invocation = one work phase (§8:
+        // "pro laufender Arbeit", Frankie semantics). The wallclock
+        // budget must not measure time the process spent IDLE, BLOCKED
+        // on a question or suspended — a run resumed after a long wait
+        // would otherwise hit the budget before doing anything. Every
+        // entry point (steer, reply-wake, resume) starts the phase anew;
+        // within one invocation the loop runs without yielding, so the
+        // budget bounds exactly that continuous stretch.
+        state.setPhaseStartedAt(Instant.now());
         BenjyFeatureConfig features =
                 BenjyFeatureConfig.fromParams(EngineChatFactory.effectiveParams(process), process.getId());
         Map<String, Object> rawParams = EngineChatFactory.effectiveParams(process);
@@ -423,6 +434,19 @@ public class BenjyEngine implements ThinkEngine {
 
                 // ── Queue empty: reflect gate or done ──
                 if (state.getQueue().isEmpty()) {
+                    if (state.getInterpretedGoal() == null
+                            && state.getItems().isEmpty()
+                            && state.getCriteria().isEmpty()) {
+                        // Nothing interpreted yet — no goal, no criteria,
+                        // no items (a resume or a stray steer on a fresh
+                        // process). There is nothing to reflect on and
+                        // nothing to close: "closing" here would emit a
+                        // DONE report around a null goal. Wait for the first
+                        // task text instead.
+                        persistState(process, state);
+                        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+                        return;
+                    }
                     if (!state.isReflected() && allItemsTerminal(state)) {
                         if (features.getReflectRecipe() != null) {
                             enqueueTask(state, BenjyTaskTypes.REFLECT, null);
@@ -499,7 +523,7 @@ public class BenjyEngine implements ThinkEngine {
                 } catch (RuntimeException e) {
                     log.warn("Benjy id='{}' task '{}' failed: {}", process.getId(), task.getType(), e.toString());
                     metricService
-                            .counter(METRIC_CYCLES, "outcome", OUTCOME_ERROR)
+                            .counter(METRIC_OUTCOMES, "outcome", OUTCOME_ERROR)
                             .increment();
                     blockWith(
                             process,
@@ -542,7 +566,7 @@ public class BenjyEngine implements ThinkEngine {
             case BenjyTaskTypes.DONE -> handleDone(process, ctx, state);
             default -> {
                 log.warn("Benjy id='{}' unknown task type '{}' — dropping", process.getId(), task.getType());
-                journal(ctx, process, "dropped unknown task type " + task.getType());
+                journal(ctx, process, state, "dropped unknown task type " + task.getType());
             }
         }
     }
@@ -601,7 +625,7 @@ public class BenjyEngine implements ThinkEngine {
         state.setInterpretedGoal(stringValue(answer.get("interpretedGoal"), goal));
         String taskType = stringValue(answer.get("taskType"), BenjyFeatureConfig.TASK_TYPE_INFO);
         if (!features.isTaskTypeAllowed(taskType)) {
-            journal(ctx, process, "interpret: taskType '" + taskType + "' not active in recipe — using info");
+            journal(ctx, process, state, "interpret: taskType '" + taskType + "' not active in recipe — using info");
             taskType = BenjyFeatureConfig.TASK_TYPE_INFO;
         }
         state.setTaskType(taskType);
@@ -667,6 +691,7 @@ public class BenjyEngine implements ThinkEngine {
         journal(
                 ctx,
                 process,
+                state,
                 "interpret: taskType=" + taskType + ", " + criteria.size() + " criteria, " + itemTexts.size()
                         + " items");
     }
@@ -753,7 +778,7 @@ public class BenjyEngine implements ThinkEngine {
             return;
         }
 
-        journal(ctx, process, "route: " + action + " — " + reason);
+        journal(ctx, process, state, "route: " + action + " — " + reason);
         switch (action) {
             case "retry" -> {
                 BenjyState.Item item = requireItem(process, ctx, state, itemRef).orElse(null);
@@ -793,7 +818,7 @@ public class BenjyEngine implements ThinkEngine {
                 }
                 if (!revised.isEmpty()) {
                     state.setCriteria(revised);
-                    journal(ctx, process, "revise: " + revised.size() + " criteria");
+                    journal(ctx, process, state, "revise: " + revised.size() + " criteria");
                 }
                 List<String> texts = new ArrayList<>();
                 for (Object raw : listValue(answer.get("items"))) {
@@ -841,7 +866,7 @@ public class BenjyEngine implements ThinkEngine {
                         null);
             }
             case "reset" -> {
-                resetState(process, state, stringValue(task.getPayload().get("message"), state.getGoal()));
+                resetState(process, state, state.getGoal());
                 enqueueTask(state, BenjyTaskTypes.INTERPRET, null);
             }
             default -> {
@@ -872,12 +897,12 @@ public class BenjyEngine implements ThinkEngine {
             return;
         }
         if (open.getAttempts() < maxItemAttempts) {
-            journal(ctx, process, "route(off): retrying #" + open.getId() + " after " + trigger);
+            journal(ctx, process, state, "route(off): retrying #" + open.getId() + " after " + trigger);
             enqueueDoChain(state, features, open, "Retry after: " + trigger);
             return;
         }
         if (features.getEscalationRecipe() != null) {
-            journal(ctx, process, "route(off): escalating #" + open.getId());
+            journal(ctx, process, state, "route(off): escalating #" + open.getId());
             enqueueDoChain(state, features, open, null, features.getEscalationRecipe());
             return;
         }
@@ -899,7 +924,7 @@ public class BenjyEngine implements ThinkEngine {
         String itemId = task.getItemRef();
         BenjyState.Item item = findItem(state, itemId).orElse(null);
         if (item == null) {
-            journal(ctx, process, "do: unknown item " + itemId + " — skipping");
+            journal(ctx, process, state, "do: unknown item " + itemId + " — skipping");
             return;
         }
         item.setAttempts(item.getAttempts() + 1);
@@ -940,6 +965,7 @@ public class BenjyEngine implements ThinkEngine {
         journal(
                 ctx,
                 process,
+                state,
                 "do #" + item.getId() + " (attempt " + item.getAttempts() + "): spawned worker, recipe=" + recipe);
     }
 
@@ -975,7 +1001,7 @@ public class BenjyEngine implements ThinkEngine {
         if (exitCode != null && exitCode == 0) {
             item.addFact("check pass: " + command + " (exit 0)");
             enqueueChain(state, item.getId(), stringListValue(task.getPayload().get("chain")));
-            journal(ctx, process, "check #" + item.getId() + ": GRÜN (exit 0)");
+            journal(ctx, process, state, "check #" + item.getId() + ": passed (exit 0)");
         } else {
             item.addFact("check FAILED: " + command + " exit " + exitCode + " — "
                     + truncate(stderr.isBlank() ? stdout : stderr, 300));
@@ -983,7 +1009,7 @@ public class BenjyEngine implements ThinkEngine {
                     state,
                     "The mechanical check for item #" + item.getId() + " failed (exit " + exitCode + "). Error tail:\n"
                             + truncate(stderr.isBlank() ? stdout : stderr, 1500));
-            journal(ctx, process, "check #" + item.getId() + ": FAILED (exit " + exitCode + ")");
+            journal(ctx, process, state, "check #" + item.getId() + ": FAILED (exit " + exitCode + ")");
         }
     }
 
@@ -1040,6 +1066,7 @@ public class BenjyEngine implements ThinkEngine {
         journal(
                 ctx,
                 process,
+                state,
                 "eval #" + item.getId() + ": " + verdict + (reasons.isEmpty() ? "" : " — " + reasons.getFirst()));
         if ("pass".equals(verdict)) {
             enqueueChain(state, item.getId(), stringListValue(task.getPayload().get("chain")));
@@ -1091,7 +1118,11 @@ public class BenjyEngine implements ThinkEngine {
                 gaps.add(s.trim());
             }
         }
-        journal(ctx, process, "reflect: " + achieved + (gaps.isEmpty() ? "" : " — gaps: " + String.join("; ", gaps)));
+        journal(
+                ctx,
+                process,
+                state,
+                "reflect: " + achieved + (gaps.isEmpty() ? "" : " — gaps: " + String.join("; ", gaps)));
         if ("yes".equals(achieved)) {
             for (BenjyState.Criterion c : state.getCriteria()) {
                 if ("pending".equals(c.getStatus())) {
@@ -1129,16 +1160,16 @@ public class BenjyEngine implements ThinkEngine {
         }
         item.setStatus("completed");
         projectItemStatus(process, item, TodoStatus.COMPLETED);
-        journal(ctx, process, "close #" + item.getId() + ": item completed");
+        journal(ctx, process, state, "close #" + item.getId() + ": item completed");
     }
 
     private void handleDone(ThinkProcessDocument process, ThinkEngineContext ctx, BenjyState state) {
         String report = buildFinalReport(state);
         state.setFinalReport(report);
-        journal(ctx, process, "done: closing with report");
+        journal(ctx, process, state, "done: closing with report");
         appendDialogue(process, ctx, ChatRole.ASSISTANT, report);
         ctx.emitReply(report);
-        metricService.counter(METRIC_CYCLES, "outcome", OUTCOME_SUCCESS).increment();
+        metricService.counter(METRIC_OUTCOMES, "outcome", OUTCOME_SUCCESS).increment();
         thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
     }
 
@@ -1219,7 +1250,7 @@ public class BenjyEngine implements ThinkEngine {
             ThinkProcessDocument process, ThinkEngineContext ctx, BenjyState state, @Nullable String id) {
         java.util.Optional<BenjyState.Item> item = findItem(state, id);
         if (item.isEmpty()) {
-            journal(ctx, process, "route: unknown itemRef '" + id + "' — action skipped");
+            journal(ctx, process, state, "route: unknown itemRef '" + id + "' — action skipped");
         }
         return item;
     }
@@ -1232,7 +1263,7 @@ public class BenjyEngine implements ThinkEngine {
     private void parkOnQuestion(
             ThinkProcessDocument process, ThinkEngineContext ctx, BenjyState state, String question) {
         state.setPendingQuestion(question);
-        journal(ctx, process, "ask_parent: " + truncate(question, 200));
+        journal(ctx, process, state, "ask_parent: " + truncate(question, 200));
         appendDialogue(process, ctx, ChatRole.ASSISTANT, question);
         // Status flip happens at the loop exit (async boundary check) — the
         // ParentNotificationListener turns the BLOCKED transition into the
@@ -1241,11 +1272,11 @@ public class BenjyEngine implements ThinkEngine {
 
     private void blockWith(ThinkProcessDocument process, ThinkEngineContext ctx, BenjyState state, String diagnosis) {
         state.setPendingQuestion(null);
-        journal(ctx, process, "blocked: " + diagnosis);
+        journal(ctx, process, state, "blocked: " + diagnosis);
         appendDialogue(process, ctx, ChatRole.ASSISTANT, "⚠️ Benjy is BLOCKED:\n\n" + diagnosis);
         persistState(process, state);
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
-        metricService.counter(METRIC_CYCLES, "outcome", OUTCOME_BLOCKED).increment();
+        metricService.counter(METRIC_OUTCOMES, "outcome", OUTCOME_BLOCKED).increment();
         log.warn("Benjy id='{}' BLOCKED: {}", process.getId(), diagnosis);
     }
 
@@ -1435,9 +1466,13 @@ public class BenjyEngine implements ThinkEngine {
      * journal's tail is the open rest, older tails are history
      * (Laborbuch-Prinzip).
      */
-    private void journal(ThinkEngineContext ctx, ThinkProcessDocument process, String entry) {
+    private void journal(ThinkEngineContext ctx, ThinkProcessDocument process, BenjyState state, String entry) {
         StringBuilder sb = new StringBuilder("[benjy] ").append(entry);
-        BenjyState state = loadState(process);
+        // The caller's in-memory state, NOT a reload: handlers journal
+        // after mutating their state but before the loop persists it —
+        // a reload would render the queue as of the last persist and the
+        // "open" tail would systematically miss the successors the
+        // current handler just enqueued (the tail IS the open rest, §4b).
         if (!state.getQueue().isEmpty()) {
             sb.append("\n\n── open: ");
             List<String> parts = new ArrayList<>();

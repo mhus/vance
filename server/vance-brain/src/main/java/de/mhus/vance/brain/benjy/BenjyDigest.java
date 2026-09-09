@@ -48,7 +48,9 @@ public final class BenjyDigest {
                         .append(" — ")
                         .append(item.getStatus());
                 if (item.getAttempts() > 0) {
-                    sb.append(" (attempt ").append(item.getAttempts() + 1).append(")");
+                    sb.append(" (")
+                            .append(item.getAttempts())
+                            .append(item.getAttempts() == 1 ? " attempt done)" : " attempts done)");
                 }
                 sb.append('\n');
                 int factsShown = 0;

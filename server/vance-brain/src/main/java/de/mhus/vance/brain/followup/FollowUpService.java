@@ -175,7 +175,6 @@ public class FollowUpService {
         }
 
         Map<String, Object> pebbleVars = new LinkedHashMap<>();
-        ;
         pebbleVars.put("count", safeCount);
         if (mode != null && !mode.isBlank()) {
             pebbleVars.put("mode", mode);

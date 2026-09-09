@@ -774,7 +774,12 @@ public class SetupWizard {
         }
         // Aliases all point at the chat model — operator can split later
         // through the Web-UI / settings if they want fast vs. analyze vs.
-        // deep tiers on different models.
+        // deep tiers on different models. `fim` is deliberately absent:
+        // the chosen chat model has no FIM template, and an
+        // ai.alias.default.fim pointing at it would make every follow-up
+        // edit-mode call fail closed (see specification/public/
+        // follow-up.md §5). Leave it unset — the follow-up service then
+        // stays on the chat path, which works with this model.
         String fqModel = instance + ":" + state.getAiModel();
         for (String alias : List.of("fast", "analyze", "deep", "web", "code")) {
             setString(tenantId, "ai.alias.default." + alias, fqModel, null);

@@ -47,57 +47,56 @@ class SettingFormServiceChoicesFromTest {
     private final FormValidator formValidator = new FormValidator();
     private final PromptTemplateRenderer renderer = new PromptTemplateRenderer();
     private final SettingFormPlanBuilder planBuilder = new SettingFormPlanBuilder(renderer, settingService);
-    private final SettingFormService service = new SettingFormService(
-            settingService, formValidator, planBuilder, modelCatalog);
+    private final SettingFormService service =
+            new SettingFormService(settingService, formValidator, planBuilder, modelCatalog);
 
     @Test
     void validate_accepts_a_value_present_in_the_ai_models_catalog() {
-        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
-                model("gemini", "gemini-2.5-pro", ModelSize.LARGE),
-                model("gemini", "gemini-2.5-flash", ModelSize.SMALL),
-                model("anthropic", "claude-sonnet-4-6", ModelSize.LARGE)));
+        when(modelCatalog.listAll(any(), any()))
+                .thenReturn(List.of(
+                        model("gemini", "gemini-2.5-pro", ModelSize.LARGE),
+                        model("gemini", "gemini-2.5-flash", ModelSize.SMALL),
+                        model("anthropic", "claude-sonnet-4-6", ModelSize.LARGE)));
 
         ResolvedSettingForm form = formWithAliasField();
         Map<String, Object> values = Map.of("aliasAnalyze", "gemini:gemini-2.5-pro");
 
-        assertThatCode(() ->
-                service.validate(form, values, TENANT, PROJECT, "alice", "en"))
+        assertThatCode(() -> service.validate(form, values, TENANT, PROJECT, "alice", "en"))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void validate_still_rejects_a_value_outside_the_catalog() {
-        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
-                model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
+        when(modelCatalog.listAll(any(), any()))
+                .thenReturn(List.of(model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
 
         ResolvedSettingForm form = formWithAliasField();
         Map<String, Object> values = Map.of("aliasAnalyze", "anthropic:nonexistent");
 
-        assertThatThrownBy(() ->
-                service.validate(form, values, TENANT, PROJECT, "alice", "en"))
+        assertThatThrownBy(() -> service.validate(form, values, TENANT, PROJECT, "alice", "en"))
                 .isInstanceOf(FormValidationException.class)
                 .hasMessageContaining("invalid_choice");
     }
 
     @Test
     void validate_skips_unset_alias_field_without_error() {
-        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
-                model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
+        when(modelCatalog.listAll(any(), any()))
+                .thenReturn(List.of(model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
 
         ResolvedSettingForm form = formWithAliasField();
         // Field not in submitted values at all → missing path in validator.
         Map<String, Object> values = Map.of();
 
-        assertThatCode(() ->
-                service.validate(form, values, TENANT, PROJECT, "alice", "en"))
+        assertThatCode(() -> service.validate(form, values, TENANT, PROJECT, "alice", "en"))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void withLiveCascadeValues_populates_choices_from_catalog() {
-        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
-                model("gemini", "gemini-2.5-pro", ModelSize.LARGE),
-                model("anthropic", "claude-sonnet-4-6", ModelSize.LARGE)));
+        when(modelCatalog.listAll(any(), any()))
+                .thenReturn(List.of(
+                        model("gemini", "gemini-2.5-pro", ModelSize.LARGE),
+                        model("anthropic", "claude-sonnet-4-6", ModelSize.LARGE)));
 
         ResolvedSettingForm form = formWithAliasField();
         List<FormFieldDto> resolved = service.withLiveCascadeValues(form, TENANT, PROJECT, "alice");
@@ -110,26 +109,61 @@ class SettingFormServiceChoicesFromTest {
     }
 
     @Test
+    void withLiveCascadeValues_fimSource_onlyListsModelsWithAFimTemplate() {
+        // The ai-fim-models source exists so the follow-up completion
+        // alias picker can't offer a chat model — picking one would be
+        // the fail-closed error at call time.
+        when(modelCatalog.listAll(any(), any()))
+                .thenReturn(List.of(
+                        model("lmstudio", "qwen3-coder-30b", ModelSize.LARGE),
+                        fimModel("lmstudio", "qwen2.5-coder-32b-instruct"),
+                        model("anthropic", "claude-sonnet-4-6", ModelSize.LARGE)));
+
+        FormFieldDto field = FormFieldDto.builder()
+                .name("aliasFim")
+                .type("select")
+                .label(Map.of("en", "Alias fim"))
+                .choicesFrom("ai-fim-models")
+                .bindsTo(BindsToDto.builder().key("ai.alias.default.fim").build())
+                .build();
+        ResolvedSettingForm form = new ResolvedSettingForm(
+                "llm-setup",
+                Map.of("en", "LLM"),
+                Map.of("en", "LLM"),
+                null,
+                null,
+                SettingService.SCOPE_PROJECT,
+                List.of(field),
+                List.of(),
+                true,
+                List.of("*"),
+                SettingFormSource.RESOURCE);
+
+        List<FormFieldDto> resolved = service.withLiveCascadeValues(form, TENANT, PROJECT, "alice");
+
+        assertThat(resolved.get(0).getChoices())
+                .extracting(c -> c.getValue())
+                .containsExactly("lmstudio:qwen2.5-coder-32b-instruct");
+    }
+
+    @Test
     void validate_tolerates_a_stale_inherited_value_the_user_did_not_touch() {
         // The reported bug: ai.alias.default.image was inherited from the
         // tenant, the model it pointed at had dropped out of the choice list
         // (a discovery run had reclassified it), and the pre-filled value came
         // back on submit — blocking the whole form with invalid_choice on a
         // field the user never opened.
-        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
-                model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
-        when(settingService.getStringValue(
-                TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.alias.default.analyze"))
+        when(modelCatalog.listAll(any(), any()))
+                .thenReturn(List.of(model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
+        when(settingService.getStringValue(TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.alias.default.analyze"))
                 .thenReturn(null);
-        when(settingService.getStringValue(
-                TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
+        when(settingService.getStringValue(TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
                 .thenReturn("gemini:gone-from-catalog");
 
         ResolvedSettingForm form = formWithAliasField();
         Map<String, Object> values = Map.of("aliasAnalyze", "gemini:gone-from-catalog");
 
-        assertThatCode(() ->
-                service.validate(form, values, TENANT, PROJECT, "alice", "en"))
+        assertThatCode(() -> service.validate(form, values, TENANT, PROJECT, "alice", "en"))
                 .doesNotThrowAnyException();
     }
 
@@ -137,17 +171,15 @@ class SettingFormServiceChoicesFromTest {
     void validate_rejects_a_stale_value_once_the_user_actually_changes_it() {
         // Same setup, but the submitted value differs from the inherited one:
         // now it is a real user choice and must be validated normally.
-        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
-                model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
-        when(settingService.getStringValue(
-                TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
+        when(modelCatalog.listAll(any(), any()))
+                .thenReturn(List.of(model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
+        when(settingService.getStringValue(TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
                 .thenReturn("gemini:gone-from-catalog");
 
         ResolvedSettingForm form = formWithAliasField();
         Map<String, Object> values = Map.of("aliasAnalyze", "gemini:also-not-in-catalog");
 
-        assertThatThrownBy(() ->
-                service.validate(form, values, TENANT, PROJECT, "alice", "en"))
+        assertThatThrownBy(() -> service.validate(form, values, TENANT, PROJECT, "alice", "en"))
                 .isInstanceOf(FormValidationException.class)
                 .hasMessageContaining("invalid_choice");
     }
@@ -156,40 +188,37 @@ class SettingFormServiceChoicesFromTest {
     void apply_does_not_pin_an_inherited_value_into_the_edited_project() {
         // Opening the form on a project and pressing Save must not copy the
         // tenant-level values down into the project scope.
-        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
-                model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
-        when(settingService.getStringValue(
-                TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.alias.default.analyze"))
+        when(modelCatalog.listAll(any(), any()))
+                .thenReturn(List.of(model("gemini", "gemini-2.5-pro", ModelSize.LARGE)));
+        when(settingService.getStringValue(TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.alias.default.analyze"))
                 .thenReturn(null);
-        when(settingService.getStringValue(
-                TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
+        when(settingService.getStringValue(TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
                 .thenReturn("gemini:gemini-2.5-pro");
 
         ResolvedSettingForm form = formWithAliasField();
         Map<String, Object> values = Map.of("aliasAnalyze", "gemini:gemini-2.5-pro");
 
-        List<PlannedSettingAction> plan =
-                service.apply(form, values, TENANT, PROJECT, "alice", "en");
+        List<PlannedSettingAction> plan = service.apply(form, values, TENANT, PROJECT, "alice", "en");
 
-        assertThat(plan).singleElement()
+        assertThat(plan)
+                .singleElement()
                 .extracting(PlannedSettingAction::action)
                 .isEqualTo(PlannedSettingAction.Action.SKIP);
     }
 
     @Test
     void apply_writes_the_value_when_the_user_picks_a_different_model() {
-        when(modelCatalog.listAll(any(), any())).thenReturn(List.of(
-                model("gemini", "gemini-2.5-pro", ModelSize.LARGE),
-                model("gemini", "gemini-2.5-flash", ModelSize.SMALL)));
-        when(settingService.getStringValue(
-                TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
+        when(modelCatalog.listAll(any(), any()))
+                .thenReturn(List.of(
+                        model("gemini", "gemini-2.5-pro", ModelSize.LARGE),
+                        model("gemini", "gemini-2.5-flash", ModelSize.SMALL)));
+        when(settingService.getStringValue(TENANT, SettingService.SCOPE_PROJECT, "_tenant", "ai.alias.default.analyze"))
                 .thenReturn("gemini:gemini-2.5-pro");
 
         ResolvedSettingForm form = formWithAliasField();
         Map<String, Object> values = Map.of("aliasAnalyze", "gemini:gemini-2.5-flash");
 
-        List<PlannedSettingAction> plan =
-                service.apply(form, values, TENANT, PROJECT, "alice", "en");
+        List<PlannedSettingAction> plan = service.apply(form, values, TENANT, PROJECT, "alice", "en");
 
         assertThat(plan).singleElement().satisfies(a -> {
             assertThat(a.action()).isEqualTo(PlannedSettingAction.Action.WRITE);
@@ -209,17 +238,57 @@ class SettingFormServiceChoicesFromTest {
                 .bindsTo(BindsToDto.builder().key("ai.alias.default.analyze").build())
                 .build();
         return new ResolvedSettingForm(
-                "llm-setup", Map.of("en", "LLM"), Map.of("en", "LLM"),
-                null, null, SettingService.SCOPE_PROJECT,
-                List.of(field), List.of(), true, List.of("*"),
+                "llm-setup",
+                Map.of("en", "LLM"),
+                Map.of("en", "LLM"),
+                null,
+                null,
+                SettingService.SCOPE_PROJECT,
+                List.of(field),
+                List.of(),
+                true,
+                List.of("*"),
                 SettingFormSource.RESOURCE);
     }
 
     private static ModelInfo model(String provider, String name, ModelSize size) {
-        return new ModelInfo(provider, name, 200000, 8192, size,
-                Set.<ModelCapability>of(), 60, 2, false,
-                /*messageParser*/ null, /*pricing*/ null,
+        return new ModelInfo(
+                provider,
+                name,
+                200000,
+                8192,
+                size,
+                Set.<ModelCapability>of(),
+                60,
+                2,
+                false,
+                /*messageParser*/ null, /*pricing*/
+                null,
                 OutputTokenParam.MAX_TOKENS,
-                java.util.Set.of(), null);
+                java.util.Set.of(),
+                null);
+    }
+
+    /** Same shape as {@link #model}, but with a Fill-In-the-Middle
+     *  template — the one field the ai-fim-models source filters on. */
+    private static ModelInfo fimModel(String provider, String name) {
+        return new ModelInfo(
+                provider,
+                name,
+                262144,
+                8192,
+                ModelSize.LARGE,
+                Set.<ModelCapability>of(),
+                120,
+                2,
+                false,
+                /*messageParser*/ null, /*pricing*/
+                null,
+                OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(),
+                null,
+                /*maxTools*/ null, /*mergeSystemMessages*/
+                false,
+                "<fim_prefix>{prefix}<fim_suffix>{suffix}<fim_middle>");
     }
 }

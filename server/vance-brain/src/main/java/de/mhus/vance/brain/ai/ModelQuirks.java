@@ -23,7 +23,8 @@ import org.yaml.snakeyaml.Yaml;
  * ({@code ModelInfo.messageParser()},
  * {@code ModelInfo.outputTokenParam()},
  * {@code ModelInfo.unsupportedParams()},
- * {@code ModelInfo.reasoningEffortWhenOff()}) — applied during
+ * {@code ModelInfo.reasoningEffortWhenOff()},
+ * {@code ModelInfo.fimTemplate()}) — applied during
  * {@link ModelCatalog#lookup} when no per-model YAML has set the field
  * explicitly. Single bundled file
  * ({@code vance-defaults/model-quirks.yaml}) covers every provider
@@ -41,6 +42,8 @@ import org.yaml.snakeyaml.Yaml;
  *   - match: "gpt-5*"
  *     outputTokenParam: "max_completion_tokens"
  *     unsupportedParams: ["temperature", "top_p"]
+ *   - match: "qwen*coder*"
+ *     fimTemplate: "<fim_prefix>{prefix}<fim_suffix>{suffix}<fim_middle>"
  * }</pre>
  *
  * <ul>
@@ -111,6 +114,16 @@ public class ModelQuirks {
         return firstMatch(modelName, Rule::reasoningEffortWhenOff);
     }
 
+    /**
+     * Resolve the Fill-In-the-Middle prompt template for
+     * {@code modelName}, or empty when no rule sets one. A returned
+     * template is guaranteed to carry the {@code {prefix}} and
+     * {@code {suffix}} markers in that order.
+     */
+    public Optional<String> fimTemplateFor(@Nullable String modelName) {
+        return firstMatch(modelName, Rule::fimTemplate);
+    }
+
     private <T> Optional<T> firstMatch(
             @Nullable String modelName, java.util.function.Function<Rule, @Nullable T> field) {
         if (modelName == null || modelName.isBlank()) {
@@ -138,8 +151,7 @@ public class ModelQuirks {
         }
         Map<String, Object> root;
         try (InputStream in = resource.getInputStream()) {
-            Object parsed = new Yaml().load(
-                    new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            Object parsed = new Yaml().load(new String(in.readAllBytes(), StandardCharsets.UTF_8));
             if (parsed == null) return List.of();
             if (!(parsed instanceof Map<?, ?> m)) {
                 log.warn("ModelQuirks: {} root is not a map — ignored", resource);
@@ -179,25 +191,41 @@ public class ModelQuirks {
             OutputTokenParam tokenParam =
                     OutputTokenParam.fromYaml(tokenParamRaw == null ? null : tokenParamRaw.toString());
             if (tokenParamRaw != null && tokenParam == null) {
-                log.warn("ModelQuirks: rule #{} has unknown outputTokenParam '{}' — ignored "
+                log.warn(
+                        "ModelQuirks: rule #{} has unknown outputTokenParam '{}' — ignored "
                                 + "(expected max_tokens / max_completion_tokens)",
-                        index, tokenParamRaw);
+                        index,
+                        tokenParamRaw);
             }
-            Set<SamplingParam> unsupported = readSamplingParams(
-                    rmap.get("unsupportedParams"), index);
+            Set<SamplingParam> unsupported = readSamplingParams(rmap.get("unsupportedParams"), index);
             Object reasoningOffRaw = rmap.get("reasoningEffortWhenOff");
-            String reasoningOff = reasoningOffRaw == null ? null : reasoningOffRaw.toString().trim();
+            String reasoningOff =
+                    reasoningOffRaw == null ? null : reasoningOffRaw.toString().trim();
             if (reasoningOff != null && reasoningOff.isEmpty()) {
                 reasoningOff = null;
             }
-            if (parser == null && tokenParam == null && unsupported == null
-                    && reasoningOff == null) {
-                log.warn("ModelQuirks: rule #{} ('{}') carries no quirk field — skipped",
-                        index, pattern);
+            Object fimTemplateRaw = rmap.get("fimTemplate");
+            String fimTemplate =
+                    fimTemplateRaw == null ? null : fimTemplateRaw.toString().trim();
+            if (fimTemplate != null && !isUsableFimTemplate(fimTemplate)) {
+                log.warn(
+                        "ModelQuirks: rule #{} ('{}') has malformed fimTemplate '{}' — ignored "
+                                + "(needs '{{prefix}}' before '{{suffix}}')",
+                        index,
+                        pattern,
+                        fimTemplate);
+                fimTemplate = null;
+            }
+            if (parser == null
+                    && tokenParam == null
+                    && unsupported == null
+                    && reasoningOff == null
+                    && fimTemplate == null) {
+                log.warn("ModelQuirks: rule #{} ('{}') carries no quirk field — skipped", index, pattern);
                 continue;
             }
-            out.add(new Rule(pattern, parser, tokenParam, unsupported, reasoningOff,
-                    globToRegex(pattern)));
+            out.add(new Rule(
+                    pattern, parser, tokenParam, unsupported, reasoningOff, fimTemplate, globToRegex(pattern)));
         }
         return List.copyOf(out);
     }
@@ -232,26 +260,35 @@ public class ModelQuirks {
      * are all unrecognised collapses to {@code null} too, so a typo
      * doesn't quietly turn into "everything is supported".
      */
-    private static @Nullable Set<SamplingParam> readSamplingParams(
-            @Nullable Object raw, int index) {
+    private static @Nullable Set<SamplingParam> readSamplingParams(@Nullable Object raw, int index) {
         if (raw == null) return null;
         if (!(raw instanceof List<?> list)) {
-            log.warn("ModelQuirks: rule #{} has non-list unsupportedParams '{}' — ignored",
-                    index, raw);
+            log.warn("ModelQuirks: rule #{} has non-list unsupportedParams '{}' — ignored", index, raw);
             return null;
         }
         Set<SamplingParam> out = EnumSet.noneOf(SamplingParam.class);
         for (Object entry : list) {
-            SamplingParam parsed = SamplingParam.fromYaml(
-                    entry == null ? null : entry.toString());
+            SamplingParam parsed = SamplingParam.fromYaml(entry == null ? null : entry.toString());
             if (parsed == null) {
-                log.warn("ModelQuirks: rule #{} has unknown unsupportedParams entry '{}' "
-                        + "— ignored", index, entry);
+                log.warn("ModelQuirks: rule #{} has unknown unsupportedParams entry '{}' " + "— ignored", index, entry);
                 continue;
             }
             out.add(parsed);
         }
         return out.isEmpty() ? null : Set.copyOf(out);
+    }
+
+    /**
+     * A FIM template is only usable when both markers are present and
+     * the prefix marker precedes the suffix marker — every known
+     * completion-training convention (Qwen, DeepSeek, Codestral,
+     * StarCoder) splices prefix before suffix, so an inverted template
+     * is a typo, not an exotic family.
+     */
+    private static boolean isUsableFimTemplate(String template) {
+        int prefixIdx = template.indexOf("{prefix}");
+        int suffixIdx = template.indexOf("{suffix}");
+        return prefixIdx >= 0 && suffixIdx > prefixIdx;
     }
 
     private record Rule(
@@ -260,5 +297,6 @@ public class ModelQuirks {
             @Nullable OutputTokenParam outputTokenParam,
             @Nullable Set<SamplingParam> unsupportedParams,
             @Nullable String reasoningEffortWhenOff,
+            @Nullable String fimTemplate,
             Pattern compiled) {}
 }

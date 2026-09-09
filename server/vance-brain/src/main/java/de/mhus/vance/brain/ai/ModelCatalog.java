@@ -22,7 +22,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.Resource;
@@ -94,8 +93,7 @@ public class ModelCatalog {
     public static final String AUTO_MODEL_PATH_PREFIX = "_vance/model-auto/";
 
     /** Classpath prefix mirroring {@link DocumentService#RESOURCE_PREFIX}. */
-    private static final String BUNDLED_CLASSPATH_PREFIX =
-            DocumentService.RESOURCE_PREFIX + MODEL_PATH_PREFIX;
+    private static final String BUNDLED_CLASSPATH_PREFIX = DocumentService.RESOURCE_PREFIX + MODEL_PATH_PREFIX;
 
     /** Reserved tenant id whose {@code _tenant} project is the global override layer. */
     static final String SYSTEM_TENANT = "_vance";
@@ -111,7 +109,12 @@ public class ModelCatalog {
     private static final Pattern FILE_SLUG_RE = Pattern.compile("[A-Za-z0-9._-]+");
 
     private static final ModelInfo FALLBACK_TEMPLATE = new ModelInfo(
-            "?", "?", 8192, 4096, ModelSize.LARGE, Set.of(),
+            "?",
+            "?",
+            8192,
+            4096,
+            ModelSize.LARGE,
+            Set.of(),
             ModelInfo.DEFAULT_TIMEOUT_SECONDS,
             ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
             false,
@@ -123,8 +126,7 @@ public class ModelCatalog {
 
     private final DocumentService documentService;
     private final ModelQuirks modelQuirks;
-    private final ResourcePatternResolver resourcePatternResolver =
-            new PathMatchingResourcePatternResolver();
+    private final ResourcePatternResolver resourcePatternResolver = new PathMatchingResourcePatternResolver();
 
     /** Atomic-swap target — readers see a fully-built snapshot or the previous one. */
     private volatile Snapshot snapshot = Snapshot.empty();
@@ -147,8 +149,7 @@ public class ModelCatalog {
      * {@code vance.model-catalog.refresh.interval}. Misfires are
      * harmless — the next refresh will pick up the latest state.
      */
-    @Scheduled(fixedDelayString = "${vance.model-catalog.refresh.interval:PT30M}",
-            initialDelayString = "PT30M")
+    @Scheduled(fixedDelayString = "${vance.model-catalog.refresh.interval:PT30M}", initialDelayString = "PT30M")
     public void scheduledRefresh() {
         try {
             refresh();
@@ -168,7 +169,8 @@ public class ModelCatalog {
         snapshot = built;
         Duration elapsed = Duration.between(start, Instant.now());
         int overrideScopes = built.uniqueScopeCount();
-        log.info("ModelCatalog: refreshed in {} ms — {} bundled, {} override scopes "
+        log.info(
+                "ModelCatalog: refreshed in {} ms — {} bundled, {} override scopes "
                         + "({} manual + {} auto), {} providers",
                 elapsed.toMillis(),
                 countModels(built.bundled),
@@ -187,8 +189,7 @@ public class ModelCatalog {
     // ──────────────────── Scoped lookups (preferred) ────────────────────
 
     public Optional<ModelInfo> lookup(
-            @Nullable String tenantId, @Nullable String projectId,
-            String provider, String modelName) {
+            @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
         if (provider == null || modelName == null) {
             return Optional.empty();
         }
@@ -197,13 +198,11 @@ public class ModelCatalog {
         if (spec == null || !isChatKind(spec)) {
             return Optional.empty();
         }
-        return Optional.of(buildInfo(provider, modelName, spec,
-                providerSpec(tenantId, projectId, provider)));
+        return Optional.of(buildInfo(provider, modelName, spec, providerSpec(tenantId, projectId, provider)));
     }
 
     public Optional<ImageModelInfo> lookupImage(
-            @Nullable String tenantId, @Nullable String projectId,
-            String provider, String modelName) {
+            @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
         if (provider == null || modelName == null) {
             return Optional.empty();
         }
@@ -216,16 +215,18 @@ public class ModelCatalog {
     }
 
     public ModelInfo lookupOrDefault(
-            @Nullable String tenantId, @Nullable String projectId,
-            String provider, String modelName) {
+            @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
         return lookup(tenantId, projectId, provider, modelName)
                 .orElseGet(() -> fallback(tenantId, projectId, provider, modelName));
     }
 
     /** Cascade-aware lookup with named-instance → protocol-type fallback (see §3 spec). */
     public ModelInfo lookupOrDefault(
-            @Nullable String tenantId, @Nullable String projectId,
-            String providerInstance, String protocolType, String modelName) {
+            @Nullable String tenantId,
+            @Nullable String projectId,
+            String providerInstance,
+            String protocolType,
+            String modelName) {
         Optional<ModelInfo> direct = lookup(tenantId, projectId, providerInstance, modelName);
         if (direct.isPresent()) {
             return direct.get();
@@ -259,14 +260,13 @@ public class ModelCatalog {
             if (!isChatKind(spec)) continue;
             String[] parts = splitKey(entry.getKey());
             if (parts == null) continue;
-            out.add(buildInfo(parts[0], originalCaseName(spec, parts[1]), spec,
-                    providerSpec(tenantId, projectId, parts[0])));
+            out.add(buildInfo(
+                    parts[0], originalCaseName(spec, parts[1]), spec, providerSpec(tenantId, projectId, parts[0])));
         }
         return out;
     }
 
-    public List<ImageModelInfo> listAllImages(
-            @Nullable String tenantId, @Nullable String projectId) {
+    public List<ImageModelInfo> listAllImages(@Nullable String tenantId, @Nullable String projectId) {
         Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
         List<ImageModelInfo> out = new ArrayList<>();
         for (Map.Entry<String, Map<String, Object>> entry : view.entrySet()) {
@@ -281,8 +281,7 @@ public class ModelCatalog {
 
     /** Provider metadata ({@code _provider.yaml}) for a scoped instance, or empty. */
     public Optional<Map<String, Object>> lookupProvider(
-            @Nullable String tenantId, @Nullable String projectId,
-            String providerInstance) {
+            @Nullable String tenantId, @Nullable String projectId, String providerInstance) {
         Map<String, Map<String, Object>> view = snapshot.providerViewFor(tenantId, projectId);
         return Optional.ofNullable(view.get(providerInstance.toLowerCase(Locale.ROOT)));
     }
@@ -296,8 +295,7 @@ public class ModelCatalog {
     private @Nullable Map<String, Object> providerSpec(
             @Nullable String tenantId, @Nullable String projectId, @Nullable String provider) {
         if (provider == null || provider.isBlank()) return null;
-        return snapshot.providerViewFor(tenantId, projectId)
-                .get(provider.toLowerCase(Locale.ROOT));
+        return snapshot.providerViewFor(tenantId, projectId).get(provider.toLowerCase(Locale.ROOT));
     }
 
     // ──────────────────── Snapshot build ────────────────────
@@ -315,11 +313,9 @@ public class ModelCatalog {
 
         Resource[] resources;
         try {
-            resources = resourcePatternResolver.getResources(
-                    "classpath*:" + BUNDLED_CLASSPATH_PREFIX + "**/*.yaml");
+            resources = resourcePatternResolver.getResources("classpath*:" + BUNDLED_CLASSPATH_PREFIX + "**/*.yaml");
         } catch (IOException e) {
-            log.warn("ModelCatalog: classpath scan failed for {}: {}",
-                    BUNDLED_CLASSPATH_PREFIX, e.toString());
+            log.warn("ModelCatalog: classpath scan failed for {}: {}", BUNDLED_CLASSPATH_PREFIX, e.toString());
             return Layer.empty();
         }
         for (Resource resource : resources) {
@@ -362,15 +358,13 @@ public class ModelCatalog {
             if (content == null || content.isBlank()) continue;
             TenantProject key = new TenantProject(tenant, project);
             ScopeAcc acc = grouped.computeIfAbsent(key, k -> new ScopeAcc());
-            ingestFile(relPath, content, acc.models, acc.providers,
-                    layerKind + "-scope[" + tenant + "/" + project + "]");
+            ingestFile(
+                    relPath, content, acc.models, acc.providers, layerKind + "-scope[" + tenant + "/" + project + "]");
         }
         Map<TenantProject, Layer> out = new LinkedHashMap<>();
         for (Map.Entry<TenantProject, ScopeAcc> e : grouped.entrySet()) {
             ScopeAcc acc = e.getValue();
-            out.put(e.getKey(), new Layer(
-                    deepImmutable(acc.models),
-                    deepImmutableProviders(acc.providers)));
+            out.put(e.getKey(), new Layer(deepImmutable(acc.models), deepImmutableProviders(acc.providers)));
         }
         return Map.copyOf(out);
     }
@@ -384,21 +378,28 @@ public class ModelCatalog {
      * {@code wireName} field in the YAML).
      */
     private static void ingestFile(
-            String relPath, String content,
+            String relPath,
+            String content,
             Map<String, Map<String, Map<String, Object>>> models,
             Map<String, Map<String, Object>> providers,
             String layerName) {
         int firstSlash = relPath.indexOf('/');
         if (firstSlash < 0) {
-            log.warn("ModelCatalog[{}]: top-level YAML file {} ignored — must sit under a provider directory",
-                    layerName, relPath);
+            log.warn(
+                    "ModelCatalog[{}]: top-level YAML file {} ignored — must sit under a provider directory",
+                    layerName,
+                    relPath);
             return;
         }
         String provider = relPath.substring(0, firstSlash);
         String tail = relPath.substring(firstSlash + 1);
         if (!PROVIDER_NAME_RE.matcher(provider).matches()) {
-            log.warn("ModelCatalog[{}]: invalid provider directory name '{}' (must match {}); skipping {}",
-                    layerName, provider, PROVIDER_NAME_RE.pattern(), relPath);
+            log.warn(
+                    "ModelCatalog[{}]: invalid provider directory name '{}' (must match {}); skipping {}",
+                    layerName,
+                    provider,
+                    PROVIDER_NAME_RE.pattern(),
+                    relPath);
             return;
         }
         if (!tail.endsWith(".yaml")) {
@@ -427,8 +428,11 @@ public class ModelCatalog {
         // provider dir form the wire name's '/'-separated parts (HF-style).
         for (String segment : body.split("/")) {
             if (!FILE_SLUG_RE.matcher(segment).matches()) {
-                log.warn("ModelCatalog[{}]: invalid filename slug segment '{}' in {}; skipping",
-                        layerName, segment, relPath);
+                log.warn(
+                        "ModelCatalog[{}]: invalid filename slug segment '{}' in {}; skipping",
+                        layerName,
+                        segment,
+                        relPath);
                 return;
             }
         }
@@ -443,8 +447,7 @@ public class ModelCatalog {
         // reproduce it. The merge-key is lowercased downstream.
         spec.putIfAbsent("modelName", wireName);
 
-        Map<String, Map<String, Object>> bucket =
-                models.computeIfAbsent(provider, p -> new LinkedHashMap<>());
+        Map<String, Map<String, Object>> bucket = models.computeIfAbsent(provider, p -> new LinkedHashMap<>());
         String mergeKey = wireName.toLowerCase(Locale.ROOT);
         Map<String, Object> existing = bucket.get(mergeKey);
         if (existing == null) {
@@ -478,8 +481,7 @@ public class ModelCatalog {
         try (InputStream in = resource.getInputStream()) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            log.warn("ModelCatalog: failed to read classpath resource '{}': {}",
-                    resource, e.toString());
+            log.warn("ModelCatalog: failed to read classpath resource '{}': {}", resource, e.toString());
             return null;
         }
     }
@@ -508,14 +510,11 @@ public class ModelCatalog {
          * access for each {@code (tenant, project)} pair; reset only
          * when a new {@code Snapshot} is published.
          */
-        private final Map<TenantProject, Map<String, Map<String, Object>>> mergedCache =
-                new ConcurrentHashMap<>();
-        private final Map<TenantProject, Map<String, Map<String, Object>>> providerCache =
-                new ConcurrentHashMap<>();
+        private final Map<TenantProject, Map<String, Map<String, Object>>> mergedCache = new ConcurrentHashMap<>();
 
-        Snapshot(Layer bundled,
-                 Map<TenantProject, Layer> perScopeManual,
-                 Map<TenantProject, Layer> perScopeAuto) {
+        private final Map<TenantProject, Map<String, Map<String, Object>>> providerCache = new ConcurrentHashMap<>();
+
+        Snapshot(Layer bundled, Map<TenantProject, Layer> perScopeManual, Map<TenantProject, Layer> perScopeAuto) {
             this.bundled = bundled;
             this.perScopeManual = perScopeManual;
             this.perScopeAuto = perScopeAuto;
@@ -533,20 +532,17 @@ public class ModelCatalog {
         int uniqueScopeCount() {
             if (perScopeManual.isEmpty()) return perScopeAuto.size();
             if (perScopeAuto.isEmpty()) return perScopeManual.size();
-            java.util.Set<TenantProject> union =
-                    new java.util.HashSet<>(perScopeManual.keySet());
+            java.util.Set<TenantProject> union = new java.util.HashSet<>(perScopeManual.keySet());
             union.addAll(perScopeAuto.keySet());
             return union.size();
         }
 
-        Map<String, Map<String, Object>> viewFor(
-                @Nullable String tenantId, @Nullable String projectId) {
+        Map<String, Map<String, Object>> viewFor(@Nullable String tenantId, @Nullable String projectId) {
             TenantProject key = normalizeScope(tenantId, projectId);
             return mergedCache.computeIfAbsent(key, this::buildModelView);
         }
 
-        Map<String, Map<String, Object>> providerViewFor(
-                @Nullable String tenantId, @Nullable String projectId) {
+        Map<String, Map<String, Object>> providerViewFor(@Nullable String tenantId, @Nullable String projectId) {
             TenantProject key = normalizeScope(tenantId, projectId);
             return providerCache.computeIfAbsent(key, this::buildProviderView);
         }
@@ -557,15 +553,11 @@ public class ModelCatalog {
             // auto runs first then manual so manual fields win.
             Map<String, Map<String, Object>> acc = new LinkedHashMap<>();
             applyModelLayer(acc, bundled);
-            applyScopeModel(acc, new TenantProject(
-                    SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME));
+            applyScopeModel(acc, new TenantProject(SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME));
             if (scope.tenantId != null) {
-                applyScopeModel(acc, new TenantProject(
-                        scope.tenantId, HomeBootstrapService.TENANT_PROJECT_NAME));
-                if (scope.projectId != null
-                        && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(scope.projectId)) {
-                    applyScopeModel(acc, new TenantProject(
-                            scope.tenantId, scope.projectId));
+                applyScopeModel(acc, new TenantProject(scope.tenantId, HomeBootstrapService.TENANT_PROJECT_NAME));
+                if (scope.projectId != null && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(scope.projectId)) {
+                    applyScopeModel(acc, new TenantProject(scope.tenantId, scope.projectId));
                 }
             }
             return Collections.unmodifiableMap(acc);
@@ -574,15 +566,11 @@ public class ModelCatalog {
         private Map<String, Map<String, Object>> buildProviderView(TenantProject scope) {
             Map<String, Map<String, Object>> acc = new LinkedHashMap<>();
             applyProviderLayer(acc, bundled);
-            applyScopeProvider(acc, new TenantProject(
-                    SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME));
+            applyScopeProvider(acc, new TenantProject(SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME));
             if (scope.tenantId != null) {
-                applyScopeProvider(acc, new TenantProject(
-                        scope.tenantId, HomeBootstrapService.TENANT_PROJECT_NAME));
-                if (scope.projectId != null
-                        && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(scope.projectId)) {
-                    applyScopeProvider(acc, new TenantProject(
-                            scope.tenantId, scope.projectId));
+                applyScopeProvider(acc, new TenantProject(scope.tenantId, HomeBootstrapService.TENANT_PROJECT_NAME));
+                if (scope.projectId != null && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(scope.projectId)) {
+                    applyScopeProvider(acc, new TenantProject(scope.tenantId, scope.projectId));
                 }
             }
             return Collections.unmodifiableMap(acc);
@@ -603,32 +591,26 @@ public class ModelCatalog {
             if (manual != null) applyProviderLayer(acc, manual);
         }
 
-        private static void applyModelLayer(
-                Map<String, Map<String, Object>> acc, Layer layer) {
-            for (Map.Entry<String, Map<String, Map<String, Object>>> provEntry
-                    : layer.models.entrySet()) {
+        private static void applyModelLayer(Map<String, Map<String, Object>> acc, Layer layer) {
+            for (Map.Entry<String, Map<String, Map<String, Object>>> provEntry : layer.models.entrySet()) {
                 String provider = provEntry.getKey();
-                for (Map.Entry<String, Map<String, Object>> modelEntry
-                        : provEntry.getValue().entrySet()) {
+                for (Map.Entry<String, Map<String, Object>> modelEntry :
+                        provEntry.getValue().entrySet()) {
                     String compositeKey = provider + "/" + modelEntry.getKey();
-                    Map<String, Object> base = acc.computeIfAbsent(
-                            compositeKey, k -> new LinkedHashMap<>());
+                    Map<String, Object> base = acc.computeIfAbsent(compositeKey, k -> new LinkedHashMap<>());
                     base.putAll(modelEntry.getValue());
                 }
             }
         }
 
-        private static void applyProviderLayer(
-                Map<String, Map<String, Object>> acc, Layer layer) {
+        private static void applyProviderLayer(Map<String, Map<String, Object>> acc, Layer layer) {
             for (Map.Entry<String, Map<String, Object>> e : layer.providers.entrySet()) {
-                Map<String, Object> base = acc.computeIfAbsent(
-                        e.getKey(), k -> new LinkedHashMap<>());
+                Map<String, Object> base = acc.computeIfAbsent(e.getKey(), k -> new LinkedHashMap<>());
                 base.putAll(e.getValue());
             }
         }
 
-        private static TenantProject normalizeScope(
-                @Nullable String tenant, @Nullable String project) {
+        private static TenantProject normalizeScope(@Nullable String tenant, @Nullable String project) {
             String t = (tenant == null || tenant.isBlank()) ? null : tenant;
             String p = (project == null || project.isBlank()) ? null : project;
             return new TenantProject(t, p);
@@ -637,11 +619,10 @@ public class ModelCatalog {
 
     /** One layer of the catalog — bundled, system, or a single (tenant, project). */
     static final class Layer {
-        final Map<String, Map<String, Map<String, Object>>> models;   // provider -> modelKey -> spec
-        final Map<String, Map<String, Object>> providers;              // provider -> _provider.yaml content
+        final Map<String, Map<String, Map<String, Object>>> models; // provider -> modelKey -> spec
+        final Map<String, Map<String, Object>> providers; // provider -> _provider.yaml content
 
-        Layer(Map<String, Map<String, Map<String, Object>>> models,
-              Map<String, Map<String, Object>> providers) {
+        Layer(Map<String, Map<String, Map<String, Object>>> models, Map<String, Map<String, Object>> providers) {
             this.models = models;
             this.providers = providers;
         }
@@ -658,8 +639,10 @@ public class ModelCatalog {
     }
 
     /** Compound key for {@link Snapshot#perScope} and merged-cache. */
-    record TenantProject(@Nullable String tenantId, @Nullable String projectId) {
-        @Override public int hashCode() {
+    record TenantProject(
+            @Nullable String tenantId, @Nullable String projectId) {
+        @Override
+        public int hashCode() {
             return Objects.hash(tenantId, projectId);
         }
     }
@@ -686,17 +669,12 @@ public class ModelCatalog {
         return "image".equalsIgnoreCase(kind.toString().trim());
     }
 
-    private static ImageModelInfo buildImageInfo(
-            String provider, String modelName, Map<String, Object> spec) {
+    private static ImageModelInfo buildImageInfo(String provider, String modelName, Map<String, Object> spec) {
         Set<String> aspects = readStringList(spec.get("supportedAspectRatios"));
-        int maxPromptChars = readInt(spec.get("maxPromptChars"),
-                ImageModelInfo.DEFAULT_MAX_PROMPT_CHARS);
-        Map<String, Double> costs = readCostMap(spec.get("costPerImage"),
-                provider, modelName);
-        int timeout = readInt(spec.get("timeoutSeconds"),
-                ImageModelInfo.DEFAULT_TIMEOUT_SECONDS);
-        return new ImageModelInfo(provider, modelName, aspects, maxPromptChars,
-                costs, timeout);
+        int maxPromptChars = readInt(spec.get("maxPromptChars"), ImageModelInfo.DEFAULT_MAX_PROMPT_CHARS);
+        Map<String, Double> costs = readCostMap(spec.get("costPerImage"), provider, modelName);
+        int timeout = readInt(spec.get("timeoutSeconds"), ImageModelInfo.DEFAULT_TIMEOUT_SECONDS);
+        return new ImageModelInfo(provider, modelName, aspects, maxPromptChars, costs, timeout);
     }
 
     /**
@@ -708,34 +686,43 @@ public class ModelCatalog {
      */
     private static final Set<String> KNOWN_MODEL_FIELDS = Set.of(
             // Identification
-            "wireName", "modelName",
+            "wireName",
+            "modelName",
             // Chat
-            "contextWindowTokens", "defaultMaxOutputTokens", "size", "kind",
-            "capabilities", "stripThinkTags", "timeoutSeconds",
-            "actionLoopCorrections", "messageParser", "outputTokenParam",
-            "unsupportedParams", "reasoningEffortWhenOff", "pricing", "maxTools",
+            "contextWindowTokens",
+            "defaultMaxOutputTokens",
+            "size",
+            "kind",
+            "capabilities",
+            "stripThinkTags",
+            "timeoutSeconds",
+            "actionLoopCorrections",
+            "messageParser",
+            "outputTokenParam",
+            "unsupportedParams",
+            "reasoningEffortWhenOff",
+            "pricing",
+            "maxTools",
             "mergeSystemMessages",
+            "fimTemplate",
             // Image
-            "supportedAspectRatios", "maxPromptChars", "costPerImage",
+            "supportedAspectRatios",
+            "maxPromptChars",
+            "costPerImage",
             // Discovery markers (informational)
-            "discoveredBy", "discoveredAt");
+            "discoveredBy",
+            "discoveredAt");
 
     private ModelInfo buildInfo(
-            String provider, String modelName, Map<String, Object> spec,
-            @Nullable Map<String, Object> providerSpec) {
+            String provider, String modelName, Map<String, Object> spec, @Nullable Map<String, Object> providerSpec) {
         checkUnknownFields(provider, modelName, spec);
-        int ctx = readInt(spec.get("contextWindowTokens"),
-                FALLBACK_TEMPLATE.contextWindowTokens());
-        int out = readInt(spec.get("defaultMaxOutputTokens"),
-                FALLBACK_TEMPLATE.defaultMaxOutputTokens());
+        int ctx = readInt(spec.get("contextWindowTokens"), FALLBACK_TEMPLATE.contextWindowTokens());
+        int out = readInt(spec.get("defaultMaxOutputTokens"), FALLBACK_TEMPLATE.defaultMaxOutputTokens());
         ModelSize size = readSize(spec.get("size"), provider, modelName);
         Set<ModelCapability> caps = readCapabilities(spec.get("capabilities"), provider, modelName);
-        int timeout = readInt(spec.get("timeoutSeconds"),
-                FALLBACK_TEMPLATE.timeoutSeconds());
-        int corrections = readInt(spec.get("actionLoopCorrections"),
-                FALLBACK_TEMPLATE.actionLoopCorrections());
-        boolean stripThinkTags = readBoolean(spec.get("stripThinkTags"),
-                FALLBACK_TEMPLATE.stripThinkTags());
+        int timeout = readInt(spec.get("timeoutSeconds"), FALLBACK_TEMPLATE.timeoutSeconds());
+        int corrections = readInt(spec.get("actionLoopCorrections"), FALLBACK_TEMPLATE.actionLoopCorrections());
+        boolean stripThinkTags = readBoolean(spec.get("stripThinkTags"), FALLBACK_TEMPLATE.stripThinkTags());
         // Explicit per-model YAML wins; pattern-based quirks fill in
         // the gap for whole model families (deepseek-v4*, gemma-4*, …).
         String messageParser = readString(spec.get("messageParser"));
@@ -745,20 +732,24 @@ public class ModelCatalog {
         // Same two-layer resolution as messageParser: explicit YAML
         // field wins, family pattern fills the gap (gpt-5*, o3*, …),
         // built-in default (max_tokens) is the floor.
-        OutputTokenParam outputTokenParam = readOutputTokenParam(
-                spec.get("outputTokenParam"), provider, modelName);
+        OutputTokenParam outputTokenParam = readOutputTokenParam(spec.get("outputTokenParam"), provider, modelName);
         if (outputTokenParam == null) {
-            outputTokenParam = modelQuirks.outputTokenParamFor(modelName)
-                    .orElse(OutputTokenParam.MAX_TOKENS);
+            outputTokenParam = modelQuirks.outputTokenParamFor(modelName).orElse(OutputTokenParam.MAX_TOKENS);
         }
-        Set<SamplingParam> unsupported = readUnsupportedParams(
-                spec.get("unsupportedParams"), provider, modelName);
+        Set<SamplingParam> unsupported = readUnsupportedParams(spec.get("unsupportedParams"), provider, modelName);
         if (unsupported == null) {
             unsupported = modelQuirks.unsupportedParamsFor(modelName).orElse(Set.of());
         }
         String reasoningOff = readString(spec.get("reasoningEffortWhenOff"));
         if (reasoningOff == null) {
             reasoningOff = modelQuirks.reasoningEffortWhenOffFor(modelName).orElse(null);
+        }
+        // Same two-layer resolution as messageParser: explicit YAML
+        // field wins, family pattern (qwen*coder*, deepseek-coder*, …)
+        // fills the gap, absent in both = no FIM shape.
+        String fimTemplate = readString(spec.get("fimTemplate"));
+        if (fimTemplate == null) {
+            fimTemplate = modelQuirks.fimTemplateFor(modelName).orElse(null);
         }
         ModelInfo.Pricing pricing = readPricing(spec.get("pricing"), provider, modelName);
         // Endpoint-level tool cap: per-model value wins, provider sidecar
@@ -770,19 +761,34 @@ public class ModelCatalog {
         if (spec.containsKey("maxTools")) {
             maxTools = readPositiveInt(spec.get("maxTools"), provider, modelName, "maxTools");
         } else {
-            maxTools = providerSpec == null ? null : readPositiveInt(
-                    providerSpec.get("maxTools"), provider, "_provider", "maxTools");
+            maxTools = providerSpec == null
+                    ? null
+                    : readPositiveInt(providerSpec.get("maxTools"), provider, "_provider", "maxTools");
         }
         // Endpoint quirk, per model: some renderers repeat the whole tool
         // manifest for every system message (Ollama's `glimmer`). Off
         // unless a model asks for it — the block split carries the
         // Anthropic cache boundary. See SystemMessageMerger.
-        boolean mergeSystemMessages = readBoolean(spec.get("mergeSystemMessages"),
-                FALLBACK_TEMPLATE.mergeSystemMessages());
-        return new ModelInfo(provider, modelName, ctx, out, size, caps,
-                timeout, corrections, stripThinkTags, messageParser, pricing,
-                outputTokenParam, unsupported, reasoningOff, maxTools,
-                mergeSystemMessages);
+        boolean mergeSystemMessages =
+                readBoolean(spec.get("mergeSystemMessages"), FALLBACK_TEMPLATE.mergeSystemMessages());
+        return new ModelInfo(
+                provider,
+                modelName,
+                ctx,
+                out,
+                size,
+                caps,
+                timeout,
+                corrections,
+                stripThinkTags,
+                messageParser,
+                pricing,
+                outputTokenParam,
+                unsupported,
+                reasoningOff,
+                maxTools,
+                mergeSystemMessages,
+                fimTemplate);
     }
 
     /**
@@ -805,8 +811,7 @@ public class ModelCatalog {
                 // fall through to the warning
             }
         }
-        log.warn("ModelCatalog: '{}/{}' has non-numeric {} '{}' — ignored",
-                provider, modelName, field, raw);
+        log.warn("ModelCatalog: '{}/{}' has non-numeric {} '{}' — ignored", provider, modelName, field, raw);
         return null;
     }
 
@@ -816,13 +821,15 @@ public class ModelCatalog {
      * {@code contextWindow} (missing "Tokens" suffix) otherwise
      * silently loses the override.
      */
-    private static void checkUnknownFields(
-            String provider, String modelName, Map<String, Object> spec) {
+    private static void checkUnknownFields(String provider, String modelName, Map<String, Object> spec) {
         for (String key : spec.keySet()) {
             if (KNOWN_MODEL_FIELDS.contains(key)) continue;
-            log.warn("ModelCatalog: '{}/{}' has unknown field '{}' — typo? "
-                            + "(known fields: {})",
-                    provider, modelName, key, KNOWN_MODEL_FIELDS);
+            log.warn(
+                    "ModelCatalog: '{}/{}' has unknown field '{}' — typo? " + "(known fields: {})",
+                    provider,
+                    modelName,
+                    key,
+                    KNOWN_MODEL_FIELDS);
         }
     }
 
@@ -846,17 +853,22 @@ public class ModelCatalog {
      * {@code ObservedToolLimitRegistry} learned it back from the rejection.
      */
     private ModelInfo fallback(
-            @Nullable String tenantId, @Nullable String projectId,
-            @Nullable String provider, @Nullable String modelName) {
+            @Nullable String tenantId,
+            @Nullable String projectId,
+            @Nullable String provider,
+            @Nullable String modelName) {
         // Instance-keyed, not protocol-keyed: the bundled
         // openai/_provider.yaml says so in as many words — a gateway
         // configured as `ai.provider.cortecs.type=openai` does not inherit
         // OpenAI's cap, because it is a different endpoint that may enforce
         // a different number or none.
         Integer maxTools = sidecarMaxTools(tenantId, projectId, provider);
-        log.warn("ModelCatalog: no entry for '{}/{}' — falling back to {}-token context, "
+        log.warn(
+                "ModelCatalog: no entry for '{}/{}' — falling back to {}-token context, "
                         + "no capabilities, {}s timeout, maxTools={}",
-                provider, modelName, FALLBACK_TEMPLATE.contextWindowTokens(),
+                provider,
+                modelName,
+                FALLBACK_TEMPLATE.contextWindowTokens(),
                 FALLBACK_TEMPLATE.timeoutSeconds(),
                 maxTools == null ? "unknown" : maxTools);
         return new ModelInfo(
@@ -871,11 +883,12 @@ public class ModelCatalog {
                 FALLBACK_TEMPLATE.stripThinkTags(),
                 modelQuirks.messageParserFor(modelName).orElse(null),
                 /*pricing*/ null,
-                modelQuirks.outputTokenParamFor(modelName)
-                        .orElse(OutputTokenParam.MAX_TOKENS),
+                modelQuirks.outputTokenParamFor(modelName).orElse(OutputTokenParam.MAX_TOKENS),
                 modelQuirks.unsupportedParamsFor(modelName).orElse(Set.of()),
                 modelQuirks.reasoningEffortWhenOffFor(modelName).orElse(null),
-                maxTools);
+                maxTools,
+                /*mergeSystemMessages*/ false,
+                modelQuirks.fimTemplateFor(modelName).orElse(null));
     }
 
     /** The {@code maxTools} a provider sidecar declares, if any. */
@@ -883,8 +896,7 @@ public class ModelCatalog {
             @Nullable String tenantId, @Nullable String projectId, @Nullable String provider) {
         Map<String, Object> spec = providerSpec(tenantId, projectId, provider);
         if (spec == null) return null;
-        return readPositiveInt(
-                spec.get("maxTools"), provider == null ? "?" : provider, "_provider", "maxTools");
+        return readPositiveInt(spec.get("maxTools"), provider == null ? "?" : provider, "_provider", "maxTools");
     }
 
     /**
@@ -897,18 +909,19 @@ public class ModelCatalog {
             @Nullable Object raw, String provider, String modelName) {
         if (raw == null) return null;
         if (!(raw instanceof List<?> list)) {
-            log.warn("ModelCatalog: '{}/{}' has non-list unsupportedParams '{}' — ignored",
-                    provider, modelName, raw);
+            log.warn("ModelCatalog: '{}/{}' has non-list unsupportedParams '{}' — ignored", provider, modelName, raw);
             return null;
         }
         Set<SamplingParam> out = EnumSet.noneOf(SamplingParam.class);
         for (Object entry : list) {
-            SamplingParam parsed = SamplingParam.fromYaml(
-                    entry == null ? null : entry.toString());
+            SamplingParam parsed = SamplingParam.fromYaml(entry == null ? null : entry.toString());
             if (parsed == null) {
-                log.warn("ModelCatalog: '{}/{}' has unknown unsupportedParams entry '{}' "
-                                + "— ignored (known: {})",
-                        provider, modelName, entry, List.of(SamplingParam.values()));
+                log.warn(
+                        "ModelCatalog: '{}/{}' has unknown unsupportedParams entry '{}' " + "— ignored (known: {})",
+                        provider,
+                        modelName,
+                        entry,
+                        List.of(SamplingParam.values()));
                 continue;
             }
             out.add(parsed);
@@ -927,9 +940,12 @@ public class ModelCatalog {
         if (raw == null) return null;
         OutputTokenParam parsed = OutputTokenParam.fromYaml(raw.toString());
         if (parsed == null) {
-            log.warn("ModelCatalog: '{}/{}' has unknown outputTokenParam '{}' — ignored "
+            log.warn(
+                    "ModelCatalog: '{}/{}' has unknown outputTokenParam '{}' — ignored "
                             + "(expected max_tokens / max_completion_tokens)",
-                    provider, modelName, raw);
+                    provider,
+                    modelName,
+                    raw);
         }
         return parsed;
     }
@@ -943,32 +959,49 @@ public class ModelCatalog {
      * (the model shows as unpriced) rather than partial.
      */
     @SuppressWarnings("unchecked")
-    private static ModelInfo.@Nullable Pricing readPricing(
-            @Nullable Object raw, String provider, String modelName) {
+    private static ModelInfo.@Nullable Pricing readPricing(@Nullable Object raw, String provider, String modelName) {
         if (raw == null) return null;
         if (!(raw instanceof Map<?, ?> m)) {
-            log.warn("ModelCatalog: '{}/{}' has non-map pricing '{}' ({}) — ignored",
-                    provider, modelName, raw,
+            log.warn(
+                    "ModelCatalog: '{}/{}' has non-map pricing '{}' ({}) — ignored",
+                    provider,
+                    modelName,
+                    raw,
                     raw.getClass().getSimpleName());
             return null;
         }
         Map<String, Object> map = (Map<String, Object>) m;
-        Double input = pickPricingField(map, "inputPerMTok",
-                "input_per_m_tok", "inputPerMillionTokens", "inputPricePerMTok",
-                "inputPrice", "inputCostPerMTok", "input");
-        Double output = pickPricingField(map, "outputPerMTok",
-                "output_per_m_tok", "outputPerMillionTokens", "outputPricePerMTok",
-                "outputPrice", "outputCostPerMTok", "output");
+        Double input = pickPricingField(
+                map,
+                "inputPerMTok",
+                "input_per_m_tok",
+                "inputPerMillionTokens",
+                "inputPricePerMTok",
+                "inputPrice",
+                "inputCostPerMTok",
+                "input");
+        Double output = pickPricingField(
+                map,
+                "outputPerMTok",
+                "output_per_m_tok",
+                "outputPerMillionTokens",
+                "outputPricePerMTok",
+                "outputPrice",
+                "outputCostPerMTok",
+                "output");
         if (input == null || output == null) {
-            log.warn("ModelCatalog: '{}/{}' pricing missing inputPerMTok/outputPerMTok "
+            log.warn(
+                    "ModelCatalog: '{}/{}' pricing missing inputPerMTok/outputPerMTok "
                             + "(actual keys: {}) — pricing ignored",
-                    provider, modelName, map.keySet());
+                    provider,
+                    modelName,
+                    map.keySet());
             return null;
         }
-        Double cacheRead = pickPricingField(map, "cacheReadPerMTok",
-                "cache_read_per_m_tok", "cacheReadPerMillionTokens", "cacheReadPrice");
-        Double cacheWrite = pickPricingField(map, "cacheWritePerMTok",
-                "cache_write_per_m_tok", "cacheWritePerMillionTokens", "cacheWritePrice");
+        Double cacheRead = pickPricingField(
+                map, "cacheReadPerMTok", "cache_read_per_m_tok", "cacheReadPerMillionTokens", "cacheReadPrice");
+        Double cacheWrite = pickPricingField(
+                map, "cacheWritePerMTok", "cache_write_per_m_tok", "cacheWritePerMillionTokens", "cacheWritePrice");
         Object currencyRaw = map.get("currency");
         String currency = currencyRaw == null ? "USD" : currencyRaw.toString().trim();
         if (currency.isEmpty()) currency = "USD";
@@ -981,15 +1014,13 @@ public class ModelCatalog {
      * was used so the operator sees the file should be cleaned up, but
      * doesn't spam WARN for known acceptable variants.
      */
-    private static @Nullable Double pickPricingField(
-            Map<String, Object> map, String canonical, String... synonyms) {
+    private static @Nullable Double pickPricingField(Map<String, Object> map, String canonical, String... synonyms) {
         if (map.containsKey(canonical)) {
             return readDouble(map.get(canonical));
         }
         for (String s : synonyms) {
             if (map.containsKey(s)) {
-                log.debug("ModelCatalog: pricing uses synonym '{}' (canonical: '{}')",
-                        s, canonical);
+                log.debug("ModelCatalog: pricing uses synonym '{}' (canonical: '{}')", s, canonical);
                 return readDouble(map.get(s));
             }
         }
@@ -997,17 +1028,16 @@ public class ModelCatalog {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Double> readCostMap(
-            @Nullable Object raw, String provider, String modelName) {
+    private static Map<String, Double> readCostMap(@Nullable Object raw, String provider, String modelName) {
         if (raw == null) return Map.of();
         if (!(raw instanceof Map<?, ?> m)) {
-            log.warn("ModelCatalog: '{}/{}' has non-map costPerImage '{}' — ignored",
-                    provider, modelName, raw);
+            log.warn("ModelCatalog: '{}/{}' has non-map costPerImage '{}' — ignored", provider, modelName, raw);
             return Map.of();
         }
         Map<String, Double> out = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : m.entrySet()) {
-            String tier = entry.getKey() == null ? null : entry.getKey().toString().trim();
+            String tier =
+                    entry.getKey() == null ? null : entry.getKey().toString().trim();
             if (tier == null || tier.isEmpty()) continue;
             Object value = entry.getValue();
             Double cost = null;
@@ -1021,8 +1051,12 @@ public class ModelCatalog {
                 }
             }
             if (cost == null) {
-                log.warn("ModelCatalog: '{}/{}' costPerImage.{} is not a number '{}' — skipped",
-                        provider, modelName, tier, value);
+                log.warn(
+                        "ModelCatalog: '{}/{}' costPerImage.{} is not a number '{}' — skipped",
+                        provider,
+                        modelName,
+                        tier,
+                        value);
                 continue;
             }
             out.put(tier, cost);
@@ -1052,8 +1086,10 @@ public class ModelCatalog {
                 return null;
             }
         }
-        log.warn("ModelCatalog: number field has unexpected type {} (value: {}) — ignored",
-                raw.getClass().getSimpleName(), raw);
+        log.warn(
+                "ModelCatalog: number field has unexpected type {} (value: {}) — ignored",
+                raw.getClass().getSimpleName(),
+                raw);
         return null;
     }
 
@@ -1071,8 +1107,11 @@ public class ModelCatalog {
             if (t.equals("true") || t.equals("yes") || t.equals("on") || t.equals("1")) return true;
             if (t.equals("false") || t.equals("no") || t.equals("off") || t.equals("0")) return false;
         }
-        log.warn("ModelCatalog: boolean field has unparseable value {} ({}) — using default {}",
-                raw, raw.getClass().getSimpleName(), fallback);
+        log.warn(
+                "ModelCatalog: boolean field has unparseable value {} ({}) — using default {}",
+                raw,
+                raw.getClass().getSimpleName(),
+                fallback);
         return fallback;
     }
 
@@ -1086,13 +1125,15 @@ public class ModelCatalog {
                 String normalised = s.trim().replace("_", "").replace(",", "");
                 return Integer.parseInt(normalised);
             } catch (NumberFormatException e) {
-                log.warn("ModelCatalog: integer field has unparseable string '{}' — using default {}",
-                        s, fallback);
+                log.warn("ModelCatalog: integer field has unparseable string '{}' — using default {}", s, fallback);
                 return fallback;
             }
         }
-        log.warn("ModelCatalog: integer field has unexpected type {} (value: {}) — using default {}",
-                raw.getClass().getSimpleName(), raw, fallback);
+        log.warn(
+                "ModelCatalog: integer field has unexpected type {} (value: {}) — using default {}",
+                raw.getClass().getSimpleName(),
+                raw,
+                fallback);
         return fallback;
     }
 
@@ -1127,8 +1168,7 @@ public class ModelCatalog {
         return out;
     }
 
-    private static Set<ModelCapability> readCapabilities(
-            @Nullable Object raw, String provider, String modelName) {
+    private static Set<ModelCapability> readCapabilities(@Nullable Object raw, String provider, String modelName) {
         if (raw == null) {
             return Set.of();
         }
@@ -1144,24 +1184,34 @@ public class ModelCatalog {
                 if (!s.isEmpty()) elements.add(s);
             }
         } else if (raw instanceof String s) {
-            log.debug("ModelCatalog: '{}/{}' capabilities given as comma-separated string — accepted",
-                    provider, modelName);
+            log.debug(
+                    "ModelCatalog: '{}/{}' capabilities given as comma-separated string — accepted",
+                    provider,
+                    modelName);
             elements = new LinkedHashSet<>();
             for (String part : s.split(",")) {
                 String trimmed = part.trim();
                 if (!trimmed.isEmpty()) elements.add(trimmed);
             }
         } else {
-            log.warn("ModelCatalog: '{}/{}' has capabilities of unsupported type {} (value: {}) — ignoring",
-                    provider, modelName, raw.getClass().getSimpleName(), raw);
+            log.warn(
+                    "ModelCatalog: '{}/{}' has capabilities of unsupported type {} (value: {}) — ignoring",
+                    provider,
+                    modelName,
+                    raw.getClass().getSimpleName(),
+                    raw);
             return Set.of();
         }
         EnumSet<ModelCapability> caps = EnumSet.noneOf(ModelCapability.class);
         for (String element : elements) {
-            ModelCapability.fromString(element).ifPresentOrElse(
-                    caps::add,
-                    () -> log.warn("ModelCatalog: '{}/{}' has unknown capability '{}' — skipped",
-                            provider, modelName, element));
+            ModelCapability.fromString(element)
+                    .ifPresentOrElse(
+                            caps::add,
+                            () -> log.warn(
+                                    "ModelCatalog: '{}/{}' has unknown capability '{}' — skipped",
+                                    provider,
+                                    modelName,
+                                    element));
         }
         return caps;
     }
@@ -1169,15 +1219,22 @@ public class ModelCatalog {
     private static ModelSize readSize(@Nullable Object raw, String provider, String modelName) {
         if (raw == null) return ModelSize.LARGE;
         if (!(raw instanceof String s)) {
-            log.warn("ModelCatalog: '{}/{}' has non-string size '{}' ({}) — defaulting to LARGE",
-                    provider, modelName, raw, raw.getClass().getSimpleName());
+            log.warn(
+                    "ModelCatalog: '{}/{}' has non-string size '{}' ({}) — defaulting to LARGE",
+                    provider,
+                    modelName,
+                    raw,
+                    raw.getClass().getSimpleName());
             return ModelSize.LARGE;
         }
         try {
             return ModelSize.valueOf(s.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            log.warn("ModelCatalog: '{}/{}' has unknown size '{}' (valid: SMALL, LARGE) — defaulting to LARGE",
-                    provider, modelName, s);
+            log.warn(
+                    "ModelCatalog: '{}/{}' has unknown size '{}' (valid: SMALL, LARGE) — defaulting to LARGE",
+                    provider,
+                    modelName,
+                    s);
             return ModelSize.LARGE;
         }
     }
@@ -1193,9 +1250,7 @@ public class ModelCatalog {
     private static String @Nullable [] splitKey(String compositeKey) {
         int slash = compositeKey.indexOf('/');
         if (slash <= 0) return null;
-        return new String[] {
-                compositeKey.substring(0, slash),
-                compositeKey.substring(slash + 1)};
+        return new String[] {compositeKey.substring(0, slash), compositeKey.substring(slash + 1)};
     }
 
     /**
@@ -1236,8 +1291,7 @@ public class ModelCatalog {
         return Collections.unmodifiableMap(out);
     }
 
-    private static Map<String, Map<String, Object>> deepImmutableProviders(
-            Map<String, Map<String, Object>> mutable) {
+    private static Map<String, Map<String, Object>> deepImmutableProviders(Map<String, Map<String, Object>> mutable) {
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
         for (Map.Entry<String, Map<String, Object>> e : mutable.entrySet()) {
             out.put(e.getKey(), Map.copyOf(e.getValue()));

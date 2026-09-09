@@ -3,6 +3,7 @@ package de.mhus.vance.brain.followup;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.api.followup.FollowUpSuggestionDto;
+import de.mhus.vance.brain.ai.fim.FimCompletionService;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.shared.metric.MetricService;
@@ -38,6 +39,18 @@ import org.springframework.stereotype.Service;
  * on which variable set is present. Empty result (zero suggestions)
  * is a valid outcome — the caller will see an empty list and
  * {@code HTTP 200}.
+ *
+ * <p><b>FIM path (edit mode, optional).</b> When the tenant/project
+ * has a FIM model configured ({@code ai.alias.default.fim}), edit
+ * mode bypasses the chat prompt entirely and asks a
+ * completion-trained model to fill the hole at the cursor via
+ * {@link FimCompletionService} — one deterministic continuation
+ * ({@code kind: "completion"}) instead of a JSON suggestion array.
+ * Reply mode never uses FIM: there is no suffix to fill against.
+ * With the setting absent, both modes take the chat path — the
+ * previous behaviour, unchanged. A configured-but-broken FIM alias
+ * (no {@code fimTemplate} quirk on the model) surfaces as an error
+ * rather than silently falling back.
  *
  * <p>{@code count} is clamped to {@link #MAX_COUNT} server-side so a
  * misbehaving caller can't ask for arbitrarily many. The returned
@@ -82,15 +95,16 @@ public class FollowUpService {
      * permissive — the recipe prompt does the heavy lifting; we
      * only need the LLM to come back with a parseable JSON object.
      */
-    static final Map<String, Object> FOLLOWUP_SCHEMA = Map.of(
-            "type", "object");
+    static final Map<String, Object> FOLLOWUP_SCHEMA = Map.of("type", "object");
 
     private final LightLlmService lightLlm;
+    private final FimCompletionService fim;
     private final MetricService metrics;
     private final Cache<String, List<FollowUpSuggestionDto>> cache;
 
-    public FollowUpService(LightLlmService lightLlm, MetricService metrics) {
+    public FollowUpService(LightLlmService lightLlm, FimCompletionService fim, MetricService metrics) {
         this.lightLlm = lightLlm;
+        this.fim = fim;
         this.metrics = metrics;
         this.cache = Caffeine.newBuilder()
                 .maximumSize(CACHE_MAX_SIZE)
@@ -135,12 +149,9 @@ public class FollowUpService {
         }
 
         int safeCount = Math.max(1, Math.min(count, MAX_COUNT));
-        int safeCursor = cursor == null
-                ? -1
-                : Math.max(0, Math.min(cursor, text.length()));
+        int safeCursor = cursor == null ? -1 : Math.max(0, Math.min(cursor, text.length()));
 
-        String cacheKey = buildCacheKey(
-                tenantId, projectId, text, safeCursor, safeCount, mode);
+        String cacheKey = buildCacheKey(tenantId, projectId, text, safeCursor, safeCount, mode);
         List<FollowUpSuggestionDto> cached = cache.getIfPresent(cacheKey);
         if (cached != null) {
             metrics.counter("vance.followup.cache", "outcome", "hit").increment();
@@ -148,7 +159,23 @@ public class FollowUpService {
         }
         metrics.counter("vance.followup.cache", "outcome", "miss").increment();
 
+        // Edit mode with a configured FIM model: fill the hole at the
+        // cursor with a completion-trained model instead of asking a
+        // chat model for a JSON suggestion array. FIM yields exactly
+        // one continuation; `count` is ignored on this path. A blank
+        // middle is a valid "nothing belongs here" outcome and maps
+        // to an empty suggestion list — not an error, and no silent
+        // chat-path fallback (that would mask a misbehaving model by
+        // doubling cost).
+        if (safeCursor >= 0 && fim.isConfigured(tenantId, projectId)) {
+            List<FollowUpSuggestionDto> parsed =
+                    suggestViaFim(text.substring(0, safeCursor), text.substring(safeCursor), tenantId, projectId);
+            cache.put(cacheKey, parsed);
+            return parsed;
+        }
+
         Map<String, Object> pebbleVars = new LinkedHashMap<>();
+        ;
         pebbleVars.put("count", safeCount);
         if (mode != null && !mode.isBlank()) {
             pebbleVars.put("mode", mode);
@@ -176,6 +203,23 @@ public class FollowUpService {
         return parsed;
     }
 
+    /** Caller identity for FIM attribution, audit and metrics. */
+    private static final String FIM_CALLER = "follow-up-fim";
+
+    /**
+     * The FIM path: one completion at the cursor, or an empty list
+     * when the model produced nothing usable.
+     */
+    private List<FollowUpSuggestionDto> suggestViaFim(
+            String textBefore, String textAfter, String tenantId, @Nullable String projectId) {
+        String middle = fim.completeMiddle(tenantId, projectId, FIM_CALLER, textBefore, textAfter);
+        if (middle.isEmpty()) {
+            return List.of();
+        }
+        return List.of(
+                FollowUpSuggestionDto.builder().text(middle).kind("completion").build());
+    }
+
     /**
      * SHA-256 hex digest of all inputs that influence the LLM call.
      * Keeps the map keys compact and avoids leaking user content into
@@ -190,7 +234,8 @@ public class FollowUpService {
             int safeCursor,
             int safeCount,
             @Nullable String mode) {
-        String payload = String.join("\0",
+        String payload = String.join(
+                "\0",
                 tenantId,
                 projectId == null ? "" : projectId,
                 Integer.toString(safeCursor),
@@ -222,8 +267,7 @@ public class FollowUpService {
      * Anything that doesn't yield a non-blank {@code text} is
      * dropped. The result is truncated to {@code limit}.
      */
-    private static List<FollowUpSuggestionDto> parseSuggestions(
-            Map<String, Object> raw, int limit) {
+    private static List<FollowUpSuggestionDto> parseSuggestions(Map<String, Object> raw, int limit) {
         Object listObj = raw.get("suggestions");
         if (!(listObj instanceof List<?> rawList)) {
             log.debug("FollowUpService: reply missing 'suggestions' array, returning empty");
@@ -261,10 +305,7 @@ public class FollowUpService {
             if (trimmed.isEmpty()) return null;
             Object kindObj = map.get("kind");
             String kind = (kindObj instanceof String k && !k.isBlank()) ? k : null;
-            return FollowUpSuggestionDto.builder()
-                    .text(trimmed)
-                    .kind(kind)
-                    .build();
+            return FollowUpSuggestionDto.builder().text(trimmed).kind(kind).build();
         }
         return null;
     }

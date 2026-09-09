@@ -21,7 +21,9 @@ import org.jspecify.annotations.Nullable;
  * carries the output cap on OpenAI-shaped requests (see
  * {@link OutputTokenParam}), the sampling knobs the model refuses
  * (see {@link SamplingParam}), and how "no reasoning" has to be
- * spelled on the wire (see {@link #reasoningEffortWhenOff()}).
+ * spelled on the wire (see {@link #reasoningEffortWhenOff()}), and
+ * the Fill-In-the-Middle prompt template a completion-trained
+ * model expects (see {@link #fimTemplate()}).
  */
 public record ModelInfo(
         String provider,
@@ -39,7 +41,24 @@ public record ModelInfo(
         Set<SamplingParam> unsupportedParams,
         @Nullable String reasoningEffortWhenOff,
         @Nullable Integer maxTools,
-        boolean mergeSystemMessages) {
+        boolean mergeSystemMessages,
+        @Nullable String fimTemplate) {
+
+    /*
+     * fimTemplate — the Fill-In-the-Middle prompt shape a
+     * completion-trained model expects: a template over the markers
+     * `{prefix}` and `{suffix}` that names the model's own FIM control
+     * tokens. Qwen-Coder: `<fim_prefix>{prefix}<fim_suffix>{suffix}
+     * <fim_middle>`; DeepSeek-Coder: `<|fim▁begin|>{prefix}
+     * <|fim▁hole|>{suffix}<|fim▁end|>`; Codestral:
+     * `[PREFIX]{prefix}[SUFFIX]{suffix}[MIDDLE]`. The families differ,
+     * so the template is per-model metadata (same two-layer resolution
+     * as messageParser: explicit per-model YAML wins, family pattern
+     * from model-quirks.yaml fills the gap), never a global constant.
+     *
+     * null = the model has no known FIM shape — callers must not
+     * route Fill-In-the-Middle requests to it.
+     */
 
     /*
      * mergeSystemMessages — collapse consecutive system messages into
@@ -54,6 +73,48 @@ public record ModelInfo(
      * cost optimisation for one broken renderer. See
      * SystemMessageMerger and planning/model-context-inflation-lab.md.
      */
+
+    /**
+     * Pre-{@code fimTemplate} constructor — defaults the field to
+     * "no FIM shape known". Retains every legacy call site that
+     * passes the tool cap and the merge flag explicitly.
+     */
+    public ModelInfo(
+            String provider,
+            String modelName,
+            int contextWindowTokens,
+            int defaultMaxOutputTokens,
+            ModelSize size,
+            Set<ModelCapability> capabilities,
+            int timeoutSeconds,
+            int actionLoopCorrections,
+            boolean stripThinkTags,
+            @Nullable String messageParser,
+            @Nullable Pricing pricing,
+            OutputTokenParam outputTokenParam,
+            Set<SamplingParam> unsupportedParams,
+            @Nullable String reasoningEffortWhenOff,
+            @Nullable Integer maxTools,
+            boolean mergeSystemMessages) {
+        this(
+                provider,
+                modelName,
+                contextWindowTokens,
+                defaultMaxOutputTokens,
+                size,
+                capabilities,
+                timeoutSeconds,
+                actionLoopCorrections,
+                stripThinkTags,
+                messageParser,
+                pricing,
+                outputTokenParam,
+                unsupportedParams,
+                reasoningEffortWhenOff,
+                maxTools,
+                mergeSystemMessages,
+                /*fimTemplate*/ null);
+    }
 
     /** Pre-{@code mergeSystemMessages} constructor — defaults the flag to off. */
     public ModelInfo(
@@ -72,10 +133,24 @@ public record ModelInfo(
             Set<SamplingParam> unsupportedParams,
             @Nullable String reasoningEffortWhenOff,
             @Nullable Integer maxTools) {
-        this(provider, modelName, contextWindowTokens, defaultMaxOutputTokens, size,
-                capabilities, timeoutSeconds, actionLoopCorrections, stripThinkTags,
-                messageParser, pricing, outputTokenParam, unsupportedParams,
-                reasoningEffortWhenOff, maxTools, /*mergeSystemMessages*/ false);
+        this(
+                provider,
+                modelName,
+                contextWindowTokens,
+                defaultMaxOutputTokens,
+                size,
+                capabilities,
+                timeoutSeconds,
+                actionLoopCorrections,
+                stripThinkTags,
+                messageParser,
+                pricing,
+                outputTokenParam,
+                unsupportedParams,
+                reasoningEffortWhenOff,
+                maxTools, /*mergeSystemMessages*/
+                false,
+                /*fimTemplate*/ null);
     }
 
     /*
@@ -118,10 +193,23 @@ public record ModelInfo(
             OutputTokenParam outputTokenParam,
             Set<SamplingParam> unsupportedParams,
             @Nullable String reasoningEffortWhenOff) {
-        this(provider, modelName, contextWindowTokens, defaultMaxOutputTokens, size,
-                capabilities, timeoutSeconds, actionLoopCorrections, stripThinkTags,
-                messageParser, pricing, outputTokenParam, unsupportedParams,
-                reasoningEffortWhenOff, /*maxTools*/ null, /*mergeSystemMessages*/ false);
+        this(
+                provider,
+                modelName,
+                contextWindowTokens,
+                defaultMaxOutputTokens,
+                size,
+                capabilities,
+                timeoutSeconds,
+                actionLoopCorrections,
+                stripThinkTags,
+                messageParser,
+                pricing,
+                outputTokenParam,
+                unsupportedParams,
+                reasoningEffortWhenOff, /*maxTools*/
+                null, /*mergeSystemMessages*/
+                false);
     }
 
     /*
@@ -214,9 +302,7 @@ public record ModelInfo(
         if (outputTokenParam == null) {
             outputTokenParam = OutputTokenParam.MAX_TOKENS;
         }
-        unsupportedParams = unsupportedParams == null
-                ? Set.of()
-                : Set.copyOf(unsupportedParams);
+        unsupportedParams = unsupportedParams == null ? Set.of() : Set.copyOf(unsupportedParams);
         if (timeoutSeconds <= 0) {
             timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
         }
@@ -228,8 +314,7 @@ public record ModelInfo(
     /** Tokens at which compaction should fire, given a trigger ratio. */
     public int compactionTriggerTokens(double ratio) {
         if (ratio <= 0.0 || ratio > 1.0) {
-            throw new IllegalArgumentException(
-                    "compaction ratio must be in (0,1]: " + ratio);
+            throw new IllegalArgumentException("compaction ratio must be in (0,1]: " + ratio);
         }
         return (int) Math.floor(contextWindowTokens * ratio);
     }
@@ -261,10 +346,8 @@ public record ModelInfo(
      * streams for minutes is not cut off at the sync budget, while a
      * caller/recipe that pins an even larger budget still wins.
      */
-    public int effectiveStreamTimeoutSeconds(
-            @org.jspecify.annotations.Nullable Integer callerOverride) {
-        return Math.max(
-                effectiveTimeoutSeconds(callerOverride), DEFAULT_STREAM_TIMEOUT_SECONDS);
+    public int effectiveStreamTimeoutSeconds(@org.jspecify.annotations.Nullable Integer callerOverride) {
+        return Math.max(effectiveTimeoutSeconds(callerOverride), DEFAULT_STREAM_TIMEOUT_SECONDS);
     }
 
     /**
@@ -306,10 +389,8 @@ public record ModelInfo(
         if (estInputTokens == null || estInputTokens <= 0) {
             return effectiveStreamTimeoutSeconds(null);
         }
-        long scaled = timeoutSeconds
-                + Math.round(estInputTokens * STREAM_TIMEOUT_MS_PER_TOKEN / 1000.0);
-        long clamped = Math.max(DEFAULT_STREAM_TIMEOUT_SECONDS,
-                Math.min(MAX_STREAM_TIMEOUT_SECONDS, scaled));
+        long scaled = timeoutSeconds + Math.round(estInputTokens * STREAM_TIMEOUT_MS_PER_TOKEN / 1000.0);
+        long clamped = Math.max(DEFAULT_STREAM_TIMEOUT_SECONDS, Math.min(MAX_STREAM_TIMEOUT_SECONDS, scaled));
         return (int) clamped;
     }
 

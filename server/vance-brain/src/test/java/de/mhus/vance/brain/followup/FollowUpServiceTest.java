@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.followup.FollowUpSuggestionDto;
+import de.mhus.vance.brain.ai.fim.FimCompletionService;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.shared.metric.MetricService;
@@ -22,9 +23,10 @@ import org.mockito.Mockito;
 
 /**
  * Unit tests for {@link FollowUpService}. Mocks the
- * {@link LightLlmService}; tests focus on cursor splitting,
- * count clamping, suggestion parsing, tolerance for the LLM's common
- * drift modes, and the Caffeine-backed result cache.
+ * {@link LightLlmService} and the {@link FimCompletionService}; tests
+ * focus on cursor splitting, count clamping, suggestion parsing,
+ * tolerance for the LLM's common drift modes, the FIM-vs-chat path
+ * selection, and the Caffeine-backed result cache.
  */
 class FollowUpServiceTest {
 
@@ -32,22 +34,23 @@ class FollowUpServiceTest {
     private static final String PROJECT = "_tenant";
 
     private LightLlmService lightLlm;
+    private FimCompletionService fim;
     private MetricService metrics;
     private FollowUpService service;
 
     @BeforeEach
     void setUp() {
         lightLlm = mock(LightLlmService.class);
+        fim = mock(FimCompletionService.class);
         metrics = new MetricService(new SimpleMeterRegistry());
-        service = new FollowUpService(lightLlm, metrics);
+        service = new FollowUpService(lightLlm, fim, metrics);
     }
 
     // ── Cursor splitting ───────────────────────────────────────────
 
     @Test
     void suggest_splits_text_at_cursor_position() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         service.suggest("Hello, world!", 7, 3, null, TENANT, PROJECT);
 
@@ -60,8 +63,7 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_handles_cursor_at_start() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         service.suggest("abc", 0, 3, null, TENANT, PROJECT);
 
@@ -74,8 +76,7 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_handles_cursor_at_end() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         service.suggest("abc", 3, 3, null, TENANT, PROJECT);
 
@@ -88,8 +89,7 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_clamps_out_of_range_cursor() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         // Cursor beyond text length — clamp to text.length()
         service.suggest("abc", 999, 3, null, TENANT, PROJECT);
@@ -105,8 +105,7 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_reply_mode_passes_text_as_precedingContext() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         service.suggest("Hi, how can I help?", null, 3, "chat-reply", TENANT, PROJECT);
 
@@ -120,8 +119,7 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_edit_mode_does_not_pass_precedingContext() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         service.suggest("abc", 1, 3, null, TENANT, PROJECT);
 
@@ -137,8 +135,7 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_clamps_count_to_max() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         service.suggest("x", 0, 999, null, TENANT, PROJECT);
 
@@ -149,28 +146,31 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_truncates_when_llm_returns_more_than_requested() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of(
-                        Map.of("text", "first"),
-                        Map.of("text", "second"),
-                        Map.of("text", "third"),
-                        Map.of("text", "fourth"))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "suggestions",
+                        List.of(
+                                Map.of("text", "first"),
+                                Map.of("text", "second"),
+                                Map.of("text", "third"),
+                                Map.of("text", "fourth"))));
 
         List<FollowUpSuggestionDto> out = service.suggest("x", 0, 2, null, TENANT, PROJECT);
 
         assertThat(out).hasSize(2);
-        assertThat(out).extracting(FollowUpSuggestionDto::getText)
-                .containsExactly("first", "second");
+        assertThat(out).extracting(FollowUpSuggestionDto::getText).containsExactly("first", "second");
     }
 
     // ── Suggestion parsing ─────────────────────────────────────────
 
     @Test
     void suggest_returns_typed_dtos_with_kind() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of(
-                        Map.of("text", "Ask about deadlines?", "kind", "question"),
-                        Map.of("text", "Continue: ...", "kind", "continuation"))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "suggestions",
+                        List.of(
+                                Map.of("text", "Ask about deadlines?", "kind", "question"),
+                                Map.of("text", "Continue: ...", "kind", "continuation"))));
 
         List<FollowUpSuggestionDto> out = service.suggest("Hello", 5, 3, null, TENANT, PROJECT);
 
@@ -182,8 +182,8 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_accepts_bare_strings_in_array() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of("first", "second")));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("suggestions", List.of("first", "second")));
 
         List<FollowUpSuggestionDto> out = service.suggest("x", 0, 3, null, TENANT, PROJECT);
 
@@ -194,13 +194,15 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_drops_entries_with_blank_or_missing_text() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of(
-                        Map.of("text", "ok"),
-                        Map.of("text", ""),                 // blank text
-                        Map.of("kind", "question"),         // no text field
-                        Map.of("text", "  "),               // whitespace only
-                        "")));                              // empty string
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "suggestions",
+                        List.of(
+                                Map.of("text", "ok"),
+                                Map.of("text", ""), // blank text
+                                Map.of("kind", "question"), // no text field
+                                Map.of("text", "  "), // whitespace only
+                                ""))); // empty string
 
         List<FollowUpSuggestionDto> out = service.suggest("x", 0, 5, null, TENANT, PROJECT);
 
@@ -219,8 +221,7 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_returns_empty_when_suggestions_empty_array() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         List<FollowUpSuggestionDto> out = service.suggest("x", 0, 3, null, TENANT, PROJECT);
 
@@ -231,8 +232,7 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_passes_mode_when_set() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         service.suggest("x", 0, 3, "chat-prompt", TENANT, PROJECT);
 
@@ -243,8 +243,7 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_omits_mode_when_null_or_blank() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         service.suggest("x", 0, 3, "   ", TENANT, PROJECT);
 
@@ -259,8 +258,7 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_uses_followup_recipe_and_passes_scope() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("suggestions", List.of()));
 
         service.suggest("x", 0, 3, null, TENANT, PROJECT);
 
@@ -271,6 +269,71 @@ class FollowUpServiceTest {
         assertThat(req.getTenantId()).isEqualTo(TENANT);
         assertThat(req.getProjectId()).isEqualTo(PROJECT);
         assertThat(req.getSchema()).isNotNull();
+    }
+
+    // ── FIM path (edit mode with ai.alias.default.fim set) ────────
+
+    @Test
+    void suggest_edit_mode_with_fim_configured_returns_single_completion() {
+        when(fim.isConfigured(TENANT, PROJECT)).thenReturn(true);
+        when(fim.completeMiddle(TENANT, PROJECT, "follow-up-fim", "Hello, ", "world!"))
+                .thenReturn("dear ");
+
+        List<FollowUpSuggestionDto> out = service.suggest("Hello, world!", 7, 3, null, TENANT, PROJECT);
+
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getText()).isEqualTo("dear ");
+        assertThat(out.get(0).getKind()).isEqualTo("completion");
+        // FIM replaces the chat path entirely — no LightLlm round-trip.
+        verify(lightLlm, Mockito.never()).callForJson(any(LightLlmRequest.class));
+    }
+
+    @Test
+    void suggest_fim_blank_middle_is_an_empty_result_not_an_error() {
+        when(fim.isConfigured(TENANT, PROJECT)).thenReturn(true);
+        when(fim.completeMiddle(any(), any(), any(), any(), any())).thenReturn("");
+
+        List<FollowUpSuggestionDto> out = service.suggest("abc", 1, 3, null, TENANT, PROJECT);
+
+        assertThat(out).isEmpty();
+        verify(lightLlm, Mockito.never()).callForJson(any(LightLlmRequest.class));
+    }
+
+    @Test
+    void suggest_reply_mode_never_uses_fim_even_when_configured() {
+        when(fim.isConfigured(TENANT, PROJECT)).thenReturn(true);
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("suggestions", List.of(Map.of("text", "reply"))));
+
+        List<FollowUpSuggestionDto> out = service.suggest("Hello?", null, 1, "chat-reply", TENANT, PROJECT);
+
+        // Reply mode has no suffix — FIM is semantically meaningless there.
+        assertThat(out).extracting(FollowUpSuggestionDto::getText).containsExactly("reply");
+        verify(fim, Mockito.never()).completeMiddle(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void suggest_fim_not_configured_takes_the_chat_path() {
+        when(fim.isConfigured(TENANT, PROJECT)).thenReturn(false);
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("suggestions", List.of(Map.of("text", "chat"))));
+
+        List<FollowUpSuggestionDto> out = service.suggest("abc", 1, 3, null, TENANT, PROJECT);
+
+        assertThat(out).extracting(FollowUpSuggestionDto::getText).containsExactly("chat");
+        verify(fim, Mockito.never()).completeMiddle(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void suggest_fim_result_is_cached() {
+        when(fim.isConfigured(TENANT, PROJECT)).thenReturn(true);
+        when(fim.completeMiddle(any(), any(), any(), any(), any())).thenReturn("middle");
+
+        service.suggest("abc", 1, 3, null, TENANT, PROJECT);
+        service.suggest("abc", 1, 3, null, TENANT, PROJECT);
+
+        // Second call was a cache hit — only one FIM round-trip.
+        verify(fim, Mockito.times(1)).completeMiddle(any(), any(), any(), any(), any());
     }
 
     // ── Validation ─────────────────────────────────────────────────
@@ -293,13 +356,11 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_serves_repeated_call_from_cache() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of(Map.of("text", "one"))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("suggestions", List.of(Map.of("text", "one"))));
 
-        List<FollowUpSuggestionDto> first =
-                service.suggest("Hello", null, 1, "chat-reply", TENANT, PROJECT);
-        List<FollowUpSuggestionDto> second =
-                service.suggest("Hello", null, 1, "chat-reply", TENANT, PROJECT);
+        List<FollowUpSuggestionDto> first = service.suggest("Hello", null, 1, "chat-reply", TENANT, PROJECT);
+        List<FollowUpSuggestionDto> second = service.suggest("Hello", null, 1, "chat-reply", TENANT, PROJECT);
 
         assertThat(first).extracting(FollowUpSuggestionDto::getText).containsExactly("one");
         assertThat(second).extracting(FollowUpSuggestionDto::getText).containsExactly("one");
@@ -309,8 +370,8 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_cache_differentiates_by_cursor_presence() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of(Map.of("text", "ok"))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("suggestions", List.of(Map.of("text", "ok"))));
 
         // Same text + count + mode, but different mode flag (reply vs.
         // edit at offset 0). Each variant must hit the LLM independently.
@@ -322,8 +383,8 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_cache_differentiates_by_tenant() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of(Map.of("text", "ok"))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("suggestions", List.of(Map.of("text", "ok"))));
 
         service.suggest("Hello", null, 1, "chat-reply", "tenant-a", PROJECT);
         service.suggest("Hello", null, 1, "chat-reply", "tenant-b", PROJECT);
@@ -333,8 +394,8 @@ class FollowUpServiceTest {
 
     @Test
     void suggest_cache_differentiates_by_project() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of(Map.of("text", "ok"))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("suggestions", List.of(Map.of("text", "ok"))));
 
         service.suggest("Hello", null, 1, "chat-reply", TENANT, "proj-a");
         service.suggest("Hello", null, 1, "chat-reply", TENANT, "proj-b");
@@ -345,15 +406,16 @@ class FollowUpServiceTest {
     @Test
     void suggest_cache_records_hit_and_miss_metrics() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        FollowUpService scoped = new FollowUpService(lightLlm, new MetricService(registry));
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "suggestions", List.of(Map.of("text", "x"))));
+        FollowUpService scoped = new FollowUpService(lightLlm, fim, new MetricService(registry));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("suggestions", List.of(Map.of("text", "x"))));
 
         scoped.suggest("Hello", null, 1, "chat-reply", TENANT, PROJECT);
         scoped.suggest("Hello", null, 1, "chat-reply", TENANT, PROJECT);
         scoped.suggest("Hello", null, 1, "chat-reply", TENANT, PROJECT);
 
-        double miss = registry.counter("vance.followup.cache", "outcome", "miss").count();
+        double miss =
+                registry.counter("vance.followup.cache", "outcome", "miss").count();
         double hit = registry.counter("vance.followup.cache", "outcome", "hit").count();
         assertThat(miss).isEqualTo(1.0);
         assertThat(hit).isEqualTo(2.0);

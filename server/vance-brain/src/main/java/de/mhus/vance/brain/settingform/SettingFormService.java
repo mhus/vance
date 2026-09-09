@@ -59,6 +59,14 @@ public class SettingFormService {
      *  {@code ai-models.yaml}. Used by the Fenchurch alias pickers. */
     public static final String CHOICES_FROM_AI_IMAGE_MODELS = "ai-image-models";
 
+    /** FIM counterpart of {@link #CHOICES_FROM_AI_MODELS} — populates a
+     *  select with only the models that carry a {@code fimTemplate}
+     *  (Fill-In-the-Middle prompt shape). Used by the follow-up
+     *  completion alias picker: a chat model in that list would be the
+     *  fail-closed error at call time, so the form doesn't offer it in
+     *  the first place. */
+    public static final String CHOICES_FROM_AI_FIM_MODELS = "ai-fim-models";
+
     /**
      * Validates and applies {@code values} against {@code form}. The
      * returned list mirrors what was actually executed — including
@@ -73,8 +81,8 @@ public class SettingFormService {
             @Nullable String lang) {
         Map<String, FieldLiveState> live = fieldLiveStates(form, values, tenantId, projectId, userId);
         validateSubmitted(form, values, tenantId, projectId, live);
-        List<PlannedSettingAction> plan = planBuilder.buildApplyPlan(
-                form, values, tenantId, projectId, userId, lang, live);
+        List<PlannedSettingAction> plan =
+                planBuilder.buildApplyPlan(form, values, tenantId, projectId, userId, lang, live);
         // userId is the acting user (from the SecurityContext), not a scope
         // label — so it is also the actor for the setting.change feed rows.
         executePlan(tenantId, plan, userId);
@@ -96,8 +104,7 @@ public class SettingFormService {
             @Nullable String lang) {
         Map<String, FieldLiveState> live = fieldLiveStates(form, values, tenantId, projectId, userId);
         validateSubmitted(form, values, tenantId, projectId, live);
-        return planBuilder.buildApplyPlan(
-                form, values, tenantId, projectId, userId, lang, live);
+        return planBuilder.buildApplyPlan(form, values, tenantId, projectId, userId, lang, live);
     }
 
     /**
@@ -107,10 +114,7 @@ public class SettingFormService {
      * second-guess the flag.
      */
     public List<PlannedSettingAction> reset(
-            ResolvedSettingForm form,
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String userId) {
+            ResolvedSettingForm form, String tenantId, @Nullable String projectId, @Nullable String userId) {
         List<PlannedSettingAction> plan = planBuilder.buildResetPlan(form, projectId, userId);
         // userId is the acting user (from the SecurityContext), not a scope
         // label — so it is also the actor for the setting.change feed rows.
@@ -148,10 +152,7 @@ public class SettingFormService {
      * field DTOs; the input form is not mutated.
      */
     public List<FormFieldDto> withLiveCascadeValues(
-            ResolvedSettingForm form,
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String userId) {
+            ResolvedSettingForm form, String tenantId, @Nullable String projectId, @Nullable String userId) {
         List<FormFieldDto> withChoices = resolveDynamicChoices(form.fields(), tenantId, projectId);
 
         List<FormFieldDto> out = new ArrayList<>(withChoices.size());
@@ -241,8 +242,8 @@ public class SettingFormService {
             LiveValue live = lookupLiveValue(f, b, wireScope, tenantId, projectId, userId);
             if (live.value == null) continue;
             Object submitted = values.get(f.getName());
-            boolean unchanged = submitted instanceof String s
-                    && live.value.trim().equals(s.trim());
+            boolean unchanged =
+                    submitted instanceof String s && live.value.trim().equals(s.trim());
             out.put(f.getName(), new FieldLiveState(unchanged, live.source));
         }
         return out;
@@ -260,6 +261,7 @@ public class SettingFormService {
             List<FormFieldDto> fields, String tenantId, @Nullable String projectId) {
         @Nullable List<FormChoiceDto> aiModelChoices = null;
         @Nullable List<FormChoiceDto> aiImageModelChoices = null;
+        @Nullable List<FormChoiceDto> aiFimModelChoices = null;
         List<FormFieldDto> out = new ArrayList<>(fields.size());
         for (FormFieldDto f : fields) {
             String src = f.getChoicesFrom();
@@ -273,6 +275,11 @@ public class SettingFormService {
                     aiImageModelChoices = buildAiImageModelChoices(tenantId, projectId);
                 }
                 out.add(f.toBuilder().choices(aiImageModelChoices).build());
+            } else if (CHOICES_FROM_AI_FIM_MODELS.equals(src)) {
+                if (aiFimModelChoices == null) {
+                    aiFimModelChoices = buildAiFimModelChoices(tenantId, projectId);
+                }
+                out.add(f.toBuilder().choices(aiFimModelChoices).build());
             } else {
                 out.add(f);
             }
@@ -287,14 +294,16 @@ public class SettingFormService {
      * a size tag in parentheses so users can spot small-vs-large at a
      * glance. Order follows {@link ModelCatalog#listAll}.
      */
-    private List<FormChoiceDto> buildAiModelChoices(
-            String tenantId, @Nullable String projectId) {
+    private List<FormChoiceDto> buildAiModelChoices(String tenantId, @Nullable String projectId) {
         List<ModelInfo> models = modelCatalog.listAll(tenantId, projectId);
         List<FormChoiceDto> out = new ArrayList<>(models.size());
         for (ModelInfo m : models) {
             String value = m.provider() + ":" + m.modelName();
             String label = value + "  (" + m.size().name().toLowerCase(Locale.ROOT) + ")";
-            out.add(FormChoiceDto.builder().value(value).label(java.util.Map.of("en", label)).build());
+            out.add(FormChoiceDto.builder()
+                    .value(value)
+                    .label(java.util.Map.of("en", label))
+                    .build());
         }
         return out;
     }
@@ -305,64 +314,81 @@ public class SettingFormService {
      * {@link ModelCatalog#listAllImages}. Order follows the catalog
      * iteration order.
      */
-    private List<FormChoiceDto> buildAiImageModelChoices(
-            String tenantId, @Nullable String projectId) {
-        List<de.mhus.vance.brain.ai.image.ImageModelInfo> models =
-                modelCatalog.listAllImages(tenantId, projectId);
+    private List<FormChoiceDto> buildAiImageModelChoices(String tenantId, @Nullable String projectId) {
+        List<de.mhus.vance.brain.ai.image.ImageModelInfo> models = modelCatalog.listAllImages(tenantId, projectId);
         List<FormChoiceDto> out = new ArrayList<>(models.size());
         for (de.mhus.vance.brain.ai.image.ImageModelInfo m : models) {
             String value = m.provider() + ":" + m.modelName();
             String label = value;
-            out.add(FormChoiceDto.builder().value(value).label(java.util.Map.of("en", label)).build());
+            out.add(FormChoiceDto.builder()
+                    .value(value)
+                    .label(java.util.Map.of("en", label))
+                    .build());
+        }
+        return out;
+    }
+
+    /**
+     * FIM counterpart of {@link #buildAiModelChoices}: only entries with
+     * a resolved {@code fimTemplate} — the same chat-models list, minus
+     * everything without a Fill-In-the-Middle shape.
+     */
+    private List<FormChoiceDto> buildAiFimModelChoices(String tenantId, @Nullable String projectId) {
+        List<ModelInfo> models = modelCatalog.listAll(tenantId, projectId);
+        List<FormChoiceDto> out = new ArrayList<>();
+        for (ModelInfo m : models) {
+            if (m.fimTemplate() == null) {
+                continue;
+            }
+            String value = m.provider() + ":" + m.modelName();
+            out.add(FormChoiceDto.builder()
+                    .value(value)
+                    .label(java.util.Map.of("en", value))
+                    .build());
         }
         return out;
     }
 
     private LiveValue lookupLiveValue(
-            FormFieldDto field, BindsToDto binding, String wireScope,
-            String tenantId, @Nullable String projectId, @Nullable String userId) {
+            FormFieldDto field,
+            BindsToDto binding,
+            String wireScope,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String userId) {
         // Must match what the planner will write — an explicit
         // bindsTo.settingType (e.g. HIDDEN) has to route through the encrypted
         // read path, otherwise getStringValue refuses the value and the form
         // renders an existing secret as "not set".
         SettingType type = SettingFormPlanBuilder.resolveFieldSettingType(field, binding);
         return switch (wireScope) {
-            case SettingService.SCOPE_PROJECT -> readCascadeProject(
-                    tenantId, projectId, binding.getKey(), type);
-            case SettingService.SCOPE_USER -> readUser(
-                    tenantId, userId, binding.getKey(), type);
-            case SettingService.SCOPE_TENANT -> readTenant(
-                    tenantId, binding.getKey(), type);
+            case SettingService.SCOPE_PROJECT -> readCascadeProject(tenantId, projectId, binding.getKey(), type);
+            case SettingService.SCOPE_USER -> readUser(tenantId, userId, binding.getKey(), type);
+            case SettingService.SCOPE_TENANT -> readTenant(tenantId, binding.getKey(), type);
             default -> new LiveValue(null, null);
         };
     }
 
-    private LiveValue readCascadeProject(
-            String tenantId, @Nullable String projectId, String key, SettingType type) {
+    private LiveValue readCascadeProject(String tenantId, @Nullable String projectId, String key, SettingType type) {
         if (type.encrypted()) {
             return findFirstPassword(tenantId, projectId, key);
         }
         // Walk: project (if any) → _tenant
-        if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
-            String v = settingService.getStringValue(
-                    tenantId, SettingService.SCOPE_PROJECT, projectId, key);
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+            String v = settingService.getStringValue(tenantId, SettingService.SCOPE_PROJECT, projectId, key);
             if (v != null) return new LiveValue(v, projectId);
         }
         String v = settingService.getStringValue(
-                tenantId, SettingService.SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, key);
-        return v == null ? new LiveValue(null, null)
-                : new LiveValue(v, HomeBootstrapService.TENANT_PROJECT_NAME);
+                tenantId, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key);
+        return v == null ? new LiveValue(null, null) : new LiveValue(v, HomeBootstrapService.TENANT_PROJECT_NAME);
     }
 
-    private LiveValue readUser(
-            String tenantId, @Nullable String userId, String key, SettingType type) {
+    private LiveValue readUser(String tenantId, @Nullable String userId, String key, SettingType type) {
         if (userId == null || userId.isBlank()) return new LiveValue(null, null);
         String userProject = HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId;
         if (type.encrypted()) {
-            Optional<SettingDocument> doc = settingService.find(
-                    tenantId, SettingService.SCOPE_PROJECT, userProject, key);
+            Optional<SettingDocument> doc =
+                    settingService.find(tenantId, SettingService.SCOPE_PROJECT, userProject, key);
             if (doc.isPresent() && doc.get().getValue() != null) {
                 return new LiveValue("***", userProject);
             }
@@ -375,31 +401,25 @@ public class SettingFormService {
     private LiveValue readTenant(String tenantId, String key, SettingType type) {
         String ref = HomeBootstrapService.TENANT_PROJECT_NAME;
         if (type.encrypted()) {
-            Optional<SettingDocument> doc = settingService.find(
-                    tenantId, SettingService.SCOPE_PROJECT, ref, key);
+            Optional<SettingDocument> doc = settingService.find(tenantId, SettingService.SCOPE_PROJECT, ref, key);
             if (doc.isPresent() && doc.get().getValue() != null) {
                 return new LiveValue("***", ref);
             }
             return new LiveValue(null, null);
         }
-        String v = settingService.getStringValue(
-                tenantId, SettingService.SCOPE_PROJECT, ref, key);
+        String v = settingService.getStringValue(tenantId, SettingService.SCOPE_PROJECT, ref, key);
         return v == null ? new LiveValue(null, null) : new LiveValue(v, ref);
     }
 
-    private LiveValue findFirstPassword(
-            String tenantId, @Nullable String projectId, String key) {
-        if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
-            Optional<SettingDocument> doc = settingService.find(
-                    tenantId, SettingService.SCOPE_PROJECT, projectId, key);
+    private LiveValue findFirstPassword(String tenantId, @Nullable String projectId, String key) {
+        if (projectId != null && !projectId.isBlank() && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+            Optional<SettingDocument> doc = settingService.find(tenantId, SettingService.SCOPE_PROJECT, projectId, key);
             if (doc.isPresent() && doc.get().getValue() != null) {
                 return new LiveValue("***", projectId);
             }
         }
         Optional<SettingDocument> doc = settingService.find(
-                tenantId, SettingService.SCOPE_PROJECT,
-                HomeBootstrapService.TENANT_PROJECT_NAME, key);
+                tenantId, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key);
         if (doc.isPresent() && doc.get().getValue() != null) {
             return new LiveValue("***", HomeBootstrapService.TENANT_PROJECT_NAME);
         }
@@ -412,49 +432,48 @@ public class SettingFormService {
      * never leave the brain — see spec §11.
      */
     private static FormFieldDto stripBackendOnly(FormFieldDto in) {
-        return in.toBuilder()
-                .showIf(null)
-                .writeIf(null)
-                .build();
+        return in.toBuilder().showIf(null).writeIf(null).build();
     }
 
-    private record LiveValue(@Nullable String value, @Nullable String source) {}
+    private record LiveValue(
+            @Nullable String value, @Nullable String source) {}
 
     // ──────────────────── Execution ────────────────────
 
-    private void executePlan(
-            String tenantId, List<PlannedSettingAction> plan, @Nullable String actor) {
+    private void executePlan(String tenantId, List<PlannedSettingAction> plan, @Nullable String actor) {
         for (PlannedSettingAction action : plan) {
             switch (action.action()) {
-                case SKIP -> { /* no-op */ }
-                case DELETE -> settingService.delete(
-                        tenantId, action.referenceType(), action.referenceId(), action.key());
+                case SKIP -> {
+                    /* no-op */
+                }
+                case DELETE ->
+                    settingService.delete(tenantId, action.referenceType(), action.referenceId(), action.key());
                 case WRITE -> applyWrite(tenantId, action, actor);
             }
         }
     }
 
-    private void applyWrite(
-            String tenantId, PlannedSettingAction action, @Nullable String actor) {
+    private void applyWrite(String tenantId, PlannedSettingAction action, @Nullable String actor) {
         SettingType type = action.settingType();
         if (type == null) {
             throw new IllegalStateException(
-                    "WRITE plan entry for key '" + action.key()
-                            + "' is missing settingType — planner bug");
+                    "WRITE plan entry for key '" + action.key() + "' is missing settingType — planner bug");
         }
         String value = action.value();
         if (type.encrypted()) {
             settingService.setEncryptedSecretAs(
-                    tenantId, action.referenceType(), action.referenceId(),
-                    action.key(), value, type, actor);
+                    tenantId, action.referenceType(), action.referenceId(), action.key(), value, type, actor);
         } else {
             settingService.setAs(
-                    tenantId, action.referenceType(), action.referenceId(),
-                    action.key(), value, type, null, actor);
+                    tenantId, action.referenceType(), action.referenceId(), action.key(), value, type, null, actor);
         }
-        log.debug("setting-form wrote {}:{} key='{}' type={} (source={})",
-                action.referenceType(), action.referenceId(),
-                action.key(), type, action.sourceLabel());
+        log.debug(
+                "setting-form wrote {}:{} key='{}' type={} (source={})",
+                action.referenceType(),
+                action.referenceId(),
+                action.key(),
+                type,
+                action.sourceLabel());
     }
 
     // ──────────────────── helpers ────────────────────
@@ -467,8 +486,8 @@ public class SettingFormService {
     public SettingFormPlanBuilder.ResolvedScope resolveScope(
             String wireScope, @Nullable String projectId, @Nullable String userId) {
         return planBuilder.resolveScope(
-                wireScope == null ? SettingService.SCOPE_PROJECT
-                        : wireScope.toLowerCase(Locale.ROOT),
-                projectId, userId);
+                wireScope == null ? SettingService.SCOPE_PROJECT : wireScope.toLowerCase(Locale.ROOT),
+                projectId,
+                userId);
     }
 }

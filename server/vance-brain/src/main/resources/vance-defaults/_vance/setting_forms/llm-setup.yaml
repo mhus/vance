@@ -75,6 +75,24 @@ fields:
     bindsTo:
       key: "ai.alias.default.code"
 
+  # ─── Fill-In-the-Middle alias (Follow-Up Edit-Mode) ───────────
+  # See specification/public/follow-up.md §5. Unset = chat path
+  # (default); set = completion-trained model fills the cursor hole.
+  # The picker only lists models with a `fimTemplate` — a chat model
+  # here would fail closed at call time.
+
+  - name: aliasFim
+    type: select
+    label:
+      de: "Alias `default:fim` (Follow-Up-Completion)"
+      en: "Alias `default:fim` (follow-up completion)"
+    help:
+      de: "Optional. Completion-Modell (Fill-In-the-Middle) für Vorschläge an der Cursor-Position. Ungesetzt = normaler Chat-Pfad. Nur Modelle mit bekanntem FIM-Template (z.B. Qwen-Coder) sind wählbar."
+      en: "Optional. Fill-In-the-Middle completion model for cursor-position suggestions. Unset = normal chat path. Only models with a known FIM template (e.g. Qwen-Coder) are selectable."
+    choicesFrom: ai-fim-models
+    bindsTo:
+      key: "ai.alias.default.fim"
+
   # ─── Image-generation aliases (Fenchurch) ──────────────────────────
   # See specification/fenchurch-service.md. The choices come from a
   # separate ai-models.yaml view that only lists `kind: image` entries,

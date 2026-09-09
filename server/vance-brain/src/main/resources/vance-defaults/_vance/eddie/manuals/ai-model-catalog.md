@@ -1,6 +1,6 @@
 ---
-triggers: ai-model pricing eintragen, neues llm modell katalog, modell hinzufügen vance, ai model catalog override, pricing für modell, kontextfenster modell setzen, modell-doc schreiben, ai-models yaml, model catalog manual, modell konfigurieren brain
-summary: How to author a MANUAL-layer AI-model metadata doc (pricing, context window, capabilities) at `_vance/model/<provider>/<slug>.yaml`. Use when the user wants to register, override, or price a model that auto-discovery cannot fill in. Do NOT write to `_vance/model-auto/**` — that is automation-owned.
+triggers: ai-model pricing eintragen, neues llm modell katalog, modell hinzufügen vance, ai model catalog override, pricing für modell, kontextfenster modell setzen, modell-doc schreiben, ai-models yaml, model catalog manual, modell konfigurieren brain, fim modell konfigurieren, fill in the middle modell, completion modell vance, fim template modell
+summary: How to author a MANUAL-layer AI-model metadata doc (pricing, context window, capabilities, FIM template) at `_vance/model/<provider>/<slug>.yaml`. Use when the user wants to register, override, price, or enable Fill-In-the-Middle completion for a model that auto-discovery cannot fill in. Do NOT write to `_vance/model-auto/**` — that is automation-owned.
 ---
 # Writing manual AI-model catalog docs
 
@@ -34,6 +34,7 @@ survive the next discovery pass.
 - "Vance doesn't know the new model X — add it"
 - "Override context window for gpt-5 to 1M tokens"
 - "Mark deepseek-v4 as a reasoning model"
+- "Enable cursor completions with the local Qwen-Coder model (FIM)"
 - After the user has run discovery and wants to enrich the auto-docs
 
 If the user just wants the discovery job to run, use the
@@ -93,6 +94,7 @@ actionLoopCorrections: 2                # structured-action loop pacemaker
 outputTokenParam: max_tokens            # OpenAI-wire output cap field, see below
 unsupportedParams: []                   # sampling knobs the model rejects, see below
 reasoningEffortWhenOff: null            # explicit "no reasoning" wire value, see below
+fimTemplate: null                       # Fill-In-the-Middle prompt shape, see below
 
 pricing:                                # USD/EUR/… per 1M tokens
   currency: USD
@@ -141,6 +143,31 @@ reasoning. Reasoning-native models (gpt-5.x) reason by default and then
 refuse to combine that with function tools, so they need the value
 spelled out — `"none"`. Set it only for models that document that
 value; sending `none` to a model that doesn't know it is itself a 400.
+
+### `fimTemplate` — the Fill-In-the-Middle prompt shape
+
+Completion-trained models (Qwen-Coder, DeepSeek-Coder, Codestral,
+StarCoder) fill a hole between prefix and suffix only when the request
+carries their family's FIM control tokens — the families genuinely
+differ, so this is per-model metadata, not a global constant:
+
+| Family | Template |
+|---|---|
+| Qwen2.5/Qwen3-Coder, StarCoder | `<fim_prefix>{prefix}<fim_suffix>{suffix}<fim_middle>` |
+| DeepSeek-Coder | `<|fim▁begin|>{prefix}<|fim▁hole|>{suffix}<|fim▁end|>` |
+| Codestral | `[PREFIX]{prefix}[SUFFIX]{suffix}[MIDDLE]` |
+
+The markers `{prefix}`/`{suffix}` are spliced with the text
+before/after the cursor. Write the field by hand only outside the
+bundled patterns (`qwen*coder*`, `deepseek-coder*`, `codestral*`,
+`starcoder*`). Copy the tokens from the model's own documentation —
+a wrong template silently produces garbage completions.
+
+FIM is **gated by a separate setting**: `ai.alias.default.fim` set to
+the model spec (e.g. `lmstudio:qwen3-coder-30b`) switches the
+follow-up endpoint's edit mode onto the completion path; unset = chat
+path (default). Never point it at a chat model — missing
+`fimTemplate` is a hard error by design.
 
 ### Image-only fields (when `kind: image`)
 
@@ -223,6 +250,8 @@ omit the dropped one.
 - **Inventing capabilities the model doesn't support.** Adding
   `thinking` to a non-reasoning model causes provider-side 400s. Only
   list what the user has verified.
+- **Inventing a FIM template.** Only copy a template from the model's
+  own documentation — the control tokens are part of its training.
 - **Pricing hallucinations.** If unsure, ask the user for the vendor's
   pricing page URL and confirm before writing — never guess prices.
 - **`discoveredBy: discovery-job` in a manual file.** That marker is

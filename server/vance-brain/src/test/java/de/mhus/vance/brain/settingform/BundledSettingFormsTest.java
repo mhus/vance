@@ -40,10 +40,19 @@ class BundledSettingFormsTest {
         assertThat(f.fields())
                 .extracting(field -> field.getName())
                 .containsExactly(
-                        "aliasAnalyze", "aliasFast", "aliasDeep", "aliasWeb", "aliasCode",
-                        "aliasImage", "aliasImageHigh",
+                        "aliasAnalyze",
+                        "aliasFast",
+                        "aliasDeep",
+                        "aliasWeb",
+                        "aliasCode",
+                        "aliasFim",
+                        "aliasImage",
+                        "aliasImageHigh",
                         "provider",
-                        "embeddingProvider", "embeddingModel", "embeddingKey", "embeddingBaseUrl",
+                        "embeddingProvider",
+                        "embeddingModel",
+                        "embeddingKey",
+                        "embeddingBaseUrl",
                         "tracing");
 
         // Chat credentials moved out to one form per provider instance. A
@@ -59,32 +68,43 @@ class BundledSettingFormsTest {
 
         // Embedding fields bind to the standalone ai.embedding.* namespace
         // (separate from the chat-side ai.provider.*.apiKey credentials).
-        for (String f2 : new String[]{
-                "embeddingProvider", "embeddingModel", "embeddingKey", "embeddingBaseUrl"}) {
+        for (String f2 : new String[] {"embeddingProvider", "embeddingModel", "embeddingKey", "embeddingBaseUrl"}) {
             var fld = f.fields().stream()
                     .filter(field -> field.getName().equals(f2))
-                    .findFirst().orElseThrow();
+                    .findFirst()
+                    .orElseThrow();
             assertThat(fld.getBindsTo()).isNotNull();
             assertThat(fld.getBindsTo().getKey()).startsWith("ai.embedding.");
         }
 
         // Chat-tier aliases use the chat-only ai-models choice source.
-        for (String aliasField : new String[]{
-                "aliasAnalyze", "aliasFast", "aliasDeep", "aliasWeb", "aliasCode"}) {
+        for (String aliasField : new String[] {"aliasAnalyze", "aliasFast", "aliasDeep", "aliasWeb", "aliasCode"}) {
             var fld = f.fields().stream()
                     .filter(field -> field.getName().equals(aliasField))
-                    .findFirst().orElseThrow();
+                    .findFirst()
+                    .orElseThrow();
             assertThat(fld.getChoicesFrom()).isEqualTo("ai-models");
             assertThat(fld.getBindsTo()).isNotNull();
             assertThat(fld.getBindsTo().getKey()).startsWith("ai.alias.default.");
         }
 
+        // FIM alias uses the fimTemplate-filtered source so the picker
+        // can't offer a chat model that would fail closed at call time.
+        var aliasFim = f.fields().stream()
+                .filter(field -> field.getName().equals("aliasFim"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(aliasFim.getChoicesFrom()).isEqualTo("ai-fim-models");
+        assertThat(aliasFim.getBindsTo()).isNotNull();
+        assertThat(aliasFim.getBindsTo().getKey()).isEqualTo("ai.alias.default.fim");
+
         // Image aliases use the kind:image filtered source so the picker
         // doesn't mix chat models in.
-        for (String aliasField : new String[]{"aliasImage", "aliasImageHigh"}) {
+        for (String aliasField : new String[] {"aliasImage", "aliasImageHigh"}) {
             var fld = f.fields().stream()
                     .filter(field -> field.getName().equals(aliasField))
-                    .findFirst().orElseThrow();
+                    .findFirst()
+                    .orElseThrow();
             assertThat(fld.getChoicesFrom()).isEqualTo("ai-image-models");
             assertThat(fld.getBindsTo()).isNotNull();
             assertThat(fld.getBindsTo().getKey()).startsWith("ai.alias.default.image");
@@ -98,9 +118,11 @@ class BundledSettingFormsTest {
         // availableIn keeps this form out of per-user home projects but
         // allows the tenant-default project so LLM creds can be set there.
         assertThat(f.availableIn()).containsExactly("!_user_*");
-        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "research-2026")).isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "research-2026"))
+                .isTrue();
         assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_tenant")).isTrue();
-        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_user_wile.coyote")).isFalse();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_user_wile.coyote"))
+                .isFalse();
     }
 
     /**
@@ -113,24 +135,21 @@ class BundledSettingFormsTest {
      */
     @Test
     void llm_provider_forms_bindOnlyToTheirOwnInstance() throws IOException {
-        for (String instance : new String[]{
-                "anthropic", "openai", "openai-experimental", "gemini",
-                "ollama", "lmstudio", "cortecs"}) {
+        for (String instance :
+                new String[] {"anthropic", "openai", "openai-experimental", "gemini", "ollama", "lmstudio", "cortecs"
+                }) {
             ResolvedSettingForm f = loadBundled("llm-provider-" + instance);
             assertThat(f.fields())
                     .as("form llm-provider-%s has no fields", instance)
                     .isNotEmpty();
-            assertThat(f.fields())
-                    .allSatisfy(field -> {
-                        assertThat(field.getBindsTo())
-                                .as("field '%s' in llm-provider-%s must bind to a setting",
-                                        field.getName(), instance)
-                                .isNotNull();
-                        assertThat(field.getBindsTo().getKey())
-                                .as("field '%s' in llm-provider-%s binds to a foreign instance",
-                                        field.getName(), instance)
-                                .startsWith("ai.provider." + instance + ".");
-                    });
+            assertThat(f.fields()).allSatisfy(field -> {
+                assertThat(field.getBindsTo())
+                        .as("field '%s' in llm-provider-%s must bind to a setting", field.getName(), instance)
+                        .isNotNull();
+                assertThat(field.getBindsTo().getKey())
+                        .as("field '%s' in llm-provider-%s binds to a foreign instance", field.getName(), instance)
+                        .startsWith("ai.provider." + instance + ".");
+            });
         }
     }
 
@@ -142,8 +161,7 @@ class BundledSettingFormsTest {
      */
     @Test
     void llm_provider_forms_neverMarkCredentialsRequired() throws IOException {
-        for (String instance : new String[]{
-                "anthropic", "openai", "openai-experimental", "gemini", "cortecs"}) {
+        for (String instance : new String[] {"anthropic", "openai", "openai-experimental", "gemini", "cortecs"}) {
             ResolvedSettingForm f = loadBundled("llm-provider-" + instance);
             assertThat(f.fields())
                     .filteredOn(field -> "password".equals(field.getType()))
@@ -173,13 +191,12 @@ class BundledSettingFormsTest {
         ResolvedSettingForm f = loadBundled("integrations-jira");
         assertThat(f.fields())
                 .extracting(field -> field.getName())
-                .containsExactly("instanceUrl", "authMode", "oauthAccessToken",
-                        "oauthRefreshToken", "apiToken", "userEmail");
+                .containsExactly(
+                        "instanceUrl", "authMode", "oauthAccessToken", "oauthRefreshToken", "apiToken", "userEmail");
 
         // Marker computed-setting is unconditional.
         assertThat(f.computedSettings()).hasSize(1);
-        assertThat(f.computedSettings().get(0).key())
-                .isEqualTo("credentials.jira.configured");
+        assertThat(f.computedSettings().get(0).key()).isEqualTo("credentials.jira.configured");
 
         // All three credentials stay PASSWORD (the default for a `password` field):
         // the Jira connector uses them, and a connector resolves through
@@ -191,8 +208,7 @@ class BundledSettingFormsTest {
         assertThat(settingTypeOf(f, "oauthRefreshToken")).isNull();
     }
 
-    private static @org.jspecify.annotations.Nullable String settingTypeOf(
-            ResolvedSettingForm form, String fieldName) {
+    private static @org.jspecify.annotations.Nullable String settingTypeOf(ResolvedSettingForm form, String fieldName) {
         return form.fields().stream()
                 .filter(field -> fieldName.equals(field.getName()))
                 .findFirst()
@@ -235,15 +251,11 @@ class BundledSettingFormsTest {
         String docPath = "_vance/setting_forms/" + name + ".yaml";
 
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.lookupCascade(
-                eq(TENANT),
-                eq(HomeBootstrapService.TENANT_PROJECT_NAME),
-                eq(docPath)))
-                .thenReturn(Optional.of(new LookupResult(
-                        docPath, yaml, LookupResult.Source.RESOURCE, null)));
+        when(documentService.lookupCascade(eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq(docPath)))
+                .thenReturn(Optional.of(new LookupResult(docPath, yaml, LookupResult.Source.RESOURCE, null)));
 
-        return loader.load(TENANT, null, null, name).orElseThrow(
-                () -> new AssertionError("bundled setting form '" + name + "' could not be loaded"));
+        return loader.load(TENANT, null, null, name)
+                .orElseThrow(() -> new AssertionError("bundled setting form '" + name + "' could not be loaded"));
     }
 
     private static String readClasspath(String path) throws IOException {

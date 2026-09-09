@@ -34,14 +34,10 @@ class ModelQuirksTest {
     @Test
     void bundledRules_mapReasoningFamiliesToMaxCompletionTokens() {
         ModelQuirks quirks = new ModelQuirks(new ClassPathResource("vance-defaults/model-quirks.yaml"));
-        assertThat(quirks.outputTokenParamFor("gpt-5.6-sol"))
-                .contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
-        assertThat(quirks.outputTokenParamFor("gpt-5-mini"))
-                .contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
-        assertThat(quirks.outputTokenParamFor("o3"))
-                .contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
-        assertThat(quirks.outputTokenParamFor("o4-mini"))
-                .contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
+        assertThat(quirks.outputTokenParamFor("gpt-5.6-sol")).contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
+        assertThat(quirks.outputTokenParamFor("gpt-5-mini")).contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
+        assertThat(quirks.outputTokenParamFor("o3")).contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
+        assertThat(quirks.outputTokenParamFor("o4-mini")).contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
     }
 
     @Test
@@ -66,7 +62,8 @@ class ModelQuirksTest {
         // seed and the output cap survive — verified against the live
         // model, so the list stays narrow rather than "all sampling".
         assertThat(quirks.unsupportedParamsFor("gpt-5.6-sol"))
-                .get().asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.COLLECTION)
+                .get()
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.COLLECTION)
                 .doesNotContain(SamplingParam.SEED);
         assertThat(quirks.unsupportedParamsFor("gpt-4o")).isEmpty();
     }
@@ -89,11 +86,15 @@ class ModelQuirksTest {
                     messageParser: "parser"
                   - match: "foo-bar"
                     outputTokenParam: "max_completion_tokens"
+                  - match: "foo-baz"
+                    fimTemplate: "<p>{prefix}<s>{suffix}<m>"
                 """;
         ModelQuirks quirks = new ModelQuirks(asResource(yaml));
         assertThat(quirks.messageParserFor("foo-bar")).contains("parser");
-        assertThat(quirks.outputTokenParamFor("foo-bar"))
-                .contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
+        assertThat(quirks.outputTokenParamFor("foo-bar")).contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
+        // Per-field resolution extends to fimTemplate: a rule earlier in
+        // the file that doesn't carry the field must not shadow it.
+        assertThat(quirks.fimTemplateFor("foo-baz")).contains("<p>{prefix}<s>{suffix}<m>");
     }
 
     @Test
@@ -108,8 +109,7 @@ class ModelQuirksTest {
         ModelQuirks quirks = new ModelQuirks(asResource(yaml));
         assertThat(quirks.ruleCount()).isEqualTo(1);
         assertThat(quirks.outputTokenParamFor("foo-1")).isEmpty();
-        assertThat(quirks.outputTokenParamFor("bar-1"))
-                .contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
+        assertThat(quirks.outputTokenParamFor("bar-1")).contains(OutputTokenParam.MAX_COMPLETION_TOKENS);
     }
 
     @Test
@@ -152,6 +152,52 @@ class ModelQuirksTest {
         ModelQuirks quirks = new ModelQuirks(asResource(yaml));
         assertThat(quirks.ruleCount()).isEqualTo(1);
         assertThat(quirks.messageParserFor("good-1")).contains("good");
+    }
+
+    @Test
+    void bundledRules_mapFimFamiliesToTheirTokenShape() {
+        ModelQuirks quirks = new ModelQuirks(new ClassPathResource("vance-defaults/model-quirks.yaml"));
+        assertThat(quirks.fimTemplateFor("qwen2.5-coder-32b-instruct"))
+                .contains("<fim_prefix>{prefix}<fim_suffix>{suffix}<fim_middle>");
+        assertThat(quirks.fimTemplateFor("Qwen3-Coder-30B-A3B"))
+                .contains("<fim_prefix>{prefix}<fim_suffix>{suffix}<fim_middle>");
+        assertThat(quirks.fimTemplateFor("deepseek-coder-v2-lite"))
+                .contains("<|fim▁begin|>{prefix}<|fim▁hole|>{suffix}<|fim▁end|>");
+        assertThat(quirks.fimTemplateFor("codestral-latest")).contains("[PREFIX]{prefix}[SUFFIX]{suffix}[MIDDLE]");
+        // Chat models carry no FIM shape — an alias pointing at one must
+        // be rejected, not guessed.
+        assertThat(quirks.fimTemplateFor("claude-sonnet-4-6")).isEmpty();
+        assertThat(quirks.fimTemplateFor("gpt-5.6-sol")).isEmpty();
+    }
+
+    @Test
+    void bundledFimModels_pickUpTheTemplateFromTheFamilyPattern() {
+        // The wire names of the FIM-capable models that actually ship in
+        // the bundled catalog (_vance/model/openai/*). None of them sets
+        // `fimTemplate` in its per-model YAML — the family pattern is the
+        // single source, per-model YAML only when a glob misses (a renamed
+        // gateway model, a new family). If one of these ever resolves
+        // empty, the follow-up fim picker lost its entry.
+        ModelQuirks quirks = new ModelQuirks(new ClassPathResource("vance-defaults/model-quirks.yaml"));
+        assertThat(quirks.fimTemplateFor("qwen3-coder-30b-a3b-instruct")).isPresent();
+        assertThat(quirks.fimTemplateFor("qwen3-coder-next")).isPresent();
+        assertThat(quirks.fimTemplateFor("codestral-2508")).isPresent();
+    }
+
+    @Test
+    void fimTemplate_withoutOrderedMarkers_isIgnored() {
+        String yaml = """
+                rules:
+                  - match: "foo-*"
+                    fimTemplate: "<fim>{suffix}…{prefix}"
+                  - match: "bar-*"
+                    fimTemplate: "no markers at all"
+                """;
+        ModelQuirks quirks = new ModelQuirks(asResource(yaml));
+        assertThat(quirks.fimTemplateFor("foo-1")).isEmpty();
+        assertThat(quirks.fimTemplateFor("bar-1")).isEmpty();
+        // Both rules carried only the malformed field → dropped.
+        assertThat(quirks.ruleCount()).isZero();
     }
 
     private static ByteArrayResource asResource(String yaml) {

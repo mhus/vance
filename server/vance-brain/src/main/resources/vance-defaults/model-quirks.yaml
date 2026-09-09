@@ -18,6 +18,16 @@
 # requested field wins, so a messageParser-only rule does not shadow a
 # later outputTokenParam rule for the same model.
 #
+# `fimTemplate` — the Fill-In-the-Middle prompt shape of a
+# completion-trained model family. Markers `{prefix}` and `{suffix}`
+# are spliced with the text before/after the cursor; the model's own
+# FIM control tokens are part of the template because the families
+# genuinely differ (Qwen <fim_*>-tokens, DeepSeek <|fim▁*|>-tokens,
+# Codestral [PREFIX]/[SUFFIX]/[MIDDLE]). Consumed by
+# FimCompletionService when `ai.alias.default.fim` points at the
+# model. Absent = the model has no known FIM shape and must not be
+# routed FIM traffic.
+#
 # Adding a new rule = add an entry here. The corresponding parser bean
 # must already be registered (de.mhus.vance.brain.ai.parser package).
 # A name without a registered bean produces a WARN log line at boot
@@ -108,3 +118,19 @@ rules:
   # pseudo-calls into real ToolExecutionRequests.
   - match: "gemini-2.5*"
     messageParser: "gemini-tool-code"
+
+  # ── Fill-In-the-Middle families ──────────────────────
+  # Completion-trained code models (Qwen2.5/Qwen3-Coder, DeepSeek-Coder,
+  # Codestral, StarCoder) fill a hole between prefix and suffix when the
+  # request carries their family's control tokens. vLLM / llama.cpp /
+  # LM Studio accept the token sequence as a plain user message over
+  # the OpenAI-compatible chat wire, so no separate completion endpoint
+  # is needed — the template is the whole prompt.
+  - match: "qwen*coder*"
+    fimTemplate: "<fim_prefix>{prefix}<fim_suffix>{suffix}<fim_middle>"
+  - match: "deepseek-coder*"
+    fimTemplate: "<|fim▁begin|>{prefix}<|fim▁hole|>{suffix}<|fim▁end|>"
+  - match: "codestral*"
+    fimTemplate: "[PREFIX]{prefix}[SUFFIX]{suffix}[MIDDLE]"
+  - match: "starcoder*"
+    fimTemplate: "<fim_prefix>{prefix}<fim_suffix>{suffix}<fim_middle>"

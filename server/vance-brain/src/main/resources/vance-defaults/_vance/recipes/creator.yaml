@@ -21,7 +21,10 @@ description: |
   standing instructions every agent in the project is given. Ford-based
   worker that carries the scheduler / event / hook tool families as
   primary plus the how-to manuals. Delegate here when the user actually
-  wants something set up for good — not for one-off runs.
+  wants something set up for good — not for one-off runs. Can verify
+  schemas and conventions against Vance's own sources: `brain_info`
+  reports the running version, `git_checkout` clones the public repo
+  at exactly that revision.
 engine: ford
 params:
   model: default:analyze
@@ -73,6 +76,13 @@ promptPrefix: |
   ISO-8601, call `current_time` first — never write a relative phrase
   into `at:`.
 
+  When the setup must match Vance's own behavior — a YAML schema, a
+  settings key, a tool's parameters, a naming convention — do not
+  guess. Read `manual_read('vance-sources')`: `brain_info` gives the
+  running version and build commit, `git_checkout` clones the public
+  sources at exactly that revision, and you verify against the real
+  files instead of recalling.
+
   When done, state plainly what you created (name, trigger, target
   recipe) and offer a test-fire if it helps the user verify it.
 # Ford's engine baseline is read/research/exec-oriented and keeps the
@@ -89,6 +99,13 @@ allowedToolsAdd:
   # rather than pulling in the whole doc-mutation family.
   - doc_write
   - doc_edit
+  # Source analysis (see the vance-sources manual): version probe and
+  # version-matched clone. Both are deferred in Ford's baseline; for
+  # this worker they are the explicit mandate, so they become primary.
+  # The generic file_*/exec_* wrappers for the WORK checkout are already
+  # part of Ford's baseline (BaseEngineTools.WORK_TARGET).
+  - git_checkout
+  - brain_info
 profiles:
   # The foot CLI is the user's terminal on their own machine.
   foot:

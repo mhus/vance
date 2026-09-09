@@ -25,6 +25,10 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>{@code repoUrl} (required) — clone URL</li>
  *   <li>{@code branch} — branch to check out, default {@code main}</li>
+ *   <li>{@code checkoutCommit} — commit SHA to detach to after cloning;
+ *       takes precedence over the branch tip. Set by {@code git_checkout}
+ *       when the caller wants an exact source match (e.g. the commit the
+ *       running brain was built from) instead of "whatever main is today"</li>
  *   <li>{@code commit} — populated by the handler with HEAD after init</li>
  *   <li>{@code credentialAlias} — alias resolved by {@link GitAuthProvider}</li>
  *   <li>{@code suspendBranch} — set during suspend; recover prefers it over {@code branch}</li>
@@ -40,6 +44,8 @@ public class GitHandler implements WorkspaceContentHandler {
 
     public static final String META_REPO_URL = "repoUrl";
     public static final String META_BRANCH = "branch";
+    public static final String META_CHECKOUT_COMMIT = "checkoutCommit";
+    public static final String META_DEPTH = "depth";
     public static final String META_COMMIT = "commit";
     public static final String META_CREDENTIAL_ALIAS = "credentialAlias";
     public static final String META_SUSPEND_BRANCH = "suspendBranch";
@@ -62,23 +68,77 @@ public class GitHandler implements WorkspaceContentHandler {
         String branch = stringOr(meta, META_BRANCH, DEFAULT_BRANCH);
         String alias = stringOr(meta, META_CREDENTIAL_ALIAS, null);
         CredentialsProvider creds = authProvider.provide(
-                handle.getDescriptor().getTenant(),
-                handle.getDescriptor().getProjectId(), alias);
+                handle.getDescriptor().getTenant(), handle.getDescriptor().getProjectId(), alias);
 
-        try (Git git = Git.cloneRepository()
+        // CloneCommand.setDepth(int) is primitive — an absent depth must
+        // skip the call, not unbox null into an NPE.
+        org.eclipse.jgit.api.CloneCommand clone = Git.cloneRepository()
                 .setURI(repoUrl)
                 .setDirectory(handle.getPath().toFile())
                 .setBranch(branch)
-                .setCredentialsProvider(creds)
-                .call()) {
+                .setCredentialsProvider(creds);
+        Integer depth = shallowDepth(meta);
+        if (depth != null) {
+            clone.setDepth(depth);
+        }
+        try (Git git = clone.call()) {
+            checkoutCommitIfRequested(git, meta);
             ObjectId head = git.getRepository().resolve("HEAD");
             meta.put(META_COMMIT, head == null ? "unknown" : head.getName());
             handle.getDescriptor().setMetadata(meta);
-            log.info("git init: {} → {} (branch={} commit={})",
-                    repoUrl, handle.getDirName(), branch, meta.get(META_COMMIT));
+            log.info(
+                    "git init: {} → {} (branch={} commit={})",
+                    repoUrl,
+                    handle.getDirName(),
+                    branch,
+                    meta.get(META_COMMIT));
         } catch (GitAPIException | IOException e) {
-            throw new WorkspaceException(
-                    "git clone failed for " + repoUrl + ": " + e.getMessage(), e);
+            throw new WorkspaceException("git clone failed for " + repoUrl + ": " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Depth of a shallow clone, or {@code null} for full history. Only
+     * positive integers count — anything else (absent, "", "soon") means
+     * full clone, so a malformed value cannot break the init.
+     */
+    private static @Nullable Integer shallowDepth(Map<String, Object> meta) {
+        Object raw = meta.get(META_DEPTH);
+        if (raw instanceof Number number && number.intValue() > 0) {
+            return number.intValue();
+        }
+        if (raw instanceof String text && !text.isBlank()) {
+            try {
+                int depth = Integer.parseInt(text.trim());
+                if (depth > 0) {
+                    return depth;
+                }
+            } catch (NumberFormatException ignored) {
+                // falls through to full clone
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Detach to {@code checkoutCommit} when the metadata names one. Runs
+     * inside the clone's try-with-resources so the repository handle is
+     * open; a commit that does not exist in the clone fails the whole init
+     * — a RootDir that silently sits on the wrong revision is worse than
+     * no RootDir.
+     */
+    private static void checkoutCommitIfRequested(Git git, Map<String, Object> meta)
+            throws GitAPIException, IOException {
+        // stringOr() normalizes an absent/null value to "" — blank is the
+        // "not requested" marker here, not a ref name to attempt.
+        String checkoutCommit = stringOr(meta, META_CHECKOUT_COMMIT, null);
+        if (StringUtils.isBlank(checkoutCommit)) {
+            return;
+        }
+        try {
+            git.checkout().setName(checkoutCommit).call();
+        } catch (GitAPIException e) {
+            throw new IOException("checkout of commit '" + checkoutCommit + "' failed: " + e.getMessage(), e);
         }
     }
 
@@ -87,8 +147,7 @@ public class GitHandler implements WorkspaceContentHandler {
         Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
         String alias = stringOr(meta, META_CREDENTIAL_ALIAS, null);
         CredentialsProvider creds = authProvider.provide(
-                handle.getDescriptor().getTenant(),
-                handle.getDescriptor().getProjectId(), alias);
+                handle.getDescriptor().getTenant(), handle.getDescriptor().getProjectId(), alias);
         String suspendBranch = SUSPEND_BRANCH_PREFIX + handle.getDirName();
         try (Git git = Git.open(handle.getPath().toFile())) {
             boolean dirty = !git.status().call().isClean();
@@ -106,11 +165,13 @@ public class GitHandler implements WorkspaceContentHandler {
             meta.put(META_SUSPEND_BRANCH, suspendBranch);
             meta.put(META_SUSPEND_COMMIT, head == null ? "unknown" : head.getName());
             handle.getDescriptor().setMetadata(meta);
-            log.info("git suspend: {} → {} (commit={})",
-                    handle.getDirName(), suspendBranch, meta.get(META_SUSPEND_COMMIT));
+            log.info(
+                    "git suspend: {} → {} (commit={})",
+                    handle.getDirName(),
+                    suspendBranch,
+                    meta.get(META_SUSPEND_COMMIT));
         } catch (GitAPIException | IOException e) {
-            throw new WorkspaceException(
-                    "git suspend failed for " + handle.getDirName() + ": " + e.getMessage(), e);
+            throw new WorkspaceException("git suspend failed for " + handle.getDirName() + ": " + e.getMessage(), e);
         }
     }
 
@@ -119,22 +180,25 @@ public class GitHandler implements WorkspaceContentHandler {
         Map<String, Object> meta = mutableMetadata(descriptor);
         String repoUrl = stringOrThrow(meta, META_REPO_URL);
         String suspendBranch = stringOr(meta, META_SUSPEND_BRANCH, null);
-        String branch = StringUtils.isNotBlank(suspendBranch)
-                ? suspendBranch
-                : stringOr(meta, META_BRANCH, DEFAULT_BRANCH);
+        String branch =
+                StringUtils.isNotBlank(suspendBranch) ? suspendBranch : stringOr(meta, META_BRANCH, DEFAULT_BRANCH);
         String alias = stringOr(meta, META_CREDENTIAL_ALIAS, null);
-        CredentialsProvider creds = authProvider.provide(
-                descriptor.getTenant(), descriptor.getProjectId(), alias);
-        try (Git ignored = Git.cloneRepository()
+        CredentialsProvider creds = authProvider.provide(descriptor.getTenant(), descriptor.getProjectId(), alias);
+        // Same primitive-setDepth rule as init: absent depth → full clone.
+        org.eclipse.jgit.api.CloneCommand recoverClone = Git.cloneRepository()
                 .setURI(repoUrl)
                 .setDirectory(handle.getPath().toFile())
                 .setBranch(branch)
-                .setCredentialsProvider(creds)
-                .call()) {
+                .setCredentialsProvider(creds);
+        Integer depth = shallowDepth(meta);
+        if (depth != null) {
+            recoverClone.setDepth(depth);
+        }
+        try (Git git = recoverClone.call()) {
+            checkoutCommitIfRequested(git, meta);
             log.info("git recover: {} → {} (branch={})", repoUrl, handle.getDirName(), branch);
-        } catch (GitAPIException e) {
-            throw new WorkspaceException(
-                    "git recover failed for " + repoUrl + ": " + e.getMessage(), e);
+        } catch (GitAPIException | IOException e) {
+            throw new WorkspaceException("git recover failed for " + repoUrl + ": " + e.getMessage(), e);
         }
     }
 

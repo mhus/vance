@@ -329,6 +329,30 @@
                     <layout>ZIP</layout>
                 </configuration>
             </plugin>
+            <!-- Stamps the build's source revision into git.properties on the
+                 classpath. Consumed by BrainBuildInfo (brain_info) so an agent
+                 can check out the exact sources the running jar was built from
+                 (git_checkout commit=…). Deliberately brain-only: the other
+                 modules have no consumer. failOnNoGitDirectory=false — a
+                 tarball build without .git skips the stamp instead of failing. -->
+            <plugin>
+                <groupId>io.github.git-commit-id</groupId>
+                <artifactId>git-commit-id-maven-plugin</artifactId>
+                <version>${git-commit-id.version}</version>
+                <configuration>
+                    <generateGitPropertiesFile>true</generateGitPropertiesFile>
+                    <generateGitPropertiesFilename>${project.build.outputDirectory}/git.properties</generateGitPropertiesFilename>
+                    <failOnNoGitDirectory>false</failOnNoGitDirectory>
+                    <failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>revision</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

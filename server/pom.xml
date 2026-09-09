@@ -97,6 +97,11 @@
              a bare @maven.build.timestamp@ otherwise filters to an empty string. -->
         <build.timestamp>${maven.build.timestamp}</build.timestamp>
         <maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
+        <!-- git-commit-id stamps vance-brain's build with the exact source
+             revision (→ git.properties on the classpath → brain_info).
+             failOnNoGitDirectory=false keeps tarball builds working: an
+             unstamped build reports commit 'unknown' instead of failing. -->
+        <git-commit-id.version>10.0.0</git-commit-id.version>
         <!-- Spotless source formatting (agent/java.md "Source formatting").
              palantir-java-format: 4-space indent, 120 cols, no javadoc reflow —
              closest to the existing house style. Formatter upgrades are

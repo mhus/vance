@@ -38,6 +38,10 @@ params:
   maxTokens: 2000000
   # Per-item tool budget handed to the doer (maps to Ford maxIterations).
   maxToolCalls: 15
+  # Structural cap on items committed per batch (interpret / split / revise);
+  # the rest arrives via reflect-gaps → route. Raise for tasks whose structure
+  # is evident from the task text; keep low for small models on open-ended work.
+  maxInitialItems: 5
   # WORK backend by default: Benjy's doers run in the Brain-server
   # workspace, sandboxed. Recipes that want the user's local files set
   # kind: CLIENT (needs a connected Foot).

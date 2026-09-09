@@ -82,6 +82,7 @@ public class BenjyEngine implements ThinkEngine {
     private static final String PARAM_MAX_WALLCLOCK_MINUTES = "maxWallclockMinutes";
     private static final String PARAM_MAX_TOKENS = "maxTokens";
     private static final String PARAM_MAX_TOOL_CALLS = "maxToolCalls";
+    private static final String PARAM_MAX_INITIAL_ITEMS = "maxInitialItems";
 
     private static final int DEFAULT_MAX_ROUNDS = 40;
     private static final int DEFAULT_MAX_ITEM_ATTEMPTS = 3;
@@ -89,6 +90,18 @@ public class BenjyEngine implements ThinkEngine {
     private static final long DEFAULT_MAX_TOKENS = 2_000_000L;
     /** Default per-item tool budget handed to the doer as maxIterations. */
     private static final int DEFAULT_MAX_TOOL_CALLS = 15;
+    /**
+     * Structural cap on items committed before facts arrive (decision #23):
+     * interpret's initial items, route's split items and route's revise items
+     * are each truncated to this bound. Guards the anti-Marvin invariant —
+     * decomposition of the unknown stays incremental — while leaving room for
+     * tasks whose structure is evident from the task text (reading, not
+     * inventing). Wider than the plan's original "1–3" on purpose: reflect is
+     * the continuation organ, and a premature reflect-DONE is the more
+     * expensive failure; the rest arrives via reflect-gaps → route-split,
+     * with the previous items' facts in the digest.
+     */
+    private static final int DEFAULT_MAX_INITIAL_ITEMS = 5;
 
     /** Same-identical route decision this many times in a row ⇒ stuck ⇒ BLOCKED. */
     private static final int STUCK_ROUTE_LIMIT = 3;
@@ -682,7 +695,13 @@ public class BenjyEngine implements ThinkEngine {
                 itemTexts.add(s.trim());
             }
         }
-        createItems(process, state, itemTexts);
+        int initialCap = intParam(
+                EngineChatFactory.effectiveParams(process), PARAM_MAX_INITIAL_ITEMS, DEFAULT_MAX_INITIAL_ITEMS);
+        List<String> capped = capItems(itemTexts, initialCap);
+        if (capped.size() < itemTexts.size()) {
+            journal(ctx, process, state, capNotice("interpret", itemTexts.size(), capped.size()));
+        }
+        createItems(process, state, capped);
         for (BenjyState.Item item : state.getItems()) {
             if ("pending".equals(item.getStatus())) {
                 enqueueDoChain(state, features, item, null);
@@ -793,7 +812,13 @@ public class BenjyEngine implements ThinkEngine {
                         texts.add(s.trim());
                     }
                 }
-                createItems(process, state, texts);
+                int splitCap = intParam(
+                        EngineChatFactory.effectiveParams(process), PARAM_MAX_INITIAL_ITEMS, DEFAULT_MAX_INITIAL_ITEMS);
+                List<String> capped = capItems(texts, splitCap);
+                if (capped.size() < texts.size()) {
+                    journal(ctx, process, state, capNotice("split", texts.size(), capped.size()));
+                }
+                createItems(process, state, capped);
                 for (BenjyState.Item item : state.getItems()) {
                     if ("pending".equals(item.getStatus())) {
                         enqueueDoChain(state, features, item, null);
@@ -827,7 +852,15 @@ public class BenjyEngine implements ThinkEngine {
                     }
                 }
                 if (!texts.isEmpty()) {
-                    createItems(process, state, texts);
+                    int reviseCap = intParam(
+                            EngineChatFactory.effectiveParams(process),
+                            PARAM_MAX_INITIAL_ITEMS,
+                            DEFAULT_MAX_INITIAL_ITEMS);
+                    List<String> capped = capItems(texts, reviseCap);
+                    if (capped.size() < texts.size()) {
+                        journal(ctx, process, state, capNotice("revise", texts.size(), capped.size()));
+                    }
+                    createItems(process, state, capped);
                     for (BenjyState.Item item : state.getItems()) {
                         if ("pending".equals(item.getStatus())) {
                             enqueueDoChain(state, features, item, null);
@@ -1549,6 +1582,28 @@ public class BenjyEngine implements ThinkEngine {
 
     private static String truncate(String s, int max) {
         return s.length() <= max ? s : s.substring(0, max) + "…";
+    }
+
+    /**
+     * Structural cap on items committed in one batch (decision #23) — the
+     * question's form bounds the answer's form: {@code initialItems} and
+     * {@code split}/{@code revise} item arrays are unbounded in the schema,
+     * so the model *could* return a full upfront plan; this truncates to the
+     * configured bound. Never silent — callers journal {@link #capNotice}.
+     * A cap below 1 is treated as "no cap" (misconfig degrades open, the
+     * other safety nets still hold).
+     */
+    static List<String> capItems(List<String> items, int cap) {
+        if (cap < 1 || items.size() <= cap) {
+            return items;
+        }
+        return new ArrayList<>(items.subList(0, cap));
+    }
+
+    /** Journal note for a truncated item batch — names the source and both counts. */
+    static String capNotice(String source, int returned, int kept) {
+        return source + " returned " + returned + " items — taking the first " + kept
+                + " (maxInitialItems); the rest arrives via reflect-gaps → route";
     }
 
     // ──────────────────── State persistence (Zaphod form) ────────────────────

@@ -34,7 +34,7 @@ promptPrefix: |
     "openQuestions": ["ambiguity that must be answered before starting
       (omit or empty when the task is clear)"],
     "initialItems": [
-      "the first 1-3 concrete work items"
+      "the first few concrete work items (the engine caps this list — only the obvious, immediately visible ones)"
     ]
   }
 
@@ -42,9 +42,10 @@ promptPrefix: |
   - Acceptance criteria are the contract everything later is measured
     against. Make them concrete and checkable ("tests pass", "the file
     exists and imports cleanly"), never vague ("good quality").
-  - `initialItems` is deliberately minimal: 1–3 items, never a full plan.
-    Decomposition continues at run time — inventing an upfront plan is
-    explicitly not your job.
+  - `initialItems` is deliberately minimal: the first few items the task
+    makes obvious — never a full plan. Decomposition continues at run
+    time, informed by the results of the first items — inventing an
+    upfront plan is explicitly not your job.
   - If the criteria source documents state requirements, derive criteria
     from them and set their `sourceRef` so the result stays traceable.
   - If the task is genuinely ambiguous, put the ambiguity into

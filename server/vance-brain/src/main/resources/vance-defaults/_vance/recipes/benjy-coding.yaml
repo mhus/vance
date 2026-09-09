@@ -45,6 +45,10 @@ params:
   maxWallclockMinutes: 30
   maxTokens: 2000000
   maxToolCalls: 15
+  # Structural cap on items committed per batch (interpret / split / revise);
+  # the rest arrives via reflect-gaps → route. Raise for tasks whose structure
+  # is evident from the task text; keep low for small models on open-ended work.
+  maxInitialItems: 5
   workTarget:
     kind: WORK
 

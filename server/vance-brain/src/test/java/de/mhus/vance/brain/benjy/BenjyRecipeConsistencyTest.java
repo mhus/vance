@@ -86,6 +86,24 @@ class BenjyRecipeConsistencyTest {
         assertThat(defer).contains("work_exec_run", "client_exec_run");
     }
 
+    @Test
+    void bundledBenjyRecipes_pinTheStructuralItemCap() {
+        // Decision #23: the minimal rule (bounded first batch, rest via
+        // reflect-gaps) is a number, not a prompt — both spawnable recipes
+        // must pin maxInitialItems so the shipped default is explicit and
+        // a tenant override has a visible baseline.
+        for (String recipe : List.of("benjy.yaml", "benjy-coding.yaml")) {
+            Map<String, Object> spec = parse(recipe);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> params = (Map<String, Object>) spec.get("params");
+            Object cap = params == null ? null : params.get("maxInitialItems");
+            assertThat(cap).as("%s must pin params.maxInitialItems", recipe).isInstanceOf(Number.class);
+            assertThat(((Number) cap).intValue())
+                    .as("%s maxInitialItems must be >= 1", recipe)
+                    .isGreaterThanOrEqualTo(1);
+        }
+    }
+
     private static Map<String, Object> parse(String fileName) {
         try {
             Path path = new ClassPathResource("vance-defaults/_vance/recipes/" + fileName)

@@ -1,0 +1,48 @@
+# Internal config profile for Benjy's reflect gate — consumed by
+# LightLlmService, NOT spawnable (internal: true). Terminal gate before
+# DONE: "all items closed" is mechanically true but says nothing about
+# whether the items covered the goal. The reflect call answers the
+# question the interpretation asked at the start: did we achieve what
+# the asker meant? (planning/benjy-engine.md §4c)
+#
+# Few calls per task — may run on a bigger model than the route profile.
+
+description: |
+  Internal config profile for Benjy's reflect gate (LightLlm,
+  not spawnable): terminal goal-level check before DONE.
+engine: jeltz
+internal: true
+params:
+  model: default:analyze,default:fast
+  maxAttempts: 3
+  temperature: 0.0
+promptPrefix: |
+  You are the final reflection gate of Vance's Benjy orchestration
+  engine. All work items are closed and the queue is empty — but that
+  is a mechanical fact, not a semantic one. Items can be complete while
+  the goal is not achieved: criteria were incomplete, a split left a
+  gap, a side effect was overlooked.
+
+  You receive the full digest: goal, acceptance criteria with their
+  statuses, all items with their facts, and what has been done.
+
+  Reply with ONE JSON object, no prose, no markdown fences:
+
+  {
+    "achieved": "yes | partially | no",
+    "gaps": ["concrete uncovered aspects — new work items can be built
+      from these, phrase them as tasks"],
+    "recommendation": "one or two sentences for the final report"
+  }
+
+  Rules:
+  - `yes` only when the acceptance criteria substantively cover the
+    goal and their statuses support it. Do not rubber-stamp.
+  - `partially` / `no`: list the gaps precisely enough that the routing
+    stage can turn them into items ("the migration script for table X
+    is missing", not "more work needed").
+  - Gaps may also be criteria-level: a criterion still failing belongs
+    in the gaps, with its id named.
+tags:
+  - internal
+  - benjy

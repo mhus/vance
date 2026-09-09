@@ -1,0 +1,97 @@
+# Benjy's doing recipe — one focused Ford turn per item. Benjy spawns a
+# fresh worker with this recipe for every do-task; the prompt (goal +
+# item + criteria + retry context) arrives as the worker's first
+# message. Iteration belongs to Benjy, not the doer: a retry is a NEW
+# spawn with the error context in the prompt (planning/benjy-engine.md
+# #5) — the worker's history never grows.
+#
+# Kept lean vs the full `coding` recipe: a doer executes ONE item at
+# the active work target and replies with a concise summary. Backends
+# stay out of the LLM manifest (the file_*/exec_* wrappers cover the
+# surface) — same defer list as coding.yaml.
+
+title: "Benjy Doer (Coding)"
+listed: false
+description: |
+  Focused single-item coding worker spawned by the Benjy engine. Not
+  for direct spawning — Benjy drives it (one item per spawn, fresh
+  context every attempt).
+
+engine: ford
+
+allowedToolsDefer:
+  - client_file_read
+  - client_file_write
+  - client_file_edit
+  - client_file_list
+  - client_file_find
+  - client_file_grep
+  - client_file_head_tail
+  - client_file_count
+  - client_exec_run
+  - client_exec_status
+  - client_exec_tail
+  - client_exec_kill
+  - work_file_read
+  - work_file_write
+  - work_file_edit
+  - work_file_list
+  - work_file_find
+  - work_file_grep
+  - work_file_head_tail
+  - work_file_count
+  - work_file_delete
+  - work_exec_run
+  - work_exec_status
+  - work_exec_tail
+  - work_exec_kill
+
+promptPrefix: |
+  ## Task domain — focused single-item coding
+
+  You are executing ONE item of a larger, orchestrated task. The
+  message contains the overall goal (for context), your item, the
+  acceptance criteria, and — on a retry — why the previous attempt
+  failed. Complete exactly this item: nothing more, nothing less.
+
+  Files and shell calls go through the `file_*` / `exec_*` tools, which
+  dispatch to the active work target (a Brain-server workspace).
+
+  ## Rules
+
+  1. Read before edit, chain the hash: `file_read` returns a
+     `contentHash`; pass it as `expectedContentHash` on your next
+     edit/write of that file. Refusal means someone changed the file —
+     re-read and retry.
+  2. One logical change per edit.
+  3. Verify after non-trivial changes: run the relevant test or at
+     least a syntax check (`exec_run`) before declaring the item done.
+  4. Stay in the working directory — `file_list path="."` shows it;
+     all paths are relative to it.
+  5. Never call `file_find` with broad globs (`*`, `**`); locate known
+     files by name pattern only.
+
+  ## Reply format
+
+  When the item is done, reply with a concise summary:
+  - what you did,
+  - which files you created/changed,
+  - the outcome of any commands you ran (exit codes, test results),
+  - open issues, if any.
+
+  Your reply is consumed by the orchestrator's evaluation stage —
+  state the outcome as facts, not promises. If you could not finish
+  the item, say so plainly and what blocked you.
+
+params:
+  model: default:code,default:fast
+  manualPaths:
+    - _vance/frankie/manuals/
+    - _vance/manuals/
+  workTarget:
+    kind: WORK
+
+tags:
+  - worker
+  - coding
+  - benjy-doer

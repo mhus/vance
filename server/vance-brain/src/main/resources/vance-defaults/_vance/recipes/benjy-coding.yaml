@@ -1,0 +1,53 @@
+# Benjy coding recipe — full pipeline for iterative coding tasks on
+# small/local models. Adds the stages the default recipe leaves off:
+# a mechanical check (exec command, ground truth), the reflect gate
+# before DONE and escalation to a bigger worker (Frankie's `coding`)
+# when an item keeps failing.
+#
+# The check command is deliberately NOT set here: a wrong default would
+# fail every run's checks. Projects pin it via their own recipe override
+# document (_vance/recipes/benjy-coding.yaml in the project) or via
+# spawn params. Without a check command the coding chain degrades to
+# do → evaluate → close (evaluate still judges against criteria).
+
+title: "Benjy Coding"
+listed: true
+description: |
+  Iterative coding orchestration: Benjy decomposes the goal into items,
+  delegates each to a focused coding worker, verifies mechanically
+  (check command), evaluates against acceptance criteria, reflects on
+  the goal before DONE and escalates stuck items to the Frankie coding
+  worker. Pin `features.check.command` to your project's build/test
+  command (project recipe override or spawn params).
+
+engine: benjy
+
+params:
+  doRecipe: benjy-do-coding
+  taskTypes: [info, coding, planning, analysis]
+  features:
+    interpret:
+      recipe: benjy-interpret
+    route:
+      recipe: benjy-route
+    evaluate:
+      recipe: benjy-evaluate
+    reflect:
+      recipe: benjy-reflect
+    escalation:
+      # Fehlerbasierte Eskalation (§17): fires when the small model
+      # fails, not when the task is trivial. Delegation target is
+      # Frankie's coding worker — the big sibling.
+      recipe: coding
+    # check: { command: "<your build/test command>" }  ← project pins this
+  maxRounds: 40
+  maxItemAttempts: 3
+  maxWallclockMinutes: 30
+  maxTokens: 2000000
+  maxToolCalls: 15
+  workTarget:
+    kind: WORK
+
+tags:
+  - worker
+  - coding

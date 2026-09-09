@@ -7,10 +7,11 @@ import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ChatBehavior;
 import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
+import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
-import de.mhus.vance.shared.llmusage.CallAttribution;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
+import de.mhus.vance.shared.llmusage.CallAttribution;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.util.JsonSchemaLight;
@@ -134,9 +135,7 @@ public class LightLlmServiceImpl implements LightLlmService {
         ChatResponse response;
         try {
             response = chatModel.chat(ChatRequest.builder()
-                    .messages(List.of(
-                            SystemMessage.from(systemPrompt),
-                            UserMessage.from(req.getUserPrompt())))
+                    .messages(List.of(SystemMessage.from(systemPrompt), UserMessage.from(req.getUserPrompt())))
                     .build());
         } catch (RuntimeException e) {
             throw new LightLlmException("LLM call failed: " + e.getMessage(), e);
@@ -162,11 +161,10 @@ public class LightLlmServiceImpl implements LightLlmService {
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             ChatResponse response;
             try {
-                response = chatModel.chat(
-                        ChatRequest.builder().messages(messages).build());
+                response =
+                        chatModel.chat(ChatRequest.builder().messages(messages).build());
             } catch (RuntimeException e) {
-                throw new LightLlmException(
-                        "LLM call failed at attempt " + attempt + ": " + e.getMessage(), e);
+                throw new LightLlmException("LLM call failed at attempt " + attempt + ": " + e.getMessage(), e);
             }
             AiMessage reply = response.aiMessage();
             String text = reply != null && reply.text() != null ? reply.text() : "";
@@ -181,8 +179,12 @@ public class LightLlmServiceImpl implements LightLlmService {
             } catch (RuntimeException e) {
                 lastError = "reply is not valid JSON: " + e.getMessage();
                 lastInvalid = text;
-                log.info("LightLlm recipe='{}' attempt {}/{} non-JSON reply ({} chars)",
-                        req.getRecipeName(), attempt, maxAttempts, text.length());
+                log.info(
+                        "LightLlm recipe='{}' attempt {}/{} non-JSON reply ({} chars)",
+                        req.getRecipeName(),
+                        attempt,
+                        maxAttempts,
+                        text.length());
                 messages.add(UserMessage.from("Schema validation failed: " + lastError));
                 continue;
             }
@@ -190,8 +192,11 @@ public class LightLlmServiceImpl implements LightLlmService {
                 lastError = "reply must be a JSON object, got "
                         + (parsed == null ? "null" : parsed.getClass().getSimpleName());
                 lastInvalid = parsed;
-                log.info("LightLlm recipe='{}' attempt {}/{} reply not an object",
-                        req.getRecipeName(), attempt, maxAttempts);
+                log.info(
+                        "LightLlm recipe='{}' attempt {}/{} reply not an object",
+                        req.getRecipeName(),
+                        attempt,
+                        maxAttempts);
                 messages.add(UserMessage.from("Schema validation failed: " + lastError));
                 continue;
             }
@@ -202,12 +207,17 @@ public class LightLlmServiceImpl implements LightLlmService {
                 recordAttempts(req.getRecipeName(), attempt);
                 @SuppressWarnings("unchecked")
                 Map<String, Object> typed = (Map<String, Object>) parsed;
-                return new LightLlmJsonAnswer(typed, built.modelName());
+                return new LightLlmJsonAnswer(
+                        typed, built.modelName(), built.lastUsage().get());
             }
             lastError = vr.errorsJoined();
             lastInvalid = parsed;
-            log.info("LightLlm recipe='{}' attempt {}/{} schema violation: {}",
-                    req.getRecipeName(), attempt, maxAttempts, lastError);
+            log.info(
+                    "LightLlm recipe='{}' attempt {}/{} schema violation: {}",
+                    req.getRecipeName(),
+                    attempt,
+                    maxAttempts,
+                    lastError);
             messages.add(UserMessage.from("Schema validation failed: " + lastError));
         }
         recordAttempts(req.getRecipeName(), maxAttempts);
@@ -229,15 +239,9 @@ public class LightLlmServiceImpl implements LightLlmService {
             return;
         }
         boolean enabled = settingService.getBooleanValueCascade(
-                tenantId,
-                req.getProjectId(),
-                req.getProcessId(),
-                SETTING_ENABLED,
-                true /* default */);
+                tenantId, req.getProjectId(), req.getProcessId(), SETTING_ENABLED, true /* default */);
         if (!enabled) {
-            throw new LightLlmException(
-                    "LightLlmService is disabled for this scope ('"
-                            + SETTING_ENABLED + "'=false)");
+            throw new LightLlmException("LightLlmService is disabled for this scope ('" + SETTING_ENABLED + "'=false)");
         }
     }
 
@@ -261,12 +265,10 @@ public class LightLlmServiceImpl implements LightLlmService {
     private ResolvedRecipe resolveInternalRecipe(LightLlmRequest req) {
         ResolvedRecipe r = recipeLoader
                 .load(req.getTenantId(), req.getProjectId(), req.getRecipeName())
-                .orElseThrow(() -> new LightLlmException(
-                        "recipe not found: " + req.getRecipeName()));
+                .orElseThrow(() -> new LightLlmException("recipe not found: " + req.getRecipeName()));
         if (!r.internal()) {
-            throw new LightLlmException(
-                    "recipe '" + req.getRecipeName() + "' is not marked internal:true — "
-                            + "LightLlmService only consumes internal config-profile recipes");
+            throw new LightLlmException("recipe '" + req.getRecipeName() + "' is not marked internal:true — "
+                    + "LightLlmService only consumes internal config-profile recipes");
         }
         return r;
     }
@@ -276,8 +278,7 @@ public class LightLlmServiceImpl implements LightLlmService {
     private String renderSystemPrompt(ResolvedRecipe recipe, LightLlmRequest req) {
         String template = recipe.promptPrefix();
         if (template == null || template.isBlank()) {
-            throw new LightLlmException(
-                    "recipe '" + req.getRecipeName() + "' has no promptPrefix");
+            throw new LightLlmException("recipe '" + req.getRecipeName() + "' has no promptPrefix");
         }
         Map<String, Object> ctx = new HashMap<>();
         if (req.getPebbleVars() != null) {
@@ -287,8 +288,7 @@ public class LightLlmServiceImpl implements LightLlmService {
             return templateRenderer.render(template, ctx);
         } catch (RuntimeException e) {
             throw new LightLlmException(
-                    "Pebble render failed for recipe '" + req.getRecipeName() + "': "
-                            + e.getMessage(), e);
+                    "Pebble render failed for recipe '" + req.getRecipeName() + "': " + e.getMessage(), e);
         }
     }
 
@@ -303,8 +303,11 @@ public class LightLlmServiceImpl implements LightLlmService {
      * fallback entry. {@code primaryName} is what we asked for and stands
      * in when nothing reported back.
      */
-    private record BuiltChat(ChatModel model, String primaryName,
-            AtomicReference<String> answered) {
+    private record BuiltChat(
+            ChatModel model,
+            String primaryName,
+            AtomicReference<String> answered,
+            AtomicReference<LightLlmJsonAnswer.Usage> lastUsage) {
 
         /** The model that answered, falling back to the one asked for. */
         String modelName() {
@@ -321,19 +324,25 @@ public class LightLlmServiceImpl implements LightLlmService {
         Map<String, Object> params = recipe.params();
         String modelSpec = readModelSpec(params);
         AiChatConfig primary = ChatBehaviorBuilder.resolveOne(
-                modelSpec, req.getTenantId(), req.getProjectId(), req.getProcessId(),
-                settingService, aiModelResolver);
+                modelSpec, req.getTenantId(), req.getProjectId(), req.getProcessId(), settingService, aiModelResolver);
         List<ChatBehavior.Entry> entries = new ArrayList<>();
         entries.add(new ChatBehavior.Entry(primary, "primary"));
         for (String alias : readFallbacks(params)) {
             try {
                 AiChatConfig fb = ChatBehaviorBuilder.resolveOne(
-                        alias, req.getTenantId(), req.getProjectId(), req.getProcessId(),
-                        settingService, aiModelResolver);
+                        alias,
+                        req.getTenantId(),
+                        req.getProjectId(),
+                        req.getProcessId(),
+                        settingService,
+                        aiModelResolver);
                 entries.add(new ChatBehavior.Entry(fb, "fallback:" + alias));
             } catch (RuntimeException e) {
-                log.warn("LightLlmService: dropping unreachable fallback '{}' "
-                        + "for tenant '{}': {}", alias, req.getTenantId(), e.getMessage());
+                log.warn(
+                        "LightLlmService: dropping unreachable fallback '{}' " + "for tenant '{}': {}",
+                        alias,
+                        req.getTenantId(),
+                        e.getMessage());
             }
         }
         ChatBehavior behavior = new ChatBehavior(entries);
@@ -342,6 +351,7 @@ public class LightLlmServiceImpl implements LightLlmService {
         options.setTenantId(req.getTenantId());
         options.setProjectId(req.getProjectId());
         applySamplingParams(options, params);
+        applyThinkingParam(options, params);
         // Light calls don't persist to LlmTraceService — the writer hook is
         // the audit emitter. The usage ledger is no longer written here: the
         // accounting decorator inside the provider books every attempt,
@@ -350,6 +360,11 @@ public class LightLlmServiceImpl implements LightLlmService {
         String recipeName = recipe.name();
         String tenantId = req.getTenantId();
         String projectId = req.getProjectId();
+        // Usage capture sink — the last fire before a successful return
+        // is the answering attempt. Mirrors the audit emission below, but
+        // hands the numbers to the caller instead of only to the log
+        // stream (budget-metering engines read it off the answer).
+        AtomicReference<LightLlmJsonAnswer.Usage> usage = new AtomicReference<>();
         options.setLlmTraceWriter((request, response, elapsedMs) -> {
             Integer tokensIn = null;
             Integer tokensOut = null;
@@ -357,14 +372,11 @@ public class LightLlmServiceImpl implements LightLlmService {
                 tokensIn = response.tokenUsage().inputTokenCount();
                 tokensOut = response.tokenUsage().outputTokenCount();
             }
-            String modelName = (request.parameters() == null)
-                    ? null
-                    : request.parameters().modelName();
+            usage.set(LightLlmJsonAnswer.Usage.of(tokensIn, tokensOut));
+            String modelName =
+                    (request.parameters() == null) ? null : request.parameters().modelName();
             auditService.llmLightCall(
-                    tenantId, projectId,
-                    recipeName, modelName,
-                    tokensIn, tokensOut,
-                    elapsedMs, response != null, null);
+                    tenantId, projectId, recipeName, modelName, tokensIn, tokensOut, elapsedMs, response != null, null);
         });
 
         // Reported by the resilient decorator once a call succeeds, so a
@@ -382,15 +394,12 @@ public class LightLlmServiceImpl implements LightLlmService {
         // A light call has no think-engine, so it is attributed to the
         // synthetic caller `_light`; the recipe names the concrete one
         // (discovery, follow-up, title generation, …).
-        CallAttribution attribution = CallAttribution.light(
-                req.getTenantId(), req.getProjectId(), req.getProcessId(), recipe.name());
+        CallAttribution attribution =
+                CallAttribution.light(req.getTenantId(), req.getProjectId(), req.getProcessId(), recipe.name());
         AiChat chat = aiModelService.createChat(behavior, options, attribution);
         AiChatConfig asked = entries.get(0).config();
-        return new BuiltChat(chat.chatModel(),
-                asked.providerInstance() + ":" + asked.modelName(),
-                answered);
+        return new BuiltChat(chat.chatModel(), asked.providerInstance() + ":" + asked.modelName(), answered, usage);
     }
-
 
     // ──────────────────── Param helpers ────────────────────
 
@@ -405,8 +414,7 @@ public class LightLlmServiceImpl implements LightLlmService {
             return fromRecipe;
         }
         String settingVal = settingService.getStringValueCascade(
-                req.getTenantId(), req.getProjectId(), req.getProcessId(),
-                SETTING_DEFAULT_MAX_ATTEMPTS);
+                req.getTenantId(), req.getProjectId(), req.getProcessId(), SETTING_DEFAULT_MAX_ATTEMPTS);
         Integer fromSetting = parsePositiveInt(settingVal);
         if (fromSetting != null) {
             return fromSetting;
@@ -449,6 +457,38 @@ public class LightLlmServiceImpl implements LightLlmService {
         return List.of();
     }
 
+    /**
+     * Thread the recipe's {@code params.thinking} into the options —
+     * the same param, parsing and capability-downgrade semantics the
+     * engine path uses ({@code EngineChatFactory#readThinkingLevel}).
+     * Light callers could not opt into reasoning intensity before; the
+     * default (absent param) stays {@link ThinkingLevel#OFF}, so this is
+     * purely additive. Unknown values fall back to OFF with a warning —
+     * a typo in a recipe must not take the call down.
+     */
+    private static void applyThinkingParam(AiChatOptions options, Map<String, Object> params) {
+        Object v = params.get("thinking");
+        if (v == null) {
+            return;
+        }
+        if (v instanceof Boolean b) {
+            if (b) {
+                options.setThinkingLevel(ThinkingLevel.MEDIUM);
+            }
+            return;
+        }
+        if (v instanceof String s) {
+            ThinkingLevel.fromString(s)
+                    .ifPresentOrElse(
+                            options::setThinkingLevel,
+                            () -> log.warn("LightLlm recipe param thinking='{}' unknown — falling back to OFF", s));
+            return;
+        }
+        log.warn(
+                "LightLlm recipe param thinking has unexpected type {} — ignoring",
+                v.getClass().getSimpleName());
+    }
+
     private static void applySamplingParams(AiChatOptions options, Map<String, Object> params) {
         Object t = params.get("temperature");
         if (t instanceof Number n) {
@@ -479,10 +519,11 @@ public class LightLlmServiceImpl implements LightLlmService {
     private void recordOutcome(String recipeName, String outcome, long startNanos) {
         long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos);
         try {
-            metricService.counter(METRIC_CALLS,
-                    "recipe", recipeName, "outcome", outcome).increment();
-            metricService.timer(METRIC_DURATION,
-                    "recipe", recipeName, "outcome", outcome)
+            metricService
+                    .counter(METRIC_CALLS, "recipe", recipeName, "outcome", outcome)
+                    .increment();
+            metricService
+                    .timer(METRIC_DURATION, "recipe", recipeName, "outcome", outcome)
                     .record(elapsedMs, TimeUnit.MILLISECONDS);
         } catch (RuntimeException e) {
             // Never let metric infrastructure break the call path.
@@ -492,8 +533,7 @@ public class LightLlmServiceImpl implements LightLlmService {
 
     private void recordAttempts(String recipeName, int attempts) {
         try {
-            metricService.summary(METRIC_ATTEMPTS, "recipe", recipeName)
-                    .record(attempts);
+            metricService.summary(METRIC_ATTEMPTS, "recipe", recipeName).record(attempts);
         } catch (RuntimeException e) {
             log.debug("LightLlm attempts-metric failed: {}", e.toString());
         }

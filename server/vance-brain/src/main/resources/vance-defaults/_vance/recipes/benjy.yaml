@@ -1,0 +1,49 @@
+# Benjy default recipe — iterative orchestration worker, minimal feature
+# set. Companion to Frankie: where Frankie carries the loop discipline in
+# the model (LM-agency), Benjy carries it in the engine and calls the
+# model only at narrow, schema-bound edges (route / do / evaluate).
+#
+# This default keeps the pipeline lean: interpret + route + evaluate,
+# no mechanical check, no reflect gate, no escalation. Quality recipes
+# (benjy-coding) switch the further stages on. See
+# planning/benjy-engine.md §4d for the feature model.
+
+title: "Benjy — Iterative Orchestration Worker"
+listed: true
+description: |
+  Engine-agency orchestration loop for iterative tasks: interprets the
+  goal into acceptance criteria and items, delegates each item to a
+  focused Ford worker, evaluates results against criteria and decides
+  the next step at branches. Built for small/local models that cannot
+  carry loop discipline themselves. For coding with mechanical
+  verification use benjy-coding.
+
+engine: benjy
+
+params:
+  doRecipe: benjy-do-coding
+  taskTypes: [info, coding, planning, analysis]
+  features:
+    interpret:
+      recipe: benjy-interpret
+    route:
+      recipe: benjy-route
+    evaluate:
+      recipe: benjy-evaluate
+  # Safety-net budgets (§8) — mechanics, not prompt pleas.
+  maxRounds: 40
+  maxItemAttempts: 3
+  maxWallclockMinutes: 30
+  # Controller token budget across all LightLm calls of one run.
+  maxTokens: 2000000
+  # Per-item tool budget handed to the doer (maps to Ford maxIterations).
+  maxToolCalls: 15
+  # WORK backend by default: Benjy's doers run in the Brain-server
+  # workspace, sandboxed. Recipes that want the user's local files set
+  # kind: CLIENT (needs a connected Foot).
+  workTarget:
+    kind: WORK
+
+tags:
+  - worker
+  - engine-default

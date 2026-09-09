@@ -34,8 +34,9 @@ export default {
     facetHint: 'Gilt für die nächste Suche — ein Endpunkt ohne den gewählten Filter wird übersprungen.',
     noProviderHeadline: 'Kein Such-Provider konfiguriert',
     noProviderBody:
-      'Zuerst research.endpoint.<id>.protocol und den Key in den Einstellungen setzen. '
-      + 'Schon getan? Das Inventar ist fünf Minuten gecacht — unter Einstellungen neu laden.',
+      'Für dieses Projekt ist kein Quelldokument konfiguriert. Angelegt wird es über die Vorlage '
+      + '„Suchquelle: …“ im Anlegen-Dialog (sie schreibt _vance/config/research/<id>.yaml). '
+      + 'Schon angelegt? Das Inventar ist fünf Minuten gecacht — „Provider neu laden“ drücken.',
     providers: 'Provider',
     noProviders: 'In diesem Projekt ist nichts konfiguriert.',
     reloadProviders: 'Provider neu laden',

@@ -18,8 +18,8 @@ function qs(params: Record<string, string>): string {
  * <p>This is what the surface gates itself on — no Serper key means no image tab
  * at all, rather than an image tab that always fails. `refresh` makes the server
  * drop its five-minute factory cache first, which is what somebody needs right
- * after writing `research.endpoint.*`: until then the list is stale and looks
- * exactly like a wrong key.
+ * after writing a search-source document under `_vance/config/research/`: until
+ * then the list is stale and looks exactly like a wrong key.
  */
 export async function listProviders(
   projectId: string,

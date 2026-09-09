@@ -8,8 +8,8 @@ import java.util.Set;
  * A concrete, configured endpoint produced by a
  * {@link SearchProtocol#instantiate} call. Instances are <b>not</b>
  * Spring beans — {@code SearchProviderFactory} builds them per project
- * from {@code research.endpoint.<id>.*} settings and keeps them in a
- * project-scoped cache.
+ * from the source-config documents under {@code _vance/config/research/}
+ * and keeps them in a project-scoped cache.
  *
  * <p>{@link #id()} returns the endpoint name ({@code "serper-main"},
  * {@code "serper-eu"}, {@code "wiki-de"}), <i>not</i> the protocol
@@ -24,7 +24,7 @@ import java.util.Set;
  */
 public interface SearchProviderInstance {
 
-    /** Endpoint id from {@code research.endpoint.<id>}. */
+    /** Endpoint id — the source-config document's filename stem. */
     String id();
 
     /** Display name for UI/logs. */
@@ -82,8 +82,7 @@ public interface SearchProviderInstance {
      * {@link ContentInline#STASH_ON_DEMAND} references need to override.
      */
     default LoadedContent loadContent(ContentReference ref, SearchScope scope) {
-        throw new UnsupportedOperationException(
-                "loadContent not implemented for instance " + id());
+        throw new UnsupportedOperationException("loadContent not implemented for instance " + id());
     }
 
     /** Optional prompt hint the engine surfaces to the LLM. */

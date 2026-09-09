@@ -10,7 +10,8 @@ import java.util.Set;
  * <p>The bean itself holds no per-endpoint state. It exposes the
  * protocol's capabilities and is asked by {@code SearchProviderFactory}
  * to produce a configured {@link SearchProviderInstance} for each
- * endpoint declared in {@code research.endpoint.<id>.*} settings.
+ * endpoint declared in a source-config document under
+ * {@code _vance/config/research/}.
  *
  * <p>Implementing this interface places the implementation in
  * {@code vance-toolpack} for re-use by add-ons; concrete protocols

@@ -1280,9 +1280,10 @@ export default {
       loading: 'Loading search providers…',
       emptyHeadline: 'No search providers configured',
       emptyBody:
-        'This project has no research.endpoint.* entries. Add one in the settings editor — e.g. '
-        + 'research.endpoint.serper-main.protocol = serper. Just added one? Providers are cached '
-        + 'for five minutes; Reload reads them again.',
+        'No search-source document is configured for this project (or cascaded from _tenant). '
+        + 'An operator adds one via the create dialog — a "Search source: …" template per protocol, '
+        + 'e.g. "Search source: Serper.dev" — which writes _vance/config/research/<id>.yaml. '
+        + 'Just added one? Providers are cached for five minutes; Reload reads them again.',
       reload: 'Reload',
       instances: '{count} instance(s)',
       calls: '{n} call | {n} calls',
@@ -1296,11 +1297,11 @@ export default {
       colCalls: 'Calls (ok / err)',
       colLastUsed: 'Last used',
       override: 'override',
-      overrideTitle: 'Manual override: {mode}. Settings default: {fallback}.',
+      overrideTitle: 'Manual override: {mode}. Configured default (source document): {fallback}.',
       enabled: 'enabled',
       disabled: 'disabled',
       offByDefault: 'off by default',
-      offByDefaultTitle: 'Settings have research.endpoint.<id>.enabled=false',
+      offByDefaultTitle: 'The source document has enabled: false',
       reset: 'reset',
       cooldownUntil: 'cooldown until {when}',
       clearCooldown: 'clear cooldown',
@@ -1308,7 +1309,7 @@ export default {
       lastError: 'last error: {message}',
       footnotePre:
         'Counters and manual overrides are pod-local — both reset when the project is suspended. '
-        + 'The settings default lives at',
+        + 'The configured default (enabled in the source document) lives at',
       footnoteMid: '; the persistent audit log at',
       duration: {
         elapsed: ' (elapsed)',

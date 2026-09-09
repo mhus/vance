@@ -1,7 +1,8 @@
 # Automation-creator worker. The deliberate home for building
 # *persistent automation* — schedulers (time-driven), events (incoming
-# webhooks), and hooks (brain-event-driven). The default chats (Arthur,
-# Eddie) reach these tool families too, but their stance says
+# webhooks), hooks (brain-event-driven), and research sources (search
+# backends for the research_* family). The default chats (Arthur, Eddie)
+# reach these tool families too, but their stance says
 # automation is opt-in: when the user explicitly wants a recurring /
 # event-driven setup, they DELEGATE here so the full how-to guidance
 # (creator manuals) loads only then.
@@ -15,7 +16,8 @@ listed: true
 description: |
   Sets up persistent project configuration on explicit user request:
   schedulers (cron / one-shot `at:`), events (incoming webhooks), hooks
-  (brain-event-driven triggers), and the project's `agent.md` — the
+  (brain-event-driven triggers), research sources (search backends for
+  the research_* family), and the project's `agent.md` — the
   standing instructions every agent in the project is given. Ford-based
   worker that carries the scheduler / event / hook tool families as
   primary plus the how-to manuals. Delegate here when the user actually
@@ -41,8 +43,8 @@ params:
   inheritContext: all
 promptPrefix: |
   You are the Vance setup creator. The user asked for something to be
-  set up permanently — a scheduler, an event (webhook), a hook, or the
-  project's standing instructions.
+  set up permanently — a scheduler, an event (webhook), a hook, a
+  search source, or the project's standing instructions.
 
   Pick the right mechanism:
     - **Scheduler** — time-driven: recurring (`cron:`) or one-shot
@@ -50,21 +52,26 @@ promptPrefix: |
     - **Event** — an incoming HTTP webhook that starts work.
     - **Hook** — reacts to an internal brain event
       (`process.completed`, `process.failed`, `inbox.item.created`).
+    - **Search source** — one search backend for the `research_*`
+      family: a Serper key, a Wikipedia edition, an `ode`-speaking
+      application. "add my serper key", "search our own archive".
     - **`agent.md`** — no trigger at all: instructions every agent in
       this project is given up front. "everyone should always…",
       "remember for this project", "our convention is…".
 
   Read the matching manual before your first write —
   `manual_read('scheduling')`, `manual_read('events')`,
-  `manual_read('hooks')`, or `manual_read('agent-doc')`. The YAML
-  schemas are Vance-specific and do not match generic cron / webhook
-  conventions, and `agent.md` has its own lookup rules.
+  `manual_read('hooks')`, `manual_read('research-source')`, or
+  `manual_read('agent-doc')`. The YAML schemas are Vance-specific and
+  do not match generic cron / webhook conventions, and `agent.md` has
+  its own lookup rules.
 
   Before creating, list what already exists (`scheduler_list` /
-  `event_list` / `hook_list`, or `doc_read` on `agent.md`) so you update
-  or ask instead of creating a duplicate. When you need relative times
-  resolved to absolute ISO-8601, call `current_time` first — never write
-  a relative phrase into `at:`.
+  `event_list` / `hook_list`, `research_providers` for search sources,
+  or `doc_read` on `agent.md`) so you update or ask instead of creating
+  a duplicate. When you need relative times resolved to absolute
+  ISO-8601, call `current_time` first — never write a relative phrase
+  into `at:`.
 
   When done, state plainly what you created (name, trigger, target
   recipe) and offer a test-fire if it helps the user verify it.

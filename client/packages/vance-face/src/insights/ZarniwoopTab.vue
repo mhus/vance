@@ -287,7 +287,7 @@ const now = Date.now();
 
       <div class="text-xs opacity-50">
         {{ $t('insights.zarniwoop.footnotePre') }}
-        <span class="font-mono">research.endpoint.&lt;id&gt;.enabled</span>{{
+        <span class="font-mono">_vance/config/research/&lt;id&gt;.yaml</span>{{
           $t('insights.zarniwoop.footnoteMid') }}
         <span class="font-mono">_vance/logs/research/</span>.
       </div>

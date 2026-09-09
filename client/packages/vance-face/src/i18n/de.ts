@@ -1282,9 +1282,10 @@ export default {
       loading: 'Lädt Such-Provider…',
       emptyHeadline: 'Keine Such-Provider konfiguriert',
       emptyBody:
-        'Dieses Projekt hat keine research.endpoint.*-Einträge. Einen im Settings-Editor '
-        + 'ergänzen — z.B. research.endpoint.serper-main.protocol = serper. Gerade ergänzt? '
-        + 'Provider sind fünf Minuten gecacht; „Neu laden“ liest sie erneut.',
+        'Für dieses Projekt ist kein Quelldokument konfiguriert (auch nicht aus _tenant cascadiert). '
+        + 'Angelegt wird es über den Anlegen-Dialog — eine Vorlage je Protokoll, z.B. '
+        + '„Suchquelle: Serper.dev“ — sie schreibt _vance/config/research/<id>.yaml. '
+        + 'Gerade ergänzt? Provider sind fünf Minuten gecacht; „Neu laden“ liest sie erneut.',
       reload: 'Neu laden',
       instances: '{count} Instanz(en)',
       calls: '{n} Aufruf | {n} Aufrufe',
@@ -1298,11 +1299,11 @@ export default {
       colCalls: 'Aufrufe (ok / Fehler)',
       colLastUsed: 'Zuletzt genutzt',
       override: 'Override',
-      overrideTitle: 'Manueller Override: {mode}. Settings-Standard: {fallback}.',
+      overrideTitle: 'Manueller Override: {mode}. Konfigurierter Standard (Quelldokument): {fallback}.',
       enabled: 'aktiv',
       disabled: 'inaktiv',
       offByDefault: 'standardmäßig aus',
-      offByDefaultTitle: 'In den Settings steht research.endpoint.<id>.enabled=false',
+      offByDefaultTitle: 'Im Quelldokument steht enabled: false',
       reset: 'zurücksetzen',
       cooldownUntil: 'Cooldown bis {when}',
       clearCooldown: 'Cooldown aufheben',
@@ -1310,7 +1311,7 @@ export default {
       lastError: 'letzter Fehler: {message}',
       footnotePre:
         'Zähler und manuelle Overrides sind Pod-lokal — beide werden beim Suspendieren des '
-        + 'Projekts zurückgesetzt. Der Settings-Standard liegt in',
+        + 'Projekts zurückgesetzt. Der konfigurierte Standard (enabled im Quelldokument) liegt in',
       footnoteMid: '; das persistente Audit-Log in',
       duration: {
         elapsed: ' (vorbei)',

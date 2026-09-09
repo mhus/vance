@@ -29,7 +29,7 @@ import org.jspecify.annotations.Nullable;
 @GenerateTypeScript("insights")
 public class ZarniwoopInsightsDto {
 
-    /** Endpoint id from {@code research.endpoint.<id>}. */
+    /** Endpoint id — the source-config document's filename stem. */
     private String id;
 
     /** Human-readable name from the instance. */
@@ -108,8 +108,8 @@ public class ZarniwoopInsightsDto {
     private @Nullable String activeCooldownUntil;
 
     /**
-     * Settings-default enable flag — driven by
-     * {@code research.endpoint.<id>.enabled} (default {@code true}).
+     * Configured default enable flag — the {@code enabled} field of the
+     * source-config document (default {@code true}).
      * Persistent across pod restarts.
      */
     private boolean defaultEnabled;
@@ -129,4 +129,3 @@ public class ZarniwoopInsightsDto {
      */
     private boolean effectivelyEnabled;
 }
-

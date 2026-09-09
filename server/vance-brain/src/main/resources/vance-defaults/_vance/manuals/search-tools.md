@@ -219,6 +219,12 @@ Operators can override defaults / fallbacks in any project via
 `research.default.<modality>` and `research.fallback.<modality>`
 settings. Use `research_providers` to list the inventory live.
 
+Each source is itself a document — `_vance/config/research/<id>.yaml`,
+one per provider instance, the filename being the instance id. An
+operator adds one via the per-protocol create-dialog template
+("Search source: …") or, on explicit request, the setup creator — a
+chat agent does not set sources up on its own.
+
 **The list is not fixed.** A user's own system — a company archive, an
 internal news index, a domain catalogue — can be registered as a
 provider under the `ode` protocol, and then it answers `research_search`

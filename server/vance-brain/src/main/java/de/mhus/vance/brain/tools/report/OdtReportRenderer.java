@@ -82,8 +82,8 @@ public class OdtReportRenderer implements MarkdownReportRenderer {
     @Override
     public byte[] render(MarkdownReportContext context) {
         Node ast = parser.parse(context.markdown() == null ? "" : context.markdown());
-        try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            OdfTextDocument doc = OdfTextDocument.newTextDocument();
+        try (OdfTextDocument doc = OdfTextDocument.newTextDocument();
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             OfficeTextElement root = doc.getContentRoot();
             stripDefaultParagraph(root);
 

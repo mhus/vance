@@ -43,23 +43,26 @@ public class LocalFileCommands {
 
     private static final Logger log = LoggerFactory.getLogger(LocalFileCommands.class);
 
-    private static final DateTimeFormatter MTIME_FORMAT = DateTimeFormatter
-            .ofPattern("yyyy-MM-dd HH:mm")
-            .withZone(ZoneId.systemDefault());
+    private static final DateTimeFormatter MTIME_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
 
     /** Truncation threshold for {@code lcat} so a huge file can't lock the shell. */
     private static final int MAX_CAT_BYTES = 2 * 1024 * 1024; // 2 MiB
 
     @Command(name = "lls", description = "List a local directory (default: cwd).")
     public String lls(
-            @Option(longName = "path", shortName = 'p',
-                    description = "Directory to list. Defaults to '.' (cwd).",
-                    defaultValue = ".")
-            String pathArg,
-            @Option(longName = "all", shortName = 'a',
-                    description = "Include hidden entries (names starting with '.').",
-                    defaultValue = "false")
-            boolean all) {
+            @Option(
+                            longName = "path",
+                            shortName = 'p',
+                            description = "Directory to list. Defaults to '.' (cwd).",
+                            defaultValue = ".")
+                    String pathArg,
+            @Option(
+                            longName = "all",
+                            shortName = 'a',
+                            description = "Include hidden entries (names starting with '.').",
+                            defaultValue = "false")
+                    boolean all) {
 
         Path dir = Paths.get(pathArg).toAbsolutePath().normalize();
         if (!Files.exists(dir)) {
@@ -87,8 +90,8 @@ public class LocalFileCommands {
         if (rows.isEmpty()) {
             return "(empty directory)";
         }
-        rows.sort(Comparator
-                .comparing(Entry::isDir).reversed()    // dirs first
+        rows.sort(Comparator.comparing(Entry::isDir)
+                .reversed() // dirs first
                 .thenComparing(Entry::name, String.CASE_INSENSITIVE_ORDER));
 
         StringBuilder out = new StringBuilder();
@@ -102,9 +105,8 @@ public class LocalFileCommands {
 
     @Command(name = "lcat", description = "Print a local file's contents (UTF-8, truncated past 2 MiB).")
     public String lcat(
-            @Option(longName = "file", shortName = 'f', required = true,
-                    description = "Path to the file.")
-            String fileArg) {
+            @Option(longName = "file", shortName = 'f', required = true, description = "Path to the file.")
+                    String fileArg) {
 
         Path file = Paths.get(fileArg).toAbsolutePath().normalize();
         if (!Files.exists(file)) {
@@ -134,9 +136,12 @@ public class LocalFileCommands {
 
     @Command(name = "lmkdir", description = "Create a local directory (creates parents).")
     public String lmkdir(
-            @Option(longName = "path", shortName = 'p', required = true,
-                    description = "Directory path to create. Parents are created as needed.")
-            String pathArg) {
+            @Option(
+                            longName = "path",
+                            shortName = 'p',
+                            required = true,
+                            description = "Directory path to create. Parents are created as needed.")
+                    String pathArg) {
 
         Path dir = Paths.get(pathArg).toAbsolutePath().normalize();
         if (Files.exists(dir)) {
@@ -154,34 +159,46 @@ public class LocalFileCommands {
         return "Created: " + dir;
     }
 
-    @Command(name = "lwrite",
+    @Command(
+            name = "lwrite",
             description = "Write text to a local file (UTF-8). Default overwrites; use --append/-a to append.")
     public String lwrite(
-            @Option(longName = "file", shortName = 'f', required = true,
-                    description = "Path to the file. Created if missing.")
-            String fileArg,
-            @Option(longName = "content", shortName = 'c', required = true,
-                    description = "Text content to write. Pass an empty string to truncate / no-op append.")
-            String content,
-            @Option(longName = "append", shortName = 'a',
-                    description = "Append instead of overwriting.",
-                    defaultValue = "false")
-            boolean append,
-            @Option(longName = "create-parents", shortName = 'P',
-                    description = "Create missing parent directories before writing.",
-                    defaultValue = "false")
-            boolean createParents,
-            @Option(longName = "newline", shortName = 'n',
-                    description = "Append a trailing newline after content (handy for log-style files).",
-                    defaultValue = "false")
-            boolean addNewline) {
+            @Option(
+                            longName = "file",
+                            shortName = 'f',
+                            required = true,
+                            description = "Path to the file. Created if missing.")
+                    String fileArg,
+            @Option(
+                            longName = "content",
+                            shortName = 'c',
+                            required = true,
+                            description = "Text content to write. Pass an empty string to truncate / no-op append.")
+                    String content,
+            @Option(
+                            longName = "append",
+                            shortName = 'a',
+                            description = "Append instead of overwriting.",
+                            defaultValue = "false")
+                    boolean append,
+            @Option(
+                            longName = "create-parents",
+                            shortName = 'P',
+                            description = "Create missing parent directories before writing.",
+                            defaultValue = "false")
+                    boolean createParents,
+            @Option(
+                            longName = "newline",
+                            shortName = 'n',
+                            description = "Append a trailing newline after content (handy for log-style files).",
+                            defaultValue = "false")
+                    boolean addNewline) {
 
         Path file = Paths.get(fileArg).toAbsolutePath().normalize();
         Path parent = file.getParent();
         if (parent != null && !Files.exists(parent)) {
             if (!createParents) {
-                return "Parent directory missing: " + parent
-                        + " (use --create-parents to auto-create).";
+                return "Parent directory missing: " + parent + " (use --create-parents to auto-create).";
             }
             try {
                 Files.createDirectories(parent);
@@ -196,12 +213,12 @@ public class LocalFileCommands {
         byte[] bytes = payload.getBytes(StandardCharsets.UTF_8);
         try {
             if (append) {
-                Files.write(file, bytes,
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.WRITE,
-                        StandardOpenOption.APPEND);
+                Files.write(
+                        file, bytes, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND);
             } else {
-                Files.write(file, bytes,
+                Files.write(
+                        file,
+                        bytes,
                         StandardOpenOption.CREATE,
                         StandardOpenOption.WRITE,
                         StandardOpenOption.TRUNCATE_EXISTING);
@@ -215,36 +232,52 @@ public class LocalFileCommands {
         } catch (IOException e) {
             size = -1;
         }
-        log.info("lwrite {} '{}' (+{} bytes; file now {} bytes)",
-                append ? "appended" : "wrote", file, bytes.length, size);
+        log.info(
+                "lwrite {} '{}' (+{} bytes; file now {} bytes)",
+                append ? "appended" : "wrote",
+                file,
+                bytes.length,
+                size);
         return (append ? "Appended " : "Wrote ")
                 + bytes.length + " bytes to " + file
                 + " (file now " + (size < 0 ? "?" : size) + " bytes).";
     }
 
-    @Command(name = "lwget",
+    @Command(
+            name = "lwget",
             description = "Download an http(s) URL to a local file. Follows redirects, "
                     + "overwrites the target by default.")
     public String lwget(
-            @Option(longName = "file", shortName = 'f', required = true,
-                    description = "Local destination path. Overwritten if it exists "
-                            + "(use --no-clobber to refuse).")
-            String fileArg,
-            @Option(longName = "url", shortName = 'u', required = true,
-                    description = "Absolute http:// or https:// URL.")
-            String urlArg,
-            @Option(longName = "no-clobber",
-                    description = "Refuse to overwrite an existing file.",
-                    defaultValue = "false")
-            boolean noClobber,
-            @Option(longName = "create-parents", shortName = 'P',
-                    description = "Create missing parent directories before writing.",
-                    defaultValue = "false")
-            boolean createParents,
-            @Option(longName = "timeout", shortName = 't',
-                    description = "Per-request timeout in seconds (connect + total).",
-                    defaultValue = "60")
-            int timeoutSeconds) {
+            @Option(
+                            longName = "file",
+                            shortName = 'f',
+                            required = true,
+                            description = "Local destination path. Overwritten if it exists "
+                                    + "(use --no-clobber to refuse).")
+                    String fileArg,
+            @Option(
+                            longName = "url",
+                            shortName = 'u',
+                            required = true,
+                            description = "Absolute http:// or https:// URL.")
+                    String urlArg,
+            @Option(
+                            longName = "no-clobber",
+                            description = "Refuse to overwrite an existing file.",
+                            defaultValue = "false")
+                    boolean noClobber,
+            @Option(
+                            longName = "create-parents",
+                            shortName = 'P',
+                            description = "Create missing parent directories before writing.",
+                            defaultValue = "false")
+                    boolean createParents,
+            @Option(
+                            longName = "timeout",
+                            shortName = 't',
+                            description = "Per-request timeout in seconds (connect + total).",
+                            defaultValue = "60")
+                    int timeoutSeconds) {
 
         URI uri;
         try {
@@ -253,8 +286,7 @@ public class LocalFileCommands {
             return "Invalid URL: " + e.getMessage();
         }
         String scheme = uri.getScheme();
-        if (scheme == null
-                || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
+        if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
             return "Only http:// and https:// URLs are supported (got '" + scheme + "').";
         }
 
@@ -270,8 +302,7 @@ public class LocalFileCommands {
         Path parent = file.getParent();
         if (parent != null && !Files.exists(parent)) {
             if (!createParents) {
-                return "Parent directory missing: " + parent
-                        + " (use --create-parents to auto-create).";
+                return "Parent directory missing: " + parent + " (use --create-parents to auto-create).";
             }
             try {
                 Files.createDirectories(parent);
@@ -281,10 +312,6 @@ public class LocalFileCommands {
         }
 
         Duration timeout = Duration.ofSeconds(Math.max(1, timeoutSeconds));
-        HttpClient http = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .connectTimeout(timeout)
-                .build();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(uri)
                 .timeout(timeout)
@@ -292,9 +319,11 @@ public class LocalFileCommands {
                 .GET()
                 .build();
         HttpResponse<Path> response;
-        try {
-            response = http.send(request,
-                    HttpResponse.BodyHandlers.ofFile(file));
+        try (HttpClient http = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .connectTimeout(timeout)
+                .build()) {
+            response = http.send(request, HttpResponse.BodyHandlers.ofFile(file));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return "Download interrupted.";
@@ -319,25 +348,22 @@ public class LocalFileCommands {
         } catch (IOException e) {
             size = -1;
         }
-        log.info("lwget {} -> '{}' ({} bytes, HTTP {})",
-                uri, file, size, status);
-        return "Downloaded " + (size < 0 ? "?" : size) + " bytes from " + uri
-                + " (HTTP " + status + ") to " + file;
+        log.info("lwget {} -> '{}' ({} bytes, HTTP {})", uri, file, size, status);
+        return "Downloaded " + (size < 0 ? "?" : size) + " bytes from " + uri + " (HTTP " + status + ") to " + file;
     }
 
     @Command(name = "lrm", description = "Delete a local file or directory. Use --recursive for directories.")
     public String lrm(
-            @Option(longName = "path", shortName = 'p', required = true,
-                    description = "File or directory to delete.")
-            String pathArg,
-            @Option(longName = "recursive", shortName = 'r',
-                    description = "Required to delete a non-empty directory.",
-                    defaultValue = "false")
-            boolean recursive,
-            @Option(longName = "force",
-                    description = "Do not error if the path is missing.",
-                    defaultValue = "false")
-            boolean force) {
+            @Option(longName = "path", shortName = 'p', required = true, description = "File or directory to delete.")
+                    String pathArg,
+            @Option(
+                            longName = "recursive",
+                            shortName = 'r',
+                            description = "Required to delete a non-empty directory.",
+                            defaultValue = "false")
+                    boolean recursive,
+            @Option(longName = "force", description = "Do not error if the path is missing.", defaultValue = "false")
+                    boolean force) {
 
         Path target = Paths.get(pathArg).toAbsolutePath().normalize();
         if (!Files.exists(target)) {
@@ -398,8 +424,7 @@ public class LocalFileCommands {
 
     private static String formatRow(Entry e) {
         String typeChar = e.isDir() ? "d" : "-";
-        String size = e.isDir() ? "         <dir>"
-                : String.format("%14s", humanSize(e.size()));
+        String size = e.isDir() ? "         <dir>" : String.format("%14s", humanSize(e.size()));
         String mtime = e.mtime() == null ? "                " : MTIME_FORMAT.format(e.mtime());
         String name = e.name() + (e.isDir() ? "/" : "");
         return String.format("%s %s %s  %s", typeChar, size, mtime, name);
@@ -413,5 +438,6 @@ public class LocalFileCommands {
         return String.format("%.2f GiB", bytes / (1024.0 * 1024 * 1024));
     }
 
-    private record Entry(String name, boolean isDir, long size, @Nullable Instant mtime) {}
+    private record Entry(
+            String name, boolean isDir, long size, @Nullable Instant mtime) {}
 }

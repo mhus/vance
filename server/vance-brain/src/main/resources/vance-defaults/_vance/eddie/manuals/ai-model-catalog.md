@@ -284,9 +284,9 @@ omit the dropped one.
 
 - `manual_read('storage-surfaces')` — Document vs. Scratch vs. Client-File
 - Run discovery: `POST /brain/{tenant}/admin/ai-models/discover` (the
-  UI button, or the creator's `ai_models_discover` tool) — but note
-  it also runs on a schedule: every tenant, 2 min after boot and then
-  every 6 hours, master-pod guarded. The manual call is only for
-  immediate feedback; prices and new models arrive on their own.
+  UI button, or the creator's `ai_models_discover` tool). Deployments
+  may opt into a scheduled tick (`vance.ai-models.discovery.enabled`,
+  default off): every tenant, 2 min after boot, then every 6 hours,
+  master-pod guarded — prices and new models then arrive on their own.
 - Refresh in-memory catalog: `POST /brain/{tenant}/admin/ai-models/refresh`
   (operator-triggered via the UI button)

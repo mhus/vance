@@ -6,6 +6,7 @@ import de.mhus.vance.shared.tenant.TenantService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -15,8 +16,15 @@ import org.springframework.stereotype.Component;
  * pricing docs are only useful when discovery actually runs, and the
  * manual trigger (Profile → Actions, the {@code ai_models_discover}
  * tool, the REST endpoint) requires someone to remember it. This tick
- * closes that gap: every tenant is discovered periodically, so new
- * models appear and prices stay current without human action.
+ * closes that gap for deployments that opt in: every tenant is
+ * discovered periodically, so new models appear and prices stay current
+ * without human action.
+ *
+ * <p><b>Opt-in</b> via {@code vance.ai-models.discovery.enabled} —
+ * default <b>false</b>. A local dev brain does not want listing calls
+ * against every configured endpoint every few hours; production sets
+ * the flag. When disabled the tick exits before doing anything, the
+ * manual triggers remain the only path.
  *
  * <p>Master-pod guarded: discovery writes documents, and only one pod
  * should run the pass at a time (the results would be identical — it
@@ -38,6 +46,10 @@ public class ModelDiscoveryTick {
     private final TenantService tenantService;
     private final ModelDiscoveryService discoveryService;
 
+    /** Opt-in switch — default off, see the class doc. */
+    @Value("${vance.ai-models.discovery.enabled:false}")
+    private boolean enabled;
+
     /**
      * Default: first pass 2 minutes after boot (after the catalog
      * bootstrapper settled), then every 6 hours. Tunable via
@@ -49,6 +61,9 @@ public class ModelDiscoveryTick {
             fixedDelayString = "${vance.ai-models.discovery.interval:PT6H}",
             initialDelayString = "${vance.ai-models.discovery.initial-delay:PT2M}")
     public void tick() {
+        if (!enabled) {
+            return;
+        }
         if (!masterService.isLocalPodMaster()) {
             return;
         }

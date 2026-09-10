@@ -11,11 +11,13 @@ import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * The tick's whole value is what it does NOT let happen: non-master
- * pods do nothing (one writer in the cluster), and one tenant's broken
- * endpoint does not stop the other tenants from being discovered.
+ * The tick's whole value is what it does NOT let happen: disabled (the
+ * default) it does nothing at all, non-master pods do nothing (one
+ * writer in the cluster), and one tenant's broken endpoint does not
+ * stop the other tenants from being discovered.
  */
 class ModelDiscoveryTickTest {
 
@@ -25,8 +27,23 @@ class ModelDiscoveryTickTest {
 
     private final ModelDiscoveryTick tick = new ModelDiscoveryTick(masterService, tenantService, discoveryService);
 
+    /** The @Value field is Spring-injected in production; tests set it directly. */
+    private void enable() {
+        ReflectionTestUtils.setField(tick, "enabled", true);
+    }
+
     @Test
-    void nonMasterPod_doesNothing() {
+    void disabledByDefault_doesNothingEvenAsMaster() {
+        when(masterService.isLocalPodMaster()).thenReturn(true);
+
+        tick.tick();
+
+        verify(discoveryService, never()).discoverForTenant(any());
+    }
+
+    @Test
+    void enabled_nonMasterPod_doesNothing() {
+        enable();
         when(masterService.isLocalPodMaster()).thenReturn(false);
 
         tick.tick();
@@ -35,7 +52,8 @@ class ModelDiscoveryTickTest {
     }
 
     @Test
-    void masterRunsDiscovery_forEveryTenant() {
+    void enabled_masterRunsDiscovery_forEveryTenant() {
+        enable();
         when(masterService.isLocalPodMaster()).thenReturn(true);
         when(tenantService.all()).thenReturn(List.of(tenant("acme"), tenant("globex")));
 
@@ -46,7 +64,8 @@ class ModelDiscoveryTickTest {
     }
 
     @Test
-    void oneTenantFailure_doesNotStopTheOthers() {
+    void enabled_oneTenantFailure_doesNotStopTheOthers() {
+        enable();
         when(masterService.isLocalPodMaster()).thenReturn(true);
         when(tenantService.all()).thenReturn(List.of(tenant("broken"), tenant("acme")));
         when(discoveryService.discoverForTenant("broken"))
@@ -59,7 +78,8 @@ class ModelDiscoveryTickTest {
     }
 
     @Test
-    void blankTenantName_isSkippedNotFailed() {
+    void enabled_blankTenantName_isSkippedNotFailed() {
+        enable();
         when(masterService.isLocalPodMaster()).thenReturn(true);
         TenantDocument nameless = new TenantDocument();
         when(tenantService.all()).thenReturn(List.of(nameless));

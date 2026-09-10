@@ -129,6 +129,11 @@ allowedToolsAdd:
   # should not have to detour through the Profile-Actions button
   # just because the chat drove the setup.
   - "@aimodels"
+  # Bundled defaults reference (see the defaults manual): recipes,
+  # provider sidecars, manuals, prompts, templates — read the canonical
+  # shipped shape of any Vance configuration as a structural reference,
+  # separate from tenant overrides (which live in doc_read / recipe_describe).
+  - "@defaults"
   # Finishing a setup often means writing the plain, non-credential
   # settings that belong to it (a provider instance's baseUrl, a
   # research routing default, an alias). setting_set is ADMIN-gated

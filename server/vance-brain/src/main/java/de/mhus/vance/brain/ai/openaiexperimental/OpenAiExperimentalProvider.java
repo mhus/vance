@@ -7,10 +7,8 @@ import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
 import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.LlmResponseSanitizer;
-import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
-import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
@@ -18,6 +16,7 @@ import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.openai.OpenAiProvider;
 import de.mhus.vance.brain.ai.openai.ToolCallContentHttpClientBuilder;
+import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import dev.langchain4j.http.client.HttpClientBuilder;
 import dev.langchain4j.model.openai.OpenAiResponsesChatModel;
 import dev.langchain4j.model.openai.OpenAiResponsesStreamingChatModel;
@@ -122,8 +121,7 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
             @Value("${vance.ai.openai-experimental.base-url:}") String baseUrl,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
         super(modelCatalog, responseSanitizer, messageParserRegistry, usageSink);
-        this.defaultBaseUrl = StringUtils.isBlank(baseUrl)
-                ? OPENAI_EXPERIMENTAL_BASE_URL : baseUrl.trim();
+        this.defaultBaseUrl = StringUtils.isBlank(baseUrl) ? OPENAI_EXPERIMENTAL_BASE_URL : baseUrl.trim();
         this.cacheEnabled = cacheEnabled;
     }
 
@@ -133,18 +131,15 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
     }
 
     @Override
-    protected BuiltChat buildModels(
-            AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
-        Duration timeout = Duration.ofSeconds(
-                modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
+    protected BuiltChat buildModels(AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
+        Duration timeout = Duration.ofSeconds(modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         // Streaming gets a generous total-request budget — a healthy
         // streamed generation runs far longer than a single sync response
         // and must not be cut off at the sync timeout. Same rationale as
         // OpenAiProvider: a 2026-07-29 deepseek-v4-pro incident cut a
         // healthy stream at the sync cap.
         Duration streamTimeout = Duration.ofSeconds(
-                modelInfo.scaledStreamTimeoutSeconds(
-                        options.getTimeoutSeconds(), options.getEstInputTokens()));
+                modelInfo.scaledStreamTimeoutSeconds(options.getTimeoutSeconds(), options.getEstInputTokens()));
         // Per-tenant override (gateway in front of OpenAI) wins over the
         // Spring boot-time default. Empty / unset falls back to the
         // configured default.
@@ -158,8 +153,7 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
         // (streaming).
         Duration connectTimeout = timeout.getSeconds() > 0 ? timeout : Duration.ofSeconds(15);
 
-        ThinkingLevel effectiveLevel = OpenAiProvider.gateThinkingLevel(
-                options.getThinkingLevel(), modelInfo);
+        ThinkingLevel effectiveLevel = OpenAiProvider.gateThinkingLevel(options.getThinkingLevel(), modelInfo);
         String reasoningEffort = OpenAiProvider.mapReasoningEffort(effectiveLevel);
         if (reasoningEffort == null) {
             // "No reasoning" is normally the absence of the field. A
@@ -173,10 +167,9 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
         // Only request a reasoning summary when reasoning is actually
         // on. An explicit "none" carries no chain-of-thought, so asking
         // for a summary would be noise (and may return empty).
-        String reasoningSummary =
-                (reasoningEffort != null && !REASONING_EFFORT_NONE.equals(reasoningEffort))
-                        ? REASONING_SUMMARY_AUTO
-                        : null;
+        String reasoningSummary = (reasoningEffort != null && !REASONING_EFFORT_NONE.equals(reasoningEffort))
+                ? REASONING_SUMMARY_AUTO
+                : null;
 
         Map<String, Object> cacheParams = buildCacheParameters(config, options, cacheEnabled);
         String promptCacheKey = (String) cacheParams.get("promptCacheKey");
@@ -193,29 +186,33 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
                 .reasoningSummary(reasoningSummary)
                 .promptCacheKey(promptCacheKey)
                 .promptCacheRetention(promptCacheRetention)
-                .httpClientBuilder(httpClientBuilder(connectTimeout, timeout))
+                .httpClientBuilder(httpClientBuilder(config.insecureTls(), connectTimeout, timeout))
                 .logRequests(options.getLogRequests())
                 .logResponses(options.getLogRequests());
-        OpenAiResponsesStreamingChatModel.Builder streamBuilder =
-                OpenAiResponsesStreamingChatModel.builder()
-                        .baseUrl(baseUrl)
-                        .apiKey(config.apiKey())
-                        .modelName(config.modelName())
-                        .temperature(options.getTemperature())
-                        .topP(options.getTopP())
-                        .maxOutputTokens(options.getMaxTokens())
-                        .reasoningEffort(reasoningEffort)
-                        .reasoningSummary(reasoningSummary)
-                        .promptCacheKey(promptCacheKey)
-                        .promptCacheRetention(promptCacheRetention)
-                        .httpClientBuilder(httpClientBuilder(connectTimeout, streamTimeout))
-                        .logRequests(options.getLogRequests())
-                        .logResponses(options.getLogRequests());
-        log.debug("Built OpenAI-experimental chat pair: model='{}', baseUrl='{}', "
+        OpenAiResponsesStreamingChatModel.Builder streamBuilder = OpenAiResponsesStreamingChatModel.builder()
+                .baseUrl(baseUrl)
+                .apiKey(config.apiKey())
+                .modelName(config.modelName())
+                .temperature(options.getTemperature())
+                .topP(options.getTopP())
+                .maxOutputTokens(options.getMaxTokens())
+                .reasoningEffort(reasoningEffort)
+                .reasoningSummary(reasoningSummary)
+                .promptCacheKey(promptCacheKey)
+                .promptCacheRetention(promptCacheRetention)
+                .httpClientBuilder(httpClientBuilder(config.insecureTls(), connectTimeout, streamTimeout))
+                .logRequests(options.getLogRequests())
+                .logResponses(options.getLogRequests());
+        log.debug(
+                "Built OpenAI-experimental chat pair: model='{}', baseUrl='{}', "
                         + "maxOutputTokens={}, temperature={}, reasoningEffort={}, "
                         + "reasoningSummary={}, cacheParams={}",
-                config.modelName(), baseUrl, options.getMaxTokens(),
-                options.getTemperature(), reasoningEffort, reasoningSummary,
+                config.modelName(),
+                baseUrl,
+                options.getMaxTokens(),
+                options.getTemperature(),
+                reasoningEffort,
+                reasoningSummary,
                 cacheParams.keySet());
         return new BuiltChat(syncBuilder.build(), streamBuilder.build());
     }
@@ -234,8 +231,12 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
      * {@link ToolCallContentHttpClientBuilder#wrappingDefault()}.
      */
     private static HttpClientBuilder httpClientBuilder(
-            Duration connectTimeout, Duration readTimeout) {
-        return ToolCallContentHttpClientBuilder.wrappingDefault()
+            boolean insecureTls, Duration connectTimeout, Duration readTimeout) {
+        dev.langchain4j.http.client.HttpClientBuilder base = insecureTls
+                ? new dev.langchain4j.http.client.jdk.JdkHttpClientBuilder()
+                        .httpClientBuilder(de.mhus.vance.brain.ai.TlsInsecure.jdkClientBuilder())
+                : dev.langchain4j.http.client.HttpClientBuilderLoader.loadHttpClientBuilder();
+        return ToolCallContentHttpClientBuilder.wrapping(base)
                 .connectTimeout(connectTimeout)
                 .readTimeout(readTimeout);
     }
@@ -259,11 +260,10 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
                 .timeout(Duration.ofSeconds(30))
                 .GET()
                 .build();
-        JsonNode root = ProviderListingHttp.fetchJson(http);
+        JsonNode root = ProviderListingHttp.fetchJson(http, req.insecureTls());
         JsonNode data = root.path("data");
         if (!data.isArray()) {
-            throw new RuntimeException(
-                    "OpenAI-experimental listing response missing 'data' array: " + root);
+            throw new RuntimeException("OpenAI-experimental listing response missing 'data' array: " + root);
         }
         List<DiscoveredModelInfo> out = new ArrayList<>(data.size());
         for (JsonNode entry : data) {
@@ -288,8 +288,7 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
      * from {@code openai} to {@code openai-experimental} keeps its
      * existing cache locality.
      */
-    static Map<String, Object> buildCacheParameters(
-            AiChatConfig config, AiChatOptions options, boolean cacheEnabled) {
+    static Map<String, Object> buildCacheParameters(AiChatConfig config, AiChatOptions options, boolean cacheEnabled) {
         if (!cacheEnabled || options.getCacheBoundary() == CacheBoundary.NONE) {
             return Map.of();
         }

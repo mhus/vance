@@ -103,6 +103,18 @@
             <artifactId>langchain4j-open-ai</artifactId>
         </dependency>
         <!--
+            JDK implementation of langchain4j's HTTP client SPI — the
+            classpath default behind every provider model. Declared
+            directly because OpenAiProvider and OpenAiExperimentalProvider
+            build a JdkHttpClientBuilder themselves for the per-instance
+            tlsInsecure trust-all policy (see TlsInsecure); version rides
+            the langchain4j BOM.
+        -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-http-client-jdk</artifactId>
+        </dependency>
+        <!--
             Ollama SDK via langchain4j. Used by OllamaProvider for local
             Ollama servers and by OllamaCloudProvider for ollama.com
             (same wire protocol, different baseUrl + Bearer auth header).

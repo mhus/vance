@@ -11,12 +11,12 @@ import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
-import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
-import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.ThinkingLevel;
+import de.mhus.vance.brain.ai.UsageSink;
+import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import java.net.URI;
@@ -95,13 +95,9 @@ public class AnthropicProvider extends AbstractChatProvider {
     }
 
     @Override
-    protected BuiltChat buildModels(
-            AiChatConfig config, AiChatOptions effective, ModelInfo modelInfo) {
-        int maxTokens = effective.getMaxTokens() != null
-                ? effective.getMaxTokens()
-                : DEFAULT_MAX_TOKENS;
-        Duration timeout = Duration.ofSeconds(
-                modelInfo.effectiveTimeoutSeconds(effective.getTimeoutSeconds()));
+    protected BuiltChat buildModels(AiChatConfig config, AiChatOptions effective, ModelInfo modelInfo) {
+        int maxTokens = effective.getMaxTokens() != null ? effective.getMaxTokens() : DEFAULT_MAX_TOKENS;
+        Duration timeout = Duration.ofSeconds(modelInfo.effectiveTimeoutSeconds(effective.getTimeoutSeconds()));
         // Streaming gets a generous total-request budget so a healthy
         // long generation is not cut off at the sync timeout. The OkHttp
         // call timeout caps the whole response, so streaming needs its
@@ -116,14 +112,15 @@ public class AnthropicProvider extends AbstractChatProvider {
                 .apiKey(config.apiKey())
                 .timeout(streamTimeout)
                 .build();
-        ChatModel sync = new AnthropicDirectChatModel(
-                client, config.modelName(), maxTokens, effective);
-        StreamingChatModel streaming = new AnthropicDirectStreamingChatModel(
-                streamClient, config.modelName(), maxTokens, effective);
-        log.debug("Built Anthropic chat: model='{}', maxTokens={}, "
-                        + "cacheBoundary={}, ttl={}, thinking={}",
-                config.modelName(), maxTokens,
-                effective.getCacheBoundary(), effective.getCacheTtl(),
+        ChatModel sync = new AnthropicDirectChatModel(client, config.modelName(), maxTokens, effective);
+        StreamingChatModel streaming =
+                new AnthropicDirectStreamingChatModel(streamClient, config.modelName(), maxTokens, effective);
+        log.debug(
+                "Built Anthropic chat: model='{}', maxTokens={}, " + "cacheBoundary={}, ttl={}, thinking={}",
+                config.modelName(),
+                maxTokens,
+                effective.getCacheBoundary(),
+                effective.getCacheTtl(),
                 effective.getThinkingLevel());
         return new BuiltChat(sync, streaming);
     }
@@ -147,7 +144,7 @@ public class AnthropicProvider extends AbstractChatProvider {
                 .timeout(Duration.ofSeconds(30))
                 .GET()
                 .build();
-        JsonNode root = ProviderListingHttp.fetchJson(http);
+        JsonNode root = ProviderListingHttp.fetchJson(http, req.insecureTls());
         JsonNode data = root.path("data");
         if (!data.isArray()) {
             throw new RuntimeException("Anthropic listing response missing 'data' array: " + root);
@@ -171,8 +168,7 @@ public class AnthropicProvider extends AbstractChatProvider {
      * a 400. Recipe authors keep asking for the level they want; the
      * catalog is the single point of truth for what is honourable.
      */
-    private static AiChatOptions applyCapabilityGates(
-            AiChatOptions options, ModelInfo modelInfo) {
+    private static AiChatOptions applyCapabilityGates(AiChatOptions options, ModelInfo modelInfo) {
         ThinkingLevel requested = options.getThinkingLevel();
         if (requested == null || requested == ThinkingLevel.OFF) {
             return options;
@@ -180,9 +176,12 @@ public class AnthropicProvider extends AbstractChatProvider {
         if (modelInfo.supports(ModelCapability.THINKING)) {
             return options;
         }
-        log.debug("Anthropic model '{}/{}' lacks THINKING capability — "
+        log.debug(
+                "Anthropic model '{}/{}' lacks THINKING capability — "
                         + "downgrading requested level {} → OFF for this call",
-                modelInfo.provider(), modelInfo.modelName(), requested);
+                modelInfo.provider(),
+                modelInfo.modelName(),
+                requested);
         return options.toBuilder().thinkingLevel(ThinkingLevel.OFF).build();
     }
 

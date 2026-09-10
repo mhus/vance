@@ -6,10 +6,10 @@ import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
+import de.mhus.vance.brain.ai.TlsInsecure;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
-import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.tenant.TenantDocument;
@@ -65,8 +65,7 @@ public class ModelDiscoveryService {
     private static final String DISCOVERED_BY = "discovery-job";
 
     /** Filename slug must match this — colons / slashes get encoded. */
-    private static final java.util.regex.Pattern SAFE_SLUG_SEGMENT =
-            java.util.regex.Pattern.compile("[A-Za-z0-9._-]+");
+    private static final java.util.regex.Pattern SAFE_SLUG_SEGMENT = java.util.regex.Pattern.compile("[A-Za-z0-9._-]+");
 
     /** Author label written into the doc's {@code createdBy}. */
     private static final String DOC_AUTHOR = "model-discovery";
@@ -107,8 +106,7 @@ public class ModelDiscoveryService {
         return result.build(start);
     }
 
-    private void discoverInScope(
-            String tenantId, String projectId, DiscoveryResult.Builder result) {
+    private void discoverInScope(String tenantId, String projectId, DiscoveryResult.Builder result) {
         Map<String, InstanceConfig> instances = collectInstances(tenantId, projectId);
         if (instances.isEmpty()) return;
         result.scopeScanned();
@@ -119,8 +117,12 @@ public class ModelDiscoveryService {
             try {
                 runOneInstance(tenantId, projectId, instance, cfg, result);
             } catch (RuntimeException e) {
-                log.warn("ModelDiscoveryService: scope='{}/{}' instance='{}' failed: {}",
-                        tenantId, projectId, instance, e.toString());
+                log.warn(
+                        "ModelDiscoveryService: scope='{}/{}' instance='{}' failed: {}",
+                        tenantId,
+                        projectId,
+                        instance,
+                        e.toString());
                 result.instanceFailed(tenantId, projectId, instance, e.toString());
             }
         }
@@ -135,8 +137,7 @@ public class ModelDiscoveryService {
      */
     private Map<String, InstanceConfig> collectInstances(String tenantId, String projectId) {
         Map<String, Map<String, SettingDocument>> byInstance = new TreeMap<>();
-        for (SettingDocument doc : settingService.findAll(
-                tenantId, SettingService.SCOPE_PROJECT, projectId)) {
+        for (SettingDocument doc : settingService.findAll(tenantId, SettingService.SCOPE_PROJECT, projectId)) {
             String key = doc.getKey();
             if (key == null || !key.startsWith(PROVIDER_KEY_PREFIX)) continue;
             String rest = key.substring(PROVIDER_KEY_PREFIX.length());
@@ -144,8 +145,7 @@ public class ModelDiscoveryService {
             if (dot <= 0) continue;
             String instance = rest.substring(0, dot);
             String field = rest.substring(dot + 1);
-            byInstance.computeIfAbsent(instance, i -> new LinkedHashMap<>())
-                    .put(field, doc);
+            byInstance.computeIfAbsent(instance, i -> new LinkedHashMap<>()).put(field, doc);
         }
         Map<String, InstanceConfig> out = new LinkedHashMap<>();
         for (Map.Entry<String, Map<String, SettingDocument>> e : byInstance.entrySet()) {
@@ -159,10 +159,13 @@ public class ModelDiscoveryService {
             // "Discover AI Models" button silently does nothing.
             String typeWire = instance;
             SettingDocument typeDoc = fields.get("type");
-            if (typeDoc != null && typeDoc.getValue() != null && !typeDoc.getValue().isBlank()) {
+            if (typeDoc != null
+                    && typeDoc.getValue() != null
+                    && !typeDoc.getValue().isBlank()) {
                 typeWire = typeDoc.getValue().trim();
             } else {
-                String declared = modelCatalog.lookupProvider(tenantId, projectId, instance)
+                String declared = modelCatalog
+                        .lookupProvider(tenantId, projectId, instance)
                         .map(spec -> spec.get("wireType"))
                         .filter(v -> v instanceof String s && !s.isBlank())
                         .map(v -> ((String) v).trim())
@@ -173,9 +176,13 @@ public class ModelDiscoveryService {
             }
             ProviderType type = ProviderType.fromWireName(typeWire).orElse(null);
             if (type == null) {
-                log.debug("ModelDiscoveryService: scope='{}/{}' instance='{}' has unknown "
+                log.debug(
+                        "ModelDiscoveryService: scope='{}/{}' instance='{}' has unknown "
                                 + "protocol type '{}' — skipping",
-                        tenantId, projectId, instance, typeWire);
+                        tenantId,
+                        projectId,
+                        instance,
+                        typeWire);
                 continue;
             }
             // ApiKey: an encrypted type; decrypt at this exact scope. For
@@ -185,50 +192,59 @@ public class ModelDiscoveryService {
             String apiKey = "";
             if (apiKeyDoc != null && apiKeyDoc.getType().encrypted()) {
                 String decrypted = settingService.getDecryptedPassword(
-                        tenantId, SettingService.SCOPE_PROJECT, projectId,
-                        PROVIDER_KEY_PREFIX + instance + ".apiKey");
+                        tenantId, SettingService.SCOPE_PROJECT, projectId, PROVIDER_KEY_PREFIX + instance + ".apiKey");
                 if (decrypted != null) apiKey = decrypted;
             } else if (apiKeyDoc != null && apiKeyDoc.getValue() != null) {
                 apiKey = apiKeyDoc.getValue();
             }
             if (apiKey.isBlank() && type.requiresApiKey()) {
-                log.debug("ModelDiscoveryService: scope='{}/{}' instance='{}' has no apiKey "
+                log.debug(
+                        "ModelDiscoveryService: scope='{}/{}' instance='{}' has no apiKey "
                                 + "but provider '{}' requires one — skipping",
-                        tenantId, projectId, instance, type.wireName());
+                        tenantId,
+                        projectId,
+                        instance,
+                        type.wireName());
                 continue;
             }
             // Optional base URL.
             String baseUrl = null;
             SettingDocument urlDoc = fields.get("baseUrl");
-            if (urlDoc != null && urlDoc.getValue() != null && !urlDoc.getValue().isBlank()) {
+            if (urlDoc != null
+                    && urlDoc.getValue() != null
+                    && !urlDoc.getValue().isBlank()) {
                 baseUrl = urlDoc.getValue().trim();
             }
-            out.put(instance, new InstanceConfig(type, apiKey, baseUrl));
+            // Sidecar TLS flag — same lookup the resolver uses, so listing and
+            // chat agree on whether this instance skips TLS validation.
+            boolean insecureTls = modelCatalog
+                    .lookupProvider(tenantId, projectId, instance)
+                    .map(TlsInsecure::flagOf)
+                    .orElse(false);
+            out.put(instance, new InstanceConfig(type, apiKey, baseUrl, insecureTls));
         }
         return out;
     }
 
     private void runOneInstance(
-            String tenantId, String projectId, String instance,
-            InstanceConfig cfg, DiscoveryResult.Builder result) {
+            String tenantId, String projectId, String instance, InstanceConfig cfg, DiscoveryResult.Builder result) {
         AiModelProvider provider = aiModelService.findProvider(cfg.type()).orElse(null);
         if (provider == null) {
-            log.debug("ModelDiscoveryService: no provider bean for type '{}' (instance '{}')",
-                    cfg.type(), instance);
-            result.instanceFailed(tenantId, projectId, instance,
-                    "No provider bean registered for type " + cfg.type());
+            log.debug("ModelDiscoveryService: no provider bean for type '{}' (instance '{}')", cfg.type(), instance);
+            result.instanceFailed(tenantId, projectId, instance, "No provider bean registered for type " + cfg.type());
             return;
         }
-        ProviderListingRequest req = new ProviderListingRequest(instance, cfg.apiKey(), cfg.baseUrl());
+        ProviderListingRequest req =
+                new ProviderListingRequest(instance, cfg.apiKey(), cfg.baseUrl(), cfg.insecureTls());
         List<DiscoveredModelInfo> models;
         try {
             models = provider.listAvailableModels(req);
         } catch (UnsupportedOperationException e) {
-            log.debug("ModelDiscoveryService: provider '{}' does not implement listing — "
-                            + "skipping instance '{}'",
-                    cfg.type(), instance);
-            result.instanceFailed(tenantId, projectId, instance,
-                    "Listing not supported by provider " + cfg.type());
+            log.debug(
+                    "ModelDiscoveryService: provider '{}' does not implement listing — " + "skipping instance '{}'",
+                    cfg.type(),
+                    instance);
+            result.instanceFailed(tenantId, projectId, instance, "Listing not supported by provider " + cfg.type());
             return;
         }
         for (DiscoveredModelInfo model : models) {
@@ -236,8 +252,11 @@ public class ModelDiscoveryService {
                 writeAutoDoc(tenantId, projectId, instance, model);
                 result.modelWritten();
             } catch (RuntimeException e) {
-                log.warn("ModelDiscoveryService: failed to write doc for '{}/{}': {}",
-                        instance, model.wireName(), e.toString());
+                log.warn(
+                        "ModelDiscoveryService: failed to write doc for '{}/{}': {}",
+                        instance,
+                        model.wireName(),
+                        e.toString());
                 result.modelFailed();
             }
         }
@@ -259,30 +278,35 @@ public class ModelDiscoveryService {
      * {@code kind: image} and drop that model out of every image picker.
      * See {@link DiscoveredModelInfo}.
      */
-    private void writeAutoDoc(
-            String tenantId, String projectId, String instance, DiscoveredModelInfo model) {
+    private void writeAutoDoc(String tenantId, String projectId, String instance, DiscoveredModelInfo model) {
         String wireName = model.wireName();
         String slug = slugify(wireName);
         if (slug == null) {
-            log.warn("ModelDiscoveryService: wire-name '{}' has no representable slug — skipping",
-                    wireName);
+            log.warn("ModelDiscoveryService: wire-name '{}' has no representable slug — skipping", wireName);
             return;
         }
         String path = AUTO_PATH_PREFIX + instance + "/" + slug + ".yaml";
         StringBuilder yaml = new StringBuilder();
         yaml.append("# Auto-discovered by model-discovery — overwritten on every run.\n");
-        yaml.append("# Operator edits belong in _vance/model/").append(instance)
-                .append("/").append(slug).append(".yaml (manual layer).\n");
+        yaml.append("# Operator edits belong in _vance/model/")
+                .append(instance)
+                .append("/")
+                .append(slug)
+                .append(".yaml (manual layer).\n");
         if (!derivedNameMatches(slug, wireName)) {
             yaml.append("wireName: ").append(yamlString(wireName)).append('\n');
         }
         if (model.contextWindowTokens() != null) {
-            yaml.append("contextWindowTokens: ").append(model.contextWindowTokens()).append('\n');
+            yaml.append("contextWindowTokens: ")
+                    .append(model.contextWindowTokens())
+                    .append('\n');
         }
         yaml.append("discoveredBy: ").append(DISCOVERED_BY).append('\n');
         yaml.append("discoveredAt: \"").append(Instant.now()).append("\"\n");
         documentService.upsertText(
-                tenantId, projectId, path,
+                tenantId,
+                projectId,
+                path,
                 /* title */ instance + "/" + wireName,
                 /* tags  */ List.of("ai-model", "discovery"),
                 yaml.toString(),
@@ -329,8 +353,14 @@ public class ModelDiscoveryService {
         return "\"" + escaped + "\"";
     }
 
-    /** Per-instance config resolved from the settings of one scope. */
-    record InstanceConfig(ProviderType type, String apiKey, @Nullable String baseUrl) {
+    /** Per-instance config resolved from the settings + sidecar of one scope. */
+    record InstanceConfig(
+            ProviderType type, String apiKey, @Nullable String baseUrl, boolean insecureTls) {
+
+        /** Back-compat for tests and callers predating the TLS flag. */
+        InstanceConfig(ProviderType type, String apiKey, @Nullable String baseUrl) {
+            this(type, apiKey, baseUrl, false);
+        }
 
         InstanceConfig {
             Objects.requireNonNull(type, "type");
@@ -370,10 +400,21 @@ public class ModelDiscoveryService {
                 this.tenantId = tenantId;
             }
 
-            void scopeScanned() { scopes++; }
-            void instanceScanned() { instances++; }
-            void modelWritten() { written++; }
-            void modelFailed() { failedModels++; }
+            void scopeScanned() {
+                scopes++;
+            }
+
+            void instanceScanned() {
+                instances++;
+            }
+
+            void modelWritten() {
+                written++;
+            }
+
+            void modelFailed() {
+                failedModels++;
+            }
 
             void instanceFailed(String tenant, String project, String instance, String why) {
                 skipped.put(tenant + "/" + project + "/" + instance, why);
@@ -382,8 +423,7 @@ public class ModelDiscoveryService {
             DiscoveryResult build(Instant start) {
                 long ms = java.time.Duration.between(start, Instant.now()).toMillis();
                 return new DiscoveryResult(
-                        tenantId, scopes, instances, written, failedModels,
-                        Map.copyOf(skipped), ms, Instant.now());
+                        tenantId, scopes, instances, written, failedModels, Map.copyOf(skipped), ms, Instant.now());
             }
         }
     }

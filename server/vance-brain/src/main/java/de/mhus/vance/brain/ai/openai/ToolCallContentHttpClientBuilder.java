@@ -32,6 +32,14 @@ public final class ToolCallContentHttpClientBuilder implements HttpClientBuilder
         return new ToolCallContentHttpClientBuilder(HttpClientBuilderLoader.loadHttpClientBuilder());
     }
 
+    /**
+     * Wrap the given builder — the extension point for a custom TLS policy
+     * ({@code TlsInsecure} instances hand in a trust-all JDK builder).
+     */
+    public static ToolCallContentHttpClientBuilder wrapping(HttpClientBuilder delegate) {
+        return new ToolCallContentHttpClientBuilder(delegate);
+    }
+
     @Override
     public Duration connectTimeout() {
         return delegate.connectTimeout();

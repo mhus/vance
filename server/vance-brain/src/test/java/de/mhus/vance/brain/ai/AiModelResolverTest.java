@@ -48,8 +48,7 @@ class AiModelResolverTest {
 
     @Test
     void resolve_directProviderModel_shortCircuits() {
-        AiModelResolver.Resolved r = resolver.resolve(
-                "anthropic:claude-sonnet-4-5", "acme", "proj", null);
+        AiModelResolver.Resolved r = resolver.resolve("anthropic:claude-sonnet-4-5", "acme", "proj", null);
 
         assertThat(r.provider()).isEqualTo("anthropic");
         assertThat(r.modelName()).isEqualTo("claude-sonnet-4-5");
@@ -57,8 +56,7 @@ class AiModelResolverTest {
 
     @Test
     void resolve_trimsWhitespace() {
-        AiModelResolver.Resolved r = resolver.resolve(
-                "  anthropic:claude-sonnet-4-5  ", "acme", "proj", null);
+        AiModelResolver.Resolved r = resolver.resolve("  anthropic:claude-sonnet-4-5  ", "acme", "proj", null);
 
         assertThat(r.provider()).isEqualTo("anthropic");
         assertThat(r.modelName()).isEqualTo("claude-sonnet-4-5");
@@ -68,12 +66,10 @@ class AiModelResolverTest {
 
     @Test
     void resolve_aliasNamespace_recursesIntoConfiguredValue() {
-        when(settingService.getStringValueCascade(
-                "acme", "proj", null, "ai.alias.default.fast"))
+        when(settingService.getStringValueCascade("acme", "proj", null, "ai.alias.default.fast"))
                 .thenReturn("gemini:gemini-2.5-flash");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:fast", "acme", "proj", null);
+        AiModelResolver.Resolved r = resolver.resolve("default:fast", "acme", "proj", null);
 
         assertThat(r.provider()).isEqualTo("gemini");
         assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
@@ -82,15 +78,12 @@ class AiModelResolverTest {
     @Test
     void resolve_aliasChain_recursesMultipleHops() {
         // default:tier1 → cheap:lookup → gemini:gemini-2.5-flash
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.tier1")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.tier1")))
                 .thenReturn("cheap:lookup");
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.cheap.lookup")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.cheap.lookup")))
                 .thenReturn("gemini:gemini-2.5-flash");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:tier1", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("default:tier1", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("gemini");
         assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
@@ -99,18 +92,14 @@ class AiModelResolverTest {
     @Test
     void resolve_unknownDefaultAlias_fallsBackToTenantDefaults() {
         // Alias is not configured; key starts with "default:" → tenant fallback.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.unknown")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.unknown")))
                 .thenReturn(null);
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.default.provider")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
                 .thenReturn("anthropic");
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.default.model")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
                 .thenReturn("claude-sonnet-4-5");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:unknown", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("default:unknown", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("anthropic");
         assertThat(r.modelName()).isEqualTo("claude-sonnet-4-5");
@@ -120,12 +109,10 @@ class AiModelResolverTest {
     void resolve_unknownNonDefaultAlias_throws() {
         // Non-"default" namespace with no alias configured must NOT fall back —
         // surface the misconfiguration loudly.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.cheap.unknown")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.cheap.unknown")))
                 .thenReturn(null);
 
-        assertThatThrownBy(() -> resolver.resolve(
-                "cheap:unknown", "acme", null, null))
+        assertThatThrownBy(() -> resolver.resolve("cheap:unknown", "acme", null, null))
                 .isInstanceOf(AiModelResolver.UnknownModelException.class)
                 .hasMessageContaining("cheap:unknown")
                 .hasMessageContaining("ai.alias.cheap.unknown");
@@ -133,36 +120,29 @@ class AiModelResolverTest {
 
     @Test
     void resolveOrDefault_blankInput_usesTenantDefaults() {
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.default.provider")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
                 .thenReturn("openai");
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.default.model")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
                 .thenReturn("gpt-4o-mini");
 
-        AiModelResolver.Resolved r = resolver.resolveOrDefault(
-                null, "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolveOrDefault(null, "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("openai");
         assertThat(r.modelName()).isEqualTo("gpt-4o-mini");
 
         // And empty string treated the same.
-        AiModelResolver.Resolved r2 = resolver.resolveOrDefault(
-                "  ", "acme", null, null);
+        AiModelResolver.Resolved r2 = resolver.resolveOrDefault("  ", "acme", null, null);
         assertThat(r2.provider()).isEqualTo("openai");
     }
 
     @Test
     void tenantDefault_throws_whenSettingsMissing() {
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.default.provider")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
                 .thenReturn(null);
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.default.model")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
                 .thenReturn(null);
 
-        assertThatThrownBy(() -> resolver.resolveOrDefault(
-                null, "acme", null, null))
+        assertThatThrownBy(() -> resolver.resolveOrDefault(null, "acme", null, null))
                 .isInstanceOf(AiModelResolver.UnknownModelException.class)
                 .hasMessageContaining("ai.default.provider");
     }
@@ -171,15 +151,12 @@ class AiModelResolverTest {
 
     @Test
     void resolve_cyclicAlias_throws() {
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.a")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.a")))
                 .thenReturn("default:b");
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.b")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.b")))
                 .thenReturn("default:a");
 
-        assertThatThrownBy(() -> resolver.resolve(
-                "default:a", "acme", null, null))
+        assertThatThrownBy(() -> resolver.resolve("default:a", "acme", null, null))
                 .isInstanceOf(AiModelResolver.UnknownModelException.class)
                 .hasMessageContaining("cycle");
     }
@@ -190,12 +167,10 @@ class AiModelResolverTest {
     void resolve_namedInstance_resolvesViaInstanceType() {
         // `deepseek-direct` is not a ProviderType, but settings declare it
         // as an instance of the openai protocol.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
                 .thenReturn("openai");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "deepseek-direct:deepseek-v4-flash", "acme", "proj", null);
+        AiModelResolver.Resolved r = resolver.resolve("deepseek-direct:deepseek-v4-flash", "acme", "proj", null);
 
         assertThat(r.provider()).isEqualTo("openai");
         assertThat(r.providerInstance()).isEqualTo("deepseek-direct");
@@ -205,8 +180,7 @@ class AiModelResolverTest {
     @Test
     void resolve_directProviderModel_instanceEqualsProvider() {
         // Backward-compat: direct ProviderType spec yields instance == provider.
-        AiModelResolver.Resolved r = resolver.resolve(
-                "openai:gpt-4o-mini", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("openai:gpt-4o-mini", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("openai");
         assertThat(r.providerInstance()).isEqualTo("openai");
@@ -215,12 +189,10 @@ class AiModelResolverTest {
 
     @Test
     void resolve_namedInstance_unknownType_throws() {
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.provider.bogus-instance.type")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.provider.bogus-instance.type")))
                 .thenReturn("not-a-real-provider");
 
-        assertThatThrownBy(() -> resolver.resolve(
-                "bogus-instance:some-model", "acme", null, null))
+        assertThatThrownBy(() -> resolver.resolve("bogus-instance:some-model", "acme", null, null))
                 .isInstanceOf(AiModelResolver.UnknownModelException.class)
                 .hasMessageContaining("bogus-instance")
                 .hasMessageContaining("not-a-real-provider");
@@ -231,16 +203,14 @@ class AiModelResolverTest {
         // If a prefix has BOTH ai.provider.<prefix>.type AND
         // ai.alias.<prefix>.<rest>, the instance binding wins — that's the
         // documented order: ProviderType → instance → alias.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
                 .thenReturn("openai");
         // Alias setting still being stubbed shouldn't be consulted.
         when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.deepseek-direct.deepseek-v4-flash")))
+                        any(), any(), any(), eq("ai.alias.deepseek-direct.deepseek-v4-flash")))
                 .thenReturn("gemini:should-not-be-used");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "deepseek-direct:deepseek-v4-flash", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("deepseek-direct:deepseek-v4-flash", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("openai");
         assertThat(r.providerInstance()).isEqualTo("deepseek-direct");
@@ -257,8 +227,7 @@ class AiModelResolverTest {
         when(modelCatalog.lookupProvider("acme", "proj", "cortecs"))
                 .thenReturn(Optional.of(Map.of("wireType", "openai")));
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "cortecs:llama-3.3-70b", "acme", "proj", null);
+        AiModelResolver.Resolved r = resolver.resolve("cortecs:llama-3.3-70b", "acme", "proj", null);
 
         assertThat(r.provider()).isEqualTo("openai");
         assertThat(r.providerInstance()).isEqualTo("cortecs");
@@ -266,19 +235,42 @@ class AiModelResolverTest {
     }
 
     @Test
+    void resolve_sidecarTlsInsecure_flowsIntoResolved() {
+        // Same sidecar, same lookup as wireType: an instance behind a
+        // private CA declares tlsInsecure once, and chat + listing pick
+        // it up from the resolution.
+        when(modelCatalog.lookupProvider(any(), any(), eq("coding-proxy")))
+                .thenReturn(Optional.of(Map.of("wireType", "openai", "tlsInsecure", true)));
+
+        AiModelResolver.Resolved r = resolver.resolve("coding-proxy:gpt-5.5-codex", "acme", "proj", null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.providerInstance()).isEqualTo("coding-proxy");
+        assertThat(r.insecureTls()).isTrue();
+    }
+
+    @Test
+    void resolve_sidecarWithoutTlsFlag_staysValidated() {
+        when(modelCatalog.lookupProvider(any(), any(), eq("cortecs")))
+                .thenReturn(Optional.of(Map.of("wireType", "openai")));
+
+        AiModelResolver.Resolved r = resolver.resolve("cortecs:llama-3.3-70b", "acme", "proj", null);
+
+        assertThat(r.insecureTls()).isFalse();
+    }
+
+    @Test
     void resolve_instanceTypeSetting_winsOverProviderSidecar() {
         // The setting is the per-tenant override; the sidecar is the shipped
         // default. A tenant that repoints an instance must not be silently
         // pulled back by a document.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.provider.cortecs.type")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.provider.cortecs.type")))
                 .thenReturn("openai-experimental");
         when(aiModelService.hasProvider("openai-experimental")).thenReturn(true);
         when(modelCatalog.lookupProvider(any(), any(), eq("cortecs")))
                 .thenReturn(Optional.of(Map.of("wireType", "openai")));
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "cortecs:llama-3.3-70b", "acme", "proj", null);
+        AiModelResolver.Resolved r = resolver.resolve("cortecs:llama-3.3-70b", "acme", "proj", null);
 
         assertThat(r.provider()).isEqualTo("openai-experimental");
         assertThat(r.providerInstance()).isEqualTo("cortecs");
@@ -291,8 +283,7 @@ class AiModelResolverTest {
         when(modelCatalog.lookupProvider(any(), any(), eq("cortecs")))
                 .thenReturn(Optional.of(Map.of("wireType", "not-a-real-provider")));
 
-        assertThatThrownBy(() -> resolver.resolve(
-                "cortecs:llama-3.3-70b", "acme", null, null))
+        assertThatThrownBy(() -> resolver.resolve("cortecs:llama-3.3-70b", "acme", null, null))
                 .isInstanceOf(AiModelResolver.UnknownModelException.class)
                 .hasMessageContaining("not-a-real-provider")
                 .hasMessageContaining("_vance/model/cortecs/_provider.yaml");
@@ -303,10 +294,8 @@ class AiModelResolverTest {
         // A sidecar may exist only to state an endpoint fact such as
         // maxTools. That must not turn the prefix into a provider instance,
         // and must not become a resolution error either.
-        when(modelCatalog.lookupProvider(any(), any(), eq("cheap")))
-                .thenReturn(Optional.of(Map.of("maxTools", 128)));
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.cheap.lookup")))
+        when(modelCatalog.lookupProvider(any(), any(), eq("cheap"))).thenReturn(Optional.of(Map.of("maxTools", 128)));
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.cheap.lookup")))
                 .thenReturn("gemini:gemini-2.5-flash");
 
         AiModelResolver.Resolved r = resolver.resolve("cheap:lookup", "acme", null, null);
@@ -320,15 +309,12 @@ class AiModelResolverTest {
     void resolve_aliasInto_namedInstance() {
         // default:analyze → deepseek-direct:deepseek-v4-flash, where
         // deepseek-direct is a named instance of openai.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.analyze")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.analyze")))
                 .thenReturn("deepseek-direct:deepseek-v4-flash");
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
                 .thenReturn("openai");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:analyze", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("default:analyze", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("openai");
         assertThat(r.providerInstance()).isEqualTo("deepseek-direct");
@@ -357,12 +343,10 @@ class AiModelResolverTest {
     @Test
     void cascade_firstElementDefined_winsImmediately() {
         // default:arthur is configured → cascade stops at element 1.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.arthur")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.arthur")))
                 .thenReturn("anthropic:claude-opus-4");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:arthur,default:chat", "acme", "proj", null);
+        AiModelResolver.Resolved r = resolver.resolve("default:arthur,default:chat", "acme", "proj", null);
 
         assertThat(r.provider()).isEqualTo("anthropic");
         assertThat(r.modelName()).isEqualTo("claude-opus-4");
@@ -372,15 +356,12 @@ class AiModelResolverTest {
     void cascade_firstElementUndefined_fallsToSecond() {
         // default:arthur is NOT configured (returns null);
         // default:chat is configured → second wins.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.arthur")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.arthur")))
                 .thenReturn(null);
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.chat")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.chat")))
                 .thenReturn("gemini:gemini-2.5-flash");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:arthur,default:chat", "acme", "proj", null);
+        AiModelResolver.Resolved r = resolver.resolve("default:arthur,default:chat", "acme", "proj", null);
 
         assertThat(r.provider()).isEqualTo("gemini");
         assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
@@ -389,21 +370,16 @@ class AiModelResolverTest {
     @Test
     void cascade_allDefaultElementsUndefined_lastFallsToTenantDefault() {
         // Neither alias configured; last element is "default:" → safety net.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.arthur")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.arthur")))
                 .thenReturn(null);
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.chat")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.chat")))
                 .thenReturn(null);
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.default.provider")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
                 .thenReturn("anthropic");
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.default.model")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
                 .thenReturn("claude-haiku-4-5");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:arthur,default:chat", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("default:arthur,default:chat", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("anthropic");
         assertThat(r.modelName()).isEqualTo("claude-haiku-4-5");
@@ -413,15 +389,12 @@ class AiModelResolverTest {
     void cascade_nonDefaultLastElementUndefined_throws() {
         // Last element prefix is "cheap" (not "default") and unconfigured —
         // no safety net applies, must throw.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.arthur")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.arthur")))
                 .thenReturn(null);
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.cheap.lookup")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.cheap.lookup")))
                 .thenReturn(null);
 
-        assertThatThrownBy(() -> resolver.resolve(
-                "default:arthur,cheap:lookup", "acme", null, null))
+        assertThatThrownBy(() -> resolver.resolve("default:arthur,cheap:lookup", "acme", null, null))
                 .isInstanceOf(AiModelResolver.UnknownModelException.class)
                 .hasMessageContaining("cheap:lookup");
     }
@@ -429,12 +402,10 @@ class AiModelResolverTest {
     @Test
     void cascade_directProviderAsElement_winsRegardlessOfPosition() {
         // First element undefined, second is a direct provider:model → second wins.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.arthur")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.arthur")))
                 .thenReturn(null);
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:arthur,openai:gpt-4o-mini", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("default:arthur,openai:gpt-4o-mini", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("openai");
         assertThat(r.modelName()).isEqualTo("gpt-4o-mini");
@@ -443,15 +414,13 @@ class AiModelResolverTest {
     @Test
     void cascade_namedInstanceAsElement_winsViaInstanceType() {
         // First element undefined, second is a named instance → second wins.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.arthur")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.arthur")))
                 .thenReturn(null);
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
                 .thenReturn("openai");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:arthur,deepseek-direct:deepseek-v4-flash", "acme", null, null);
+        AiModelResolver.Resolved r =
+                resolver.resolve("default:arthur,deepseek-direct:deepseek-v4-flash", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("openai");
         assertThat(r.providerInstance()).isEqualTo("deepseek-direct");
@@ -460,15 +429,12 @@ class AiModelResolverTest {
 
     @Test
     void cascade_whitespaceAroundCommas_isTrimmed() {
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.arthur")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.arthur")))
                 .thenReturn(null);
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.chat")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.chat")))
                 .thenReturn("gemini:gemini-2.5-flash");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "  default:arthur ,  default:chat  ", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("  default:arthur ,  default:chat  ", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("gemini");
         assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
@@ -476,15 +442,12 @@ class AiModelResolverTest {
 
     @Test
     void cascade_emptyElementsBetweenCommas_areSkipped() {
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.arthur")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.arthur")))
                 .thenReturn(null);
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.chat")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.chat")))
                 .thenReturn("gemini:gemini-2.5-flash");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:arthur,,default:chat", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("default:arthur,,default:chat", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("gemini");
         assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
@@ -493,12 +456,10 @@ class AiModelResolverTest {
     @Test
     void cascade_singleElement_behavesIdenticallyToPreCascade() {
         // No comma → identical to before: configured alias resolves normally.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.fast")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.fast")))
                 .thenReturn("gemini:gemini-2.5-flash");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:fast", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("default:fast", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("gemini");
         assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
@@ -508,15 +469,12 @@ class AiModelResolverTest {
     void cascade_insideAliasTargetValue_isHonored() {
         // default:chat alias-value is itself a cascade. First sub-element
         // (cheap:lookup) undefined → second (gemini:...) wins.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.chat")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.chat")))
                 .thenReturn("cheap:lookup,gemini:gemini-2.5-flash");
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.cheap.lookup")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.cheap.lookup")))
                 .thenReturn(null);
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:chat", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("default:chat", "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("gemini");
         assertThat(r.modelName()).isEqualTo("gemini-2.5-flash");
@@ -527,15 +485,12 @@ class AiModelResolverTest {
         // default:a → "default:b" alias-value; default:b → "default:a" alias-value.
         // Each cascade-element starts with a fresh seen-set copy, so the
         // cycle is detected within an alias-chain.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.a")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.a")))
                 .thenReturn("default:b");
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.b")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.b")))
                 .thenReturn("default:a");
 
-        assertThatThrownBy(() -> resolver.resolve(
-                "default:a,default:c", "acme", null, null))
+        assertThatThrownBy(() -> resolver.resolve("default:a,default:c", "acme", null, null))
                 .isInstanceOf(AiModelResolver.UnknownModelException.class)
                 .hasMessageContaining("cycle");
     }
@@ -545,23 +500,18 @@ class AiModelResolverTest {
         // The key cascade contract: a non-last "default:foo" alias-miss
         // must NOT trigger the tenant-default safety-net; it must skip
         // to the next cascade element instead.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.arthur")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.arthur")))
                 .thenReturn(null);
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.alias.default.chat")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.chat")))
                 .thenReturn("openai:gpt-4o-mini");
         // ai.default.provider/model are configured — but should NOT win,
         // because the cascade has a second, defined element.
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.default.provider")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
                 .thenReturn("anthropic");
-        when(settingService.getStringValueCascade(
-                any(), any(), any(), eq("ai.default.model")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
                 .thenReturn("claude-haiku-4-5");
 
-        AiModelResolver.Resolved r = resolver.resolve(
-                "default:arthur,default:chat", "acme", null, null);
+        AiModelResolver.Resolved r = resolver.resolve("default:arthur,default:chat", "acme", null, null);
 
         // openai (cascade element wins), not anthropic (tenant default).
         assertThat(r.provider()).isEqualTo("openai");

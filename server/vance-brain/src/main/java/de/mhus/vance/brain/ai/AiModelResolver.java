@@ -118,11 +118,27 @@ public class AiModelResolver {
      *                         referenced a {@link Resolved named instance}
      *                         configured via {@code ai.provider.<instance>.type}.
      * @param modelName        wire model name handed to the provider API.
+     * @param insecureTls    whether the instance's sidecar declared
+     *                         {@code tlsInsecure: true} — chat and listing
+     *                         calls for this instance skip TLS validation
+     *                         (private-CA gateways). False for direct specs
+     *                         and instances without the flag.
      */
-    public record Resolved(String provider, String providerInstance, String modelName) {
-        /** Back-compat factory for direct ProviderType specs where instance == provider. */
+    public record Resolved(String provider, String providerInstance, String modelName, boolean insecureTls) {
+        /**
+         * Back-compat factory for direct ProviderType specs where instance == provider
+         * and no TLS relaxation is declared.
+         */
         public static Resolved direct(String provider, String modelName) {
-            return new Resolved(provider, provider, modelName);
+            return new Resolved(provider, provider, modelName, false);
+        }
+
+        /**
+         * Back-compat for callers with no TLS statement — validated, as every
+         * instance was before {@code tlsInsecure} existed.
+         */
+        public Resolved(String provider, String providerInstance, String modelName) {
+            this(provider, providerInstance, modelName, false);
         }
     }
 
@@ -135,16 +151,11 @@ public class AiModelResolver {
      * for alias and default lookups; pass {@code null} to read from
      * {@code _vance} only.
      */
-    public Resolved resolve(
-            String input,
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String processId) {
+    public Resolved resolve(String input, String tenantId, @Nullable String projectId, @Nullable String processId) {
         if (input == null || input.isBlank()) {
             return tenantDefault(tenantId, projectId, processId, "<missing input>");
         }
-        return resolveCascade(
-                input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
+        return resolveCascade(input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
     }
 
     /**
@@ -158,15 +169,11 @@ public class AiModelResolver {
      * the corresponding cascade layers are skipped.
      */
     public Resolved resolveOrDefault(
-            @Nullable String input,
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String processId) {
+            @Nullable String input, String tenantId, @Nullable String projectId, @Nullable String processId) {
         if (input == null || input.isBlank()) {
             return tenantDefault(tenantId, projectId, processId, "<no override>");
         }
-        return resolveCascade(
-                input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
+        return resolveCascade(input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
     }
 
     /**
@@ -181,33 +188,27 @@ public class AiModelResolver {
      * other's cycle detection.
      */
     private Resolved resolveCascade(
-            String input,
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String processId,
-            Set<String> seen) {
+            String input, String tenantId, @Nullable String projectId, @Nullable String processId, Set<String> seen) {
         List<String> elements = splitCascade(input);
         if (elements.isEmpty()) {
-            throw new UnknownModelException(
-                    "Model spec '" + input + "' has no usable elements");
+            throw new UnknownModelException("Model spec '" + input + "' has no usable elements");
         }
         int lastIdx = elements.size() - 1;
         for (int i = 0; i < lastIdx; i++) {
-            @Nullable Resolved r = resolveElement(
-                    elements.get(i), tenantId, projectId, processId,
-                    new LinkedHashSet<>(seen), false);
+            @Nullable
+            Resolved r =
+                    resolveElement(elements.get(i), tenantId, projectId, processId, new LinkedHashSet<>(seen), false);
             if (r != null) {
                 return r;
             }
         }
-        @Nullable Resolved last = resolveElement(
-                elements.get(lastIdx), tenantId, projectId, processId,
-                new LinkedHashSet<>(seen), true);
+        @Nullable
+        Resolved last =
+                resolveElement(elements.get(lastIdx), tenantId, projectId, processId, new LinkedHashSet<>(seen), true);
         if (last == null) {
             // resolveElement with lastInCascade=true never returns null —
             // it either resolves, falls back to tenantDefault, or throws.
-            throw new UnknownModelException(
-                    "Cascade '" + input + "' exhausted with no resolution");
+            throw new UnknownModelException("Cascade '" + input + "' exhausted with no resolution");
         }
         return last;
     }
@@ -228,30 +229,28 @@ public class AiModelResolver {
             Set<String> seen,
             boolean lastInCascade) {
         if (!seen.add(input)) {
-            throw new UnknownModelException(
-                    "Alias cycle detected: " + String.join(" → ", seen) + " → " + input);
+            throw new UnknownModelException("Alias cycle detected: " + String.join(" → ", seen) + " → " + input);
         }
         if (seen.size() > MAX_DEPTH) {
             throw new UnknownModelException(
-                    "Alias resolution exceeded depth " + MAX_DEPTH
-                            + ": " + String.join(" → ", seen));
+                    "Alias resolution exceeded depth " + MAX_DEPTH + ": " + String.join(" → ", seen));
         }
         int colon = input.indexOf(':');
         if (colon <= 0 || colon == input.length() - 1) {
             throw new UnknownModelException(
-                    "Model spec '" + input + "' must be '<provider>:<model>' or "
-                            + "'<alias-namespace>:<key>'");
+                    "Model spec '" + input + "' must be '<provider>:<model>' or " + "'<alias-namespace>:<key>'");
         }
         String prefix = input.substring(0, colon).trim();
         String rest = input.substring(colon + 1).trim();
         if (prefix.isEmpty() || rest.isEmpty()) {
-            throw new UnknownModelException(
-                    "Model spec '" + input + "' has empty prefix or suffix");
+            throw new UnknownModelException("Model spec '" + input + "' has empty prefix or suffix");
         }
 
         // Direct provider+model — done.
         if (aiModelService.hasProvider(prefix)) {
-            return Resolved.direct(prefix, rest);
+            // Direct ProviderType spec — the sidecar lookup keeps tlsInsecure
+            // semantics identical across direct and named-instance specs.
+            return new Resolved(prefix, prefix, rest, declaredInsecureTls(tenantId, projectId, prefix));
         }
 
         // Named provider instance — `ai.provider.<prefix>.type` binds the
@@ -260,18 +259,17 @@ public class AiModelResolver {
         // (e.g. real OpenAI plus a deepseek-direct instance) without
         // overloading the protocol wire-name.
         String instanceTypeKey = String.format(PROVIDER_TYPE_KEY_FMT, prefix);
-        @Nullable String instanceType = settingService.getStringValueCascade(
-                tenantId, projectId, processId, instanceTypeKey);
+        @Nullable
+        String instanceType = settingService.getStringValueCascade(tenantId, projectId, processId, instanceTypeKey);
         if (instanceType != null && !instanceType.isBlank()) {
             String typeWireName = instanceType.trim();
             if (!aiModelService.hasProvider(typeWireName)) {
-                throw new UnknownModelException(
-                        "Provider instance '" + prefix + "' declares unknown type '"
-                                + typeWireName + "' (setting '" + instanceTypeKey
-                                + "'). Known providers: " + aiModelService.listProviders());
+                throw new UnknownModelException("Provider instance '" + prefix + "' declares unknown type '"
+                        + typeWireName + "' (setting '" + instanceTypeKey
+                        + "'). Known providers: " + aiModelService.listProviders());
             }
             log.debug("AiModelResolver: instance '{}' → type '{}'", prefix, typeWireName);
-            return new Resolved(typeWireName, prefix, rest);
+            return new Resolved(typeWireName, prefix, rest, declaredInsecureTls(tenantId, projectId, prefix));
         }
 
         // Same binding, declared by the catalog instead of a setting: the
@@ -285,23 +283,20 @@ public class AiModelResolver {
         @Nullable String declaredType = declaredWireType(tenantId, projectId, prefix);
         if (declaredType != null) {
             if (!aiModelService.hasProvider(declaredType)) {
-                throw new UnknownModelException(
-                        "Provider instance '" + prefix + "' declares unknown wireType '"
-                                + declaredType + "' (document '"
-                                + ModelCatalog.MODEL_PATH_PREFIX + prefix + "/_provider.yaml')"
-                                + ". Known providers: " + aiModelService.listProviders());
+                throw new UnknownModelException("Provider instance '" + prefix + "' declares unknown wireType '"
+                        + declaredType + "' (document '"
+                        + ModelCatalog.MODEL_PATH_PREFIX + prefix + "/_provider.yaml')"
+                        + ". Known providers: " + aiModelService.listProviders());
             }
-            log.debug("AiModelResolver: instance '{}' → type '{}' (from _provider.yaml)",
-                    prefix, declaredType);
-            return new Resolved(declaredType, prefix, rest);
+            log.debug("AiModelResolver: instance '{}' → type '{}' (from _provider.yaml)", prefix, declaredType);
+            return new Resolved(declaredType, prefix, rest, declaredInsecureTls(tenantId, projectId, prefix));
         }
 
         // Alias lookup — project cascade. Alias target may itself be a
         // comma-cascade, so route through resolveCascade rather than
         // resolveElement directly.
         String settingKey = ALIAS_KEY_PREFIX + prefix + "." + rest;
-        @Nullable String aliased = settingService.getStringValueCascade(
-                tenantId, projectId, processId, settingKey);
+        @Nullable String aliased = settingService.getStringValueCascade(tenantId, projectId, processId, settingKey);
         if (aliased != null && !aliased.isBlank()) {
             log.debug("AiModelResolver: alias '{}' → '{}'", input, aliased);
             return resolveCascade(aliased.trim(), tenantId, projectId, processId, seen);
@@ -314,16 +309,14 @@ public class AiModelResolver {
 
         // Last element: safety net for `default:` namespace, else throw.
         if (DEFAULT_NAMESPACE.equals(prefix)) {
-            log.debug("AiModelResolver: alias '{}' not configured, falling back to tenant default",
-                    input);
+            log.debug("AiModelResolver: alias '{}' not configured, falling back to tenant default", input);
             return tenantDefault(tenantId, projectId, processId, input);
         }
 
-        throw new UnknownModelException(
-                "Unknown model spec '" + input + "' — neither a registered "
-                        + "provider nor a configured alias. Known providers: "
-                        + aiModelService.listProviders()
-                        + "; expected setting: '" + settingKey + "'");
+        throw new UnknownModelException("Unknown model spec '" + input + "' — neither a registered "
+                + "provider nor a configured alias. Known providers: "
+                + aiModelService.listProviders()
+                + "; expected setting: '" + settingKey + "'");
     }
 
     /**
@@ -338,15 +331,29 @@ public class AiModelResolver {
      * as for a newly added model document. A setting takes effect at once,
      * which is the second reason it stays the override.
      */
-    private @Nullable String declaredWireType(
-            String tenantId, @Nullable String projectId, String instance) {
-        Object raw = modelCatalog.lookupProvider(tenantId, projectId, instance)
+    private @Nullable String declaredWireType(String tenantId, @Nullable String projectId, String instance) {
+        Object raw = modelCatalog
+                .lookupProvider(tenantId, projectId, instance)
                 .map(spec -> spec.get("wireType"))
                 .orElse(null);
         if (!(raw instanceof String s) || s.isBlank()) {
             return null;
         }
         return s.trim();
+    }
+
+    /**
+     * Whether the instance's sidecar declares {@code tlsInsecure: true} —
+     * same lookup and same snapshot latency as {@link #declaredWireType()},
+     * so a sidecar written at runtime becomes visible on the next catalog
+     * refresh. Absent / blank / non-boolean all mean "validated TLS" —
+     * fail-closed on anything ambiguous.
+     */
+    private boolean declaredInsecureTls(String tenantId, @Nullable String projectId, String instance) {
+        return modelCatalog
+                .lookupProvider(tenantId, projectId, instance)
+                .map(TlsInsecure::flagOf)
+                .orElse(false);
     }
 
     /**
@@ -411,20 +418,15 @@ public class AiModelResolver {
     }
 
     private Resolved tenantDefault(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String processId,
-            String triggeredBy) {
-        @Nullable String provider = settingService.getStringValueCascade(
-                tenantId, projectId, processId, DEFAULT_PROVIDER_KEY);
-        @Nullable String model = settingService.getStringValueCascade(
-                tenantId, projectId, processId, DEFAULT_MODEL_KEY);
-        if (provider == null || provider.isBlank()
-                || model == null || model.isBlank()) {
-            throw new UnknownModelException(
-                    "Cannot resolve '" + triggeredBy + "': tenant '" + tenantId
-                            + "' has no '" + DEFAULT_PROVIDER_KEY + "' / '"
-                            + DEFAULT_MODEL_KEY + "' settings");
+            String tenantId, @Nullable String projectId, @Nullable String processId, String triggeredBy) {
+        @Nullable
+        String provider = settingService.getStringValueCascade(tenantId, projectId, processId, DEFAULT_PROVIDER_KEY);
+        @Nullable
+        String model = settingService.getStringValueCascade(tenantId, projectId, processId, DEFAULT_MODEL_KEY);
+        if (provider == null || provider.isBlank() || model == null || model.isBlank()) {
+            throw new UnknownModelException("Cannot resolve '" + triggeredBy + "': tenant '" + tenantId
+                    + "' has no '" + DEFAULT_PROVIDER_KEY + "' / '"
+                    + DEFAULT_MODEL_KEY + "' settings");
         }
         return Resolved.direct(provider, model);
     }

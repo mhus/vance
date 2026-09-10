@@ -14,11 +14,19 @@ import org.jspecify.annotations.Nullable;
  * to mean "use the provider's hard-wired default" (the standard
  * Anthropic / OpenAI / Gemini endpoints); a non-null value overrides
  * it for custom or self-hosted gateways.
+ *
+ * <p>{@code insecureTls} mirrors {@link AiChatConfig#insecureTls()}: a
+ * provider sidecar declaring {@code tlsInsecure: true} routes its listing
+ * call through a trust-all TLS context (private-CA gateways).
  */
 public record ProviderListingRequest(
-        String providerInstance,
-        String apiKey,
-        @Nullable String baseUrl) {
+        String providerInstance, String apiKey, @Nullable String baseUrl, boolean insecureTls) {
+
+    /** Back-compat constructor for callers predating the TLS flag.
+     *  Validated TLS, as every instance had before {@code tlsInsecure} existed. */
+    public ProviderListingRequest(String providerInstance, String apiKey, @Nullable String baseUrl) {
+        this(providerInstance, apiKey, baseUrl, false);
+    }
 
     public ProviderListingRequest {
         if (providerInstance == null || providerInstance.isBlank()) {

@@ -79,9 +79,7 @@ public final class ChatBehaviorBuilder {
      * resolved (no API key etc.).
      */
     public static ChatBehavior fromProcess(
-            ThinkProcessDocument process,
-            SettingService settings,
-            AiModelResolver resolver) {
+            ThinkProcessDocument process, SettingService settings, AiModelResolver resolver) {
         String tenantId = process.getTenantId();
         // A tenant-pinned recipe resolves its whole endpoint (alias,
         // default, apiKey, baseUrl) from the _tenant layer: passing null
@@ -95,8 +93,10 @@ public final class ChatBehaviorBuilder {
         // cascade collapses to the _tenant layer only.
         @Nullable String projectId = pinned ? null : process.getProjectId();
         if (pinned) {
-            log.debug("ChatBehaviorBuilder: process {} pins AI config to the tenant layer "
-                    + "(project '{}' ignored)", process.getId(), process.getProjectId());
+            log.debug(
+                    "ChatBehaviorBuilder: process {} pins AI config to the tenant layer " + "(project '{}' ignored)",
+                    process.getId(),
+                    process.getProjectId());
         }
         List<ChatBehavior.Entry> entries = new ArrayList<>();
 
@@ -112,13 +112,19 @@ public final class ChatBehaviorBuilder {
                 AiChatConfig fbConfig = resolveOne(alias, tenantId, projectId, processId, settings, resolver);
                 entries.add(new ChatBehavior.Entry(fbConfig, "fallback:" + alias));
             } catch (RuntimeException e) {
-                log.warn("ChatBehaviorBuilder: dropping unreachable fallback '{}' "
-                        + "for tenant '{}': {}", alias, tenantId, e.getMessage());
+                log.warn(
+                        "ChatBehaviorBuilder: dropping unreachable fallback '{}' " + "for tenant '{}': {}",
+                        alias,
+                        tenantId,
+                        e.getMessage());
             }
         }
         if (entries.size() > 1) {
-            log.debug("ChatBehavior for process {}: primary {} + {} fallback(s)",
-                    process.getId(), primary.modelName(), entries.size() - 1);
+            log.debug(
+                    "ChatBehavior for process {}: primary {} + {} fallback(s)",
+                    process.getId(),
+                    primary.modelName(),
+                    entries.size() - 1);
         }
         return new ChatBehavior(entries);
     }
@@ -137,13 +143,15 @@ public final class ChatBehaviorBuilder {
             AiModelResolver resolver) {
         AiModelResolver.Resolved resolved = resolver.resolveOrDefault(spec, tenantId, projectId, processId);
         String apiKey = resolveApiKey(
-                resolved.provider(), resolved.providerInstance(),
-                tenantId, projectId, processId, settings);
-        String baseUrl = resolveBaseUrl(
-                resolved.providerInstance(), tenantId, projectId, processId, settings);
+                resolved.provider(), resolved.providerInstance(), tenantId, projectId, processId, settings);
+        String baseUrl = resolveBaseUrl(resolved.providerInstance(), tenantId, projectId, processId, settings);
         return new AiChatConfig(
-                resolved.provider(), resolved.providerInstance(),
-                resolved.modelName(), apiKey, baseUrl);
+                resolved.provider(),
+                resolved.providerInstance(),
+                resolved.modelName(),
+                apiKey,
+                baseUrl,
+                resolved.insecureTls());
     }
 
     /**
@@ -174,13 +182,11 @@ public final class ChatBehaviorBuilder {
             return KEYLESS_PLACEHOLDER;
         }
         String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, providerInstance);
-        String apiKey = settings.getDecryptedPasswordCascade(
-                tenantId, projectId, processId, apiKeySetting);
+        String apiKey = settings.getDecryptedPasswordCascade(tenantId, projectId, processId, apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "No API key configured for provider instance '" + providerInstance
-                            + "' (tenant='" + tenantId
-                            + "', setting='" + apiKeySetting + "')");
+            throw new IllegalStateException("No API key configured for provider instance '" + providerInstance
+                    + "' (tenant='" + tenantId
+                    + "', setting='" + apiKeySetting + "')");
         }
         return apiKey;
     }
@@ -209,12 +215,11 @@ public final class ChatBehaviorBuilder {
      * project layer in through the single-config path.
      */
     public static AiChatConfig resolveForProcess(
-            ThinkProcessDocument process,
-            SettingService settings,
-            AiModelResolver resolver) {
+            ThinkProcessDocument process, SettingService settings, AiModelResolver resolver) {
         String spec = readModelSpec(process);
         boolean pinned = readAiConfigScope(process) == AiConfigScope.TENANT;
-        return resolveOne(spec,
+        return resolveOne(
+                spec,
                 process.getTenantId(),
                 pinned ? null : process.getProjectId(),
                 pinned ? null : process.getId(),
@@ -251,13 +256,18 @@ public final class ChatBehaviorBuilder {
         }
         if (v instanceof String s) {
             return AiConfigScope.fromString(s).orElseGet(() -> {
-                log.warn("Unknown params.aiScope='{}' on process '{}' — falling back to {}",
-                        s, process.getId(), AiConfigScope.CASCADE);
+                log.warn(
+                        "Unknown params.aiScope='{}' on process '{}' — falling back to {}",
+                        s,
+                        process.getId(),
+                        AiConfigScope.CASCADE);
                 return AiConfigScope.CASCADE;
             });
         }
-        log.warn("params.aiScope on process '{}' has unexpected type {} — ignoring",
-                process.getId(), v.getClass().getSimpleName());
+        log.warn(
+                "params.aiScope on process '{}' has unexpected type {} — ignoring",
+                process.getId(),
+                v.getClass().getSimpleName());
         return AiConfigScope.CASCADE;
     }
 

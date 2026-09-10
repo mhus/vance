@@ -7,12 +7,12 @@ import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
-import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
-import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.ThinkingLevel;
+import de.mhus.vance.brain.ai.UsageSink;
+import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
 import java.net.URI;
@@ -74,11 +74,10 @@ public class OllamaCloudProvider extends AbstractChatProvider {
                 .timeout(Duration.ofSeconds(30))
                 .GET()
                 .build();
-        JsonNode root = ProviderListingHttp.fetchJson(http);
+        JsonNode root = ProviderListingHttp.fetchJson(http, req.insecureTls());
         JsonNode models = root.path("models");
         if (!models.isArray()) {
-            throw new RuntimeException(
-                    "Ollama Cloud listing response missing 'models' array: " + root);
+            throw new RuntimeException("Ollama Cloud listing response missing 'models' array: " + root);
         }
         List<DiscoveredModelInfo> out = new ArrayList<>(models.size());
         for (JsonNode entry : models) {
@@ -90,10 +89,8 @@ public class OllamaCloudProvider extends AbstractChatProvider {
     }
 
     @Override
-    protected BuiltChat buildModels(
-            AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
-        Duration timeout = Duration.ofSeconds(
-                modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
+    protected BuiltChat buildModels(AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
+        Duration timeout = Duration.ofSeconds(modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         // Streaming gets a generous total-request budget so a healthy
         // long generation is not cut off at the sync timeout.
         Duration streamTimeout = Duration.ofSeconds(
@@ -133,10 +130,13 @@ public class OllamaCloudProvider extends AbstractChatProvider {
                 .logRequests(options.getLogRequests())
                 .logResponses(options.getLogRequests())
                 .build();
-        log.debug("Built Ollama Cloud chat pair: model='{}', baseUrl='{}', numPredict={}, "
-                        + "temperature={}, think={}",
-                config.modelName(), baseUrl, options.getMaxTokens(),
-                options.getTemperature(), think);
+        log.debug(
+                "Built Ollama Cloud chat pair: model='{}', baseUrl='{}', numPredict={}, " + "temperature={}, think={}",
+                config.modelName(),
+                baseUrl,
+                options.getMaxTokens(),
+                options.getTemperature(),
+                think);
         return new BuiltChat(sync, streaming);
     }
 }

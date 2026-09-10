@@ -11,12 +11,16 @@ import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.OutputTokenParam;
-import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
-import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.ThinkingLevel;
+import de.mhus.vance.brain.ai.TlsInsecure;
+import de.mhus.vance.brain.ai.UsageSink;
+import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
+import dev.langchain4j.http.client.HttpClientBuilder;
+import dev.langchain4j.http.client.HttpClientBuilderLoader;
+import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
@@ -108,10 +112,8 @@ public class OpenAiProvider extends AbstractChatProvider {
     }
 
     @Override
-    protected BuiltChat buildModels(
-            AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
-        Duration timeout = Duration.ofSeconds(
-                modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
+    protected BuiltChat buildModels(AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
+        Duration timeout = Duration.ofSeconds(modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         // Streaming gets a generous total-request budget — a healthy
         // streamed generation runs far longer than a single sync
         // response and must not be cut off at the sync timeout.
@@ -126,8 +128,7 @@ public class OpenAiProvider extends AbstractChatProvider {
         // an HTTP 400 and demand 'max_completion_tokens'; every other
         // OpenAI-wire endpoint only understands the historic field.
         // Which one applies is a catalog fact — see OutputTokenParam.
-        boolean useCompletionTokens =
-                modelInfo.outputTokenParam() == OutputTokenParam.MAX_COMPLETION_TOKENS;
+        boolean useCompletionTokens = modelInfo.outputTokenParam() == OutputTokenParam.MAX_COMPLETION_TOKENS;
         Integer maxTokens = useCompletionTokens ? null : options.getMaxTokens();
         Integer maxCompletionTokens = useCompletionTokens ? options.getMaxTokens() : null;
         OpenAiChatModel.OpenAiChatModelBuilder syncBuilder = OpenAiChatModel.builder()
@@ -145,34 +146,35 @@ public class OpenAiProvider extends AbstractChatProvider {
                 .timeout(timeout)
                 // Strip assistant tool-call `content: null` so strict
                 // OpenAI-compatible gateways (GLM/Zhipu) don't 400 on it.
-                // See ToolCallContentHttpClient.
-                .httpClientBuilder(ToolCallContentHttpClientBuilder.wrappingDefault())
+                // See ToolCallContentHttpClient. The underlying client swaps
+                // to trust-all TLS when the instance's sidecar declared
+                // tlsInsecure (private-CA gateways).
+                .httpClientBuilder(toolCallBuilder(config))
                 // Bound the retry storm on a persistent failure. The sync
                 // model backs LightLlm helpers (follow-up, judge,
                 // discovery) — a timeout is a persistent condition, so
                 // langchain4j's default retries just re-issue the same
                 // slow request and multiply the wait. One retry still
                 // covers a genuine transient blip (429 / 5xx).
-                .maxRetries(0)   // ResilientChatModel retries above; provider-level would multiply.
+                .maxRetries(0) // ResilientChatModel retries above; provider-level would multiply.
                 .logRequests(options.getLogRequests())
                 .logResponses(options.getLogRequests());
-        OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder streamBuilder =
-                OpenAiStreamingChatModel.builder()
-                        .baseUrl(baseUrl)
-                        .apiKey(config.apiKey())
-                        .modelName(config.modelName())
-                        .temperature(options.getTemperature())
-                        .maxTokens(maxTokens)
-                        .maxCompletionTokens(maxCompletionTokens)
-                        .topP(options.getTopP())
-                        .frequencyPenalty(options.getFrequencyPenalty())
-                        .presencePenalty(options.getPresencePenalty())
-                        .seed(seed)
-                        .stop(options.getStopSequences())
-                        .timeout(streamTimeout)
-                        .httpClientBuilder(ToolCallContentHttpClientBuilder.wrappingDefault())
-                        .logRequests(options.getLogRequests())
-                        .logResponses(options.getLogRequests());
+        OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder streamBuilder = OpenAiStreamingChatModel.builder()
+                .baseUrl(baseUrl)
+                .apiKey(config.apiKey())
+                .modelName(config.modelName())
+                .temperature(options.getTemperature())
+                .maxTokens(maxTokens)
+                .maxCompletionTokens(maxCompletionTokens)
+                .topP(options.getTopP())
+                .frequencyPenalty(options.getFrequencyPenalty())
+                .presencePenalty(options.getPresencePenalty())
+                .seed(seed)
+                .stop(options.getStopSequences())
+                .timeout(streamTimeout)
+                .httpClientBuilder(toolCallBuilder(config))
+                .logRequests(options.getLogRequests())
+                .logResponses(options.getLogRequests());
         if (!cacheParams.isEmpty()) {
             syncBuilder.customParameters(cacheParams);
             streamBuilder.customParameters(cacheParams);
@@ -187,8 +189,7 @@ public class OpenAiProvider extends AbstractChatProvider {
         // just finds no such field. Client-side only, not a wire param.
         syncBuilder.returnThinking(true);
         streamBuilder.returnThinking(true);
-        ThinkingLevel effectiveLevel = gateThinkingLevel(
-                options.getThinkingLevel(), modelInfo);
+        ThinkingLevel effectiveLevel = gateThinkingLevel(options.getThinkingLevel(), modelInfo);
         String reasoningEffort = mapReasoningEffort(effectiveLevel);
         if (reasoningEffort == null) {
             // "No reasoning" is normally the absence of the field. A
@@ -204,11 +205,16 @@ public class OpenAiProvider extends AbstractChatProvider {
             syncBuilder.defaultRequestParameters(defaults);
             streamBuilder.defaultRequestParameters(defaults);
         }
-        log.debug("Built OpenAI chat pair: model='{}', baseUrl='{}', {}={}, "
+        log.debug(
+                "Built OpenAI chat pair: model='{}', baseUrl='{}', {}={}, "
                         + "temperature={}, cacheParams={}, reasoningEffort={}",
-                config.modelName(), baseUrl,
-                modelInfo.outputTokenParam().wireName(), options.getMaxTokens(),
-                options.getTemperature(), cacheParams.keySet(), reasoningEffort);
+                config.modelName(),
+                baseUrl,
+                modelInfo.outputTokenParam().wireName(),
+                options.getMaxTokens(),
+                options.getTemperature(),
+                cacheParams.keySet(),
+                reasoningEffort);
         return new BuiltChat(syncBuilder.build(), streamBuilder.build());
     }
 
@@ -234,7 +240,7 @@ public class OpenAiProvider extends AbstractChatProvider {
                 .timeout(Duration.ofSeconds(30))
                 .GET()
                 .build();
-        JsonNode root = ProviderListingHttp.fetchJson(http);
+        JsonNode root = ProviderListingHttp.fetchJson(http, req.insecureTls());
         JsonNode data = root.path("data");
         if (!data.isArray()) {
             throw new RuntimeException("OpenAI listing response missing 'data' array: " + root);
@@ -249,13 +255,27 @@ public class OpenAiProvider extends AbstractChatProvider {
     }
 
     /**
+     * The HTTP client builder for both sync and streaming models: the
+     * tool-call-content wrapper around either the classpath default or,
+     * for instances whose sidecar declared {@code tlsInsecure: true}
+     * (private-CA gateways), a JDK client with the trust-all TLS context.
+     * Fresh per call — langchain4j mutates the builder's timeout fields, so
+     * instances must not be shared across concurrently built models.
+     */
+    private static ToolCallContentHttpClientBuilder toolCallBuilder(AiChatConfig config) {
+        HttpClientBuilder base = config.insecureTls()
+                ? new JdkHttpClientBuilder().httpClientBuilder(TlsInsecure.jdkClientBuilder())
+                : HttpClientBuilderLoader.loadHttpClientBuilder();
+        return ToolCallContentHttpClientBuilder.wrapping(base);
+    }
+
+    /**
      * Build the {@code prompt_cache_key} + {@code prompt_cache_retention}
      * pair. Empty when caching is disabled by the global switch or by the
      * per-call boundary. Package-private + static so unit tests can
      * pin the mapping without standing the bean up.
      */
-    static Map<String, Object> buildCacheParameters(
-            AiChatConfig config, AiChatOptions options, boolean cacheEnabled) {
+    static Map<String, Object> buildCacheParameters(AiChatConfig config, AiChatOptions options, boolean cacheEnabled) {
         if (!cacheEnabled || options.getCacheBoundary() == CacheBoundary.NONE) {
             return Map.of();
         }
@@ -283,9 +303,12 @@ public class OpenAiProvider extends AbstractChatProvider {
         if (modelInfo.supports(ModelCapability.THINKING)) {
             return requested;
         }
-        log.debug("OpenAI model '{}/{}' lacks THINKING capability — "
+        log.debug(
+                "OpenAI model '{}/{}' lacks THINKING capability — "
                         + "downgrading requested level {} → OFF for this call",
-                modelInfo.provider(), modelInfo.modelName(), requested);
+                modelInfo.provider(),
+                modelInfo.modelName(),
+                requested);
         return ThinkingLevel.OFF;
     }
 

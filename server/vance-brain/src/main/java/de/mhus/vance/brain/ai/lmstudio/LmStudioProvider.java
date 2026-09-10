@@ -7,13 +7,13 @@ import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
-import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
-import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.ThinkingLevel;
+import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.openai.OpenAiProvider;
+import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
@@ -78,11 +78,10 @@ public class LmStudioProvider extends AbstractChatProvider {
                 .timeout(Duration.ofSeconds(30))
                 .GET()
                 .build();
-        JsonNode root = ProviderListingHttp.fetchJson(http);
+        JsonNode root = ProviderListingHttp.fetchJson(http, req.insecureTls());
         JsonNode data = root.path("data");
         if (!data.isArray()) {
-            throw new RuntimeException(
-                    "LM Studio listing response missing 'data' array: " + root);
+            throw new RuntimeException("LM Studio listing response missing 'data' array: " + root);
         }
         List<DiscoveredModelInfo> out = new ArrayList<>(data.size());
         for (JsonNode entry : data) {
@@ -94,10 +93,8 @@ public class LmStudioProvider extends AbstractChatProvider {
     }
 
     @Override
-    protected BuiltChat buildModels(
-            AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
-        Duration timeout = Duration.ofSeconds(
-                modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
+    protected BuiltChat buildModels(AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
+        Duration timeout = Duration.ofSeconds(modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         // Streaming gets a generous total-request budget so a healthy
         // long generation is not cut off at the sync timeout.
         Duration streamTimeout = Duration.ofSeconds(
@@ -120,21 +117,20 @@ public class LmStudioProvider extends AbstractChatProvider {
                 .timeout(timeout)
                 .logRequests(options.getLogRequests())
                 .logResponses(options.getLogRequests());
-        OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder streamBuilder =
-                OpenAiStreamingChatModel.builder()
-                        .baseUrl(baseUrl)
-                        .apiKey(config.apiKey())
-                        .modelName(config.modelName())
-                        .temperature(options.getTemperature())
-                        .maxTokens(options.getMaxTokens())
-                        .topP(options.getTopP())
-                        .frequencyPenalty(options.getFrequencyPenalty())
-                        .presencePenalty(options.getPresencePenalty())
-                        .seed(seed)
-                        .stop(options.getStopSequences())
-                        .timeout(streamTimeout)
-                        .logRequests(options.getLogRequests())
-                        .logResponses(options.getLogRequests());
+        OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder streamBuilder = OpenAiStreamingChatModel.builder()
+                .baseUrl(baseUrl)
+                .apiKey(config.apiKey())
+                .modelName(config.modelName())
+                .temperature(options.getTemperature())
+                .maxTokens(options.getMaxTokens())
+                .topP(options.getTopP())
+                .frequencyPenalty(options.getFrequencyPenalty())
+                .presencePenalty(options.getPresencePenalty())
+                .seed(seed)
+                .stop(options.getStopSequences())
+                .timeout(streamTimeout)
+                .logRequests(options.getLogRequests())
+                .logResponses(options.getLogRequests());
         // Surface reasoning the same way OpenAiProvider does: local
         // reasoning models loaded in LM Studio return their chain-of-
         // thought in a separate `reasoning_content` field, which
@@ -142,8 +138,7 @@ public class LmStudioProvider extends AbstractChatProvider {
         // returnThinking is on. Harmless for non-reasoning models.
         syncBuilder.returnThinking(true);
         streamBuilder.returnThinking(true);
-        ThinkingLevel effectiveLevel = OpenAiProvider.gateThinkingLevel(
-                options.getThinkingLevel(), modelInfo);
+        ThinkingLevel effectiveLevel = OpenAiProvider.gateThinkingLevel(options.getThinkingLevel(), modelInfo);
         String reasoningEffort = OpenAiProvider.mapReasoningEffort(effectiveLevel);
         if (reasoningEffort != null) {
             OpenAiChatRequestParameters defaults = OpenAiChatRequestParameters.builder()
@@ -152,10 +147,14 @@ public class LmStudioProvider extends AbstractChatProvider {
             syncBuilder.defaultRequestParameters(defaults);
             streamBuilder.defaultRequestParameters(defaults);
         }
-        log.debug("Built LM Studio chat pair: model='{}', baseUrl='{}', maxTokens={}, "
+        log.debug(
+                "Built LM Studio chat pair: model='{}', baseUrl='{}', maxTokens={}, "
                         + "temperature={}, reasoningEffort={}",
-                config.modelName(), baseUrl, options.getMaxTokens(),
-                options.getTemperature(), reasoningEffort);
+                config.modelName(),
+                baseUrl,
+                options.getMaxTokens(),
+                options.getTemperature(),
+                reasoningEffort);
         return new BuiltChat(syncBuilder.build(), streamBuilder.build());
     }
 }

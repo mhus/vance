@@ -31,13 +31,27 @@ import org.jspecify.annotations.Nullable;
  *                         Resolved from setting key
  *                         {@code ai.provider.<instance>.baseUrl} via the normal
  *                         project cascade.
+ * @param insecureTls    whether the instance's sidecar declared
+ *                         {@code tlsInsecure: true} — providers route chat
+ *                         calls through a trust-all TLS context for private-CA
+ *                         gateways. False unless explicitly declared.
  */
 public record AiChatConfig(
         String provider,
         String providerInstance,
         String modelName,
         String apiKey,
-        @Nullable String baseUrl) {
+        @Nullable String baseUrl,
+        boolean insecureTls) {
+
+    /**
+     * Back-compat constructor for callers predating the TLS flag — validated
+     * TLS, as every instance had before {@code tlsInsecure} existed.
+     */
+    public AiChatConfig(
+            String provider, String providerInstance, String modelName, String apiKey, @Nullable String baseUrl) {
+        this(provider, providerInstance, modelName, apiKey, baseUrl, false);
+    }
 
     /** Back-compat convenience: instance defaults to the protocol wire-name. */
     public AiChatConfig(String provider, String modelName, String apiKey, @Nullable String baseUrl) {

@@ -33,7 +33,7 @@ For a spec `<prefix>:<rest>`:
 | `ai.alias.default.fim` | a **completion-trained** model with a `fimTemplate` | follow-up edit mode — unset means chat path; pointing it at a chat model is a hard error by design |
 
 Beyond these, engines and internal tasks may read their own alias —
-`ai.alias.default.arthur`, `default:eddie`, `default:ford`,
+`ai.alias.default.arthur`, `default:eddie`, `default:ford`, `default:creator`,
 `default:follow-up`, `default:document-summary`, `default:how-do-i`,
 `default:research`, `default:session-metadata`, … — each overriding the
 tier for exactly that task. To find out which alias a recipe expects:

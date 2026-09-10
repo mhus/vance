@@ -30,7 +30,9 @@ description: |
   at exactly that revision.
 engine: ford
 params:
-  model: default:analyze
+  # Worker ladder, first configured wins: engine-specific creator (tenant
+  # override for this worker specifically) → strong analyze tier → ai.default.*.
+  model: default:creator,default:analyze
   validation: true
   # Setting up automation is a small, focused task (read context →
   # write one or two YAMLs → optionally test-fire). Keep the budget

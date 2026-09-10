@@ -29,7 +29,9 @@ engine: arthur
 # the persona, we don't replace the engine contract.
 promptMode: APPEND
 params:
-  model: default:arthur,default:analyze
+  # Degradation ladder, first configured wins: engine-specific arthur →
+  # surface-tier chat → strong analyze tier → ai.default.*.
+  model: default:arthur,default:chat,default:analyze
   validation: true
   maxIterations: 6
   fallbackModels:

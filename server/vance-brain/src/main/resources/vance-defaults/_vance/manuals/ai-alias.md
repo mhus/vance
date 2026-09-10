@@ -1,6 +1,6 @@
 ---
-triggers: model alias, modell alias, ai.alias, ai.alias.default, default:fast, default:analyze, default:code, default:web, default:deep, default:fim, alias auflösen, model alias setzen, welches modell für task, model spec, ai.default.provider, ai.default.model, modell label, task modell, quick model, analyze model
-summary: The ai.alias.default.* settings — which model aliases exist (fast, analyze, deep, web, code, fim plus engine/task-specific ones), how they resolve (direct provider > alias setting > default fallback), the value forms, and how they are written per project or tenant-wide.
+triggers: model alias, modell alias, ai.alias, ai.alias.default, default:fast, default:chat, default:analyze, default:code, default:web, default:deep, default:fim, alias auflösen, model alias setzen, welches modell für task, model spec, ai.default.provider, ai.default.model, modell label, task modell, quick model, analyze model
+summary: The ai.alias.default.* settings — which model aliases exist (fast, chat, analyze, deep, web, code, fim plus engine/task-specific ones), how they resolve (direct provider > alias setting > default fallback), the value forms, and how they are written per project or tenant-wide.
 ---
 # Model aliases — the `ai.alias.default.*` settings
 
@@ -25,6 +25,7 @@ For a spec `<prefix>:<rest>`:
 | Key | Points at | Used by |
 |---|---|---|
 | `ai.alias.default.fast` | a small, cheap, quick model | follow-ups, suggestions, metadata, triage |
+| `ai.alias.default.chat` | the model for **interactive chat surfaces** — the highest turn volume in the system; unset means chat recipes fall back to the analyze tier | arthur, eddie, discuss recipes (as a degradation ladder `default:<engine>,default:chat,default:analyze`) |
 | `ai.alias.default.analyze` | the strong reasoning model | analysis, planning, judges, deep reads |
 | `ai.alias.default.deep` | the strongest available model | heavyweight synthesis, escalation |
 | `ai.alias.default.web` | a web/research-capable model | research tasks |

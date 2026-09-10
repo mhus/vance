@@ -12,7 +12,10 @@ description: |
   recipe is named.
 engine: arthur
 params:
-  model: default:arthur,default:analyze
+  # Degradation ladder, first configured wins: engine-specific arthur →
+  # surface-tier chat (opt-in cost control for the highest-volume surface)
+  # → strong analyze tier (the historical default, unchanged) → ai.default.*.
+  model: default:arthur,default:chat,default:analyze
   validation: true
   # maxIterations is deliberately NOT pinned here — it falls through to
   # vance.arthur.maxToolIterations (20), which is where the value is

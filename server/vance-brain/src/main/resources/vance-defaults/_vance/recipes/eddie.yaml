@@ -14,7 +14,9 @@ description: |
   named.
 engine: eddie
 params:
-  model: default:eddie,default:analyze
+  # Degradation ladder, first configured wins: engine-specific eddie →
+  # surface-tier chat → strong analyze tier → ai.default.*.
+  model: default:eddie,default:chat,default:analyze
   validation: true
   # Not a hard cap — the action-loop judge extends by +10 with no ceiling,
   # so this only decides how early a long turn starts paying for judge

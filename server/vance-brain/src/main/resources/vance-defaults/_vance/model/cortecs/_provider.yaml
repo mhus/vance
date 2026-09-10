@@ -11,8 +11,11 @@ authType: api-key
 # There are deliberately no model documents in this directory. Cortecs
 # serves a changing catalogue that we do not curate; run "Discover AI
 # Models" (Profile → Actions) after setting the key and the models land
-# under `_vance/model-auto/cortecs/`. Pricing and `kind` never come from
-# discovery — add those by hand here when a model needs them.
+# under `_vance/model-auto/cortecs/`. Cortecs' /v1/models reports
+# context size, output limit, owned-by and a EUR-per-MTok pricing block,
+# so discovery carries those observations automatically. `kind`, pricing
+# corrections and capabilities stay manual — add those by hand here when
+# a model needs them.
 #
 # No `maxTools:` either. The value belongs to the endpoint, and we have
 # not measured what this gateway enforces; an invented cap would silently

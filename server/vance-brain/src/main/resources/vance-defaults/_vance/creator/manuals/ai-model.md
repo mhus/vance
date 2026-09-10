@@ -109,9 +109,10 @@ It needs tenant ADMIN; when the call comes back denied, say so
 plainly and tell the user the button does the same: Profile →
 Actions → Discover AI Models. Auto-docs carry the observations the
 listing endpoint reports — `contextWindowTokens`, `maxOutputTokens`,
-`ownedBy` — when the gateway returns them (OpenAI proper gives only
-`id`/`owned_by`; OpenAI-compatible gateways often add the limits).
-They never carry pricing or `kind`; those need a manual doc on top.
+`ownedBy`, and `pricing` when the gateway ships it (cortecs reports
+EUR per MTok, OpenRouter per-token USD which is converted; OpenAI
+proper gives only `id`/`owned_by`). `kind` and capabilities never come
+from discovery — those need a manual doc on top.
 catalog, so manual docs written before the call become visible in
 the same breath — without it the refresh runs every 30 minutes
 (or Profile → Actions → Refresh AI Model Catalog, operator-only).

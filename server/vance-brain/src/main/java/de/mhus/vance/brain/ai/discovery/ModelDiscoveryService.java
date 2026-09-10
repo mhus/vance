@@ -43,12 +43,15 @@ import org.springframework.stereotype.Service;
  * manual layer ({@code model}), so discovery is free to overwrite any
  * file it owns — manual edits live elsewhere and survive untouched.
  *
- * <p>Pricing and {@code kind} are intentionally NOT in the auto docs.
- * Provider listing APIs don't return prices, and model <i>kind</i> is a
- * classification the operator owns — the manual layer (bundled +
- * operator edits) carries both and inherits through the cascade. Since
- * the auto layer outranks the bundled one, anything asserted here would
- * shadow a correct bundled value; see {@link DiscoveredModelInfo}.
+ * <p>What goes into the auto docs is decided by the observation
+ * doctrine: everything the listing endpoint itself reports (wire name,
+ * limits, owned-by, and prices when the endpoint ships them — cortecs
+ * does, OpenRouter does). {@code kind} and capabilities are NOT written:
+ * model <i>kind</i> is a classification the operator owns — the manual
+ * layer (bundled + operator edits) carries it and inherits through the
+ * cascade. Since the auto layer outranks the bundled one, an asserted
+ * classification would shadow a correct bundled value; see
+ * {@link DiscoveredModelInfo}.
  */
 @Service
 @RequiredArgsConstructor
@@ -271,9 +274,10 @@ public class ModelDiscoveryService {
      * losslessly.
      *
      * <p>Only <em>observations</em> go in here — the wire name plus, if the
-     * vendor reports them, context window, output limit and owned-by.
-     * Classifications
-     * ({@code kind}, pricing, capabilities) are never written: the auto
+     * vendor reports them, context window, output limit, owned-by and
+     * prices (cortecs and OpenRouter ship them; the unit hangs on the
+     * field name, see {@code OpenAiModelListing}). Classifications
+     * ({@code kind}, capabilities) are never written: the auto
      * layer outranks the bundled layer in the catalog cascade, so an
      * asserted {@code kind: chat} would shadow a bundled
      * {@code kind: image} and drop that model out of every image picker.
@@ -307,6 +311,26 @@ public class ModelDiscoveryService {
         }
         if (model.ownedBy() != null) {
             yaml.append("ownedBy: ").append(yamlString(model.ownedBy())).append('\n');
+        }
+        if (model.pricing() != null) {
+            yaml.append("pricing:\n");
+            yaml.append("  currency: ").append(model.pricing().currency()).append('\n');
+            yaml.append("  inputPerMTok: ")
+                    .append(model.pricing().inputPerMTok())
+                    .append('\n');
+            yaml.append("  outputPerMTok: ")
+                    .append(model.pricing().outputPerMTok())
+                    .append('\n');
+            if (model.pricing().cacheReadPerMTok() != null) {
+                yaml.append("  cacheReadPerMTok: ")
+                        .append(model.pricing().cacheReadPerMTok())
+                        .append('\n');
+            }
+            if (model.pricing().cacheWritePerMTok() != null) {
+                yaml.append("  cacheWritePerMTok: ")
+                        .append(model.pricing().cacheWritePerMTok())
+                        .append('\n');
+            }
         }
         yaml.append("discoveredBy: ").append(DISCOVERED_BY).append('\n');
         yaml.append("discoveredAt: \"").append(Instant.now()).append("\"\n");

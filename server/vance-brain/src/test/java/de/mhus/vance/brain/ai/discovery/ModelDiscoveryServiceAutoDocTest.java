@@ -12,6 +12,7 @@ import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.WriteActor;
@@ -99,6 +100,33 @@ class ModelDiscoveryServiceAutoDocTest {
                 .contains("ownedBy: \"openai\"")
                 .doesNotContain("contextWindowTokens:")
                 .doesNotContain("maxOutputTokens:");
+    }
+
+    @Test
+    void auto_doc_writes_pricing_block_when_reported() {
+        // A gateway that reports prices (cortecs ships EUR per MTok):
+        // the pricing block lands in the doc as a nested YAML block,
+        // in exactly the schema the ModelCatalog pricing reader expects.
+        String yaml = runDiscoveryFor(new DiscoveredModelInfo(
+                "gemini-3.8-flash",
+                1048576,
+                65535,
+                "Google",
+                new ModelInfo.Pricing("EUR", 0.741, 3.703, 0.074, 0.075)));
+
+        assertThat(yaml)
+                .contains("pricing:")
+                .contains("  currency: EUR")
+                .contains("  inputPerMTok: 0.741")
+                .contains("  outputPerMTok: 3.703")
+                .contains("  cacheReadPerMTok: 0.074")
+                .contains("  cacheWritePerMTok: 0.075");
+    }
+
+    @Test
+    void auto_doc_without_reported_pricing_has_no_block() {
+        String yaml = runDiscoveryFor(DiscoveredModelInfo.of("gpt-4o"));
+        assertThat(yaml).doesNotContain("pricing:");
     }
 
     /**

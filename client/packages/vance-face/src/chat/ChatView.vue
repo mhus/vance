@@ -449,7 +449,14 @@ function isChatProcess(processName: string | null | undefined): boolean {
   return processName === props.chatProcessName;
 }
 
+// Distance from the bottom edge (in px) within which incoming messages
+// still count as "the user is reading at the end" and auto-scroll stays on.
+const NEAR_BOTTOM_THRESHOLD_PX = 100;
+
 function appendMessageBubble(data: ChatMessageAppendedData): void {
+  // Capture the scroll position before the DOM grows: if the user has
+  // scrolled up to read, incoming frames must not yank the view down.
+  const wasNearBottom = isNearBottom();
   // Dedupe against optimistic local echo: when the canonical user
   // message arrives from the server, drop the matching `tmp_*` entry
   // that the composer pushed at send-time.
@@ -483,7 +490,7 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
   }
   // Any frame counts as activity for talk-mode's idle timer.
   emit('note-activity');
-  scrollToBottom();
+  if (wasNearBottom) scrollToBottom();
 }
 
 function appendChunk(data: ChatMessageChunkData): void {
@@ -498,9 +505,12 @@ function appendChunk(data: ChatMessageChunkData): void {
       processName: data.processName,
     });
   }
+  // Capture the scroll position before the draft grows (DOM updates
+  // only on the next tick, but be explicit about reading it first).
+  const wasNearBottom = isNearBottom();
   // Trigger reactivity on the Map.
   streamingDrafts.value = new Map(streamingDrafts.value);
-  scrollToBottom();
+  if (wasNearBottom) scrollToBottom();
 }
 
 /**
@@ -522,9 +532,12 @@ function appendThinkingChunk(data: ChatMessageChunkData): void {
       processName: data.processName,
     });
   }
+  // Capture the scroll position before the draft grows (DOM updates
+  // only on the next tick, but be explicit about reading it first).
+  const wasNearBottom = isNearBottom();
   // Trigger reactivity on the Map.
   streamingDrafts.value = new Map(streamingDrafts.value);
-  scrollToBottom();
+  if (wasNearBottom) scrollToBottom();
 }
 
 function onProcessModeChanged(data: ProcessModeChangedNotification): void {
@@ -572,6 +585,20 @@ function onProgress(data: ProcessProgressNotification): void {
   if (applyProgress(activityState.value, data, props.chatProcessName, Date.now())) {
     activityState.value = { ...activityState.value };
   }
+}
+
+/**
+ * Whether the user is "reading at the end" of the transcript: true when the
+ * container has no scrollbar at all (content fits the viewport) or when
+ * the scroll position is within {@link NEAR_BOTTOM_THRESHOLD_PX} of the
+ * bottom edge. Incoming messages auto-scroll only in this state, so
+ * reading further up is never interrupted.
+ */
+function isNearBottom(): boolean {
+  const el = messageContainer.value;
+  if (!el) return true;
+  if (el.scrollHeight <= el.clientHeight) return true;
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_THRESHOLD_PX;
 }
 
 function scrollToBottom(): void {

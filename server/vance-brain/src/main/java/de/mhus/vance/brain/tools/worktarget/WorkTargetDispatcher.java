@@ -82,25 +82,24 @@ public class WorkTargetDispatcher {
      * the session, or if the backend tool isn't in this engine's
      * allow-set.
      */
-    public Map<String, Object> dispatch(ToolInvocationContext ctx,
-                                        ToolBus bus,
-                                        Tool wrapper,
-                                        String clientName,
-                                        String workName,
-                                        @Nullable Map<String, Object> params) {
-        ThinkProcessDocument process = thinkProcessService.findById(ctx.processId())
-                .orElseThrow(() -> new ToolException(
-                        "Process '" + ctx.processId() + "' not found"));
+    public Map<String, Object> dispatch(
+            ToolInvocationContext ctx,
+            ToolBus bus,
+            Tool wrapper,
+            String clientName,
+            String workName,
+            @Nullable Map<String, Object> params) {
+        ThinkProcessDocument process = thinkProcessService
+                .findById(ctx.processId())
+                .orElseThrow(() -> new ToolException("Process '" + ctx.processId() + "' not found"));
         WorkTarget target = workTargetService.current(process);
-        Map<String, Object> p = params == null
-                ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
+        Map<String, Object> p = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
         String backendName;
         if (target.kind() == WorkTargetKind.CLIENT) {
             if (!workTargetService.clientConnected(process.getSessionId())) {
-                throw new ToolException(
-                        "WorkTarget is CLIENT but no Foot client is bound to this "
-                                + "session — call work_target_set(kind=\"WORK\") or "
-                                + "reconnect the foot CLI.");
+                throw new ToolException("WorkTarget is CLIENT but no Foot client is bound to this "
+                        + "session — call work_target_set(kind=\"WORK\") or "
+                        + "reconnect the foot CLI.");
             }
             rejectUnknownParams(ctx, wrapper, clientName, p);
             // Foot tools don't take dirName — strip if the LLM passed one through.
@@ -114,13 +113,13 @@ public class WorkTargetDispatcher {
             rejectUnknownParams(ctx, wrapper, clientName, p);
             p.remove("dirName");
             DaemonRegistry.DaemonKey key = daemonKey(process, target.targetName());
-            return daemonToolInvoker.invoke(
-                    key, clientName, p, Duration.ofSeconds(daemonTimeoutSeconds));
+            return daemonToolInvoker.invoke(key, clientName, p, Duration.ofSeconds(daemonTimeoutSeconds));
         } else {
             // WorkTargetKind.WORK
             rejectUnknownParams(ctx, wrapper, workName, p);
             if (!p.containsKey("dirName")
-                    && target.targetName() != null && !target.targetName().isBlank()) {
+                    && target.targetName() != null
+                    && !target.targetName().isBlank()) {
                 p.put("dirName", target.targetName());
             }
             backendName = workName;
@@ -137,7 +136,26 @@ public class WorkTargetDispatcher {
         // invoke would activate the one we happened to pick — the next turn
         // would then show file_read AND work_file_read, which is the exact
         // ambiguity this wrapper removes.
-        return bus.invokeDelegate(backendName, p);
+        try {
+            return bus.invokeDelegate(backendName, p);
+        } catch (ToolException e) {
+            // A backend outside this engine's allow-set (web profiles carry
+            // no client_* tools) is recoverable by switching the target —
+            // say how, instead of letting the model conclude the whole
+            // exec/file family is unavailable.
+            if (e.getMessage() != null
+                    && e.getMessage().contains("not in this engine's dispatch pool")
+                    && target.kind() == WorkTargetKind.CLIENT) {
+                throw new ToolException(
+                        wrapper.name()
+                                + ": the active WorkTarget is CLIENT, but '" + backendName
+                                + "' is not in this engine's toolset (no client tools in a"
+                                + " web session). Call work_target_set(kind=\"WORK\") to run"
+                                + " server-side, or use '" + workName + "' directly.",
+                        e);
+            }
+            throw e;
+        }
     }
 
     /**
@@ -181,10 +199,8 @@ public class WorkTargetDispatcher {
      * schemas aligned. This is the runtime net for the drift that slips
      * past it, e.g. a client-supplied tool pack overriding a backend name.
      */
-    private void rejectUnknownParams(ToolInvocationContext ctx,
-                                     Tool wrapper,
-                                     String backendName,
-                                     Map<String, Object> params) {
+    private void rejectUnknownParams(
+            ToolInvocationContext ctx, Tool wrapper, String backendName, Map<String, Object> params) {
         if (params.isEmpty()) return;
         Set<String> backendParams = declaredParams(resolveBackend(backendName, ctx));
         if (backendParams.isEmpty()) return;
@@ -234,7 +250,8 @@ public class WorkTargetDispatcher {
 
     private @Nullable Tool resolveBackend(String backendName, ToolInvocationContext ctx) {
         try {
-            return toolDispatcher.resolve(backendName, ctx)
+            return toolDispatcher
+                    .resolve(backendName, ctx)
                     .map(ToolDispatcher.Resolved::tool)
                     .orElse(null);
         } catch (RuntimeException e) {
@@ -251,17 +268,13 @@ public class WorkTargetDispatcher {
      * {@link ToolException} (not a raw {@link IllegalArgumentException})
      * when the process is missing scope fields.
      */
-    private DaemonRegistry.DaemonKey daemonKey(
-            ThinkProcessDocument process, @Nullable String daemonName) {
-        if (StringUtils.isBlank(process.getTenantId())
-                || StringUtils.isBlank(process.getProjectId())) {
-            throw new ToolException(
-                    "WorkTarget is DAEMON but the process is missing tenant/project "
-                            + "scope — cannot resolve daemon '" + daemonName + "'");
+    private DaemonRegistry.DaemonKey daemonKey(ThinkProcessDocument process, @Nullable String daemonName) {
+        if (StringUtils.isBlank(process.getTenantId()) || StringUtils.isBlank(process.getProjectId())) {
+            throw new ToolException("WorkTarget is DAEMON but the process is missing tenant/project "
+                    + "scope — cannot resolve daemon '" + daemonName + "'");
         }
         try {
-            return new DaemonRegistry.DaemonKey(
-                    process.getTenantId(), process.getProjectId(), daemonName);
+            return new DaemonRegistry.DaemonKey(process.getTenantId(), process.getProjectId(), daemonName);
         } catch (IllegalArgumentException ex) {
             throw new ToolException("invalid DAEMON work target: " + ex.getMessage(), ex);
         }

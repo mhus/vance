@@ -25,6 +25,14 @@ import org.springframework.stereotype.Service;
  * if a Foot client is bound to the session, otherwise {@code WORK}
  * with {@code dirName=null} (process-temp RootDir via
  * {@code WorkspaceDirResolver}).
+ *
+ * <p>"Bound" means the session's client registration carries the
+ * foot exec/file backends ({@code client_exec_run} /
+ * {@code client_file_read}). Web clients register their browser
+ * tools (e.g. {@code location_get}) in the same registry, and a
+ * {@code location_get} registration is not a machine to run shell
+ * commands on — treating any entry as a Foot used to flip web
+ * sessions onto a dead CLIENT target.
  */
 @Service
 @RequiredArgsConstructor
@@ -51,8 +59,10 @@ public class WorkTargetService {
                 Map<String, Object> typed = (Map<String, Object>) map;
                 return WorkTarget.fromMap(typed);
             } catch (IllegalArgumentException ex) {
-                log.warn("WorkTargetService: malformed engineParams[workTarget] on id='{}' — falling back to default ({})",
-                        process.getId(), ex.toString());
+                log.warn(
+                        "WorkTargetService: malformed engineParams[workTarget] on id='{}' — falling back to default ({})",
+                        process.getId(),
+                        ex.toString());
             }
         }
         return defaultFor(process);
@@ -64,9 +74,10 @@ public class WorkTargetService {
      * programming error).
      */
     public WorkTarget current(String processId) {
-        ThinkProcessDocument process = thinkProcessService.findById(processId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "WorkTargetService.current: unknown process '" + processId + "'"));
+        ThinkProcessDocument process = thinkProcessService
+                .findById(processId)
+                .orElseThrow(() ->
+                        new IllegalStateException("WorkTargetService.current: unknown process '" + processId + "'"));
         return current(process);
     }
 
@@ -80,12 +91,12 @@ public class WorkTargetService {
         if (target == null) {
             throw new IllegalArgumentException("target is required");
         }
-        ThinkProcessDocument process = thinkProcessService.findById(processId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "WorkTargetService.set: unknown process '" + processId + "'"));
+        ThinkProcessDocument process = thinkProcessService
+                .findById(processId)
+                .orElseThrow(
+                        () -> new IllegalStateException("WorkTargetService.set: unknown process '" + processId + "'"));
         Map<String, Object> existing = process.getEngineParams();
-        Map<String, Object> merged = existing == null
-                ? new LinkedHashMap<>() : new LinkedHashMap<>(existing);
+        Map<String, Object> merged = existing == null ? new LinkedHashMap<>() : new LinkedHashMap<>(existing);
         merged.put(WorkTarget.KEY, target.toMap());
         boolean updated = thinkProcessService.replaceEngineParams(processId, merged);
         if (!updated) {
@@ -101,8 +112,7 @@ public class WorkTargetService {
      * temp RootDir).
      */
     public WorkTarget defaultFor(ThinkProcessDocument process) {
-        if (process != null && process.getSessionId() != null
-                && clientToolRegistry.entry(process.getSessionId()).isPresent()) {
+        if (process != null && process.getSessionId() != null && footBound(process.getSessionId())) {
             return WorkTarget.client();
         }
         return WorkTarget.work(null);
@@ -110,11 +120,31 @@ public class WorkTargetService {
 
     /**
      * Whether a Foot client is bound to the process's session right
-     * now. Tools dispatching to the CLIENT backend should sanity-check
-     * this and emit a clear error when the client disconnected.
+     * now — i.e. one that carries the foot exec/file backends. Web
+     * clients register browser tools (e.g. {@code location_get}) in
+     * the same registry; they cannot serve CLIENT work targets and
+     * must not count as one. Tools dispatching to the CLIENT backend
+     * sanity-check with this and emit a clear error otherwise.
      */
     public boolean clientConnected(@Nullable String sessionId) {
-        return sessionId != null && clientToolRegistry.entry(sessionId).isPresent();
+        return footBound(sessionId);
+    }
+
+    /**
+     * The session's registration counts as a Foot only when it carries
+     * at least one of the canonical exec/file backends the
+     * {@code file_*}/{@code exec_*} wrappers dispatch to. A web client
+     * registering only browser tools is a registered client but not a
+     * machine to run commands on.
+     */
+    private boolean footBound(@Nullable String sessionId) {
+        if (sessionId == null) {
+            return false;
+        }
+        return clientToolRegistry
+                .entry(sessionId)
+                .map(e -> e.tools().containsKey("client_exec_run") || e.tools().containsKey("client_file_read"))
+                .orElse(false);
     }
 
     /**
@@ -139,10 +169,8 @@ public class WorkTargetService {
      * "no inheritance".
      */
     public Map<String, Object> resolveSpawnParams(
-            @Nullable Map<String, Object> recipeParams,
-            @Nullable String parentProcessId) {
-        Map<String, Object> out = recipeParams == null
-                ? new LinkedHashMap<>() : new LinkedHashMap<>(recipeParams);
+            @Nullable Map<String, Object> recipeParams, @Nullable String parentProcessId) {
+        Map<String, Object> out = recipeParams == null ? new LinkedHashMap<>() : new LinkedHashMap<>(recipeParams);
         if (out.containsKey(WorkTarget.KEY)) {
             return out;
         }
@@ -157,8 +185,10 @@ public class WorkTargetService {
                 }
             });
         } catch (RuntimeException ex) {
-            log.warn("WorkTargetService.resolveSpawnParams: parent lookup failed for '{}' — skipping inheritance ({})",
-                    parentProcessId, ex.toString());
+            log.warn(
+                    "WorkTargetService.resolveSpawnParams: parent lookup failed for '{}' — skipping inheritance ({})",
+                    parentProcessId,
+                    ex.toString());
         }
         return out;
     }

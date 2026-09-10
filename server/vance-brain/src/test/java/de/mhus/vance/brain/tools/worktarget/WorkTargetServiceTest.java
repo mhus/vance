@@ -43,8 +43,15 @@ class WorkTargetServiceTest {
 
     @Test
     void current_noEngineParams_returnsClientWhenFootConnected() {
-        when(clientToolRegistry.entry(SESSION_ID)).thenReturn(
-                Optional.of(mock(ClientToolRegistry.Entry.class)));
+        when(clientToolRegistry.entry(SESSION_ID))
+                .thenReturn(Optional.of(new ClientToolRegistry.Entry(
+                        "editor-foot",
+                        null,
+                        Map.of(
+                                "client_exec_run",
+                                de.mhus.vance.api.tools.ToolSpec.builder()
+                                        .name("client_exec_run")
+                                        .build()))));
 
         WorkTarget t = service.current(process);
 
@@ -62,9 +69,29 @@ class WorkTargetServiceTest {
     }
 
     @Test
+    void current_noEngineParams_webClientRegistrationStaysWork() {
+        // A web client registers browser tools (location_get) in the same
+        // registry — that is a registered client but not a Foot: no exec/file
+        // backends, so the default must stay WORK. The old any-entry check
+        // flipped web sessions onto a dead CLIENT target.
+        when(clientToolRegistry.entry(SESSION_ID))
+                .thenReturn(Optional.of(new ClientToolRegistry.Entry(
+                        "editor-web",
+                        null,
+                        Map.of(
+                                "location_get",
+                                de.mhus.vance.api.tools.ToolSpec.builder()
+                                        .name("location_get")
+                                        .build()))));
+
+        WorkTarget t = service.current(process);
+
+        assertThat(t.kind()).isEqualTo(WorkTargetKind.WORK);
+    }
+
+    @Test
     void current_engineParamsClient_returnsClient() {
-        process.setEngineParams(new LinkedHashMap<>(Map.of(
-                WorkTarget.KEY, Map.of("kind", "CLIENT"))));
+        process.setEngineParams(new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "CLIENT"))));
 
         WorkTarget t = service.current(process);
 
@@ -74,8 +101,8 @@ class WorkTargetServiceTest {
 
     @Test
     void current_engineParamsWorkWithTargetName_returnsWork() {
-        process.setEngineParams(new LinkedHashMap<>(Map.of(
-                WorkTarget.KEY, Map.of("kind", "WORK", "targetName", "tmp52"))));
+        process.setEngineParams(
+                new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "WORK", "targetName", "tmp52"))));
 
         WorkTarget t = service.current(process);
 
@@ -87,8 +114,8 @@ class WorkTargetServiceTest {
     void current_engineParamsLegacyDirName_stillResolves() {
         // Pre-rename engineParams used the "dirName" sub-key — fromMap
         // tolerates it so existing processes keep working.
-        process.setEngineParams(new LinkedHashMap<>(Map.of(
-                WorkTarget.KEY, Map.of("kind", "WORK", "dirName", "legacy-root"))));
+        process.setEngineParams(
+                new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "WORK", "dirName", "legacy-root"))));
 
         WorkTarget t = service.current(process);
 
@@ -98,8 +125,8 @@ class WorkTargetServiceTest {
 
     @Test
     void current_engineParamsDaemon_returnsDaemon() {
-        process.setEngineParams(new LinkedHashMap<>(Map.of(
-                WorkTarget.KEY, Map.of("kind", "DAEMON", "targetName", "build-box"))));
+        process.setEngineParams(
+                new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "DAEMON", "targetName", "build-box"))));
 
         WorkTarget t = service.current(process);
 
@@ -109,8 +136,7 @@ class WorkTargetServiceTest {
 
     @Test
     void current_engineParamsMalformed_fallsBackToDefault() {
-        process.setEngineParams(new LinkedHashMap<>(Map.of(
-                WorkTarget.KEY, Map.of("kind", "garbage"))));
+        process.setEngineParams(new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "garbage"))));
         when(clientToolRegistry.entry(SESSION_ID)).thenReturn(Optional.empty());
 
         WorkTarget t = service.current(process);

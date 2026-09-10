@@ -671,11 +671,31 @@ public class SettingService {
             @Nullable String plaintext,
             SettingType type,
             @Nullable String actor) {
+        return setEncryptedSecretAs(
+                tenantId, referenceType, referenceId, key, plaintext, type, /*description*/ null, actor);
+    }
+
+    /**
+     * {@link #setEncryptedSecretAs} with a description — the parity this
+     * method owes {@code setAs}: an encrypted setting is just as entitled to
+     * a human note as a plain one, and the admin REST / init loader / project
+     * copy all have one to carry. {@code null} keeps an existing description
+     * (same semantics as {@link #setAs}), a value overwrites it.
+     */
+    public SettingDocument setEncryptedSecretAs(
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String plaintext,
+            SettingType type,
+            @Nullable String description,
+            @Nullable String actor) {
         if (!type.encrypted()) {
             throw new IllegalArgumentException("setEncryptedSecret() requires an encrypted type, got " + type);
         }
         String ciphertext = encryption.encrypt(plaintext);
-        return setInternal(tenantId, referenceType, referenceId, key, ciphertext, type, null, actor);
+        return setInternal(tenantId, referenceType, referenceId, key, ciphertext, type, description, actor);
     }
 
     /**

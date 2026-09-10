@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -49,8 +48,7 @@ class ProjectCopyServiceTest {
     private SettingService settingService;
     private ProjectCopyService service;
 
-    private final SecurityContext subject =
-            SecurityContext.user("marvin", TENANT, List.of());
+    private final SecurityContext subject = SecurityContext.user("marvin", TENANT, List.of());
 
     @BeforeEach
     void setUp() {
@@ -58,8 +56,7 @@ class ProjectCopyServiceTest {
         lifecycleService = mock(ProjectLifecycleService.class);
         documentService = mock(DocumentService.class);
         settingService = mock(SettingService.class);
-        service = new ProjectCopyService(
-                projectService, lifecycleService, documentService, settingService);
+        service = new ProjectCopyService(projectService, lifecycleService, documentService, settingService);
 
         when(projectService.findByTenantAndName(TENANT, SOURCE))
                 .thenReturn(Optional.of(project(SOURCE, ProjectKind.NORMAL, ProjectStatus.RUNNING)));
@@ -70,8 +67,7 @@ class ProjectCopyServiceTest {
                 .thenReturn(List.of());
         when(documentService.loadContent(any(DocumentDocument.class)))
                 .thenAnswer(inv -> new ByteArrayInputStream("body".getBytes(StandardCharsets.UTF_8)));
-        when(documentService.create(any(), any(), any(), any(), any(), any(), any(), any(),
-                any(WriteActor.class)))
+        when(documentService.create(any(), any(), any(), any(), any(), any(), any(), any(), any(WriteActor.class)))
                 .thenAnswer(inv -> {
                     DocumentDocument created = new DocumentDocument();
                     created.setId("new-" + inv.getArgument(2));
@@ -81,12 +77,13 @@ class ProjectCopyServiceTest {
 
     @Test
     void copy_mountedTrashAndLogDocuments_areExcludedNotCopied() {
-        when(documentService.listByProject(TENANT, SOURCE)).thenReturn(List.of(
-                doc("documents/notes.md"),
-                doc("_ext/library/paper.pdf"),
-                doc("_vance/trash/abc_old.md"),
-                doc("_vance/logs/run-1.log"),
-                doc("_vance/config/mounts/library.yaml")));
+        when(documentService.listByProject(TENANT, SOURCE))
+                .thenReturn(List.of(
+                        doc("documents/notes.md"),
+                        doc("_ext/library/paper.pdf"),
+                        doc("_vance/trash/abc_old.md"),
+                        doc("_vance/logs/run-1.log"),
+                        doc("_vance/config/mounts/library.yaml")));
 
         ProjectCopyReportDto report = copy(/*includeSecrets*/ false);
 
@@ -94,16 +91,33 @@ class ProjectCopyServiceTest {
         assertThat(report.getDocumentsExcluded()).isEqualTo(3);
         // The mount *configuration* travels — the copy re-materialises the
         // mount itself the first time somebody lists it.
-        verify(documentService).create(eq(TENANT), eq(TARGET), eq("_vance/config/mounts/library.yaml"),
-                any(), any(), any(), any(), any(), any(WriteActor.class));
-        verify(documentService, never()).create(any(), any(), eq("_ext/library/paper.pdf"),
-                any(), any(), any(), any(), any(), any(WriteActor.class));
+        verify(documentService)
+                .create(
+                        eq(TENANT),
+                        eq(TARGET),
+                        eq("_vance/config/mounts/library.yaml"),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(WriteActor.class));
+        verify(documentService, never())
+                .create(
+                        any(),
+                        any(),
+                        eq("_ext/library/paper.pdf"),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(WriteActor.class));
     }
 
     @Test
     void copy_documentThatFails_doesNotAbortTheRest() {
-        when(documentService.listByProject(TENANT, SOURCE))
-                .thenReturn(List.of(doc("a.md"), doc("b.md")));
+        when(documentService.listByProject(TENANT, SOURCE)).thenReturn(List.of(doc("a.md"), doc("b.md")));
         when(documentService.loadContent(any(DocumentDocument.class)))
                 .thenThrow(new IllegalStateException("storage gone"))
                 .thenAnswer(inv -> new ByteArrayInputStream("body".getBytes(StandardCharsets.UTF_8)));
@@ -127,43 +141,47 @@ class ProjectCopyServiceTest {
 
         assertThat(report.getSettingsCopied()).isEqualTo(1);
         assertThat(report.getSecretsCopied()).isZero();
-        assertThat(report.getSecretsSkipped())
-                .containsExactly("ai.provider.main.apiKey", "smtp.pass");
-        verify(settingService, never()).setEncryptedSecretAs(
-                any(), any(), any(), any(), any(), any(), any());
+        assertThat(report.getSecretsSkipped()).containsExactly("ai.provider.main.apiKey", "smtp.pass");
+        verify(settingService, never()).setEncryptedSecretAs(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void copy_withSecretOptIn_reEncryptsIntoTheNewScope() {
         when(settingService.findAll(TENANT, SettingService.SCOPE_PROJECT, SOURCE))
                 .thenReturn(List.of(setting("smtp.pass", "cipher", SettingType.PASSWORD)));
-        when(settingService.getDecryptedPassword(
-                TENANT, SettingService.SCOPE_PROJECT, SOURCE, "smtp.pass"))
+        when(settingService.getDecryptedPassword(TENANT, SettingService.SCOPE_PROJECT, SOURCE, "smtp.pass"))
                 .thenReturn("hunter2");
 
         ProjectCopyReportDto report = copy(/*includeSecrets*/ true);
 
         assertThat(report.getSecretsCopied()).isEqualTo(1);
         assertThat(report.getSecretsSkipped()).isEmpty();
-        verify(settingService).setEncryptedSecretAs(TENANT, SettingService.SCOPE_PROJECT,
-                TARGET, "smtp.pass", "hunter2", SettingType.PASSWORD, "marvin");
+        // 8-arg form — the copy carries the source setting's description
+        // through, like the plain path always did.
+        verify(settingService)
+                .setEncryptedSecretAs(
+                        TENANT,
+                        SettingService.SCOPE_PROJECT,
+                        TARGET,
+                        "smtp.pass",
+                        "hunter2",
+                        SettingType.PASSWORD,
+                        null,
+                        "marvin");
     }
 
     @Test
     void copy_secretThatCannotBeDecrypted_isReportedRatherThanWrittenEmpty() {
         when(settingService.findAll(TENANT, SettingService.SCOPE_PROJECT, SOURCE))
                 .thenReturn(List.of(setting("smtp.pass", "cipher", SettingType.PASSWORD)));
-        when(settingService.getDecryptedPassword(
-                TENANT, SettingService.SCOPE_PROJECT, SOURCE, "smtp.pass"))
+        when(settingService.getDecryptedPassword(TENANT, SettingService.SCOPE_PROJECT, SOURCE, "smtp.pass"))
                 .thenReturn(null);
 
         ProjectCopyReportDto report = copy(/*includeSecrets*/ true);
 
         assertThat(report.getSecretsCopied()).isZero();
-        assertThat(report.getSecretsSkipped()).singleElement().asString()
-                .contains("smtp.pass");
-        verify(settingService, never()).setEncryptedSecretAs(
-                any(), any(), any(), any(), any(), any(), any());
+        assertThat(report.getSecretsSkipped()).singleElement().asString().contains("smtp.pass");
+        verify(settingService, never()).setEncryptedSecretAs(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -198,8 +216,7 @@ class ProjectCopyServiceTest {
 
         assertThatThrownBy(() -> copy(/*includeSecrets*/ false))
                 .isInstanceOf(ProjectService.SystemProjectProtectedException.class);
-        verify(lifecycleService, never()).create(any(), any(), any(), any(), anyList(),
-                any(), any());
+        verify(lifecycleService, never()).create(any(), any(), any(), any(), anyList(), any(), any());
     }
 
     @Test

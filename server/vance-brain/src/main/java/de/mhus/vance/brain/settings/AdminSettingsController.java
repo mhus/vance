@@ -1,15 +1,14 @@
 package de.mhus.vance.brain.settings;
 
 import de.mhus.vance.api.settings.SettingDto;
-import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.api.settings.SettingWriteRequest;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
-import de.mhus.vance.shared.access.AccessFilterBase;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -91,8 +90,8 @@ public class AdminSettingsController {
                     .map(AdminSettingsController::toDtoFromStorage)
                     .toList();
         }
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Provide either (referenceType + referenceId) or (key)");
+        throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST, "Provide either (referenceType + referenceId) or (key)");
     }
 
     @GetMapping("/{referenceType}/{referenceId}/{key}")
@@ -103,13 +102,12 @@ public class AdminSettingsController {
             @PathVariable("key") String key,
             HttpServletRequest httpRequest) {
 
-        authority.enforce(httpRequest,
-                new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
         StorageRef ref = mapToStorage(referenceType, referenceId);
-        return settingService.find(tenant, ref.type(), ref.id(), key)
+        return settingService
+                .find(tenant, ref.type(), ref.id(), key)
                 .map(doc -> toDto(doc, referenceType, referenceId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Setting not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Setting not found"));
     }
 
     @PutMapping("/{referenceType}/{referenceId}/{key}")
@@ -121,20 +119,40 @@ public class AdminSettingsController {
             @Valid @RequestBody SettingWriteRequest request,
             HttpServletRequest httpRequest) {
 
-        authority.enforce(httpRequest,
-                new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
         StorageRef ref = mapToStorage(referenceType, referenceId);
         // The actor travels: a setting.change row in the activity feed exists to
         // answer "who changed this", and this is one of the paths that knows.
         String actor = AccessFilterBase.usernameOrNull(httpRequest);
         SettingDocument saved = request.getType().encrypted()
-                ? settingService.setEncryptedSecretAs(tenant, ref.type(), ref.id(), key,
-                        request.getValue(), request.getType(), actor)
-                : settingService.setAs(tenant, ref.type(), ref.id(), key,
-                        request.getValue(), request.getType(), request.getDescription(), actor);
+                ? settingService.setEncryptedSecretAs(
+                        tenant,
+                        ref.type(),
+                        ref.id(),
+                        key,
+                        request.getValue(),
+                        request.getType(),
+                        request.getDescription(),
+                        actor)
+                : settingService.setAs(
+                        tenant,
+                        ref.type(),
+                        ref.id(),
+                        key,
+                        request.getValue(),
+                        request.getType(),
+                        request.getDescription(),
+                        actor);
 
-        log.info("Setting upserted tenant='{}' wire='{}:{}' storage='{}:{}' key='{}' type='{}'",
-                tenant, referenceType, referenceId, ref.type(), ref.id(), key, saved.getType());
+        log.info(
+                "Setting upserted tenant='{}' wire='{}:{}' storage='{}:{}' key='{}' type='{}'",
+                tenant,
+                referenceType,
+                referenceId,
+                ref.type(),
+                ref.id(),
+                key,
+                saved.getType());
         return toDto(saved, referenceType, referenceId);
     }
 
@@ -146,16 +164,21 @@ public class AdminSettingsController {
             @PathVariable("key") String key,
             HttpServletRequest httpRequest) {
 
-        authority.enforce(httpRequest,
-                new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
         StorageRef ref = mapToStorage(referenceType, referenceId);
         Optional<SettingDocument> existing = settingService.find(tenant, ref.type(), ref.id(), key);
         if (existing.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         settingService.delete(tenant, ref.type(), ref.id(), key);
-        log.info("Setting deleted tenant='{}' wire='{}:{}' storage='{}:{}' key='{}'",
-                tenant, referenceType, referenceId, ref.type(), ref.id(), key);
+        log.info(
+                "Setting deleted tenant='{}' wire='{}:{}' storage='{}:{}' key='{}'",
+                tenant,
+                referenceType,
+                referenceId,
+                ref.type(),
+                ref.id(),
+                key);
         return ResponseEntity.noContent().build();
     }
 
@@ -172,20 +195,18 @@ public class AdminSettingsController {
     private static StorageRef mapToStorage(String wireType, String wireId) {
         return switch (wireType) {
             case SettingService.SCOPE_TENANT ->
-                    new StorageRef(SettingService.SCOPE_PROJECT,
-                            HomeBootstrapService.TENANT_PROJECT_NAME);
+                new StorageRef(SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME);
             case SettingService.SCOPE_USER -> {
                 if (wireId == null || wireId.isBlank()) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "user-scope requires a referenceId (the user login)");
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST, "user-scope requires a referenceId (the user login)");
                 }
-                yield new StorageRef(SettingService.SCOPE_PROJECT,
-                        HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + wireId);
+                yield new StorageRef(
+                        SettingService.SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + wireId);
             }
-            case SettingService.SCOPE_PROJECT, SettingService.SCOPE_THINK_PROCESS ->
-                    new StorageRef(wireType, wireId);
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Unknown referenceType '" + wireType + "'");
+            case SettingService.SCOPE_PROJECT, SettingService.SCOPE_THINK_PROCESS -> new StorageRef(wireType, wireId);
+            default ->
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown referenceType '" + wireType + "'");
         };
     }
 
@@ -200,18 +221,15 @@ public class AdminSettingsController {
             if (HomeBootstrapService.TENANT_PROJECT_NAME.equals(storedId)) {
                 return new StorageRef(SettingService.SCOPE_TENANT, storedId);
             }
-            if (storedId != null
-                    && storedId.startsWith(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX)) {
-                String login = storedId.substring(
-                        HomeBootstrapService.HUB_PROJECT_NAME_PREFIX.length());
+            if (storedId != null && storedId.startsWith(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX)) {
+                String login = storedId.substring(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX.length());
                 return new StorageRef(SettingService.SCOPE_USER, login);
             }
         }
         return new StorageRef(storedType, storedId == null ? "" : storedId);
     }
 
-    private static SettingDto toDto(
-            SettingDocument doc, String wireType, String wireId) {
+    private static SettingDto toDto(SettingDocument doc, String wireType, String wireId) {
         boolean isPassword = doc.getType().encrypted();
         return SettingDto.builder()
                 .tenantId(doc.getTenantId())

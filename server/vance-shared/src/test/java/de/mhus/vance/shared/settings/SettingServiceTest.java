@@ -45,8 +45,8 @@ class SettingServiceTest {
         mongoTemplate = mock(org.springframework.data.mongodb.core.MongoTemplate.class);
         audit = mock(AuditService.class);
         encryption = new AesEncryptionService("unit-test-master-key");
-        service = new SettingService(repository, mongoTemplate, encryption, audit,
-                megadodoProvider(), new AgentSettingKeyPolicy(""));
+        service = new SettingService(
+                repository, mongoTemplate, encryption, audit, megadodoProvider(), new AgentSettingKeyPolicy(""));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -54,18 +54,15 @@ class SettingServiceTest {
 
     @Test
     void set_rejectsPasswordType() {
-        assertThatThrownBy(() -> service.set(
-                TENANT, PROJECT, "proj", "api.key",
-                "some-ciphertext", SettingType.PASSWORD, null))
+        assertThatThrownBy(() ->
+                        service.set(TENANT, PROJECT, "proj", "api.key", "some-ciphertext", SettingType.PASSWORD, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("setEncryptedSecret");
     }
 
     @Test
     void set_allowsStringType() {
-        SettingDocument saved = service.set(
-                TENANT, PROJECT, "proj", "ui.theme",
-                "dark", SettingType.STRING, null);
+        SettingDocument saved = service.set(TENANT, PROJECT, "proj", "ui.theme", "dark", SettingType.STRING, null);
 
         assertThat(saved.getValue()).isEqualTo("dark");
         assertThat(saved.getType()).isEqualTo(SettingType.STRING);
@@ -73,8 +70,7 @@ class SettingServiceTest {
 
     @Test
     void setEncryptedPassword_storesCiphertextAndRoundTrips() {
-        SettingDocument saved = service.setEncryptedPassword(
-                TENANT, PROJECT, "proj", "api.key", "s3cr3t");
+        SettingDocument saved = service.setEncryptedPassword(TENANT, PROJECT, "proj", "api.key", "s3cr3t");
 
         // Persisted value is not the plaintext.
         assertThat(saved.getType()).isEqualTo(SettingType.PASSWORD);
@@ -82,12 +78,55 @@ class SettingServiceTest {
 
         // Reading it back decrypts to the original.
         when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
-                anyString(), anyString(), anyString(), anyString()))
+                        anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(Optional.of(saved));
 
-        String plain = service.getDecryptedPassword(
-                TENANT, PROJECT, "proj", "api.key");
+        String plain = service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key");
         assertThat(plain).isEqualTo("s3cr3t");
+    }
+
+    @Test
+    void setEncryptedSecretAs_description_persistsAndUpdates() {
+        // Regression: the encrypted write path used to have no description
+        // parameter at all — admin REST, init loader and project copy all
+        // silently dropped the note an operator wrote for a credential.
+        SettingDocument saved = service.setEncryptedSecretAs(
+                TENANT,
+                PROJECT,
+                "proj",
+                "ai.provider.coding-proxy.apiKey",
+                "s3cr3t",
+                SettingType.PASSWORD,
+                "Coding Proxy API key",
+                "road.runner");
+
+        assertThat(saved.getDescription()).isEqualTo("Coding Proxy API key");
+
+        // A null description keeps the existing note (setAs semantics), an
+        // explicit one overwrites it.
+        when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
+                        anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Optional.of(saved));
+        SettingDocument reSaved = service.setEncryptedSecretAs(
+                TENANT,
+                PROJECT,
+                "proj",
+                "ai.provider.coding-proxy.apiKey",
+                "new-secret",
+                SettingType.PASSWORD,
+                null,
+                "road.runner");
+        assertThat(reSaved.getDescription()).isEqualTo("Coding Proxy API key");
+        SettingDocument updated = service.setEncryptedSecretAs(
+                TENANT,
+                PROJECT,
+                "proj",
+                "ai.provider.coding-proxy.apiKey",
+                "new-secret",
+                SettingType.PASSWORD,
+                "Rotated 2026-09",
+                "road.runner");
+        assertThat(updated.getDescription()).isEqualTo("Rotated 2026-09");
     }
 
     // ──────────────── refuse-read guard ────────────────
@@ -113,14 +152,16 @@ class SettingServiceTest {
     void getDecryptedPassword_missing_returnsNull() {
         stubFind(PROJECT, "proj", "api.key", null);
 
-        assertThat(service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key")).isNull();
+        assertThat(service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key"))
+                .isNull();
     }
 
     @Test
     void getDecryptedPassword_wrongType_returnsNull() {
         stubFind(PROJECT, "proj", "api.key", doc("api.key", "de", SettingType.STRING));
 
-        assertThat(service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key")).isNull();
+        assertThat(service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key"))
+                .isNull();
     }
 
     @Test
@@ -129,7 +170,8 @@ class SettingServiceTest {
         // internally and the service must return null, never the raw ciphertext.
         stubFind(PROJECT, "proj", "api.key", doc("api.key", "not-real-ciphertext", SettingType.PASSWORD));
 
-        assertThat(service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key")).isNull();
+        assertThat(service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key"))
+                .isNull();
     }
 
     // ──────────────── cascade resolution ────────────────
@@ -158,20 +200,20 @@ class SettingServiceTest {
 
     @Test
     void deleteByPrefix_issuesSingleAtomicRemove_withAnchoredLiteralPrefix() {
-        when(mongoTemplate.remove(any(org.springframework.data.mongodb.core.query.Query.class),
-                org.mockito.ArgumentMatchers.eq(SettingDocument.class)))
+        when(mongoTemplate.remove(
+                        any(org.springframework.data.mongodb.core.query.Query.class),
+                        org.mockito.ArgumentMatchers.eq(SettingDocument.class)))
                 .thenReturn(com.mongodb.client.result.DeleteResult.acknowledged(3));
 
         long deleted = service.deleteByPrefix(TENANT, PROJECT, "p-1", "oauth.slack.");
 
         assertThat(deleted).isEqualTo(3);
         org.mockito.ArgumentCaptor<org.springframework.data.mongodb.core.query.Query> captor =
-                org.mockito.ArgumentCaptor.forClass(
-                        org.springframework.data.mongodb.core.query.Query.class);
-        verify(mongoTemplate).remove(captor.capture(),
-                org.mockito.ArgumentMatchers.eq(SettingDocument.class));
+                org.mockito.ArgumentCaptor.forClass(org.springframework.data.mongodb.core.query.Query.class);
+        verify(mongoTemplate).remove(captor.capture(), org.mockito.ArgumentMatchers.eq(SettingDocument.class));
         org.bson.Document q = captor.getValue().getQueryObject();
-        assertThat(q).containsEntry("tenantId", TENANT)
+        assertThat(q)
+                .containsEntry("tenantId", TENANT)
                 .containsEntry("referenceType", PROJECT)
                 .containsEntry("referenceId", "p-1")
                 .containsKey("key");
@@ -185,9 +227,10 @@ class SettingServiceTest {
     @Test
     void deleteByPrefix_blankPrefix_isNoOp() {
         assertThat(service.deleteByPrefix(TENANT, PROJECT, "p-1", "")).isZero();
-        verify(mongoTemplate, org.mockito.Mockito.never()).remove(
-                any(org.springframework.data.mongodb.core.query.Query.class),
-                org.mockito.ArgumentMatchers.eq(SettingDocument.class));
+        verify(mongoTemplate, org.mockito.Mockito.never())
+                .remove(
+                        any(org.springframework.data.mongodb.core.query.Query.class),
+                        org.mockito.ArgumentMatchers.eq(SettingDocument.class));
     }
 
     // ──────────────── bulk read skips secrets ────────────────
@@ -196,8 +239,8 @@ class SettingServiceTest {
     void findByPrefixCascade_skipsPasswordEntries() {
         SettingDocument plain = doc("provider.name", "openai", SettingType.STRING);
         SettingDocument secret = passwordDoc("provider.key", "s3cr3t");
-        when(repository.findByTenantIdAndReferenceTypeAndReferenceId(
-                TENANT, PROJECT, TENANT_PROJ)).thenReturn(List.of(plain, secret));
+        when(repository.findByTenantIdAndReferenceTypeAndReferenceId(TENANT, PROJECT, TENANT_PROJ))
+                .thenReturn(List.of(plain, secret));
 
         var merged = service.findByPrefixCascade(TENANT, null, null, "provider.");
 
@@ -209,7 +252,11 @@ class SettingServiceTest {
 
     private SettingDocument doc(String key, String value, SettingType type) {
         return SettingDocument.builder()
-                .tenantId(TENANT).key(key).value(value).type(type).build();
+                .tenantId(TENANT)
+                .key(key)
+                .value(value)
+                .type(type)
+                .build();
     }
 
     /** A PASSWORD document holding the real ciphertext of {@code plaintext}. */
@@ -218,21 +265,17 @@ class SettingServiceTest {
     }
 
     private void stubFind(String refType, String refId, String key, SettingDocument doc) {
-        when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
-                TENANT, refType, refId, key))
+        when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(TENANT, refType, refId, key))
                 .thenReturn(Optional.ofNullable(doc));
     }
 
     /** Lazy provider stand-in — SettingService resolves Megadodo on demand. */
     @SuppressWarnings("unchecked")
-    private static org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.shared.megadodo.MegadodoService> megadodoProvider() {
-        org.springframework.beans.factory.ObjectProvider<
-                de.mhus.vance.shared.megadodo.MegadodoService> provider =
+    private static org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.megadodo.MegadodoService>
+            megadodoProvider() {
+        org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.megadodo.MegadodoService> provider =
                 mock(org.springframework.beans.factory.ObjectProvider.class);
-        when(provider.getObject())
-                .thenReturn(mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+        when(provider.getObject()).thenReturn(mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
         return provider;
     }
-
 }

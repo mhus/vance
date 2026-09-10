@@ -112,7 +112,8 @@ public class ProjectCopyService {
             boolean includeSecrets,
             SecurityContext subject) {
 
-        ProjectDocument source = projectService.findByTenantAndName(tenantId, sourceName)
+        ProjectDocument source = projectService
+                .findByTenantAndName(tenantId, sourceName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + sourceName + "' not found in tenant '" + tenantId + "'"));
         if (source.getKind() == ProjectKind.SYSTEM) {
@@ -128,8 +129,7 @@ public class ProjectCopyService {
                 tenantId,
                 targetName,
                 title != null && !title.isBlank() ? title : source.getTitle(),
-                projectGroupId != null && !projectGroupId.isBlank()
-                        ? projectGroupId : source.getProjectGroupId(),
+                projectGroupId != null && !projectGroupId.isBlank() ? projectGroupId : source.getProjectGroupId(),
                 source.getTeamIds(),
                 ProjectKind.NORMAL,
                 actorName);
@@ -154,10 +154,14 @@ public class ProjectCopyService {
         // {@code project} is filled in by the caller, which owns the
         // document→DTO mapping for every other project endpoint too.
         ProjectCopyReportDto result = report.build();
-        log.info("Copied project '{}/{}' → '{}': {} document(s), {} setting(s),"
-                        + " {} secret(s), {} failure(s)",
-                tenantId, sourceName, targetName, result.getDocumentsCopied(),
-                result.getSettingsCopied(), result.getSecretsCopied(),
+        log.info(
+                "Copied project '{}/{}' → '{}': {} document(s), {} setting(s)," + " {} secret(s), {} failure(s)",
+                tenantId,
+                sourceName,
+                targetName,
+                result.getDocumentsCopied(),
+                result.getSettingsCopied(),
+                result.getSecretsCopied(),
                 result.getDocumentsFailed());
         return result;
     }
@@ -191,8 +195,12 @@ public class ProjectCopyService {
                 copyOne(tenantId, targetName, doc, subject, actor);
                 copied++;
             } catch (RuntimeException e) {
-                log.warn("Copy of document '{}' from '{}/{}' failed: {}",
-                        doc.getPath(), tenantId, sourceName, e.toString());
+                log.warn(
+                        "Copy of document '{}' from '{}/{}' failed: {}",
+                        doc.getPath(),
+                        tenantId,
+                        sourceName,
+                        e.toString());
                 failures.add(doc.getPath() + ": " + describe(e));
             }
         }
@@ -203,11 +211,7 @@ public class ProjectCopyService {
     }
 
     private void copyOne(
-            String tenantId,
-            String targetName,
-            DocumentDocument source,
-            SecurityContext subject,
-            WriteActor actor) {
+            String tenantId, String targetName, DocumentDocument source, SecurityContext subject, WriteActor actor) {
 
         DocumentDocument created;
         // Streamed rather than read as text: a project holds PDFs, images and
@@ -259,16 +263,21 @@ public class ProjectCopyService {
         int plain = 0;
         int secrets = 0;
         List<String> skipped = new ArrayList<>();
-        for (SettingDocument setting : settingService.findAll(
-                tenantId, SettingService.SCOPE_PROJECT, sourceName)) {
+        for (SettingDocument setting : settingService.findAll(tenantId, SettingService.SCOPE_PROJECT, sourceName)) {
             SettingType type = setting.getType();
             if (type == null) {
                 continue;
             }
             if (!type.encrypted()) {
-                settingService.setAs(tenantId, SettingService.SCOPE_PROJECT, targetName,
-                        setting.getKey(), setting.getValue(), type,
-                        setting.getDescription(), actorName);
+                settingService.setAs(
+                        tenantId,
+                        SettingService.SCOPE_PROJECT,
+                        targetName,
+                        setting.getKey(),
+                        setting.getValue(),
+                        type,
+                        setting.getDescription(),
+                        actorName);
                 plain++;
                 continue;
             }
@@ -285,8 +294,15 @@ public class ProjectCopyService {
                 skipped.add(setting.getKey() + " (could not be decrypted)");
                 continue;
             }
-            settingService.setEncryptedSecretAs(tenantId, SettingService.SCOPE_PROJECT,
-                    targetName, setting.getKey(), plaintext, type, actorName);
+            settingService.setEncryptedSecretAs(
+                    tenantId,
+                    SettingService.SCOPE_PROJECT,
+                    targetName,
+                    setting.getKey(),
+                    plaintext,
+                    type,
+                    setting.getDescription(),
+                    actorName);
             secrets++;
         }
         report.settingsCopied(plain).secretsCopied(secrets).secretsSkipped(skipped);
@@ -302,8 +318,8 @@ public class ProjectCopyService {
      * report over it would be the worse trade.
      */
     private @Nullable String suspendCopy(String tenantId, String targetName) {
-        ProjectDocument fresh = projectService.findByTenantAndName(tenantId, targetName)
-                .orElse(null);
+        ProjectDocument fresh =
+                projectService.findByTenantAndName(tenantId, targetName).orElse(null);
         if (fresh == null || fresh.getStatus() != ProjectStatus.RUNNING) {
             // Placement may have parked it as PENDING — nothing runs there
             // either, so the reason the suspend exists is already satisfied.
@@ -315,8 +331,7 @@ public class ProjectCopyService {
                     + " would otherwise start firing the original's timers. Resume it"
                     + " when you have reviewed them.";
         } catch (RuntimeException e) {
-            log.warn("Could not suspend fresh copy '{}/{}': {}",
-                    tenantId, targetName, e.toString());
+            log.warn("Could not suspend fresh copy '{}/{}': {}", tenantId, targetName, e.toString());
             return "The copy could not be suspended (" + describe(e) + ") — check its"
                     + " scheduler and hook documents before letting it run.";
         }

@@ -1,6 +1,5 @@
 package de.mhus.vance.brain.ai;
 
-import de.mhus.vance.brain.ai.ModelInfo.Pricing;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -15,43 +14,31 @@ import org.jspecify.annotations.Nullable;
  * inherits them from the bundled / manual layer at lookup time.
  * The fields beyond {@link #wireName()} are <em>observations</em> the
  * listing endpoint actually reports: {@link #contextWindowTokens()},
- * {@link #maxOutputTokens()}, {@link #ownedBy()}, {@link #pricing()}.
- * All optional; vendors differ wildly in what they return.
+ * {@link #maxOutputTokens()}, {@link #ownedBy()}. All optional; vendors
+ * differ wildly in what they return.
  *
- * <p>{@link #pricing()} follows the same observation doctrine as the
- * limits: it is carried <b>only</b> when the listing endpoint itself
- * reports prices (cortecs' {@code /v1/models} ships a pricing block in
- * EUR per MTok; OpenRouter reports per-token USD, which the parser
- * converts). It is never inferred from anywhere else and never guessed —
- * the auto layer outranks bundled, a wrong price would shadow the
- * operator's correct one.
- *
- * <p><b>Deliberately absent: {@code kind}</b> (and capabilities). Those
- * are <em>classifications</em>, not observations — they belong to the
- * operator-owned manual layer. The auto layer sits
- * <em>above</em> the bundled layer in the {@link ModelCatalog} cascade
- * (project-auto → _tenant-auto → bundled), so anything asserted here
- * silently shadows a correct bundled classification. A listing endpoint
- * that reports {@code gemini-2.5-flash-image} as chat-capable would
- * otherwise erase its {@code kind: image} and make it vanish from every
- * image-model picker — see the {@code kind}-free {@code writeAutoDoc}
+ * <p><b>Deliberately absent: {@code kind}, pricing, capabilities.</b>
+ * Those are <em>owned by other sources</em>, not by the listing
+ * endpoint: model kind is a classification the operator owns, and
+ * prices come from the vendor's price sheet — a different source, so
+ * they live in the operator-owned manual layer
+ * ({@code _vance/model/**}), never in the auto docs. This separation is
+ * also protective: the auto layer sits <em>above</em> the bundled layer
+ * in the {@link ModelCatalog} cascade (project-auto → _tenant-auto →
+ * bundled), so a gateway's price block (some ship one — cortecs in EUR,
+ * OpenRouter in per-token USD) would silently shadow a curated bundled
+ * USD price whenever instance names line up, mixing currencies in the
+ * usage report. A listing endpoint that reports
+ * {@code gemini-2.5-flash-image} as chat-capable would likewise erase
+ * its {@code kind: image} and make it vanish from every image-model
+ * picker — see the {@code kind}- and pricing-free {@code writeAutoDoc}
  * in {@code ModelDiscoveryService}.
  */
 public record DiscoveredModelInfo(
         String wireName,
         @Nullable Integer contextWindowTokens,
         @Nullable Integer maxOutputTokens,
-        @Nullable String ownedBy,
-        @Nullable Pricing pricing) {
-
-    /** Back-compat for callers predating the pricing observation. */
-    public DiscoveredModelInfo(
-            String wireName,
-            @Nullable Integer contextWindowTokens,
-            @Nullable Integer maxOutputTokens,
-            @Nullable String ownedBy) {
-        this(wireName, contextWindowTokens, maxOutputTokens, ownedBy, null);
-    }
+        @Nullable String ownedBy) {
 
     public DiscoveredModelInfo {
         if (wireName == null || wireName.isBlank()) {
@@ -61,11 +48,11 @@ public record DiscoveredModelInfo(
 
     /** Wire-name only — every other field stays unknown. */
     public static DiscoveredModelInfo of(String wireName) {
-        return new DiscoveredModelInfo(wireName, null, null, null, null);
+        return new DiscoveredModelInfo(wireName, null, null, null);
     }
 
     /** Wire-name plus a discovered context window. */
     public static DiscoveredModelInfo withWindow(String wireName, int contextWindowTokens) {
-        return new DiscoveredModelInfo(wireName, contextWindowTokens, null, null, null);
+        return new DiscoveredModelInfo(wireName, contextWindowTokens, null, null);
     }
 }

@@ -45,13 +45,12 @@ import org.springframework.stereotype.Service;
  *
  * <p>What goes into the auto docs is decided by the observation
  * doctrine: everything the listing endpoint itself reports (wire name,
- * limits, owned-by, and prices when the endpoint ships them — cortecs
- * does, OpenRouter does). {@code kind} and capabilities are NOT written:
- * model <i>kind</i> is a classification the operator owns — the manual
- * layer (bundled + operator edits) carries it and inherits through the
- * cascade. Since the auto layer outranks the bundled one, an asserted
- * classification would shadow a correct bundled value; see
- * {@link DiscoveredModelInfo}.
+ * limits, owned-by). Pricing and {@code kind} are NOT written even
+ * when an endpoint ships them (cortecs' listing carries a price
+ * block) — prices are owned by a different source (the vendor's price
+ * sheet → operator-managed manual layer), and the auto layer
+ * outranks bundled, so an asserted price or classification would
+ * shadow a correct curated value; see {@link DiscoveredModelInfo}.
  */
 @Service
 @RequiredArgsConstructor
@@ -274,10 +273,10 @@ public class ModelDiscoveryService {
      * losslessly.
      *
      * <p>Only <em>observations</em> go in here — the wire name plus, if the
-     * vendor reports them, context window, output limit, owned-by and
-     * prices (cortecs and OpenRouter ship them; the unit hangs on the
-     * field name, see {@code OpenAiModelListing}). Classifications
-     * ({@code kind}, capabilities) are never written: the auto
+     * vendor reports them, context window, output limit and owned-by.
+     * Pricing, {@code kind} and capabilities are never written — even
+     * when the listing endpoint ships them: prices belong to a different
+     * source (manual layer), and the auto
      * layer outranks the bundled layer in the catalog cascade, so an
      * asserted {@code kind: chat} would shadow a bundled
      * {@code kind: image} and drop that model out of every image picker.
@@ -311,26 +310,6 @@ public class ModelDiscoveryService {
         }
         if (model.ownedBy() != null) {
             yaml.append("ownedBy: ").append(yamlString(model.ownedBy())).append('\n');
-        }
-        if (model.pricing() != null) {
-            yaml.append("pricing:\n");
-            yaml.append("  currency: ").append(model.pricing().currency()).append('\n');
-            yaml.append("  inputPerMTok: ")
-                    .append(model.pricing().inputPerMTok())
-                    .append('\n');
-            yaml.append("  outputPerMTok: ")
-                    .append(model.pricing().outputPerMTok())
-                    .append('\n');
-            if (model.pricing().cacheReadPerMTok() != null) {
-                yaml.append("  cacheReadPerMTok: ")
-                        .append(model.pricing().cacheReadPerMTok())
-                        .append('\n');
-            }
-            if (model.pricing().cacheWritePerMTok() != null) {
-                yaml.append("  cacheWritePerMTok: ")
-                        .append(model.pricing().cacheWritePerMTok())
-                        .append('\n');
-            }
         }
         yaml.append("discoveredBy: ").append(DISCOVERED_BY).append('\n');
         yaml.append("discoveredAt: \"").append(Instant.now()).append("\"\n");

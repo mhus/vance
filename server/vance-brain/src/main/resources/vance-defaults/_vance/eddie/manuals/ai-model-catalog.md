@@ -256,9 +256,6 @@ omit the dropped one.
   own documentation — the control tokens are part of its training.
 - **Pricing hallucinations.** If unsure, ask the user for the vendor's
   pricing page URL and confirm before writing — never guess prices.
-  (Discovery writes prices itself when the endpoint reports them —
-  cortecs does — so this anti-pattern is about what you hand-write; a
-  manual doc still wins per field when a correction is needed.)
 - **`discoveredBy: discovery-job` in a manual file.** That marker is
   reserved for the auto layer. Manual = manual.
 

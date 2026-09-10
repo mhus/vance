@@ -14,6 +14,7 @@ import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.ai.UsageSink;
+import de.mhus.vance.brain.ai.openai.OpenAiModelListing;
 import de.mhus.vance.brain.ai.openai.OpenAiProvider;
 import de.mhus.vance.brain.ai.openai.ToolCallContentHttpClientBuilder;
 import de.mhus.vance.brain.ai.parser.MessageParserRegistry;
@@ -245,9 +246,10 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
      * OpenAI's {@code GET /v1/models} returns the same shape on the
      * Responses endpoint as on chat-completions — a {@code data} array
      * of {@code {id, ...}} objects. Shared route, identical parser.
-     * {@code contextWindowTokens} and {@code kind} are not in the
-     * response; both stay unknown until a manual catalog entry fills
-     * them, exactly as for the legacy provider.
+     * {@link OpenAiModelListing#parse} extracts the observations (context
+     * window, output limit, owned-by) that OpenAI-compatible gateways
+     * extend the shape with; {@code kind} stays unknown, exactly as for
+     * the legacy provider.
      */
     @Override
     public List<DiscoveredModelInfo> listAvailableModels(ProviderListingRequest req) {
@@ -267,9 +269,10 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
         }
         List<DiscoveredModelInfo> out = new ArrayList<>(data.size());
         for (JsonNode entry : data) {
-            String id = entry.path("id").asText();
-            if (id.isBlank()) continue;
-            out.add(DiscoveredModelInfo.of(id));
+            DiscoveredModelInfo info = OpenAiModelListing.parse(entry);
+            if (info != null) {
+                out.add(info);
+            }
         }
         return out;
     }

@@ -137,8 +137,9 @@ public class GeminiProvider extends AbstractChatProvider {
      * {@code {"models":[{"name":"models/gemini-2.0-flash","inputTokenLimit":...,
      * "outputTokenLimit":..., "supportedGenerationMethods":["generateContent",...]}]}}.
      * Wire name comes prefixed with {@code "models/"} which we strip;
-     * {@code inputTokenLimit} maps cleanly to
-     * {@link DiscoveredModelInfo#contextWindowTokens}. Models that
+     * {@code inputTokenLimit} maps to
+     * {@link DiscoveredModelInfo#contextWindowTokens}, {@code outputTokenLimit}
+     * to {@link DiscoveredModelInfo#maxOutputTokens}. Models that
      * don't advertise {@code generateContent} are skipped (embedding,
      * tuning endpoints, …).
      *
@@ -177,7 +178,11 @@ public class GeminiProvider extends AbstractChatProvider {
             if (entry.has("inputTokenLimit") && entry.path("inputTokenLimit").canConvertToInt()) {
                 ctx = entry.path("inputTokenLimit").asInt();
             }
-            out.add(new DiscoveredModelInfo(wireName, ctx));
+            Integer maxOutput = null;
+            if (entry.has("outputTokenLimit") && entry.path("outputTokenLimit").canConvertToInt()) {
+                maxOutput = entry.path("outputTokenLimit").asInt();
+            }
+            out.add(new DiscoveredModelInfo(wireName, ctx, maxOutput, null));
         }
         return out;
     }

@@ -270,8 +270,9 @@ public class ModelDiscoveryService {
      * with {@code '/'} (HF-style) become nested subdirectories
      * losslessly.
      *
-     * <p>Only <em>observations</em> go in here — the wire name and, if
-     * the vendor reports it, the context window. Classifications
+     * <p>Only <em>observations</em> go in here — the wire name plus, if the
+     * vendor reports them, context window, output limit and owned-by.
+     * Classifications
      * ({@code kind}, pricing, capabilities) are never written: the auto
      * layer outranks the bundled layer in the catalog cascade, so an
      * asserted {@code kind: chat} would shadow a bundled
@@ -300,6 +301,12 @@ public class ModelDiscoveryService {
             yaml.append("contextWindowTokens: ")
                     .append(model.contextWindowTokens())
                     .append('\n');
+        }
+        if (model.maxOutputTokens() != null) {
+            yaml.append("maxOutputTokens: ").append(model.maxOutputTokens()).append('\n');
+        }
+        if (model.ownedBy() != null) {
+            yaml.append("ownedBy: ").append(yamlString(model.ownedBy())).append('\n');
         }
         yaml.append("discoveredBy: ").append(DISCOVERED_BY).append('\n');
         yaml.append("discoveredAt: \"").append(Instant.now()).append("\"\n");

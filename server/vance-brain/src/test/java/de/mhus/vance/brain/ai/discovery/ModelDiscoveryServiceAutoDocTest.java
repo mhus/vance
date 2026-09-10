@@ -54,8 +54,7 @@ class ModelDiscoveryServiceAutoDocTest {
     private final ModelCatalog modelCatalog = mock(ModelCatalog.class);
 
     private final ModelDiscoveryService service = new ModelDiscoveryService(
-            tenantService, projectService, settingService,
-            aiModelService, documentService, modelCatalog);
+            tenantService, projectService, settingService, aiModelService, documentService, modelCatalog);
 
     @Test
     void auto_doc_never_claims_a_model_kind() {
@@ -66,13 +65,40 @@ class ModelDiscoveryServiceAutoDocTest {
 
     @Test
     void auto_doc_carries_the_observed_fields() {
-        String yaml = runDiscoveryFor(
-                DiscoveredModelInfo.withWindow("gemini-2.0-flash", 1048576));
+        String yaml = runDiscoveryFor(DiscoveredModelInfo.withWindow("gemini-2.0-flash", 1048576));
 
         assertThat(yaml)
                 .contains("contextWindowTokens: 1048576")
                 .contains("discoveredBy: discovery-job")
                 .contains("discoveredAt:");
+    }
+
+    @Test
+    void auto_doc_carries_output_limit_and_owned_by_when_reported() {
+        // A gateway that reports the OpenAI-compatible extensions:
+        // context window, output limit and owned-by — all three land
+        // in the doc; nothing else is asserted.
+        String yaml =
+                runDiscoveryFor(new DiscoveredModelInfo("coding-proxy:sipgate-coding-ultra", 131072, 32768, "sipgate"));
+
+        assertThat(yaml)
+                .contains("wireName: \"coding-proxy:sipgate-coding-ultra\"")
+                .contains("contextWindowTokens: 131072")
+                .contains("maxOutputTokens: 32768")
+                .contains("ownedBy: \"sipgate\"")
+                .doesNotContain("kind:");
+    }
+
+    @Test
+    void auto_doc_omits_optional_fields_when_not_reported() {
+        // OpenAI proper returns only id/owned_by — no limits. The doc
+        // carries neither contextWindowTokens nor maxOutputTokens.
+        String yaml = runDiscoveryFor(new DiscoveredModelInfo("gpt-4o", null, null, "openai"));
+
+        assertThat(yaml)
+                .contains("ownedBy: \"openai\"")
+                .doesNotContain("contextWindowTokens:")
+                .doesNotContain("maxOutputTokens:");
     }
 
     /**
@@ -88,8 +114,7 @@ class ModelDiscoveryServiceAutoDocTest {
      */
     @Test
     void instanceWithProtocolOnlyInTheSidecar_isDiscovered() {
-        when(tenantService.findByName(TENANT))
-                .thenReturn(Optional.of(new TenantDocument()));
+        when(tenantService.findByName(TENANT)).thenReturn(Optional.of(new TenantDocument()));
         ProjectDocument project = new ProjectDocument();
         project.setName(PROJECT);
         when(projectService.all(TENANT)).thenReturn(List.of(project));
@@ -100,25 +125,30 @@ class ModelDiscoveryServiceAutoDocTest {
         when(settingService.findAll(TENANT, SettingService.SCOPE_PROJECT, PROJECT))
                 .thenReturn(List.of(apiKey));
         when(settingService.getDecryptedPassword(
-                TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.provider.cortecs.apiKey"))
+                        TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.provider.cortecs.apiKey"))
                 .thenReturn("test-key");
         when(modelCatalog.lookupProvider(TENANT, PROJECT, "cortecs"))
                 .thenReturn(Optional.of(java.util.Map.of("wireType", "openai")));
 
         AiModelProvider provider = mock(AiModelProvider.class);
-        when(provider.listAvailableModels(any()))
-                .thenReturn(List.of(DiscoveredModelInfo.of("llama-3.3-70b")));
+        when(provider.listAvailableModels(any())).thenReturn(List.of(DiscoveredModelInfo.of("llama-3.3-70b")));
         when(aiModelService.findProvider(ProviderType.OPENAI)).thenReturn(Optional.of(provider));
 
         ModelDiscoveryService.DiscoveryResult result = service.discoverForTenant(TENANT);
 
         assertThat(result.modelsWritten()).isEqualTo(1);
-        verify(documentService).upsertText(
-                eq(TENANT), eq(PROJECT),
-                // written under the *instance* name, not the wire type —
-                // the auto layer has to line up with the manual one.
-                eq(ModelDiscoveryService.AUTO_PATH_PREFIX + "cortecs/llama-3.3-70b.yaml"),
-                any(), any(), any(), any(), eq(WriteActor.SYSTEM));
+        verify(documentService)
+                .upsertText(
+                        eq(TENANT),
+                        eq(PROJECT),
+                        // written under the *instance* name, not the wire type —
+                        // the auto layer has to line up with the manual one.
+                        eq(ModelDiscoveryService.AUTO_PATH_PREFIX + "cortecs/llama-3.3-70b.yaml"),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(WriteActor.SYSTEM));
     }
 
     /**
@@ -126,8 +156,7 @@ class ModelDiscoveryServiceAutoDocTest {
      * returns the YAML body handed to {@link DocumentService#upsertText}.
      */
     private String runDiscoveryFor(DiscoveredModelInfo model) {
-        when(tenantService.findByName(TENANT))
-                .thenReturn(Optional.of(new TenantDocument()));
+        when(tenantService.findByName(TENANT)).thenReturn(Optional.of(new TenantDocument()));
         ProjectDocument project = new ProjectDocument();
         project.setName(PROJECT);
         when(projectService.all(TENANT)).thenReturn(List.of(project));
@@ -138,7 +167,7 @@ class ModelDiscoveryServiceAutoDocTest {
         when(settingService.findAll(TENANT, SettingService.SCOPE_PROJECT, PROJECT))
                 .thenReturn(List.of(apiKey));
         when(settingService.getDecryptedPassword(
-                TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.provider.gemini.apiKey"))
+                        TENANT, SettingService.SCOPE_PROJECT, PROJECT, "ai.provider.gemini.apiKey"))
                 .thenReturn("test-key");
 
         AiModelProvider provider = mock(AiModelProvider.class);
@@ -149,9 +178,8 @@ class ModelDiscoveryServiceAutoDocTest {
         assertThat(result.modelsWritten()).isEqualTo(1);
 
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
-        verify(documentService).upsertText(
-                eq(TENANT), eq(PROJECT), any(), any(), any(),
-                body.capture(), any(), eq(WriteActor.SYSTEM));
+        verify(documentService)
+                .upsertText(eq(TENANT), eq(PROJECT), any(), any(), any(), body.capture(), any(), eq(WriteActor.SYSTEM));
         return body.getValue();
     }
 }

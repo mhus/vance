@@ -224,7 +224,10 @@ public class OpenAiProvider extends AbstractChatProvider {
      * The endpoint is shared by OpenAI proper and any OpenAI-wire
      * gateway (cortecs, OpenRouter, vLLM, …) reachable through this
      * provider — they all return the same shape with their own model
-     * names. {@code contextWindowTokens} is not in the response;
+     * names. OpenAI proper returns only {@code id}/{@code owned_by};
+     * OpenAI-compatible gateways (cortecs, OpenRouter, vLLM, coding-proxy, …)
+     * extend the shape with context/output limits, which
+     * {@link OpenAiModelListing#parse} normalises into observations.
      * {@code kind} stays unknown because the OpenAI listing lumps
      * chat + image + embedding models together without a structural
      * discriminator.
@@ -247,9 +250,10 @@ public class OpenAiProvider extends AbstractChatProvider {
         }
         List<DiscoveredModelInfo> out = new ArrayList<>(data.size());
         for (JsonNode entry : data) {
-            String id = entry.path("id").asText();
-            if (id.isBlank()) continue;
-            out.add(DiscoveredModelInfo.of(id));
+            DiscoveredModelInfo info = OpenAiModelListing.parse(entry);
+            if (info != null) {
+                out.add(info);
+            }
         }
         return out;
     }

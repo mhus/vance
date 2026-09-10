@@ -12,6 +12,10 @@ import org.jspecify.annotations.Nullable;
  * vendor APIs return little more than the id. Missing fields stay
  * empty in the resulting doc; the {@link ModelCatalog} cascade
  * inherits them from the bundled / manual layer at lookup time.
+ * The fields beyond {@link #wireName()} are <em>observations</em> the
+ * listing endpoint actually reports: {@link #contextWindowTokens()},
+ * {@link #maxOutputTokens()}, {@link #ownedBy()}. All optional; vendors
+ * differ wildly in what they return.
  *
  * <p><b>Deliberately absent: {@code kind}</b> (and pricing, and
  * capabilities). Those are <em>classifications</em>, not observations —
@@ -26,7 +30,9 @@ import org.jspecify.annotations.Nullable;
  */
 public record DiscoveredModelInfo(
         String wireName,
-        @Nullable Integer contextWindowTokens) {
+        @Nullable Integer contextWindowTokens,
+        @Nullable Integer maxOutputTokens,
+        @Nullable String ownedBy) {
 
     public DiscoveredModelInfo {
         if (wireName == null || wireName.isBlank()) {
@@ -36,11 +42,11 @@ public record DiscoveredModelInfo(
 
     /** Wire-name only — every other field stays unknown. */
     public static DiscoveredModelInfo of(String wireName) {
-        return new DiscoveredModelInfo(wireName, null);
+        return new DiscoveredModelInfo(wireName, null, null, null);
     }
 
     /** Wire-name plus a discovered context window. */
     public static DiscoveredModelInfo withWindow(String wireName, int contextWindowTokens) {
-        return new DiscoveredModelInfo(wireName, contextWindowTokens);
+        return new DiscoveredModelInfo(wireName, contextWindowTokens, null, null);
     }
 }

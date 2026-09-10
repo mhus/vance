@@ -116,6 +116,13 @@ the MANUAL layer — `_vance/model/<instance>/<slug>.yaml` with
 while the marker stays, never touched once an operator removes it.
 `kind` and capabilities still never come from discovery — those need a
 manual doc on top.
+
+Discovery also runs on its own: a scheduled tick walks every
+tenant 2 minutes after boot and then every 6 hours
+(`vance.ai-models.discovery.interval`), master-pod guarded.
+The manual call is only the *right now* path — after a fresh setup
+say so and run it once; afterwards the tick keeps models and prices
+current without anyone pressing a button.
 catalog, so manual docs written before the call become visible in
 the same breath — without it the refresh runs every 30 minutes
 (or Profile → Actions → Refresh AI Model Catalog, operator-only).

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { BrainWsApi } from '@vance/shared';
+import { CloseReason } from '@vance/generated';
 import type {
   ChatMessageDto,
   ProcessListRequest,
@@ -64,7 +65,14 @@ const preview = computed(() => Boolean(props.sessionId));
 const { t } = useI18n();
 
 const rows = ref<ProcessSummary[]>([]);
-const includeTerminated = ref(false);
+/**
+ * Terminated processes are history, not noise — the panel opens with
+ * "all". That is the only way an ARCHIVED session shows anything at all:
+ * the archive cascade closes every process (closeReason=ARCHIVED), so a
+ * live-only default would render the picker's 🧵-preview of archived
+ * sessions permanently empty. The toggle narrows to live when wanted.
+ */
+const includeTerminated = ref(true);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
@@ -197,6 +205,34 @@ function statusOf(row: ProcessSummary | ProcessMessagesResponse): string {
   return String(row.status ?? '?').toLowerCase();
 }
 
+/** Terminal rows keep their audit trail on the document — see {@link CloseReason}. */
+function isClosed(row: ProcessSummary | ProcessMessagesResponse): boolean {
+  return String(row.status ?? '') === 'CLOSED';
+}
+
+const KNOWN_CLOSE_REASONS = new Set<string>(Object.values(CloseReason));
+
+/**
+ * Human label for a process's close reason, marked specially on terminal
+ * rows — "archiviert" tells the history-reading user why a process is
+ * closed instead of leaving them guessing at a bare "closed".
+ */
+function closeReasonLabel(row: ProcessSummary | ProcessMessagesResponse): string {
+  const reason = row.closeReason;
+  if (!reason) return '';
+  return KNOWN_CLOSE_REASONS.has(reason)
+    ? t(`processPanel.closeReason.${reason}`)
+    : reason;
+}
+
+/** Detail header: status plus close reason when the process is terminal. */
+const detailStatus = computed(() => {
+  const row = detail.value ?? selected.value;
+  if (!row) return '';
+  const reason = closeReasonLabel(row);
+  return reason ? `${statusOf(row)} · ${reason}` : statusOf(row);
+});
+
 function roleOf(msg: ChatMessageDto): string {
   return String(msg.role ?? '').toLowerCase();
 }
@@ -237,12 +273,21 @@ async function toggleTerminated(): Promise<void> {
             <button
               type="button"
               class="w-full text-left px-2 py-1 rounded"
-              :class="selected?.id === row.id ? 'bg-base-300' : 'hover:bg-base-200'"
+              :class="[
+                selected?.id === row.id ? 'bg-base-300' : 'hover:bg-base-200',
+                // Terminal rows are history — keep them visible, but visually
+                // subordinate to what is actually running.
+                isClosed(row) ? 'opacity-60' : '',
+              ]"
               @click="openDetail(row)"
             >
               <div class="flex items-center gap-2">
                 <span class="font-mono text-xs truncate">{{ row.name }}</span>
                 <span class="text-[10px] opacity-60">{{ statusOf(row) }}</span>
+                <span
+                  v-if="isClosed(row) && closeReasonLabel(row)"
+                  class="text-[10px] px-1 rounded bg-base-200 shrink-0"
+                >{{ closeReasonLabel(row) }}</span>
               </div>
               <div class="text-[10px] opacity-60 truncate">
                 {{ row.thinkEngine }}<template v-if="row.goal"> · {{ row.goal }}</template>
@@ -260,7 +305,7 @@ async function toggleTerminated(): Promise<void> {
           <div class="text-xs opacity-70">
             <span class="font-mono">{{ selected.name }}</span>
             · {{ selected.thinkEngine }}
-            · {{ statusOf(detail ?? selected) }}
+            · {{ detailStatus }}
           </div>
           <p v-if="selected.goal" class="text-xs opacity-60">{{ selected.goal }}</p>
 

@@ -4,9 +4,11 @@ import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.DiscoveredModelInfo;
 import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.TlsInsecure;
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
@@ -14,16 +16,20 @@ import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
+import org.yaml.snakeyaml.Yaml;
 
 /**
  * Model-catalog discovery — scans every {@code (tenant, project)}
@@ -67,7 +73,7 @@ public class ModelDiscoveryService {
     private static final String DISCOVERED_BY = "discovery-job";
 
     /** Filename slug must match this — colons / slashes get encoded. */
-    private static final java.util.regex.Pattern SAFE_SLUG_SEGMENT = java.util.regex.Pattern.compile("[A-Za-z0-9._-]+");
+    private static final Pattern SAFE_SLUG_SEGMENT = Pattern.compile("[A-Za-z0-9._-]+");
 
     /** Author label written into the doc's {@code createdBy}. */
     private static final String DOC_AUTHOR = "model-discovery";
@@ -351,7 +357,7 @@ public class ModelDiscoveryService {
             String instance,
             DiscoveredModelInfo model,
             DiscoveryResult.Builder result) {
-        de.mhus.vance.brain.ai.ModelInfo.Pricing pricing = model.pricing();
+        ModelInfo.Pricing pricing = model.pricing();
         if (pricing == null) {
             return;
         }
@@ -361,8 +367,7 @@ public class ModelDiscoveryService {
             return;
         }
         String path = ModelCatalog.MODEL_PATH_PREFIX + instance + "/" + slug + ".yaml";
-        java.util.Optional<de.mhus.vance.shared.document.DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectId, path);
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, path);
         boolean existed = existing.isPresent();
         if (existed) {
             String content = documentService.readContent(existing.get());
@@ -382,7 +387,7 @@ public class ModelDiscoveryService {
             yaml.append("wireName: ").append(yamlString(wireName)).append('\n');
         }
         yaml.append("pricing:\n");
-        yaml.append("  currency: ").append(pricing.currency()).append('\n');
+        yaml.append("  currency: ").append(yamlString(pricing.currency())).append('\n');
         yaml.append("  inputPerMTok: ").append(pricing.inputPerMTok()).append('\n');
         yaml.append("  outputPerMTok: ").append(pricing.outputPerMTok()).append('\n');
         if (pricing.cacheReadPerMTok() != null) {
@@ -420,7 +425,7 @@ public class ModelDiscoveryService {
             return false;
         }
         try {
-            Object parsed = new org.yaml.snakeyaml.Yaml().load(content);
+            Object parsed = new Yaml().load(content);
             if (parsed instanceof Map<?, ?> map) {
                 return Boolean.TRUE.equals(map.get("auto"));
             }
@@ -431,6 +436,7 @@ public class ModelDiscoveryService {
         }
         return false;
     }
+
     /**
      * Translate a wire-name into a filesystem-safe relative path under
      * the provider directory. {@code '/'} stays (becomes a subdir);
@@ -463,21 +469,22 @@ public class ModelDiscoveryService {
     }
 
     private static String yamlString(String raw) {
-        // Quote with double quotes and escape only the bare minimum
-        // (backslash + double quote) — the wire-name set is constrained
-        // enough that this is safe in practice.
-        String escaped = raw.replace("\\", "\\\\").replace("\"", "\\\"");
+        // Double quotes plus the escape set that keeps the scalar on one
+        // line: backslash, quote, and the control breaks. Wire-names and
+        // endpoint-reported currency values are untrusted text — a raw
+        // newline would at best fold into the value, at worst hand-write
+        // the rest of the doc (e.g. a hostile 'kind: chat').
+        String escaped = raw.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
         return "\"" + escaped + "\"";
     }
 
     /** Per-instance config resolved from the settings + sidecar of one scope. */
     record InstanceConfig(
             ProviderType type, String apiKey, @Nullable String baseUrl, boolean insecureTls) {
-
-        /** Back-compat for tests and callers predating the TLS flag. */
-        InstanceConfig(ProviderType type, String apiKey, @Nullable String baseUrl) {
-            this(type, apiKey, baseUrl, false);
-        }
 
         InstanceConfig {
             Objects.requireNonNull(type, "type");
@@ -550,7 +557,7 @@ public class ModelDiscoveryService {
             }
 
             DiscoveryResult build(Instant start) {
-                long ms = java.time.Duration.between(start, Instant.now()).toMillis();
+                long ms = Duration.between(start, Instant.now()).toMillis();
                 return new DiscoveryResult(
                         tenantId,
                         scopes,

@@ -260,6 +260,25 @@ class AiModelResolverTest {
     }
 
     @Test
+    void tenantDefault_honoursSidecarTlsInsecure() {
+        // The default pair resolves through the same sidecar as an explicit
+        // spec: a tlsInsecure flag on the default provider's sidecar must
+        // not be dropped just because no alias was configured.
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
+                .thenReturn("openai");
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
+                .thenReturn("gpt-4o-mini");
+        when(modelCatalog.lookupProvider(any(), any(), eq("openai")))
+                .thenReturn(Optional.of(Map.of("tlsInsecure", true)));
+
+        AiModelResolver.Resolved r = resolver.resolveOrDefault(null, "acme", "proj", null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.modelName()).isEqualTo("gpt-4o-mini");
+        assertThat(r.insecureTls()).isTrue();
+    }
+
+    @Test
     void resolve_instanceTypeSetting_winsOverProviderSidecar() {
         // The setting is the per-tenant override; the sidecar is the shipped
         // default. A tenant that repoints an instance must not be silently

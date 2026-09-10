@@ -49,12 +49,6 @@ params:
   # the parent chat — it needs that conversation as background to know
   # what automation to build. See planning/worker-spawn-context.md.
   inheritContext: all
-  # Grants setting_set writes to ai.provider.<instance>.type and
-  # .baseUrl for this worker (deny-listed keys otherwise). Credentials
-  # (.apiKey) are never grantable — passwords stay on the operator's
-  # human surfaces. setting_set still requires the invoking user to be
-  # ADMIN on the target scope, so the flag widens reach for nobody who
-  # could not have written the setting by hand.
   # Where file_*/exec_* run by default. The creator's job is
   # server-side configuration, and in a web session there is no
   # foot client behind the session — a CLIENT default leaves the
@@ -65,6 +59,12 @@ params:
   # foot profile flips this back — there the user's own machine
   # is the natural target.
   workTarget: { kind: WORK }
+  # Grants setting_set writes to ai.provider.<instance>.type and
+  # .baseUrl for this worker (deny-listed keys otherwise). Credentials
+  # (.apiKey) are never grantable — passwords stay on the operator's
+  # human surfaces. setting_set still requires the invoking user to be
+  # ADMIN on the target scope, so the flag widens reach for nobody who
+  # could not have written the setting by hand.
   allowAiProviderSettings: true
 promptPrefix: |
   You are the Vance setup creator. The user asked for something to be

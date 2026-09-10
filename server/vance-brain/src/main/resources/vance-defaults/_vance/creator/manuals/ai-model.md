@@ -122,7 +122,7 @@ Discovery can also run on its own: a scheduled tick (opt-in via
 2 minutes after boot and then every 6 hours
 (`vance.ai-models.discovery.interval`), master-pod guarded. On an
 instance without the flag, the manual call is the ONLY path — after a
-fresh setup always run discovery once.
+fresh setup always run discovery once. The call also refreshes the
 catalog, so manual docs written before the call become visible in
 the same breath — without it the refresh runs every 30 minutes
 (or Profile → Actions → Refresh AI Model Catalog, operator-only).

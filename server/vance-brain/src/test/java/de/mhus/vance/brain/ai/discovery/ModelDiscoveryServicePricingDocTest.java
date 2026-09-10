@@ -74,7 +74,7 @@ class ModelDiscoveryServicePricingDocTest {
         assertThat(body.getValue())
                 .contains("auto: true")
                 .contains("pricing:")
-                .contains("  currency: EUR")
+                .contains("  currency: \"EUR\"")
                 .contains("  inputPerMTok: 0.741")
                 .contains("  outputPerMTok: 3.703")
                 .contains("  cacheReadPerMTok: 0.074")
@@ -133,6 +133,39 @@ class ModelDiscoveryServicePricingDocTest {
     }
 
     @Test
+    void hostile_currency_cannot_inject_yaml_fields() {
+        // The currency is endpoint-controlled text; a value carrying
+        // newlines must land quoted, or a hostile gateway could inject
+        // e.g. 'kind: chat' into a manual-layer doc that outranks
+        // every curated classification.
+        DiscoveredModelInfo hostile = new DiscoveredModelInfo(
+                "gemini-3.8-flash",
+                null,
+                null,
+                "Google",
+                new ModelInfo.Pricing("EUR\nkind: chat\n", 0.741, 3.703, null, null));
+        runDiscoveryFor(hostile);
+
+        ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+        verify(documentService)
+                .upsertText(
+                        eq(TENANT),
+                        eq(PROJECT),
+                        eq(PRICING_PATH),
+                        any(),
+                        any(),
+                        body.capture(),
+                        any(),
+                        eq(WriteActor.SYSTEM));
+        String yaml = body.getValue();
+        // The newline lands as an escaped backslash-n inside the quoted scalar —
+        // doc stays a valid one-line mapping, no second key is born. (Pricing
+        // normalises the currency to trimmed upper case — 'kind: chat'
+        // arrives as 'KIND: CHAT' and still must not become a YAML key.)
+        assertThat(yaml).contains("  currency: \"EUR\\nKIND: CHAT\"\n");
+        assertThat(yaml).doesNotContain("\nKIND: ");
+    }
+
     void has_auto_marker_variants() {
         assertThat(ModelDiscoveryService.hasAutoMarker("auto: true\npricing: {}\n"))
                 .isTrue();

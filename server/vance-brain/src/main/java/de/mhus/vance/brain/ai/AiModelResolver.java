@@ -428,7 +428,10 @@ public class AiModelResolver {
                     + "' has no '" + DEFAULT_PROVIDER_KEY + "' / '"
                     + DEFAULT_MODEL_KEY + "' settings");
         }
-        return Resolved.direct(provider, model);
+        // Same sidecar TLS lookup as every direct spec — the default endpoint
+        // must not silently re-enable validation that an explicit
+        // 'provider:model' spec for the same instance skips.
+        return new Resolved(provider, provider, model, declaredInsecureTls(tenantId, projectId, provider));
     }
 
     /** Thrown when a model spec cannot be resolved. */

@@ -195,6 +195,16 @@ pricing:
   outputPerMTok: 10.00
 ```
 
+```yaml
+# Bump a known model's context window because the operator's plan
+# unlocked a longer window than the bundled value.
+contextWindowTokens: 1000000
+```
+
+Lists (`capabilities`, `supportedAspectRatios`) are replaced as a whole.
+To remove a capability, list everything the model still supports and
+omit the dropped one.
+
 ### Machine-owned pricing files (`auto: true`)
 
 When a gateway's listing endpoint reports prices (cortecs does, in EUR
@@ -212,15 +222,6 @@ the top. The contract:
 To correct a machine-written price, edit the file AND remove the
 `auto: true` line — otherwise the next run overwrites the correction.
 To hand a model back to automation, re-add the marker.
-```yaml
-# Bump a known model's context window because the operator's plan
-# unlocked a longer window than the bundled value.
-contextWindowTokens: 1000000
-```
-
-Lists (`capabilities`, `supportedAspectRatios`) are replaced as a whole.
-To remove a capability, list everything the model still supports and
-omit the dropped one.
 
 ## Workflow
 

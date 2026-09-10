@@ -1,7 +1,9 @@
 # Automation-creator worker. The deliberate home for building
 # *persistent automation* — schedulers (time-driven), events (incoming
-# webhooks), hooks (brain-event-driven), and research sources (search
-# backends for the research_* family). The default chats (Arthur, Eddie)
+# webhooks), hooks (brain-event-driven), research sources (search
+# backends for the research_* family), and model definitions (LLM
+# provider instances plus their per-model docs). The default chats
+# (Arthur, Eddie)
 # reach these tool families too, but their stance says
 # automation is opt-in: when the user explicitly wants a recurring /
 # event-driven setup, they DELEGATE here so the full how-to guidance
@@ -17,7 +19,8 @@ description: |
   Sets up persistent project configuration on explicit user request:
   schedulers (cron / one-shot `at:`), events (incoming webhooks), hooks
   (brain-event-driven triggers), research sources (search backends for
-  the research_* family), and the project's `agent.md` — the
+  the research_* family), model definitions (LLM provider instances
+  under `_vance/model/`), and the project's `agent.md` — the
   standing instructions every agent in the project is given. Ford-based
   worker that carries the scheduler / event / hook tool families as
   primary plus the how-to manuals. Delegate here when the user actually
@@ -44,10 +47,28 @@ params:
   # the parent chat — it needs that conversation as background to know
   # what automation to build. See planning/worker-spawn-context.md.
   inheritContext: all
+  # Grants setting_set writes to ai.provider.<instance>.type and
+  # .baseUrl for this worker (deny-listed keys otherwise). Credentials
+  # (.apiKey) are never grantable — passwords stay on the operator's
+  # human surfaces. setting_set still requires the invoking user to be
+  # ADMIN on the target scope, so the flag widens reach for nobody who
+  # could not have written the setting by hand.
+  # Where file_*/exec_* run by default. The creator's job is
+  # server-side configuration, and in a web session there is no
+  # foot client behind the session — a CLIENT default leaves the
+  # generic wrappers dispatching into a pool that carries no
+  # client_* backends (the web profile removes them). WORK runs
+  # in the process's lazy temp RootDir; dirName params and
+  # work_target_set pick a provisioned checkout when needed. The
+  # foot profile flips this back — there the user's own machine
+  # is the natural target.
+  workTarget: { kind: WORK }
+  allowAiProviderSettings: true
 promptPrefix: |
   You are the Vance setup creator. The user asked for something to be
   set up permanently — a scheduler, an event (webhook), a hook, a
-  search source, or the project's standing instructions.
+  search source, a model definition, or the project's standing
+  instructions.
 
   Pick the right mechanism:
     - **Scheduler** — time-driven: recurring (`cron:`) or one-shot
@@ -58,20 +79,27 @@ promptPrefix: |
     - **Search source** — one search backend for the `research_*`
       family: a Serper key, a Wikipedia edition, an `ode`-speaking
       application. "add my serper key", "search our own archive".
+    - **Model definition** — registers an LLM endpoint as a provider
+      instance (sidecar + per-model docs). I set the non-secret settings
+      (baseUrl) myself via `setting_set`; only the API key stays with the
+      user. "new OpenAI-compatible provider at <url>, set up the model
+      definitions".
     - **`agent.md`** — no trigger at all: instructions every agent in
       this project is given up front. "everyone should always…",
       "remember for this project", "our convention is…".
 
   Read the matching manual before your first write —
   `manual_read('scheduling')`, `manual_read('events')`,
-  `manual_read('hooks')`, `manual_read('research-source')`, or
-  `manual_read('agent-doc')`. The YAML schemas are Vance-specific and
-  do not match generic cron / webhook conventions, and `agent.md` has
+  `manual_read('hooks')`, `manual_read('research-source')`,
+  `manual_read('ai-model')`, or `manual_read('agent-doc')`. The YAML
+  schemas are Vance-specific and do not match generic cron / webhook
+  conventions, and `agent.md` has
   its own lookup rules.
 
   Before creating, list what already exists (`scheduler_list` /
   `event_list` / `hook_list`, `research_providers` for search sources,
-  or `doc_read` on `agent.md`) so you update or ask instead of creating
+  `doc_list` on `_vance/model/` for provider instances, or `doc_read`
+  on `agent.md`) so you update or ask instead of creating
   a duplicate. When you need relative times resolved to absolute
   ISO-8601, call `current_time` first — never write a relative phrase
   into `at:`.
@@ -93,6 +121,17 @@ allowedToolsAdd:
   - "@scheduler"
   - "@events"
   - "@hook"
+  # Model-definition setup (see the ai-model manual): registering a
+  # provider instance is only half the job — populating its model
+  # list via discovery is the completion step, and the operator
+  # should not have to detour through the Profile-Actions button
+  # just because the chat drove the setup.
+  - "@aimodels"
+  # Finishing a setup often means writing the plain, non-credential
+  # settings that belong to it (a provider instance's baseUrl, a
+  # research routing default, an alias). setting_set is ADMIN-gated
+  # and refuses encrypted settings; the details live in the manuals.
+  - "@settings"
   # Writing `agent.md` is the one document this worker maintains — the
   # standing instructions of the project. Ford's baseline is read-only
   # on documents, so the two write verbs are named here explicitly
@@ -111,6 +150,9 @@ profiles:
   foot:
     params:
       useClientAgentDoc: true
+      # Override the recipe's WORK default: from the foot CLI the user's
+      # own machine is the natural exec/file target.
+      workTarget: { kind: CLIENT }
     promptPrefixAppend: |
       ## Client context — local CLI
 

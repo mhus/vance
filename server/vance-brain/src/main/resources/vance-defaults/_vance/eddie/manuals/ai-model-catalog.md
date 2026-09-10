@@ -236,8 +236,10 @@ omit the dropped one.
    distinguishable from auto-discovery output.
 6. **Tell the user how to make it visible.** The catalog auto-refreshes
    every 30 minutes; for immediate effect the user clicks **Profile →
-   Actions → Refresh AI Model Catalog**. There is **no LLM-callable
-   refresh tool** — never claim to refresh from your side.
+   Actions → Refresh AI Model Catalog**. Your own manifest has no
+   refresh tool — the creator's `ai_models_discover` refreshes as a
+   side effect of a discovery run, so delegate there or never claim
+   to have refreshed anything from your side.
 7. **Confirm in chat.** Quote the new path + the fields you set so the
    operator can sanity-check.
 
@@ -260,7 +262,7 @@ omit the dropped one.
 ## Related
 
 - `manual_read('storage-surfaces')` — Document vs. Scratch vs. Client-File
-- Run discovery: `POST /brain/{tenant}/admin/ai-models/discover` (operator
-  triggers this via the UI button — you do not have a tool for it)
+- Run discovery: `POST /brain/{tenant}/admin/ai-models/discover` (the
+  UI button, or the creator's `ai_models_discover` tool)
 - Refresh in-memory catalog: `POST /brain/{tenant}/admin/ai-models/refresh`
-  (same; operator-triggered)
+  (operator-triggered via the UI button)

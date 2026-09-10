@@ -72,11 +72,12 @@ Everything else the document declares travels to the protocol as-is —
 
 Which instance serves a modality by default lives in the settings
 `research.default.<modality>` and `research.fallback.<modality>` (e.g.
-`research.default.web = serper-main`). Settings are operator territory
-and I have no tool for them — name the keys to the operator. The
-keyless sources are routed out of the box, so a new keyless source is
-found by `research_search` without any routing change; a new keyed
-source usually wants `research.default.web` pointed at it.
+`research.default.web = serper-main`). These are plain keys — I can set
+them myself with `setting_set` when the user is ADMIN on the target
+scope; otherwise name the keys to the operator. The keyless sources
+are routed out of the box, so a new keyless source is found by
+`research_search` without any routing change; a new keyed source usually
+wants `research.default.web` pointed at it.
 
 ## Verify
 

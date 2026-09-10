@@ -195,6 +195,23 @@ pricing:
   outputPerMTok: 10.00
 ```
 
+### Machine-owned pricing files (`auto: true`)
+
+When a gateway's listing endpoint reports prices (cortecs does, in EUR
+per MTok), discovery writes them into the manual layer itself:
+`_vance/model/<provider>/<slug>.yaml` with an `auto: true` marker at
+the top. The contract:
+
+- No file yet → discovery creates one with the marker and the
+  `pricing:` block. No hand work needed.
+- File with the marker → machine-owned, the prices are refreshed on
+  every discovery run (prices change — nobody wants to re-type them).
+- File without the marker → operator-owned, discovery never touches
+  it again.
+
+To correct a machine-written price, edit the file AND remove the
+`auto: true` line — otherwise the next run overwrites the correction.
+To hand a model back to automation, re-add the marker.
 ```yaml
 # Bump a known model's context window because the operator's plan
 # unlocked a longer window than the bundled value.
@@ -256,6 +273,10 @@ omit the dropped one.
   own documentation — the control tokens are part of its training.
 - **Pricing hallucinations.** If unsure, ask the user for the vendor's
   pricing page URL and confirm before writing — never guess prices.
+  When the endpoint reports prices itself, discovery already wrote an
+  `auto: true` file with them (see above) — only write a manual price
+  when correcting one of those, and then REMOVE the `auto: true` marker
+  so the next run does not overwrite your correction.
 - **`discoveredBy: discovery-job` in a manual file.** That marker is
   reserved for the auto layer. Manual = manual.
 

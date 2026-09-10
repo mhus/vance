@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.ai.openai;
 
 import de.mhus.vance.brain.ai.DiscoveredModelInfo;
+import de.mhus.vance.brain.ai.ModelInfo.Pricing;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -25,13 +27,14 @@ import tools.jackson.databind.JsonNode;
  *   <li>{@code ownedBy} — from {@code owned_by}.</li>
  * </ul>
  *
- * <p>Only observations are extracted. {@code kind}, pricing and
- * capabilities stay absent — see {@link DiscoveredModelInfo}'s class
- * doc: pricing belongs to a different source (the vendor's price
- * sheet, operator-owned manual layer), and kind/capabilities are
- * classifications. Pricing blocks some gateways ship in the listing
- * response (cortecs EUR/MTok, OpenRouter per-token USD) are ignored
- * for exactly that reason.
+ * <p>Only observations are extracted. {@code kind} and capabilities stay
+ * absent — see {@link DiscoveredModelInfo}'s class doc for why the auto
+ * layer must not assert classifications. Pricing is an observation here
+ * only when the endpoint itself reports it; the unit hangs on the field
+ * name: cortecs' {@code input_token}/{@code output_token}/
+ * {@code cache_read_cost}/{@code cache_write_cost} are EUR per MTok,
+ * OpenRouter's {@code prompt}/{@code completion}/{@code cache_read}/
+ * {@code cache_write} are USD per token (converted).
  *
  * <p>Pure static utility — no Spring wiring needed.
  */
@@ -65,10 +68,84 @@ public final class OpenAiModelListing {
         if (ownedBy != null && ownedBy.isBlank()) {
             ownedBy = null;
         }
-        // Pricing blocks some gateways ship (cortecs EUR/MTok, OpenRouter
-        // per-token USD) are deliberately ignored: prices are owned by a
-        // different source — the operator-managed manual layer.
-        return new DiscoveredModelInfo(id, context, output, ownedBy);
+        Pricing pricing = parsePricing(entry.path("pricing"));
+        return new DiscoveredModelInfo(id, context, output, ownedBy, pricing);
+    }
+
+    /**
+     * Parse the {@code pricing} object. Field name decides the unit:
+     * cortecs reports per MTok, OpenRouter per token. A pricing block
+     * needs both input and output — half blocks are dropped rather than
+     * asserted. Cache costs are optional. Zero is a valid price (free
+     * models); negative or non-numeric values are ignored.
+     */
+    private static @Nullable Pricing parsePricing(JsonNode pricing) {
+        if (pricing == null || !pricing.isObject()) {
+            return null;
+        }
+        Double input = pricePerMTok(pricing, "input_token", "prompt");
+        Double output = pricePerMTok(pricing, "output_token", "completion");
+        if (input == null || output == null) {
+            return null;
+        }
+        Double cacheRead = pricePerMTok(pricing, "cache_read_cost", "cache_read");
+        Double cacheWrite = pricePerMTok(pricing, "cache_write_cost", "cache_write");
+        String currency = pricing.path("currency").asText("");
+        if (currency.isBlank()) {
+            // OpenRouter (the one dialect without a currency field)
+            // documents USD; USD is also the bundled convention.
+            currency = "USD";
+        }
+        return new Pricing(currency, input, output, cacheRead, cacheWrite);
+    }
+
+    /**
+     * Read one price, first key wins. The first key of each pair is the
+     * per-MTok dialect, the second the per-token dialect (converted,
+     * rounded to 6 decimals to keep the product of the conversion clean
+     * in the YAML). Values arrive as JSON numbers (cortecs) or numeric
+     * strings (OpenRouter quotes its prices).
+     */
+    private static @org.jspecify.annotations.Nullable Double pricePerMTok(
+            JsonNode pricing, String perMTokKey, String perTokenKey) {
+        Double perMTok = priceValue(pricing.get(perMTokKey));
+        if (perMTok != null) {
+            return perMTok;
+        }
+        Double perToken = priceValue(pricing.get(perTokenKey));
+        if (perToken != null) {
+            return Math.round(perToken * 1_000_000.0 * 1_000_000.0) / 1_000_000.0;
+        }
+        return null;
+    }
+
+    /**
+     * One price field as a double: JSON number or numeric string.
+     * Negative, infinite or unparseable values are ignored.
+     */
+    private static @org.jspecify.annotations.Nullable Double priceValue(
+            @org.jspecify.annotations.Nullable JsonNode node) {
+        if (node == null) {
+            return null;
+        }
+        String text;
+        if (node.isNumber()) {
+            text = node.asText();
+        } else if (node.isTextual()) {
+            text = node.asText().trim();
+        } else {
+            return null;
+        }
+        double value;
+        try {
+            value = Double.parseDouble(text);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        if (value >= 0 && Double.isFinite(value)) {
+            return value;
+        }
+        return null;
     }
 
     private static @org.jspecify.annotations.Nullable Integer firstPositiveInt(JsonNode entry, List<String> keys) {

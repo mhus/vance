@@ -97,6 +97,6 @@ class AiModelsDiscoverToolTest {
 
     private static ModelDiscoveryService.DiscoveryResult result(int scopes, int instances, int written) {
         return new ModelDiscoveryService.DiscoveryResult(
-                TENANT, scopes, instances, written, 0, Map.of(), 12_345L, Instant.now());
+                TENANT, scopes, instances, written, 0, 0, 0, Map.of(), 12_345L, Instant.now());
     }
 }

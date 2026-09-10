@@ -13,9 +13,11 @@ authType: api-key
 # Models" (Profile → Actions) after setting the key and the models land
 # under `_vance/model-auto/cortecs/`. Cortecs' /v1/models reports
 # context size, output limit and owned-by, so discovery carries those
-# observations automatically. Pricing and `kind` never come from
-# discovery — prices are owned by a different source (the vendor's
-# price sheet), so add them by hand here when a model needs them.
+# observations automatically. Cortecs' /v1/models also ships a price
+# block (EUR per MTok), which discovery writes into `_vance/model/`
+# as `auto: true` machine-owned files — no hand-typed prices. `kind`
+# and capabilities stay manual — add those by hand here when a model
+# needs them.
 #
 # No `maxTools:` either. The value belongs to the endpoint, and we have
 # not measured what this gateway enforces; an invented cap would silently

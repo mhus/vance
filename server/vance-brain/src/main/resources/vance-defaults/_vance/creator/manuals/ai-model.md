@@ -110,9 +110,12 @@ plainly and tell the user the button does the same: Profile →
 Actions → Discover AI Models. Auto-docs carry the observations the
 listing endpoint reports — `contextWindowTokens`, `maxOutputTokens`,
 `ownedBy` (OpenAI proper gives only `id`/`owned_by`; cortecs adds
-context size and output limit). Pricing and `kind` never come from
-discovery — prices are owned by a different source (the vendor's price
-sheet), so they need a manual doc on top.
+context size and output limit). Prices the endpoint reports land in
+the MANUAL layer — `_vance/model/<instance>/<slug>.yaml` with
+`auto: true` — created when no file exists, refreshed on every run
+while the marker stays, never touched once an operator removes it.
+`kind` and capabilities still never come from discovery — those need a
+manual doc on top.
 catalog, so manual docs written before the call become visible in
 the same breath — without it the refresh runs every 30 minutes
 (or Profile → Actions → Refresh AI Model Catalog, operator-only).

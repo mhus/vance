@@ -108,12 +108,17 @@ public class AiModelsDiscoverTool implements Tool {
             out.put("instancesScanned", result.instancesScanned());
             out.put("modelsWritten", result.modelsWritten());
             out.put("modelsFailed", result.modelsFailed());
+            out.put("pricingDocsCreated", result.pricingDocsCreated());
+            out.put("pricingDocsUpdated", result.pricingDocsUpdated());
             out.put("skippedInstances", result.skippedInstances());
             out.put("durationMs", result.durationMs());
             out.put(
                     "note",
                     "Auto-docs live under _vance/model-auto/ and are "
-                            + "overwritten by every discovery run. Pricing, kind and "
+                            + "overwritten by every discovery run. Prices the endpoint "
+                            + "reports land in _vance/model/ as auto: true files "
+                            + "(created when absent, refreshed while the marker stays, "
+                            + "untouched once an operator removes it). Kind and "
                             + "capabilities belong in manual docs under _vance/model/.");
             return out;
         } catch (RuntimeException e) {

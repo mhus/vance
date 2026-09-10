@@ -252,6 +252,7 @@ public class ModelDiscoveryService {
         for (DiscoveredModelInfo model : models) {
             try {
                 writeAutoDoc(tenantId, projectId, instance, model);
+                writeManualPricingDoc(tenantId, projectId, instance, model, result);
                 result.modelWritten();
             } catch (RuntimeException e) {
                 log.warn(
@@ -325,6 +326,112 @@ public class ModelDiscoveryService {
     }
 
     /**
+     * Write the endpoint-reported prices into the <b>manual</b> layer as
+     * a machine-owned {@code auto: true} file. The auto-docs stay
+     * pricing-free (they are overwritten wholesale on every run and sit
+     * above bundled in the cascade); the manual layer is where pricing
+     * lives, and this is its automation slot:
+     * <ul>
+     *   <li>No file at {@code _vance/model/<instance>/<slug>.yaml} — create
+     *       one carrying {@code auto: true} and the {@code pricing:} block.</li>
+     *   <li>File exists <b>without</b> the marker — operator-owned, never
+     *       touched, whatever it says wins through the cascade.</li>
+     *   <li>File exists <b>with</b> {@code auto: true} — still machine-owned,
+     *       the pricing block is refreshed (prices change; nobody wants to
+     *       re-type them). An operator claims the file by removing the
+     *       marker.</li>
+     * </ul>
+     *
+     * <p>Models the endpoint does not price get no file — nothing is guessed
+     * or scraped; those stay unpriced until an operator writes them.
+     */
+    private void writeManualPricingDoc(
+            String tenantId,
+            String projectId,
+            String instance,
+            DiscoveredModelInfo model,
+            DiscoveryResult.Builder result) {
+        de.mhus.vance.brain.ai.ModelInfo.Pricing pricing = model.pricing();
+        if (pricing == null) {
+            return;
+        }
+        String wireName = model.wireName();
+        String slug = slugify(wireName);
+        if (slug == null) {
+            return;
+        }
+        String path = ModelCatalog.MODEL_PATH_PREFIX + instance + "/" + slug + ".yaml";
+        java.util.Optional<de.mhus.vance.shared.document.DocumentDocument> existing =
+                documentService.findByPath(tenantId, projectId, path);
+        boolean existed = existing.isPresent();
+        if (existed) {
+            String content = documentService.readContent(existing.get());
+            if (!hasAutoMarker(content)) {
+                log.debug(
+                        "ModelDiscoveryService: manual pricing doc '{}' exists without auto marker — operator-owned, not touched",
+                        path);
+                return;
+            }
+        }
+        StringBuilder yaml = new StringBuilder();
+        yaml.append("# Machine-owned by model-discovery — refreshed on every run while auto: true stays.\n");
+        yaml.append("# Remove the marker to take ownership; discovery then never touches this file.\n");
+        yaml.append("# Prices are endpoint observations (see _vance/model-auto/ for limits).\n");
+        yaml.append("auto: true\n");
+        if (!derivedNameMatches(slug, wireName)) {
+            yaml.append("wireName: ").append(yamlString(wireName)).append('\n');
+        }
+        yaml.append("pricing:\n");
+        yaml.append("  currency: ").append(pricing.currency()).append('\n');
+        yaml.append("  inputPerMTok: ").append(pricing.inputPerMTok()).append('\n');
+        yaml.append("  outputPerMTok: ").append(pricing.outputPerMTok()).append('\n');
+        if (pricing.cacheReadPerMTok() != null) {
+            yaml.append("  cacheReadPerMTok: ")
+                    .append(pricing.cacheReadPerMTok())
+                    .append('\n');
+        }
+        if (pricing.cacheWritePerMTok() != null) {
+            yaml.append("  cacheWritePerMTok: ")
+                    .append(pricing.cacheWritePerMTok())
+                    .append('\n');
+        }
+        documentService.upsertText(
+                tenantId,
+                projectId,
+                path,
+                /* title */ instance + "/" + wireName,
+                /* tags  */ List.of("ai-model", "pricing-auto"),
+                yaml.toString(),
+                DOC_AUTHOR,
+                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+        if (existed) {
+            result.pricingDocUpdated();
+        } else {
+            result.pricingDocCreated();
+        }
+    }
+
+    /**
+     * True when the YAML content carries {@code auto: true} at the top
+     * level — the machine-ownership marker of a manual pricing doc.
+     */
+    static boolean hasAutoMarker(@Nullable String content) {
+        if (content == null || content.isBlank()) {
+            return false;
+        }
+        try {
+            Object parsed = new org.yaml.snakeyaml.Yaml().load(content);
+            if (parsed instanceof Map<?, ?> map) {
+                return Boolean.TRUE.equals(map.get("auto"));
+            }
+        } catch (RuntimeException e) {
+            log.debug(
+                    "ModelDiscoveryService: unparseable manual pricing doc — treating as operator-owned: {}",
+                    e.toString());
+        }
+        return false;
+    }
+    /**
      * Translate a wire-name into a filesystem-safe relative path under
      * the provider directory. {@code '/'} stays (becomes a subdir);
      * {@code ':'} is replaced with {@code '-'} (Ollama tag style);
@@ -389,6 +496,8 @@ public class ModelDiscoveryService {
             int instancesScanned,
             int modelsWritten,
             int modelsFailed,
+            int pricingDocsCreated,
+            int pricingDocsUpdated,
             Map<String, String> skippedInstances,
             long durationMs,
             Instant finishedAt) {
@@ -404,6 +513,8 @@ public class ModelDiscoveryService {
             private int instances;
             private int written;
             private int failedModels;
+            private int pricingCreated;
+            private int pricingUpdated;
             private final Map<String, String> skipped = new LinkedHashMap<>();
 
             Builder(String tenantId) {
@@ -426,6 +537,14 @@ public class ModelDiscoveryService {
                 failedModels++;
             }
 
+            void pricingDocCreated() {
+                pricingCreated++;
+            }
+
+            void pricingDocUpdated() {
+                pricingUpdated++;
+            }
+
             void instanceFailed(String tenant, String project, String instance, String why) {
                 skipped.put(tenant + "/" + project + "/" + instance, why);
             }
@@ -433,7 +552,16 @@ public class ModelDiscoveryService {
             DiscoveryResult build(Instant start) {
                 long ms = java.time.Duration.between(start, Instant.now()).toMillis();
                 return new DiscoveryResult(
-                        tenantId, scopes, instances, written, failedModels, Map.copyOf(skipped), ms, Instant.now());
+                        tenantId,
+                        scopes,
+                        instances,
+                        written,
+                        failedModels,
+                        pricingCreated,
+                        pricingUpdated,
+                        Map.copyOf(skipped),
+                        ms,
+                        Instant.now());
             }
         }
     }

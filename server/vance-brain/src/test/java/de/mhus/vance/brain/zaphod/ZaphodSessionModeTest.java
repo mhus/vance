@@ -440,6 +440,19 @@ class ZaphodSessionModeTest {
         assertThat(optimist.getStatus()).isEqualTo(HeadStatus.DONE);
         assertThat(optimist.getReplies()).containsExactly("I like option A!");
         // SESSION writes no draft documents.
+        // The head's reply becomes a readable interim chat note —
+        // attributed, KIND_INTERIM, on the council chat process (not
+        // the hidden head process).
+        ArgumentCaptor<ChatMessageDocument> noteCaptor = ArgumentCaptor.forClass(ChatMessageDocument.class);
+        verify(chatMessageService).append(noteCaptor.capture());
+        ChatMessageDocument note = noteCaptor.getValue();
+        assertThat(note.getThinkProcessId()).isEqualTo("p1");
+        assertThat(note.getRole()).isEqualTo(ChatRole.ASSISTANT);
+        assertThat(note.getContent()).startsWith("**Optimist:**").contains("I like option A!");
+        assertThat(note.getMeta())
+                .containsEntry(
+                        de.mhus.vance.shared.chat.ChatMessageDocument.META_KIND,
+                        de.mhus.vance.shared.chat.ChatMessageDocument.KIND_INTERIM);
         verify(documentService, never())
                 .createText(anyString(), anyString(), anyString(), anyString(), any(), anyString(), anyString(), any());
         // Todos ticked: IN_PROGRESS before the drive, COMPLETED after.

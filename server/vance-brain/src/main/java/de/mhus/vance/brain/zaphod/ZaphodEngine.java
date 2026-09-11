@@ -216,13 +216,6 @@ public class ZaphodEngine implements ThinkEngine {
      *  session-chat semantics (see {@code planning/zaphod-session-mode.md}). */
     public static final String SESSION_MODE_KEY = "sessionMode";
 
-    /** {@code engineParams[VERBOSE_NOTES_KEY]} — SESSION only: keep the
-     *  per-head chat notes (head replies as chat messages). Default
-     *  {@code false} — the TodoList carries turn progress, the
-     *  synthesis is the single chat reply. Failure notes are always
-     *  written, independent of this flag. */
-    public static final String VERBOSE_NOTES_KEY = "verboseNotes";
-
     /** TodoItem id prefix for the per-head items of the session-mode
      *  turn-progress list. */
     private static final String TODO_ID_HEAD_PREFIX = "zaphod-head-";
@@ -373,10 +366,6 @@ public class ZaphodEngine implements ThinkEngine {
 
     private static boolean sessionMode(ThinkProcessDocument process) {
         return engineFlag(process, SESSION_MODE_KEY);
-    }
-
-    private static boolean verboseNotes(ThinkProcessDocument process) {
-        return engineFlag(process, VERBOSE_NOTES_KEY);
     }
 
     /** Greeting with the concrete head names, so the user sees who is
@@ -932,12 +921,19 @@ public class ZaphodEngine implements ThinkEngine {
                         head.getName(),
                         state.getCurrentRound(),
                         reply.length());
-                if (batch || verboseNotes(process)) {
+                if (batch) {
                     appendChatNote(
                             process,
                             headRoundHeader(state.getPattern(), head, state.getCurrentRound())
                                     + (finalRound ? " — done" : " — replied"),
                             reply);
+                } else {
+                    // SESSION: the head's reply becomes a readable,
+                    // attributed chat note — interim, so it shows live
+                    // and in the scrollback (dimmed) without joining the
+                    // real conversation payload. Same pattern as Frankie's
+                    // interim working-log.
+                    appendHeadReplyNote(process, head, reply);
                 }
             }
         } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
@@ -1097,6 +1093,39 @@ public class ZaphodEngine implements ThinkEngine {
                     .build());
         } catch (RuntimeException e) {
             log.debug("Zaphod id='{}' chat-history append failed for '{}': {}", process.getId(), header, e.toString());
+        }
+    }
+
+    /**
+     * SESSION mode: writes one head's reply into the session chat as a
+     * readable, attributed note — {@code "**<Name>:**\n\n<reply>"} —
+     * flagged {@code KIND_INTERIM}. The interim marker keeps it out of
+     * every LLM-replay / compaction path while the live push and the
+     * scrollback still show it (the UI dims interims) — the user reads
+     * what each head said without it counting as conversation payload.
+     * The head's own raw transcript stays hidden (silent machinery)
+     * because it also carries the internal steer framing. Mirrors
+     * Frankie's {@code persistInterimAssistantReply} pattern.
+     */
+    private void appendHeadReplyNote(ThinkProcessDocument process, ZaphodHead head, String reply) {
+        if (chatMessageService == null) return;
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put(ChatMessageDocument.META_KIND, ChatMessageDocument.KIND_INTERIM);
+        try {
+            chatMessageService.append(ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(ChatRole.ASSISTANT)
+                    .content("**" + capitalise(head.getName()) + ":**\n\n" + reply)
+                    .meta(meta)
+                    .build());
+        } catch (RuntimeException e) {
+            log.debug(
+                    "Zaphod id='{}' head-note append failed for '{}': {}",
+                    process.getId(),
+                    head.getName(),
+                    e.toString());
         }
     }
 

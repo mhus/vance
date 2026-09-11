@@ -1,0 +1,64 @@
+# Council chat — a session whose chat process runs Zaphod in
+# SESSION mode: every user message is folded into a turn question,
+# deterministically driven through the three heads (no LLM decides
+# whether the council convenes), and answered with the synthesis as
+# the single chat reply. Heads are long-lived — each head's own
+# chat history carries the conversation across turns.
+#
+# Requires the session-bootstrap recipe override
+# (SessionBootstrapRequest.chatRecipe / the UI session picker);
+# `session.defaultChatEngine` stays an engine name.
+
+title: "Council Chat"
+listed: true
+category: chat
+description: |
+  Interactive session chat where every message is evaluated by a
+  three-head council (optimist, skeptic, pragmatist) and answered
+  with a synthesis. Long-lived heads remember the conversation;
+  turn progress shows as a checklist.
+engine: zaphod
+params:
+  sessionMode: true
+  pattern: COUNCIL
+  # Synthesis turn reconciles three perspectives — moderate
+  # reasoning budget on Zaphod's combine step, mirroring
+  # council-three-perspectives. The heads are independent Ford
+  # workers and don't inherit this.
+  thinking: medium
+  # Synthesis call falls through to the fast tier if the tenant
+  # default is rate-limited.
+  fallbackModels:
+    - default:fast
+  heads:
+    - name: optimist
+      recipe: council-member
+      persona: |
+        You are an optimistic advisor. Actively look for
+        opportunities, positive effects, and feasible solution
+        paths. Don't sugarcoat, but show what becomes possible
+        when the thing works.
+    - name: skeptiker
+      recipe: council-member
+      persona: |
+        You are a skeptical reviewer. Question assumptions, look
+        for risks, identify worst-case scenarios. Be concrete, no
+        blanket pessimism.
+    - name: pragmatiker
+      recipe: council-member
+      persona: |
+        You give the down-to-earth perspective: what is feasible
+        with the available means, in what time, at what effort?
+  synthesisPrompt: |
+    Summarise the three perspectives and answer the user's
+    question. Structure:
+    1. What does everyone agree on?
+    2. Where are the central differences?
+    3. One concrete recommendation for action.
+triggers:
+  # Structural recipe (session picker / explicit chatRecipe) — no
+  # goal-text triggers; council batches keep their own names.
+  keywords: []
+tags:
+  - council
+  - session

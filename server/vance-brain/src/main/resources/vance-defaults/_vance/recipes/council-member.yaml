@@ -1,0 +1,34 @@
+# Council member worker — the recipe Zaphod recipes point their
+# heads at. Cost regulator: the heads run on the fast tier instead
+# of the expensive tenant default (a council chat fires N head turns
+# + one synthesis per user message). The head contributes exactly
+# one perspective per round; the persona arrives with the steer
+# content from the Zaphod head spec, not from this recipe. Generic
+# on purpose so custom council recipes can reference it too.
+
+title: "Council Member"
+description: |
+  Light Ford worker profile for Zaphod council heads. One
+  perspective per round, driven by the Zaphod engine — the
+  persona arrives with the steer content, not with this recipe.
+engine: ford
+params:
+  model: default:fast
+  validation: false
+  # A head is a leaf advisor: it answers with one perspective and
+  # is not supposed to run long tool loops. Backstop, not routine
+  # step limit.
+  maxIterations: 15
+  # The steer content is self-contained (single-voice framing +
+  # persona + question); the head's own chat history carries the
+  # conversation across session turns. No parent-context
+  # inheritance — the Zaphod process's history would only add
+  # noise, not signal.
+  inheritContext: none
+  fallbackModels:
+    - default:fast
+  manualPaths:
+    - _vance/manuals/
+tags:
+  - council
+  - worker

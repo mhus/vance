@@ -22,6 +22,30 @@ import org.jspecify.annotations.Nullable;
 @AllArgsConstructor
 public class ZaphodState {
 
+    /** Operating mode — batch one-shot vs reactive session chat.
+     * Default {@link ZaphodMode#BATCH} keeps persisted states from
+     * before the mode existed loading as batch (round-trip safety). */
+    @Builder.Default
+    private ZaphodMode mode = ZaphodMode.BATCH;
+
+    /** SESSION only: zero-based index of the current/last user turn.
+     * Incremented when a turn starts (i.e. the first turn is 1).
+     *
+     * <p>Nullable on purpose: Jackson 3 deserialises via the
+     * all-args creator and a persisted pre-session-mode state has no
+     * {@code turnIndex} key — an {@code int} would fail
+     * {@code FAIL_ON_NULL_FOR_PRIMITIVES} on resume. The engine
+     * normalises {@code null} to 0 on load; BATCH states never touch
+     * it.
+     */
+    private @Nullable Integer turnIndex;
+
+    /** SESSION only: the folded user question of the current/last
+     * turn. Replaces {@code process.goal} as the heads' round-0
+     * steer content — the process goal stays {@code null} for
+     * session chats. {@code null} before the first turn. */
+    private @Nullable String turnGoal;
+
     @Builder.Default
     private ZaphodPattern pattern = ZaphodPattern.COUNCIL;
 

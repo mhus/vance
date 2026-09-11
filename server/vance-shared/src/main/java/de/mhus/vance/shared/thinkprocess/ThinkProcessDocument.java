@@ -40,13 +40,11 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "think_processes")
 @CompoundIndexes({
-        @CompoundIndex(
-                name = "tenant_session_name_idx",
-                def = "{ 'tenantId': 1, 'sessionId': 1, 'name': 1 }",
-                unique = true),
-        @CompoundIndex(
-                name = "tenant_session_status_idx",
-                def = "{ 'tenantId': 1, 'sessionId': 1, 'status': 1 }")
+    @CompoundIndex(
+            name = "tenant_session_name_idx",
+            def = "{ 'tenantId': 1, 'sessionId': 1, 'name': 1 }",
+            unique = true),
+    @CompoundIndex(name = "tenant_session_status_idx", def = "{ 'tenantId': 1, 'sessionId': 1, 'status': 1 }")
 })
 @Data
 @Builder
@@ -263,13 +261,17 @@ public class ThinkProcessDocument {
     private ProcessMode mode = ProcessMode.NORMAL;
 
     /**
-     * TodoList of plan steps, owned by Arthur in {@code PLANNING}/
-     * {@code EXECUTING}-mode. Set fresh on every {@code PROPOSE_PLAN};
-     * status updates flow via {@code TODO_UPDATE}-actions during
-     * execution. Empty for non-Arthur engines and for Arthur in
-     * {@link ProcessMode#NORMAL}/{@link ProcessMode#EXPLORING}.
+     * Chat-facing progress checklist of the owning engine — a
+     * generic surface, not plan-mode-exclusive: Arthur/Eddie set it
+     * via {@code PROPOSE_PLAN}/{@code TODO_UPDATE}-actions in
+     * {@code PLANNING}/{@code EXECUTING}-mode, Frankie via its
+     * {@code todo_write}/{@code todo_update} tools, and Zaphod's
+     * session mode drives it engine-side as per-turn head progress.
+     * Rendered by the UI whenever non-empty. Persisted atomically via
+     * {@code ThinkProcessService.setTodos} (full replace, no merge).
      *
-     * <p>See {@code planning/arthur-plan-mode.md} §3.2.
+     * <p>See {@code planning/arthur-plan-mode.md} §3.2 and
+     * {@code planning/zaphod-session-mode.md} §5.
      */
     @Builder.Default
     private List<TodoItem> todos = new ArrayList<>();

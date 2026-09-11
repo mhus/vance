@@ -4,8 +4,11 @@ import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.api.thinkprocess.TodoItem;
+import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.api.zaphod.HeadStatus;
 import de.mhus.vance.api.zaphod.ZaphodHead;
+import de.mhus.vance.api.zaphod.ZaphodMode;
 import de.mhus.vance.api.zaphod.ZaphodPattern;
 import de.mhus.vance.api.zaphod.ZaphodState;
 import de.mhus.vance.api.zaphod.ZaphodStatus;
@@ -202,6 +205,39 @@ public class ZaphodEngine implements ThinkEngine {
      *  these up via MemoryContextLoader, but Zaphod's synthesizer
      *  runs inline and would otherwise miss them. */
     private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
+    /** Emits the per-turn {@code todos-updated} frames for the
+     *  session-mode turn-progress list — same single emit-path
+     *  Arthur/Eddie/Frankie use (Frankie's todo tools are the
+     *  precedent for using the checklist without plan-mode). */
+    private final de.mhus.vance.brain.arthur.PlanModeEventEmitter planModeEventEmitter;
+
+    /** {@code engineParams[SESSION_MODE_KEY]} — boolean recipe param
+     *  {@code sessionMode: true} switches the process to reactive
+     *  session-chat semantics (see {@code planning/zaphod-session-mode.md}). */
+    public static final String SESSION_MODE_KEY = "sessionMode";
+
+    /** {@code engineParams[VERBOSE_NOTES_KEY]} — SESSION only: keep the
+     *  per-head chat notes (head replies as chat messages). Default
+     *  {@code false} — the TodoList carries turn progress, the
+     *  synthesis is the single chat reply. Failure notes are always
+     *  written, independent of this flag. */
+    public static final String VERBOSE_NOTES_KEY = "verboseNotes";
+
+    /** TodoItem id prefix for the per-head items of the session-mode
+     *  turn-progress list. */
+    private static final String TODO_ID_HEAD_PREFIX = "zaphod-head-";
+
+    /** TodoItem id of the per-turn conclusion item. */
+    private static final String TODO_ID_CONCLUSION = "zaphod-conclusion";
+
+    /** Session-mode greeting, appended once at start — analog
+     *  {@code ArthurEngine.GREETING}. Head names are appended
+     *  dynamically so the user sees who is on the council. */
+    private static final String SESSION_GREETING_PREFIX =
+            "Hi! I'm your council chat — every message you send is evaluated by my heads (";
+
+    private static final String SESSION_GREETING_SUFFIX =
+            ") and answered with their synthesis. What would you like to discuss?";
 
     // ──────────────────── Metadata ────────────────────
 
@@ -244,15 +280,37 @@ public class ZaphodEngine implements ThinkEngine {
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
         ZaphodState state = buildInitialState(process);
+        boolean session = sessionMode(process);
+        if (session && state.getPattern() != ZaphodPattern.COUNCIL) {
+            throw new IllegalStateException(
+                    "Zaphod sessionMode requires pattern COUNCIL in v1 — id='" + process.getId() + "'");
+        }
+        state.setMode(session ? ZaphodMode.SESSION : ZaphodMode.BATCH);
         persistState(process, state);
         log.info(
-                "Zaphod.start tenant='{}' session='{}' id='{}' pattern={} heads={}",
+                "Zaphod.start tenant='{}' session='{}' id='{}' pattern={} heads={} mode={}",
                 process.getTenantId(),
                 process.getSessionId(),
                 process.getId(),
                 state.getPattern(),
-                state.getHeads().size());
+                state.getHeads().size(),
+                session ? "SESSION" : "BATCH");
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+        if (session) {
+            // Session chat: greet once, then WAIT for user input — no
+            // scheduleTurn. The turn boundary (runTurn) drains the
+            // inbox when the first user message wakes the lane; a
+            // session process carries no goal and must not drive
+            // heads against an empty task.
+            chatMessageService.append(ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(ChatRole.ASSISTANT)
+                    .content(sessionGreeting(state))
+                    .build());
+            return;
+        }
         eventEmitter.scheduleTurn(process.getId());
     }
 
@@ -279,14 +337,254 @@ public class ZaphodEngine implements ThinkEngine {
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Zaphod.stop id='{}'", process.getId());
+        ZaphodState state = loadState(process);
+        if (state.getMode() == ZaphodMode.SESSION) {
+            // Session-close cascade: the long-lived heads die with
+            // their parent. Batch keeps its historical behaviour —
+            // heads are stopped by the runTurn paths.
+            stopAllHeads(state, process);
+            clearTurnTodos(process);
+        }
         thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
     // ──────────────────── runTurn ────────────────────
+    // ──────────────────── Session mode ────────────────────
+
+    /** True while a session-mode turn is in flight (heads being
+     *  driven, consensus check, or synthesis). At the turn boundary
+     *  (fresh process, or last turn DONE/FAILED) the inbox is drained
+     *  and folded instead — see {@link #runSessionTurnBoundary}. */
+    private static boolean isMidTurn(ZaphodState state) {
+        return state.getStatus() == ZaphodStatus.RUNNING
+                || state.getStatus() == ZaphodStatus.CHECKING_CONSENSUS
+                || state.getStatus() == ZaphodStatus.SYNTHESIZING;
+    }
+
+    /** Parses a boolean recipe flag from {@code engineParams} —
+     *  tolerant towards YAML booleans and string serialisations. */
+    private static boolean engineFlag(ThinkProcessDocument process, String key) {
+        Map<String, Object> p = process.getEngineParams();
+        if (p == null) return false;
+        Object raw = p.get(key);
+        if (raw instanceof Boolean b) return b;
+        return raw instanceof String s && Boolean.parseBoolean(s.trim());
+    }
+
+    private static boolean sessionMode(ThinkProcessDocument process) {
+        return engineFlag(process, SESSION_MODE_KEY);
+    }
+
+    private static boolean verboseNotes(ThinkProcessDocument process) {
+        return engineFlag(process, VERBOSE_NOTES_KEY);
+    }
+
+    /** Greeting with the concrete head names, so the user sees who is
+     *  on the council before the first turn. */
+    private static String sessionGreeting(ZaphodState state) {
+        StringBuilder names = new StringBuilder();
+        for (ZaphodHead head : state.getHeads()) {
+            if (names.length() > 0) names.append(", ");
+            names.append(head.getName());
+        }
+        return SESSION_GREETING_PREFIX + names + SESSION_GREETING_SUFFIX;
+    }
+
+    /**
+     * Session-mode turn boundary: drain the inbox, fold every
+     * {@code UserChatInput} since the last turn into the new
+     * {@code turnGoal}, and start the turn. Non-user messages are not
+     * expected on a session chat (no parent, leaf heads) and are
+     * discarded after logging.
+     *
+     * <p>Inbox discipline (planning/zaphod-session-mode.md §2.3):
+     * draining happens ONLY here. Mid-turn arrivals stay queued —
+     * the turn-end step re-checks {@code pendingSize} and schedules
+     * the next turn, so nothing is lost or folded into a running
+     * turn.
+     */
+    private void runSessionTurnBoundary(ThinkProcessDocument process, ThinkEngineContext ctx, ZaphodState state) {
+        List<SteerMessage> pending = ctx.drainPending();
+        String question = foldUserInputs(pending);
+        if (question == null || question.isBlank()) {
+            // Nothing to work on — wait quietly for the next message.
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+            return;
+        }
+        log.info(
+                "Zaphod id='{}' session turn {} starts ({} chars, {} pending messages)",
+                process.getId(),
+                state.getTurnIndex() + 1,
+                question.length(),
+                pending.size());
+        state.setTurnGoal(question);
+        state.setTurnIndex(state.getTurnIndex() + 1);
+        resetHeadsForTurn(state);
+        state.setCurrentHeadIndex(0);
+        state.setCurrentRound(0);
+        state.setStatus(ZaphodStatus.RUNNING);
+        persistState(process, state);
+        updateTurnTodos(process, state, /*inProgressHead*/ null, /*conclusion*/ false);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
+        eventEmitter.scheduleTurn(process.getId());
+    }
+
+    /**
+     * Re-arms every head for a new turn: per-turn fields reset,
+     * {@code spawnedProcessId} kept for healthy long-lived heads
+     * (persona continuity — their chat history carries the
+     * conversation). Failed heads and lost/closed children are
+     * respawned fresh on their next drive.
+     */
+    private void resetHeadsForTurn(ZaphodState state) {
+        for (ZaphodHead head : state.getHeads()) {
+            boolean respawn = head.getStatus() == HeadStatus.FAILED;
+            if (!respawn && head.getSpawnedProcessId() != null) {
+                ThinkProcessDocument child =
+                        thinkProcessService.findById(head.getSpawnedProcessId()).orElse(null);
+                respawn = child == null || child.getStatus() == ThinkProcessStatus.CLOSED;
+            }
+            if (respawn) {
+                head.setSpawnedProcessId(null);
+            }
+            head.setStatus(HeadStatus.PENDING);
+            if (head.getReplies() == null) {
+                head.setReplies(new ArrayList<>());
+            } else {
+                head.getReplies().clear();
+            }
+            head.setFailureReason(null);
+        }
+    }
+
+    /**
+     * Folds all drained {@code UserChatInput} messages into one turn
+     * question (input order, blank-line separated). When more than
+     * one distinct sender contributed, each block carries a
+     * {@code [sender]} prefix so heads and synthesizer can tell who
+     * asked what. Returns {@code null} when no user input was pending.
+     */
+    private @Nullable String foldUserInputs(List<SteerMessage> messages) {
+        List<SteerMessage.UserChatInput> inputs = new ArrayList<>();
+        for (SteerMessage m : messages) {
+            if (m instanceof SteerMessage.UserChatInput uci
+                    && uci.content() != null
+                    && !uci.content().isBlank()) {
+                inputs.add(uci);
+            } else if (!(m instanceof SteerMessage.UserChatInput)) {
+                log.debug(
+                        "Zaphod session boundary discards non-user message: {}",
+                        m.getClass().getSimpleName());
+            }
+        }
+        if (inputs.isEmpty()) {
+            return null;
+        }
+        long distinctSenders = inputs.stream()
+                .map(SteerMessage.UserChatInput::fromUser)
+                .distinct()
+                .count();
+        StringBuilder sb = new StringBuilder();
+        for (SteerMessage.UserChatInput uci : inputs) {
+            if (sb.length() > 0) {
+                sb.append("\n\n");
+            }
+            if (distinctSenders > 1) {
+                String sender = uci.fromUserDisplayName() != null
+                                && !uci.fromUserDisplayName().isBlank()
+                        ? uci.fromUserDisplayName()
+                        : uci.fromUser();
+                sb.append('[').append(sender).append("]\n");
+            }
+            sb.append(uci.content().trim());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Rebuilds and persists the per-turn TodoList (one item per head
+     * plus a conclusion item) and emits {@code todos-updated}.
+     * {@code inProgressHead} marks the head currently being driven;
+     * {@code conclusionInProgress} flips the conclusion item while
+     * the synthesizer runs. Same full-replace pattern PlanModeService
+     * uses — ids are stable within the turn, so the UI ticks items
+     * in place.
+     */
+    private void updateTurnTodos(
+            ThinkProcessDocument process,
+            ZaphodState state,
+            @Nullable String inProgressHead,
+            boolean conclusionInProgress) {
+        List<TodoItem> items = new ArrayList<>();
+        for (ZaphodHead head : state.getHeads()) {
+            TodoStatus status;
+            if (head.getStatus() == HeadStatus.RUNNING || head.getName().equals(inProgressHead)) {
+                status = TodoStatus.IN_PROGRESS;
+            } else if (head.getStatus() == HeadStatus.PENDING) {
+                status = TodoStatus.PENDING;
+            } else {
+                // DONE and FAILED alike: work on this head concluded for
+                // the turn (TodoStatus has no failed state — failures
+                // surface through the turn-level failure note).
+                status = TodoStatus.COMPLETED;
+            }
+            items.add(TodoItem.builder()
+                    .id(TODO_ID_HEAD_PREFIX + head.getName())
+                    .status(status)
+                    .content("Consult " + head.getName())
+                    .activeForm(capitalise(head.getName()) + " is thinking")
+                    .build());
+        }
+        items.add(TodoItem.builder()
+                .id(TODO_ID_CONCLUSION)
+                .status(conclusionInProgress ? TodoStatus.IN_PROGRESS : TodoStatus.PENDING)
+                .content("Synthesise conclusion")
+                .activeForm("Synthesising conclusion")
+                .build());
+        thinkProcessService.setTodos(process.getId(), items);
+        planModeEventEmitter.emitTodosUpdated(process, items);
+    }
+
+    /** Clears the turn TodoList — turn end (done or failed) and
+     *  process stop. Mirrors TodoUpdateTool's clean-leave pattern:
+     *  {@code setTodos([])} plus a final empty {@code todos-updated}. */
+    private void clearTurnTodos(ThinkProcessDocument process) {
+        thinkProcessService.setTodos(process.getId(), List.of());
+        planModeEventEmitter.emitTodosUpdated(process, List.of());
+    }
+
+    private static String capitalise(String s) {
+        if (s == null || s.isEmpty()) return s;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    /**
+     * Session-mode turn end: the synthesis chat reply was already
+     * appended by {@code runSynthesis} (DONE case). Here: surface a
+     * failure note when the turn failed, close the TodoList, flip the
+     * process back to IDLE (no {@code closeProcess} — the session
+     * chat survives its turns), and schedule the next turn when user
+     * input arrived meanwhile.
+     */
+    private void finishSessionTurn(ThinkProcessDocument process, ZaphodState state) {
+        if (state.getStatus() == ZaphodStatus.FAILED) {
+            appendChatNote(
+                    process,
+                    "Turn failed",
+                    state.getFailureReason() == null ? "unknown error" : state.getFailureReason());
+        }
+        clearTurnTodos(process);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+        if (thinkProcessService.pendingSize(process.getId()) > 0) {
+            eventEmitter.scheduleTurn(process.getId());
+        }
+    }
 
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         ZaphodState state = loadState(process);
+
+        boolean session = state.getMode() == ZaphodMode.SESSION;
 
         // Terminal check FIRST — avoid spurious RUNNING→DONE flickers.
         // Each runHead iteration calls scheduleTurn(self), so by the
@@ -294,33 +592,54 @@ public class ZaphodEngine implements ThinkEngine {
         // runTurn tasks still pending on the lane. They must NOT pass
         // through RUNNING again, or each one re-fires a DONE-transition
         // and the parent (Arthur) gets duplicate notifications.
-        if (state.getStatus() == ZaphodStatus.DONE) {
-            thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+        //
+        // SESSION re-arms instead of closing: DONE/FAILED mean "last
+        // turn finished" — the process stays open and falls through to
+        // the turn boundary, which drains the inbox and either starts
+        // the next turn or parks quietly until the next message.
+        if (!session) {
+            if (state.getStatus() == ZaphodStatus.DONE) {
+                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+                return;
+            }
+            if (state.getStatus() == ZaphodStatus.FAILED) {
+                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+                return;
+            }
+        } else if (!isMidTurn(state)) {
+            runSessionTurnBoundary(process, ctx, state);
             return;
         }
-        if (state.getStatus() == ZaphodStatus.FAILED) {
-            thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
-            return;
-        }
-
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         try {
             // Bail immediately when ESC / /pause already halted this
             // process before the turn drove a head.
             de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(thinkProcessService, process.getId());
-            // Drain any incoming messages — defensively, V1 doesn't
-            // expect inbox-answers / process-events on Zaphod itself.
-            for (SteerMessage ignored : ctx.drainPending()) {
-                // discard
+            if (!session) {
+                // Drain any incoming messages — defensively, V1 doesn't
+                // expect inbox-answers / process-events on Zaphod itself.
+                for (SteerMessage ignored : ctx.drainPending()) {
+                    // discard
+                }
             }
-
+            // SESSION mid-turn: do NOT drain — a user message arriving
+            // while heads are being driven stays queued and is picked
+            // up by the next turn boundary (see finishSessionTurn).
             // 1. Drive the next head in the current round (if any).
             if (state.getCurrentHeadIndex() < state.getHeads().size()) {
                 ZaphodHead head = state.getHeads().get(state.getCurrentHeadIndex());
+                if (session) {
+                    // Flip the head's todo item to IN_PROGRESS before the
+                    // drive so the user sees who is thinking.
+                    updateTurnTodos(process, state, head.getName(), false);
+                }
                 driveHeadForRound(process, ctx, state, head);
                 state.setCurrentHeadIndex(state.getCurrentHeadIndex() + 1);
                 state.setStatus(ZaphodStatus.RUNNING);
                 persistState(process, state);
+                if (session) {
+                    updateTurnTodos(process, state, /*inProgressHead*/ null, false);
+                }
                 eventEmitter.scheduleTurn(process.getId());
                 thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
                 return;
@@ -331,12 +650,23 @@ public class ZaphodEngine implements ThinkEngine {
             boolean lastRound =
                     state.getPattern() == ZaphodPattern.COUNCIL || state.getCurrentRound() + 1 >= state.getMaxRounds();
             if (lastRound) {
-                stopAllHeads(state, process);
+                if (session) {
+                    // Long-lived heads: they stay spawned across turns —
+                    // only failed heads were stopped per-round. Flip the
+                    // conclusion todo before the synthesizer runs.
+                    updateTurnTodos(process, state, /*inProgressHead*/ null, /*conclusion*/ true);
+                } else {
+                    stopAllHeads(state, process);
+                }
                 state.setStatus(ZaphodStatus.SYNTHESIZING);
                 persistState(process, state);
                 runSynthesis(process, ctx, state);
                 persistState(process, state);
-                if (state.getStatus() == ZaphodStatus.DONE) {
+                if (session) {
+                    // Turn end without closeProcess — the session chat
+                    // survives its turns; the next boundary re-arms.
+                    finishSessionTurn(process, state);
+                } else if (state.getStatus() == ZaphodStatus.DONE) {
                     emitFinalReply(process, ctx, state);
                     thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 } else {
@@ -397,8 +727,25 @@ public class ZaphodEngine implements ThinkEngine {
             }
         } catch (RuntimeException e) {
             log.warn("Zaphod runTurn failed id='{}': {}", process.getId(), e.toString(), e);
-            stopAllHeads(state, process);
-            thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+            if (session) {
+                // Session survives a turn crash: park the turn as
+                // FAILED, keep the process open (and healthy heads
+                // spawned — a failed head respawns next turn), surface
+                // the error to the user, then rethrow so the WS path
+                // reports it.
+                state.setStatus(ZaphodStatus.FAILED);
+                state.setFailureReason(e.getMessage());
+                persistState(process, state);
+                appendChatNote(process, "Turn failed", e.getMessage());
+                clearTurnTodos(process);
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+                if (thinkProcessService.pendingSize(process.getId()) > 0) {
+                    eventEmitter.scheduleTurn(process.getId());
+                }
+            } else {
+                stopAllHeads(state, process);
+                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+            }
             throw e;
         }
     }
@@ -564,18 +911,26 @@ public class ZaphodEngine implements ThinkEngine {
                 boolean finalRound = state.getPattern() == ZaphodPattern.COUNCIL
                         || state.getCurrentRound() + 1 >= state.getMaxRounds();
                 head.setStatus(finalRound ? HeadStatus.DONE : HeadStatus.RUNNING);
-                writeRoundDraft(process, state.getPattern(), head, state.getCurrentRound(), reply);
+                boolean batch = state.getMode() != ZaphodMode.SESSION;
+                if (batch) {
+                    // BATCH keeps the draft documents as the audit
+                    // artefact; SESSION writes none — chat reply and
+                    // head-process histories are the surfaces there.
+                    writeRoundDraft(process, state.getPattern(), head, state.getCurrentRound(), reply);
+                }
                 log.info(
                         "Zaphod id='{}' head '{}' round {} done — chars={}",
                         process.getId(),
                         head.getName(),
                         state.getCurrentRound(),
                         reply.length());
-                appendChatNote(
-                        process,
-                        headRoundHeader(state.getPattern(), head, state.getCurrentRound())
-                                + (finalRound ? " — done" : " — replied"),
-                        reply);
+                if (batch || verboseNotes(process)) {
+                    appendChatNote(
+                            process,
+                            headRoundHeader(state.getPattern(), head, state.getCurrentRound())
+                                    + (finalRound ? " — done" : " — replied"),
+                            reply);
+                }
             }
         } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
             throw ie;
@@ -593,11 +948,15 @@ public class ZaphodEngine implements ThinkEngine {
                     headRoundHeader(state.getPattern(), head, state.getCurrentRound()) + " — FAILED",
                     e.getMessage());
         } finally {
-            // Council heads are one-shot — stop the child as soon as
-            // the (single) round is done. Debate heads stay alive
-            // across rounds and are stopped by stopAllHeads() at the
-            // end of the run (or on failure).
-            boolean stopNow = state.getPattern() == ZaphodPattern.COUNCIL || head.getStatus() == HeadStatus.FAILED;
+            // Council heads are one-shot in BATCH — stop the child as
+            // soon as the (single) round is done. SESSION keeps heads
+            // alive across turns (persona continuity); only failed
+            // heads are stopped so the next turn respawns them
+            // fresh. Debate heads stay alive across rounds and are
+            // stopped by stopAllHeads() at the end of the run.
+            boolean councilOneShot =
+                    state.getPattern() == ZaphodPattern.COUNCIL && state.getMode() != ZaphodMode.SESSION;
+            boolean stopNow = councilOneShot || head.getStatus() == HeadStatus.FAILED;
             if (stopNow && child != null) {
                 try {
                     thinkEngineServiceProvider.getObject().stop(child);
@@ -623,7 +982,13 @@ public class ZaphodEngine implements ThinkEngine {
             ThinkProcessDocument process, ZaphodState state, ZaphodHead head, boolean justSpawned) {
         int round = state.getCurrentRound();
         if (round == 0 || justSpawned) {
-            String goal = process.getGoal() == null ? "" : process.getGoal();
+            // SESSION: the per-turn folded user question replaces the
+            // (absent) process goal — the session chat process spawns
+            // with goal=null and gets its question from the turn
+            // boundary fold.
+            String goal = state.getMode() == ZaphodMode.SESSION && state.getTurnGoal() != null
+                    ? state.getTurnGoal()
+                    : (process.getGoal() == null ? "" : process.getGoal());
             // Single-voice framing. The council goal is routinely phrased for
             // the WHOLE panel ("evaluate as a council", "each head should…",
             // "then deliver a synthesis and final recommendation"). Passed raw,
@@ -907,7 +1272,27 @@ public class ZaphodEngine implements ThinkEngine {
                     && !state.getSynthesizerPrompt().isBlank()) {
                 body.append(state.getSynthesizerPrompt()).append("\n\n");
             }
-            body.append("Question: ").append(process.getGoal() == null ? "" : process.getGoal());
+            boolean session = state.getMode() == ZaphodMode.SESSION;
+            if (session && state.getTurnIndex() > 1 && state.getSynthesisTitle() != null) {
+                // Continuity: the synthesizer is stateless — from turn 2 on,
+                // carry the previous turn's conclusion so a follow-up
+                // question is answered in context. The heads don't need
+                // this block (their own histories carry the conversation).
+                body.append("[Previous council conclusion (turn ")
+                        .append(state.getTurnIndex() - 1)
+                        .append(")]\n")
+                        .append("Title: ")
+                        .append(state.getSynthesisTitle())
+                        .append('\n')
+                        .append("Summary: ")
+                        .append(state.getSynthesisSummary() == null ? "" : state.getSynthesisSummary())
+                        .append("\n\n");
+            }
+            body.append("Question: ")
+                    .append(
+                            session && state.getTurnGoal() != null
+                                    ? state.getTurnGoal()
+                                    : (process.getGoal() == null ? "" : process.getGoal()));
             if (state.getPattern() == ZaphodPattern.DEBATE) {
                 body.append("\n\n[Debate over ")
                         .append(state.getCurrentRound() + 1)
@@ -1008,39 +1393,40 @@ public class ZaphodEngine implements ThinkEngine {
             }
 
             // Persist the synthesis markdown as a draft document
-            // under the per-process drafts namespace. Same pattern
-            // as the head replies above — overwrite-on-rerun,
-            // engine-deterministic (worker generates content,
-            // engine writes the file). The chat ASSISTANT-reply
-            // (below) is the primary delivery; this draft is the
-            // audit / re-read surface.
+            // under the per-process drafts namespace — BATCH only.
+            // SESSION writes no draft documents: the user sits in
+            // the chat, the ASSISTANT reply is the delivery, and the
+            // heads' own process histories carry the per-head audit
+            // (planning/zaphod-session-mode.md §5).
             String outputPath = DRAFTS_PREFIX + process.getId() + "/synthesis.md";
-            try {
-                writeDraftDocument(process, outputPath, parsed.synthesisMarkdown(), parsed.title());
-            } catch (RuntimeException e) {
-                // Persist failure — keep the synthesis in-state so
-                // the user can still see it via the parent-summary,
-                // but mark the run failed because the document
-                // contract is broken.
-                state.setSynthesis(parsed.synthesisMarkdown());
-                state.setSynthesisTitle(parsed.title());
-                state.setSynthesisSummary(parsed.summary());
-                state.setStatus(ZaphodStatus.FAILED);
-                state.setFailureReason("Synthesizer produced output but "
-                        + "document write to '" + outputPath + "' failed: "
-                        + e.getMessage());
-                log.warn(
-                        "Zaphod id='{}' synthesis-doc write failed at '{}': {}",
-                        process.getId(),
-                        outputPath,
-                        e.toString());
-                return;
+            if (!session) {
+                try {
+                    writeDraftDocument(process, outputPath, parsed.synthesisMarkdown(), parsed.title());
+                } catch (RuntimeException e) {
+                    // Persist failure — keep the synthesis in-state so
+                    // the user can still see it via the parent-summary,
+                    // but mark the run failed because the document
+                    // contract is broken.
+                    state.setSynthesis(parsed.synthesisMarkdown());
+                    state.setSynthesisTitle(parsed.title());
+                    state.setSynthesisSummary(parsed.summary());
+                    state.setStatus(ZaphodStatus.FAILED);
+                    state.setFailureReason("Synthesizer produced output but "
+                            + "document write to '" + outputPath + "' failed: "
+                            + e.getMessage());
+                    log.warn(
+                            "Zaphod id='{}' synthesis-doc write failed at '{}': {}",
+                            process.getId(),
+                            outputPath,
+                            e.toString());
+                    return;
+                }
+                state.setSynthesisDocumentPath(outputPath);
             }
 
             state.setSynthesis(parsed.synthesisMarkdown());
             state.setSynthesisTitle(parsed.title());
             state.setSynthesisSummary(parsed.summary());
-            state.setSynthesisDocumentPath(outputPath);
             state.setStatus(ZaphodStatus.DONE);
 
             // Persist the FULL synthesis as the ASSISTANT chat message
@@ -1049,13 +1435,15 @@ public class ZaphodEngine implements ThinkEngine {
             // to open. The document copy (above) stays as an audit
             // asset; the chat is the primary output channel.
             StringBuilder reply = new StringBuilder();
-            reply.append("**")
-                    .append(parsed.title())
-                    .append("**\n\n")
-                    .append(parsed.synthesisMarkdown())
-                    .append("\n\n---\n_Synthesis saved under `")
-                    .append(outputPath)
-                    .append("`._");
+            reply.append("**").append(parsed.title()).append("**\n\n").append(parsed.synthesisMarkdown());
+            if (!session) {
+                // Draft-path footer only where a draft exists — a
+                // SESSION reply must not link a file that was never
+                // written.
+                reply.append("\n\n---\n_Synthesis saved under `")
+                        .append(outputPath)
+                        .append("`._");
+            }
             ChatMessageDocument assistantReply = ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
                     .sessionId(process.getSessionId())
@@ -1377,6 +1765,7 @@ public class ZaphodEngine implements ThinkEngine {
                 .currentRound(0)
                 .maxRounds(maxRounds)
                 .consensusReached(false)
+                .turnIndex(0)
                 .synthesizerPrompt(synthesizerPrompt)
                 .status(ZaphodStatus.SPAWNING)
                 .build();
@@ -1424,7 +1813,19 @@ public class ZaphodEngine implements ThinkEngine {
         if (p == null) return ZaphodState.builder().build();
         Object raw = p.get(STATE_KEY);
         if (raw == null) return ZaphodState.builder().build();
-        return objectMapper.convertValue(raw, ZaphodState.class);
+        ZaphodState state = objectMapper.convertValue(raw, ZaphodState.class);
+        // Normalise fields that a persisted pre-session-mode state
+        // lacks: Jackson 3 deserialises via the all-args creator, so
+        // absent keys arrive as null (the reason turnIndex is a
+        // nullable Integer). Without this, a mid-run batch council
+        // resumed after the deploy would crash on the null mode.
+        if (state.getMode() == null) {
+            state.setMode(ZaphodMode.BATCH);
+        }
+        if (state.getTurnIndex() == null) {
+            state.setTurnIndex(0);
+        }
+        return state;
     }
 
     @SuppressWarnings("unchecked")

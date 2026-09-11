@@ -178,6 +178,56 @@ class AiModelResolverTest {
     }
 
     @Test
+    void tenantDefault_namedProviderInstance_resolvesViaInstanceType() {
+        // The tenant default pair goes through the same prefix binding as
+        // an explicit '<instance>:<model>' spec — an 'ai.default.provider'
+        // value that is a named instance must not leak into the wire-name
+        // position (AiChatConfig would reject it as unknown provider).
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
+                .thenReturn("sipgate-coding");
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
+                .thenReturn("sipgate-coding-pro");
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.provider.sipgate-coding.type")))
+                .thenReturn("openai");
+
+        AiModelResolver.Resolved r = resolver.resolveOrDefault(null, "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.providerInstance()).isEqualTo("sipgate-coding");
+        assertThat(r.modelName()).isEqualTo("sipgate-coding-pro");
+    }
+
+    @Test
+    void tenantDefault_namedProviderInstance_resolvesViaProviderSidecar() {
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
+                .thenReturn("cortecs");
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
+                .thenReturn("llama-3.3-70b");
+        when(modelCatalog.lookupProvider(any(), any(), eq("cortecs")))
+                .thenReturn(Optional.of(Map.of("wireType", "openai")));
+
+        AiModelResolver.Resolved r = resolver.resolveOrDefault(null, "acme", "proj", null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.providerInstance()).isEqualTo("cortecs");
+        assertThat(r.modelName()).isEqualTo("llama-3.3-70b");
+    }
+
+    @Test
+    void tenantDefault_unknownProviderValue_throwsNamingTheSetting() {
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
+                .thenReturn("no-such-provider");
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
+                .thenReturn("some-model");
+
+        assertThatThrownBy(() -> resolver.resolveOrDefault(null, "acme", null, null))
+                .isInstanceOf(AiModelResolver.UnknownModelException.class)
+                .hasMessageContaining("ai.default.provider")
+                .hasMessageContaining("no-such-provider")
+                .hasMessageContaining("ai.provider.no-such-provider.type");
+    }
+
+    @Test
     void resolve_directProviderModel_instanceEqualsProvider() {
         // Backward-compat: direct ProviderType spec yields instance == provider.
         AiModelResolver.Resolved r = resolver.resolve("openai:gpt-4o-mini", "acme", null, null);

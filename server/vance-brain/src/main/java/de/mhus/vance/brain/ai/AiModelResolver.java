@@ -246,50 +246,17 @@ public class AiModelResolver {
             throw new UnknownModelException("Model spec '" + input + "' has empty prefix or suffix");
         }
 
-        // Direct provider+model — done.
-        if (aiModelService.hasProvider(prefix)) {
-            // Direct ProviderType spec — the sidecar lookup keeps tlsInsecure
-            // semantics identical across direct and named-instance specs.
-            return new Resolved(prefix, prefix, rest, declaredInsecureTls(tenantId, projectId, prefix));
-        }
-
-        // Named provider instance — `ai.provider.<prefix>.type` binds the
-        // free-form instance label to a concrete ProviderType wire-name.
-        // Lets tenants configure multiple OpenAI-compatible endpoints
-        // (e.g. real OpenAI plus a deepseek-direct instance) without
-        // overloading the protocol wire-name.
-        String instanceTypeKey = String.format(PROVIDER_TYPE_KEY_FMT, prefix);
-        @Nullable
-        String instanceType = settingService.getStringValueCascade(tenantId, projectId, processId, instanceTypeKey);
-        if (instanceType != null && !instanceType.isBlank()) {
-            String typeWireName = instanceType.trim();
-            if (!aiModelService.hasProvider(typeWireName)) {
-                throw new UnknownModelException("Provider instance '" + prefix + "' declares unknown type '"
-                        + typeWireName + "' (setting '" + instanceTypeKey
-                        + "'). Known providers: " + aiModelService.listProviders());
-            }
-            log.debug("AiModelResolver: instance '{}' → type '{}'", prefix, typeWireName);
-            return new Resolved(typeWireName, prefix, rest, declaredInsecureTls(tenantId, projectId, prefix));
-        }
-
-        // Same binding, declared by the catalog instead of a setting: the
-        // provider sidecar `_vance/model/<prefix>/_provider.yaml` states
-        // `wireType:`. An operator who added a model directory has already
-        // said which protocol it speaks — requiring the same fact a second
-        // time as a setting is the step everybody forgets, and the failure
-        // ("alias not configured") names neither the missing key nor the
-        // directory. The setting still wins where both exist: it is the
-        // per-tenant override, the document is the shipped default.
-        @Nullable String declaredType = declaredWireType(tenantId, projectId, prefix);
-        if (declaredType != null) {
-            if (!aiModelService.hasProvider(declaredType)) {
-                throw new UnknownModelException("Provider instance '" + prefix + "' declares unknown wireType '"
-                        + declaredType + "' (document '"
-                        + ModelCatalog.MODEL_PATH_PREFIX + prefix + "/_provider.yaml')"
-                        + ". Known providers: " + aiModelService.listProviders());
-            }
-            log.debug("AiModelResolver: instance '{}' → type '{}' (from _provider.yaml)", prefix, declaredType);
-            return new Resolved(declaredType, prefix, rest, declaredInsecureTls(tenantId, projectId, prefix));
+        // Direct provider, named provider instance, or instance declared by the
+        // catalog sidecar — done. All three branches share the sidecar TLS
+        // lookup, so tlsInsecure semantics stay identical across direct and
+        // named-instance specs.
+        @Nullable ProviderBinding binding = resolveProviderBinding(prefix, tenantId, projectId, processId);
+        if (binding != null) {
+            return new Resolved(
+                    binding.wireName(),
+                    binding.instance(),
+                    rest,
+                    declaredInsecureTls(tenantId, projectId, binding.instance()));
         }
 
         // Alias lookup — project cascade. Alias target may itself be a
@@ -417,6 +384,61 @@ public class AiModelResolver {
         return out;
     }
 
+    /**
+     * Protocol binding of a provider prefix: the concrete
+     * {@link ProviderType} wire-name plus the instance label the settings
+     * cascade addresses it by ({@code ai.provider.<instance>.*}). Both
+     * equal the prefix for direct provider specs; they differ only for
+     * named instances.
+     */
+    private record ProviderBinding(String wireName, String instance) {}
+
+    /**
+     * Binds a provider prefix to a protocol, in the documented order:
+     * direct {@link ProviderType} wire-name → named instance via the
+     * {@code ai.provider.<prefix>.type} setting → named instance via the
+     * catalog sidecar's {@code wireType}. The setting wins over the
+     * sidecar — it is the per-tenant override, the document is the
+     * shipped default.
+     *
+     * <p>Returns {@code null} when the prefix is none of these — the
+     * caller decides whether that means "try the alias namespace" (spec
+     * resolution) or "misconfigured default" (tenant default).
+     */
+    private @Nullable ProviderBinding resolveProviderBinding(
+            String prefix, String tenantId, @Nullable String projectId, @Nullable String processId) {
+        if (aiModelService.hasProvider(prefix)) {
+            return new ProviderBinding(prefix, prefix);
+        }
+
+        String instanceTypeKey = String.format(PROVIDER_TYPE_KEY_FMT, prefix);
+        @Nullable
+        String instanceType = settingService.getStringValueCascade(tenantId, projectId, processId, instanceTypeKey);
+        if (instanceType != null && !instanceType.isBlank()) {
+            String typeWireName = instanceType.trim();
+            if (!aiModelService.hasProvider(typeWireName)) {
+                throw new UnknownModelException("Provider instance '" + prefix + "' declares unknown type '"
+                        + typeWireName + "' (setting '" + instanceTypeKey
+                        + "). Known providers: " + aiModelService.listProviders());
+            }
+            log.debug("AiModelResolver: instance '{}' → type '{}'", prefix, typeWireName);
+            return new ProviderBinding(typeWireName, prefix);
+        }
+
+        @Nullable String declaredType = declaredWireType(tenantId, projectId, prefix);
+        if (declaredType != null) {
+            if (!aiModelService.hasProvider(declaredType)) {
+                throw new UnknownModelException("Provider instance '" + prefix + "' declares unknown wireType '"
+                        + declaredType + "' (document '"
+                        + ModelCatalog.MODEL_PATH_PREFIX + prefix + "/_provider.yaml)'"
+                        + ". Known providers: " + aiModelService.listProviders());
+            }
+            log.debug("AiModelResolver: instance '{}' → type '{}' (from _provider.yaml)", prefix, declaredType);
+            return new ProviderBinding(declaredType, prefix);
+        }
+        return null;
+    }
+
     private Resolved tenantDefault(
             String tenantId, @Nullable String projectId, @Nullable String processId, String triggeredBy) {
         @Nullable
@@ -428,10 +450,23 @@ public class AiModelResolver {
                     + "' has no '" + DEFAULT_PROVIDER_KEY + "' / '"
                     + DEFAULT_MODEL_KEY + "' settings");
         }
+        String prefix = provider.trim();
+        @Nullable ProviderBinding binding = resolveProviderBinding(prefix, tenantId, projectId, processId);
+        if (binding == null) {
+            throw new UnknownModelException("Cannot resolve '" + triggeredBy + "': '" + DEFAULT_PROVIDER_KEY
+                    + "' value '" + provider + "' is neither a provider wire-name nor a configured named "
+                    + "instance (no '" + String.format(PROVIDER_TYPE_KEY_FMT, prefix)
+                    + "' setting, no " + ModelCatalog.MODEL_PATH_PREFIX + prefix
+                    + "/_provider.yaml). Known providers: " + aiModelService.listProviders());
+        }
         // Same sidecar TLS lookup as every direct spec — the default endpoint
         // must not silently re-enable validation that an explicit
         // 'provider:model' spec for the same instance skips.
-        return new Resolved(provider, provider, model, declaredInsecureTls(tenantId, projectId, provider));
+        return new Resolved(
+                binding.wireName(),
+                binding.instance(),
+                model.trim(),
+                declaredInsecureTls(tenantId, projectId, binding.instance()));
     }
 
     /** Thrown when a model spec cannot be resolved. */

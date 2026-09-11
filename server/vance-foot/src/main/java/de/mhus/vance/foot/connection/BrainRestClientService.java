@@ -1,13 +1,11 @@
 package de.mhus.vance.foot.connection;
 
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 import de.mhus.vance.api.chat.ChatMessageDto;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentFolderListResponse;
 import de.mhus.vance.api.documents.DocumentListResponse;
 import de.mhus.vance.api.documents.DocumentUpdateRequest;
+import de.mhus.vance.api.recipe.RecipeListedResponse;
 import de.mhus.vance.foot.config.FootConfig;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -21,6 +19,9 @@ import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Thin client for the brain's HTTP/REST endpoints, parallel to the
@@ -42,9 +43,8 @@ public class BrainRestClientService {
 
     private final FootConfig config;
     private final ConnectionService connection;
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    private final HttpClient http =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final ObjectMapper json = JsonMapper.builder().build();
 
     public BrainRestClientService(FootConfig config, ConnectionService connection) {
@@ -65,6 +65,19 @@ public class BrainRestClientService {
                 + "/sessions/" + sessionId + "/messages"
                 + (limit > 0 ? "?limit=" + limit : "");
         return get(path, new TypeReference<List<ChatMessageDto>>() {});
+    }
+
+    /**
+     * Fetches the user-facing recipe-picker list for {@code projectId}:
+     * the recipes that opted in via {@code listed: true}, already sorted for
+     * grouped rendering, plus the category metadata (order + localised
+     * labels). The same endpoint the Web-UI session-start modal uses —
+     * {@code /ui-new} mirrors that dialog in the terminal.
+     */
+    public RecipeListedResponse listedRecipes(String projectId) throws Exception {
+        String path =
+                "/brain/" + config.getAuth().getTenant() + "/projects/" + urlEncode(projectId) + "/recipes/listed";
+        return get(path, RecipeListedResponse.class);
     }
 
     /**
@@ -140,9 +153,8 @@ public class BrainRestClientService {
      *
      * @param fields extra text form fields, alternating name and value
      */
-    public <T> T postMultipartFile(
-            String path, Path file, String fileFieldName,
-            Class<T> type, String... fields) throws Exception {
+    public <T> T postMultipartFile(String path, Path file, String fileFieldName, Class<T> type, String... fields)
+            throws Exception {
         String boundary = "vance-" + java.util.UUID.randomUUID();
         byte[] body = multipartBody(boundary, file, fileFieldName, fields);
         String token = requireToken();
@@ -155,8 +167,7 @@ public class BrainRestClientService {
                 .timeout(Duration.ofSeconds(120))
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                 .build();
-        HttpResponse<String> response =
-                http.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         int status = response.statusCode();
         if (status / 100 != 2) {
             throw new IllegalStateException("REST POST " + path + " failed: HTTP " + status
@@ -170,8 +181,7 @@ public class BrainRestClientService {
      * are written as-is; the callers pass plain identifiers and paths,
      * not user prose, so no encoding beyond UTF-8 is needed.
      */
-    static byte[] multipartBody(
-            String boundary, Path file, String fileFieldName, String... fields)
+    static byte[] multipartBody(String boundary, Path file, String fileFieldName, String... fields)
             throws java.io.IOException {
         if (fields.length % 2 != 0) {
             throw new IllegalArgumentException("fields must alternate name and value");
@@ -179,14 +189,16 @@ public class BrainRestClientService {
         java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
         for (int i = 0; i < fields.length; i += 2) {
             out.write(("--" + boundary + "\r\n"
-                    + "Content-Disposition: form-data; name=\"" + fields[i] + "\"\r\n\r\n"
-                    + fields[i + 1] + "\r\n").getBytes(StandardCharsets.UTF_8));
+                            + "Content-Disposition: form-data; name=\"" + fields[i] + "\"\r\n\r\n"
+                            + fields[i + 1] + "\r\n")
+                    .getBytes(StandardCharsets.UTF_8));
         }
-        String filename = file.getFileName() == null ? "upload" : file.getFileName().toString();
+        String filename =
+                file.getFileName() == null ? "upload" : file.getFileName().toString();
         out.write(("--" + boundary + "\r\n"
-                + "Content-Disposition: form-data; name=\"" + fileFieldName
-                + "\"; filename=\"" + filename + "\"\r\n"
-                + "Content-Type: application/octet-stream\r\n\r\n")
+                        + "Content-Disposition: form-data; name=\"" + fileFieldName
+                        + "\"; filename=\"" + filename + "\"\r\n"
+                        + "Content-Type: application/octet-stream\r\n\r\n")
                 .getBytes(StandardCharsets.UTF_8));
         out.write(Files.readAllBytes(file));
         out.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
@@ -198,9 +210,8 @@ public class BrainRestClientService {
         doRequest("DELETE", path, null, null);
     }
 
-    private HttpResponse<String> doRequest(String method, String path,
-                                            @Nullable String body,
-                                            @Nullable String accept) throws Exception {
+    private HttpResponse<String> doRequest(String method, String path, @Nullable String body, @Nullable String accept)
+            throws Exception {
         String token = requireToken();
         URI uri = URI.create(config.getBrain().getHttpBase() + path);
         HttpRequest.Builder rb = HttpRequest.newBuilder(uri)
@@ -225,11 +236,12 @@ public class BrainRestClientService {
     // ─── Documents ────────────────────────────────────────────────
 
     /** {@code GET /brain/{tenant}/documents?projectId=…} — list. */
-    public DocumentListResponse listDocuments(String projectId,
-                                              @Nullable String pathPrefix,
-                                              @Nullable String kind) throws Exception {
-        StringBuilder p = new StringBuilder("/brain/").append(config.getAuth().getTenant())
-                .append("/documents?projectId=").append(urlEncode(projectId))
+    public DocumentListResponse listDocuments(String projectId, @Nullable String pathPrefix, @Nullable String kind)
+            throws Exception {
+        StringBuilder p = new StringBuilder("/brain/")
+                .append(config.getAuth().getTenant())
+                .append("/documents?projectId=")
+                .append(urlEncode(projectId))
                 .append("&size=500");
         if (pathPrefix != null && !pathPrefix.isBlank()) {
             p.append("&pathPrefix=").append(urlEncode(pathPrefix));
@@ -246,14 +258,16 @@ public class BrainRestClientService {
      * the parent path (empty / {@code null} = project root); {@code size}
      * is the page size for the file list (folders are unpaged).
      */
-    public DocumentFolderListResponse listFolder(String projectId,
-                                                  @Nullable String path,
-                                                  int page,
-                                                  int size) throws Exception {
-        StringBuilder p = new StringBuilder("/brain/").append(config.getAuth().getTenant())
-                .append("/documents/folder?projectId=").append(urlEncode(projectId))
-                .append("&page=").append(page)
-                .append("&size=").append(size);
+    public DocumentFolderListResponse listFolder(String projectId, @Nullable String path, int page, int size)
+            throws Exception {
+        StringBuilder p = new StringBuilder("/brain/")
+                .append(config.getAuth().getTenant())
+                .append("/documents/folder?projectId=")
+                .append(urlEncode(projectId))
+                .append("&page=")
+                .append(page)
+                .append("&size=")
+                .append(size);
         if (path != null && !path.isBlank()) {
             p.append("&path=").append(urlEncode(path));
         }
@@ -268,8 +282,7 @@ public class BrainRestClientService {
 
     /** {@code GET /brain/{tenant}/documents/{id}/content?download=true} — raw bytes. */
     public byte[] downloadDocument(String id) throws Exception {
-        String p = "/brain/" + config.getAuth().getTenant() + "/documents/"
-                + urlEncode(id) + "/content?download=true";
+        String p = "/brain/" + config.getAuth().getTenant() + "/documents/" + urlEncode(id) + "/content?download=true";
         return getBytes(p);
     }
 
@@ -292,8 +305,7 @@ public class BrainRestClientService {
     private String requireToken() {
         @Nullable String t = connection.currentJwt();
         if (t == null || t.isBlank()) {
-            throw new IllegalStateException(
-                    "Not connected — REST calls need an active JWT. Run /connect first.");
+            throw new IllegalStateException("Not connected — REST calls need an active JWT. Run /connect first.");
         }
         return t;
     }

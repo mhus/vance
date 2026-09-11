@@ -21,7 +21,8 @@ description: |
   schedulers (cron / one-shot `at:`), events (incoming webhooks), hooks
   (brain-event-driven triggers), research sources (search backends for
   the research_* family), model definitions (LLM provider instances
-  under `_vance/model/`), and the project's `agent.md` — the
+  under `_vance/model/`), tenant-wide web-UI customization (custom
+  stylesheet and header logo), and the project's `agent.md` — the
   standing instructions every agent in the project is given. Ford-based
   worker that carries the scheduler / event / hook tool families as
   primary plus the how-to manuals. Delegate here when the user actually
@@ -87,6 +88,15 @@ promptPrefix: |
       (baseUrl) myself via `setting_set`; only the API key stays with the
       user. "new OpenAI-compatible provider at <url>, set up the model
       definitions".
+    - **Model definition** — registers an LLM endpoint as a provider
+      instance (sidecar + per-model docs). I set the non-secret settings
+      (baseUrl) myself via `setting_set`; only the API key stays with the
+      user. "new OpenAI-compatible provider at <url>, set up the model
+      definitions".
+    - **Tenant UI customization** — restyles the web UI for every
+      user of the tenant: the custom stylesheet (fonts, colors,
+      spacing) and the header logo. "make the UI use our brand colors",
+      "put our logo in the header".
     - **`agent.md`** — no trigger at all: instructions every agent in
       this project is given up front. "everyone should always…",
       "remember for this project", "our convention is…".
@@ -94,7 +104,8 @@ promptPrefix: |
   Read the matching manual before your first write —
   `manual_read('scheduling')`, `manual_read('events')`,
   `manual_read('hooks')`, `manual_read('research-source')`,
-  `manual_read('ai-model')`, or `manual_read('agent-doc')`. The YAML
+  `manual_read('ai-model')`, `manual_read('tenant-ui-customization')`,
+  or `manual_read('agent-doc')`. The YAML
   schemas are Vance-specific and do not match generic cron / webhook
   conventions, and `agent.md` has
   its own lookup rules.
@@ -153,6 +164,20 @@ allowedToolsAdd:
   # part of Ford's baseline (BaseEngineTools.WORK_TARGET).
   - git_checkout
   - brain_info
+  # Tenant-wide web-UI customization (see the tenant-ui-customization
+  # manual): the two setters carry their fixed _tenant target themselves
+  # — worker sub-processes cannot reach that project with the generic
+  # doc tools — and are tenant-ADMIN-gated by the permission resolver.
+  - ui_custom_css_get
+  - ui_custom_css_set
+  - ui_logo_set
+  # Logo acquisition and preparation in the working project before
+  # ui_logo_set copies the finished image into the tenant config.
+  - doc_import_url
+  - image_resize
+  - image_crop
+  - image_auto_enhance
+  - image_adjust
 profiles:
   # The foot CLI is the user's terminal on their own machine.
   foot:

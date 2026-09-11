@@ -16,7 +16,7 @@ import { setUiLocale } from '@/i18n';
 import InboxBadge from './InboxBadge.vue';
 import ProcessCountsBadge from './ProcessCountsBadge.vue';
 import FookSupportModal from './FookSupportModal.vue';
-import VanceLogo from './VanceLogo.vue';
+import TenantLogo from './TenantLogo.vue';
 import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
 import { handleShellLinkClick } from '@/platform/navigate';
 
@@ -198,7 +198,7 @@ function openFook(): void {
       :title="$t('common.backToHome')"
       @click="onHomeClick"
     >
-      <VanceLogo size="sm" class="text-primary" />
+      <TenantLogo />
       <span class="font-bold text-lg font-mono">vancetope</span>
     </a>
     <!-- Server identity from the pod-written /config.json. The title

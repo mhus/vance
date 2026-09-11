@@ -1,14 +1,14 @@
 package de.mhus.vance.brain.tools.eddie;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.activity.EntityRef;
-import de.mhus.vance.shared.activity.EddieActivityKind;
 import de.mhus.vance.brain.eddie.activity.EddieActivityService;
+import de.mhus.vance.shared.activity.EddieActivityKind;
+import de.mhus.vance.shared.activity.EntityRef;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,11 +31,14 @@ public class ProjectSwitchTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Project name to switch to. "
-                                    + "Use project_list to see what's available.")),
+            "properties",
+                    Map.of(
+                            "name",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Project name to switch to. " + "Use project_list to see what's available.")),
             "required", List.of("name"));
 
     private final ProjectService projectService;
@@ -72,30 +75,41 @@ public class ProjectSwitchTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (eddieContext.isSubProcess(ctx)) {
-            throw new ToolException(
-                    "project_switch is not allowed in sub-process workers — "
-                            + "the project is fixed by the spawning engine. "
-                            + "Operate within the inherited project context.");
+            throw new ToolException("project_switch is not allowed in sub-process workers — "
+                    + "the project is fixed by the spawning engine. "
+                    + "Operate within the inherited project context.");
         }
         Object raw = params == null ? null : params.get("name");
         if (!(raw instanceof String name) || name.isBlank()) {
             throw new ToolException("'name' is required");
         }
-        ProjectDocument project = projectService.findByTenantAndName(ctx.tenantId(), name)
-                .orElseThrow(() -> new ToolException(
-                        "Project '" + name + "' not found in tenant '"
-                                + ctx.tenantId() + "'"));
-        if (project.getKind() == ProjectKind.SYSTEM) {
-            throw new ToolException(
-                    "Project '" + name + "' is SYSTEM — content operations "
-                            + "are not supported there. Pick a regular user project.");
+        ProjectDocument project = projectService
+                .findByTenantAndName(ctx.tenantId(), name)
+                .orElseThrow(
+                        () -> new ToolException("Project '" + name + "' not found in tenant '" + ctx.tenantId() + "'"));
+        // Same gate formula as EddieContext.resolveProject: the own
+        // hub and the tenant-wide _tenant system project are legitimate
+        // spots (permission decides what the tools may do there); every
+        // other SYSTEM project — other users' hubs above all — is not
+        // reachable through an LLM tool call.
+        boolean ownHub = ctx.userId() != null
+                && de.mhus.vance.shared.home.HomeBootstrapService.hubProjectName(ctx.userId())
+                        .equals(project.getName());
+        if (project.getKind() == ProjectKind.SYSTEM
+                && !ownHub
+                && !de.mhus.vance.shared.home.HomeBootstrapService.TENANT_PROJECT_NAME.equals(project.getName())) {
+            throw new ToolException("Project '" + name + "' is SYSTEM (another user's hub or a "
+                    + "reserved system project) — the active project cannot "
+                    + "move there");
         }
         eddieContext.writeActiveProject(ctx, project.getName());
 
         if (ctx.userId() != null && ctx.processId() != null) {
             activityService.append(
-                    ctx.tenantId(), ctx.userId(),
-                    ctx.sessionId(), ctx.processId(),
+                    ctx.tenantId(),
+                    ctx.userId(),
+                    ctx.sessionId(),
+                    ctx.processId(),
                     EddieActivityKind.PROJECT_SWITCHED,
                     "Aktives Projekt: `" + project.getName() + "`",
                     List.of(EntityRef.project(project.getName())));

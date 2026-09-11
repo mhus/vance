@@ -453,3 +453,20 @@ export function documentContentUrl(documentId: string, download = false): string
   const query = params.toString();
   return `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/documents/${encodeURIComponent(documentId)}/content${query ? '?' + query : ''}`;
 }
+
+/**
+ * Build the tenant-scoped URL of the header-logo endpoint
+ * (`GET /brain/{tenant}/ui/logo`). Same `<img src>` contract as
+ * {@link documentContentUrl}: cookie-auth hosts attach the access
+ * cookie automatically; bearer-mode hosts must fetch + blob instead.
+ *
+ * The endpoint answers 404 when the tenant has no logo document
+ * (`_vance/config/logo.<ext>`) — callers render their bundled fallback
+ * on image load errors; an empty string here (no session yet) means
+ * the same thing without a request.
+ */
+export function tenantLogoUrl(): string {
+  const tenant = getTenantId();
+  if (!tenant) return '';
+  return `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/ui/logo`;
+}

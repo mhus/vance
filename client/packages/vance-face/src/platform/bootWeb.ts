@@ -2,6 +2,7 @@ import { configurePlatform, configureVanceWs } from '@vance/shared';
 import { refreshAccessCookie } from './refreshWeb';
 import { hydrateIdentity } from './webUiSession';
 import { applyTheme, ensurePrintLightTheme } from './themeWeb';
+import { applyTenantCustomCss } from './tenantCustomCss';
 import { storageWeb } from './storageWeb';
 import {
   onDocumentChanged,
@@ -86,3 +87,8 @@ applyTheme();
 // Printing pins the light theme for the duration of the job — a dark
 // page reaches the printer as white-on-white.
 ensurePrintLightTheme();
+// Tenant custom stylesheet — fetched after hydrateIdentity so the
+// tenant is known, fire-and-forget so boot never waits on it. Injected
+// after applyTheme so the tenant sheet is the last one in the head and
+// wins the cascade against the theme of equal specificity.
+void applyTenantCustomCss();

@@ -29,5 +29,6 @@ export type { FormValue, FormValueObject } from './FormFields.vue';
 export { default as SettingFormView } from './SettingFormView.vue';
 export { default as ShareModal } from './ShareModal.vue';
 export { default as StarredTile } from './StarredTile.vue';
+export { default as TenantLogo } from './TenantLogo.vue';
 export { default as VanceLogo } from './VanceLogo.vue';
 export { default as VLockBadge } from './VLockBadge.vue';

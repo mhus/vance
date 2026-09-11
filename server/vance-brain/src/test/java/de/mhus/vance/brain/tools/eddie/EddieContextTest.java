@@ -6,13 +6,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,8 +48,7 @@ class EddieContextTest {
         permissionService = mock(de.mhus.vance.shared.permission.PermissionService.class);
         contextFactory = mock(de.mhus.vance.brain.permission.SecurityContextFactory.class);
         // These tests cover project-resolution semantics, not authz — allow all.
-        eddieContext = new EddieContext(
-                projectService, thinkProcessService, permissionService, contextFactory);
+        eddieContext = new EddieContext(projectService, thinkProcessService, permissionService, contextFactory);
     }
 
     @Nested
@@ -61,9 +60,7 @@ class EddieContextTest {
             arrangeProject(INHERITED, ProjectKind.NORMAL);
 
             ProjectDocument resolved = eddieContext.resolveProject(
-                    Map.of("projectId", HALLUCINATED),
-                    ctx(INHERITED, PROCESS_ID),
-                    /*allowSystem*/ false);
+                    Map.of("projectId", HALLUCINATED), ctx(INHERITED, PROCESS_ID), /*allowSystem*/ false);
 
             assertThat(resolved.getName()).isEqualTo(INHERITED);
         }
@@ -73,10 +70,8 @@ class EddieContextTest {
             arrangeProcess(PROCESS_ID, "parent-x");
             arrangeProject(INHERITED, ProjectKind.NORMAL);
 
-            ProjectDocument resolved = eddieContext.resolveProject(
-                    Map.of("projectId", INHERITED),
-                    ctx(INHERITED, PROCESS_ID),
-                    false);
+            ProjectDocument resolved =
+                    eddieContext.resolveProject(Map.of("projectId", INHERITED), ctx(INHERITED, PROCESS_ID), false);
 
             assertThat(resolved.getName()).isEqualTo(INHERITED);
         }
@@ -86,10 +81,7 @@ class EddieContextTest {
             arrangeProcess(PROCESS_ID, "parent-x");
             arrangeProject(INHERITED, ProjectKind.NORMAL);
 
-            ProjectDocument resolved = eddieContext.resolveProject(
-                    Map.of(),
-                    ctx(INHERITED, PROCESS_ID),
-                    false);
+            ProjectDocument resolved = eddieContext.resolveProject(Map.of(), ctx(INHERITED, PROCESS_ID), false);
 
             assertThat(resolved.getName()).isEqualTo(INHERITED);
         }
@@ -99,9 +91,7 @@ class EddieContextTest {
             arrangeProcess(PROCESS_ID, "parent-x");
 
             assertThatThrownBy(() -> eddieContext.resolveProject(
-                            Map.of("projectId", HALLUCINATED),
-                            ctx(/*projectId*/ null, PROCESS_ID),
-                            false))
+                            Map.of("projectId", HALLUCINATED), ctx(/*projectId*/ null, PROCESS_ID), false))
                     .isInstanceOf(ToolException.class)
                     .hasMessageContaining("Sub-process invoked without an inherited projectId");
         }
@@ -116,13 +106,10 @@ class EddieContextTest {
             arrangeProcess(PROCESS_ID, "parent-x");
             arrangeProject(INHERITED, ProjectKind.NORMAL);
 
-            ToolInvocationContext withStaleSpot = new ToolInvocationContext(
-                    TENANT, INHERITED, SESSION, PROCESS_ID, null, HALLUCINATED);
+            ToolInvocationContext withStaleSpot =
+                    new ToolInvocationContext(TENANT, INHERITED, SESSION, PROCESS_ID, null, HALLUCINATED);
 
-            ProjectDocument resolved = eddieContext.resolveProject(
-                    Map.of(),
-                    withStaleSpot,
-                    false);
+            ProjectDocument resolved = eddieContext.resolveProject(Map.of(), withStaleSpot, false);
 
             assertThat(resolved.getName()).isEqualTo(INHERITED);
         }
@@ -137,9 +124,7 @@ class EddieContextTest {
             arrangeProject("other-project", ProjectKind.NORMAL);
 
             ProjectDocument resolved = eddieContext.resolveProject(
-                    Map.of("projectId", "other-project"),
-                    ctx(INHERITED, PROCESS_ID),
-                    false);
+                    Map.of("projectId", "other-project"), ctx(INHERITED, PROCESS_ID), false);
 
             assertThat(resolved.getName()).isEqualTo("other-project");
         }
@@ -166,8 +151,8 @@ class EddieContextTest {
         @Test
         void readActiveProject_prefersCtx_overMongoLookup() {
             // Live ctx-carried spot is the fast path — no Mongo round-trip.
-            ToolInvocationContext withSpot = new ToolInvocationContext(
-                    TENANT, INHERITED, SESSION, PROCESS_ID, null, "projA");
+            ToolInvocationContext withSpot =
+                    new ToolInvocationContext(TENANT, INHERITED, SESSION, PROCESS_ID, null, "projA");
 
             Optional<String> spot = eddieContext.readActiveProject(withSpot);
 
@@ -196,14 +181,14 @@ class EddieContextTest {
             doc.setId(PROCESS_ID);
             when(thinkProcessService.findById(PROCESS_ID)).thenReturn(Optional.of(doc));
 
-            assertThat(eddieContext.readActiveProject(ctx(INHERITED, PROCESS_ID))).isEmpty();
+            assertThat(eddieContext.readActiveProject(ctx(INHERITED, PROCESS_ID)))
+                    .isEmpty();
         }
 
         @Test
         void readActiveProject_returnsEmpty_whenNoProcessIdAtAll() {
             // Admin / CLI flows without a think-process scope.
-            ToolInvocationContext bare = new ToolInvocationContext(
-                    TENANT, null, null, null, null);
+            ToolInvocationContext bare = new ToolInvocationContext(TENANT, null, null, null, null);
 
             assertThat(eddieContext.readActiveProject(bare)).isEmpty();
         }
@@ -217,8 +202,7 @@ class EddieContextTest {
 
         @Test
         void writeActiveProject_throws_whenNoProcessScope() {
-            ToolInvocationContext bare = new ToolInvocationContext(
-                    TENANT, null, null, null, null);
+            ToolInvocationContext bare = new ToolInvocationContext(TENANT, null, null, null, null);
 
             assertThatThrownBy(() -> eddieContext.writeActiveProject(bare, "projTarget"))
                     .isInstanceOf(ToolException.class)
@@ -232,39 +216,82 @@ class EddieContextTest {
         @Test
         void resolveProject_enforces_project_read_on_the_target() {
             arrangeProject("proj-x", ProjectKind.NORMAL);
-            var subject = de.mhus.vance.shared.permission.SecurityContext.user(
-                    "alice", TENANT, java.util.List.of());
+            var subject = de.mhus.vance.shared.permission.SecurityContext.user("alice", TENANT, java.util.List.of());
             when(contextFactory.forToolSubject(TENANT, "alice")).thenReturn(subject);
-            ToolInvocationContext c = new ToolInvocationContext(
-                    TENANT, "proj-x", SESSION, "p2", "alice");
+            ToolInvocationContext c = new ToolInvocationContext(TENANT, "proj-x", SESSION, "p2", "alice");
 
             eddieContext.resolveProject(Map.of("projectId", "proj-x"), c, false);
 
-            verify(permissionService).enforce(
-                    subject,
-                    new de.mhus.vance.shared.permission.Resource.Project(TENANT, "proj-x"),
-                    de.mhus.vance.shared.permission.Action.READ);
+            verify(permissionService)
+                    .enforce(
+                            subject,
+                            new de.mhus.vance.shared.permission.Resource.Project(TENANT, "proj-x"),
+                            de.mhus.vance.shared.permission.Action.READ);
         }
 
         @Test
         void resolveProject_propagates_read_denial() {
             arrangeProject("secret", ProjectKind.NORMAL);
-            ToolInvocationContext c = new ToolInvocationContext(
-                    TENANT, "secret", SESSION, "p3", "bob");
-            org.mockito.Mockito.doThrow(
-                    new de.mhus.vance.shared.permission.PermissionDeniedException(
+            ToolInvocationContext c = new ToolInvocationContext(TENANT, "secret", SESSION, "p3", "bob");
+            org.mockito.Mockito.doThrow(new de.mhus.vance.shared.permission.PermissionDeniedException(
                             de.mhus.vance.shared.permission.SecurityContext.user("bob", TENANT, java.util.List.of()),
                             new de.mhus.vance.shared.permission.Resource.Project(TENANT, "secret"),
                             de.mhus.vance.shared.permission.Action.READ))
-                    .when(permissionService).enforce(
+                    .when(permissionService)
+                    .enforce(
                             org.mockito.ArgumentMatchers.any(),
                             org.mockito.ArgumentMatchers.any(),
                             org.mockito.ArgumentMatchers.any());
 
-            org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                    eddieContext.resolveProject(Map.of("projectId", "secret"), c, false))
-                    .isInstanceOf(
-                            de.mhus.vance.shared.permission.PermissionDeniedException.class);
+            org.assertj.core.api.Assertions.assertThatThrownBy(
+                            () -> eddieContext.resolveProject(Map.of("projectId", "secret"), c, false))
+                    .isInstanceOf(de.mhus.vance.shared.permission.PermissionDeniedException.class);
+        }
+    }
+
+    @Nested
+    class SystemProjectGate {
+
+        // The gate's formula: the caller's own hub and the tenant-wide
+        // _tenant system project are legitimate content targets — the
+        // permission resolver alone decides what may happen there
+        // (members read, tenant-ADMIN writes). Every other SYSTEM
+        // project — other users' hubs above all — stays unreachable
+        // through an LLM tool call even where the resolver would grant
+        // a tenant-ADMIN access for human maintenance surfaces.
+
+        @Test
+        void tenantProjectResolves_contentToolsDecideViaPermission() {
+            arrangeProcess(PROCESS_ID, /*parent*/ null);
+            arrangeProject("_tenant", ProjectKind.SYSTEM);
+
+            ProjectDocument resolved = eddieContext.resolveProject(
+                    Map.of("projectId", "_tenant"), ctx(INHERITED, PROCESS_ID), /*allowSystem*/ false);
+
+            assertThat(resolved.getName()).isEqualTo("_tenant");
+        }
+
+        @Test
+        void ownHubStillResolves() {
+            arrangeProcess(PROCESS_ID, null);
+            arrangeProject("_user_alice", ProjectKind.SYSTEM);
+            ToolInvocationContext asAlice =
+                    new ToolInvocationContext(TENANT, "_user_alice", SESSION, PROCESS_ID, "alice");
+
+            ProjectDocument resolved = eddieContext.resolveProject(Map.of("projectId", "_user_alice"), asAlice, false);
+
+            assertThat(resolved.getName()).isEqualTo("_user_alice");
+        }
+
+        @Test
+        void foreignHubIsRejected_evenThoughPermissionMightAllowAnAdmin() {
+            arrangeProcess(PROCESS_ID, null);
+            arrangeProject("_user_bob", ProjectKind.SYSTEM);
+            ToolInvocationContext asAlice = new ToolInvocationContext(TENANT, INHERITED, SESSION, PROCESS_ID, "alice");
+
+            assertThatThrownBy(() -> eddieContext.resolveProject(Map.of("projectId", "_user_bob"), asAlice, false))
+                    .isInstanceOf(ToolException.class)
+                    .hasMessageContaining("another user's hub");
         }
     }
 

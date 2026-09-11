@@ -1,12 +1,12 @@
 package de.mhus.vance.brain.tools.eddie;
 
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -41,10 +41,14 @@ import org.springframework.stereotype.Component;
  * <p>Validation enforces that the resolved project exists and is
  * non-{@link ProjectKind#SYSTEM} when {@code allowSystem == false},
  * <i>except</i> for the caller's own user-hub project
- * ({@code _user_<userId>}) — Eddie's chat lives there and the user
- * expects "save as document" to work in-place without first
- * delegating to a fresh user project. Other SYSTEM projects
- * (tenant-wide {@code _vance}, other users' hubs) remain protected.
+ * ({@code _user_<userId>}) and the tenant-wide {@code _tenant}
+ * system project — Eddie's chat lives in the former and the user
+ * expects "save as document" to work in-place, and the latter is
+ * the tenant's configuration home (permission decides who may
+ * write there). Other SYSTEM projects — above all other users'
+ * hubs — remain hard-blocked: cross-user privacy is never
+ * LLM-reachable, even where the permission resolver would grant a
+ * tenant-ADMIN access for human maintenance surfaces.
  */
 @Component
 @RequiredArgsConstructor
@@ -76,7 +80,8 @@ public class EddieContext {
         if (processId == null || processId.isBlank()) {
             return Optional.empty();
         }
-        return thinkProcessService.findById(processId)
+        return thinkProcessService
+                .findById(processId)
                 .map(p -> p.getWorkingProjectId())
                 .filter(s -> s != null && !s.isBlank());
     }
@@ -106,8 +111,9 @@ public class EddieContext {
      * sessions that are bound to a single project: there is no need
      * for the LLM to call {@code project_switch} first. Eddie hub
      * sessions live in a SYSTEM project, so the fallback would
-     * resolve {@code _user_<X>} — but the SYSTEM-rejection branch
-     * below catches that and the user gets the right error.
+     * resolve {@code _user_<X>} — which the SYSTEM gate allows
+     * (own hub). Foreign hubs and other reserved system projects
+     * stay rejected below.
      *
      * @param params       tool params, may carry a {@code projectId}
      *                     entry (string, project name)
@@ -116,11 +122,8 @@ public class EddieContext {
      *                     usually {@code false} for content tools
      */
     public ProjectDocument resolveProject(
-            @Nullable Map<String, Object> params,
-            ToolInvocationContext ctx,
-            boolean allowSystem) {
-        return resolveProject(params, ctx, allowSystem,
-                de.mhus.vance.shared.permission.Action.READ);
+            @Nullable Map<String, Object> params, ToolInvocationContext ctx, boolean allowSystem) {
+        return resolveProject(params, ctx, allowSystem, de.mhus.vance.shared.permission.Action.READ);
     }
 
     /**
@@ -148,19 +151,24 @@ public class EddieContext {
             String inherited = ctx.projectId();
             if (inherited == null || inherited.isBlank()) {
                 throw new ToolException(
-                        "Sub-process invoked without an inherited "
-                                + "projectId — engine spawn is broken");
+                        "Sub-process invoked without an inherited " + "projectId — engine spawn is broken");
             }
             if (explicit != null && !inherited.equals(explicit)) {
-                log.warn("Sub-process tool ignored hallucinated projectId='{}' "
+                log.warn(
+                        "Sub-process tool ignored hallucinated projectId='{}' "
                                 + "— forced to inherited project '{}' (process='{}')",
-                        explicit, inherited, ctx.processId());
+                        explicit,
+                        inherited,
+                        ctx.processId());
             } else {
                 Optional<String> slot = readActiveProject(ctx);
                 if (slot.isPresent() && !slot.get().equals(inherited)) {
-                    log.warn("Sub-process tool ignored stale activeProject slot='{}' "
+                    log.warn(
+                            "Sub-process tool ignored stale activeProject slot='{}' "
                                     + "— forced to inherited project '{}' (process='{}')",
-                            slot.get(), inherited, ctx.processId());
+                            slot.get(),
+                            inherited,
+                            ctx.processId());
                 }
             }
             name = inherited;
@@ -168,23 +176,22 @@ public class EddieContext {
             name = explicit != null
                     ? explicit
                     : readActiveProject(ctx)
-                            .or(() -> Optional.ofNullable(ctx.projectId())
-                                    .filter(s -> !s.isBlank()))
-                            .orElseThrow(() ->
-                                    new ToolException(
-                                            "No project specified and no active project set. "
-                                                    + "Use project_switch(name) first, or pass "
-                                                    + "the projectId parameter explicitly."));
+                            .or(() -> Optional.ofNullable(ctx.projectId()).filter(s -> !s.isBlank()))
+                            .orElseThrow(() -> new ToolException("No project specified and no active project set. "
+                                    + "Use project_switch(name) first, or pass "
+                                    + "the projectId parameter explicitly."));
         }
-        ProjectDocument project = projectService.findByTenantAndName(ctx.tenantId(), name)
-                .orElseThrow(() -> new ToolException(
-                        "Project '" + name + "' not found in tenant '"
-                                + ctx.tenantId() + "'"));
-        if (!allowSystem && project.getKind() == ProjectKind.SYSTEM
-                && !isCallerOwnHub(project, ctx)) {
-            throw new ToolException(
-                    "Project '" + name + "' is SYSTEM (hub project) — "
-                            + "this operation requires a regular user project");
+        ProjectDocument project = projectService
+                .findByTenantAndName(ctx.tenantId(), name)
+                .orElseThrow(
+                        () -> new ToolException("Project '" + name + "' not found in tenant '" + ctx.tenantId() + "'"));
+        if (!allowSystem
+                && project.getKind() == ProjectKind.SYSTEM
+                && !isCallerOwnHub(project, ctx)
+                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(project.getName())) {
+            throw new ToolException("Project '" + name + "' is SYSTEM (another user's hub or a "
+                    + "reserved system project) — this operation is not "
+                    + "available there");
         }
         // Hard READ check at the resolution source: the projectId param is
         // caller-controllable, and ToolDispatcher only checks the caller's
@@ -196,8 +203,7 @@ public class EddieContext {
         // (permission-system finding #9/#11 — read path)
         permissionService.enforce(
                 contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new de.mhus.vance.shared.permission.Resource.Project(
-                        ctx.tenantId(), project.getName()),
+                new de.mhus.vance.shared.permission.Resource.Project(ctx.tenantId(), project.getName()),
                 requiredAction);
         return project;
     }
@@ -206,8 +212,14 @@ public class EddieContext {
      * Carve-out for the SYSTEM-kind gate: the caller's own
      * {@code _user_<userId>} hub project IS a SYSTEM project but is
      * also the caller's working space. Allow content tools to operate
-     * there. Other SYSTEM projects (tenant {@code _vance}, other
-     * users' hubs) stay blocked.
+     * there. The {@code _tenant} carve-out lives at the gate itself
+     * (see {@code resolveProject}) — permission alone decides who
+     * may read (every member) and write (tenant-ADMIN) there.
+     * All other SYSTEM projects — other users' hubs above all —
+     * stay hard-blocked: the permission resolver grants a
+     * tenant-ADMIN access to them for human maintenance surfaces,
+     * but that power must not become reachable through an LLM tool
+     * call.
      */
     private static boolean isCallerOwnHub(ProjectDocument project, ToolInvocationContext ctx) {
         String userId = ctx.userId();
@@ -224,7 +236,8 @@ public class EddieContext {
     public boolean isSubProcess(ToolInvocationContext ctx) {
         String pid = ctx.processId();
         if (pid == null || pid.isBlank()) return false;
-        return thinkProcessService.findById(pid)
+        return thinkProcessService
+                .findById(pid)
                 .map(p -> p.getParentProcessId() != null
                         && !p.getParentProcessId().isBlank())
                 .orElse(false);

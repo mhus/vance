@@ -72,7 +72,7 @@ public enum OutputSchemaType {
      *  map with interpret/route/check/evaluate/reflect/escalation, safety-net
      *  caps, {@code workTarget}). Validated by {@code BenjyArchitect}: the
      *  shape check delegates to the engine's own
-     *  {@code BenyFeatureConfig.fromParams} (no parallel validation schema
+     *  {@code BenjyFeatureConfig.fromParams} (no parallel validation schema
      *  to drift) and resolves every referenced recipe (doer, controller
      *  LightLlm profiles, escalation target) via the {@code RecipeLoader}.
      *  The bundled {@code benjy-architect} recipe sets {@code planOnly: true}

@@ -20,9 +20,16 @@ import org.springframework.stereotype.Component;
  * debugging harder). Returns the current CSS body, empty when none is
  * set.
  *
- * <p>Counterpart of {@code GET /brain/{tenant}/ui/custom-css} — the
- * tool answers with the same document the controller serves, so a
- * creator can quote the current state before overwriting it.
+ * <p>Counterpart of {@code GET /brain/{tenant}/ui/custom-css}, with one
+ * deliberate difference: the tool returns the <b>stored</b> document
+ * as-is, while the controller sanitises on every serve. For content
+ * written through {@code ui_custom_css_set} the two are identical (the
+ * set tool sanitises at write time); for an operator hand-edit in the
+ * content editor they can differ — the browser path strips external
+ * references ({@code @import}, non-data {@code url()}) the tool still
+ * shows. That is useful, not a bug: the creator needs the stored truth
+ * to edit and extend, not the served subset. The response carries a
+ * {@code note} reminding of the serve-time filter.
  */
 @Component
 @RequiredArgsConstructor
@@ -74,6 +81,10 @@ public class UiCustomCssGetTool implements Tool {
         out.put("projectId", TenantUiCustomization.TENANT_PROJECT);
         out.put("path", TenantUiCustomization.CUSTOM_CSS_PATH);
         out.put("content", css);
+        out.put(
+                "note",
+                "Content is the stored document as-is; the browser endpoint strips external"
+                        + " references (@import, non-data url()) from what it actually serves.");
         return out;
     }
 }

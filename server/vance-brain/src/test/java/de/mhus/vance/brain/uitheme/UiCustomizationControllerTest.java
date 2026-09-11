@@ -3,6 +3,7 @@ package de.mhus.vance.brain.uitheme;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -178,6 +179,28 @@ class UiCustomizationControllerTest {
         ResponseEntity<InputStreamResource> response = controller.logo("acme");
 
         assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.IMAGE_PNG);
+    }
+
+    @Test
+    void logoSkipsCandidatesWhoseImageMimeDoesNotParse() throws IOException {
+        // The stored MIME can be a doc_import_url copy of a foreign
+        // Content-Type header: "image/" passes the image/* prefix gate
+        // but does not parse as a MediaType. The candidate must be
+        // skipped (search continues, storage never opened for it), not
+        // blow the endpoint up after the stream is already open
+        // (Code-Review 12, L1).
+        DocumentDocument malformed = logoDocument("image/", "junk".getBytes(StandardCharsets.UTF_8));
+        DocumentDocument png = logoDocument("image/png", "PNG".getBytes(StandardCharsets.UTF_8));
+        when(documentService.findByPath("acme", "_tenant", "_vance/config/logo.svg"))
+                .thenReturn(Optional.of(malformed));
+        when(documentService.findByPath("acme", "_tenant", "_vance/config/logo.png"))
+                .thenReturn(Optional.of(png));
+
+        ResponseEntity<InputStreamResource> response = controller.logo("acme");
+
+        assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.IMAGE_PNG);
+        // The malformed candidate's storage was never opened.
+        verify(documentService, never()).loadContent(malformed);
     }
 
     @Test

@@ -1396,6 +1396,16 @@ public class ZaphodEngine implements ThinkEngine {
                         : response.aiMessage().text();
                 if (text == null || text.isBlank()) {
                     validationError = "synthesizer returned empty reply";
+                    if (attempt < MAX_SYNTHESIS_CORRECTIONS) {
+                        // Symmetric with the parse-failure path: a silent
+                        // identical re-request gives the model nothing to
+                        // correct against — name the failure so the retry
+                        // has the same standing as the JSON-fix re-prompt
+                        // (Code-Review 12, N2).
+                        messages.add(UserMessage.from("Your last reply was empty. Return EXACTLY ONE JSON "
+                                + "object per the schema above — no Markdown "
+                                + "wrapper, NO pseudo tool calls."));
+                    }
                 } else {
                     try {
                         parsed = parseSynthesisJson(text);

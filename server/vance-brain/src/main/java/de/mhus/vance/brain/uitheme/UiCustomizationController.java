@@ -122,7 +122,12 @@ public class UiCustomizationController {
      *
      * <p><b>Guards.</b> A candidate is only served when its MIME type is
      * {@code image/*} — a renamed non-image file under a {@code logo.*}
-     * name is skipped, not served. Two response headers close the SVG
+     * name is skipped, not served — and so is a value that passes the
+     * {@code image/} prefix check but does not parse as a media type
+     * ({@link MediaType#parseMediaType} throws): the stored MIME can be
+     * a {@code doc_import_url} copy of a foreign {@code Content-Type}
+     * header, and an unparseable one is as unusable as a non-image
+     * one (Code-Review 12, L1). Two response headers close the SVG
      * question ({@code image/svg+xml} is XML and can carry scripts):
      * {@code X-Content-Type-Options: nosniff} prevents MIME confusion, and
      * {@code Content-Security-Policy: default-src 'none'} keeps a directly
@@ -155,12 +160,31 @@ public class UiCustomizationController {
                         mimeType);
                 continue;
             }
+            // Parse the media type BEFORE opening the stream: the value
+            // comes from the stored document (a doc_import_url copy of a
+            // foreign Content-Type header) and can be malformed enough to
+            // pass the image/ prefix check yet blow up parseMediaType —
+            // with the stream already open that would leak a storage
+            // handle per request (Code-Review 12, L1). A candidate whose
+            // MIME does not parse is as unusable as a non-image one:
+            // skip with a warning, the search continues with the next
+            // extension.
+            MediaType contentType;
+            try {
+                contentType = MediaType.parseMediaType(mimeType);
+            } catch (RuntimeException e) {
+                log.warn(
+                        "Tenant logo candidate '_vance/config/logo.{}' has unparseable MIME type '{}' " + "— skipped.",
+                        extension,
+                        mimeType);
+                continue;
+            }
             // No try-with-resources: the stream must stay open past the
             // return — Spring reads (and closes) it while writing the
             // response, exactly like the document content endpoint.
             InputStream content = documentService.loadContent(document);
             ResponseEntity.BodyBuilder response = ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(mimeType))
+                    .contentType(contentType)
                     .header(CONTENT_SECURITY_POLICY_HEADER, CONTENT_SECURITY_POLICY_VALUE)
                     .header("X-Content-Type-Options", "nosniff")
                     .cacheControl(CacheControl.maxAge(Duration.ofSeconds(60)).cachePrivate());

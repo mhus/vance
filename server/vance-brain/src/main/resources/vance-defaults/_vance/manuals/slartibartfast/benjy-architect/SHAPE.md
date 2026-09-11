@@ -1,13 +1,13 @@
 # Benjy Recipe — Shape
 
-This manual describes what a Beny recipe is structurally. Slart's
+This manual describes what a Benjy recipe is structurally. Slart's
 GATHERING ingests it as engine-bundled evidence so DECOMPOSING can tie
 subgoals to concrete claims even when no project-specific kit is
 installed.
 
 ## What a Benjy recipe is
 
-A Beny recipe is the **outer configuration** of Vance's iterative
+A Benjy recipe is the **outer configuration** of Vance's iterative
 orchestration engine for small/local models (`engine: benjy`). The
 engine carries the loop discipline — state, verification, retries,
 escalation are deterministic code; the model is called only at narrow,
@@ -15,12 +15,12 @@ schema-bound edges. The recipe decides which semantic stages are ON
 and parameterises them. It has **no `promptPrefix`** — the persona
 lives in the referenced profiles, not in the outer recipe.
 
-## A Beny configuration is a suite
+## A Benjy configuration is a suite
 
 The outer recipe alone is not runnable — it references:
 
 - **Doer** (`params.doRecipe`, mandatory): a Ford worker recipe.
-  Beny spawns a fresh doer per item; a retry is a new spawn with
+  Benjy spawns a fresh doer per item; a retry is a new spawn with
   error context, never a re-steer.
 - **Controller profiles** (`params.features.*.recipe`): internal
   LightLlm profiles (`internal: true`, engine `jeltz`) for the
@@ -98,7 +98,7 @@ inventory as hint.
 ## Authoring is author-only
 
 The Slart run validates and persists the recipe and stops
-(`planOnly`). Running a Beny worker is a separate, long-lived step —
+(`planOnly`). Running a Benjy worker is a separate, long-lived step —
 spawn the persisted recipe afterwards. Typical asks: pin a project's
 check command on a coding variant, restrict task types, point
 escalation at a different worker, or compose a cheap mechanical batch

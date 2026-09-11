@@ -124,7 +124,7 @@ class BenjyArchitectTest {
 
     @Test
     void validate_failsOnUnknownFeatureKeyViaEngineContract() {
-        // The engine's fail-fast contract (BenyFeatureConfig) must be
+        // The engine's fail-fast contract (BenjyFeatureConfig) must be
         // the authority — an unknown feature key fails here with the
         // engine's own message, not a parallel architect wording.
         String yaml = """

@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.thinkprocess.CloseReason;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.progress.ProgressEmitter;
@@ -81,12 +83,10 @@ public class ThinkEngineService {
             de.mhus.vance.brain.tools.budget.ToolBudgetService toolBudgetService,
             de.mhus.vance.shared.toolusage.ToolUsageService toolUsageService,
             ObjectProvider<RecipeResolver> recipeResolverProvider) {
-        this.engines = engineBeans.stream().collect(
-                Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
-                    throw new IllegalStateException(
-                            "Duplicate ThinkEngine name: " + a.name()
-                                    + " — " + a.getClass() + " vs " + b.getClass());
-                }));
+        this.engines = engineBeans.stream().collect(Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
+            throw new IllegalStateException(
+                    "Duplicate ThinkEngine name: " + a.name() + " — " + a.getClass() + " vs " + b.getClass());
+        }));
         this.aiModelService = aiModelService;
         this.settingService = settingService;
         this.chatMessageService = chatMessageService;
@@ -144,8 +144,7 @@ public class ThinkEngineService {
         ThinkEngine engine = engines.get(process.getThinkEngine());
         if (engine == null) {
             throw new UnknownThinkEngineException(
-                    "Unknown think-engine '" + process.getThinkEngine()
-                            + "' for process id='" + process.getId() + "'");
+                    "Unknown think-engine '" + process.getThinkEngine() + "' for process id='" + process.getId() + "'");
         }
         return engine;
     }
@@ -157,11 +156,11 @@ public class ThinkEngineService {
      * the {@code ContextToolsApi} the engine sees is automatically scoped.
      */
     public ThinkEngineContext newContext(ThinkProcessDocument process) {
-        SessionDocument session = sessionService.findBySessionId(process.getSessionId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Process '" + process.getId()
-                                + "' references missing session '"
-                                + process.getSessionId() + "'"));
+        SessionDocument session = sessionService
+                .findBySessionId(process.getSessionId())
+                .orElseThrow(() -> new IllegalStateException("Process '" + process.getId()
+                        + "' references missing session '"
+                        + process.getSessionId() + "'"));
         // Cross-project workers (spawned via engines with
         // allowsCrossProjectSpawn=true — e.g. Trillian-User's
         // cross_process_create) can have a process.projectId that
@@ -171,9 +170,8 @@ public class ThinkEngineService {
         // back to session.projectId only when the process didn't pin
         // one (legacy spawns without explicit project).
         String processProjectId = process.getProjectId();
-        String projectId = processProjectId != null && !processProjectId.isBlank()
-                ? processProjectId
-                : session.getProjectId();
+        String projectId =
+                processProjectId != null && !processProjectId.isBlank() ? processProjectId : session.getProjectId();
         // Server-owned system sessions (SessionService.SYSTEM_OWNER, e.g. the
         // _agrajag diagnostic session) carry a placeholder owner, not a
         // principal — actingUserId maps those to null, which the tool path
@@ -185,9 +183,8 @@ public class ThinkEngineService {
         // is intentionally restrictive ("this process may invoke no
         // tools") and must be honoured rather than collapsed to "use
         // engine default".
-        final Set<String> base = process.getAllowedToolsOverride() != null
-                ? process.getAllowedToolsOverride()
-                : engine.allowedTools();
+        final Set<String> base =
+                process.getAllowedToolsOverride() != null ? process.getAllowedToolsOverride() : engine.allowedTools();
         // Per-mode tighten happens lazily on every tools() call —
         // Plan-Mode transitions inside one runTurn (e.g.
         // PLANNING → EXECUTING via START_EXECUTION) must reflect in
@@ -195,21 +192,24 @@ public class ThinkEngineService {
         final String recipeName = process.getRecipeName();
         final String connectionProfile = process.getConnectionProfile();
         java.util.function.BiFunction<
-                de.mhus.vance.api.thinkprocess.ProcessMode,
-                de.mhus.vance.toolpack.ToolInvocationContext,
-                RecipeResolver.ToolFilter> toolFilterResolver =
-                (currentMode, scope) -> {
+                        de.mhus.vance.api.thinkprocess.ProcessMode,
+                        de.mhus.vance.toolpack.ToolInvocationContext,
+                        RecipeResolver.ToolFilter>
+                toolFilterResolver = (currentMode, scope) -> {
                     RecipeResolver resolver = recipeResolverProvider.getIfAvailable();
                     if (resolver == null) return RecipeResolver.ToolFilter.EMPTY;
                     try {
                         return resolver.toolFilterFor(
-                                process.getTenantId(), projectId,
-                                recipeName, connectionProfile, currentMode, scope);
+                                process.getTenantId(), projectId, recipeName, connectionProfile, currentMode, scope);
                     } catch (RuntimeException e) {
-                        log.warn("ThinkEngineService.toolFilterFor failed for "
-                                + "process='{}' recipe='{}' profile='{}' mode={}: {}",
-                                process.getId(), recipeName, connectionProfile,
-                                currentMode, e.toString());
+                        log.warn(
+                                "ThinkEngineService.toolFilterFor failed for "
+                                        + "process='{}' recipe='{}' profile='{}' mode={}: {}",
+                                process.getId(),
+                                recipeName,
+                                connectionProfile,
+                                currentMode,
+                                e.toString());
                         return RecipeResolver.ToolFilter.EMPTY;
                     }
                 };
@@ -219,13 +219,12 @@ public class ThinkEngineService {
         // without enabling tracing for the whole tenant.
         String traceFlag = settingService.getStringValueCascade(
                 process.getTenantId(), projectId, process.getId(), SETTING_TRACE_LLM);
-        boolean traceLlm = traceFlag != null && (
-                "true".equalsIgnoreCase(traceFlag.trim())
-                || "1".equals(traceFlag.trim())
-                || "yes".equalsIgnoreCase(traceFlag.trim())
-                || "on".equalsIgnoreCase(traceFlag.trim()));
-        Duration decayTtl = resolveDeferralActivationTtl(
-                process.getTenantId(), projectId, process.getId());
+        boolean traceLlm = traceFlag != null
+                && ("true".equalsIgnoreCase(traceFlag.trim())
+                        || "1".equals(traceFlag.trim())
+                        || "yes".equalsIgnoreCase(traceFlag.trim())
+                        || "on".equalsIgnoreCase(traceFlag.trim()));
+        Duration decayTtl = resolveDeferralActivationTtl(process.getTenantId(), projectId, process.getId());
         // Fresh per-turn sink — engine flushes after persisting its
         // assistant ChatMessageDocument (see ArthurEngine.handleTodoUpdate
         // and the runTurn finally block for the wiring). Sink lives for
@@ -244,10 +243,17 @@ public class ThinkEngineService {
         de.mhus.vance.brain.ai.attachment.ToolAttachmentSink attachmentSink =
                 new de.mhus.vance.brain.ai.attachment.ToolAttachmentSink();
         return new DefaultThinkEngineContext(
-                process, projectId, userId, base,
-                aiModelService, settingService, chatMessageService,
-                toolDispatcher, eventPublisher,
-                thinkProcessService, processEventEmitter,
+                process,
+                projectId,
+                userId,
+                base,
+                aiModelService,
+                settingService,
+                chatMessageService,
+                toolDispatcher,
+                eventPublisher,
+                thinkProcessService,
+                processEventEmitter,
                 progressEmitter,
                 toolFilterResolver,
                 // Progress pings plus usage counting — one listener each,
@@ -258,9 +264,10 @@ public class ThinkEngineService {
                         // engine when a process carries none. Frankie's
                         // file_read flood must not train Arthur's ranking.
                         ToolInvocationListeners.usageRecorder(
-                                toolUsageService, process.getTenantId(), projectId,
-                                de.mhus.vance.shared.toolusage.ToolUsageService
-                                        .roleOf(process))),
+                                toolUsageService,
+                                process.getTenantId(),
+                                projectId,
+                                de.mhus.vance.shared.toolusage.ToolUsageService.roleOf(process))),
                 decayTtl,
                 traceLlm,
                 llmTraceService,
@@ -281,10 +288,9 @@ public class ThinkEngineService {
      * Accepts ISO-8601 ({@code "PT15M"}) and short-form ({@code "15m"},
      * {@code "1h"}) durations. {@code "0"} disables decay.
      */
-    private Duration resolveDeferralActivationTtl(
-            String tenantId, String projectId, String processId) {
-        String raw = settingService.getStringValueCascade(
-                tenantId, projectId, processId, SETTING_DEFERRAL_ACTIVATION_TTL);
+    private Duration resolveDeferralActivationTtl(String tenantId, String projectId, String processId) {
+        String raw =
+                settingService.getStringValueCascade(tenantId, projectId, processId, SETTING_DEFERRAL_ACTIVATION_TTL);
         if (raw == null || raw.isBlank()) {
             return DEFAULT_DEFERRAL_ACTIVATION_TTL;
         }
@@ -294,13 +300,14 @@ public class ThinkEngineService {
             // Try ISO-8601 first (PT15M), then accept "15m" / "1h" / "30s".
             return Duration.parse(trimmed);
         } catch (RuntimeException e) {
-            return parseShortDuration(trimmed)
-                    .orElseGet(() -> {
-                        log.warn("Unparseable {}='{}', falling back to {}",
-                                SETTING_DEFERRAL_ACTIVATION_TTL, trimmed,
-                                DEFAULT_DEFERRAL_ACTIVATION_TTL);
-                        return DEFAULT_DEFERRAL_ACTIVATION_TTL;
-                    });
+            return parseShortDuration(trimmed).orElseGet(() -> {
+                log.warn(
+                        "Unparseable {}='{}', falling back to {}",
+                        SETTING_DEFERRAL_ACTIVATION_TTL,
+                        trimmed,
+                        DEFAULT_DEFERRAL_ACTIVATION_TTL);
+                return DEFAULT_DEFERRAL_ACTIVATION_TTL;
+            });
         }
     }
 
@@ -347,9 +354,29 @@ public class ThinkEngineService {
      * Triggers a fresh lane-turn. Used by the runtime ({@code
      * ProcessEventEmitter}) when the process has new work in its
      * persistent inbox — the engine drains and runs.
+     *
+     * <p><b>Exception guard for delegated workers.</b> An engine whose
+     * turn dies mid-flight (streaming failure, iteration abort,
+     * resolver trouble) rethrows past the lane, where nothing but a
+     * log line remains. For a plain chat process that is merely sad;
+     * for a spawned worker it is a dangling delegation: the parent's
+     * delegation pointer stays armed forever and no ProcessEvent ever
+     * wakes it. The graceful exhaustion path in Ford closes
+     * {@code INCOMPLETE} for exactly that reason
+     * (ParentNotificationListener maps CLOSED+INCOMPLETE to a FAILED
+     * event on the parent's inbox); this guard gives every engine the
+     * same floor: worker + exception + still open → close INCOMPLETE,
+     * then rethrow so the lane's failure trace stays intact.
      */
     public void runTurn(ThinkProcessDocument process) {
-        resolveForProcess(process).runTurn(process, newContext(process));
+        try {
+            resolveForProcess(process).runTurn(process, newContext(process));
+        } catch (RuntimeException | Error e) {
+            if (process.getParentProcessId() != null && !ThinkProcessStatus.CLOSED.equals(process.getStatus())) {
+                thinkProcessService.closeProcess(process.getId(), CloseReason.INCOMPLETE);
+            }
+            throw e;
+        }
     }
 
     public void stop(ThinkProcessDocument process) {

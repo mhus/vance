@@ -845,6 +845,7 @@ export default {
       awaitingApproval: 'wartet auf Freigabe',
       approvalHint: 'Antworte mit „ok"/„mach so" für Freigabe oder mit Korrekturen.',
       todosTitle: 'Plan-Schritte',
+      closedNotice: 'Plan-Box geschlossen — letzter Stand:'
     },
     activityStrip: {
       working: 'arbeitet…',

@@ -31,6 +31,7 @@ import ChatActivityStrip from './ChatActivityStrip.vue';
 import { applyProgress, createActivityState } from './chatActivity';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 import { buildFollowUpContext, type FollowUpContext } from './followUpContext';
+import { planClosureContent } from './planClosure';
 
 type ProcessModeName = 'NORMAL' | 'EXPLORING' | 'PLANNING' | 'EXECUTING';
 
@@ -545,16 +546,27 @@ function onProcessModeChanged(data: ProcessModeChangedNotification): void {
   const next = (data.newMode as unknown as ProcessModeName) ?? 'NORMAL';
   chatProcessMode.value = next;
   if (next === 'NORMAL') {
+    const closed = chatTodos.value;
     chatTodos.value = [];
     planMeta.value = null;
+    if (closed.length > 0) renderPlanClosureNotice(closed);
   }
 }
 
 function onTodosUpdated(data: TodosUpdatedNotification): void {
   if (!isChatProcess(data.processName)) return;
+  const previous = chatTodos.value;
   chatTodos.value = data.todos ?? [];
+  // Box closed by an emptied projection (Benjy DONE auto-clear,
+  // Frankie all-completed auto-clear) — the content would vanish with
+  // the panel. One final notice keeps it in the transcript. The
+  // mode→NORMAL path above is the other closure trigger; whichever
+  // frame arrives first flips `chatTodos` to empty, so the notice
+  // renders exactly once.
+  if (previous.length > 0 && chatTodos.value.length === 0) {
+    renderPlanClosureNotice(previous);
+  }
 }
-
 function onPlanProposed(data: PlanProposedNotification): void {
   if (!isChatProcess(data.processName)) return;
   planMeta.value = {
@@ -567,6 +579,40 @@ function resetPlanModeState(): void {
   chatProcessMode.value = 'NORMAL';
   chatTodos.value = [];
   planMeta.value = null;
+}
+
+// ──────────────── Plan-box closure notice ────────────────
+//
+// When the plan box closes, its content would vanish with the panel.
+// Render one local SYSTEM bubble carrying the final list so the
+// transcript keeps the info — that is the deal that lets engines
+// clear the projection at process end (Benjy DONE, Frankie
+// all-completed) without the user losing sight of what was done.
+// Local-only on purpose: the box is a projection, not a message —
+// nothing to persist or reload; where the content matters long-term
+// it is already in the transcript (Benjy's final report carries the
+// full item list). Ids carry no `tmp_` prefix: the optimistic-echo
+// dedupe in appendMessageBubble must never match them.
+
+let planClosureSeq = 0;
+
+function renderPlanClosureNotice(closedTodos: TodoItem[]): void {
+  if (closedTodos.length === 0) return;
+  const content = planClosureContent(
+    closedTodos,
+    _?.('chat.planMode.closedNotice') ?? 'Plan box closed — final state:',
+  );
+  const wasNearBottom = isNearBottom();
+  liveMessages.value.push({
+    messageId: `plan-closure-${Date.now()}-${planClosureSeq++}`,
+    thinkProcessId: '',
+    processName: props.chatProcessName ?? undefined,
+    role: 'SYSTEM' as unknown as ChatRole,
+    content,
+    createdAt: new Date(),
+    addressedToAgent: false,
+  });
+  if (wasNearBottom) scrollToBottom();
 }
 
 // ──────────────── Live activity strip ────────────────

@@ -845,6 +845,7 @@ export default {
       awaitingApproval: 'awaiting approval',
       approvalHint: 'Reply with "ok"/"go ahead" to approve, or with corrections.',
       todosTitle: 'Plan steps',
+      closedNotice: 'Plan box closed — final state:'
     },
     activityStrip: {
       working: 'working…',

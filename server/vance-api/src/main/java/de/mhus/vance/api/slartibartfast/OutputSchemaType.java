@@ -64,4 +64,22 @@ public enum OutputSchemaType {
      *  ends at DONE via the {@code planOnly} path; the workflow is run
      *  later through the Magrathea subsystem. */
     MAGRATHEA_WORKFLOW,
+
+    /** Benjy recipe YAML — the outer configuration of the iterative
+     *  orchestration engine for small/local models: {@code engine: benjy}
+     *  plus the {@code params} shape the engine parses fail-fast at first
+     *  loop entry ({@code doRecipe}, {@code taskTypes}, the {@code features}
+     *  map with interpret/route/check/evaluate/reflect/escalation, safety-net
+     *  caps, {@code workTarget}). Validated by {@code BenjyArchitect}: the
+     *  shape check delegates to the engine's own
+     *  {@code BenyFeatureConfig.fromParams} (no parallel validation schema
+     *  to drift) and resolves every referenced recipe (doer, controller
+     *  LightLlm profiles, escalation target) via the {@code RecipeLoader}.
+     *  The bundled {@code benjy-architect} recipe sets {@code planOnly: true}
+     *  — author-only: a Benjy run is a long-lived iterative worker whose
+     *  cost profile has no place inside an authoring run, so the generated
+     *  recipe is spawned as a separate step afterwards. The architect
+     *  references sub-recipes by name; it does not generate them.
+     */
+    BENJY_RECIPE,
 }

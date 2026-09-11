@@ -1,0 +1,58 @@
+# Benjy batch recipe — the mechanical cheap mode ("Vogon-light for
+# dynamic item lists", specification/public/benjy-engine.md §4):
+# route stays OFF, so no controller LLM call fires at branch points.
+# The engine runs the purely mechanical fallback policy — retry to the
+# item cap, then escalation, then BLOCKED.
+#
+# Stage subset and why:
+#  - route: false     — the whole point. No route-LLM, no retry budget
+#                       burned on menu choices.
+#  - check / evaluate / reflect off — a batch's items are mechanical
+#                       (info/coding chains degrade to do → close);
+#                       DONE arrives as soon as the queue is empty.
+#  - escalation off   — without route, escalation is the mechanical
+#                       end of the retry policy; with no target recipe
+#                       configured the run parks BLOCKED instead of
+#                       silently retrying forever.
+#  - maxInitialItems raised to 10 — a batch goal names its items
+#                       explicitly (a list of files, a set of entries),
+#                       so the structure IS evident from the task text;
+#                       the cap exists to protect open-ended work, and
+#                       this is not that (§4, decision #23).
+#
+# Cheap ≠ unbounded: the stagnation, wallclock and token nets stay on.
+
+title: "Benjy Batch (Mechanical)"
+listed: true
+category: workers
+description: |
+  Mechanical iterative batch worker for small/local models: Benjy
+  interprets the goal into items and works the list without any LLM
+  routing at branch points — pure engine mechanics (retry to cap,
+  escalation, BLOCKED). Use for well-structured bulk work whose items
+  are evident from the task text; for goals needing judgement at
+  branches use benjy or benjy-coding.
+
+engine: benjy
+
+params:
+  doRecipe: benjy-do-coding
+  taskTypes: [info, coding]
+  features:
+    interpret:
+      recipe: benjy-interpret
+    route: false
+  # Safety nets (§6) — stagnation and cost nets stay armed even in the
+  # cheap mode; exhaustion is a checkpoint question.
+  maxStagnation: 15
+  maxItemAttempts: 3
+  maxWallclockMinutes: 30
+  maxTokens: 2000000
+  maxToolCalls: 15
+  maxInitialItems: 10
+  workTarget:
+    kind: WORK
+
+tags:
+  - worker
+  - batch

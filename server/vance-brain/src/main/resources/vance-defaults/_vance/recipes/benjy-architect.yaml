@@ -1,0 +1,48 @@
+description: |
+  Slartibartfast variant that generates a Benjy RECIPE (engine: benjy
+  — the iterative orchestration engine for small/local models) from a
+  free-text request. Same Slart lifecycle for the authoring part
+  (FRAMING → … → VALIDATING → PERSISTING); PROPOSING and VALIDATING
+  produce/check the Beny outer-recipe shape — the feature map
+  (interpret/route/check/evaluate/reflect/escalation), task types,
+  caps and the work target — and validate every referenced recipe
+  against the project's recipe inventory.
+
+  Author-only (planOnly=true): the run persists the recipe and ends at
+  DONE. It does NOT run the generated Benjy worker — a Benjy run is a
+  long-lived iterative process with its own doer spawns and controller
+  calls; its cost profile has no place inside an authoring run. Spawn
+  the persisted recipe afterwards (the DONE payload carries the path).
+
+  The architect references existing sub-recipes (doer, controller
+  LightLlm profiles, escalation target) by name — it does not generate
+  them. The bundled benjy-* profiles and doers cover the common cases;
+  a genuinely new doer or controller profile is authored separately.
+
+  Use this when the user wants a project-specific Benjy variant —
+  "pin mvn verify as the check command for a benjy coding worker",
+  "give me a benjy that escalates to marvin", "set up a benjy batch
+  worker for this cleanup list". For Marvin recipes use
+  marvin-architect, for plain linear pipelines plain `slartibartfast`
+  (vogon-strategy).
+engine: slartibartfast
+params:
+  outputSchemaType: benjy-recipe
+  # Author-only — persist the recipe and stop at DONE. The generated
+  # Benjy worker is spawned as a separate step afterwards.
+  planOnly: true
+  model: default:benjy-architect,default:analyze
+tags:
+  - architect
+  - benjy
+  - engine-default
+# Trigger keywords for the deterministic recipe-router pre-check
+# (see specification/recipe-routing.md §5). Claims benjy-recipe
+# authoring intents — deliberately narrow: "benjy" alone is the worker
+# itself, not the authoring ask.
+triggers:
+  keywords:
+    - benjy-recipe
+    - benjy-architect
+    - benjy-recipes
+    - benjy-rezept

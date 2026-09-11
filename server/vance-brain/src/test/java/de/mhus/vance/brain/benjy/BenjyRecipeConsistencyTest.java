@@ -19,7 +19,7 @@ import org.yaml.snakeyaml.Yaml;
  * {@code BundledRecipeStructureTest}: a broken recipe must fail here,
  * at build time, not at the first spawn.
  *
- * <p>Checks that (a) both spawnable Benjy recipes parse into a valid
+ * <p>Checks that (a) every spawnable Benjy recipe parses into a valid
  * {@link BenjyFeatureConfig} (fail-fast contract §4d), and (b) every
  * LightLm profile they reference exists as a bundled recipe, is marked
  * {@code internal: true} and carries a prompt — a missing profile would
@@ -27,9 +27,16 @@ import org.yaml.snakeyaml.Yaml;
  */
 class BenjyRecipeConsistencyTest {
 
+    /** The spawnable outer recipes (benjy-batch included — it is a
+     *  user-pickable worker, only its stage set is mechanical). The
+     *  benjy-architect recipe is a Slart wrapper, not a Benjy config. */
+    private static final List<String> SPAWNABLE_BENJY_RECIPES = List.of(
+            "benjy.yaml", "benjy-coding.yaml",
+            "benjy-research.yaml", "benjy-batch.yaml");
+
     @Test
     void bundledBenjyRecipes_parseIntoValidFeatureConfigs() {
-        for (String recipe : List.of("benjy.yaml", "benjy-coding.yaml")) {
+        for (String recipe : SPAWNABLE_BENJY_RECIPES) {
             Map<String, Object> spec = parse(recipe);
             @SuppressWarnings("unchecked")
             Map<String, Object> params = (Map<String, Object>) spec.get("params");
@@ -37,13 +44,13 @@ class BenjyRecipeConsistencyTest {
             // throws with a caller-ready message on any misconfiguration
             BenjyFeatureConfig cfg = BenjyFeatureConfig.fromParams(params, "test-process");
             assertThat(cfg.getInterpretRecipe()).as("%s interpret", recipe).isNotBlank();
-            assertThat(cfg.getDoRecipe()).as("%s doRecipe", recipe).isEqualTo("benjy-do-coding");
+            assertThat(cfg.getDoRecipe()).as("%s doRecipe", recipe).isIn("benjy-do-coding", "benjy-do-research");
         }
     }
 
     @Test
     void referencedLightLmProfiles_existInternalAndPrompted() {
-        for (String recipe : List.of("benjy.yaml", "benjy-coding.yaml")) {
+        for (String recipe : SPAWNABLE_BENJY_RECIPES) {
             Map<String, Object> spec = parse(recipe);
             @SuppressWarnings("unchecked")
             Map<String, Object> params = (Map<String, Object>) spec.get("params");
@@ -75,24 +82,26 @@ class BenjyRecipeConsistencyTest {
     }
 
     @Test
-    void benjyDoCoding_targetsFordAndDefersBackends() {
-        Map<String, Object> spec = parse("benjy-do-coding.yaml");
-        assertThat(spec.get("engine")).isEqualTo("ford");
-        assertThat(Boolean.TRUE.equals(spec.get("listed")))
-                .as("the doer is Benjy-driven, not user-spawnable")
-                .isFalse();
-        @SuppressWarnings("unchecked")
-        List<String> defer = (List<String>) spec.get("allowedToolsDefer");
-        assertThat(defer).contains("work_exec_run", "client_exec_run");
+    void benjyDoers_targetFordAndDeferBackends() {
+        for (String doer : List.of("benjy-do-coding.yaml", "benjy-do-research.yaml")) {
+            Map<String, Object> spec = parse(doer);
+            assertThat(spec.get("engine")).as("%s engine", doer).isEqualTo("ford");
+            assertThat(Boolean.TRUE.equals(spec.get("listed")))
+                    .as("%s: the doer is Benjy-driven, not user-spawnable", doer)
+                    .isFalse();
+            @SuppressWarnings("unchecked")
+            List<String> defer = (List<String>) spec.get("allowedToolsDefer");
+            assertThat(defer).as("%s deferred backends", doer).contains("work_exec_run", "client_exec_run");
+        }
     }
 
     @Test
     void bundledBenjyRecipes_pinTheStructuralItemCap() {
         // Decision #23: the minimal rule (bounded first batch, rest via
-        // reflect-gaps) is a number, not a prompt — both spawnable recipes
+        // reflect-gaps) is a number, not a prompt — every spawnable recipe
         // must pin maxInitialItems so the shipped default is explicit and
         // a tenant override has a visible baseline.
-        for (String recipe : List.of("benjy.yaml", "benjy-coding.yaml")) {
+        for (String recipe : SPAWNABLE_BENJY_RECIPES) {
             Map<String, Object> spec = parse(recipe);
             @SuppressWarnings("unchecked")
             Map<String, Object> params = (Map<String, Object>) spec.get("params");

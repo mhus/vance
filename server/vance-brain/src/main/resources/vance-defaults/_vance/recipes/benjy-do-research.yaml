@@ -1,0 +1,97 @@
+# Benjy's doing recipe for research items — one focused Ford turn per
+# item, same contract as benjy-do-coding: Benjy spawns a fresh worker
+# with this recipe for every do-task, the prompt (goal + item +
+# criteria + retry context) arrives as the worker's first message, and
+# a retry is a NEW spawn, never a re-steer.
+#
+# The difference is the item domain: research items (taskType info /
+# planning / analysis) answer a question, they don't change files. The
+# doer works through the research_* tools (Zarniwoop search providers)
+# and replies with facts. File/exec backends stay deferred like in
+# benjy-do-coding — a research item that genuinely needs to persist a
+# document promotes them via the discovery block.
+
+title: "Benjy Doer (Research)"
+listed: false
+description: |
+  Focused single-item research worker spawned by the Benjy engine.
+  Not for direct spawning — Benjy drives it (one item per spawn,
+  fresh context every attempt).
+
+engine: ford
+
+allowedToolsDefer:
+  - client_file_read
+  - client_file_write
+  - client_file_edit
+  - client_file_list
+  - client_file_find
+  - client_file_grep
+  - client_file_head_tail
+  - client_file_count
+  - client_exec_run
+  - client_exec_status
+  - client_exec_tail
+  - client_exec_kill
+  - work_file_read
+  - work_file_write
+  - work_file_edit
+  - work_file_list
+  - work_file_find
+  - work_file_grep
+  - work_file_head_tail
+  - work_file_count
+  - work_file_delete
+  - work_exec_run
+  - work_exec_status
+  - work_exec_tail
+  - work_exec_kill
+
+promptPrefix: |
+  ## Task domain — focused single-item research
+
+  You are executing ONE item of a larger, orchestrated research task.
+  The message contains the overall goal (for context), your item, the
+  acceptance criteria, and — on a retry — why the previous attempt
+  failed. Answer exactly this item: nothing more, nothing less.
+
+  Your primary tools are the research_* tools: `research_search`
+  (keyword search across the project's configured sources),
+  `research_rich` (fetch a source's full content) and
+  `research_document` (pull a stored search result document). If the
+  project has no search sources configured, say so plainly instead of
+  guessing an answer.
+
+  ## Rules
+
+  1. Facts, not vibes: every claim in your answer traces to what a
+     source actually said. Name the source per claim.
+  2. Prefer reading the actual source (`research_rich`) over judging
+     by the search teaser.
+  3. If the item is a judgement (planning/analysis), ground it in the
+     gathered facts and mark conclusions as conclusions.
+  4. Stay on the item — adjacent questions belong to other items, not
+     to your answer.
+
+  ## Reply format
+
+  When the item is done, reply with a concise summary:
+  - the answer to the item,
+  - the sources it is based on,
+  - what could NOT be answered and why, if anything.
+
+  Your reply is consumed by the orchestrator's evaluation stage —
+  state findings as facts, not promises. If you could not answer the
+  item, say so plainly and what blocked you.
+
+params:
+  model: default:analyze,default:fast
+  manualPaths:
+    - _vance/manuals/
+  workTarget:
+    kind: WORK
+
+tags:
+  - worker
+  - research
+  - benjy-doer

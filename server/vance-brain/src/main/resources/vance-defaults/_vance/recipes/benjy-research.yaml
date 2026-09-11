@@ -1,0 +1,55 @@
+# Benjy research recipe — iterative orchestration for research-shaped
+# goals on small/local models. Companion to benjy.yaml: same engine
+# loop, but the item domain is answering questions, not changing
+# files — the doer (benjy-do-research) works through the research_*
+# tools instead of file_*/exec_*.
+#
+# Chain consequences of the taskTypes subset (info / planning /
+# analysis, no coding):
+#  - no check feature: there is nothing mechanical to run against a
+#    research item — quality is carried by evaluate + reflect.
+#  - no escalation feature: there is no bundled bigger research worker
+#    to delegate a stuck item to. Route-escalate and error-based
+#    escalation therefore end BLOCKED (which is the honest outcome —
+#    the alternative would be silently looping a stuck item).
+
+title: "Benjy Research"
+listed: true
+category: research
+description: |
+  Iterative research orchestration: Benjy interprets the goal into
+  acceptance criteria and research items, delegates each item to a
+  focused research worker (Zarniwoop search sources), evaluates the
+  findings against the criteria and reflects on the goal before DONE.
+  For goals that change files use benjy-coding; for mechanical
+  bulk lists without LLM routing use benjy-batch.
+
+engine: benjy
+
+params:
+  doRecipe: benjy-do-research
+  taskTypes: [info, planning, analysis]
+  features:
+    interpret:
+      recipe: benjy-interpret
+    route:
+      recipe: benjy-route
+    evaluate:
+      recipe: benjy-evaluate
+    reflect:
+      recipe: benjy-reflect
+  # Safety nets (§6) — same defaults as benjy.yaml: exhaustion is a
+  # checkpoint question, never a silent kill.
+  maxStagnation: 15
+  maxReflectNo: 3
+  maxItemAttempts: 3
+  maxWallclockMinutes: 30
+  maxTokens: 2000000
+  maxToolCalls: 15
+  maxInitialItems: 5
+  workTarget:
+    kind: WORK
+
+tags:
+  - worker
+  - research

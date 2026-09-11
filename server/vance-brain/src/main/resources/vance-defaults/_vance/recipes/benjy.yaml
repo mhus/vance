@@ -10,6 +10,7 @@
 
 title: "Benjy — Iterative Orchestration Worker"
 listed: true
+category: workers
 description: |
   Engine-agency orchestration loop for iterative tasks: interprets the
   goal into acceptance criteria and items, delegates each item to a

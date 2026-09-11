@@ -1,5 +1,6 @@
 title: "Quick Lookup"
 listed: true
+category: research
 description: |
   Cheap one-shot fact retrieval. Use when one tool call with a
   short answer suffices — file existence, current date, single

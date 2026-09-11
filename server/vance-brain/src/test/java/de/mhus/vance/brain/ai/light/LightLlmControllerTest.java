@@ -8,9 +8,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.recipe.RecipeLoader;
-import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import jakarta.servlet.http.HttpServletRequest;
@@ -54,17 +54,37 @@ class LightLlmControllerTest {
      */
     private static ResolvedRecipe recipe(boolean web) {
         return new ResolvedRecipe(
-                "r", "test", "ford", Map.of(),
-                null, PromptMode.APPEND, null,
-                List.of(), List.of(), List.of(), List.of(), List.of(),
-                Map.of(), Map.of(), List.of(), null, List.of(),
-                /*locked*/ false, /*internal*/ true, /*listed*/ false, /*web*/ web,
-                null, List.of(), List.of(), /*tenants*/ List.of(), RecipeSource.RESOURCE);
+                "r",
+                "test",
+                "ford",
+                Map.of(),
+                null,
+                PromptMode.APPEND,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                null,
+                List.of(),
+                /*locked*/ false, /*internal*/
+                true, /*listed*/
+                false, /*web*/
+                web,
+                null, /*category*/
+                null,
+                List.of(),
+                List.of(), /*tenants*/
+                List.of(),
+                RecipeSource.RESOURCE);
     }
 
     private static LightLlmController.LightLlmCallRequestDto body(String recipe, String prompt) {
-        LightLlmController.LightLlmCallRequestDto dto =
-                new LightLlmController.LightLlmCallRequestDto();
+        LightLlmController.LightLlmCallRequestDto dto = new LightLlmController.LightLlmCallRequestDto();
         dto.setRecipe(recipe);
         dto.setPrompt(prompt);
         return dto;
@@ -122,7 +142,8 @@ class LightLlmControllerTest {
     @Test
     void call_requiresARecipeAndAPrompt() {
         for (var dto : new LightLlmController.LightLlmCallRequestDto[] {
-                body(null, "t"), body("  ", "t"), body("r", null), body("r", "   ") }) {
+            body(null, "t"), body("  ", "t"), body("r", null), body("r", "   ")
+        }) {
             assertThatThrownBy(() -> controller.call("acme", "p", dto, request))
                     .isInstanceOf(ResponseStatusException.class)
                     .extracting(e -> ((ResponseStatusException) e).getStatusCode())
@@ -139,8 +160,9 @@ class LightLlmControllerTest {
 
         controller.call("acme", "p", body("summarise", "text"), request);
 
-        verify(service).call(org.mockito.ArgumentMatchers.argThat(r ->
-                "acme".equals(r.getTenantId()) && "p".equals(r.getProjectId())
+        verify(service)
+                .call(org.mockito.ArgumentMatchers.argThat(r -> "acme".equals(r.getTenantId())
+                        && "p".equals(r.getProjectId())
                         && "text".equals(r.getUserPrompt())));
     }
 }

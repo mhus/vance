@@ -1,5 +1,6 @@
 title: "Code Read"
 listed: true
+category: coding
 description: |
   Read-only codebase inspection. Reads files, follows references,
   summarises structure and call sites.

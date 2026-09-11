@@ -15,6 +15,7 @@
 
 title: "Creator — Automation Setup"
 listed: true
+category: workers
 description: |
   Sets up persistent project configuration on explicit user request:
   schedulers (cron / one-shot `at:`), events (incoming webhooks), hooks

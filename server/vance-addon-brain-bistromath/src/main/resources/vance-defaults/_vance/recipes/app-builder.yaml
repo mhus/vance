@@ -17,6 +17,7 @@
 
 title: "App Builder — Custom Applications"
 listed: true
+category: coding
 description: |
   Builds and changes custom applications (`app: custom`) — small
   programs made of documents: a manifest, view documents holding a

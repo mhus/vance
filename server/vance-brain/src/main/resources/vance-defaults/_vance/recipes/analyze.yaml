@@ -1,5 +1,6 @@
 title: "Analyze"
 listed: true
+category: research
 description: |
   Analysis of material we ALREADY have (files, project data, RAG, mailbox) — NOT public-web research; for URLs / search use web-research.
   Multi-step tool calls; returns findings with cited evidence.

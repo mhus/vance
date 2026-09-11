@@ -178,7 +178,12 @@ public class RecipeLoader {
         return name.trim().toLowerCase().replaceAll("\\s+", "-");
     }
 
-    private static String effectiveProjectId(@Nullable String projectId) {
+    /**
+     * Package-private: shared with {@link RecipeCategoriesService} so the
+     * category document resolves through the same effective project as the
+     * recipes it orders.
+     */
+    static String effectiveProjectId(@Nullable String projectId) {
         return (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
@@ -244,6 +249,7 @@ public class RecipeLoader {
         boolean listed = spec.get("listed") instanceof Boolean lb && lb;
         boolean web = spec.get("web") instanceof Boolean wb && wb;
         String title = stringOrNull(spec.get("title"));
+        String category = parseCategory(spec.get("category"));
         List<String> tags = stringList(spec.get("tags"), "tags");
         List<String> tenants = stringList(spec.get("tenants"), "tenants");
         List<GuardConfig> guards = parseGuards(spec.get("guard"));
@@ -276,6 +282,7 @@ public class RecipeLoader {
                 listed,
                 web,
                 title,
+                category,
                 tags,
                 guards,
                 tenants,
@@ -608,6 +615,28 @@ public class RecipeLoader {
 
     private static String stringOrNull(Object raw) {
         return raw instanceof String s && !s.isBlank() ? s : null;
+    }
+
+    /**
+     * Parses the optional {@code category} picker-group key.
+     *
+     * <p>Hand-written YAML on both sides — the recipe field and the ids in
+     * {@code _vance/config/recipe_categories.yaml} — so the value is
+     * normalised (trim, lower-case) instead of rejected; it only ever
+     * matches the equally normalised ids of the category document.
+     *
+     * <p>Blank means "no category" (null). A non-string value is a
+     * malformed field and fails the recipe load, same as every other
+     * type guard — a number here is a typo an author wants to hear
+     * about, not a silently ignored key.
+     */
+    private static String parseCategory(Object raw) {
+        if (raw == null) return null;
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("'category' must be a string");
+        }
+        String normalized = s.trim().toLowerCase(java.util.Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized;
     }
 
     /**

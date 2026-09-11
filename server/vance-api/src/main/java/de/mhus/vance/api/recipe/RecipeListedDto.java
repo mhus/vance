@@ -13,9 +13,10 @@ import org.jspecify.annotations.Nullable;
  * {@code GET /brain/{tenant}/projects/{project}/recipes/listed}.
  *
  * <p>Backed by the recipe-YAML fields {@code title} (optional display
- * name), {@code description} (one-paragraph blurb), and the recipe
- * name itself. Only recipes that opt in via {@code listed: true} —
- * and are not {@code internal: true} — appear in the response.
+ * name), {@code description} (one-paragraph blurb), {@code category}
+ * (optional picker-group key), and the recipe name itself. Only recipes
+ * that opt in via {@code listed: true} — and are not {@code internal: true}
+ * — appear in the response.
  */
 @Data
 @Builder
@@ -33,4 +34,13 @@ public class RecipeListedDto {
 
     /** Recipe description (free-form, multi-line). May be {@code null} if the YAML omitted it. */
     private @Nullable String description;
+
+    /**
+     * Optional picker-group key ({@code category:} in the recipe YAML, kebab-case).
+     * Recipes sharing a key are rendered as one group in the recipe picker; the
+     * group order comes from {@code _vance/config/recipe_categories.yaml} (see
+     * {@link RecipeCategoryDto}). {@code null} means "no category" — those recipes
+     * form the trailing group.
+     */
+    private @Nullable String category;
 }

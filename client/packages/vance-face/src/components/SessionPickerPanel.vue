@@ -10,7 +10,6 @@
  * whatever the host had on screen survives.
  */
 import { computed, onMounted, ref, watch } from 'vue';
-import { useI18n } from 'vue-i18n';
 import {
   listProjectRecipes,
   listSessions,
@@ -19,6 +18,7 @@ import {
 import {
   AccentColor,
   SessionStatus,
+  type RecipeCategoryDto,
   type RecipeListedDto,
   type SessionBootstrapRequest,
   type SessionBootstrapResponse,
@@ -28,10 +28,12 @@ import {
 import { VAlert, VButton, VInput, VModal } from '@/components';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@/composables/useSessionGroupCollapse';
+import { groupListedRecipes } from '@/recipes/recipePickerGroups';
 import { markBound, useWsConnection } from '@/ws/wsConnectionStore';
 import { navigateTo } from '@/platform/navigate';
+import { useI18n } from 'vue-i18n';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const props = defineProps<{
   projectId: string;
@@ -59,10 +61,22 @@ const { socket } = useWsConnection();
 
 const recipeModalOpen = ref(false);
 const recipeOptions = ref<RecipeListedDto[]>([]);
+const recipeCategories = ref<RecipeCategoryDto[]>([]);
 const recipesLoading = ref(false);
 const recipesError = ref<string | null>(null);
 const bootstrapping = ref(false);
 const bootstrapError = ref<string | null>(null);
+
+/**
+ * Recipe entries grouped for the modal: category groups with resolved
+ * labels, "no category" entries trailing. See {@link groupListedRecipes}.
+ */
+const recipeGroups = computed(() => groupListedRecipes(
+  recipeOptions.value,
+  recipeCategories.value,
+  locale.value,
+  t('chat.picker.recipeCategoryOther'),
+));
 
 const filtered = computed<SessionSummaryRichDto[]>(() => {
   const needle = filter.value.trim().toLowerCase();
@@ -210,10 +224,13 @@ async function openRecipeModal(): Promise<void> {
   recipeModalOpen.value = true;
   recipesLoading.value = true;
   try {
-    recipeOptions.value = await listProjectRecipes(props.projectId);
+    const response = await listProjectRecipes(props.projectId);
+    recipeOptions.value = response.recipes;
+    recipeCategories.value = response.categories;
   } catch (e) {
     recipesError.value = describeError(e, t('chat.picker.recipeLoadFailed'));
     recipeOptions.value = [];
+    recipeCategories.value = [];
   } finally {
     recipesLoading.value = false;
   }
@@ -424,35 +441,46 @@ watch(showArchived, () => {
             {{ $t('chat.picker.sessionsLoading') }}
           </li>
 
-          <li
-            v-for="recipe in recipeOptions"
-            :key="recipe.name"
+          <template
+            v-for="group in recipeGroups"
+            :key="group.key ?? '__other__'"
           >
-            <button
-              type="button"
-              class="w-full text-left rounded-lg border border-base-300 hover:border-primary p-3 transition-colors"
-              :disabled="bootstrapping"
-              @click="bootstrapNew(recipe.name)"
+            <li
+              v-if="group.label"
+              class="text-xs font-semibold uppercase tracking-wide opacity-60 px-1 pt-3"
             >
-              <div class="flex items-baseline gap-2 min-w-0">
-                <span class="font-semibold truncate">
-                  {{ recipe.title || recipe.name }}
-                </span>
-                <span
-                  v-if="recipe.title"
-                  class="text-xs opacity-50 font-mono truncate"
-                >
-                  {{ recipe.name }}
-                </span>
-              </div>
-              <div
-                v-if="recipe.description"
-                class="text-xs opacity-70 mt-1 whitespace-pre-line line-clamp-3"
+              {{ group.label }}
+            </li>
+            <li
+              v-for="recipe in group.recipes"
+              :key="recipe.name"
+            >
+              <button
+                type="button"
+                class="w-full text-left rounded-lg border border-base-300 hover:border-primary p-3 transition-colors"
+                :disabled="bootstrapping"
+                @click="bootstrapNew(recipe.name)"
               >
-                {{ recipe.description }}
-              </div>
-            </button>
-          </li>
+                <div class="flex items-baseline gap-2 min-w-0">
+                  <span class="font-semibold truncate">
+                    {{ recipe.title || recipe.name }}
+                  </span>
+                  <span
+                    v-if="recipe.title"
+                    class="text-xs opacity-50 font-mono truncate"
+                  >
+                    {{ recipe.name }}
+                  </span>
+                </div>
+                <div
+                  v-if="recipe.description"
+                  class="text-xs opacity-70 mt-1 whitespace-pre-line line-clamp-3"
+                >
+                  {{ recipe.description }}
+                </div>
+              </button>
+            </li>
+          </template>
         </ul>
       </div>
       <template #actions>

@@ -1,0 +1,30 @@
+# Recipe-picker category groups: order and localised labels.
+#
+# A sort help, not a registry — see specification/public/recipes.md §6e:
+#   - neither complete: a recipe `category:` not named here still appears,
+#     appended after the documented categories (alphabetical);
+#   - nor mandatory: without this document the picker shows plain
+#     title order without group headers;
+#   - fail-open: a malformed document is ignored with a warning.
+#
+# Cascade: <project>/_vance/config/recipe_categories.yaml
+#         → _vance tenant document → this bundled default.
+# A tier that overrides replaces the whole document — re-declare the
+# titles you want to keep.
+categories:
+  - id: chat
+    title:
+      en: Chat
+      de: Chat
+  - id: coding
+    title:
+      en: Coding
+      de: Programmierung
+  - id: research
+    title:
+      en: Research
+      de: Recherche
+  - id: workers
+    title:
+      en: Workers
+      de: Worker

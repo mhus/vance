@@ -34,11 +34,30 @@ class BundledRecipeStructureTest {
 
     /** Fields the loader reads from the top level. */
     private static final Set<String> TOP_LEVEL_FIELDS = Set.of(
-            "engine", "description", "title", "promptPrefix", "promptMode",
-            "dataRelayCorrection", "allowedToolsAdd", "allowedToolsRemove",
-            "allowedToolsKeep", "allowedToolsDefer", "allowedToolsDropFirst",
-            "defaultActiveSkills", "allowedSkills", "triggers", "tags",
-            "modes", "profiles", "guard", "internal", "listed", "locked");
+            "engine",
+            "description",
+            "title",
+            "category",
+            "promptPrefix",
+            "promptMode",
+            "dataRelayCorrection",
+            "allowedToolsAdd",
+            "allowedToolsRemove",
+            "allowedToolsKeep",
+            "allowedToolsDefer",
+            "allowedToolsDropFirst",
+            "defaultActiveSkills",
+            "allowedSkills",
+            "triggers",
+            "tags",
+            "modes",
+            "profiles",
+            "guard",
+            "internal",
+            "listed",
+            "locked",
+            "web",
+            "tenants");
 
     @Test
     void noBundledRecipeHidesATopLevelFieldInsideParams() {
@@ -63,19 +82,17 @@ class BundledRecipeStructureTest {
     @Test
     void everyRecipeDeclaresAnEngine() {
         for (Path recipe : bundledRecipes()) {
-            assertThat(parse(recipe))
-                    .as("recipe %s", recipe.getFileName())
-                    .containsKey("engine");
+            assertThat(parse(recipe)).as("recipe %s", recipe.getFileName()).containsKey("engine");
         }
     }
 
     private static List<Path> bundledRecipes() {
         try {
             Path dir = new ClassPathResource("vance-defaults/_vance/recipes")
-                    .getFile().toPath();
+                    .getFile()
+                    .toPath();
             try (var files = Files.list(dir)) {
-                List<Path> yaml = files
-                        .filter(p -> p.getFileName().toString().endsWith(".yaml"))
+                List<Path> yaml = files.filter(p -> p.getFileName().toString().endsWith(".yaml"))
                         .sorted()
                         .toList();
                 assertThat(yaml).as("bundled recipes found").isNotEmpty();
@@ -89,8 +106,7 @@ class BundledRecipeStructureTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> parse(Path recipe) {
         try {
-            return (Map<String, Object>) new Yaml()
-                    .load(Files.readString(recipe, StandardCharsets.UTF_8));
+            return (Map<String, Object>) new Yaml().load(Files.readString(recipe, StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

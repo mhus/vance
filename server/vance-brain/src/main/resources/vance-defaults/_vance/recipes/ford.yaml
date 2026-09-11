@@ -5,6 +5,7 @@
 
 title: "Ford — Generalist Worker"
 listed: true
+category: workers
 description: |
   Generalist Ford-engine default. Auto-applied when a process
   is spawned with `engine="ford"` but no specific recipe.

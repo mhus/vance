@@ -281,6 +281,48 @@ class RecipeLoaderTest {
         assertThat(restricted.appliesTo(null)).isFalse();
     }
 
+    @Test
+    void load_category_isNormalizedToKebabKey() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: eddie
+                category:   Coding
+                """);
+
+        ResolvedRecipe recipe = loader.load("acme", "p-1", "analyze").orElseThrow();
+
+        // Hand-written YAML on both sides of the match — the recipe field and
+        // the ids of _vance/config/recipe_categories.yaml are normalised the
+        // same way, so 'Coding' groups with a documented 'coding'.
+        assertThat(recipe.category()).isEqualTo("coding");
+    }
+
+    @Test
+    void load_blankCategory_isTreatedAsAbsent() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: eddie
+                category: "   "
+                """);
+
+        ResolvedRecipe recipe = loader.load("acme", "p-1", "analyze").orElseThrow();
+
+        assertThat(recipe.category()).isNull();
+    }
+
+    @Test
+    void load_nonStringCategory_isRejected() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: eddie
+                category: 42
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("'category' must be a string");
+    }
+
     private void stubRecipe(String yaml) {
         LookupResult hit = new LookupResult(
                 RecipeLoader.RECIPE_PATH_PREFIX + "analyze" + RecipeLoader.RECIPE_PATH_SUFFIX,

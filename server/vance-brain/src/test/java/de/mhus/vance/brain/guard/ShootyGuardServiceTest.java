@@ -432,6 +432,7 @@ class ShootyGuardServiceTest {
                 false,
                 false,
                 null,
+                null,
                 List.of(),
                 List.of(guards),
                 List.of(),

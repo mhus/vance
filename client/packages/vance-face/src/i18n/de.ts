@@ -783,6 +783,7 @@ export default {
       recipeDefaultName: 'Default',
       recipeDefaultDescription: 'Verwendet das Default-Recipe des Projekts — wie ein Start ohne Auswahl.',
       recipeLoadFailed: 'Recipes konnten nicht geladen werden.',
+      recipeCategoryOther: 'Weitere',
       recipeBadgeTooltip: 'Recipe des Session-Chat-Prozesses',
       groups: {
         create: '+ Gruppe',

@@ -49,8 +49,7 @@ class ProcessSpawnControllerTest {
         spawnService = mock(ProcessSpawnService.class);
         loader = mock(RecipeLoader.class);
         sessions = mock(SessionService.class);
-        controller = new ProcessSpawnController(spawnService, loader, sessions,
-                mock(RequestAuthority.class));
+        controller = new ProcessSpawnController(spawnService, loader, sessions, mock(RequestAuthority.class));
         request = mock(HttpServletRequest.class);
 
         SessionDocument s = new SessionDocument();
@@ -61,12 +60,33 @@ class ProcessSpawnControllerTest {
 
     private static ResolvedRecipe recipe(boolean web, boolean internal) {
         return new ResolvedRecipe(
-                "r", "test", "marvin", Map.of(),
-                null, PromptMode.APPEND, null,
-                List.of(), List.of(), List.of(), List.of(), List.of(),
-                Map.of(), Map.of(), List.of(), null, List.of(),
-                false, internal, false, web, null, List.of(), List.of(),
-                /*tenants*/ List.of(), RecipeSource.RESOURCE);
+                "r",
+                "test",
+                "marvin",
+                Map.of(),
+                null,
+                PromptMode.APPEND,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                null,
+                List.of(),
+                false,
+                internal,
+                false,
+                web,
+                null, /*category*/
+                null,
+                List.of(),
+                List.of(),
+                /*tenants*/ List.of(),
+                RecipeSource.RESOURCE);
     }
 
     private static ProcessSpawnController.SpawnRequestDto body(String recipe, String session) {
@@ -165,8 +185,11 @@ class ProcessSpawnControllerTest {
 
         controller.spawn("acme", "p", body("plan", "sess_1"), request);
 
-        verify(spawnService).spawn(org.mockito.ArgumentMatchers.argThat(
-                r -> r.name().startsWith("plan-") && r.name().length() > "plan-".length()), any());
+        verify(spawnService)
+                .spawn(
+                        org.mockito.ArgumentMatchers.argThat(
+                                r -> r.name().startsWith("plan-") && r.name().length() > "plan-".length()),
+                        any());
     }
 
     @Test
@@ -175,8 +198,8 @@ class ProcessSpawnControllerTest {
         // retries blindly would collide on the name, so the status has to say
         // "upstream refused" rather than "we broke".
         released();
-        when(spawnService.spawn(any(), any())).thenThrow(
-                new ProcessSpawnService.StartFailedException("boom", new RuntimeException()));
+        when(spawnService.spawn(any(), any()))
+                .thenThrow(new ProcessSpawnService.StartFailedException("boom", new RuntimeException()));
 
         assertThatThrownBy(() -> controller.spawn("acme", "p", body("plan", "sess_1"), request))
                 .isInstanceOf(ResponseStatusException.class)

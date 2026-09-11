@@ -7,4 +7,5 @@ export interface RecipeListedDto {
   name: string;
   title?: string;
   description?: string;
+  category?: string;
 }

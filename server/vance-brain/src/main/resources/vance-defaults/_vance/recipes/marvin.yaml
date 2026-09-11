@@ -1,5 +1,6 @@
 title: "Marvin — Deep Think"
 listed: true
+category: workers
 description: |
   Marvin v2 — autonomous-worker deep-think engine. Every node is
   a marvin-worker that walks the 5-phase state-machine. The tree

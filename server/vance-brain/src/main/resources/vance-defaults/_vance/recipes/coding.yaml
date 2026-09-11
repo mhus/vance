@@ -13,6 +13,7 @@
 
 title: "Coding"
 listed: true
+category: coding
 description: |
   Coding worker. Reads and edits files at the active work target,
   runs build/test commands, spawns deep-think workers for strategy

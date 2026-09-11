@@ -320,8 +320,9 @@ export * from './magrathea/MagratheaWorkflowSummary';
 export * from './notification/NotificationDto';
 export * from './notification/NotificationSeverity';
 
+export * from './recipe/RecipeCategoryDto';
 export * from './recipe/RecipeListedDto';
-
+export * from './recipe/RecipeListedResponse';
 
 export * from './ursahooks/UrsaHookDto';
 export * from './ursahooks/UrsaHookEventName';

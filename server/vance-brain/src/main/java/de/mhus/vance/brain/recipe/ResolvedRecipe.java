@@ -128,6 +128,16 @@ public record ResolvedRecipe(
          * UIs). When {@code null}, the {@link #name} is used as fallback.
          */
         @Nullable String title,
+        /**
+         * Optional picker-group key ({@code category:} in the recipe YAML,
+         * kebab-case, normalised at parse time). Pure display metadata for the
+         * user-facing recipe picker — never read by spawn or engine logic.
+         * {@code null} means "no category"; such recipes form the trailing
+         * group of the picker. Group order comes from the cascade-resolved
+         * {@code _vance/config/recipe_categories.yaml} (see
+         * {@code RecipeCategoriesService}).
+         */
+        @Nullable String category,
         List<String> tags,
         /**
          * Completion guards (recipe {@code guard:} block). Engine-agnostic:
@@ -178,6 +188,10 @@ public record ResolvedRecipe(
      * <p>Also predates {@code tenants}, and passes the empty list: a call
      * site that does not know about the field means a recipe without one,
      * and that is "every tenant".
+     *
+     * <p>Also predates {@code category}, and passes {@code null}: a call
+     * site that does not know about the field means a recipe without one,
+     * which renders in the picker's trailing "no category" group.
      */
     public ResolvedRecipe(
             String name,
@@ -225,6 +239,7 @@ public record ResolvedRecipe(
                 listed,
                 false,
                 title,
+                null,
                 tags,
                 guards,
                 List.of(),

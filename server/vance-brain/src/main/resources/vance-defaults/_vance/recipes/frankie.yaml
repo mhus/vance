@@ -9,6 +9,7 @@
 
 title: "Frankie — Focused Worker"
 listed: true
+category: workers
 description: |
   Generic Frankie worker — Pi-style loop, drains inbox, calls the LLM,
   executes tools, repeats until natural stop or tool-driven terminate.

@@ -5,6 +5,7 @@
 
 title: "Arthur — Reactive Chat"
 listed: true
+category: chat
 description: |
   Reactive session-chat orchestrator. Talks to the user, delegates
   operational work to worker recipes, synthesises worker results

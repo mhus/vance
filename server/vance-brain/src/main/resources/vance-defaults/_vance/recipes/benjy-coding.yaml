@@ -12,6 +12,7 @@
 
 title: "Benjy Coding"
 listed: true
+category: coding
 description: |
   Iterative coding orchestration: Benjy decomposes the goal into items,
   delegates each to a focused coding worker, verifies mechanically

@@ -61,11 +61,17 @@ import tools.jackson.databind.ObjectMapper;
  * with the question — the parent's steer (or a user message) re-enters
  * the loop through the drain.
  *
- * <p><b>Safety nets are mechanics, not prompt pleas</b> (§8): a global
- * round budget, a per-phase wallclock, a controller token budget and
- * route-stuck detection all end in BLOCKED with a diagnosis. Small
- * controller models love "one more test would be nice" — a number
- * bends that, not a prompt.
+ * <p><b>Safety nets are mechanics, not prompt pleas</b> (§6): stagnation
+ * detection, a per-phase wallclock, a controller token budget, a reflect
+ * convergence cap and route-stuck detection. None of them measures volume —
+ * volume is not danger, standing still is: the stagnation streak only grows
+ * on tasks that produced no observable forward progress, so productive work
+ * of any length never trips it. Exhaustion is a decision point, not a
+ * verdict: cost nets park on a checkpoint question whose answer re-grants
+ * the budget and feeds the reply to route; BLOCKED remains the last exit
+ * (route-stuck, schema exhaustion, route deciding to block, engine errors).
+ * Small controller models love "one more test would be nice" — numbers and
+ * state transitions bend that, not a prompt.
  */
 @Component
 @RequiredArgsConstructor
@@ -78,14 +84,26 @@ public class BenjyEngine implements ThinkEngine {
 
     // ── Params (recipe → engineParams) with engine defaults ──
 
-    private static final String PARAM_MAX_ROUNDS = "maxRounds";
+    private static final String PARAM_MAX_STAGNATION = "maxStagnation";
+    private static final String PARAM_MAX_REFLECT_NO = "maxReflectNo";
     private static final String PARAM_MAX_ITEM_ATTEMPTS = "maxItemAttempts";
     private static final String PARAM_MAX_WALLCLOCK_MINUTES = "maxWallclockMinutes";
     private static final String PARAM_MAX_TOKENS = "maxTokens";
     private static final String PARAM_MAX_TOOL_CALLS = "maxToolCalls";
     private static final String PARAM_MAX_INITIAL_ITEMS = "maxInitialItems";
 
-    private static final int DEFAULT_MAX_ROUNDS = 40;
+    /**
+     * Tasks without observable forward progress before the stagnation net
+     * reacts (§6). Generous on purpose: a legitimately failing coding item
+     * burns up to ~10 no-progress tasks before its attempt cap routes the
+     * branch (3 attempts × do/check/evaluate + the route call); the net must
+     * not trip inside that stretch.
+     */
+    private static final int DEFAULT_MAX_STAGNATION = 15;
+
+    /** Reflect verdicts of partially/no before the convergence cap parks (§6). */
+    private static final int DEFAULT_MAX_REFLECT_NO = 3;
+
     private static final int DEFAULT_MAX_ITEM_ATTEMPTS = 3;
     private static final int DEFAULT_MAX_WALLCLOCK_MINUTES = 30;
     private static final long DEFAULT_MAX_TOKENS = 2_000_000L;
@@ -106,6 +124,13 @@ public class BenjyEngine implements ThinkEngine {
 
     /** Same-identical route decision this many times in a row ⇒ stuck ⇒ BLOCKED. */
     private static final int STUCK_ROUTE_LIMIT = 3;
+
+    /** Checkpoint types that can park the pending question (§6) — the granted budget differs, see applyCheckpointAnswer. */
+    private static final String CHECKPOINT_STAGNATION = "stagnation";
+
+    private static final String CHECKPOINT_WALLCLOCK = "wallclock";
+    private static final String CHECKPOINT_TOKENS = "tokens";
+    private static final String CHECKPOINT_REFLECT = "reflect";
 
     /** Wall-clock budget for one mechanical check (exec_run waitMs). */
     private static final long CHECK_WAIT_MS = 120_000L;
@@ -292,6 +317,7 @@ public class BenjyEngine implements ThinkEngine {
             case SteerMessage.UserChatInput uci -> {
                 appendDialogue(process, ctx, ChatRole.USER, uci.content());
                 if (state.getPendingQuestion() != null) {
+                    applyCheckpointAnswer(state);
                     state.setPendingQuestion(null);
                     enqueueRoute(state, "The user/parent answered the open question. Message:\n" + uci.content());
                 } else if (state.getInterpretedGoal() == null) {
@@ -392,7 +418,7 @@ public class BenjyEngine implements ThinkEngine {
 
     private void runLoop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         BenjyState state = loadState(process);
-        // One continuous runLoop invocation = one work phase (§8:
+        // One continuous runLoop invocation = one work phase (§6:
         // "pro laufender Arbeit", Frankie semantics). The wallclock
         // budget must not measure time the process spent IDLE, BLOCKED
         // on a question or suspended — a run resumed after a long wait
@@ -404,7 +430,8 @@ public class BenjyEngine implements ThinkEngine {
         BenjyFeatureConfig features =
                 BenjyFeatureConfig.fromParams(EngineChatFactory.effectiveParams(process), process.getId());
         Map<String, Object> rawParams = EngineChatFactory.effectiveParams(process);
-        int maxRounds = intParam(rawParams, PARAM_MAX_ROUNDS, DEFAULT_MAX_ROUNDS);
+        int maxStagnation = intParam(rawParams, PARAM_MAX_STAGNATION, DEFAULT_MAX_STAGNATION);
+        int maxReflectNo = intParam(rawParams, PARAM_MAX_REFLECT_NO, DEFAULT_MAX_REFLECT_NO);
         int maxItemAttempts = intParam(rawParams, PARAM_MAX_ITEM_ATTEMPTS, DEFAULT_MAX_ITEM_ATTEMPTS);
         int maxWallclockMinutes = intParam(rawParams, PARAM_MAX_WALLCLOCK_MINUTES, DEFAULT_MAX_WALLCLOCK_MINUTES);
         long maxTokens = longParam(rawParams, PARAM_MAX_TOKENS, DEFAULT_MAX_TOKENS);
@@ -481,36 +508,73 @@ public class BenjyEngine implements ThinkEngine {
                     }
                 }
 
-                // ── Safety nets (§8) — mechanics, not prompts ──
-                if (state.getCounters().getRounds() >= maxRounds) {
-                    blockWith(
-                            process,
-                            ctx,
-                            state,
-                            "Round budget exhausted: " + state.getCounters().getRounds() + " executed tasks (param "
-                                    + PARAM_MAX_ROUNDS + "=" + maxRounds + ").");
-                    return;
+                // ── Safety nets (§6) — mechanics, not prompts ──
+                // Stagnation: volume is not danger, standing still is.
+                // The streak counts executed tasks that produced no
+                // observable forward progress — productive work of any
+                // length never trips it. The terminal gates (reflect/done)
+                // always get to run first: their convergence is guarded
+                // by the reflect-no cap, not by stagnation.
+                BenjyState.QueuedTask head =
+                        state.getQueue().isEmpty() ? null : state.getQueue().getFirst();
+                boolean headIsTerminalGate = head != null
+                        && (BenjyTaskTypes.REFLECT.equals(head.getType())
+                                || BenjyTaskTypes.DONE.equals(head.getType()));
+                if (!headIsTerminalGate && state.getCounters().getNoProgressStreak() >= maxStagnation) {
+                    if (!escalateAfterStagnation(process, ctx, state, features)) {
+                        parkCheckpoint(
+                                process,
+                                ctx,
+                                state,
+                                CHECKPOINT_STAGNATION,
+                                "No observable progress for "
+                                        + state.getCounters().getNoProgressStreak()
+                                        + " executed tasks (param maxStagnation="
+                                        + maxStagnation
+                                        + "). Open items: "
+                                        + openItemsDescription(state));
+                        persistState(process, state);
+                        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
+                        return;
+                    }
                 }
                 if (Duration.between(state.getPhaseStartedAt(), Instant.now())
                                 .compareTo(Duration.ofMinutes(maxWallclockMinutes))
                         > 0) {
-                    blockWith(
+                    parkCheckpoint(
                             process,
                             ctx,
                             state,
-                            "Wallclock budget exhausted: more than " + maxWallclockMinutes
-                                    + " minutes in this work phase (param " + PARAM_MAX_WALLCLOCK_MINUTES + ").");
+                            CHECKPOINT_WALLCLOCK,
+                            "Wallclock budget: more than "
+                                    + maxWallclockMinutes
+                                    + " minutes of continuous work in this phase (param "
+                                    + PARAM_MAX_WALLCLOCK_MINUTES
+                                    + "), "
+                                    + state.getCounters().getRounds()
+                                    + " tasks executed so far.");
+                    persistState(process, state);
+                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
                     return;
                 }
-                if (maxTokens > 0 && state.getCounters().getTokens() > maxTokens) {
-                    blockWith(
+                long tokensConsumed = state.getCounters().getTokens() - state.getTokenBudgetOffset();
+                if (maxTokens > 0 && tokensConsumed > maxTokens) {
+                    parkCheckpoint(
                             process,
                             ctx,
                             state,
-                            "Controller token budget exhausted: "
-                                    + state.getCounters().getTokens()
-                                    + " tokens across " + state.getCounters().getLlmCalls()
-                                    + " LightLm calls (param " + PARAM_MAX_TOKENS + "=" + maxTokens + ").");
+                            CHECKPOINT_TOKENS,
+                            "Controller token budget: "
+                                    + tokensConsumed
+                                    + " tokens across "
+                                    + state.getCounters().getLlmCalls()
+                                    + " LightLm calls (param "
+                                    + PARAM_MAX_TOKENS
+                                    + "="
+                                    + maxTokens
+                                    + ").");
+                    persistState(process, state);
+                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
                     return;
                 }
 
@@ -521,7 +585,19 @@ public class BenjyEngine implements ThinkEngine {
                 metricService.counter(METRIC_CYCLES).increment();
 
                 try {
-                    executeTask(process, ctx, state, features, task, maxItemAttempts);
+                    boolean progress = executeTask(process, ctx, state, features, task, maxItemAttempts, maxReflectNo);
+                    // Stagnation accounting (§6): only observable forward
+                    // progress resets the streak — an item reaching a
+                    // terminal state, a criterion transition, new items or
+                    // criteria, or a terminal gate running. Churn (retries,
+                    // spawns, checks, verdicts without state effect) grows it.
+                    if (progress) {
+                        state.getCounters().setNoProgressStreak(0);
+                        state.setStagnationEscalated(false);
+                    } else {
+                        state.getCounters()
+                                .setNoProgressStreak(state.getCounters().getNoProgressStreak() + 1);
+                    }
                 } catch (SchemaValidationException e) {
                     // The LightLm schema-retry budget is exhausted — the small
                     // model could not produce a valid decision. That is a
@@ -563,25 +639,57 @@ public class BenjyEngine implements ThinkEngine {
         }
     }
 
-    private void executeTask(
+    /**
+     * Executes one popped task and reports whether it produced observable
+     * forward progress — the stagnation metric (§6): an item reaching a
+     * terminal state, a criterion status transition, new items or criteria
+     * being created, or a terminal gate (reflect/done) running. Churn —
+     * retries, spawns, checks, verdicts without state effect — reports
+     * {@code false} and grows the stagnation streak.
+     */
+    private boolean executeTask(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             BenjyState state,
             BenjyFeatureConfig features,
             BenjyState.QueuedTask task,
-            int maxItemAttempts) {
+            int maxItemAttempts,
+            int maxReflectNo) {
         switch (task.getType()) {
-            case BenjyTaskTypes.INTERPRET -> handleInterpret(process, ctx, state, features);
-            case BenjyTaskTypes.ROUTE -> handleRoute(process, ctx, state, features, task, maxItemAttempts);
-            case BenjyTaskTypes.DO -> handleDo(process, ctx, state, features, task);
-            case BenjyTaskTypes.CHECK -> handleCheck(process, ctx, state, features, task);
-            case BenjyTaskTypes.EVALUATE -> handleEvaluate(process, ctx, state, features, task, maxItemAttempts);
-            case BenjyTaskTypes.REFLECT -> handleReflect(process, ctx, state, features);
-            case BenjyTaskTypes.CLOSE_ITEM -> handleCloseItem(process, ctx, state, task);
-            case BenjyTaskTypes.DONE -> handleDone(process, ctx, state);
+            case BenjyTaskTypes.INTERPRET -> {
+                return handleInterpret(process, ctx, state, features);
+            }
+            case BenjyTaskTypes.ROUTE -> {
+                return handleRoute(process, ctx, state, features, task, maxItemAttempts);
+            }
+            case BenjyTaskTypes.DO -> {
+                handleDo(process, ctx, state, features, task);
+                return false; // a spawn alone moves nothing — the chain's close/eval will
+            }
+            case BenjyTaskTypes.CHECK -> {
+                handleCheck(process, ctx, state, features, task);
+                return false; // facts are not progress — the chain's verdict steps are
+            }
+            case BenjyTaskTypes.EVALUATE -> {
+                return handleEvaluate(process, ctx, state, features, task, maxItemAttempts);
+            }
+            case BenjyTaskTypes.REFLECT -> {
+                // The terminal gate always runs (§6) — its convergence is
+                // guarded by the reflect-no cap, never by stagnation.
+                return handleReflect(process, ctx, state, features, maxReflectNo);
+            }
+            case BenjyTaskTypes.CLOSE_ITEM -> {
+                handleCloseItem(process, ctx, state, task);
+                return true; // terminal item state
+            }
+            case BenjyTaskTypes.DONE -> {
+                handleDone(process, ctx, state);
+                return true;
+            }
             default -> {
                 log.warn("Benjy id='{}' unknown task type '{}' — dropping", process.getId(), task.getType());
                 journal(ctx, process, state, "dropped unknown task type " + task.getType());
+                return false;
             }
         }
     }
@@ -589,12 +697,12 @@ public class BenjyEngine implements ThinkEngine {
     // ──────────────────── Handlers ────────────────────
 
     /** Interpret call #0 — goal → taskType, criteria, first 1–3 items (minimal rule §4). */
-    private void handleInterpret(
+    private boolean handleInterpret(
             ThinkProcessDocument process, ThinkEngineContext ctx, BenjyState state, BenjyFeatureConfig features) {
         String goal = state.getGoal() == null ? "" : state.getGoal();
         if (goal.isBlank()) {
             blockWith(process, ctx, state, "Interpret ran without a goal — no task text ever arrived.");
-            return;
+            return false;
         }
         StringBuilder prompt = new StringBuilder("## Original task\n").append(goal);
         for (String source : features.getCriteriaSources()) {
@@ -674,7 +782,7 @@ public class BenjyEngine implements ThinkEngine {
                             + state.getInterpretedGoal()
                             + "\n\nWhat does 'well solved' mean here — which concrete, "
                             + "checkable criteria must the result satisfy?");
-            return;
+            return false;
         }
         List<String> openQuestions = new ArrayList<>();
         for (Object q : listValue(answer.get("openQuestions"))) {
@@ -688,7 +796,7 @@ public class BenjyEngine implements ThinkEngine {
                     ctx,
                     state,
                     "Before I start, I need clarification:\n\n- " + String.join("\n- ", openQuestions));
-            return;
+            return false;
         }
 
         List<String> itemTexts = new ArrayList<>();
@@ -715,10 +823,11 @@ public class BenjyEngine implements ThinkEngine {
                 state,
                 "interpret: taskType=" + taskType + ", " + criteria.size() + " criteria, " + itemTexts.size()
                         + " items");
+        // Criteria and items were created — observable forward progress (§6).
+        return true;
     }
-
     /** Route call — fires only at branches; emits queue operations. */
-    private void handleRoute(
+    private boolean handleRoute(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             BenjyState state,
@@ -728,8 +837,7 @@ public class BenjyEngine implements ThinkEngine {
         String trigger = stringValue(task.getPayload().get("trigger"), "(no trigger note)");
         if (features.getRouteRecipe() == null) {
             // Billig-Modus (§4d): route off → mechanical fallback policy.
-            mechanicalFallback(process, ctx, state, features, trigger, maxItemAttempts);
-            return;
+            return mechanicalFallback(process, ctx, state, features, trigger, maxItemAttempts);
         }
         String digest = BenjyDigest.render(state, trigger);
         Map<String, Object> schema = Map.of(
@@ -780,7 +888,7 @@ public class BenjyEngine implements ThinkEngine {
         String reason = stringValue(answer.get("reason"), "(no reason given)");
         String itemRef = stringValue(answer.get("itemRef"), null);
 
-        // Stuck detection (§8): the same decision on an unchanged state.
+        // Stuck detection (§6): the same decision on an unchanged state.
         String routeKey = action + ":" + (itemRef == null ? "" : itemRef) + ":" + reason.hashCode();
         if (routeKey.equals(state.getLastRouteKey())) {
             state.setSameRouteCount(state.getSameRouteCount() + 1);
@@ -796,16 +904,34 @@ public class BenjyEngine implements ThinkEngine {
                     "Route stuck: the same decision ('" + action + "': " + reason
                             + ") repeated " + state.getSameRouteCount()
                             + " times on an unchanged state.");
-            return;
+            return false;
         }
 
         journal(ctx, process, state, "route: " + action + " — " + reason);
         switch (action) {
             case "retry" -> {
                 BenjyState.Item item = requireItem(process, ctx, state, itemRef).orElse(null);
-                if (item != null) {
-                    enqueueDoChain(state, features, item, "Retry after: " + reason);
+                if (item == null) {
+                    return false;
                 }
+                if (item.getAttempts() >= maxItemAttempts) {
+                    // The route wants a retry the item no longer has budget
+                    // for. The cap is the cap (§6): demote to failed — a
+                    // terminal state with the attempt facts — and let the
+                    // reflect gate decide the exit when the queue drains.
+                    // Deliberately no todos projection update: TodoStatus
+                    // has no FAILED; the final report lists the item.
+                    item.setStatus("failed");
+                    item.addFact("route retry refused — attempt budget (" + maxItemAttempts + ") exhausted");
+                    journal(
+                            ctx,
+                            process,
+                            state,
+                            "route retry on #" + item.getId() + " refused: attempt budget exhausted — item failed");
+                    return true;
+                }
+                enqueueDoChain(state, features, item, "Retry after: " + reason);
+                return false;
             }
             case "split" -> {
                 List<String> texts = new ArrayList<>();
@@ -826,6 +952,8 @@ public class BenjyEngine implements ThinkEngine {
                         enqueueDoChain(state, features, item, null);
                     }
                 }
+                // New items were created — observable forward progress (§6).
+                return !capped.isEmpty();
             }
             case "revise" -> {
                 List<BenjyState.Criterion> revised = new ArrayList<>();
@@ -869,6 +997,8 @@ public class BenjyEngine implements ThinkEngine {
                         }
                     }
                 }
+                // Revised criteria and new items are observable forward progress (§6).
+                return !revised.isEmpty() || !texts.isEmpty();
             }
             case "escalate" -> {
                 if (features.getEscalationRecipe() == null) {
@@ -878,17 +1008,20 @@ public class BenjyEngine implements ThinkEngine {
                             state,
                             "Route decided to escalate, but no escalation feature is configured "
                                     + "(params.features.escalation.recipe).");
-                    return;
+                    return false;
                 }
                 BenjyState.Item item = requireItem(process, ctx, state, itemRef).orElse(null);
                 if (item != null) {
                     item.addFact("escalated: " + reason);
                     enqueueDoChain(state, features, item, null, features.getEscalationRecipe());
                 }
+                // The escalation shows in the item's chain verdict — not progress yet (§6).
+                return false;
             }
             case "ask_parent" -> {
                 parkOnQuestion(
                         process, ctx, state, stringValue(answer.get("question"), "Route needs a decision: " + reason));
+                return false;
             }
             case "done" -> {
                 // Reflect has precedence over route's done — but only once:
@@ -899,13 +1032,16 @@ public class BenjyEngine implements ThinkEngine {
                                 ? BenjyTaskTypes.REFLECT
                                 : BenjyTaskTypes.DONE,
                         null);
+                return false;
             }
             case "reset" -> {
                 resetState(process, state, state.getGoal());
                 enqueueTask(state, BenjyTaskTypes.INTERPRET, null);
+                return false;
             }
             default -> {
                 blockWith(process, ctx, state, "Route decided to block: " + reason);
+                return false;
             }
         }
     }
@@ -915,7 +1051,7 @@ public class BenjyEngine implements ThinkEngine {
      * retry the open item until its budget, escalate if configured,
      * otherwise BLOCKED.
      */
-    private void mechanicalFallback(
+    private boolean mechanicalFallback(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             BenjyState state,
@@ -929,17 +1065,17 @@ public class BenjyEngine implements ThinkEngine {
         if (open == null) {
             enqueueTask(
                     state, features.getReflectRecipe() != null ? BenjyTaskTypes.REFLECT : BenjyTaskTypes.DONE, null);
-            return;
+            return false;
         }
         if (open.getAttempts() < maxItemAttempts) {
             journal(ctx, process, state, "route(off): retrying #" + open.getId() + " after " + trigger);
             enqueueDoChain(state, features, open, "Retry after: " + trigger);
-            return;
+            return false;
         }
         if (features.getEscalationRecipe() != null) {
             journal(ctx, process, state, "route(off): escalating #" + open.getId());
             enqueueDoChain(state, features, open, null, features.getEscalationRecipe());
-            return;
+            return false;
         }
         blockWith(
                 process,
@@ -947,6 +1083,7 @@ public class BenjyEngine implements ThinkEngine {
                 state,
                 "Route feature is off and item #" + open.getId() + " exhausted its attempt budget (" + maxItemAttempts
                         + ").");
+        return false;
     }
 
     /** Spawns a focused Ford worker for one item; iteration belongs to Benjy, not the doer (#5, #16). */
@@ -1048,7 +1185,7 @@ public class BenjyEngine implements ThinkEngine {
         }
     }
 
-    private void handleEvaluate(
+    private boolean handleEvaluate(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             BenjyState state,
@@ -1057,12 +1194,12 @@ public class BenjyEngine implements ThinkEngine {
             int maxItemAttempts) {
         BenjyState.Item item = findItem(state, task.getItemRef()).orElse(null);
         if (item == null) {
-            return;
+            return false;
         }
         if (features.getEvaluateRecipe() == null) {
             // Feature off in the meantime (reset) — treat as pass-through.
             enqueueChain(state, item.getId(), stringListValue(task.getPayload().get("chain")));
-            return;
+            return false;
         }
         String view = BenjyDigest.renderItem(state, item, item.getLastResult());
         Map<String, Object> schema = Map.of(
@@ -1087,13 +1224,15 @@ public class BenjyEngine implements ThinkEngine {
                 reasons.add(s.trim());
             }
         }
+        boolean criteriaChanged = false;
         for (Object m : listValue(answer.get("missing"))) {
             String id = stringValue(m, null);
             if (id != null) {
                 for (BenjyState.Criterion c : state.getCriteria()) {
-                    if (c.getId().equals(id)) {
+                    if (c.getId().equals(id) && !"fail".equals(c.getStatus())) {
                         c.setStatus("fail");
                         c.setEvidence(String.join("; ", reasons));
+                        criteriaChanged = true;
                     }
                 }
             }
@@ -1105,7 +1244,7 @@ public class BenjyEngine implements ThinkEngine {
                 "eval #" + item.getId() + ": " + verdict + (reasons.isEmpty() ? "" : " — " + reasons.getFirst()));
         if ("pass".equals(verdict)) {
             enqueueChain(state, item.getId(), stringListValue(task.getPayload().get("chain")));
-            return;
+            return criteriaChanged;
         }
         if (item.getAttempts() < maxItemAttempts) {
             // Mechanical retry (#11): eval fail → do again with error context,
@@ -1121,15 +1260,22 @@ public class BenjyEngine implements ThinkEngine {
                             + maxItemAttempts + "). Last verdict: " + verdict
                             + ". Reasons: " + String.join("; ", reasons));
         }
+        // A verdict alone is not progress — a criterion transition is (§6);
+        // the item's close step or the route branch supply the rest.
+        return criteriaChanged;
     }
 
     /** Terminal gate — goal level: did we achieve what the asker meant? (§4c) */
-    private void handleReflect(
-            ThinkProcessDocument process, ThinkEngineContext ctx, BenjyState state, BenjyFeatureConfig features) {
+    private boolean handleReflect(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            BenjyState state,
+            BenjyFeatureConfig features,
+            int maxReflectNo) {
         state.setReflected(true);
         if (features.getReflectRecipe() == null) {
             enqueueTask(state, BenjyTaskTypes.DONE, null);
-            return;
+            return true; // the terminal gate ran — stagnation never guards reflect (§6)
         }
         String digest = BenjyDigest.render(state, null);
         Map<String, Object> schema = Map.of(
@@ -1166,10 +1312,13 @@ public class BenjyEngine implements ThinkEngine {
                 }
             }
             enqueueTask(state, BenjyTaskTypes.DONE, null);
-            return;
+            return true;
         }
-        // partially / no → no DONE — gaps go to route as a branch; the
-        // global round budget guards against an endless gap loop.
+        // partially / no → no DONE — gaps go to route as a branch. The
+        // convergence cap (§6) parks the loop when the controller's
+        // verdict stops converging instead of letting the gap loop churn:
+        // every 'not achieved' without DONE counts toward maxReflectNo.
+        state.setReflectNoCount(state.getReflectNoCount() + 1);
         if (features.getRouteRecipe() == null) {
             blockWith(
                     process,
@@ -1178,13 +1327,29 @@ public class BenjyEngine implements ThinkEngine {
                     "Reflect verdict is '" + achieved + "' with gaps, but the route feature is off — "
                             + "Benjy cannot react to gaps mechanically. Gaps: "
                             + String.join("; ", gaps));
-            return;
+            return true;
+        }
+        if (state.getReflectNoCount() >= maxReflectNo) {
+            parkCheckpoint(
+                    process,
+                    ctx,
+                    state,
+                    CHECKPOINT_REFLECT,
+                    "The reflect gate judged the goal '" + achieved + "' " + state.getReflectNoCount()
+                            + " times without reaching DONE (param maxReflectNo=" + maxReflectNo
+                            + ") — the controller's judgment is not converging. Uncovered gaps: "
+                            + String.join("; ", gaps)
+                            + ". Failing criteria: "
+                            + failingCriteriaDescription(state));
+            // The loop's async-boundary check parks BLOCKED on the question.
+            return true;
         }
         enqueueRoute(
                 state,
                 "The final reflection says the goal is '" + achieved
                         + "' — all items are closed but these gaps remain:\n- "
                         + String.join("\n- ", gaps));
+        return true;
     }
 
     private void handleCloseItem(
@@ -1309,8 +1474,120 @@ public class BenjyEngine implements ThinkEngine {
         // parent's ProcessEvent with the question as the report.
     }
 
+    /**
+     * Parks the process on a safety-net checkpoint question (§6): BLOCKED with
+     * a decision request instead of a terminal verdict. The answer (user or
+     * parent) re-grants the matching budget via {@link #applyCheckpointAnswer}
+     * and flows into route — the model is never asked to judge its own limits.
+     * The status flip happens at the loop exit, like ask_parent.
+     */
+    private void parkCheckpoint(
+            ThinkProcessDocument process, ThinkEngineContext ctx, BenjyState state, String type, String diagnosis) {
+        String question = "⚠️ Benjy safety-net checkpoint:\n\n"
+                + diagnosis
+                + "\n\nReply to continue — the budget is re-granted and your answer goes to the next "
+                + "route decision. Steer guidance instead, or stop the process to end it here.";
+        state.setPendingCheckpoint(type);
+        state.setPendingQuestion(question);
+        journal(ctx, process, state, "checkpoint(" + type + "): " + truncate(diagnosis, 200));
+        appendDialogue(process, ctx, ChatRole.ASSISTANT, question);
+        log.warn("Benjy id='{}' checkpoint({}): {}", process.getId(), type, diagnosis);
+    }
+
+    /**
+     * Mechanical escalation on stagnation (§6, error-based): the pending
+     * do-tasks of open items are re-recipe'd to the escalation feature — the
+     * big sibling takes over the queued work instead of duplicating it
+     * (never a second chain for an item whose chain is already queued).
+     * One shot: a second trip before any progress goes to the checkpoint
+     * question ({@code stagnationEscalated}).
+     *
+     * @return {@code true} when tasks were escalated and the loop may continue
+     */
+    private boolean escalateAfterStagnation(
+            ThinkProcessDocument process, ThinkEngineContext ctx, BenjyState state, BenjyFeatureConfig features) {
+        String escalation = features.getEscalationRecipe();
+        if (state.isStagnationEscalated() || escalation == null) {
+            return false;
+        }
+        List<BenjyState.QueuedTask> doTasks = new ArrayList<>();
+        for (BenjyState.QueuedTask t : state.getQueue()) {
+            if (!BenjyTaskTypes.DO.equals(t.getType())) {
+                continue;
+            }
+            BenjyState.Item item = findItem(state, t.getItemRef()).orElse(null);
+            if (item != null && !item.isTerminal()) {
+                doTasks.add(t);
+            }
+        }
+        if (doTasks.isEmpty()) {
+            return false;
+        }
+        for (BenjyState.QueuedTask t : doTasks) {
+            t.getPayload().put("recipe", escalation);
+            t.getPayload()
+                    .put(
+                            "context",
+                            "Escalated by the stagnation guard after repeated unsuccessful attempts — "
+                                    + "prior attempts' facts are in the item digest.");
+            findItem(state, t.getItemRef()).ifPresent(item -> item.addFact("stagnation: escalated to " + escalation));
+        }
+        journal(
+                ctx,
+                process,
+                state,
+                "stagnation: " + doTasks.size() + " queued do-task(s) escalated to '" + escalation + "'");
+        state.setStagnationEscalated(true);
+        state.getCounters().setNoProgressStreak(0);
+        return true;
+    }
+
+    /**
+     * Applies the grant semantics of an answered question (§6). Any answer is
+     * new input — the stagnation clock and the convergence cap restart. A
+     * token checkpoint additionally re-grants a full budget from the current
+     * consumption (the offset moves; the counters stay truthful for the final
+     * report). Wallclock needs no grant: the phase restarts at the next loop
+     * entry. Package-private for the checkpoint test.
+     */
+    static void applyCheckpointAnswer(BenjyState state) {
+        state.getCounters().setNoProgressStreak(0);
+        state.setStagnationEscalated(false);
+        state.setReflectNoCount(0);
+        if (CHECKPOINT_TOKENS.equals(state.getPendingCheckpoint())) {
+            state.setTokenBudgetOffset(state.getCounters().getTokens());
+        }
+        state.setPendingCheckpoint(null);
+    }
+
+    /** Bounded description of the open (non-terminal) items for checkpoint diagnoses. */
+    private static String openItemsDescription(BenjyState state) {
+        List<String> open = state.getItems().stream()
+                .filter(i -> !i.isTerminal())
+                .map(i -> "#"
+                        + i.getId()
+                        + " ("
+                        + i.getStatus()
+                        + ", "
+                        + i.getAttempts()
+                        + " attempts): "
+                        + truncate(i.getContent(), 80))
+                .toList();
+        return open.isEmpty() ? "none" : String.join("; ", open);
+    }
+
+    /** Bounded description of the failing/passing criteria for checkpoint diagnoses. */
+    private static String failingCriteriaDescription(BenjyState state) {
+        List<String> failing = state.getCriteria().stream()
+                .filter(c -> "fail".equals(c.getStatus()))
+                .map(c -> c.getId() + ": " + truncate(c.getText(), 80))
+                .toList();
+        return failing.isEmpty() ? "none" : String.join("; ", failing);
+    }
+
     private void blockWith(ThinkProcessDocument process, ThinkEngineContext ctx, BenjyState state, String diagnosis) {
         state.setPendingQuestion(null);
+        state.setPendingCheckpoint(null);
         journal(ctx, process, state, "blocked: " + diagnosis);
         appendDialogue(process, ctx, ChatRole.ASSISTANT, "⚠️ Benjy is BLOCKED:\n\n" + diagnosis);
         persistState(process, state);
@@ -1338,6 +1615,11 @@ public class BenjyEngine implements ThinkEngine {
         state.setFinalReport(null);
         state.setLastRouteKey(null);
         state.setSameRouteCount(0);
+        // Loop-progress nets restart with the re-interpretation (§6) — the
+        // token budget offset deliberately survives: cost is cost.
+        state.getCounters().setNoProgressStreak(0);
+        state.setStagnationEscalated(false);
+        state.setReflectNoCount(0);
         if (newGoal != null && !newGoal.isBlank()) {
             state.setGoal(newGoal);
         }

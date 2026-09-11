@@ -41,7 +41,11 @@ params:
       # Frankie's coding worker — the big sibling.
       recipe: coding
     # check: { command: "<your build/test command>" }  ← project pins this
-  maxRounds: 40
+  # Safety nets (§6): stagnation counts tasks without observable progress;
+  # the reflect convergence cap parks after repeated 'not achieved' verdicts.
+  # Exhaustion is a checkpoint question, not a terminal verdict.
+  maxStagnation: 15
+  maxReflectNo: 3
   maxItemAttempts: 3
   maxWallclockMinutes: 30
   maxTokens: 2000000

@@ -50,6 +50,11 @@ class BenjyStateCodecTest {
         state.getCounters().setLlmCalls(3);
         state.getCounters().setTokens(12345L);
         state.setNextTaskId(4);
+        state.getCounters().setNoProgressStreak(9);
+        state.setStagnationEscalated(true);
+        state.setReflectNoCount(2);
+        state.setTokenBudgetOffset(5000L);
+        state.setPendingCheckpoint("tokens");
 
         Map<String, Object> serialized = mapper.convertValue(state, Map.class);
         // the engineParams storage adds a surrounding map — simulate it
@@ -80,6 +85,11 @@ class BenjyStateCodecTest {
         assertThat(loaded.getPendingQuestion()).isEqualTo("Which auth provider?");
         assertThat(loaded.getCounters().getRounds()).isEqualTo(7);
         assertThat(loaded.getCounters().getTokens()).isEqualTo(12345L);
+        assertThat(loaded.getCounters().getNoProgressStreak()).isEqualTo(9);
+        assertThat(loaded.isStagnationEscalated()).isTrue();
+        assertThat(loaded.getReflectNoCount()).isEqualTo(2);
+        assertThat(loaded.getTokenBudgetOffset()).isEqualTo(5000L);
+        assertThat(loaded.getPendingCheckpoint()).isEqualTo("tokens");
         assertThat(loaded.getNextTaskId()).isEqualTo(4);
     }
 

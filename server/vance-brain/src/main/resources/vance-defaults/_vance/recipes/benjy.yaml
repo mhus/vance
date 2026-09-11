@@ -31,8 +31,10 @@ params:
       recipe: benjy-route
     evaluate:
       recipe: benjy-evaluate
-  # Safety-net budgets (§8) — mechanics, not prompt pleas.
-  maxRounds: 40
+  # Safety nets (§6) — mechanics, not prompt pleas. Exhaustion parks on a
+  # checkpoint question (continue re-grants, stop ends); nothing here
+  # measures volume — stagnation counts tasks without observable progress.
+  maxStagnation: 15
   maxItemAttempts: 3
   maxWallclockMinutes: 30
   # Controller token budget across all LightLm calls of one run.

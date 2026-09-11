@@ -65,9 +65,46 @@ public class BenjyState {
 
     private int sameRouteCount;
 
+    /**
+     * Stagnation guard (§6): tasks executed since the last observable
+     * forward progress (item terminal state, criterion transition, new
+     * items/criteria). Volume is not danger — standing still is; the
+     * streak only grows on work that moved nothing.
+     */
+    private int noProgressStreak;
+
+    /**
+     * One-shot guard for the mechanical stagnation escalation: if
+     * stagnation trips again before any progress, the checkpoint
+     * question goes out instead of escalating a second time.
+     */
+    private boolean stagnationEscalated;
+
+    /**
+     * Convergence cap (§6): how often the reflect gate judged the goal
+     * not achieved since the last reset (a verdict of yes, a criteria
+     * revision, a reset or an answered question all reset it).
+     */
+    private int reflectNoCount;
+
+    /**
+     * Baseline of the granted controller token budget (§6): the
+     * effective consumption is {@code counters.tokens - tokenBudgetOffset}.
+     * Only a token-checkpoint answer moves it — cost accounting in the
+     * final report stays truthful.
+     */
+    private long tokenBudgetOffset;
+
+    /**
+     * Which safety net parked the current {@link #pendingQuestion}
+     * ({@code stagnation} | {@code wallclock} | {@code tokens} |
+     * {@code reflect}), or {@code null} for an ordinary ask_parent
+     * question. The answer grants the matching budget (§6).
+     */
+    private @Nullable String pendingCheckpoint;
+
     /** Start of the current work phase — wallclock safety nets measure from here. */
     private Instant phaseStartedAt = Instant.now();
-
     /** Monotonic per-process task id seed. */
     private int nextTaskId = 1;
 
@@ -163,8 +200,12 @@ public class BenjyState {
 
     @Data
     public static class Counters {
+        /** Executed tasks — reporting only, no budget hangs on it (§6). */
         private int rounds;
+
         private int llmCalls;
         private long tokens;
+        /** Tasks since the last observable progress — the stagnation net's metric. */
+        private int noProgressStreak;
     }
 }

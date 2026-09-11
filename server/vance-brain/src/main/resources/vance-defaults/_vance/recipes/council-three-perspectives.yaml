@@ -4,6 +4,7 @@ description: |
   synthesis follows. Suited for architecture / design / strategy
   questions where multiple perspectives add value.
 engine: zaphod
+category: council
 params:
   manualPaths:
     - _vance/manuals/

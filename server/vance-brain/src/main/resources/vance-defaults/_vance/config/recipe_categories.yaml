@@ -16,6 +16,10 @@ categories:
     title:
       en: Chat
       de: Chat
+  - id: council
+    title:
+      en: Council
+      de: Council
   - id: coding
     title:
       en: Coding

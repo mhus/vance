@@ -8,6 +8,7 @@ description: |
   where positions can realistically shift under pressure (ship-now-
   or-wait, buy-vs-build, security audit, etc.).
 engine: zaphod
+category: council
 params:
   manualPaths:
     - _vance/manuals/

@@ -7,6 +7,7 @@ description: |
   proposal. Suited for: feature requests, architecture decisions,
   story breakdowns before the actual implementation.
 engine: zaphod
+category: council
 params:
   manualPaths:
     - _vance/manuals/

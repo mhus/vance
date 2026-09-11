@@ -96,6 +96,12 @@ _destructive_excludes: &destructive_excludes
   - kit_install
   - kit_update
   - kit_export
+  # Kit authoring — creator-only surface (see creator.yaml): writing the
+  # authoring manifest decides what a kit IS, and that decision belongs
+  # to the worker spawned for it, not to whoever happens to be chatting.
+  - kit_promote
+  - kit_source_create
+  - kit_source_validate
   - work_file_delete
   - peer_notify
   - git_checkout

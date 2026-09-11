@@ -6,27 +6,29 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.kit.KitArtefactsDto;
+import de.mhus.vance.api.kit.KitAuthoringRequestDto;
 import de.mhus.vance.api.kit.KitConfigDto;
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
+import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitMetadataDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.shared.kit.KitException;
-import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.megadodo.MegadodoService;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.nio.file.Path;
@@ -62,6 +64,7 @@ class KitServiceTest {
     private ProjectService projectService;
     private KitStoreCredentials storeCredentials;
     private MegadodoService megadodo;
+    private KitAuthoringValidator authoringValidator;
     private KitService service;
 
     @BeforeEach
@@ -89,13 +92,26 @@ class KitServiceTest {
         when(recordStore.loadManifest(anyString(), anyString())).thenReturn(null);
 
         storeCredentials = mock(KitStoreCredentials.class);
-        when(storeCredentials.resolve(any(), any(), any(), any(), any()))
-                .thenReturn(KitAccess.of(TENANT));
+        when(storeCredentials.resolve(any(), any(), any(), any(), any())).thenReturn(KitAccess.of(TENANT));
 
         megadodo = mock(MegadodoService.class);
-        service = new KitService(resolver, installer, exporter, workspace, recordStore,
-                mock(KitLegacyMigrator.class), projectService, mock(TemplateApplier.class),
-                storeCredentials, megadodo);
+        authoringValidator = mock(KitAuthoringValidator.class);
+        when(authoringValidator.artefactProblems(anyString(), anyString(), any(), any()))
+                .thenReturn(new ArrayList<>());
+        when(authoringValidator.anyEncryptedSetting(anyString(), anyString(), any()))
+                .thenReturn(false);
+        service = new KitService(
+                resolver,
+                installer,
+                exporter,
+                workspace,
+                recordStore,
+                mock(KitLegacyMigrator.class),
+                projectService,
+                mock(TemplateApplier.class),
+                storeCredentials,
+                megadodo,
+                authoringValidator);
     }
 
     // ── installable=false ─────────────────────────────────────────────
@@ -104,8 +120,8 @@ class KitServiceTest {
     void importKit_topLayerNotInstallable_rejectsInstall() {
         stubResolved(descriptor("base-kit").installable(false).build());
 
-        assertThatThrownBy(() -> service.importKit(
-                TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
+        assertThatThrownBy(() ->
+                        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("base-kit")
                 .hasMessageContaining("installable=false");
@@ -116,8 +132,8 @@ class KitServiceTest {
     void importKit_topLayerNotInstallable_rejectsApply() {
         stubResolved(descriptor("base-kit").installable(false).build());
 
-        assertThatThrownBy(() -> service.importKit(
-                TENANT, importRequest(KitImportMode.APPLY), null, SettingWriteOrigin.USER))
+        assertThatThrownBy(() ->
+                        service.importKit(TENANT, importRequest(KitImportMode.APPLY), null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("installable=false");
         verifyInstallerNeverRan();
@@ -132,11 +148,22 @@ class KitServiceTest {
         stubResolved(descriptor("tuning-kit").artifact(true).build());
         stubInstallerResult();
 
-        assertThatCode(() -> service.importKit(
-                TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
+        assertThatCode(() ->
+                        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
                 .doesNotThrowAnyException();
-        verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.INSTALL),
-                anyBoolean(), anyBoolean(), any(), eq(false), any(), any());
+        verify(installer)
+                .apply(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(KitImportMode.INSTALL),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        eq(false),
+                        any(),
+                        any());
     }
 
     @Test
@@ -158,11 +185,22 @@ class KitServiceTest {
         stubResolved(descriptor("tuning-kit").artifact(true).build());
         stubInstallerResult();
 
-        assertThatCode(() -> service.importKit(
-                TENANT, importRequest(KitImportMode.APPLY), null, SettingWriteOrigin.USER))
+        assertThatCode(() ->
+                        service.importKit(TENANT, importRequest(KitImportMode.APPLY), null, SettingWriteOrigin.USER))
                 .doesNotThrowAnyException();
-        verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.APPLY),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+        verify(installer)
+                .apply(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(KitImportMode.APPLY),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any());
     }
 
     @Test
@@ -174,8 +212,7 @@ class KitServiceTest {
         KitImportRequestDto request = importRequest(KitImportMode.APPLY);
         request.setWriteManifest(true);
 
-        assertThatThrownBy(() -> service.importKit(
-                TENANT, request, null, SettingWriteOrigin.USER))
+        assertThatThrownBy(() -> service.importKit(TENANT, request, null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("apply cannot write the authoring manifest");
         verifyInstallerNeverRan();
@@ -193,13 +230,22 @@ class KitServiceTest {
         record.getOrigin().setProvisioningStamp("ode:rev-7");
         when(recordStore.find(TENANT, PROJECT, "normal-kit-abc123")).thenReturn(record);
 
-        service.updateInstalled(TENANT, PROJECT, "normal-kit-abc123", false, null, null,
-                null, SettingWriteOrigin.USER);
+        service.updateInstalled(TENANT, PROJECT, "normal-kit-abc123", false, null, null, null, SettingWriteOrigin.USER);
 
-        org.mockito.ArgumentCaptor<KitAccess> access =
-                org.mockito.ArgumentCaptor.forClass(KitAccess.class);
-        verify(installer).apply(access.capture(), any(), any(), any(), any(),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+        org.mockito.ArgumentCaptor<KitAccess> access = org.mockito.ArgumentCaptor.forClass(KitAccess.class);
+        verify(installer)
+                .apply(
+                        access.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any());
         assertThat(access.getValue().provisioningStamp()).isEqualTo("ode:rev-7");
     }
 
@@ -212,20 +258,26 @@ class KitServiceTest {
         stubResolved(descriptor("normal-kit").build());
         stubInstallerResult();
         KitInstalledRecordDto record = record("normal-kit", "normal-kit-abc123");
-        record.getOrigin().setParams(new LinkedHashMap<>(java.util.Map.of(
-                "lang", "de", "modules", List.of("crm"))));
+        record.getOrigin().setParams(new LinkedHashMap<>(java.util.Map.of("lang", "de", "modules", List.of("crm"))));
         when(recordStore.find(TENANT, PROJECT, "normal-kit-abc123")).thenReturn(record);
 
-        service.updateInstalled(TENANT, PROJECT, "normal-kit-abc123", false, null, null,
-                null, SettingWriteOrigin.USER);
+        service.updateInstalled(TENANT, PROJECT, "normal-kit-abc123", false, null, null, null, SettingWriteOrigin.USER);
 
-        org.mockito.ArgumentCaptor<KitAccess> access =
-                org.mockito.ArgumentCaptor.forClass(KitAccess.class);
-        verify(installer).apply(access.capture(), any(), any(), any(), any(),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
-        assertThat(access.getValue().params())
-                .containsEntry("lang", "de")
-                .containsEntry("modules", List.of("crm"));
+        org.mockito.ArgumentCaptor<KitAccess> access = org.mockito.ArgumentCaptor.forClass(KitAccess.class);
+        verify(installer)
+                .apply(
+                        access.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any());
+        assertThat(access.getValue().params()).containsEntry("lang", "de").containsEntry("modules", List.of("crm"));
     }
 
     @Test
@@ -235,15 +287,24 @@ class KitServiceTest {
         KitInstalledRecordDto record = record("normal-kit", "normal-kit-abc123");
         record.getOrigin().setParams(new LinkedHashMap<>(java.util.Map.of("lang", "de")));
         record.getOrigin().setProvisioningStamp("ode:rev-7");
-        when(recordStore.listInLayerOrder(TENANT, PROJECT))
-                .thenReturn(new ArrayList<>(List.of(record)));
+        when(recordStore.listInLayerOrder(TENANT, PROJECT)).thenReturn(new ArrayList<>(List.of(record)));
 
         service.reapplyAll(TENANT, PROJECT, null, null, null, SettingWriteOrigin.USER);
 
-        org.mockito.ArgumentCaptor<KitAccess> access =
-                org.mockito.ArgumentCaptor.forClass(KitAccess.class);
-        verify(installer).apply(access.capture(), any(), any(), any(), any(),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+        org.mockito.ArgumentCaptor<KitAccess> access = org.mockito.ArgumentCaptor.forClass(KitAccess.class);
+        verify(installer)
+                .apply(
+                        access.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any());
         assertThat(access.getValue().params()).containsEntry("lang", "de");
         assertThat(access.getValue().provisioningStamp()).isEqualTo("ode:rev-7");
     }
@@ -254,11 +315,10 @@ class KitServiceTest {
     void importKit_install_sameSourceTwice_rejectsWithUpdateHint() {
         stubResolved(descriptor("normal-kit").build());
         String recordId = KitRecordId.of("normal-kit", SOURCE_URL, null);
-        when(recordStore.findByOrigin(TENANT, PROJECT, SOURCE_URL, null))
-                .thenReturn(record("normal-kit", recordId));
+        when(recordStore.findByOrigin(TENANT, PROJECT, SOURCE_URL, null)).thenReturn(record("normal-kit", recordId));
 
-        assertThatThrownBy(() -> service.importKit(
-                TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
+        assertThatThrownBy(() ->
+                        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("already installed")
                 .hasMessageContaining("update");
@@ -275,8 +335,8 @@ class KitServiceTest {
         when(recordStore.findByOrigin(TENANT, PROJECT, SOURCE_URL, null))
                 .thenReturn(record("the-old-name", "the-old-name-abc123"));
 
-        assertThatThrownBy(() -> service.importKit(
-                TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
+        assertThatThrownBy(() ->
+                        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("already installed");
         verifyInstallerNeverRan();
@@ -288,20 +348,30 @@ class KitServiceTest {
         // installed must not block this one.
         stubResolved(descriptor("normal-kit").build());
         stubInstallerResult();
-        when(recordStore.list(TENANT, PROJECT))
-                .thenReturn(List.of(record("other-kit", "other-kit-abc123")));
+        when(recordStore.list(TENANT, PROJECT)).thenReturn(List.of(record("other-kit", "other-kit-abc123")));
 
-        assertThatCode(() -> service.importKit(
-                TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
+        assertThatCode(() ->
+                        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER))
                 .doesNotThrowAnyException();
-        verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.INSTALL),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+        verify(installer)
+                .apply(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(KitImportMode.INSTALL),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any());
     }
 
     @Test
     void updateInstalled_unknownKit_failsWithoutResolving() {
         assertThatThrownBy(() -> service.updateInstalled(
-                TENANT, PROJECT, "ghost-000000", false, null, null, null, SettingWriteOrigin.USER))
+                        TENANT, PROJECT, "ghost-000000", false, null, null, null, SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("ghost-000000");
         verify(resolver, never()).resolve(any(), any());
@@ -328,7 +398,7 @@ class KitServiceTest {
         // Writing config for a kit that is not installed would leave an
         // orphan document the UI never shows again.
         assertThatThrownBy(() -> service.saveConfig(
-                TENANT, PROJECT, "ghost-000000", KitConfigDto.builder().build(), null))
+                        TENANT, PROJECT, "ghost-000000", KitConfigDto.builder().build(), null))
                 .isInstanceOf(KitException.class);
         verify(recordStore, never()).saveConfig(any(), any(), any(), any(), any());
     }
@@ -353,9 +423,12 @@ class KitServiceTest {
     void promoteToAuthoring_projectAlreadyIsAKitSource_refuses() {
         String recordId = "normal-kit-abc123";
         when(recordStore.find(TENANT, PROJECT, recordId)).thenReturn(record("normal-kit", recordId));
-        when(recordStore.loadManifest(TENANT, PROJECT)).thenReturn(
-                de.mhus.vance.api.kit.KitManifestDto.builder()
-                        .kit(KitMetadataDto.builder().name("existing").description("d").build())
+        when(recordStore.loadManifest(TENANT, PROJECT))
+                .thenReturn(de.mhus.vance.api.kit.KitManifestDto.builder()
+                        .kit(KitMetadataDto.builder()
+                                .name("existing")
+                                .description("d")
+                                .build())
                         .build());
 
         assertThatThrownBy(() -> service.promoteToAuthoring(TENANT, PROJECT, recordId, null))
@@ -382,11 +455,21 @@ class KitServiceTest {
         stubResolved(descriptor("normal-kit").build());
         stubInstallerResult();
 
-        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null,
-                SettingWriteOrigin.USER);
+        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER);
 
-        verify(installer).apply(any(), any(), any(), any(), eq(KitImportMode.INSTALL),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+        verify(installer)
+                .apply(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(KitImportMode.INSTALL),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any());
     }
 
     // ── what lands in the activity feed ──────────────────────────────
@@ -400,16 +483,32 @@ class KitServiceTest {
     @Test
     void importKit_success_isRecordedInTheFeed() {
         stubResolved(descriptor("base-kit").build());
-        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(),
-                any(), anyBoolean(), any(), any()))
+        when(installer.apply(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any()))
                 .thenReturn(KitOperationResultDto.builder().kitName("base-kit").build());
 
-        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), "alice",
-                SettingWriteOrigin.USER);
+        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), "alice", SettingWriteOrigin.USER);
 
-        verify(megadodo).kitImported(
-                eq(TENANT), eq(PROJECT), eq(KitImportMode.INSTALL), eq("base-kit"),
-                eq(SOURCE_URL), eq("alice"), eq(List.of()), any());
+        verify(megadodo)
+                .kitImported(
+                        eq(TENANT),
+                        eq(PROJECT),
+                        eq(KitImportMode.INSTALL),
+                        eq("base-kit"),
+                        eq(SOURCE_URL),
+                        eq("alice"),
+                        eq(List.of()),
+                        any());
     }
 
     @Test
@@ -418,20 +517,36 @@ class KitServiceTest {
         // setting is simply absent, and the first symptom is an opaque 401
         // from whatever the kit configured, days later.
         stubResolved(descriptor("base-kit").build());
-        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(),
-                any(), anyBoolean(), any(), any()))
+        when(installer.apply(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any()))
                 .thenReturn(KitOperationResultDto.builder()
                         .kitName("base-kit")
                         .skippedPasswords(new ArrayList<>(List.of("acme.apiKey")))
                         .build());
 
-        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null,
-                SettingWriteOrigin.USER);
+        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER);
 
         ArgumentCaptor<List<String>> heldBack = ArgumentCaptor.captor();
-        verify(megadodo).kitImported(
-                eq(TENANT), eq(PROJECT), eq(KitImportMode.INSTALL), eq("base-kit"),
-                any(), any(), heldBack.capture(), any());
+        verify(megadodo)
+                .kitImported(
+                        eq(TENANT),
+                        eq(PROJECT),
+                        eq(KitImportMode.INSTALL),
+                        eq("base-kit"),
+                        any(),
+                        any(),
+                        heldBack.capture(),
+                        any());
         assertThat(heldBack.getValue()).singleElement().asString().contains("acme.apiKey");
     }
 
@@ -439,32 +554,45 @@ class KitServiceTest {
     void importKit_lockedDocuments_doNotMakeItIncomplete() {
         // That is the lock doing its job, not a shortfall.
         stubResolved(descriptor("base-kit").build());
-        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(),
-                any(), anyBoolean(), any(), any()))
+        when(installer.apply(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any()))
                 .thenReturn(KitOperationResultDto.builder()
                         .kitName("base-kit")
                         .documentsSkipped(new ArrayList<>(List.of("notes.md")))
                         .build());
 
-        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null,
-                SettingWriteOrigin.USER);
+        service.importKit(TENANT, importRequest(KitImportMode.INSTALL), null, SettingWriteOrigin.USER);
 
-        verify(megadodo).kitImported(
-                any(), any(), any(), any(), any(), any(), eq(List.of()), any());
+        verify(megadodo).kitImported(any(), any(), any(), any(), any(), any(), eq(List.of()), any());
     }
 
     @Test
     void importKit_thatThrows_isRecordedAsFailure() {
-        when(resolver.resolve(any(), any()))
-                .thenThrow(new KitException("host unreachable"));
+        when(resolver.resolve(any(), any())).thenThrow(new KitException("host unreachable"));
 
         assertThatThrownBy(() -> service.importKit(
-                TENANT, importRequest(KitImportMode.UPDATE), "alice", SettingWriteOrigin.USER))
+                        TENANT, importRequest(KitImportMode.UPDATE), "alice", SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class);
 
-        verify(megadodo).kitImportFailed(
-                eq(TENANT), eq(PROJECT), eq(KitImportMode.UPDATE), any(),
-                contains("host unreachable"), eq("alice"), any());
+        verify(megadodo)
+                .kitImportFailed(
+                        eq(TENANT),
+                        eq(PROJECT),
+                        eq(KitImportMode.UPDATE),
+                        any(),
+                        contains("host unreachable"),
+                        eq("alice"),
+                        any());
     }
 
     @Test
@@ -473,14 +601,15 @@ class KitServiceTest {
         // caller sees it immediately; a feed somebody scans for what went
         // wrong unattended is the wrong place for it.
         assertThatThrownBy(() -> service.importKit(
-                TENANT,
-                KitImportRequestDto.builder()
-                        .projectId(PROJECT)
-                        .source(KitInheritDto.builder().url(SOURCE_URL).build())
-                        .mode(KitImportMode.APPLY)
-                        .writeManifest(true)
-                        .build(),
-                null, SettingWriteOrigin.USER))
+                        TENANT,
+                        KitImportRequestDto.builder()
+                                .projectId(PROJECT)
+                                .source(KitInheritDto.builder().url(SOURCE_URL).build())
+                                .mode(KitImportMode.APPLY)
+                                .writeManifest(true)
+                                .build(),
+                        null,
+                        SettingWriteOrigin.USER))
                 .isInstanceOf(KitException.class);
 
         verifyNoInteractions(megadodo);
@@ -488,15 +617,13 @@ class KitServiceTest {
 
     @Test
     void uninstall_isRecordedInTheFeed() {
-        when(recordStore.find(TENANT, PROJECT, "base-kit-abc123"))
-                .thenReturn(record("base-kit", "base-kit-abc123"));
+        when(recordStore.find(TENANT, PROJECT, "base-kit-abc123")).thenReturn(record("base-kit", "base-kit-abc123"));
         when(installer.uninstall(any(), any(), any(), anyBoolean()))
                 .thenReturn(KitOperationResultDto.builder().build());
 
         service.uninstall(TENANT, PROJECT, "base-kit-abc123", /*prune*/ true, "alice");
 
-        verify(megadodo).kitUninstalled(
-                eq(TENANT), eq(PROJECT), eq("base-kit-abc123"), eq(true), eq("alice"), any());
+        verify(megadodo).kitUninstalled(eq(TENANT), eq(PROJECT), eq("base-kit-abc123"), eq(true), eq("alice"), any());
     }
 
     @Test
@@ -506,20 +633,213 @@ class KitServiceTest {
         assertThatThrownBy(() -> service.uninstall(TENANT, PROJECT, "ghost", false, null))
                 .isInstanceOf(KitException.class);
 
-        verify(megadodo).kitUninstallFailed(
-                eq(TENANT), eq(PROJECT), eq("ghost"), any(), any(), any());
+        verify(megadodo).kitUninstallFailed(eq(TENANT), eq(PROJECT), eq("ghost"), any(), any(), any());
+    }
+
+    // ── authoring manifest: create from scratch ─────────────────────
+
+    @Test
+    void createAuthoringManifest_writesManifestAndStarterDescriptor() {
+        KitManifestDto created = service.createAuthoringManifest(
+                TENANT,
+                KitAuthoringRequestDto.builder()
+                        .projectId(PROJECT)
+                        .name("my-kit")
+                        .description("a kit built here")
+                        .version("0.1.0")
+                        .originUrl("https://git.example/kits/my-kit.git")
+                        .originBranch("main")
+                        .documents(List.of("_vance/recipes/helper.yaml"))
+                        .settings(List.of("helper.mode"))
+                        .inherits(List.of("https://git.example/kits/base.git"))
+                        .build(),
+                "user-1");
+
+        assertThat(created.getKit().getName()).isEqualTo("my-kit");
+        assertThat(created.getOrigin().getUrl()).isEqualTo("https://git.example/kits/my-kit.git");
+        assertThat(created.getOrigin().getBranch()).isEqualTo("main");
+        assertThat(created.getDocuments()).containsExactly("_vance/recipes/helper.yaml");
+        assertThat(created.getSettings()).containsExactly("helper.mode");
+        assertThat(created.getInherits()).hasSize(1);
+        assertThat(created.isHasEncryptedSecrets()).isFalse();
+
+        ArgumentCaptor<KitDescriptorDto> descriptor = ArgumentCaptor.forClass(KitDescriptorDto.class);
+        verify(recordStore).saveDescriptor(eq(TENANT), eq(PROJECT), descriptor.capture(), eq("user-1"));
+        assertThat(descriptor.getValue().getName()).isEqualTo("my-kit");
+        assertThat(descriptor.getValue().getInherits()).hasSize(1);
+        assertThat(descriptor.getValue().isArtifact()).isFalse();
+    }
+
+    @Test
+    void createAuthoringManifest_computesTheEncryptedSecretsFlag() {
+        // The flag is the export form's only signal for "ask for a vault
+        // passphrase" — trusting the caller to set it would mean a kit that
+        // drops its credentials on export with nothing but a log line.
+        when(authoringValidator.anyEncryptedSetting(eq(TENANT), eq(PROJECT), any()))
+                .thenReturn(true);
+
+        KitManifestDto created = service.createAuthoringManifest(TENANT, authoringRequest("my-kit"), null);
+
+        assertThat(created.isHasEncryptedSecrets()).isTrue();
+        ArgumentCaptor<KitDescriptorDto> descriptor = ArgumentCaptor.forClass(KitDescriptorDto.class);
+        verify(recordStore).saveDescriptor(eq(TENANT), eq(PROJECT), descriptor.capture(), any());
+        assertThat(descriptor.getValue().isHasEncryptedSecrets()).isTrue();
+    }
+
+    @Test
+    void createAuthoringManifest_refusesWhenProjectIsAlreadyASource() {
+        when(recordStore.loadManifest(TENANT, PROJECT))
+                .thenReturn(KitManifestDto.builder()
+                        .kit(KitMetadataDto.builder()
+                                .name("other-kit")
+                                .description("d")
+                                .build())
+                        .origin(KitOriginDto.builder().url(SOURCE_URL).build())
+                        .build());
+
+        assertThatThrownBy(() -> service.createAuthoringManifest(TENANT, authoringRequest("my-kit"), null))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("already the source of kit 'other-kit'");
+        verify(recordStore, never()).saveManifest(any(), any(), any(), any());
+    }
+
+    @Test
+    void createAuthoringManifest_refusesOnMissingArtefacts() {
+        // A manifest claiming artefacts that are not there would export a
+        // silently incomplete kit — the writer skips missing entries with a
+        // warning. Refuse at creation, while fixing is still obvious.
+        when(authoringValidator.artefactProblems(eq(TENANT), eq(PROJECT), any(), any()))
+                .thenReturn(List.of("document 'ghost.md' does not exist in project 'p1'"));
+
+        assertThatThrownBy(() -> service.createAuthoringManifest(TENANT, authoringRequest("my-kit"), null))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("ghost.md");
+        verify(recordStore, never()).saveManifest(any(), any(), any(), any());
+    }
+
+    @Test
+    void createAuthoringManifest_requiresAnOriginUrl() {
+        // A manifest without an origin url does not parse — omitting it
+        // here would write a manifest that turns the project into a
+        // non-source on the next lenient read.
+        KitAuthoringRequestDto request = authoringRequest("my-kit");
+        request.setOriginUrl(null);
+
+        assertThatThrownBy(() -> service.createAuthoringManifest(TENANT, request, null))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("origin url");
+    }
+
+    @Test
+    void createAuthoringManifest_requiresADescription() {
+        KitAuthoringRequestDto request = authoringRequest("my-kit");
+        request.setDescription(" ");
+
+        assertThatThrownBy(() -> service.createAuthoringManifest(TENANT, request, null))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("description");
+    }
+
+    // ── authoring manifest: promote from an install record ────────────
+
+    @Test
+    void promoteToAuthoring_writesManifestAndDescriptorFromTheRecord() {
+        KitDescriptorDto descriptor = descriptor("normal-kit").build();
+        KitInstalledRecordDto record = record("normal-kit", "normal-kit-abc123");
+        record.setDescriptor(descriptor);
+        when(recordStore.find(TENANT, PROJECT, "normal-kit-abc123")).thenReturn(record);
+        when(installer.manifestFromRecord(record))
+                .thenReturn(KitManifestDto.builder()
+                        .kit(KitMetadataDto.builder()
+                                .name("normal-kit")
+                                .description("d")
+                                .build())
+                        .origin(KitOriginDto.builder().url(SOURCE_URL).build())
+                        .build());
+
+        KitManifestDto promoted = service.promoteToAuthoring(TENANT, PROJECT, "normal-kit-abc123", "user-1");
+
+        assertThat(promoted.getKit().getName()).isEqualTo("normal-kit");
+        verify(recordStore).saveManifest(eq(TENANT), eq(PROJECT), eq(promoted), eq("user-1"));
+        // The record's descriptor is re-persisted beside the manifest:
+        // without it the authored flags would live only in the remote.
+        verify(recordStore).saveDescriptor(eq(TENANT), eq(PROJECT), eq(descriptor), eq("user-1"));
+    }
+
+    @Test
+    void promoteToAuthoring_refusesASecondManifest() {
+        when(recordStore.find(TENANT, PROJECT, "normal-kit-abc123"))
+                .thenReturn(record("normal-kit", "normal-kit-abc123"));
+        when(recordStore.loadManifest(TENANT, PROJECT))
+                .thenReturn(KitManifestDto.builder()
+                        .kit(KitMetadataDto.builder()
+                                .name("other-kit")
+                                .description("d")
+                                .build())
+                        .origin(KitOriginDto.builder().url(SOURCE_URL).build())
+                        .build());
+
+        assertThatThrownBy(() -> service.promoteToAuthoring(TENANT, PROJECT, "normal-kit-abc123", null))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("a project can only be one kit");
+        verify(recordStore, never()).saveManifest(any(), any(), any(), any());
+    }
+
+    @Test
+    void promoteToAuthoring_refusesArtifactKits() {
+        KitInstalledRecordDto record = record("tuning-kit", "tuning-kit-abc123");
+        record.setDescriptor(descriptor("tuning-kit").artifact(true).build());
+        when(recordStore.find(TENANT, PROJECT, "tuning-kit-abc123")).thenReturn(record);
+
+        assertThatThrownBy(() -> service.promoteToAuthoring(TENANT, PROJECT, "tuning-kit-abc123", null))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("artifact")
+                .hasMessageContaining("cannot serve as a kit source");
+        verify(recordStore, never()).saveManifest(any(), any(), any(), any());
+    }
+
+    private static KitAuthoringRequestDto authoringRequest(String name) {
+        return KitAuthoringRequestDto.builder()
+                .projectId(PROJECT)
+                .name(name)
+                .description("a kit built here")
+                .originUrl("https://git.example/kits/" + name + ".git")
+                .documents(List.of("_vance/recipes/helper.yaml"))
+                .settings(List.of("helper.mode"))
+                .build();
     }
 
     // ── helpers ──────────────────────────────────────────────────────
 
     private void verifyInstallerNeverRan() {
-        verify(installer, never()).apply(any(), any(), any(), any(), any(),
-                anyBoolean(), anyBoolean(), any(), anyBoolean(), any(), any());
+        verify(installer, never())
+                .apply(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any());
     }
 
     private void stubInstallerResult() {
-        when(installer.apply(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(),
-                any(), anyBoolean(), any(), any()))
+        when(installer.apply(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        anyBoolean(),
+                        anyBoolean(),
+                        any(),
+                        anyBoolean(),
+                        any(),
+                        any()))
                 .thenReturn(KitOperationResultDto.builder().build());
     }
 

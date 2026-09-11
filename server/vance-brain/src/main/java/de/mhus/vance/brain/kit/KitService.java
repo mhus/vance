@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.kit;
 
+import de.mhus.vance.api.kit.KitAuthoringRequestDto;
+import de.mhus.vance.api.kit.KitAuthoringValidationDto;
 import de.mhus.vance.api.kit.KitConfigDto;
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitExportRequestDto;
@@ -8,10 +10,12 @@ import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitManifestDto;
+import de.mhus.vance.api.kit.KitMetadataDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
+import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.shared.kit.KitException;
-import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.megadodo.MegadodoService;
+import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +62,7 @@ public class KitService {
      */
     private final MegadodoService megadodo;
 
+    private final KitAuthoringValidator authoringValidator;
     /**
      * Install / update / apply a kit. The {@code mode} on the request
      * selects the variant: {@code INSTALL} and {@code UPDATE} write an
@@ -65,8 +70,7 @@ public class KitService {
      * artefacts themselves.
      */
     public KitOperationResultDto importKit(
-            String tenantId, KitImportRequestDto request, @Nullable String actor,
-            SettingWriteOrigin origin) {
+            String tenantId, KitImportRequestDto request, @Nullable String actor, SettingWriteOrigin origin) {
         validateImport(request);
         requireProject(tenantId, request.getProjectId());
         // APPLY is the untracked splat: no record, no update path, no export
@@ -88,17 +92,19 @@ public class KitService {
         // Params ride along on the access object because that is what reaches
         // the loader; they are not a credential and not identity, but a source
         // that assembles per request cannot be served without them.
-        KitAccess access = storeCredentials.resolve(
-                tenantId, request.getProjectId(), actor,
-                request.getSource() == null ? null : request.getSource().getUrl(),
-                request.getToken())
+        KitAccess access = storeCredentials
+                .resolve(
+                        tenantId,
+                        request.getProjectId(),
+                        actor,
+                        request.getSource() == null ? null : request.getSource().getUrl(),
+                        request.getToken())
                 .withParams(request.getParams())
                 .withInstallId(previousInstallId(tenantId, request))
                 .withProvisioningStamp(request.getProvisioningStamp())
                 // Absent means on — see the field's own note for why it is a
                 // Boolean rather than a boolean with a default.
-                .withCopySecrets(request.getCopySecrets() == null
-                        || request.getCopySecrets());
+                .withCopySecrets(request.getCopySecrets() == null || request.getCopySecrets());
 
         // One trace per operation. The feed UI folds rows by it, so an id
         // that outlived the operation would collapse a kit's whole history
@@ -126,8 +132,10 @@ public class KitService {
             // slip through and silently perform an update, which is the exact
             // surprise this guard exists to prevent.
             KitInstalledRecordDto existing = recordStore.findByOrigin(
-                    tenantId, request.getProjectId(),
-                    request.getSource().getUrl(), request.getSource().getPath());
+                    tenantId,
+                    request.getProjectId(),
+                    request.getSource().getUrl(),
+                    request.getSource().getPath());
             if (request.getMode() == KitImportMode.INSTALL && existing != null) {
                 throw new KitException("kit '" + top.getName() + "' is already installed in project "
                         + request.getProjectId() + " (record '" + existing.getId()
@@ -147,9 +155,14 @@ public class KitService {
                     origin,
                     actor);
             megadodo.kitImported(
-                    tenantId, request.getProjectId(), request.getMode(),
+                    tenantId,
+                    request.getProjectId(),
+                    request.getMode(),
                     result.getKitName() == null ? subject : result.getKitName(),
-                    request.getSource().getUrl(), actor, heldBackOf(result), traceId);
+                    request.getSource().getUrl(),
+                    actor,
+                    heldBackOf(result),
+                    traceId);
             return result;
         } catch (RuntimeException e) {
             // Emitted here rather than at any one caller, so the admin REST
@@ -160,8 +173,7 @@ public class KitService {
             // caller sees immediately and does not belong in a feed somebody
             // scans for what went wrong unattended.
             megadodo.kitImportFailed(
-                    tenantId, request.getProjectId(), request.getMode(),
-                    subject, e.toString(), actor, traceId);
+                    tenantId, request.getProjectId(), request.getMode(), subject, e.toString(), actor, traceId);
             throw e;
         } finally {
             if (resolved != null) resolved.cleanup(workspace);
@@ -180,9 +192,9 @@ public class KitService {
      */
     private static List<String> heldBackOf(KitOperationResultDto result) {
         List<String> out = new ArrayList<>();
-        if (result.getSkippedPasswords() != null && !result.getSkippedPasswords().isEmpty()) {
-            out.add("credential(s) not delivered: "
-                    + String.join(", ", result.getSkippedPasswords()));
+        if (result.getSkippedPasswords() != null
+                && !result.getSkippedPasswords().isEmpty()) {
+            out.add("credential(s) not delivered: " + String.join(", ", result.getSkippedPasswords()));
         }
         if (result.getWarnings() != null) {
             out.addAll(result.getWarnings());
@@ -231,31 +243,28 @@ public class KitService {
     private @Nullable String previousInstallId(String tenantId, KitImportRequestDto request) {
         KitInheritDto source = request.getSource();
         if (source == null || request.getProjectId() == null) return null;
-        KitInstalledRecordDto previous = recordStore.findByOrigin(
-                tenantId, request.getProjectId(), source.getUrl(), source.getPath());
+        KitInstalledRecordDto previous =
+                recordStore.findByOrigin(tenantId, request.getProjectId(), source.getUrl(), source.getPath());
         return previous == null ? null : previous.getId();
     }
 
     /** Convenience wrapper: forces {@link KitImportMode#INSTALL}. */
     public KitOperationResultDto install(
-            String tenantId, KitImportRequestDto request, @Nullable String actor,
-            SettingWriteOrigin origin) {
+            String tenantId, KitImportRequestDto request, @Nullable String actor, SettingWriteOrigin origin) {
         request.setMode(KitImportMode.INSTALL);
         return importKit(tenantId, request, actor, origin);
     }
 
     /** Convenience wrapper: forces {@link KitImportMode#UPDATE}. */
     public KitOperationResultDto update(
-            String tenantId, KitImportRequestDto request, @Nullable String actor,
-            SettingWriteOrigin origin) {
+            String tenantId, KitImportRequestDto request, @Nullable String actor, SettingWriteOrigin origin) {
         request.setMode(KitImportMode.UPDATE);
         return importKit(tenantId, request, actor, origin);
     }
 
     /** Convenience wrapper: forces {@link KitImportMode#APPLY}. */
     public KitOperationResultDto apply(
-            String tenantId, KitImportRequestDto request, @Nullable String actor,
-            SettingWriteOrigin origin) {
+            String tenantId, KitImportRequestDto request, @Nullable String actor, SettingWriteOrigin origin) {
         request.setMode(KitImportMode.APPLY);
         return importKit(tenantId, request, actor, origin);
     }
@@ -269,13 +278,17 @@ public class KitService {
      * install, so an update follows the branch head.
      */
     public KitOperationResultDto updateInstalled(
-            String tenantId, String projectId, String kitId, boolean prune,
-            @Nullable String token, @Nullable String vaultPassword,
-            @Nullable String actor, SettingWriteOrigin origin) {
+            String tenantId,
+            String projectId,
+            String kitId,
+            boolean prune,
+            @Nullable String token,
+            @Nullable String vaultPassword,
+            @Nullable String actor,
+            SettingWriteOrigin origin) {
         requireProject(tenantId, projectId);
         KitInstalledRecordDto record = requireInstalled(tenantId, projectId, kitId);
-        return importKit(tenantId, updateRequestFor(record, projectId, prune, token, vaultPassword),
-                actor, origin);
+        return importKit(tenantId, updateRequestFor(record, projectId, prune, token, vaultPassword), actor, origin);
     }
 
     /**
@@ -288,19 +301,26 @@ public class KitService {
      * as a warning entry on that kit's result.
      */
     public List<KitOperationResultDto> updateAllInstalled(
-            String tenantId, String projectId, boolean prune,
-            @Nullable String token, @Nullable String vaultPassword,
-            @Nullable String actor, SettingWriteOrigin origin) {
+            String tenantId,
+            String projectId,
+            boolean prune,
+            @Nullable String token,
+            @Nullable String vaultPassword,
+            @Nullable String actor,
+            SettingWriteOrigin origin) {
         requireProject(tenantId, projectId);
         List<KitOperationResultDto> results = new ArrayList<>();
         for (KitInstalledRecordDto record : recordStore.listInLayerOrder(tenantId, projectId)) {
             try {
-                results.add(importKit(tenantId,
-                        updateRequestFor(record, projectId, prune, token, vaultPassword),
-                        actor, origin));
+                results.add(importKit(
+                        tenantId, updateRequestFor(record, projectId, prune, token, vaultPassword), actor, origin));
             } catch (KitException e) {
-                log.warn("KitService: update of kit '{}' in {}/{} failed: {}",
-                        record.getId(), tenantId, projectId, e.getMessage());
+                log.warn(
+                        "KitService: update of kit '{}' in {}/{} failed: {}",
+                        record.getId(),
+                        tenantId,
+                        projectId,
+                        e.getMessage());
                 results.add(KitOperationResultDto.builder()
                         .kitName(record.getKit().getName())
                         .kitId(record.getId())
@@ -313,8 +333,11 @@ public class KitService {
     }
 
     private static KitImportRequestDto updateRequestFor(
-            KitInstalledRecordDto record, String projectId, boolean prune,
-            @Nullable String token, @Nullable String vaultPassword) {
+            KitInstalledRecordDto record,
+            String projectId,
+            boolean prune,
+            @Nullable String token,
+            @Nullable String vaultPassword) {
         KitInheritDto source = KitInheritDto.builder()
                 .url(record.getOrigin().getUrl())
                 .path(record.getOrigin().getPath())
@@ -371,18 +394,25 @@ public class KitService {
      * (see {@code KitPolicy.decide}).
      */
     public List<KitOperationResultDto> reapplyAll(
-            String tenantId, String projectId, @Nullable String token,
-            @Nullable String vaultPassword, @Nullable String actor, SettingWriteOrigin origin) {
+            String tenantId,
+            String projectId,
+            @Nullable String token,
+            @Nullable String vaultPassword,
+            @Nullable String actor,
+            SettingWriteOrigin origin) {
         requireProject(tenantId, projectId);
         List<KitOperationResultDto> results = new ArrayList<>();
         for (KitInstalledRecordDto record : recordStore.listInLayerOrder(tenantId, projectId)) {
             try {
-                results.add(importKit(tenantId,
-                        reapplyRequestFor(record, projectId, token, vaultPassword),
-                        actor, origin));
+                results.add(
+                        importKit(tenantId, reapplyRequestFor(record, projectId, token, vaultPassword), actor, origin));
             } catch (KitException e) {
-                log.warn("KitService: reapply of kit '{}' in {}/{} failed: {}",
-                        record.getId(), tenantId, projectId, e.getMessage());
+                log.warn(
+                        "KitService: reapply of kit '{}' in {}/{} failed: {}",
+                        record.getId(),
+                        tenantId,
+                        projectId,
+                        e.getMessage());
                 results.add(KitOperationResultDto.builder()
                         .kitName(record.getKit().getName())
                         .kitId(record.getId())
@@ -400,8 +430,7 @@ public class KitService {
      * about fetching anything newer.
      */
     private static KitImportRequestDto reapplyRequestFor(
-            KitInstalledRecordDto record, String projectId,
-            @Nullable String token, @Nullable String vaultPassword) {
+            KitInstalledRecordDto record, String projectId, @Nullable String token, @Nullable String vaultPassword) {
         return KitImportRequestDto.builder()
                 .projectId(projectId)
                 .source(KitInheritDto.builder()
@@ -432,18 +461,16 @@ public class KitService {
      *              server itself rather than an unknown person
      */
     public KitOperationResultDto uninstall(
-            String tenantId, String projectId, String kitId, boolean prune,
-            @Nullable String actor) {
+            String tenantId, String projectId, String kitId, boolean prune, @Nullable String actor) {
         requireProject(tenantId, projectId);
         String traceId = UUID.randomUUID().toString();
         try {
-            KitOperationResultDto result = installer.uninstall(
-                    tenantId, projectId, requireInstalled(tenantId, projectId, kitId), prune);
+            KitOperationResultDto result =
+                    installer.uninstall(tenantId, projectId, requireInstalled(tenantId, projectId, kitId), prune);
             megadodo.kitUninstalled(tenantId, projectId, kitId, prune, actor, traceId);
             return result;
         } catch (RuntimeException e) {
-            megadodo.kitUninstallFailed(
-                    tenantId, projectId, kitId, e.toString(), actor, traceId);
+            megadodo.kitUninstallFailed(tenantId, projectId, kitId, e.toString(), actor, traceId);
             throw e;
         }
     }
@@ -476,18 +503,16 @@ public class KitService {
         KitResolver.ResolvedKit resolved = null;
         try {
             resolved = resolver.resolve(
-                    storeCredentials.resolve(
-                            tenantId, projectId, actor, source.getUrl(), token),
-                    source);
+                    storeCredentials.resolve(tenantId, projectId, actor, source.getUrl(), token), source);
             // Templates are by definition artifact-style; reject any
             // attempt to track them in a manifest.
             if (!resolved.topLayer().isArtifact()) {
-                log.warn("KitService.applyTemplate: top-layer '{}' is not marked artifact:true — "
-                        + "applying as-if-artifact (no manifest written)",
+                log.warn(
+                        "KitService.applyTemplate: top-layer '{}' is not marked artifact:true — "
+                                + "applying as-if-artifact (no manifest written)",
                         resolved.topLayer().getName());
             }
-            return templateApplier.applyTemplate(
-                    tenantId, projectId, source, resolved, inputs, actor, origin);
+            return templateApplier.applyTemplate(tenantId, projectId, source, resolved, inputs, actor, origin);
         } finally {
             if (resolved != null) resolved.cleanup(workspace);
         }
@@ -500,8 +525,7 @@ public class KitService {
      * authoring manifest's {@code origin} for url/path/branch defaults
      * when {@link KitExportRequestDto} fields are blank.
      */
-    public KitOperationResultDto export(
-            String tenantId, KitExportRequestDto request, @Nullable String actor) {
+    public KitOperationResultDto export(String tenantId, KitExportRequestDto request, @Nullable String actor) {
         if (request.getProjectId() == null || request.getProjectId().isBlank()) {
             throw new KitException("export request must carry a projectId");
         }
@@ -518,8 +542,7 @@ public class KitService {
      * already carries origin, descriptor and per-layer ownership, so this
      * needs neither a re-clone nor a reinstall.
      */
-    public KitManifestDto promoteToAuthoring(
-            String tenantId, String projectId, String kitId, @Nullable String actor) {
+    public KitManifestDto promoteToAuthoring(String tenantId, String projectId, String kitId, @Nullable String actor) {
         requireProject(tenantId, projectId);
         KitInstalledRecordDto record = requireInstalled(tenantId, projectId, kitId);
         KitManifestDto existing = recordStore.loadManifest(tenantId, projectId);
@@ -544,6 +567,134 @@ public class KitService {
         return manifest;
     }
 
+    /**
+     * Turns a project into a kit source <em>from scratch</em> — the third
+     * way an authoring manifest can come to exist, next to
+     * {@code writeManifest} at install time and {@link #promoteToAuthoring}.
+     *
+     * <p>For the kit that was never installed anywhere: the author writes
+     * the kit's content as ordinary project documents and settings, then
+     * declares here which of them the kit consists of. The service refuses
+     * when a listed artefact does not exist — a kit source that claims
+     * things it does not have would export a silently incomplete kit
+     * (the writer skips missing artefacts with a warning) — and computes
+     * the encrypted-secrets flag from the settings' actual types instead
+     * of trusting the caller to know them.
+     *
+     * <p>Writes the manifest <em>and</em> a starter descriptor beside it;
+     * the descriptor is where the author's own decisions live
+     * ({@code sealed}, {@code installable}, {@code policy}, vendor,
+     * license), so it must exist from the first moment, not only after
+     * the first export round-trip.
+     */
+    public KitManifestDto createAuthoringManifest(
+            String tenantId, KitAuthoringRequestDto request, @Nullable String actor) {
+        validateAuthoringRequest(request);
+        requireProject(tenantId, request.getProjectId());
+
+        KitManifestDto existing = recordStore.loadManifest(tenantId, request.getProjectId());
+        if (existing != null) {
+            throw new KitException("project " + request.getProjectId()
+                    + " is already the source of kit '" + existing.getKit().getName()
+                    + "' — a project can only be one kit. To adjust the existing manifest,"
+                    + " edit " + KitRecordStore.MANIFEST_PATH + " directly.");
+        }
+
+        List<String> problems = authoringValidator.artefactProblems(
+                tenantId, request.getProjectId(), request.getDocuments(), request.getSettings());
+        if (!problems.isEmpty()) {
+            throw new KitException("cannot mark this project as a kit source — " + String.join("; ", problems));
+        }
+
+        List<KitInheritDto> inherits = new ArrayList<>();
+        for (String url : orEmptyList(request.getInherits())) {
+            inherits.add(KitInheritDto.builder().url(url).build());
+        }
+        boolean hasEncryptedSecrets =
+                authoringValidator.anyEncryptedSetting(tenantId, request.getProjectId(), request.getSettings());
+
+        KitManifestDto manifest = KitManifestDto.builder()
+                .kit(KitMetadataDto.builder()
+                        .name(request.getName())
+                        .description(request.getDescription())
+                        .version(request.getVersion())
+                        .build())
+                .origin(KitOriginDto.builder()
+                        .url(request.getOriginUrl())
+                        .branch(request.getOriginBranch())
+                        .path(request.getOriginPath())
+                        .build())
+                .documents(new ArrayList<>(orEmptyList(request.getDocuments())))
+                .settings(new ArrayList<>(orEmptyList(request.getSettings())))
+                .tools(new ArrayList<>())
+                .inherits(inherits)
+                .resolvedInherits(new ArrayList<>())
+                .inheritArtefacts(new ArrayList<>())
+                .hasEncryptedSecrets(hasEncryptedSecrets)
+                .build();
+        recordStore.saveManifest(tenantId, request.getProjectId(), manifest, actor);
+        recordStore.saveDescriptor(
+                tenantId,
+                request.getProjectId(),
+                KitDescriptorDto.builder()
+                        .name(request.getName())
+                        .description(request.getDescription())
+                        .version(request.getVersion())
+                        .inherits(new ArrayList<>(inherits))
+                        .hasEncryptedSecrets(hasEncryptedSecrets)
+                        .build(),
+                actor);
+        log.info(
+                "Created authoring manifest for kit '{}' in project '{}/{}' ({} document(s),"
+                        + " {} setting(s), {} inherit(s))",
+                request.getName(),
+                tenantId,
+                request.getProjectId(),
+                manifest.getDocuments().size(),
+                manifest.getSettings().size(),
+                inherits.size());
+        return manifest;
+    }
+
+    /**
+     * Checks the project's kit-source setup without writing anything —
+     * manifest, descriptor and artefacts as {@link KitAuthoringValidator}
+     * sees them. The natural companion to the authoring tools: run it
+     * before {@code export}, after adjusting the manifest by hand, or to
+     * find out why a project is not a kit source.
+     */
+    public KitAuthoringValidationDto validateAuthoring(String tenantId, String projectId) {
+        requireProject(tenantId, projectId);
+        return authoringValidator.validate(tenantId, projectId);
+    }
+
+    private static void validateAuthoringRequest(KitAuthoringRequestDto request) {
+        if (request.getProjectId() == null || request.getProjectId().isBlank()) {
+            throw new KitException("authoring request must carry a projectId");
+        }
+        String name = request.getName() == null ? "" : request.getName().trim();
+        if (name.isEmpty()) {
+            throw new KitException("authoring request must carry a kit name");
+        }
+        if (name.contains("/") || name.contains("\\")) {
+            throw new KitException("kit name must not contain path separators: " + name);
+        }
+        if (request.getDescription() == null || request.getDescription().isBlank()) {
+            throw new KitException("authoring request must carry a kit description");
+        }
+        // Not optional pedantry: a manifest without an origin url does not
+        // parse, so omitting it here would write a manifest that turns the
+        // project into a non-source on the next lenient read.
+        if (request.getOriginUrl() == null || request.getOriginUrl().isBlank()) {
+            throw new KitException("authoring request must carry an origin url — the git"
+                    + " remote the kit lives at and export pushes to by default");
+        }
+    }
+
+    private static List<String> orEmptyList(List<String> list) {
+        return list == null ? List.of() : list;
+    }
+
     // ──────────────────── legacy migration ────────────────────
 
     /**
@@ -551,8 +702,7 @@ public class KitService {
      * install record. Explicit by design — see {@link KitLegacyMigrator}.
      */
     public KitLegacyMigrator.Result migrateLegacy(
-            String tenantId, String projectId, boolean keepAsKitSource,
-            @Nullable String actor) {
+            String tenantId, String projectId, boolean keepAsKitSource, @Nullable String actor) {
         requireProject(tenantId, projectId);
         return legacyMigrator.migrate(tenantId, projectId, keepAsKitSource, actor);
     }
@@ -583,15 +733,14 @@ public class KitService {
      * path: the record is machine-generated and rewritten on every
      * update, this is hand-authored and must survive that untouched.
      */
-    public void saveConfig(String tenantId, String projectId, String kitId, KitConfigDto config,
-            @Nullable String actor) {
+    public void saveConfig(
+            String tenantId, String projectId, String kitId, KitConfigDto config, @Nullable String actor) {
         requireProject(tenantId, projectId);
         requireInstalled(tenantId, projectId, kitId);
         recordStore.saveConfig(tenantId, projectId, kitId, config, actor);
     }
 
-    private KitInstalledRecordDto requireInstalled(
-            String tenantId, String projectId, String kitId) {
+    private KitInstalledRecordDto requireInstalled(String tenantId, String projectId, String kitId) {
         KitInstalledRecordDto record = recordStore.find(tenantId, projectId, kitId);
         if (record == null) {
             throw new KitException("no installed kit '" + kitId + "' in project " + projectId);
@@ -622,8 +771,7 @@ public class KitService {
         // EddieContext.resolveProject would fail with "project not found in
         // tenant" — reject up front rather than leaving a half-configured project.
         if (projectService.findByTenantAndName(tenantId, projectId).isEmpty()) {
-            throw new KitException("project '" + projectId
-                    + "' does not exist in tenant '" + tenantId + "'");
+            throw new KitException("project '" + projectId + "' does not exist in tenant '" + tenantId + "'");
         }
     }
 

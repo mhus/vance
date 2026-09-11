@@ -8,6 +8,7 @@ import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,13 +28,16 @@ final class KitToolSupport {
      * a project other than the caller's scope, which {@code ToolDispatcher}'s
      * scope check does not cover — so enforce the per-target grant here.
      */
-    static String requireProjectAuthorized(ToolInvocationContext ctx, @Nullable String override,
-            PermissionService permissionService, SecurityContextFactory contextFactory,
+    static String requireProjectAuthorized(
+            ToolInvocationContext ctx,
+            @Nullable String override,
+            PermissionService permissionService,
+            SecurityContextFactory contextFactory,
             Action action) {
         String p = override == null || override.isBlank() ? ctx.projectId() : override;
         if (p == null || p.isBlank()) {
-            throw new ToolException("kit tools require a project — pass `project` or "
-                    + "invoke from within a project scope");
+            throw new ToolException(
+                    "kit tools require a project — pass `project` or " + "invoke from within a project scope");
         }
         permissionService.enforce(
                 contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
@@ -65,6 +69,26 @@ final class KitToolSupport {
     }
 
     /**
+     * A string-list parameter — the LLM's array form of a list. Elements
+     * are stringified and trimmed; blank entries are dropped rather than
+     * passed on as claims about artefacts that cannot exist.
+     */
+    static List<String> optionalStringList(Map<String, Object> params, String key) {
+        Object v = params == null ? null : params.get(key);
+        if (v == null) return List.of();
+        if (!(v instanceof List<?> raw)) {
+            throw new ToolException("parameter '" + key + "' must be an array of strings");
+        }
+        List<String> out = new ArrayList<>();
+        for (Object element : raw) {
+            if (element == null) continue;
+            String s = element.toString().trim();
+            if (!s.isEmpty()) out.add(s);
+        }
+        return out;
+    }
+
+    /**
      * Refuse a non-remote target for an LLM-driven operation.
      *
      * <p>Shared by install (read side) and export (write side). Export needs it
@@ -81,11 +105,10 @@ final class KitToolSupport {
     static @Nullable String requireRemoteUrlIfPresent(@Nullable String url, String tool) {
         if (url == null) return null;
         String t = url.trim();
-        boolean remote = t.startsWith("https://") || t.startsWith("http://")
-                || t.startsWith("git@") || t.startsWith("ssh://");
+        boolean remote =
+                t.startsWith("https://") || t.startsWith("http://") || t.startsWith("git@") || t.startsWith("ssh://");
         if (!remote) {
-            throw new ToolException(
-                    "kit target must be a remote repo (https://, git@, ssh://); "
+            throw new ToolException("kit target must be a remote repo (https://, git@, ssh://); "
                     + "file:// and local filesystem paths are not allowed for " + tool);
         }
         return url;
@@ -137,19 +160,20 @@ final class KitToolSupport {
 
     static Map<String, Object> sourceSchemaProps() {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("url", Map.of("type", "string",
-                "description", "Source repo URL. Must be remote (https://, git@, ssh://) — "
-                        + "file:// and local filesystem paths are refused on the tool surface."));
-        props.put("path", Map.of("type", "string",
-                "description", "Sub-path inside the repo. Defaults to repo root."));
-        props.put("branch", Map.of("type", "string",
-                "description", "Branch name. Defaults to main."));
-        props.put("commit", Map.of("type", "string",
-                "description", "Pin a commit SHA. Wins over branch when set."));
-        props.put("token", Map.of("type", "string",
-                "description", "Auth token for HTTPS repos."));
-        props.put("project", Map.of("type", "string",
-                "description", "Target project. Defaults to the current project."));
+        props.put(
+                "url",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Source repo URL. Must be remote (https://, git@, ssh://) — "
+                                + "file:// and local filesystem paths are refused on the tool surface."));
+        props.put("path", Map.of("type", "string", "description", "Sub-path inside the repo. Defaults to repo root."));
+        props.put("branch", Map.of("type", "string", "description", "Branch name. Defaults to main."));
+        props.put("commit", Map.of("type", "string", "description", "Pin a commit SHA. Wins over branch when set."));
+        props.put("token", Map.of("type", "string", "description", "Auth token for HTTPS repos."));
+        props.put(
+                "project", Map.of("type", "string", "description", "Target project. Defaults to the current project."));
         return props;
     }
 }

@@ -110,8 +110,7 @@ public class KitRecordStore {
         for (KitInstalledRecordDto record : records) {
             ranks.put(record.getId(), layerRank(tenantId, projectId, record));
         }
-        records.sort(Comparator
-                .comparingLong((KitInstalledRecordDto r) -> ranks.get(r.getId()))
+        records.sort(Comparator.comparingLong((KitInstalledRecordDto r) -> ranks.get(r.getId()))
                 .thenComparing(KitInstalledRecordDto::getId));
         return records;
     }
@@ -140,9 +139,13 @@ public class KitRecordStore {
             // the project with an HTTP 500. Ordering falls back to install time.
             // Applying the policy still fails hard (KitInstaller.apply), which
             // is where a wrong `action:` must not be guessed at.
-            log.warn("KitRecordStore: malformed config for kit '{}' in {}/{} — "
+            log.warn(
+                    "KitRecordStore: malformed config for kit '{}' in {}/{} — "
                             + "ordering by install time instead: {}",
-                    record.getId(), tenantId, projectId, e.getMessage());
+                    record.getId(),
+                    tenantId,
+                    projectId,
+                    e.getMessage());
             explicit = null;
         }
         if (explicit != null) return EXPLICIT_RANK_BASE + explicit;
@@ -157,8 +160,7 @@ public class KitRecordStore {
     /** Unordered list of every parseable install record in the project. */
     public List<KitInstalledRecordDto> list(String tenantId, String projectId) {
         List<KitInstalledRecordDto> out = new ArrayList<>();
-        for (DocumentDocument doc
-                : documentService.listUnderFolder(tenantId, projectId, INSTALLED_PREFIX)) {
+        for (DocumentDocument doc : documentService.listUnderFolder(tenantId, projectId, INSTALLED_PREFIX)) {
             if (!doc.getPath().endsWith(YAML_SUFFIX)) continue;
             String content = readText(doc, doc.getPath());
             if (content == null) continue;
@@ -167,8 +169,12 @@ public class KitRecordStore {
             } catch (KitException e) {
                 // One broken record must not hide the other installed kits —
                 // the user needs the list to fix it in the first place.
-                log.warn("KitRecordStore: skipping malformed install record '{}/{}/{}': {}",
-                        tenantId, projectId, doc.getPath(), e.getMessage());
+                log.warn(
+                        "KitRecordStore: skipping malformed install record '{}/{}/{}': {}",
+                        tenantId,
+                        projectId,
+                        doc.getPath(),
+                        e.getMessage());
             }
         }
         return out;
@@ -204,11 +210,14 @@ public class KitRecordStore {
         return null;
     }
 
-    public void save(String tenantId, String projectId, KitInstalledRecordDto record,
-            @Nullable String actor) {
-        writeDocument(tenantId, projectId, recordPath(record.getId()),
+    public void save(String tenantId, String projectId, KitInstalledRecordDto record, @Nullable String actor) {
+        writeDocument(
+                tenantId,
+                projectId,
+                recordPath(record.getId()),
                 KitYamlMapper.writeInstalledRecord(record),
-                "Kit: " + record.getKit().getName(), actor);
+                "Kit: " + record.getKit().getName(),
+                actor);
     }
 
     public void delete(String tenantId, String projectId, String id) {
@@ -229,8 +238,7 @@ public class KitRecordStore {
      * opposite of their intent to their own files.
      */
     public KitConfigDto loadConfig(String tenantId, String projectId, String id) {
-        Optional<DocumentDocument> doc =
-                documentService.findByPath(tenantId, projectId, configPath(id));
+        Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectId, configPath(id));
         if (doc.isEmpty()) return KitConfigDto.builder().build();
         String content = readText(doc.get(), configPath(id));
         if (content == null || content.isBlank()) return KitConfigDto.builder().build();
@@ -242,10 +250,9 @@ public class KitRecordStore {
      * install path never calls this, which is the whole point of keeping
      * config out of the record.
      */
-    public void saveConfig(String tenantId, String projectId, String id, KitConfigDto config,
-            @Nullable String actor) {
-        writeDocument(tenantId, projectId, configPath(id),
-                KitYamlMapper.writeConfig(config), "Kit config: " + id, actor);
+    public void saveConfig(String tenantId, String projectId, String id, KitConfigDto config, @Nullable String actor) {
+        writeDocument(
+                tenantId, projectId, configPath(id), KitYamlMapper.writeConfig(config), "Kit config: " + id, actor);
     }
 
     public static String configPath(String id) {
@@ -254,25 +261,65 @@ public class KitRecordStore {
 
     // ──────────────────── authoring manifest ────────────────────
 
+    /**
+     * The authoring manifest, or {@code null} when the project is not a kit
+     * source or its manifest is malformed — the lenient read for callers
+     * with a fallback. Callers that must tell the two apart use
+     * {@link #loadManifestStrict}.
+     */
     public @Nullable KitManifestDto loadManifest(String tenantId, String projectId) {
-        Optional<DocumentDocument> doc =
-                documentService.findByPath(tenantId, projectId, MANIFEST_PATH);
-        if (doc.isEmpty()) return null;
-        String content = readText(doc.get(), MANIFEST_PATH);
-        if (content == null) return null;
-        try {
-            return KitYamlMapper.parseManifest(content);
-        } catch (KitException e) {
-            log.warn("KitRecordStore: manifest at {} is malformed: {} — treating as absent",
-                    MANIFEST_PATH, e.getMessage());
-            return null;
+        ManifestLoad load = loadManifestStrict(tenantId, projectId);
+        if (load.parseError() != null) {
+            log.warn(
+                    "KitRecordStore: manifest at {} is malformed: {} — treating as absent",
+                    MANIFEST_PATH,
+                    load.parseError());
+        }
+        return load.manifest();
+    }
+
+    /**
+     * Manifest load outcome that keeps absent and malformed apart.
+     *
+     * <p>{@code manifest == null && parseError == null} means the project is
+     * not a kit source; a non-null {@code parseError} means it tried to be
+     * one and the document does not parse.
+     */
+    public record ManifestLoad(
+            @Nullable KitManifestDto manifest, @Nullable String parseError) {
+
+        static ManifestLoad absent() {
+            return new ManifestLoad(null, null);
+        }
+
+        static ManifestLoad ok(KitManifestDto manifest) {
+            return new ManifestLoad(manifest, null);
+        }
+
+        static ManifestLoad broken(String parseError) {
+            return new ManifestLoad(null, parseError);
         }
     }
 
-    public void saveManifest(String tenantId, String projectId, KitManifestDto manifest,
-            @Nullable String actor) {
-        writeDocument(tenantId, projectId, MANIFEST_PATH,
-                KitYamlMapper.writeManifest(manifest), "Kit Manifest", actor);
+    /**
+     * Read the authoring manifest, distinguishing absent from malformed —
+     * the validation surface needs the parse error as an answer, not as a
+     * warning in the log.
+     */
+    public ManifestLoad loadManifestStrict(String tenantId, String projectId) {
+        Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectId, MANIFEST_PATH);
+        if (doc.isEmpty()) return ManifestLoad.absent();
+        String content = readText(doc.get(), MANIFEST_PATH);
+        if (content == null) return ManifestLoad.absent();
+        try {
+            return ManifestLoad.ok(KitYamlMapper.parseManifest(content));
+        } catch (KitException e) {
+            return ManifestLoad.broken(e.getMessage());
+        }
+    }
+
+    public void saveManifest(String tenantId, String projectId, KitManifestDto manifest, @Nullable String actor) {
+        writeDocument(tenantId, projectId, MANIFEST_PATH, KitYamlMapper.writeManifest(manifest), "Kit Manifest", actor);
     }
 
     public void removeManifest(String tenantId, String projectId) {
@@ -286,27 +333,60 @@ public class KitRecordStore {
      *
      * <p>Malformed is treated as absent, same as {@link #loadManifest}: the
      * caller's fallback (the clone's file, then the generated form) is a
-     * better outcome than a failed export.
+     * better outcome than a failed export. Callers that must tell the two
+     * apart use {@link #loadDescriptorStrict}.
      */
     public @Nullable KitDescriptorDto loadDescriptor(String tenantId, String projectId) {
-        Optional<DocumentDocument> doc =
-                documentService.findByPath(tenantId, projectId, DESCRIPTOR_PATH);
-        if (doc.isEmpty()) return null;
-        String content = readText(doc.get(), DESCRIPTOR_PATH);
-        if (content == null) return null;
-        try {
-            return KitYamlMapper.parseDescriptor(content);
-        } catch (KitException e) {
-            log.warn("KitRecordStore: descriptor at {} is malformed: {} — treating as absent",
-                    DESCRIPTOR_PATH, e.getMessage());
-            return null;
+        DescriptorLoad load = loadDescriptorStrict(tenantId, projectId);
+        if (load.parseError() != null) {
+            log.warn(
+                    "KitRecordStore: descriptor at {} is malformed: {} — treating as absent",
+                    DESCRIPTOR_PATH,
+                    load.parseError());
+        }
+        return load.descriptor();
+    }
+
+    /**
+     * Descriptor load outcome that keeps absent and malformed apart — same
+     * contract as {@link ManifestLoad}, same reason.
+     */
+    public record DescriptorLoad(
+            @Nullable KitDescriptorDto descriptor, @Nullable String parseError) {
+
+        static DescriptorLoad absent() {
+            return new DescriptorLoad(null, null);
+        }
+
+        static DescriptorLoad ok(KitDescriptorDto descriptor) {
+            return new DescriptorLoad(descriptor, null);
+        }
+
+        static DescriptorLoad broken(String parseError) {
+            return new DescriptorLoad(null, parseError);
         }
     }
 
-    public void saveDescriptor(String tenantId, String projectId, KitDescriptorDto descriptor,
-            @Nullable String actor) {
-        writeDocument(tenantId, projectId, DESCRIPTOR_PATH,
-                KitYamlMapper.writeDescriptor(descriptor), "Kit Descriptor", actor);
+    public DescriptorLoad loadDescriptorStrict(String tenantId, String projectId) {
+        Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectId, DESCRIPTOR_PATH);
+        if (doc.isEmpty()) return DescriptorLoad.absent();
+        String content = readText(doc.get(), DESCRIPTOR_PATH);
+        if (content == null) return DescriptorLoad.absent();
+        try {
+            return DescriptorLoad.ok(KitYamlMapper.parseDescriptor(content));
+        } catch (KitException e) {
+            return DescriptorLoad.broken(e.getMessage());
+        }
+    }
+
+    public void saveDescriptor(String tenantId, String projectId, KitDescriptorDto descriptor, @Nullable String actor) {
+        writeDocument(
+                tenantId,
+                projectId,
+                DESCRIPTOR_PATH,
+                KitYamlMapper.writeDescriptor(descriptor),
+                "Kit Descriptor",
+                actor);
     }
 
     // ──────────────────── guard ────────────────────
@@ -349,10 +429,8 @@ public class KitRecordStore {
      * bought. Spec: {@code specification/public/kits.md} §12a.5.
      */
     public static boolean isReservedPath(String documentPath) {
-        String normalized = documentPath.startsWith("/")
-                ? documentPath.substring(1) : documentPath;
-        return normalized.startsWith(KITS_PREFIX)
-                || normalized.startsWith(KIT_CONFIG_PREFIX);
+        String normalized = documentPath.startsWith("/") ? documentPath.substring(1) : documentPath;
+        return normalized.startsWith(KITS_PREFIX) || normalized.startsWith(KIT_CONFIG_PREFIX);
     }
 
     // ──────────────────── document plumbing ────────────────────
@@ -367,36 +445,42 @@ public class KitRecordStore {
         }
     }
 
-    private void writeDocument(String tenantId, String projectId, String path, String yaml,
-            String title, @Nullable String actor) {
-        Optional<DocumentDocument> existing =
-                documentService.findByPath(tenantId, projectId, path);
+    private void writeDocument(
+            String tenantId, String projectId, String path, String yaml, String title, @Nullable String actor) {
+        Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, path);
         if (existing.isEmpty()) {
-            documentService.createText(tenantId, projectId, path, title,
-                    List.of("vance", "kit"), yaml, actor, WriteActor.SYSTEM);
+            documentService.createText(
+                    tenantId, projectId, path, title, List.of("vance", "kit"), yaml, actor, WriteActor.SYSTEM);
             return;
         }
         DocumentDocument doc = existing.get();
         if (documentService.readContent(doc) != null) {
             try {
-                documentService.update(doc.getId(),
-                        /*title*/ null, /*tags*/ null, /*inlineText*/ yaml,
-                        /*newPath*/ null, /*autoSummary*/ null,
-                        /*summaryDirty*/ null, /*ragEnabled*/ null,
-                        /*mimeType*/ null, DocumentService.KIT_IDENTITY, WriteActor.SYSTEM);
+                documentService.update(
+                        doc.getId(),
+                        /*title*/ null, /*tags*/
+                        null, /*inlineText*/
+                        yaml,
+                        /*newPath*/ null, /*autoSummary*/
+                        null,
+                        /*summaryDirty*/ null, /*ragEnabled*/
+                        null,
+                        /*mimeType*/ null,
+                        DocumentService.KIT_IDENTITY,
+                        WriteActor.SYSTEM);
                 return;
             } catch (IllegalArgumentException e) {
                 log.debug("inline update rejected for {} — recreating: {}", path, e.getMessage());
             }
         }
         documentService.delete(doc.getId(), DocumentService.KIT_IDENTITY, WriteActor.SYSTEM);
-        documentService.createText(tenantId, projectId, path, title,
-                List.of("vance", "kit"), yaml, actor, WriteActor.SYSTEM);
+        documentService.createText(
+                tenantId, projectId, path, title, List.of("vance", "kit"), yaml, actor, WriteActor.SYSTEM);
     }
 
     private void deleteDocument(String tenantId, String projectId, String path) {
-        documentService.findByPath(tenantId, projectId, path)
-                .ifPresent(doc -> documentService.delete(doc.getId(),
-                        DocumentService.KIT_IDENTITY, WriteActor.SYSTEM));
+        documentService
+                .findByPath(tenantId, projectId, path)
+                .ifPresent(doc -> documentService.delete(doc.getId(), DocumentService.KIT_IDENTITY, WriteActor.SYSTEM));
     }
 }

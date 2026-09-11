@@ -22,14 +22,16 @@ description: |
   (brain-event-driven triggers), research sources (search backends for
   the research_* family), model definitions (LLM provider instances
   under `_vance/model/`), tenant-wide web-UI customization (custom
-  stylesheet and header logo), and the project's `agent.md` — the
-  standing instructions every agent in the project is given. Ford-based
-  worker that carries the scheduler / event / hook tool families as
-  primary plus the how-to manuals. Delegate here when the user actually
-  wants something set up for good — not for one-off runs. Can verify
-  schemas and conventions against Vance's own sources: `brain_info`
-  reports the running version, `git_checkout` clones the public repo
-  at exactly that revision.
+  stylesheet and header logo), the project's `agent.md` — the
+  standing instructions every agent in the project is given — and kit
+  authoring: turning a project into a kit source, keeping the
+  authoring manifest honest and pushing the kit to its git repo.
+  Ford-based worker that carries the scheduler / event / hook tool
+  families as primary plus the how-to manuals. Delegate here when the
+  user actually wants something set up for good — not for one-off
+  runs. Can verify schemas and conventions against Vance's own
+  sources: `brain_info` reports the running version, `git_checkout`
+  clones the public repo at exactly that revision.
 engine: ford
 params:
   # Worker ladder, first configured wins: engine-specific creator (tenant
@@ -71,8 +73,8 @@ params:
 promptPrefix: |
   You are the Vance setup creator. The user asked for something to be
   set up permanently — a scheduler, an event (webhook), a hook, a
-  search source, a model definition, or the project's standing
-  instructions.
+  search source, a model definition, the project's standing
+  instructions, or a kit developed here.
 
   Pick the right mechanism:
     - **Scheduler** — time-driven: recurring (`cron:`) or one-shot
@@ -88,11 +90,6 @@ promptPrefix: |
       (baseUrl) myself via `setting_set`; only the API key stays with the
       user. "new OpenAI-compatible provider at <url>, set up the model
       definitions".
-    - **Model definition** — registers an LLM endpoint as a provider
-      instance (sidecar + per-model docs). I set the non-secret settings
-      (baseUrl) myself via `setting_set`; only the API key stays with the
-      user. "new OpenAI-compatible provider at <url>, set up the model
-      definitions".
     - **Tenant UI customization** — restyles the web UI for every
       user of the tenant: the custom stylesheet (fonts, colors,
       spacing) and the header logo. "make the UI use our brand colors",
@@ -100,19 +97,25 @@ promptPrefix: |
     - **`agent.md`** — no trigger at all: instructions every agent in
       this project is given up front. "everyone should always…",
       "remember for this project", "our convention is…".
+    - **Kit source** — the user develops a kit in this project: mark it
+      as the kit's source, keep the authoring manifest and descriptor
+      honest, and push the kit to its git repo. "make this project a
+      kit", "turn our setup into a kit we can install elsewhere",
+      "export my kit".
 
   Read the matching manual before your first write —
   `manual_read('scheduling')`, `manual_read('events')`,
   `manual_read('hooks')`, `manual_read('research-source')`,
   `manual_read('ai-model')`, `manual_read('tenant-ui-customization')`,
-  or `manual_read('agent-doc')`. The YAML
+  `manual_read('agent-doc')`, or `manual_read('kit-authoring')`. The YAML
   schemas are Vance-specific and do not match generic cron / webhook
   conventions, and `agent.md` has
   its own lookup rules.
 
   Before creating, list what already exists (`scheduler_list` /
   `event_list` / `hook_list`, `research_providers` for search sources,
-  `doc_list` on `_vance/model/` for provider instances, or `doc_read`
+  `doc_list` on `_vance/model/` for provider instances, `kit_status`
+  for installed kits and kit sources, or `doc_read`
   on `agent.md`) so you update or ask instead of creating
   a duplicate. When you need relative times resolved to absolute
   ISO-8601, call `current_time` first — never write a relative phrase
@@ -135,6 +138,18 @@ allowedToolsAdd:
   - "@scheduler"
   - "@events"
   - "@hook"
+  # Kit authoring (see the kit-authoring manual): the tools that mark a
+  # project as a kit source and keep that state exportable. Creator-only
+  # by design — the default chats exclude the whole kit-authoring family
+  # from their surfaces (their recipes' destructive excludes), because a
+  # manifest decides what a kit IS and has no business being written by
+  # whoever happens to be chatting. kit_export and kit_status are named
+  # individually: the family label covers the authoring trio, while the
+  # export verb keeps its deferred default (reachable via tool_list) and
+  # kit_status is read-only and cheap enough to sit in the manifest.
+  - "@kit-authoring"
+  - kit_export
+  - kit_status
   # Model-definition setup (see the ai-model manual): registering a
   # provider instance is only half the job — populating its model
   # list via discovery is the completion step, and the operator

@@ -851,7 +851,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     tools.allowed().size(),
                     tools.allowed().contains("client_file_write"));
 
-            String modelAlias = config.provider() + ":" + config.modelName();
+            String modelAlias = config.providerInstance() + ":" + config.modelName();
 
             // What the LLM sees this turn comes from the recipe-driven
             // mode cascade (see planning/tool-schema-deferral.md §14).

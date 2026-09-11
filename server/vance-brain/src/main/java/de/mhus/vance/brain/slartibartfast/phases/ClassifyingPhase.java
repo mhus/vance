@@ -143,8 +143,8 @@ public class ClassifyingPhase {
         }
 
         EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
-        String modelAlias =
-                bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
+        String modelAlias = bundle.primaryConfig().providerInstance() + ":"
+                + bundle.primaryConfig().modelName();
 
         // Rebuild from scratch — CLASSIFYING re-entry must produce
         // a fresh claim set, not pile onto an old one.

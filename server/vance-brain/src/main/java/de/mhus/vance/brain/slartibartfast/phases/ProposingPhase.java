@@ -102,8 +102,8 @@ public class ProposingPhase {
         }
 
         EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
-        String modelAlias =
-                bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
+        String modelAlias = bundle.primaryConfig().providerInstance() + ":"
+                + bundle.primaryConfig().modelName();
 
         // Recovery hint from a failed VALIDATING pass.
         String recoveryHint = null;

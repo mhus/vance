@@ -459,7 +459,7 @@ public class Ford implements ThinkEngine {
             if (validation) {
                 log.info("Ford.turn id='{}' validation=on maxIters={}", process.getId(), maxIters);
             }
-            String modelAlias = config.provider() + ":" + config.modelName();
+            String modelAlias = config.providerInstance() + ":" + config.modelName();
             TurnOutcome outcome =
                     runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process, maxIters, validation, modelAlias);
             if (outcome.interrupted()) {

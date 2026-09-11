@@ -3,9 +3,9 @@ package de.mhus.vance.brain.memory;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
-import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelService;
+import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ford.FordProperties;
 import de.mhus.vance.brain.prak.PrakSideChannelRunner;
@@ -146,8 +146,7 @@ public class MemoryCompactionService {
      * {@code vance.prak.inlineOnCompaction} is true, Prak runs ad-hoc
      * over any still-unrated messages first.
      */
-    public CompactionResult compact(
-            ThinkProcessDocument process, AiChatConfig config, CompactionMode mode) {
+    public CompactionResult compact(ThinkProcessDocument process, AiChatConfig config, CompactionMode mode) {
         if (mode == CompactionMode.NONE) {
             return CompactionResult.noop("mode=NONE — no compaction requested");
         }
@@ -155,8 +154,7 @@ public class MemoryCompactionService {
         String sessionId = process.getSessionId();
         String processId = process.getId();
 
-        List<ChatMessageDocument> active = chatMessageService.activeHistory(
-                tenantId, sessionId, processId);
+        List<ChatMessageDocument> active = chatMessageService.activeHistory(tenantId, sessionId, processId);
         // Gate the early no-op on the MODE anchor, not a flat keepRecent(10):
         // EMERGENCY (anchor 3) must be able to compact a short-but-huge history
         // (e.g. 8 giant messages at 95% context) — the flat floor refused
@@ -164,10 +162,9 @@ public class MemoryCompactionService {
         // the same anchor per-message.
         int anchor = strengthAwareSelector.anchorForMode(mode);
         if (active.size() <= anchor) {
-            return CompactionResult.noop(
-                    "history has " + active.size()
-                            + " active messages, mode=" + mode + " anchor=" + anchor
-                            + " — nothing to compact");
+            return CompactionResult.noop("history has " + active.size()
+                    + " active messages, mode=" + mode + " anchor=" + anchor
+                    + " — nothing to compact");
         }
 
         // Optional inline Prak: pay the Prak-call latency to get all
@@ -176,29 +173,28 @@ public class MemoryCompactionService {
         // fallback heuristic (TrivialPatterns) in the selector.
         if (prakProperties.isInlineOnCompaction() && prakProperties.isSideChannelEnabled()) {
             try {
-                String projectIdForPrak = sessionService.findBySessionId(sessionId)
-                        .map(SessionDocument::getProjectId).orElse("");
+                String projectIdForPrak = sessionService
+                        .findBySessionId(sessionId)
+                        .map(SessionDocument::getProjectId)
+                        .orElse("");
                 prakPeriodicTrigger.maybeFire(process, projectIdForPrak);
                 // Re-read tags — periodic trigger wrote STRENGTH:* on
                 // the chat-message documents.
                 active = chatMessageService.activeHistory(tenantId, sessionId, processId);
             } catch (RuntimeException e) {
-                log.warn("Inline Prak on compaction failed for process='{}': {}",
-                        processId, e.toString());
+                log.warn("Inline Prak on compaction failed for process='{}': {}", processId, e.toString());
             }
         }
 
         String chatLang = resolveChatLanguage(process);
-        List<ChatMessageDocument> older =
-                strengthAwareSelector.selectForCompaction(active, mode, chatLang);
+        List<ChatMessageDocument> older = strengthAwareSelector.selectForCompaction(active, mode, chatLang);
         if (older.isEmpty()) {
-            return CompactionResult.noop(
-                    "mode=" + mode + " — no messages eligible for compaction "
-                            + "(everything in anchor or PINNED/STRONG)");
+            return CompactionResult.noop("mode=" + mode + " — no messages eligible for compaction "
+                    + "(everything in anchor or PINNED/STRONG)");
         }
 
-        List<MemoryDocument> priorActive = memoryService.activeByProcessAndKind(
-                tenantId, processId, MemoryKind.ARCHIVED_CHAT);
+        List<MemoryDocument> priorActive =
+                memoryService.activeByProcessAndKind(tenantId, processId, MemoryKind.ARCHIVED_CHAT);
         // Chain/supersede the newest NON-recompaction summary, not simply the
         // newest active row: a range-recompaction row (from a RECOMPACTION_OFFER)
         // does not supersede the bulk sliding summary, so picking the newest row
@@ -217,8 +213,7 @@ public class MemoryCompactionService {
         try {
             summary = callSummarizer(process, config, priorSummary, older);
         } catch (RuntimeException e) {
-            log.warn("Compaction summarizer failed for process='{}': {}",
-                    processId, e.toString());
+            log.warn("Compaction summarizer failed for process='{}': {}", processId, e.toString());
             return CompactionResult.noop("summarizer failed: " + e.getMessage());
         }
         if (summary.isBlank()) {
@@ -241,7 +236,8 @@ public class MemoryCompactionService {
             metadata.put("supersededMemoryId", priorSummary.getId());
         }
 
-        String projectId = sessionService.findBySessionId(sessionId)
+        String projectId = sessionService
+                .findBySessionId(sessionId)
                 .map(SessionDocument::getProjectId)
                 .orElse("");
         MemoryDocument fresh = MemoryDocument.builder()
@@ -263,13 +259,20 @@ public class MemoryCompactionService {
             memoryService.supersede(priorSummary.getId(), saved.getId());
             supersededId = priorSummary.getId();
         }
-        log.info("Compaction process='{}' mode={} compacted={} archived={} memoryId='{}' superseded='{}' summaryChars={}",
-                processId, mode, olderIds.size(), archived, saved.getId(),
-                supersededId, summary.length());
+        log.info(
+                "Compaction process='{}' mode={} compacted={} archived={} memoryId='{}' superseded='{}' summaryChars={}",
+                processId,
+                mode,
+                olderIds.size(),
+                archived,
+                saved.getId(),
+                supersededId,
+                summary.length());
 
         String modeLabel = mode.name().toLowerCase(java.util.Locale.ROOT);
         metricService.counter("vance.memory.compaction", "mode", modeLabel).increment();
-        metricService.summary("vance.memory.compaction.messages", "mode", modeLabel)
+        metricService
+                .summary("vance.memory.compaction.messages", "mode", modeLabel)
                 .record(olderIds.size());
 
         // Client side-channel: surface the compaction event in the chat
@@ -279,14 +282,11 @@ public class MemoryCompactionService {
         progressEmitter.emitStatus(
                 process,
                 de.mhus.vance.api.progress.StatusTag.COMPACTION,
-                mode.name() + " · " + olderIds.size()
-                        + " msgs → " + summary.length() + " chars summary");
+                mode.name() + " · " + olderIds.size() + " msgs → " + summary.length() + " chars summary");
 
-        runSideChannel(process, older, projectId,
-                "compaction-side-channel:" + modeLabel);
+        runSideChannel(process, older, projectId, "compaction-side-channel:" + modeLabel);
 
-        return CompactionResult.success(
-                olderIds.size(), summary.length(), saved.getId(), supersededId);
+        return CompactionResult.success(olderIds.size(), summary.length(), saved.getId(), supersededId);
     }
 
     /**
@@ -311,14 +311,15 @@ public class MemoryCompactionService {
             if (mode == CompactionMode.NONE) {
                 return CompactionResult.noop("trigger=NONE");
             }
-            log.info("Compaction trigger fired process='{}' mode={} est={} ctx={}",
-                    process.getId(), mode,
+            log.info(
+                    "Compaction trigger fired process='{}' mode={} est={} ctx={}",
+                    process.getId(),
+                    mode,
                     compactionTriggerService.estimateTokens(outgoingPrompt),
                     modelInfo.contextWindowTokens());
             return compact(process, config, mode);
         } catch (RuntimeException e) {
-            log.warn("compactIfNeeded failed process='{}': {}",
-                    process.getId(), e.toString());
+            log.warn("compactIfNeeded failed process='{}': {}", process.getId(), e.toString());
             return CompactionResult.noop("compactIfNeeded threw: " + e.getMessage());
         }
     }
@@ -350,8 +351,7 @@ public class MemoryCompactionService {
             @Nullable Instant toCreatedAtInclusive,
             String topicLabel) {
         AiChatConfig config = resolveAiConfig(process);
-        return compactRange(process, fromCreatedAtInclusive, toCreatedAtInclusive,
-                topicLabel, config);
+        return compactRange(process, fromCreatedAtInclusive, toCreatedAtInclusive, topicLabel, config);
     }
 
     /** Same as {@link #compactRange(ThinkProcessDocument, java.time.Instant,
@@ -367,8 +367,8 @@ public class MemoryCompactionService {
         String sessionId = process.getSessionId();
         String processId = process.getId();
 
-        List<ChatMessageDocument> range = chatMessageService.findActiveInRange(
-                tenantId, processId, fromCreatedAtInclusive, toCreatedAtInclusive);
+        List<ChatMessageDocument> range =
+                chatMessageService.findActiveInRange(tenantId, processId, fromCreatedAtInclusive, toCreatedAtInclusive);
         if (range.isEmpty()) {
             return CompactionResult.noop("empty range — nothing to recompact");
         }
@@ -377,8 +377,11 @@ public class MemoryCompactionService {
         try {
             summary = callSummarizer(process, config, /*priorSummary*/ null, range);
         } catch (RuntimeException e) {
-            log.warn("Range-compaction summarizer failed for process='{}' topic='{}': {}",
-                    processId, topicLabel, e.toString());
+            log.warn(
+                    "Range-compaction summarizer failed for process='{}' topic='{}': {}",
+                    processId,
+                    topicLabel,
+                    e.toString());
             return CompactionResult.noop("summarizer failed: " + e.getMessage());
         }
         if (summary.isBlank()) {
@@ -403,7 +406,8 @@ public class MemoryCompactionService {
             metadata.put("rangeToAt", toCreatedAtInclusive.toString());
         }
 
-        String projectId = sessionService.findBySessionId(sessionId)
+        String projectId = sessionService
+                .findBySessionId(sessionId)
                 .map(SessionDocument::getProjectId)
                 .orElse("");
         MemoryDocument fresh = MemoryDocument.builder()
@@ -434,8 +438,7 @@ public class MemoryCompactionService {
                 .thinkProcessId(processId)
                 .role(ChatRole.SYSTEM)
                 .content(summary)
-                .tags(new java.util.LinkedHashSet<>(
-                        java.util.Set.of("RECOMPACTION:" + topicLabel)))
+                .tags(new java.util.LinkedHashSet<>(java.util.Set.of("RECOMPACTION:" + topicLabel)))
                 .createdAt(markerAt)
                 .build();
         // insertCopies (not append) so the pinned createdAt survives — the
@@ -444,18 +447,23 @@ public class MemoryCompactionService {
         // (code-review Phase 2).
         chatMessageService.insertCopies(java.util.List.of(marker));
 
-        log.info("Recompaction process='{}' topic='{}' range={} archived={} memoryId='{}' summaryChars={}",
-                processId, topicLabel, rangeIds.size(), archived, saved.getId(), summary.length());
+        log.info(
+                "Recompaction process='{}' topic='{}' range={} archived={} memoryId='{}' summaryChars={}",
+                processId,
+                topicLabel,
+                rangeIds.size(),
+                archived,
+                saved.getId(),
+                summary.length());
 
         metricService.counter("vance.memory.compaction", "mode", "range").increment();
-        metricService.summary("vance.memory.compaction.messages", "mode", "range")
+        metricService
+                .summary("vance.memory.compaction.messages", "mode", "range")
                 .record(rangeIds.size());
 
-        runSideChannel(process, range, projectId,
-                "compaction-side-channel: range " + topicLabel);
+        runSideChannel(process, range, projectId, "compaction-side-channel: range " + topicLabel);
 
-        return CompactionResult.success(
-                rangeIds.size(), summary.length(), saved.getId(), /*supersededMemoryId*/ null);
+        return CompactionResult.success(rangeIds.size(), summary.length(), saved.getId(), /*supersededMemoryId*/ null);
     }
 
     private String callSummarizer(
@@ -466,10 +474,8 @@ public class MemoryCompactionService {
         AiChat ai = aiModelService.createChat(
                 config,
                 AiChatOptions.builder()
-                        .userNotifier(msg -> progressEmitter.emitStatus(
-                                process,
-                                de.mhus.vance.api.progress.StatusTag.PROVIDER,
-                                msg))
+                        .userNotifier(msg ->
+                                progressEmitter.emitStatus(process, de.mhus.vance.api.progress.StatusTag.PROVIDER, msg))
                         .build(),
                 CallAttribution.ofProcess(process, CALLER_COMPACTION));
         List<ChatMessage> messages = new ArrayList<>();
@@ -489,7 +495,8 @@ public class MemoryCompactionService {
         prefix.append("Today's date (UTC): ")
                 .append(java.time.LocalDate.now(java.time.ZoneOffset.UTC))
                 .append("\n\n");
-        if (priorSummary != null && priorSummary.getContent() != null
+        if (priorSummary != null
+                && priorSummary.getContent() != null
                 && !priorSummary.getContent().isBlank()) {
             prefix.append("EXISTING SUMMARY (compact this further along with the new turns):\n");
             prefix.append(priorSummary.getContent()).append("\n\n");
@@ -514,11 +521,10 @@ public class MemoryCompactionService {
         messages.add(UserMessage.from(prefix + messagesHeader + rawMessages));
 
         ChatRequest request = ChatRequest.builder().messages(messages).build();
-        String modelAlias = config.provider() + ":" + config.modelName();
+        String modelAlias = config.providerInstance() + ":" + config.modelName();
         long startMs = System.currentTimeMillis();
         ChatResponse response = ai.chatModel().chat(request);
-        llmCallTracker.record(
-                process, request, response, System.currentTimeMillis() - startMs, modelAlias);
+        llmCallTracker.record(process, request, response, System.currentTimeMillis() - startMs, modelAlias);
         String text = response.aiMessage() == null ? null : response.aiMessage().text();
         String trimmed = text == null ? "" : text.trim();
         if (trimmed.isEmpty()) return "";
@@ -558,17 +564,13 @@ public class MemoryCompactionService {
      * has already succeeded by the time we reach here.
      */
     private void runSideChannel(
-            ThinkProcessDocument process,
-            List<ChatMessageDocument> spanDocs,
-            String projectId,
-            String windowHint) {
+            ThinkProcessDocument process, List<ChatMessageDocument> spanDocs, String projectId, String windowHint) {
         // The runner already catches internally — this is belt-and-suspenders
         // so a bug in the runner can never poison a successful compaction.
         try {
             prakSideChannelRunner.run(process, projectId, spanDocs, windowHint);
         } catch (RuntimeException e) {
-            log.warn("Prak side-channel from compaction failed process='{}': {}",
-                    process.getId(), e.toString());
+            log.warn("Prak side-channel from compaction failed process='{}': {}", process.getId(), e.toString());
         }
     }
 
@@ -583,14 +585,12 @@ public class MemoryCompactionService {
      */
     private String resolveChatLanguage(ThinkProcessDocument process) {
         String sessionId = process.getSessionId();
-        SessionDocument session =
-                (sessionId == null || sessionId.isBlank())
-                        ? null
-                        : sessionService.findBySessionId(sessionId).orElse(null);
+        SessionDocument session = (sessionId == null || sessionId.isBlank())
+                ? null
+                : sessionService.findBySessionId(sessionId).orElse(null);
         String userId = session == null ? null : session.getUserId();
         String projectId = session == null ? null : session.getProjectId();
-        return languageResolver.chatLanguage(
-                process.getTenantId(), userId, projectId, process.getId());
+        return languageResolver.chatLanguage(process.getTenantId(), userId, projectId, process.getId());
     }
 
     private AiChatConfig resolveAiConfig(ThinkProcessDocument process) {
@@ -601,24 +601,22 @@ public class MemoryCompactionService {
         // provider/model/apiKey/baseUrl only at PROJECT scope would otherwise get
         // tenant defaults / a blank apiKey, and the recompaction-offer summarizer
         // call would silently fail → the accepted offer does nothing.
-        String projectId = sessionService.findBySessionId(process.getSessionId())
+        String projectId = sessionService
+                .findBySessionId(process.getSessionId())
                 .map(SessionDocument::getProjectId)
                 .orElse(null);
-        String providerCascade = settingService.getStringValueCascade(
-                tenantId, projectId, processId, SETTING_AI_PROVIDER);
-        String provider = (providerCascade == null || providerCascade.isBlank())
-                ? DEFAULT_PROVIDER.wireName() : providerCascade;
-        String modelCascade = settingService.getStringValueCascade(
-                tenantId, projectId, processId, SETTING_AI_MODEL);
-        String model = (modelCascade == null || modelCascade.isBlank())
-                ? DEFAULT_MODEL : modelCascade;
+        String providerCascade =
+                settingService.getStringValueCascade(tenantId, projectId, processId, SETTING_AI_PROVIDER);
+        String provider =
+                (providerCascade == null || providerCascade.isBlank()) ? DEFAULT_PROVIDER.wireName() : providerCascade;
+        String modelCascade = settingService.getStringValueCascade(tenantId, projectId, processId, SETTING_AI_MODEL);
+        String model = (modelCascade == null || modelCascade.isBlank()) ? DEFAULT_MODEL : modelCascade;
         // Compaction reads provider/model from settings directly (no recipe
         // alias), so instance defaults to the protocol wire-name. Named
         // instances aren't reachable here without going through the resolver.
-        String apiKey = ChatBehaviorBuilder.resolveApiKey(
-                provider, provider, tenantId, projectId, processId, settingService);
-        String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(
-                provider, tenantId, projectId, processId, settingService);
+        String apiKey =
+                ChatBehaviorBuilder.resolveApiKey(provider, provider, tenantId, projectId, processId, settingService);
+        String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(provider, tenantId, projectId, processId, settingService);
         return new AiChatConfig(provider, model, apiKey, baseUrl);
     }
 
@@ -628,7 +626,6 @@ public class MemoryCompactionService {
      * read-side check so the write side (priorSummary selection) agrees.
      */
     private static boolean isRecompaction(MemoryDocument m) {
-        return m.getMetadata() != null
-                && Boolean.TRUE.equals(m.getMetadata().get("recompaction"));
+        return m.getMetadata() != null && Boolean.TRUE.equals(m.getMetadata().get("recompaction"));
     }
 }

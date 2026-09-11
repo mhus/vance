@@ -840,7 +840,7 @@ public class MarvinEngine implements ThinkEngine {
         messages.add(SystemMessage.from(renderedSystem));
         messages.add(UserMessage.from(userBody));
 
-        String modelAlias = config.provider() + ":" + config.modelName();
+        String modelAlias = config.providerInstance() + ":" + config.modelName();
         long startMs = System.currentTimeMillis();
         ChatRequest request = ChatRequest.builder().messages(messages).build();
         ChatResponse response = ai.chatModel().chat(request);

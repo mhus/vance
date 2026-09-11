@@ -1377,7 +1377,7 @@ public class ZaphodEngine implements ThinkEngine {
             }
             messages.add(SystemMessage.from(renderedSystem));
             messages.add(UserMessage.from(body.toString()));
-            String modelAlias = config.provider() + ":" + config.modelName();
+            String modelAlias = config.providerInstance() + ":" + config.modelName();
 
             // Structured-output loop: the synthesizer must emit a
             // JSON object with title/summary/synthesisMarkdown.

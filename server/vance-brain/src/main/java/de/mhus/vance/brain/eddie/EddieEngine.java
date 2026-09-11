@@ -941,7 +941,7 @@ public class EddieEngine extends StructuredActionEngine {
                     config.modelName(),
                     maxIters);
 
-            String modelAlias = config.provider() + ":" + config.modelName();
+            String modelAlias = config.providerInstance() + ":" + config.modelName();
 
             // Recipe-driven manifest: read-only stays primary,
             // @write/@executive/@side-effect drop to the discovery

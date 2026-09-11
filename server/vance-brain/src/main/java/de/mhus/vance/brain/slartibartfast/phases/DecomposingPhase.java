@@ -132,8 +132,8 @@ public class DecomposingPhase {
         }
 
         EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
-        String modelAlias =
-                bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
+        String modelAlias = bundle.primaryConfig().providerInstance() + ":"
+                + bundle.primaryConfig().modelName();
 
         // Recovery hint from a failed BINDING pass — appended to the
         // prompt so the LLM sees what was rejected and why.

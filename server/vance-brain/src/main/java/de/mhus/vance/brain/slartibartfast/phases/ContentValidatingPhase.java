@@ -350,8 +350,8 @@ public class ContentValidatingPhase {
                 .build();
         EngineChatFactory.EngineChatBundle bundle =
                 engineChatFactory.forProcess(process, ctx, ENGINE_NAME, judgeOptions);
-        String modelAlias =
-                bundle.primaryConfig().provider() + ":" + bundle.primaryConfig().modelName();
+        String modelAlias = bundle.primaryConfig().providerInstance() + ":"
+                + bundle.primaryConfig().modelName();
 
         List<ChatMessage> messages = new ArrayList<>();
         String langBlock = languageContextResolver.formatBlock(process);

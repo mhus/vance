@@ -81,16 +81,16 @@ public class ChatHistoryController {
             @PathVariable("tenant") String tenant,
             @PathVariable("sessionId") String sessionId,
             @RequestParam(value = "limit", required = false) @Nullable Integer limit,
-            @RequestParam(value = "includeRemoved", required = false, defaultValue = "false")
-                    boolean includeRemoved,
+            @RequestParam(value = "includeRemoved", required = false, defaultValue = "false") boolean includeRemoved,
             HttpServletRequest request) {
 
         String currentUser = currentUser(request);
 
-        SessionDocument session = sessionService.findBySessionId(sessionId)
+        SessionDocument session = sessionService
+                .findBySessionId(sessionId)
                 .filter(s -> tenant.equals(s.getTenantId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Session '" + sessionId + "' not found"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Session '" + sessionId + "' not found"));
 
         // Multi-user routing (planning/multi-user-sessions.md §2.5):
         // shared sessions expose their chat history to any
@@ -99,17 +99,19 @@ public class ChatHistoryController {
         // The crop view (includeRemoved) is owner-only regardless.
         boolean isOwner = currentUser.equals(session.getUserId());
         if (includeRemoved && !isOwner) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Crop view is owner-only");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Crop view is owner-only");
         }
         if (!SessionAccess.mayAccess(session, currentUser)) {
-            log.debug("Chat history access denied: session='{}' owner='{}' caller='{}'",
-                    sessionId, session.getUserId(), currentUser);
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Session '" + sessionId + "' belongs to another user");
+            log.debug(
+                    "Chat history access denied: session='{}' owner='{}' caller='{}'",
+                    sessionId,
+                    session.getUserId(),
+                    currentUser);
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Session '" + sessionId + "' belongs to another user");
         }
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.READ);
+        authority.enforce(
+                request, new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.READ);
 
         String chatProcessId = session.getChatProcessId();
         if (includeRemoved && (chatProcessId == null || chatProcessId.isBlank())) {
@@ -135,10 +137,19 @@ public class ChatHistoryController {
                 ? chatMessageService.historyForCrop(tenant, sessionId, chatProcessId)
                 : chatMessageService.activeHistoryWithInterimForSession(tenant, sessionId);
 
+        // Machinery processes (silent flag — e.g. Zaphod session heads)
+        // are excluded from the scrollback: their transcripts are audit-
+        // only (process history / //zaphod info), narrating every head
+        // turn into the chat would flood it. Crop view is scoped to the
+        // chat-process anyway and skips the filter.
+        if (!includeRemoved) {
+            Set<String> silent = silentProcessIdsOf(tenant, sessionId);
+            if (!silent.isEmpty()) {
+                messages = excludeSilent(messages, silent);
+            }
+        }
         int cap = (limit != null && limit > 0) ? limit : DEFAULT_LIMIT;
-        messages = includeRemoved
-                ? tail(messages, cap)
-                : applyScrollbackCap(messages, chatProcessId, cap);
+        messages = includeRemoved ? tail(messages, cap) : applyScrollbackCap(messages, chatProcessId, cap);
 
         // One lookup for the whole page instead of one per message: the
         // scrollback now spans every process of the session, so a per-row
@@ -215,6 +226,37 @@ public class ChatHistoryController {
     }
 
     /**
+     * Ids of the session's machinery processes ({@code silent} flag).
+     * Separate pass over the same findBySession the name lookup does —
+     * one extra indexed read per scrollback page.
+     */
+    private Set<String> silentProcessIdsOf(String tenant, String sessionId) {
+        Set<String> silent = new HashSet<>();
+        for (ThinkProcessDocument p : thinkProcessService.findBySession(tenant, sessionId)) {
+            if (p.getId() != null && p.isSilent()) {
+                silent.add(p.getId());
+            }
+        }
+        return silent;
+    }
+
+    /** Drops the messages of silent machinery processes from the
+     *  session-wide scrollback — testable seam, same pattern as
+     *  {@link #applyScrollbackCap}. */
+    static List<ChatMessageDocument> excludeSilent(List<ChatMessageDocument> messages, Set<String> silentProcessIds) {
+        if (silentProcessIds.isEmpty()) {
+            return messages;
+        }
+        List<ChatMessageDocument> out = new ArrayList<>(messages.size());
+        for (ChatMessageDocument m : messages) {
+            if (!silentProcessIds.contains(m.getThinkProcessId())) {
+                out.add(m);
+            }
+        }
+        return out;
+    }
+
+    /**
      * Modify/Crop the session's chat memory: remove and/or restore
      * messages. Owner-only. Returns the fresh crop list (all non-archived,
      * non-interim messages incl. removed) so the modal can re-render in one
@@ -228,17 +270,17 @@ public class ChatHistoryController {
             HttpServletRequest request) {
 
         String currentUser = currentUser(request);
-        SessionDocument session = sessionService.findBySessionId(sessionId)
+        SessionDocument session = sessionService
+                .findBySessionId(sessionId)
                 .filter(s -> tenant.equals(s.getTenantId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Session '" + sessionId + "' not found"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Session '" + sessionId + "' not found"));
         if (!currentUser.equals(session.getUserId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Session '" + sessionId + "' belongs to another user");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Session '" + sessionId + "' belongs to another user");
         }
-        authority.enforce(request,
-                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
-                Action.WRITE);
+        authority.enforce(
+                request, new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.WRITE);
 
         String chatProcessId = session.getChatProcessId();
         if (chatProcessId == null || chatProcessId.isBlank()) {
@@ -262,7 +304,8 @@ public class ChatHistoryController {
         }
 
         // Crop is chat-process-scoped, so every row carries the same name.
-        String chatProcessName = thinkProcessService.findById(chatProcessId)
+        String chatProcessName = thinkProcessService
+                .findById(chatProcessId)
                 .map(ThinkProcessDocument::getName)
                 .orElse(null);
         return chatMessageService.historyForCrop(tenant, sessionId, chatProcessId).stream()
@@ -277,8 +320,7 @@ public class ChatHistoryController {
      */
     private Set<String> croppableIds(String tenant, String sessionId, String chatProcessId) {
         Set<String> ids = new HashSet<>();
-        for (ChatMessageDocument m
-                : chatMessageService.historyForCrop(tenant, sessionId, chatProcessId)) {
+        for (ChatMessageDocument m : chatMessageService.historyForCrop(tenant, sessionId, chatProcessId)) {
             if (m.getId() != null) {
                 ids.add(m.getId());
             }
@@ -292,8 +334,7 @@ public class ChatHistoryController {
      * compaction archived it meanwhile) is not an error the user can act on.
      * Foreign-process ids are logged — they cannot come from the crop UI.
      */
-    private static List<String> onlyCroppable(
-            @Nullable List<String> requested, Set<String> croppable) {
+    private static List<String> onlyCroppable(@Nullable List<String> requested, Set<String> croppable) {
         if (requested == null || requested.isEmpty()) {
             return List.of();
         }
@@ -304,22 +345,19 @@ public class ChatHistoryController {
             }
         }
         if (kept.size() != requested.size()) {
-            log.debug("Crop request dropped {} message id(s) outside the chat-process",
-                    requested.size() - kept.size());
+            log.debug("Crop request dropped {} message id(s) outside the chat-process", requested.size() - kept.size());
         }
         return kept;
     }
 
-    private static ChatMessageDto toDto(
-            ChatMessageDocument doc, @Nullable String processName) {
+    private static ChatMessageDto toDto(ChatMessageDocument doc, @Nullable String processName) {
         return ChatMessageDtoMapper.toDto(doc, processName);
     }
 
     private static String currentUser(HttpServletRequest request) {
         Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
         if (!(u instanceof String s) || s.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                    "No authenticated user");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
         }
         return s;
     }

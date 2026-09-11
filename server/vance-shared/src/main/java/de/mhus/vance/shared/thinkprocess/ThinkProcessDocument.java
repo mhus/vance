@@ -277,6 +277,24 @@ public class ThinkProcessDocument {
     private List<TodoItem> todos = new ArrayList<>();
 
     /**
+     * Machinery process: its chat messages are excluded from the
+     * session-wide scrollback and from live {@code CHAT_MESSAGE_APPENDED}
+     * pushes — the transcript stays audit-readable via the process history
+     * ({@code //zaphod info <head>}, {@code process_history_text}) but
+     * does not narrate itself into the user's chat.
+     *
+     * <p>Set by the owning engine at spawn for internal workers whose every
+     * turn would otherwise flood the chat — Zaphod session heads (seven
+     * philosophers × every user message). Default {@code false}: the
+     * Frankie-style worker transparency (session scrollback shows
+     * {@code [processName · role]} notes, planning/process-visibility.md
+     * §5.3) keeps its visibility. See
+     * {@code planning/zaphod-session-mode.md} §5.
+     */
+    @Builder.Default
+    private boolean silent = false;
+
+    /**
      * Connection-profile of the WS currently bound to this process's
      * session — propagated from the {@code session-bind} / {@code engine-bind}
      * handshake (see {@code engine-message-routing.md} §4.1.1). Drives

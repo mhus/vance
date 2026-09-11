@@ -849,6 +849,14 @@ public class ZaphodEngine implements ThinkEngine {
                         applied.defaultActiveSkills(),
                         applied.allowedSkills() == null ? null : java.util.Set.copyOf(applied.allowedSkills()));
                 head.setSpawnedProcessId(child.getId());
+                if (state.getMode() == ZaphodMode.SESSION) {
+                    // Machinery process: the head's transcript stays
+                    // audit-readable (process history, //zaphod info)
+                    // but must not narrate into the session chat —
+                    // seven heads × every user message would flood the
+                    // scrollback. BATCH keeps its visible transcript.
+                    thinkProcessService.setSilent(child.getId(), true);
+                }
                 thinkEngineServiceProvider.getObject().start(child);
                 justSpawned = true;
                 log.info(

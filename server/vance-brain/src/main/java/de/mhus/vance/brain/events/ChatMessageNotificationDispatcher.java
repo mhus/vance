@@ -65,9 +65,15 @@ public class ChatMessageNotificationDispatcher {
             // turn and already rendered it. No echo needed.
             return;
         }
-        String processName = thinkProcessService.findById(msg.getThinkProcessId())
-                .map(ThinkProcessDocument::getName)
-                .orElse(null);
+        java.util.Optional<ThinkProcessDocument> process = thinkProcessService.findById(msg.getThinkProcessId());
+        if (process.map(ThinkProcessDocument::isSilent).orElse(false)) {
+            // Machinery process (e.g. a Zaphod session head): its transcript
+            // is audit-only — no live narration into the chat. Persistence
+            // stands; the scrollback filter (ChatHistoryController) hides
+            // it on reload as well.
+            return;
+        }
+        String processName = process.map(ThinkProcessDocument::getName).orElse(null);
         ChatMessageAppendedData frame = ChatMessageAppendedData.builder()
                 .chatMessageId(msg.getId())
                 .thinkProcessId(msg.getThinkProcessId())
@@ -76,8 +82,7 @@ public class ChatMessageNotificationDispatcher {
                 .content(msg.getContent())
                 .thinking(msg.getThinking())
                 .createdAt(msg.getCreatedAt())
-                .meta(msg.getMeta() == null || msg.getMeta().isEmpty()
-                        ? null : msg.getMeta())
+                .meta(msg.getMeta() == null || msg.getMeta().isEmpty() ? null : msg.getMeta())
                 .senderUserId(msg.getSenderUserId())
                 .senderDisplayName(msg.getSenderDisplayName())
                 .addressedToAgent(msg.isAddressedToAgent())
@@ -86,9 +91,12 @@ public class ChatMessageNotificationDispatcher {
             try {
                 sender.sendNotification(ws, MessageType.CHAT_MESSAGE_APPENDED, frame);
             } catch (Exception e) {
-                log.warn("Failed to push CHAT_MESSAGE_APPENDED for chatMessageId='{}' "
-                                + "session='{}' ws='{}': {}",
-                        msg.getId(), msg.getSessionId(), ws.getId(), e.toString());
+                log.warn(
+                        "Failed to push CHAT_MESSAGE_APPENDED for chatMessageId='{}' " + "session='{}' ws='{}': {}",
+                        msg.getId(),
+                        msg.getSessionId(),
+                        ws.getId(),
+                        e.toString());
             }
         }
     }

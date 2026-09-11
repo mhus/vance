@@ -8,7 +8,6 @@ import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
-import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
@@ -66,9 +65,17 @@ public class ThinkProcessService {
             @Nullable String thinkEngineVersion,
             @Nullable String title,
             @Nullable String goal) {
-        return create(tenantId, projectId, sessionId, name, thinkEngine,
-                thinkEngineVersion, title, goal,
-                /*parentProcessId*/ null, /*engineParams*/ null);
+        return create(
+                tenantId,
+                projectId,
+                sessionId,
+                name,
+                thinkEngine,
+                thinkEngineVersion,
+                title,
+                goal,
+                /*parentProcessId*/ null, /*engineParams*/
+                null);
     }
 
     /**
@@ -85,8 +92,16 @@ public class ThinkProcessService {
             @Nullable String title,
             @Nullable String goal,
             @Nullable String parentProcessId) {
-        return create(tenantId, projectId, sessionId, name, thinkEngine,
-                thinkEngineVersion, title, goal, parentProcessId,
+        return create(
+                tenantId,
+                projectId,
+                sessionId,
+                name,
+                thinkEngine,
+                thinkEngineVersion,
+                title,
+                goal,
+                parentProcessId,
                 /*engineParams*/ null);
     }
 
@@ -106,8 +121,16 @@ public class ThinkProcessService {
             @Nullable String goal,
             @Nullable String parentProcessId,
             @Nullable Map<String, Object> engineParams) {
-        return create(tenantId, projectId, sessionId, name, thinkEngine,
-                thinkEngineVersion, title, goal, parentProcessId,
+        return create(
+                tenantId,
+                projectId,
+                sessionId,
+                name,
+                thinkEngine,
+                thinkEngineVersion,
+                title,
+                goal,
+                parentProcessId,
                 engineParams,
                 /*recipeName*/ null,
                 /*promptOverride*/ null,
@@ -134,10 +157,21 @@ public class ThinkProcessService {
             @Nullable String promptOverride,
             @Nullable PromptMode promptMode,
             @Nullable Set<String> allowedToolsOverride) {
-        return create(tenantId, projectId, sessionId, name, thinkEngine,
-                thinkEngineVersion, title, goal, parentProcessId,
-                engineParams, recipeName,
-                promptOverride, /*promptOverrideAppend*/ null, promptMode,
+        return create(
+                tenantId,
+                projectId,
+                sessionId,
+                name,
+                thinkEngine,
+                thinkEngineVersion,
+                title,
+                goal,
+                parentProcessId,
+                engineParams,
+                recipeName,
+                promptOverride, /*promptOverrideAppend*/
+                null,
+                promptMode,
                 /*dataRelayCorrectionOverride*/ null,
                 allowedToolsOverride,
                 /*connectionProfile*/ null,
@@ -173,16 +207,12 @@ public class ThinkProcessService {
             @Nullable List<String> defaultActiveSkills,
             @Nullable Set<String> allowedSkillsOverride) {
         if (repository.existsByTenantIdAndSessionIdAndName(tenantId, sessionId, name)) {
-            throw new ThinkProcessAlreadyExistsException(
-                    "Think-process '" + name + "' already exists in session '"
-                            + sessionId + "' (tenant='" + tenantId + "')");
+            throw new ThinkProcessAlreadyExistsException("Think-process '" + name + "' already exists in session '"
+                    + sessionId + "' (tenant='" + tenantId + "')");
         }
-        Map<String, Object> params = engineParams == null
-                ? new LinkedHashMap<>() : new LinkedHashMap<>(engineParams);
-        Set<String> allowed = allowedToolsOverride == null
-                ? null : new LinkedHashSet<>(allowedToolsOverride);
-        Set<String> skillWhitelist = allowedSkillsOverride == null
-                ? null : new LinkedHashSet<>(allowedSkillsOverride);
+        Map<String, Object> params = engineParams == null ? new LinkedHashMap<>() : new LinkedHashMap<>(engineParams);
+        Set<String> allowed = allowedToolsOverride == null ? null : new LinkedHashSet<>(allowedToolsOverride);
+        Set<String> skillWhitelist = allowedSkillsOverride == null ? null : new LinkedHashSet<>(allowedSkillsOverride);
         List<ActiveSkillRefEmbedded> seededSkills = seedActiveSkills(defaultActiveSkills);
         ThinkProcessDocument doc = ThinkProcessDocument.builder()
                 .tenantId(tenantId)
@@ -207,10 +237,21 @@ public class ThinkProcessService {
                 .status(ThinkProcessStatus.INIT)
                 .build();
         ThinkProcessDocument saved = repository.save(doc);
-        log.info("Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}' recipe='{}' profile='{}' skills={} params={}",
-                tenantId, sessionId, name, thinkEngine, saved.getId(), parentProcessId,
-                recipeName, connectionProfile,
-                seededSkills.isEmpty() ? "[]" : seededSkills.stream().map(ActiveSkillRefEmbedded::getName).toList(),
+        log.info(
+                "Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}' recipe='{}' profile='{}' skills={} params={}",
+                tenantId,
+                sessionId,
+                name,
+                thinkEngine,
+                saved.getId(),
+                parentProcessId,
+                recipeName,
+                connectionProfile,
+                seededSkills.isEmpty()
+                        ? "[]"
+                        : seededSkills.stream()
+                                .map(ActiveSkillRefEmbedded::getName)
+                                .toList(),
                 params.isEmpty() ? "{}" : params.keySet());
         return saved;
     }
@@ -225,8 +266,7 @@ public class ThinkProcessService {
      * {@link SkillScope#RESOURCE}; engines re-resolve the actual scope
      * on every turn anyway.
      */
-    private static List<ActiveSkillRefEmbedded> seedActiveSkills(
-            @Nullable List<String> defaultActiveSkills) {
+    private static List<ActiveSkillRefEmbedded> seedActiveSkills(@Nullable List<String> defaultActiveSkills) {
         if (defaultActiveSkills == null || defaultActiveSkills.isEmpty()) {
             return new ArrayList<>();
         }
@@ -287,10 +327,14 @@ public class ThinkProcessService {
                 .promptMode(src.getPromptMode())
                 .dataRelayCorrectionOverride(src.getDataRelayCorrectionOverride())
                 .activeDelegationWorkerId(null)
-                .allowedToolsOverride(src.getAllowedToolsOverride() == null
-                        ? null : new LinkedHashSet<>(src.getAllowedToolsOverride()))
-                .allowedSkillsOverride(src.getAllowedSkillsOverride() == null
-                        ? null : new LinkedHashSet<>(src.getAllowedSkillsOverride()))
+                .allowedToolsOverride(
+                        src.getAllowedToolsOverride() == null
+                                ? null
+                                : new LinkedHashSet<>(src.getAllowedToolsOverride()))
+                .allowedSkillsOverride(
+                        src.getAllowedSkillsOverride() == null
+                                ? null
+                                : new LinkedHashSet<>(src.getAllowedSkillsOverride()))
                 .parentProcessId(null)
                 .activeSkills(new ArrayList<>(src.getActiveSkills()))
                 .status(ThinkProcessStatus.IDLE)
@@ -307,8 +351,11 @@ public class ThinkProcessService {
                 .lastPrakAt(null)
                 .build();
         ThinkProcessDocument saved = repository.save(copy);
-        log.info("Duplicated think-process source='{}' → copy='{}' session='{}'",
-                sourceProcessId, saved.getId(), newSessionId);
+        log.info(
+                "Duplicated think-process source='{}' → copy='{}' session='{}'",
+                sourceProcessId,
+                saved.getId(),
+                newSessionId);
         return Optional.of(saved);
     }
 
@@ -328,8 +375,7 @@ public class ThinkProcessService {
         return repository.findAllById(ids);
     }
 
-    public Optional<ThinkProcessDocument> findByName(
-            String tenantId, String sessionId, String name) {
+    public Optional<ThinkProcessDocument> findByName(String tenantId, String sessionId, String name) {
         return repository.findByTenantIdAndSessionIdAndName(tenantId, sessionId, name);
     }
 
@@ -340,8 +386,7 @@ public class ThinkProcessService {
      */
     public List<ThinkProcessDocument> findByProject(String tenantId, String projectId, int limit) {
         return repository.findByTenantIdAndProjectIdOrderByCreatedAtDesc(
-                tenantId, projectId,
-                org.springframework.data.domain.PageRequest.of(0, Math.max(1, limit)));
+                tenantId, projectId, org.springframework.data.domain.PageRequest.of(0, Math.max(1, limit)));
     }
 
     /**
@@ -355,11 +400,13 @@ public class ThinkProcessService {
      * archive/reactivate cycle left behind, and a page of the newest would miss
      * exactly the accounts nobody looks for again.
      */
-    public List<ThinkProcessDocument> findAllByProjectAndEngine(
-            String tenantId, String projectId, String thinkEngine) {
-        Query query = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("projectId").is(projectId)
-                .and("thinkEngine").is(thinkEngine));
+    public List<ThinkProcessDocument> findAllByProjectAndEngine(String tenantId, String projectId, String thinkEngine) {
+        Query query = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("projectId")
+                .is(projectId)
+                .and("thinkEngine")
+                .is(thinkEngine));
         return mongoTemplate.find(query, ThinkProcessDocument.class);
     }
 
@@ -375,8 +422,8 @@ public class ThinkProcessService {
         if (sessionIds.isEmpty()) {
             return List.of();
         }
-        Query query = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("sessionId").in(sessionIds));
+        Query query = new Query(
+                Criteria.where("tenantId").is(tenantId).and("sessionId").in(sessionIds));
         query.fields().include("_id");
         return mongoTemplate.find(query, ThinkProcessDocument.class).stream()
                 .map(ThinkProcessDocument::getId)
@@ -395,8 +442,8 @@ public class ThinkProcessService {
      * again.
      */
     public List<String> findIdsByProject(String tenantId, String projectId) {
-        Query query = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("projectId").is(projectId));
+        Query query = new Query(
+                Criteria.where("tenantId").is(tenantId).and("projectId").is(projectId));
         query.fields().include("_id");
         return mongoTemplate.find(query, ThinkProcessDocument.class).stream()
                 .map(ThinkProcessDocument::getId)
@@ -419,7 +466,9 @@ public class ThinkProcessService {
             return List.of();
         }
         return repository.findByTenantIdAndProjectIdAndThinkEngineInOrderByCreatedAtDesc(
-                tenantId, projectId, thinkEngines,
+                tenantId,
+                projectId,
+                thinkEngines,
                 org.springframework.data.domain.PageRequest.of(0, Math.max(1, limit)));
     }
 
@@ -457,8 +506,7 @@ public class ThinkProcessService {
      *
      * @see ProcessCounts
      */
-    public ProcessCounts countBySession(
-            String tenantId, String sessionId, @Nullable String excludeName) {
+    public ProcessCounts countBySession(String tenantId, String sessionId, @Nullable String excludeName) {
         Query query = new Query()
                 .addCriteria(Criteria.where("tenantId").is(tenantId))
                 .addCriteria(Criteria.where("sessionId").is(sessionId));
@@ -479,7 +527,9 @@ public class ThinkProcessService {
                 case RUNNING -> running++;
                 case BLOCKED -> blocked++;
                 case INIT, IDLE, PAUSED, SUSPENDED -> waiting++;
-                case CLOSED -> { /* terminal — audit only, never counted */ }
+                case CLOSED -> {
+                    /* terminal — audit only, never counted */
+                }
             }
         }
         return new ProcessCounts(running, waiting, blocked);
@@ -522,9 +572,10 @@ public class ThinkProcessService {
                 .addCriteria(Criteria.where("parentProcessId").exists(true).ne(null))
                 .addCriteria(Criteria.where("status").is(ThinkProcessStatus.BLOCKED))
                 .addCriteria(Criteria.where("updatedAt").lt(cutoff))
-                .addCriteria(new Criteria().orOperator(
-                        Criteria.where("pendingMessages").exists(false),
-                        Criteria.where("pendingMessages").size(0)));
+                .addCriteria(new Criteria()
+                        .orOperator(
+                                Criteria.where("pendingMessages").exists(false),
+                                Criteria.where("pendingMessages").size(0)));
         return mongoTemplate.find(query, ThinkProcessDocument.class);
     }
 
@@ -539,9 +590,9 @@ public class ThinkProcessService {
         }
         // The repository method takes tenantId for safety; resolve it
         // from the parent itself to keep the call-site lean.
-        return repository.findById(parentProcessId)
-                .map(parent -> repository.findByTenantIdAndParentProcessId(
-                        parent.getTenantId(), parentProcessId))
+        return repository
+                .findById(parentProcessId)
+                .map(parent -> repository.findByTenantIdAndParentProcessId(parent.getTenantId(), parentProcessId))
                 .orElse(List.of());
     }
 
@@ -577,8 +628,7 @@ public class ThinkProcessService {
         frontier.add(rootProcessId);
         while (!frontier.isEmpty()) {
             String parentId = frontier.poll();
-            for (ThinkProcessDocument child :
-                    repository.findByTenantIdAndParentProcessId(tenantId, parentId)) {
+            for (ThinkProcessDocument child : repository.findByTenantIdAndParentProcessId(tenantId, parentId)) {
                 String cid = child.getId();
                 if (cid == null) continue;
                 if (result.add(cid)) {
@@ -602,10 +652,8 @@ public class ThinkProcessService {
      */
     public boolean replaceEngineParams(String id, Map<String, Object> engineParams) {
         Query query = new Query(Criteria.where("_id").is(id));
-        Update update = new Update().set("engineParams",
-                engineParams == null ? new LinkedHashMap<>() : engineParams);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        Update update = new Update().set("engineParams", engineParams == null ? new LinkedHashMap<>() : engineParams);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 
@@ -624,8 +672,7 @@ public class ThinkProcessService {
     public boolean setHiddenFromUi(String id, boolean hidden) {
         Query query = new Query(Criteria.where("_id").is(id));
         Update update = new Update().set("hiddenFromUi", hidden);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 
@@ -639,8 +686,7 @@ public class ThinkProcessService {
     public boolean setTriggerOrigin(String id, TriggerOrigin origin) {
         Query query = new Query(Criteria.where("_id").is(id));
         Update update = new Update().set("triggerOrigin", origin);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 
@@ -653,10 +699,8 @@ public class ThinkProcessService {
      */
     public boolean replaceActiveSkills(String id, List<ActiveSkillRefEmbedded> activeSkills) {
         Query query = new Query(Criteria.where("_id").is(id));
-        Update update = new Update().set("activeSkills",
-                activeSkills == null ? new ArrayList<>() : activeSkills);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        Update update = new Update().set("activeSkills", activeSkills == null ? new ArrayList<>() : activeSkills);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 
@@ -670,8 +714,7 @@ public class ThinkProcessService {
     public boolean updateActiveDelegationWorkerId(String id, @Nullable String workerId) {
         Query query = new Query(Criteria.where("_id").is(id));
         Update update = new Update().set("activeDelegationWorkerId", workerId);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 
@@ -683,7 +726,8 @@ public class ThinkProcessService {
         Query query = new Query(Criteria.where("_id").is(id));
         Update update = new Update().inc("guardRounds", 1);
         ThinkProcessDocument updated = mongoTemplate.findAndModify(
-                query, update,
+                query,
+                update,
                 new org.springframework.data.mongodb.core.FindAndModifyOptions().returnNew(true),
                 ThinkProcessDocument.class);
         return updated == null ? -1 : updated.getGuardRounds();
@@ -707,8 +751,7 @@ public class ThinkProcessService {
      * {@code scriptBody} (mutually exclusive — a non-null value sets its
      * field and unsets the other; both {@code null} clears the override).
      */
-    public boolean setGuardOverride(
-            String id, @Nullable String scriptPath, @Nullable String scriptBody) {
+    public boolean setGuardOverride(String id, @Nullable String scriptPath, @Nullable String scriptBody) {
         Query query = new Query(Criteria.where("_id").is(id));
         Update update = new Update();
         if (scriptPath == null) {
@@ -721,8 +764,10 @@ public class ThinkProcessService {
         } else {
             update.set("guardScriptBodyOverride", scriptBody);
         }
-        return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
-                .getMatchedCount() > 0;
+        return mongoTemplate
+                        .updateFirst(query, update, ThinkProcessDocument.class)
+                        .getMatchedCount()
+                > 0;
     }
 
     /**
@@ -742,11 +787,11 @@ public class ThinkProcessService {
         }
         Query query = new Query(Criteria.where("_id").is(id));
         String path = "engineParamOverrides." + key;
-        Update update = value == null
-                ? new Update().unset(path)
-                : new Update().set(path, value);
-        return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
-                .getMatchedCount() > 0;
+        Update update = value == null ? new Update().unset(path) : new Update().set(path, value);
+        return mongoTemplate
+                        .updateFirst(query, update, ThinkProcessDocument.class)
+                        .getMatchedCount()
+                > 0;
     }
 
     /**
@@ -761,13 +806,13 @@ public class ThinkProcessService {
      * Returns {@code false} when the cursor was already at or beyond the new value.
      */
     public boolean updateLastPrakAt(String id, Instant lastPrakAt) {
-        Query query = new Query(Criteria.where("_id").is(id)
+        Query query = new Query(Criteria.where("_id")
+                .is(id)
                 .orOperator(
                         Criteria.where("lastPrakAt").is(null),
                         Criteria.where("lastPrakAt").lt(lastPrakAt)));
         Update update = new Update().set("lastPrakAt", lastPrakAt);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 
@@ -779,11 +824,9 @@ public class ThinkProcessService {
      * are part of their addressing contract.
      */
     public boolean renameClosedProcess(String id, String newName) {
-        Query query = new Query(Criteria.where("_id").is(id)
-                .and("status").is(ThinkProcessStatus.CLOSED));
+        Query query = new Query(Criteria.where("_id").is(id).and("status").is(ThinkProcessStatus.CLOSED));
         Update update = new Update().set("name", newName);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         if (result.getModifiedCount() == 1) {
             log.info("Renamed closed process id='{}' to name='{}'", id, newName);
             return true;
@@ -816,27 +859,16 @@ public class ThinkProcessService {
         // process. Without this, a process that went DONE/STALE between the
         // caller's read and here would be reset to a live status — a zombie in
         // the lane with its closeReason wiped. Mirrors closeProcess's guard.
-        Query query = new Query(Criteria.where("_id").is(id)
-                .and("status").ne(ThinkProcessStatus.CLOSED));
-        Update update = new Update()
-                .set("status", status)
-                .unset("closeReason");
+        Query query = new Query(Criteria.where("_id").is(id).and("status").ne(ThinkProcessStatus.CLOSED));
+        Update update = new Update().set("status", status).unset("closeReason");
         ThinkProcessDocument prior = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(false),
-                ThinkProcessDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(false), ThinkProcessDocument.class);
         if (prior == null) {
             return false;
         }
-        log.debug("Think-process status updated id='{}' {} -> {}",
-                id, prior.getStatus(), status);
+        log.debug("Think-process status updated id='{}' {} -> {}", id, prior.getStatus(), status);
         eventPublisher.publishEvent(new ThinkProcessStatusChangedEvent(
-                id,
-                prior.getTenantId(),
-                prior.getSessionId(),
-                prior.getParentProcessId(),
-                prior.getStatus(),
-                status));
+                id, prior.getTenantId(), prior.getSessionId(), prior.getParentProcessId(), prior.getStatus(), status));
         return true;
     }
 
@@ -850,20 +882,14 @@ public class ThinkProcessService {
      * @return {@code true} if the row existed and was transitioned
      */
     public boolean closeProcess(String id, CloseReason reason) {
-        Query query = new Query(Criteria.where("_id").is(id)
-                .and("status").ne(ThinkProcessStatus.CLOSED));
-        Update update = new Update()
-                .set("status", ThinkProcessStatus.CLOSED)
-                .set("closeReason", reason);
+        Query query = new Query(Criteria.where("_id").is(id).and("status").ne(ThinkProcessStatus.CLOSED));
+        Update update = new Update().set("status", ThinkProcessStatus.CLOSED).set("closeReason", reason);
         ThinkProcessDocument prior = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(false),
-                ThinkProcessDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(false), ThinkProcessDocument.class);
         if (prior == null) {
             return false;
         }
-        log.info("Think-process closed id='{}' {} -> CLOSED reason={}",
-                id, prior.getStatus(), reason);
+        log.info("Think-process closed id='{}' {} -> CLOSED reason={}", id, prior.getStatus(), reason);
         eventPublisher.publishEvent(new ThinkProcessStatusChangedEvent(
                 id,
                 prior.getTenantId(),
@@ -886,13 +912,11 @@ public class ThinkProcessService {
      * @return {@code true} if this call won the claim (first emission)
      */
     public boolean claimFinalReplyEmission(String id) {
-        Query query = new Query(Criteria.where("_id").is(id)
-                .and("finalReplyEmitted").ne(true));
+        Query query =
+                new Query(Criteria.where("_id").is(id).and("finalReplyEmitted").ne(true));
         Update update = new Update().set("finalReplyEmitted", true);
         ThinkProcessDocument prior = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(false),
-                ThinkProcessDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(false), ThinkProcessDocument.class);
         return prior != null;
     }
 
@@ -908,15 +932,16 @@ public class ThinkProcessService {
      * No event fires — status itself is unchanged.
      */
     public void overrideCloseReason(String id, CloseReason newReason) {
-        Query query = new Query(Criteria.where("_id").is(id)
-                .and("status").is(ThinkProcessStatus.CLOSED)
-                .and("closeReason").is(CloseReason.STOPPED));
+        Query query = new Query(Criteria.where("_id")
+                .is(id)
+                .and("status")
+                .is(ThinkProcessStatus.CLOSED)
+                .and("closeReason")
+                .is(CloseReason.STOPPED));
         Update update = new Update().set("closeReason", newReason);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         if (result.getModifiedCount() == 1) {
-            log.debug("Think-process closeReason rewritten id='{}' STOPPED -> {}",
-                    id, newReason);
+            log.debug("Think-process closeReason rewritten id='{}' STOPPED -> {}", id, newReason);
         }
     }
 
@@ -953,19 +978,20 @@ public class ThinkProcessService {
      * The receiver-side dedup logic ignores the sender; it's audit and
      * routing metadata for future cross-pod replay.
      */
-    public boolean appendPending(String processId, PendingMessageDocument message,
-                                 @Nullable String senderProcessId) {
+    public boolean appendPending(String processId, PendingMessageDocument message, @Nullable String senderProcessId) {
         Optional<ThinkProcessDocument> target = repository.findById(processId);
         if (target.isEmpty()) {
             log.warn("Pending append failed — process not found id='{}'", processId);
             return false;
         }
         EngineMessageDocument incoming = toEngineMessage(
-                message, processId, target.get().getTenantId(),
-                senderProcessId == null ? "" : senderProcessId);
+                message, processId, target.get().getTenantId(), senderProcessId == null ? "" : senderProcessId);
         engineMessageService.acceptDelivery(incoming);
-        log.debug("Pending append id='{}' type={} messageId='{}' sender='{}'",
-                processId, message.getType(), incoming.getMessageId(),
+        log.debug(
+                "Pending append id='{}' type={} messageId='{}' sender='{}'",
+                processId,
+                message.getType(),
+                incoming.getMessageId(),
                 incoming.getSenderProcessId());
         return true;
     }
@@ -984,7 +1010,8 @@ public class ThinkProcessService {
         if (docs.isEmpty()) {
             return Collections.emptyList();
         }
-        List<String> ids = docs.stream().map(EngineMessageDocument::getMessageId).toList();
+        List<String> ids =
+                docs.stream().map(EngineMessageDocument::getMessageId).toList();
         engineMessageService.markDrained(ids);
         log.debug("Pending drain id='{}' count={}", processId, docs.size());
         return docs.stream().map(this::toPendingMessage).toList();
@@ -998,10 +1025,8 @@ public class ThinkProcessService {
     // before; they go away with the façade.
 
     private EngineMessageDocument toEngineMessage(
-            PendingMessageDocument m, String targetProcessId, String tenantId,
-            String senderProcessId) {
-        return PendingMessageMapper.toEngineMessage(
-                m, targetProcessId, tenantId, senderProcessId);
+            PendingMessageDocument m, String targetProcessId, String tenantId, String senderProcessId) {
+        return PendingMessageMapper.toEngineMessage(m, targetProcessId, tenantId, senderProcessId);
     }
 
     private PendingMessageDocument toPendingMessage(EngineMessageDocument e) {
@@ -1020,8 +1045,10 @@ public class ThinkProcessService {
     public boolean requestHalt(String id) {
         Query query = new Query(Criteria.where("_id").is(id));
         Update update = new Update().set("haltRequested", true);
-        return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
-                .getModifiedCount() > 0;
+        return mongoTemplate
+                        .updateFirst(query, update, ThinkProcessDocument.class)
+                        .getModifiedCount()
+                > 0;
     }
 
     /**
@@ -1040,7 +1067,8 @@ public class ThinkProcessService {
      * engines call this between drain-loop iterations.
      */
     public boolean isHaltRequested(String id) {
-        return repository.findById(id)
+        return repository
+                .findById(id)
                 .map(ThinkProcessDocument::isHaltRequested)
                 .orElse(false);
     }
@@ -1067,8 +1095,7 @@ public class ThinkProcessService {
     public boolean updateMode(String id, ProcessMode mode) {
         Query query = new Query(Criteria.where("_id").is(id));
         Update update = new Update().set("mode", mode);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 
@@ -1088,8 +1115,7 @@ public class ThinkProcessService {
     public int updateBoundProfileForSession(String sessionId, @Nullable String profile) {
         Query query = new Query(Criteria.where("sessionId").is(sessionId));
         Update update = new Update().set("boundProfile", profile);
-        UpdateResult result = mongoTemplate.updateMulti(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateMulti(query, update, ThinkProcessDocument.class);
         return (int) result.getModifiedCount();
     }
 
@@ -1104,15 +1130,13 @@ public class ThinkProcessService {
      * @return number of processes retargeted
      */
     public int retargetProject(String tenantId, String sessionId, String newProjectId) {
-        Query query = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("sessionId").is(sessionId));
+        Query query = new Query(
+                Criteria.where("tenantId").is(tenantId).and("sessionId").is(sessionId));
         Update update = new Update().set("projectId", newProjectId);
-        UpdateResult result = mongoTemplate.updateMulti(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateMulti(query, update, ThinkProcessDocument.class);
         int n = (int) result.getModifiedCount();
         if (n > 0) {
-            log.info("Retargeted {} think-process(es) of session='{}' to projectId='{}'",
-                    n, sessionId, newProjectId);
+            log.info("Retargeted {} think-process(es) of session='{}' to projectId='{}'", n, sessionId, newProjectId);
         }
         return n;
     }
@@ -1150,20 +1174,18 @@ public class ThinkProcessService {
      * @return {@code true} if the document existed and was modified
      */
     public boolean upsertWorkerLink(String processId, WorkerLinkSnapshot snapshot) {
-        if (snapshot.getWorkerProcessId() == null || snapshot.getWorkerProcessId().isBlank()) {
-            throw new IllegalArgumentException(
-                    "WorkerLinkSnapshot.workerProcessId must be set");
+        if (snapshot.getWorkerProcessId() == null
+                || snapshot.getWorkerProcessId().isBlank()) {
+            throw new IllegalArgumentException("WorkerLinkSnapshot.workerProcessId must be set");
         }
         Query query = new Query(Criteria.where("_id").is(processId));
         mongoTemplate.updateFirst(
                 query,
-                new Update().pull("workerLinks", new org.bson.Document(
-                        "workerProcessId", snapshot.getWorkerProcessId())),
+                new Update()
+                        .pull("workerLinks", new org.bson.Document("workerProcessId", snapshot.getWorkerProcessId())),
                 ThinkProcessDocument.class);
         UpdateResult result = mongoTemplate.updateFirst(
-                query,
-                new Update().push("workerLinks", snapshot),
-                ThinkProcessDocument.class);
+                query, new Update().push("workerLinks", snapshot), ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 
@@ -1175,10 +1197,8 @@ public class ThinkProcessService {
      */
     public boolean removeWorkerLink(String processId, String workerProcessId) {
         Query query = new Query(Criteria.where("_id").is(processId));
-        Update update = new Update().pull("workerLinks",
-                new org.bson.Document("workerProcessId", workerProcessId));
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        Update update = new Update().pull("workerLinks", new org.bson.Document("workerProcessId", workerProcessId));
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 
@@ -1215,17 +1235,14 @@ public class ThinkProcessService {
      * @return {@code true} if the row exists and was updated
      */
     public boolean setWorkingProjectId(String processId, @Nullable String workingProjectId) {
-        String normalised = (workingProjectId == null || workingProjectId.isBlank())
-                ? null : workingProjectId.trim();
+        String normalised = (workingProjectId == null || workingProjectId.isBlank()) ? null : workingProjectId.trim();
         Query query = new Query(Criteria.where("_id").is(processId));
         Update update = normalised == null
                 ? new Update().unset("workingProjectId")
                 : new Update().set("workingProjectId", normalised);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         if (result.getModifiedCount() > 0) {
-            log.debug("Eddie working-project set id='{}' workingProjectId={}",
-                    processId, normalised);
+            log.debug("Eddie working-project set id='{}' workingProjectId={}", processId, normalised);
             return true;
         }
         return false;
@@ -1247,8 +1264,21 @@ public class ThinkProcessService {
     public boolean setTodos(String id, List<TodoItem> todos) {
         Query query = new Query(Criteria.where("_id").is(id));
         Update update = new Update().set("todos", new ArrayList<>(todos));
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
+     * Flips a process's {@link ThinkProcessDocument#isSilent machinery
+     * flag} — set by the owning engine right after spawn for internal
+     * workers whose chat transcript must stay out of the session-wide
+     * scrollback and live push (Zaphod session heads). Atomic single-field
+     * update, no lifecycle interplay.
+     */
+    public boolean setSilent(String processId, boolean silent) {
+        Query query = new Query(Criteria.where("_id").is(processId));
+        Update update = new Update().set("silent", silent);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 
@@ -1278,8 +1308,7 @@ public class ThinkProcessService {
                 return null;
             }
             ThinkProcessDocument doc = opt.get();
-            List<TodoItem> current = doc.getTodos() == null
-                    ? new ArrayList<>() : new ArrayList<>(doc.getTodos());
+            List<TodoItem> current = doc.getTodos() == null ? new ArrayList<>() : new ArrayList<>(doc.getTodos());
             int next = nextTodoIdSeed(current);
             List<TodoItem> assigned = new ArrayList<>(newItems.size());
             for (TodoItem in : newItems) {
@@ -1292,13 +1321,9 @@ public class ThinkProcessService {
                 assigned.add(withId);
                 current.add(withId);
             }
-            Query query = new Query(Criteria.where("_id").is(id)
-                    .and("version").is(doc.getVersion()));
-            Update update = new Update()
-                    .set("todos", current)
-                    .inc("version", 1);
-            UpdateResult result = mongoTemplate.updateFirst(
-                    query, update, ThinkProcessDocument.class);
+            Query query = new Query(Criteria.where("_id").is(id).and("version").is(doc.getVersion()));
+            Update update = new Update().set("todos", current).inc("version", 1);
+            UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
             if (result.getModifiedCount() > 0) {
                 return assigned;
             }
@@ -1353,10 +1378,8 @@ public class ThinkProcessService {
                     continue;
                 }
                 TodoStatus newStatus = p.status() != null ? p.status() : item.getStatus();
-                String newContent = p.content() != null && !p.content().isBlank()
-                        ? p.content() : item.getContent();
-                String newActiveForm = p.activeForm() != null
-                        ? p.activeForm() : item.getActiveForm();
+                String newContent = p.content() != null && !p.content().isBlank() ? p.content() : item.getContent();
+                String newActiveForm = p.activeForm() != null ? p.activeForm() : item.getActiveForm();
                 if (newStatus == item.getStatus()
                         && java.util.Objects.equals(newContent, item.getContent())
                         && java.util.Objects.equals(newActiveForm, item.getActiveForm())) {
@@ -1374,13 +1397,9 @@ public class ThinkProcessService {
             if (!changed) {
                 return false;
             }
-            Query query = new Query(Criteria.where("_id").is(id)
-                    .and("version").is(doc.getVersion()));
-            Update update = new Update()
-                    .set("todos", updated)
-                    .inc("version", 1);
-            UpdateResult result = mongoTemplate.updateFirst(
-                    query, update, ThinkProcessDocument.class);
+            Query query = new Query(Criteria.where("_id").is(id).and("version").is(doc.getVersion()));
+            Update update = new Update().set("todos", updated).inc("version", 1);
+            UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
             if (result.getModifiedCount() > 0) {
                 return true;
             }
@@ -1422,13 +1441,9 @@ public class ThinkProcessService {
             if (removed == 0) {
                 return 0;
             }
-            Query query = new Query(Criteria.where("_id").is(id)
-                    .and("version").is(doc.getVersion()));
-            Update update = new Update()
-                    .set("todos", kept)
-                    .inc("version", 1);
-            UpdateResult result = mongoTemplate.updateFirst(
-                    query, update, ThinkProcessDocument.class);
+            Query query = new Query(Criteria.where("_id").is(id).and("version").is(doc.getVersion()));
+            Update update = new Update().set("todos", kept).inc("version", 1);
+            UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
             if (result.getModifiedCount() > 0) {
                 return removed;
             }
@@ -1500,13 +1515,9 @@ public class ThinkProcessService {
             if (!changed) {
                 return false;
             }
-            Query query = new Query(Criteria.where("_id").is(id)
-                    .and("version").is(doc.getVersion()));
-            Update update = new Update()
-                    .set("todos", updated)
-                    .inc("version", 1);
-            UpdateResult result = mongoTemplate.updateFirst(
-                    query, update, ThinkProcessDocument.class);
+            Query query = new Query(Criteria.where("_id").is(id).and("version").is(doc.getVersion()));
+            Update update = new Update().set("todos", updated).inc("version", 1);
+            UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
             if (result.getModifiedCount() > 0) {
                 return true;
             }
@@ -1538,8 +1549,10 @@ public class ThinkProcessService {
         }
         Query query = new Query(Criteria.where("_id").is(id));
         Update update = new Update().set("activatedDeferredTools." + toolName, at);
-        return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
-                .getModifiedCount() > 0;
+        return mongoTemplate
+                        .updateFirst(query, update, ThinkProcessDocument.class)
+                        .getModifiedCount()
+                > 0;
     }
 
     /**
@@ -1587,13 +1600,9 @@ public class ThinkProcessService {
                 }
             }
             if (removed == 0) return 0;
-            Query query = new Query(Criteria.where("_id").is(id)
-                    .and("version").is(doc.getVersion()));
-            Update update = new Update()
-                    .set("activatedDeferredTools", kept)
-                    .inc("version", 1);
-            UpdateResult result = mongoTemplate.updateFirst(
-                    query, update, ThinkProcessDocument.class);
+            Query query = new Query(Criteria.where("_id").is(id).and("version").is(doc.getVersion()));
+            Update update = new Update().set("activatedDeferredTools", kept).inc("version", 1);
+            UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
             if (result.getModifiedCount() > 0) return removed;
             // optimistic-lock conflict — retry
         }
@@ -1623,9 +1632,7 @@ public class ThinkProcessService {
         if (processId == null || processId.isBlank() || entry == null) return;
         int slice = Math.max(1, maxEntries);
         Query q = new Query(Criteria.where("_id").is(processId));
-        Update u = new Update().push("readState")
-                .slice(-slice)
-                .each(entry);
+        Update u = new Update().push("readState").slice(-slice).each(entry);
         mongoTemplate.updateFirst(q, u, ThinkProcessDocument.class);
     }
 
@@ -1640,8 +1647,7 @@ public class ThinkProcessService {
      * <p>No-op (returns {@code false}) for blank input.
      */
     public boolean tryAddShownOnce(String processId, String marker) {
-        if (processId == null || processId.isBlank()
-                || marker == null || marker.isBlank()) {
+        if (processId == null || processId.isBlank() || marker == null || marker.isBlank()) {
             return false;
         }
         Query q = new Query(Criteria.where("_id").is(processId));
@@ -1664,8 +1670,7 @@ public class ThinkProcessService {
     public void clearVolatileContextState(String processId) {
         if (processId == null || processId.isBlank()) return;
         Query q = new Query(Criteria.where("_id").is(processId));
-        Update u = new Update().set("readState", new ArrayList<>())
-                .set("shownOnce", new LinkedHashSet<>());
+        Update u = new Update().set("readState", new ArrayList<>()).set("shownOnce", new LinkedHashSet<>());
         mongoTemplate.updateFirst(q, u, ThinkProcessDocument.class);
     }
 
@@ -1677,8 +1682,7 @@ public class ThinkProcessService {
     public long deleteBySession(String tenantId, String sessionId) {
         long n = repository.deleteByTenantIdAndSessionId(tenantId, sessionId);
         if (n > 0) {
-            log.info("Deleted {} think-processes for session tenant='{}' session='{}'",
-                    n, tenantId, sessionId);
+            log.info("Deleted {} think-processes for session tenant='{}' session='{}'", n, tenantId, sessionId);
         }
         return n;
     }

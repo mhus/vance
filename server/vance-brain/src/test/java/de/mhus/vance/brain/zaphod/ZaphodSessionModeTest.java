@@ -35,6 +35,7 @@ import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
+import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
@@ -52,6 +53,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -314,6 +316,88 @@ class ZaphodSessionModeTest {
         // Healthy head keeps its child — persona continuity.
         assertThat(state.getHeads().get(1).getSpawnedProcessId()).isEqualTo("child-2");
         assertThat(state.getHeads().get(1).getReplies()).isEmpty();
+    }
+
+    @Test
+    void runTurn_midTurn_freshHeadSpawn_isMarkedSilentMachinery() {
+        // Session-mode heads are machinery: their transcripts must not
+        // narrate into the session chat (silent flag → scrollback +
+        // live-push filters). BATCH heads keep their visible transcript.
+        ThinkProcessDocument process = sessionProcess(null);
+        ZaphodState state = runningStateWithPendingHeads();
+        state.getHeads().get(0).setSpawnedProcessId(null);
+        seedState(process, state);
+        when(thinkProcessService.findById("p1")).thenReturn(Optional.of(process));
+        ThinkProcessDocument child = ThinkProcessDocument.builder()
+                .id("child-1")
+                .tenantId("t")
+                .sessionId("s1")
+                .name("zaphod-p1-optimist")
+                .thinkEngine("ford")
+                .status(ThinkProcessStatus.IDLE)
+                .build();
+        when(thinkProcessService.create(
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any(),
+                        Mockito.any()))
+                .thenReturn(child);
+        de.mhus.vance.brain.recipe.AppliedRecipe applied = new de.mhus.vance.brain.recipe.AppliedRecipe(
+                "council-member",
+                "ford",
+                Map.of(),
+                /*promptOverride*/ null, /*promptOverrideAppend*/
+                null,
+                /*promptMode*/ null, /*dataRelayCorrection*/
+                null,
+                /*effectiveAllowedTools*/ Set.of("respond"),
+                /*connectionProfile*/ null, /*defaultActiveSkills*/
+                List.of(),
+                /*allowedSkills*/ null,
+                de.mhus.vance.brain.recipe.RecipeSource.VANCE,
+                /*overriddenParamKeys*/ List.of(),
+                /*sessionLifecycleConfig*/ null);
+        when(recipeResolver.apply(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any()))
+                .thenReturn(applied);
+        ThinkEngineService engineService = mock(ThinkEngineService.class);
+        ThinkEngine fordEngine = mock(ThinkEngine.class);
+        when(fordEngine.name()).thenReturn("ford");
+        when(fordEngine.version()).thenReturn("1");
+        when(engineService.resolve("ford")).thenReturn(Optional.of(fordEngine));
+        when(thinkEngineServiceProvider.getObject()).thenReturn(engineService);
+        when(laneScheduler.submit(eq("child-1"), any(Runnable.class)))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        when(chatMessageService.history("t", "s1", "child-1"))
+                .thenReturn(List.of(ChatMessageDocument.builder()
+                        .tenantId("t")
+                        .sessionId("s1")
+                        .thinkProcessId("child-1")
+                        .role(ChatRole.ASSISTANT)
+                        .content("I like option A!")
+                        .build()));
+
+        engine.runTurn(process, ctx);
+
+        // The core of fix #1: the head was spawned and marked silent.
+        verify(thinkProcessService).setSilent("child-1", true);
+        ZaphodState persisted = lastPersistedState(process);
+        assertThat(persisted.getHeads().get(0).getSpawnedProcessId()).isEqualTo("child-1");
+        assertThat(persisted.getHeads().get(0).getReplies()).containsExactly("I like option A!");
     }
 
     // ──────────────────── mid-turn head drive ────────────────────

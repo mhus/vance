@@ -26,10 +26,13 @@ params:
   # council-three-perspectives. The heads are independent Ford
   # workers and don't inherit this.
   thinking: medium
-  # Synthesis call falls through to the fast tier if the tenant
-  # default is rate-limited.
-  fallbackModels:
-    - default:fast
+  # Synthesis model chain, pinned on purpose: without an explicit
+  # model param the combine step resolves the tenant's raw default
+  # pair — which can name a provider instance without a known wire
+  # type and hard-fail the turn ("Unknown provider wire-name").
+  # Analyze tier primary, fast tier fallback. The heads pin their
+  # own model via council-member.
+  model: default:analyze,default:fast
   heads:
     - name: optimist
       recipe: council-member

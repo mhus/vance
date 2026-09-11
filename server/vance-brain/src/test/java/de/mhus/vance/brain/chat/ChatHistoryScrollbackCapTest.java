@@ -22,11 +22,9 @@ class ChatHistoryScrollbackCapTest {
 
     @Test
     void underCap_returnsEverythingUntouched() {
-        List<ChatMessageDocument> input = List.of(
-                msg("a", CHAT), msg("b", WORKER), msg("c", CHAT));
+        List<ChatMessageDocument> input = List.of(msg("a", CHAT), msg("b", WORKER), msg("c", CHAT));
 
-        List<ChatMessageDocument> out =
-                ChatHistoryController.applyScrollbackCap(input, CHAT, 10);
+        List<ChatMessageDocument> out = ChatHistoryController.applyScrollbackCap(input, CHAT, 10);
 
         assertThat(out).isSameAs(input);
     }
@@ -43,11 +41,11 @@ class ChatHistoryScrollbackCapTest {
             input.add(msg("note" + i, WORKER));
         }
 
-        List<ChatMessageDocument> out =
-                ChatHistoryController.applyScrollbackCap(input, CHAT, 10);
+        List<ChatMessageDocument> out = ChatHistoryController.applyScrollbackCap(input, CHAT, 10);
 
         assertThat(out).hasSize(10);
-        assertThat(out).extracting(ChatMessageDocument::getId)
+        assertThat(out)
+                .extracting(ChatMessageDocument::getId)
                 .contains("own1", "own2", "own3", "own4", "own5")
                 // remaining budget goes to the newest notes
                 .contains("note46", "note50")
@@ -62,10 +60,10 @@ class ChatHistoryScrollbackCapTest {
         }
         input.add(msg("note1", WORKER));
 
-        List<ChatMessageDocument> out =
-                ChatHistoryController.applyScrollbackCap(input, CHAT, 5);
+        List<ChatMessageDocument> out = ChatHistoryController.applyScrollbackCap(input, CHAT, 5);
 
-        assertThat(out).extracting(ChatMessageDocument::getId)
+        assertThat(out)
+                .extracting(ChatMessageDocument::getId)
                 .containsExactly("own8", "own9", "own10", "own11", "own12");
     }
 
@@ -76,13 +74,11 @@ class ChatHistoryScrollbackCapTest {
                 msg("own2", CHAT), msg("note2", WORKER),
                 msg("own3", CHAT), msg("note3", WORKER));
 
-        List<ChatMessageDocument> out =
-                ChatHistoryController.applyScrollbackCap(input, CHAT, 4);
+        List<ChatMessageDocument> out = ChatHistoryController.applyScrollbackCap(input, CHAT, 4);
 
         // own1..3 fit, one budget slot left → newest note. Order stays as in
         // the input, not grouped per process.
-        assertThat(out).extracting(ChatMessageDocument::getId)
-                .containsExactly("own1", "own2", "own3", "note3");
+        assertThat(out).extracting(ChatMessageDocument::getId).containsExactly("own1", "own2", "own3", "note3");
     }
 
     @Test
@@ -92,11 +88,34 @@ class ChatHistoryScrollbackCapTest {
             input.add(msg("note" + i, WORKER));
         }
 
-        List<ChatMessageDocument> out =
-                ChatHistoryController.applyScrollbackCap(input, null, 2);
+        List<ChatMessageDocument> out = ChatHistoryController.applyScrollbackCap(input, null, 2);
 
-        assertThat(out).extracting(ChatMessageDocument::getId)
-                .containsExactly("note5", "note6");
+        assertThat(out).extracting(ChatMessageDocument::getId).containsExactly("note5", "note6");
+    }
+
+    @Test
+    void excludeSilent_dropsMachineryTranscriptsKeepsEverythingElse() {
+        // Zaphod session heads are silent machinery — their messages
+        // must not appear in the session-wide scrollback (the live-push
+        // side is ChatMessageNotificationDispatcherSilentTest).
+        List<ChatMessageDocument> input = List.of(
+                msg("own1", CHAT),
+                msg("head1", "zaphod-head"),
+                msg("own2", CHAT),
+                msg("head2", "zaphod-head"),
+                msg("note1", WORKER));
+
+        List<ChatMessageDocument> out = ChatHistoryController.excludeSilent(input, java.util.Set.of("zaphod-head"));
+
+        assertThat(out).extracting(ChatMessageDocument::getId).containsExactly("own1", "own2", "note1");
+    }
+
+    @Test
+    void excludeSilent_emptySet_returnsInputUnchanged() {
+        List<ChatMessageDocument> input = List.of(msg("a", CHAT), msg("b", WORKER));
+
+        assertThat(ChatHistoryController.excludeSilent(input, java.util.Set.of()))
+                .isSameAs(input);
     }
 
     private static ChatMessageDocument msg(String id, String processId) {

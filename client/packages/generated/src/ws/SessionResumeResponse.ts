@@ -3,6 +3,7 @@
  Source: de.mhus.vance.api.ws.SessionResumeResponse
 */
 
+import { ProcessPlanState } from '../thinkprocess/ProcessPlanState';
 import { ActiveProcessRef } from '../thinkprocess/ActiveProcessRef';
 
 export interface SessionResumeResponse {
@@ -10,4 +11,5 @@ export interface SessionResumeResponse {
   projectId: string;
   chatProcessName?: string;
   activeProcesses: ActiveProcessRef[];
+  planStates: ProcessPlanState[];
 }

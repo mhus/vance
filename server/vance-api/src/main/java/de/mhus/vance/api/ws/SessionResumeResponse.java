@@ -53,4 +53,18 @@ public class SessionResumeResponse {
      * can leave a spinner nothing will ever close.
      */
     private java.util.List<de.mhus.vance.api.thinkprocess.ActiveProcessRef> activeProcesses;
+
+    /**
+     * The persisted plan state of the session's processes (non-CLOSED,
+     * with a non-NORMAL mode or a non-empty todo list) — empty when no
+     * process is showing a plan.
+     *
+     * <p>Same carrier rationale as {@link #activeProcesses}: a freshly
+     * bound client cannot yet correlate {@code todos-updated} /
+     * {@code process-mode-changed} frames — it learns its chat-process
+     * pointer only after the bind completes — so the restore rides the
+     * reply itself. See {@code specification/public/live-ws.md} §5.2b.
+     */
+    @Builder.Default
+    private java.util.List<de.mhus.vance.api.thinkprocess.ProcessPlanState> planStates = new java.util.ArrayList<>();
 }

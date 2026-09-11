@@ -269,6 +269,7 @@ public class SessionResumeHandler implements WsHandler {
                 .projectId(doc.getProjectId())
                 .chatProcessName(chatProcessName)
                 .activeProcesses(activeProcesses(doc))
+                .planStates(planStateInitialPusher.collectPlanStates(ctx.getTenantId(), doc.getSessionId()))
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.SESSION_RESUME, response);
     }

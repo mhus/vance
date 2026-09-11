@@ -60,4 +60,15 @@ public class SessionBootstrapResponse {
 
     /** Engine name behind {@link #chatProcessId}, e.g. {@code "arthur"}. */
     private @Nullable String chatEngine;
+
+    /**
+     * The persisted plan state of the session's processes (non-CLOSED,
+     * with a non-NORMAL mode or a non-empty todo list) — empty when no
+     * process is showing a plan. Same carrier rationale as the resume
+     * reply's {@code activeProcesses}: the client cannot correlate plan
+     * frames until the bind completes, so the restore rides the reply.
+     * See {@code specification/public/live-ws.md} §5.2b.
+     */
+    @Builder.Default
+    private List<ProcessPlanState> planStates = new ArrayList<>();
 }

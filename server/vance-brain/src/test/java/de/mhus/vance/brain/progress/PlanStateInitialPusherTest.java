@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.thinkprocess.ProcessModeChangedNotification;
+import de.mhus.vance.api.thinkprocess.ProcessPlanState;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
@@ -129,5 +130,30 @@ class PlanStateInitialPusherTest {
         pusher.pushInitial(wsSession, TENANT, SESSION);
 
         verify(sender).sendNotification(any(), any(), any());
+    }
+
+    @Test
+    void collectReturnsOnlyProcessesWithSomethingToShow() {
+        // CLOSED with todos — historical record, not a live plan.
+        ThinkProcessDocument closed = process("frankie-stopped", ThinkProcessStatus.CLOSED);
+        closed.setTodos(List.of(TodoItem.builder().id("1").content("leftover").build()));
+        // IDLE, NORMAL, no todos — nothing to restore.
+        ThinkProcessDocument plain = process("worker-1", ThinkProcessStatus.IDLE);
+        // Frankie/Benjy shape: NORMAL mode, todos present.
+        ThinkProcessDocument frankie = process("chat", ThinkProcessStatus.RUNNING);
+        frankie.setTodos(List.of(TodoItem.builder().id("1").content("item one").build()));
+        // Arthur shape: EXECUTING mode, todos empty.
+        ThinkProcessDocument arthur = process("arthur", ThinkProcessStatus.BLOCKED);
+        arthur.setMode(ProcessMode.EXECUTING);
+        when(thinkProcessService.findBySession(TENANT, SESSION)).thenReturn(List.of(closed, plain, frankie, arthur));
+
+        java.util.List<ProcessPlanState> states = pusher.collectPlanStates(TENANT, SESSION);
+
+        org.assertj.core.api.Assertions.assertThat(states)
+                .extracting(ProcessPlanState::getProcessName)
+                .containsExactly("chat", "arthur");
+        org.assertj.core.api.Assertions.assertThat(states.getFirst().getMode()).isEqualTo(ProcessMode.NORMAL);
+        org.assertj.core.api.Assertions.assertThat(states.getFirst().getTodos()).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(states.get(1).getMode()).isEqualTo(ProcessMode.EXECUTING);
     }
 }

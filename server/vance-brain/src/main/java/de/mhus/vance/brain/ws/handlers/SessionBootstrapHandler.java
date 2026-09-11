@@ -320,6 +320,7 @@ public class SessionBootstrapHandler implements WsHandler {
                 .chatProcessId(chatProcess == null ? null : chatProcess.getId())
                 .chatProcessName(chatProcess == null ? null : chatProcess.getName())
                 .chatEngine(chatProcess == null ? null : chatProcess.getThinkEngine())
+                .planStates(planStateInitialPusher.collectPlanStates(ctx.getTenantId(), session.getSessionId()))
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.SESSION_BOOTSTRAP, response);
     }

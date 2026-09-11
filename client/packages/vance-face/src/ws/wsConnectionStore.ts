@@ -35,6 +35,7 @@ import type {
   RemoteOutputBatch,
   SessionResumeRequest,
   SessionResumeResponse,
+  ProcessPlanState,
   SignalFrame,
   SignalSubscribeRequest,
 } from '@vance/generated';
@@ -133,6 +134,17 @@ const bindConflict: Ref<string | null> = ref(null);
  * knows which process is "the chat".
  */
 const chatTurnActiveOnResume: Ref<boolean> = ref(false);
+
+/**
+ * Plan state (mode + todos) of the session's processes as captured from
+ * the {@code session-resume} reply's {@code planStates}. The pushed
+ * {@code todos-updated} restore frames race the chat editor's
+ * chat-process pointer — it arrives only after the bind completes — so
+ * the reply is the carrier (§5.2b, same rationale as
+ * {@link chatTurnActiveOnResume}). The chat editor applies this once its
+ * chat-process pointer is known; live frames take over from there.
+ */
+const planStatesOnResume: Ref<ProcessPlanState[]> = ref([]);
 
 /**
  * Desired-state of {@code documents}-channel subscriptions. The store is
@@ -504,6 +516,7 @@ async function doSendUnbind(): Promise<void> {
   activeSessionId.value = null;
   setActiveSessionId(null);
   chatTurnActiveOnResume.value = false;
+  planStatesOnResume.value = [];
 }
 
 async function doSendResume(sessionId: string, takeover = false): Promise<void> {
@@ -520,6 +533,9 @@ async function doSendResume(sessionId: string, takeover = false): Promise<void> 
     const chatProcess = resumed.chatProcessName;
     chatTurnActiveOnResume.value = chatProcess !== undefined && chatProcess !== null
       && (resumed.activeProcesses ?? []).some((p) => p.name === chatProcess);
+    // Same first-read guarantee: the chat editor watches this together with
+    // its chat-process pointer, whichever arrives later wins the restore.
+    planStatesOnResume.value = resumed.planStates ?? [];
   } catch (e) {
     if (e instanceof WebSocketRequestError
         && e.errorCode === 409
@@ -1420,6 +1436,7 @@ export function markBound(sessionId: string): void {
   // can be mid-turn on it yet, and a stale true from the previous bind would
   // pin the composer's spinner on a conversation that never started.
   chatTurnActiveOnResume.value = false;
+  planStatesOnResume.value = [];
 }
 
 /**
@@ -1475,6 +1492,7 @@ export function useWsConnection(): {
   desiredSessionId: Ref<string | null>;
   bindConflict: Ref<string | null>;
   chatTurnActiveOnResume: Ref<boolean>;
+  planStatesOnResume: Ref<ProcessPlanState[]>;
   reconnectAttempts: Ref<number>;
   maxReconnectAttempts: number;
   lastError: Ref<string | null>;
@@ -1488,6 +1506,7 @@ export function useWsConnection(): {
     desiredSessionId,
     bindConflict,
     chatTurnActiveOnResume,
+    planStatesOnResume,
     reconnectAttempts,
     maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS,
     lastError,

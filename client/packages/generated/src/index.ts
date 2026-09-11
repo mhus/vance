@@ -278,6 +278,7 @@ export * from './thinkprocess/ProcessMessagesRequest';
 export * from './thinkprocess/ProcessMessagesResponse';
 export * from './thinkprocess/ProcessMode';
 export * from './thinkprocess/ProcessModeChangedNotification';
+export * from './thinkprocess/ProcessPlanState';
 export * from './thinkprocess/ProcessPauseRequest';
 export * from './thinkprocess/ProcessPauseResponse';
 export * from './thinkprocess/ProcessSpec';

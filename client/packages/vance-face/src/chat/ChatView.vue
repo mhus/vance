@@ -31,6 +31,7 @@ import ChatActivityStrip from './ChatActivityStrip.vue';
 import { applyProgress, createActivityState } from './chatActivity';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 import { buildFollowUpContext, type FollowUpContext } from './followUpContext';
+import { useWsConnection } from '@/ws/wsConnectionStore';
 import { planClosureContent } from './planClosure';
 
 type ProcessModeName = 'NORMAL' | 'EXPLORING' | 'PLANNING' | 'EXECUTING';
@@ -110,6 +111,7 @@ const emit = defineEmits<{
 }>();
 
 const { t: _ } = useI18n();
+const { planStatesOnResume } = useWsConnection();
 
 /**
  * Authenticated user of this tab — used by {@link MessageBubble} to
@@ -615,6 +617,30 @@ function renderPlanClosureNotice(closedTodos: TodoItem[]): void {
   if (wasNearBottom) scrollToBottom();
 }
 
+// ──────────────── Plan-state restore on bind ────────────────
+//
+// The pushed todos-updated / process-mode-changed restore frames race
+// this component's chat-process pointer: the pointer arrives only after
+// the bind round-trip completes, so the frames land while
+// isChatProcess still rejects them. The resume reply therefore carries
+// the plan state itself (planStates, §5.2b — same rationale as the
+// busy-restore in activeProcesses); the store captures it, and here it
+// is applied as soon as BOTH the pointer and the captured states are
+// known — whichever arrives later wins. Live frames take over from
+// there.
+
+watch(
+  [() => props.chatProcessName, planStatesOnResume],
+  ([name]) => {
+    if (!name) return;
+    const mine = planStatesOnResume.value.find((p) => p.processName === name);
+    if (!mine) return;
+    // Wire enums arrive as Java enum *names* — see onProcessModeChanged.
+    chatProcessMode.value = (mine.mode as unknown as ProcessModeName) ?? 'NORMAL';
+    chatTodos.value = mine.todos ?? [];
+  },
+  { immediate: true },
+);
 // ──────────────── Live activity strip ────────────────
 //
 // Tool calls, provider retries and compaction pings arrive on the

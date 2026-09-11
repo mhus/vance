@@ -4,6 +4,7 @@
 */
 
 import { BootstrappedProcess } from './BootstrappedProcess';
+import { ProcessPlanState } from './ProcessPlanState';
 
 export interface SessionBootstrapResponse {
   sessionId: string;
@@ -15,4 +16,5 @@ export interface SessionBootstrapResponse {
   chatProcessId?: string;
   chatProcessName?: string;
   chatEngine?: string;
+  planStates: ProcessPlanState[];
 }

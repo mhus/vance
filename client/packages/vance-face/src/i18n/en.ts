@@ -784,6 +784,8 @@ export default {
       recipeDefaultDescription: 'Use the project default recipe — same as starting without picking one.',
       recipeLoadFailed: 'Failed to load recipes.',
       recipeCategoryOther: 'Other',
+      recipeFilterPlaceholder: 'Filter recipes…',
+      recipeFilterNoMatch: 'No recipes match "{filter}".',
       recipeBadgeTooltip: 'Recipe of the session-chat process',
       groups: {
         create: '+ Group',

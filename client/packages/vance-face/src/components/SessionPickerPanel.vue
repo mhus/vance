@@ -28,7 +28,7 @@ import {
 import { VAlert, VButton, VInput, VModal } from '@/components';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@/composables/useSessionGroupCollapse';
-import { groupListedRecipes } from '@/recipes/recipePickerGroups';
+import { filterListedRecipes, groupListedRecipes } from '@/recipes/recipePickerGroups';
 import { markBound, useWsConnection } from '@/ws/wsConnectionStore';
 import { navigateTo } from '@/platform/navigate';
 import { useI18n } from 'vue-i18n';
@@ -62,17 +62,19 @@ const { socket } = useWsConnection();
 const recipeModalOpen = ref(false);
 const recipeOptions = ref<RecipeListedDto[]>([]);
 const recipeCategories = ref<RecipeCategoryDto[]>([]);
+const recipeFilter = ref('');
 const recipesLoading = ref(false);
 const recipesError = ref<string | null>(null);
 const bootstrapping = ref(false);
 const bootstrapError = ref<string | null>(null);
 
 /**
- * Recipe entries grouped for the modal: category groups with resolved
- * labels, "no category" entries trailing. See {@link groupListedRecipes}.
+ * Recipe entries filtered by the modal's search field, then grouped:
+ * category groups with resolved labels, "no category" entries trailing.
+ * See {@link filterListedRecipes} / {@link groupListedRecipes}.
  */
 const recipeGroups = computed(() => groupListedRecipes(
-  recipeOptions.value,
+  filterListedRecipes(recipeOptions.value, recipeFilter.value),
   recipeCategories.value,
   locale.value,
   t('chat.picker.recipeCategoryOther'),
@@ -221,6 +223,9 @@ function openSession(session: SessionSummaryRichDto): void {
 async function openRecipeModal(): Promise<void> {
   bootstrapError.value = null;
   recipesError.value = null;
+  // Fresh open, fresh filter — a stale needle from the last session would
+  // look like missing recipes.
+  recipeFilter.value = '';
   recipeModalOpen.value = true;
   recipesLoading.value = true;
   try {
@@ -419,6 +424,12 @@ watch(showArchived, () => {
       <div class="space-y-3">
         <p class="text-sm opacity-70">{{ $t('chat.picker.recipeModalIntro') }}</p>
 
+        <VInput
+          v-model="recipeFilter"
+          size="sm"
+          :placeholder="$t('chat.picker.recipeFilterPlaceholder')"
+        />
+
         <VAlert v-if="recipesError" variant="error">{{ recipesError }}</VAlert>
         <VAlert v-if="bootstrapError" variant="error">{{ bootstrapError }}</VAlert>
 
@@ -439,6 +450,13 @@ watch(showArchived, () => {
 
           <li v-if="recipesLoading" class="text-sm opacity-60 px-1">
             {{ $t('chat.picker.sessionsLoading') }}
+          </li>
+
+          <li
+            v-if="recipeFilter.trim() && !recipesLoading && recipeGroups.length === 0"
+            class="text-sm opacity-60 px-1"
+          >
+            {{ $t('chat.picker.recipeFilterNoMatch', { filter: recipeFilter.trim() }) }}
           </li>
 
           <template

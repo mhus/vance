@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecipeCategoryDto, RecipeListedDto } from '@vance/generated';
-import { groupListedRecipes } from './recipePickerGroups';
+import { filterListedRecipes, groupListedRecipes } from './recipePickerGroups';
 
 function recipe(name: string, category: string | null): RecipeListedDto {
   return { name, category: category ?? undefined };
@@ -69,5 +69,25 @@ describe('groupListedRecipes', () => {
 
   it('returns no groups for an empty recipe list', () => {
     expect(groupListedRecipes([], [category('chat')], 'en', 'Other')).toEqual([]);
+  });
+
+  it('filters by display name case-insensitively', () => {
+    const recipes = [recipe('arthur', 'chat'), recipe('code-read', 'coding')];
+
+    expect(filterListedRecipes(recipes, '  READ ').map((r) => r.name))
+      .toEqual(['code-read']);
+  });
+
+  it('matches the description too, so keywords find recipes', () => {
+    const described = { ...recipe('web-research', 'research'), description: 'Public-web research' };
+
+    expect(filterListedRecipes([recipe('arthur', 'chat'), described], 'public'))
+      .toEqual([described]);
+  });
+
+  it('returns the unfiltered list for a blank needle', () => {
+    const recipes = [recipe('arthur', 'chat')];
+
+    expect(filterListedRecipes(recipes, '   ')).toBe(recipes);
   });
 });

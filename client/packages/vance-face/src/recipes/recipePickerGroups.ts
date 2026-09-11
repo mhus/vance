@@ -63,6 +63,22 @@ export function groupListedRecipes(
   return groups;
 }
 
+/**
+ * Case-insensitive substring filter over display name and description —
+ * the two things a person scanning the picker reads. Grouping happens
+ * on the filtered list, so groups without matches never render.
+ */
+export function filterListedRecipes(
+  recipes: RecipeListedDto[],
+  needle: string,
+): RecipeListedDto[] {
+  const query = needle.trim().toLowerCase();
+  if (!query) return recipes;
+  return recipes.filter((recipe) =>
+    (recipe.title || recipe.name).toLowerCase().includes(query)
+    || (recipe.description ?? '').toLowerCase().includes(query));
+}
+
 /** Locale → text resolution with base-language and English fallbacks. */
 function categoryLabel(
   key: string,

@@ -9,6 +9,12 @@ description: |
 
 version: "2"
 
+# Required (specification/public/workflows.md §2): name of the initial
+# state — must exist in states:. Without it the parser rejects the
+# whole document, which silently killed every waterfall-feature
+# spawn once the schema made 'start' mandatory.
+start: planning
+
 parameters:
   goal:
     type: string
@@ -61,8 +67,9 @@ states:
       approved: implementation
       rejected: planning
     catch:
+      # 'undecidable' was removed from MagratheaErrorKind — the
+      # no-answer case of an inbox gate is TIMEOUT, already covered above.
       timeout: failed
-      undecidable: failed
 
   implementation:
     type: agent_task
@@ -124,8 +131,9 @@ states:
       rework: implementation
       accept: accept
     catch:
+      # 'undecidable' was removed from MagratheaErrorKind — the
+      # no-answer case of an inbox gate is TIMEOUT, already covered above.
       timeout: failed
-      undecidable: failed
 
   accept:
     type: terminal

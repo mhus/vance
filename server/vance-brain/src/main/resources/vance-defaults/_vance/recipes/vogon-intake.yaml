@@ -24,7 +24,7 @@ promptPrefix: |
 
   The plan is already chosen: {{ planName }}.
   {% endif %}
-  {% if missing %}
+  {% if missing is not empty %}
 
   Values still needed: {{ missing | join(", ") }}.
   {% endif %}

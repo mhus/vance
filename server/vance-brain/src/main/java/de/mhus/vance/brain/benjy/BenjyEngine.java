@@ -11,6 +11,7 @@ import de.mhus.vance.brain.ai.light.LightLlmJsonAnswer;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.ai.light.SchemaValidationException;
+import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -124,6 +125,7 @@ public class BenjyEngine implements ThinkEngine {
     private final MetricService metricService;
     private final de.mhus.vance.brain.tools.worktarget.WorkTargetService workTargetService;
     private final WorkspaceService workspaceService;
+    private final PlanModeEventEmitter planModeEventEmitter;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -1203,6 +1205,7 @@ public class BenjyEngine implements ThinkEngine {
         appendDialogue(process, ctx, ChatRole.ASSISTANT, report);
         ctx.emitReply(report);
         metricService.counter(METRIC_OUTCOMES, "outcome", OUTCOME_SUCCESS).increment();
+        clearTodosProjection(process, state);
         thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
     }
 
@@ -1224,6 +1227,9 @@ public class BenjyEngine implements ThinkEngine {
         for (TodoItem todo : assigned) {
             state.getItems().add(BenjyState.Item.of(todo.getId(), todo.getContent()));
         }
+        // New items must reach the clients immediately — the box IS the
+        // progress display while the queue grinds through the chains.
+        emitTodosProjection(process);
     }
 
     /** Enqueues the do-task for an item with its full chain (DO first, tail in the payload). */
@@ -1318,6 +1324,9 @@ public class BenjyEngine implements ThinkEngine {
                 state.getItems().stream().map(BenjyState.Item::getId).toList();
         if (!todoIds.isEmpty()) {
             thinkProcessService.removeTodos(process.getId(), todoIds);
+            // The emptied projection must reach clients too, or foot keeps
+            // showing the pre-reset box until the next interpret emits.
+            emitTodosProjection(process);
         }
         state.getItems().clear();
         state.getCriteria().clear();
@@ -1341,7 +1350,12 @@ public class BenjyEngine implements ThinkEngine {
         log.info("Benjy id='{}' reset — state cleared, chat history preserved for audit", process.getId());
     }
 
-    /** Projects an item status change into the todos layer (auto-clear inherited from Frankie). */
+    /**
+     * Projects an item status change into the todos layer and pushes it to
+     * the session's clients — foot's scrollback box and the Web-UI todo panel
+     * update on the same {@code todos-updated} frame Frankie's {@code todo_*}
+     * tools emit (§9).
+     */
     private void projectItemStatus(ThinkProcessDocument process, BenjyState.Item item, TodoStatus status) {
         TodoPatch patch = new TodoPatch(
                 item.getId(),
@@ -1349,6 +1363,36 @@ public class BenjyEngine implements ThinkEngine {
                 null,
                 status == TodoStatus.IN_PROGRESS ? "Working: " + truncate(item.getContent(), 60) : null);
         thinkProcessService.updateTodos(process.getId(), List.of(patch));
+        emitTodosProjection(process);
+    }
+
+    /**
+     * Emits the todos projection as a {@code todos-updated} frame to the
+     * session's clients. The projection in {@code ThinkProcessService} is pure
+     * persistence — the frame is a derived effect fired after the mutation
+     * landed (Persistenz-Ordnung, §4a). Package-private so the wiring test can
+     * pin it.
+     */
+    void emitTodosProjection(ThinkProcessDocument process) {
+        thinkProcessService
+                .findById(process.getId())
+                .ifPresent(refreshed -> planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos()));
+    }
+
+    /**
+     * Auto-clear at DONE (§9): replaces the finished projection with an empty
+     * list and emits that empty frame so clients drop the progress box.
+     * Nothing is lost — the final report carries the full item list and foot
+     * keeps the last rendered box in the scrollback. Frankie clears as soon as
+     * every item is COMPLETED because it runs endlessly; Benjy clears once at
+     * its terminal point. Package-private for the wiring test.
+     */
+    void clearTodosProjection(ThinkProcessDocument process, BenjyState state) {
+        if (state.getItems().isEmpty()) {
+            return;
+        }
+        thinkProcessService.setTodos(process.getId(), List.of());
+        planModeEventEmitter.emitTodosUpdated(process, List.of());
     }
 
     /**

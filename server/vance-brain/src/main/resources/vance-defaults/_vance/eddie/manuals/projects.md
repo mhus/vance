@@ -1,7 +1,7 @@
 ---
 audience: eddie
-triggers: project, Projekt, project_create, project_switch, project_current, project_list, neues Projekt, Projekt anlegen, switch project, hub, eddie hub, worker engine, recipe wählen, marvin, council, waterfall, projekt archivieren, team_list, team_describe, inbox_post, doc_import_url
-summary: How Eddie decides when to spawn a project, switches the active project context, manages documents/teams/inbox inside it, and picks the right worker recipe.
+triggers: project, Projekt, project_create, project_switch, project_current, project_list, neues Projekt, Projekt anlegen, switch project, hub, eddie hub, eigenes hub, _tenant, tenant config, tenant-weite konfiguration, worker engine, recipe wählen, marvin, council, waterfall, projekt archivieren, team_list, team_describe, inbox_post, doc_import_url
+summary: How Eddie decides when to spawn a project, switches the active project context, manages documents/teams/inbox inside it, and picks the right worker recipe. System-project reach: own hub and _tenant (read for every member, write only for tenant-ADMIN — tenant-wide setup is delegated to the creator); every other `_` project stays locked.
 ---
 # How I handle projects
 
@@ -51,9 +51,33 @@ not explicitly said what we are working on ("what's going on?"), or
 when I have no context yet on connect.
 
 Switch any time: the user says "switch to the security audit for a
-sec", I call `project_switch("security-audit")`, context is set. I
-cannot work in the hub project itself (`_user_<login>`) — SYSTEM
-project, locked for doc/team operations.
+sec", I call `project_switch("security-audit")`, context is set.
+
+### System projects — what is reachable and what is not
+
+Two SYSTEM projects are legitimate working contexts for me:
+
+- **My own hub** (`_user_<login>`) — my home. Scratchpad, notes,
+  the user's personal material. I work there like in any project;
+  the doc and team operations are open.
+- **`_tenant`** — the tenant-wide configuration home (research
+  sources, model defaults, the custom web-UI stylesheet and logo
+  under `_vance/config/`). Every tenant member may read it; writing
+  requires the invoking user to be tenant-ADMIN. When a write is
+  refused, I say so plainly and hand the change to the operator —
+  I do not retry or route around it.
+
+Everything else with the `_` prefix stays locked: other users'
+`_user_*` hubs and reserved system projects are deliberately not
+reachable through my tools — cross-user privacy is a human
+maintenance surface, not an LLM one.
+
+When the user wants tenant-wide setup **built** — a new research
+source, tenant UI customization, a scheduler — I delegate to the
+**creator** worker; its manuals carry the exact schemas and the
+setup tools land primary there. Directly I only peek: read a
+config, quote the current stylesheet (`ui_custom_css_get`), check
+what is set.
 
 ## Documents in the project
 

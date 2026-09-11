@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ws.handlers;
 
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.thinkprocess.BootstrappedProcess;
 import de.mhus.vance.api.thinkprocess.ProcessSpec;
@@ -9,13 +10,12 @@ import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
-import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.progress.PlanStateInitialPusher;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
@@ -84,6 +84,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final SessionChatBootstrapper chatBootstrapper;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final ProcessCountsPusher processCountsPusher;
+    private final PlanStateInitialPusher planStateInitialPusher;
     private final HomeBootstrapService homeBootstrapService;
     private final RequestAuthority authority;
     private final ActionExecutorRegistry actionRegistry;
@@ -106,8 +107,7 @@ public class SessionBootstrapHandler implements WsHandler {
         try {
             request = objectMapper.convertValue(envelope.getData(), SessionBootstrapRequest.class);
         } catch (IllegalArgumentException e) {
-            sender.sendError(wsSession, envelope, 400,
-                    "Invalid session-bootstrap payload: " + e.getMessage());
+            sender.sendError(wsSession, envelope, 400, "Invalid session-bootstrap payload: " + e.getMessage());
             return;
         }
         if (request == null) {
@@ -132,8 +132,11 @@ public class SessionBootstrapHandler implements WsHandler {
                 if (autoResumed.isPresent()) {
                     session = autoResumed.get();
                     sessionCreated = false;
-                    log.info("session-bootstrap: auto-resumed '{}' (tenant='{}' user='{}')",
-                            session.getSessionId(), ctx.getTenantId(), ctx.getUserId());
+                    log.info(
+                            "session-bootstrap: auto-resumed '{}' (tenant='{}' user='{}')",
+                            session.getSessionId(),
+                            ctx.getTenantId(),
+                            ctx.getUserId());
                 } else {
                     Optional<SessionDocument> created = createAndBindSession(ctx, wsSession, envelope, request);
                     if (created.isEmpty()) return;
@@ -147,10 +150,12 @@ public class SessionBootstrapHandler implements WsHandler {
                 sessionCreated = true;
             }
         } catch (RuntimeException e) {
-            log.error("Session bootstrap failed during session step for tenant='{}' user='{}'",
-                    ctx.getTenantId(), ctx.getUserId(), e);
-            sender.sendError(wsSession, envelope, 500,
-                    "Session step failed: " + e.getMessage());
+            log.error(
+                    "Session bootstrap failed during session step for tenant='{}' user='{}'",
+                    ctx.getTenantId(),
+                    ctx.getUserId(),
+                    e);
+            sender.sendError(wsSession, envelope, 500, "Session step failed: " + e.getMessage());
             return;
         }
         ctx.bindSession(session);
@@ -166,9 +171,11 @@ public class SessionBootstrapHandler implements WsHandler {
             // this should be unreachable for a private session. If we
             // land here anyway, surface a 409 instead of running the
             // bootstrap chain on a half-bound state.
-            sender.sendError(wsSession, envelope, 409,
-                    "Session '" + session.getSessionId()
-                            + "' is private and already held by another user");
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    409,
+                    "Session '" + session.getSessionId() + "' is private and already held by another user");
             ctx.unbindSession();
             return;
         }
@@ -181,6 +188,10 @@ public class SessionBootstrapHandler implements WsHandler {
         // Process badge: current worker counts for this session (see
         // ProcessCountsPusher — deltas follow on status transitions).
         processCountsPusher.pushInitial(wsSession, ctx.getTenantId(), session.getSessionId());
+        // Plan/todo state restore: a reconnecting client must see the current
+        // plan (Arthur/Eddie Plan-Mode, Frankie/Benjy TodoList) without
+        // waiting for the next engine mutation.
+        planStateInitialPusher.pushInitial(wsSession, ctx.getTenantId(), session.getSessionId());
 
         // ── Auto-spawn the session-chat process ──────────────────────────
         // Idempotent: re-bootstrap of an existing session adopts the chat
@@ -188,19 +199,17 @@ public class SessionBootstrapHandler implements WsHandler {
         // whole bootstrap — log and leave chatProcess null in the response.
         ThinkProcessDocument chatProcess = null;
         try {
-            chatProcess = chatBootstrapper.ensureChatProcess(
-                    session, /*parentProcessId*/ null,
-                    request.getChatRecipe()).orElse(null);
+            chatProcess = chatBootstrapper
+                    .ensureChatProcess(session, /*parentProcessId*/ null, request.getChatRecipe())
+                    .orElse(null);
         } catch (RuntimeException e) {
-            log.error("Chat-process bootstrap failed for session '{}'",
-                    session.getSessionId(), e);
+            log.error("Chat-process bootstrap failed for session '{}'", session.getSessionId(), e);
         }
 
         // ── Processes: spawn-via-pipeline (skip duplicates) ──────────────
         List<BootstrappedProcess> created = new ArrayList<>();
         List<BootstrappedProcess> skipped = new ArrayList<>();
-        List<ProcessSpec> processes = request.getProcesses() != null
-                ? request.getProcesses() : List.<ProcessSpec>of();
+        List<ProcessSpec> processes = request.getProcesses() != null ? request.getProcesses() : List.<ProcessSpec>of();
         ThinkProcessDocument firstProcess = null;
 
         for (ProcessSpec spec : processes) {
@@ -208,8 +217,8 @@ public class SessionBootstrapHandler implements WsHandler {
                 sender.sendError(wsSession, envelope, 400, "process spec needs name");
                 return;
             }
-            Optional<ThinkProcessDocument> existing = thinkProcessService
-                    .findByName(session.getTenantId(), session.getSessionId(), spec.getName());
+            Optional<ThinkProcessDocument> existing =
+                    thinkProcessService.findByName(session.getTenantId(), session.getSessionId(), spec.getName());
             if (existing.isPresent()) {
                 ThinkProcessDocument doc = existing.get();
                 skipped.add(toBootstrapped(doc));
@@ -228,23 +237,28 @@ public class SessionBootstrapHandler implements WsHandler {
                     spec.getParams(),
                     /*runAs*/ null);
             TriggerContext triggerCtx = TriggerContext.sessioned(
-                    session.getTenantId(), session.getProjectId(),
-                    /*resolvedRunAs*/ null, /*correlationId*/ null,
+                    session.getTenantId(),
+                    session.getProjectId(),
+                    /*resolvedRunAs*/ null, /*correlationId*/
+                    null,
                     /*sourceTag*/ "session-bootstrap",
-                    session.getSessionId(), /*parentProcessId*/ null);
+                    session.getSessionId(), /*parentProcessId*/
+                    null);
 
             ActionResult result = actionRegistry.execute(action, triggerCtx, TriggerKind.USER);
             switch (result.outcome()) {
                 case SCHEDULED -> {
-                    ThinkProcessDocument fresh = thinkProcessService.findById(result.spawnedId())
-                            .orElseThrow(() -> new IllegalStateException(
-                                    "spawned process '" + result.spawnedId() + "' is gone"));
+                    ThinkProcessDocument fresh = thinkProcessService
+                            .findById(result.spawnedId())
+                            .orElseThrow(() ->
+                                    new IllegalStateException("spawned process '" + result.spawnedId() + "' is gone"));
                     created.add(toBootstrapped(fresh));
                     if (firstProcess == null) firstProcess = fresh;
                 }
                 case SUCCESS -> {
                     // Soft-success: already_exists race — adopt the existing one.
-                    String existingId = result.output() == null ? null
+                    String existingId = result.output() == null
+                            ? null
                             : (String) result.output().get("existingProcessId");
                     if (existingId != null) {
                         thinkProcessService.findById(existingId).ifPresent(doc -> {
@@ -257,11 +271,14 @@ public class SessionBootstrapHandler implements WsHandler {
                 }
                 case TECHNICAL_ERROR, BUSINESS_ERROR, TIMEOUT, PERMISSION_ERROR, CANCELLED -> {
                     int status = result.errorMessage() != null
-                            && result.errorMessage().toLowerCase().contains("unknown recipe")
-                            ? 404 : 500;
-                    sender.sendError(wsSession, envelope, status,
-                            "process spec '" + spec.getName() + "' failed: "
-                                    + result.errorMessage());
+                                    && result.errorMessage().toLowerCase().contains("unknown recipe")
+                            ? 404
+                            : 500;
+                    sender.sendError(
+                            wsSession,
+                            envelope,
+                            status,
+                            "process spec '" + spec.getName() + "' failed: " + result.errorMessage());
                     return;
                 }
             }
@@ -275,17 +292,14 @@ public class SessionBootstrapHandler implements WsHandler {
         String steeredProcessName = null;
         if (!isBlank(request.getInitialMessage()) && firstProcess != null) {
             ThinkProcessDocument target = firstProcess;
-            SteerMessage.UserChatInput userInput = new SteerMessage.UserChatInput(
-                    Instant.now(), null, ctx.getUserId(), request.getInitialMessage());
+            SteerMessage.UserChatInput userInput =
+                    new SteerMessage.UserChatInput(Instant.now(), null, ctx.getUserId(), request.getInitialMessage());
             try {
-                laneScheduler.submit(target.getId(),
-                        () -> thinkEngineService.steer(target, userInput));
+                laneScheduler.submit(target.getId(), () -> thinkEngineService.steer(target, userInput));
                 steeredProcessName = target.getName();
             } catch (RuntimeException e) {
-                log.error("Initial-steer lane-submit failed for process id='{}'",
-                        target.getId(), e);
-                sender.sendError(wsSession, envelope, 500,
-                        "Initial steer submit failed: " + e.getMessage());
+                log.error("Initial-steer lane-submit failed for process id='{}'", target.getId(), e);
+                sender.sendError(wsSession, envelope, 500, "Initial steer submit failed: " + e.getMessage());
                 return;
             }
         }
@@ -294,8 +308,7 @@ public class SessionBootstrapHandler implements WsHandler {
         // session so the per-turn tool filter (Tool.allowedForProfile)
         // and capability checks see the current bound profile. See
         // engine-message-routing.md §4.1.1.
-        thinkProcessService.updateBoundProfileForSession(
-                session.getSessionId(), ctx.getProfile());
+        thinkProcessService.updateBoundProfileForSession(session.getSessionId(), ctx.getProfile());
 
         SessionBootstrapResponse response = SessionBootstrapResponse.builder()
                 .sessionId(session.getSessionId())
@@ -321,8 +334,7 @@ public class SessionBootstrapHandler implements WsHandler {
      * session creation.
      */
     private Optional<SessionDocument> tryAutoResumeLatest(ConnectionContext ctx) {
-        List<SessionDocument> candidates = sessionService
-                .listForUser(ctx.getTenantId(), ctx.getUserId()).stream()
+        List<SessionDocument> candidates = sessionService.listForUser(ctx.getTenantId(), ctx.getUserId()).stream()
                 .filter(s -> s.getStatus() != SessionStatus.CLOSED)
                 .filter(s -> s.getBoundConnectionId() == null)
                 .filter(s -> profileMatches(ctx, s))
@@ -356,8 +368,7 @@ public class SessionBootstrapHandler implements WsHandler {
             // brought. That is harmless: it is a project this user holds an
             // open session in, and bring is idempotent.
             lifecycleService.bring(candidate.getTenantId(), candidate.getProjectId());
-            if (sessionService.tryBind(
-                    candidate.getSessionId(), ctx.getEditorId())) {
+            if (sessionService.tryBind(candidate.getSessionId(), ctx.getEditorId())) {
                 return Optional.of(candidate);
             }
         }
@@ -365,8 +376,11 @@ public class SessionBootstrapHandler implements WsHandler {
     }
 
     private Optional<SessionDocument> createAndBindSession(
-            ConnectionContext ctx, WebSocketSession wsSession,
-            WebSocketEnvelope envelope, SessionBootstrapRequest request) throws IOException {
+            ConnectionContext ctx,
+            WebSocketSession wsSession,
+            WebSocketEnvelope envelope,
+            SessionBootstrapRequest request)
+            throws IOException {
         String projectId = request.getProjectId();
         if (isBlank(projectId)) {
             // Default to the caller's first *readable* project — never bind
@@ -374,17 +388,15 @@ public class SessionBootstrapHandler implements WsHandler {
             List<de.mhus.vance.shared.project.ProjectDocument> all =
                     projectService.listReadableBy(ctx.getTenantId(), authority.contextOf(ctx));
             if (all.isEmpty()) {
-                sender.sendError(wsSession, envelope, 404,
-                        "No projects found in tenant '" + ctx.getTenantId() + "'");
+                sender.sendError(wsSession, envelope, 404, "No projects found in tenant '" + ctx.getTenantId() + "'");
                 return Optional.empty();
             }
             projectId = all.get(0).getName();
-            log.info("session-bootstrap: defaulted projectId to '{}' (tenant='{}')",
-                    projectId, ctx.getTenantId());
-        } else if (homeBootstrapService.resolveOrAutoProvision(
-                ctx.getTenantId(), projectId).isEmpty()) {
-            sender.sendError(wsSession, envelope, 404,
-                    "Project '" + projectId + "' not found");
+            log.info("session-bootstrap: defaulted projectId to '{}' (tenant='{}')", projectId, ctx.getTenantId());
+        } else if (homeBootstrapService
+                .resolveOrAutoProvision(ctx.getTenantId(), projectId)
+                .isEmpty()) {
+            sender.sendError(wsSession, envelope, 404, "Project '" + projectId + "' not found");
             return Optional.empty();
         }
         // Claim *and* activate — see tryAutoResumeLatest for why a bare claim
@@ -400,35 +412,37 @@ public class SessionBootstrapHandler implements WsHandler {
                 ctx.getProfile(),
                 ctx.getClientVersion(),
                 ctx.getClientName());
-        boolean bound = sessionService.tryBind(
-                fresh.getSessionId(), ctx.getEditorId());
+        boolean bound = sessionService.tryBind(fresh.getSessionId(), ctx.getEditorId());
         if (!bound) {
             log.warn("Freshly created session '{}' failed to bind", fresh.getSessionId());
-            sender.sendError(wsSession, envelope, 500,
-                    "Session created but could not be bound — please retry");
+            sender.sendError(wsSession, envelope, 500, "Session created but could not be bound — please retry");
             return Optional.empty();
         }
         return Optional.of(fresh);
     }
 
     private Optional<SessionDocument> resumeAndBindSession(
-            ConnectionContext ctx, WebSocketSession wsSession,
-            WebSocketEnvelope envelope, SessionBootstrapRequest request) throws IOException {
+            ConnectionContext ctx,
+            WebSocketSession wsSession,
+            WebSocketEnvelope envelope,
+            SessionBootstrapRequest request)
+            throws IOException {
         Optional<SessionDocument> existing = sessionService.findBySessionId(request.getSessionId());
         if (existing.isEmpty() || existing.get().getStatus() == SessionStatus.CLOSED) {
-            sender.sendError(wsSession, envelope, 404,
-                    "Session '" + request.getSessionId() + "' not found");
+            sender.sendError(wsSession, envelope, 404, "Session '" + request.getSessionId() + "' not found");
             return Optional.empty();
         }
         SessionDocument doc = existing.get();
-        if (!doc.getTenantId().equals(ctx.getTenantId())
-                || !doc.getUserId().equals(ctx.getUserId())) {
-            sender.sendError(wsSession, envelope, 403,
-                    "Session '" + request.getSessionId() + "' belongs to another user");
+        if (!doc.getTenantId().equals(ctx.getTenantId()) || !doc.getUserId().equals(ctx.getUserId())) {
+            sender.sendError(
+                    wsSession, envelope, 403, "Session '" + request.getSessionId() + "' belongs to another user");
             return Optional.empty();
         }
         if (!profileMatches(ctx, doc)) {
-            sender.sendError(wsSession, envelope, 409,
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    409,
                     "Session '" + request.getSessionId() + "' was created with profile '"
                             + doc.getProfile() + "', this connection uses profile '"
                             + ctx.getProfile() + "' — start a new session instead");
@@ -444,13 +458,16 @@ public class SessionBootstrapHandler implements WsHandler {
         // a conflict, not a takeover target — refuse unless the caller opted
         // in via takeover. A stale sibling (closed socket) is not a conflict.
         if (!request.isTakeover()) {
-            boolean liveSibling = connectionRegistry.findForUser(doc.getSessionId(), ctx.getUserId())
+            boolean liveSibling = connectionRegistry
+                    .findForUser(doc.getSessionId(), ctx.getUserId())
                     .map(WebSocketSession::isOpen)
                     .orElse(false);
             if (liveSibling) {
-                sender.sendError(wsSession, envelope, 409,
-                        "Session '" + doc.getSessionId()
-                                + "' is open in another connection of the same user",
+                sender.sendError(
+                        wsSession,
+                        envelope,
+                        409,
+                        "Session '" + doc.getSessionId() + "' is open in another connection of the same user",
                         de.mhus.vance.api.ws.ErrorData.REASON_SESSION_BOUND_ELSEWHERE);
                 return Optional.empty();
             }
@@ -459,11 +476,9 @@ public class SessionBootstrapHandler implements WsHandler {
         // existing bind (if any) belongs to the same human. Allow them to
         // resume from a fresh tab/pod without waiting for the previous
         // editor's heartbeat to go stale.
-        boolean bound = sessionService.tryBindWithUserTakeover(
-                doc.getSessionId(), ctx.getEditorId());
+        boolean bound = sessionService.tryBindWithUserTakeover(doc.getSessionId(), ctx.getEditorId());
         if (!bound) {
-            sender.sendError(wsSession, envelope, 409,
-                    "Session '" + doc.getSessionId() + "' is closed or archived");
+            sender.sendError(wsSession, envelope, 409, "Session '" + doc.getSessionId() + "' is closed or archived");
             return Optional.empty();
         }
         return Optional.of(doc);

@@ -18,6 +18,7 @@ import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.events.SessionRosterBroadcaster;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.progress.PlanStateInitialPusher;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
@@ -76,21 +77,53 @@ class SessionBootstrapHandlerActivationTest {
     private static final String PROJECT = "roadrunner";
     private static final String SESSION = "sess-1";
 
-    @Mock private WebSocketSender sender;
-    @Mock private SessionService sessionService;
-    @Mock private ProjectService projectService;
-    @Mock private ProjectLifecycleService lifecycleService;
-    @Mock private ThinkProcessService thinkProcessService;
-    @Mock private ThinkEngineService thinkEngineService;
-    @Mock private SessionConnectionRegistry connectionRegistry;
-    @Mock private SessionRosterBroadcaster rosterBroadcaster;
-    @Mock private SessionChatBootstrapper chatBootstrapper;
-    @Mock private InboxPendingSummaryPusher inboxSummaryPusher;
-    @Mock private ProcessCountsPusher processCountsPusher;
-    @Mock private HomeBootstrapService homeBootstrapService;
-    @Mock private RequestAuthority authority;
-    @Mock private ActionExecutorRegistry actionRegistry;
-    @Mock private LaneScheduler laneScheduler;
+    @Mock
+    private WebSocketSender sender;
+
+    @Mock
+    private SessionService sessionService;
+
+    @Mock
+    private ProjectService projectService;
+
+    @Mock
+    private ProjectLifecycleService lifecycleService;
+
+    @Mock
+    private ThinkProcessService thinkProcessService;
+
+    @Mock
+    private ThinkEngineService thinkEngineService;
+
+    @Mock
+    private SessionConnectionRegistry connectionRegistry;
+
+    @Mock
+    private SessionRosterBroadcaster rosterBroadcaster;
+
+    @Mock
+    private SessionChatBootstrapper chatBootstrapper;
+
+    @Mock
+    private InboxPendingSummaryPusher inboxSummaryPusher;
+
+    @Mock
+    private ProcessCountsPusher processCountsPusher;
+
+    @Mock
+    private PlanStateInitialPusher planStateInitialPusher;
+
+    @Mock
+    private HomeBootstrapService homeBootstrapService;
+
+    @Mock
+    private RequestAuthority authority;
+
+    @Mock
+    private ActionExecutorRegistry actionRegistry;
+
+    @Mock
+    private LaneScheduler laneScheduler;
 
     private SessionBootstrapHandler handler;
     private WebSocketSession wsSession;
@@ -99,22 +132,31 @@ class SessionBootstrapHandlerActivationTest {
     @BeforeEach
     void setUp() {
         handler = new SessionBootstrapHandler(
-                JsonMapper.builder().build(), sender, sessionService, projectService,
-                lifecycleService, thinkProcessService, thinkEngineService,
-                connectionRegistry, rosterBroadcaster, chatBootstrapper,
-                inboxSummaryPusher, processCountsPusher, homeBootstrapService,
-                authority, actionRegistry, laneScheduler);
+                JsonMapper.builder().build(),
+                sender,
+                sessionService,
+                projectService,
+                lifecycleService,
+                thinkProcessService,
+                thinkEngineService,
+                connectionRegistry,
+                rosterBroadcaster,
+                chatBootstrapper,
+                inboxSummaryPusher,
+                processCountsPusher,
+                planStateInitialPusher,
+                homeBootstrapService,
+                authority,
+                actionRegistry,
+                laneScheduler);
         wsSession = mock(WebSocketSession.class);
-        ctx = new ConnectionContext(
-                TENANT, USER, "Wile", PROFILE, "1.0", "cli", "ed-1", "10.0.0.1");
+        ctx = new ConnectionContext(TENANT, USER, "Wile", PROFILE, "1.0", "cli", "ed-1", "10.0.0.1");
 
         // Everything after the session step is out of scope here — stub just
         // enough that handle() runs to completion instead of NPE-ing.
-        when(connectionRegistry.register(
-                anyString(), anyString(), anyString(), any(), any(), anyBoolean()))
+        when(connectionRegistry.register(anyString(), anyString(), anyString(), any(), any(), anyBoolean()))
                 .thenReturn(SessionConnectionRegistry.RegisterResult.accepted());
-        when(chatBootstrapper.ensureChatProcess(any(), any(), any()))
-                .thenReturn(Optional.empty());
+        when(chatBootstrapper.ensureChatProcess(any(), any(), any())).thenReturn(Optional.empty());
     }
 
     @Test
@@ -124,23 +166,25 @@ class SessionBootstrapHandlerActivationTest {
         when(sessionService.tryBindWithUserTakeover(eq(SESSION), anyString())).thenReturn(true);
         when(connectionRegistry.findForUser(SESSION, USER)).thenReturn(Optional.empty());
 
-        handler.handle(ctx, wsSession, envelope(
-                SessionBootstrapRequest.builder().sessionId(SESSION).build()));
+        handler.handle(
+                ctx,
+                wsSession,
+                envelope(SessionBootstrapRequest.builder().sessionId(SESSION).build()));
 
         verify(lifecycleService).bring(TENANT, PROJECT);
     }
 
     @Test
     void explicitCreate_bringsTheProject() throws Exception {
-        when(homeBootstrapService.resolveOrAutoProvision(TENANT, PROJECT))
-                .thenReturn(Optional.of(project(PROJECT)));
-        when(sessionService.create(anyString(), anyString(), anyString(),
-                any(), any(), any(), any()))
+        when(homeBootstrapService.resolveOrAutoProvision(TENANT, PROJECT)).thenReturn(Optional.of(project(PROJECT)));
+        when(sessionService.create(anyString(), anyString(), anyString(), any(), any(), any(), any()))
                 .thenReturn(session(SESSION, PROJECT));
         when(sessionService.tryBind(eq(SESSION), anyString())).thenReturn(true);
 
-        handler.handle(ctx, wsSession, envelope(
-                SessionBootstrapRequest.builder().projectId(PROJECT).build()));
+        handler.handle(
+                ctx,
+                wsSession,
+                envelope(SessionBootstrapRequest.builder().projectId(PROJECT).build()));
 
         verify(lifecycleService).bring(TENANT, PROJECT);
     }
@@ -152,8 +196,8 @@ class SessionBootstrapHandlerActivationTest {
         when(sessionService.listForUser(TENANT, USER)).thenReturn(List.of(candidate));
         when(sessionService.tryBind(eq(SESSION), anyString())).thenReturn(true);
 
-        handler.handle(ctx, wsSession, envelope(
-                SessionBootstrapRequest.builder().build()));
+        handler.handle(
+                ctx, wsSession, envelope(SessionBootstrapRequest.builder().build()));
 
         // The load-bearing assertion: bring's stale-bind sweep must run before
         // the bind, or it clears the very binding this bootstrap just took.

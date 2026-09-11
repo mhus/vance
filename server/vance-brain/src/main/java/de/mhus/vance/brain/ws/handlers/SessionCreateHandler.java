@@ -8,6 +8,7 @@ import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.progress.PlanStateInitialPusher;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
@@ -56,6 +57,7 @@ public class SessionCreateHandler implements WsHandler {
     private final ChatMessageService chatMessageService;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final ProcessCountsPusher processCountsPusher;
+    private final PlanStateInitialPusher planStateInitialPusher;
     private final HomeBootstrapService homeBootstrapService;
     private final RequestAuthority authority;
     private final ThinkProcessService thinkProcessService;
@@ -181,6 +183,10 @@ public class SessionCreateHandler implements WsHandler {
         // yet, so this is a deliberate "0" — it clears a stale badge the
         // client may still show from a previous connection.
         processCountsPusher.pushInitial(wsSession, ctx.getTenantId(), created.getSessionId());
+        // Plan/todo state restore: a reconnecting client must see the current
+        // plan (Arthur/Eddie Plan-Mode, Frankie/Benjy TodoList) without
+        // waiting for the next engine mutation.
+        planStateInitialPusher.pushInitial(wsSession, ctx.getTenantId(), created.getSessionId());
 
         // Auto-spawn the session-chat think-process. Greeting is pushed
         // as chat-message-appended frames before the response so the

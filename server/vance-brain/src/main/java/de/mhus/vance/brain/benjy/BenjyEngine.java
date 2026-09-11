@@ -1544,21 +1544,45 @@ public class BenjyEngine implements ThinkEngine {
      * (Laborbuch-Prinzip).
      */
     private void journal(ThinkEngineContext ctx, ThinkProcessDocument process, BenjyState state, String entry) {
-        StringBuilder sb = new StringBuilder("[benjy] ").append(entry);
         // The caller's in-memory state, NOT a reload: handlers journal
         // after mutating their state but before the loop persists it —
         // a reload would render the queue as of the last persist and the
         // "open" tail would systematically miss the successors the
         // current handler just enqueued (the tail IS the open rest, §4b).
-        if (!state.getQueue().isEmpty()) {
-            sb.append("\n\n── open: ");
-            List<String> parts = new ArrayList<>();
-            for (BenjyState.QueuedTask t : state.getQueue()) {
-                parts.add(t.getType() + (t.getItemRef() != null ? " #" + t.getItemRef() : ""));
-            }
-            sb.append(String.join(" · ", parts));
+        List<String> open = new ArrayList<>();
+        for (BenjyState.QueuedTask t : state.getQueue()) {
+            open.add(t.getType() + (t.getItemRef() != null ? " #" + t.getItemRef() : ""));
         }
-        appendDialogue(process, ctx, ChatRole.ASSISTANT, sb.toString());
+        appendDialogue(process, ctx, ChatRole.ASSISTANT, journalRecord(entry, open));
+    }
+
+    /**
+     * Renders one journal record as markdown: the record head — stage
+     * and item ref, everything up to the first {@code ": "} — in bold, the
+     * open worklist as inline-code chips behind a bold {@code Open:} label.
+     * Both surfaces render markdown (web: MarkdownView; foot:
+     * MarkdownAnsiRenderer — bold, inline code and the "·" separator all
+     * pass through), and nothing parses the journal back (§4b), so styling
+     * is free. Entries without a {@code ": "} head (dropped-unknown notes)
+     * stay plain. Package-private for the format test.
+     */
+    static String journalRecord(String entry, List<String> openTasks) {
+        StringBuilder sb = new StringBuilder("[benjy] ");
+        int head = entry.indexOf(": ");
+        if (head > 0) {
+            sb.append("**").append(entry, 0, head).append(":**").append(entry.substring(head + 1));
+        } else {
+            sb.append(entry);
+        }
+        if (!openTasks.isEmpty()) {
+            sb.append("\n\n**Open:** ");
+            List<String> chips = new ArrayList<>();
+            for (String task : openTasks) {
+                chips.add("`" + task + "`");
+            }
+            sb.append(String.join(" · ", chips));
+        }
+        return sb.toString();
     }
 
     private ThinkProcessStatus liveStatus(ThinkProcessDocument process) {

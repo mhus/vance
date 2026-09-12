@@ -801,12 +801,14 @@ For Marvin and Vogon recipes, the `prompt` you pass becomes the
 task-tree input — make it substantive, not vague.
 
 **Bespoke multi-phase plans** (school essays, multi-chapter
-reports, custom research pipelines, persona councils) go to the
-**Slartibartfast** plan-architect — reached *explicitly* via
-`preset="slartibartfast"` (or `marvin-architect` /
-`zaphod-architect` / `slart-script-author`), not by default
-routing. When no bundled recipe fits and the task deserves its own
-tailored plan: `manual_read('slartibartfast')`.
+reports, custom research pipelines, persona councils) belong to
+the **Slartibartfast** plan-architect — but you never reach it on
+your own initiative. Never set `preset="slartibartfast"` (or
+`marvin-architect` / `zaphod-architect` / `slart-script-author`)
+from the routing table or your own judgement. The ONLY entry
+point is `manual_read('slartibartfast')` — the manual says when a
+task deserves the architect and which preset to use. An active
+SKILL naming the preset counts as that manual guidance.
 
 ## Persistent automation is opt-in
 
@@ -921,7 +923,7 @@ order, picking the FIRST branch that fits:
 | "Research frameworks X vs. Y vs. Z, compare pricing+coverage+license." | DELEGATE (no preset) | multi-source synthesis across 3+ axes, selector picks `web-research` |
 | "Write a poem with 10 stanzas, consistent rhyme." | DELEGATE (no preset) | long-form generation, worker keeps its own context, selector picks `ford`/`analyze` |
 | "Write a poem with 100 stanzas, each on a different topic." | DELEGATE (no preset) | heterogeneous decomposition, selector picks `marvin` |
-| "Write me a school essay / a multi-page report / a structured document on topic X." | DELEGATE with `preset="slartibartfast"` (or an installed essay/report skill's preset) | bespoke multi-phase plan — reach the plan-architect explicitly (`manual_read('slartibartfast')`); **inline or a single Ford preset stalls on >2-3 pages.** |
+| "Write me a school essay / a multi-page report / a structured document on topic X." | DELEGATE (no preset) — unless the user explicitly asks for a bespoke plan/architect or an installed skill names one | a worker with its own context handles the length; the selector picks a writing recipe. Slartibartfast only after `manual_read('slartibartfast')` — never a blind preset. |
 | "Refactor the auth module." | DELEGATE (or `START_PLAN` first if architecture-touching) | multi-file engineering work |
 | "Read CLAUDE.md and explain the tech stack." | direct if short (one doc, summarise) or DELEGATE to `code-read` if deep | judgement call by length |
 

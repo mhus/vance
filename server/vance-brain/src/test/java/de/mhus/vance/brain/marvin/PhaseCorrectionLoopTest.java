@@ -80,19 +80,16 @@ class PhaseCorrectionLoopTest {
     @Test
     void correctionCallbackFiresForEachFailedReply() {
         ScriptedLlm llm = new ScriptedLlm(
-                "not json",
-                "{\"verdict\": \"NEEDS_MORE_DATA\"}",
-                "{\"verdict\": \"PASS\", \"reason\": \"ok\"}");
+                "not json", "{\"verdict\": \"NEEDS_MORE_DATA\"}", "{\"verdict\": \"PASS\", \"reason\": \"ok\"}");
         List<String> logged = new ArrayList<>();
         PhaseCorrectionLoop loop = new PhaseCorrectionLoop(parser, 2);
 
-        String text = loop.run(
-                WorkerPhase.VALIDATE, List.of(UserMessage.from("critique phase")), llm, logged::add);
+        String text = loop.run(WorkerPhase.VALIDATE, List.of(UserMessage.from("critique phase")), llm, logged::add);
 
         assertThat(text).contains("PASS");
         assertThat(llm.calls).isEqualTo(3);
         assertThat(logged).hasSize(2);
-        assertThat(logged.get(0)).contains("not valid JSON");
+        assertThat(logged.get(0)).contains("does not contain a JSON object");
         assertThat(logged.get(1)).contains("Unknown 'verdict'");
     }
 

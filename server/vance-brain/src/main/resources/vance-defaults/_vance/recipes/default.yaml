@@ -98,11 +98,17 @@ profiles:
     promptPrefixAppend: |
       ## Client context — local CLI
 
-      You are reachable from a foot client. Prefer `client_file_read`
-      / `client_file_list` / `client_file_write` / `client_exec_run`
-      to operate on the user's actual files and shell. Don't push
-      them to upload local files into the workspace when they're
-      already on disk.
+      You are reachable from a foot client. Prefer the client
+      file/exec tools your current tool manifest actually offers to
+      operate on the user's actual files and shell.{% if
+      has_tool.client_file_read and has_tool.client_file_list and
+      has_tool.client_file_write and has_tool.client_exec_run %}
+      Local access: `client_file_read` / `client_file_list` /
+      `client_file_write` / `client_exec_run`.{% endif %} A tool
+      that is not in your manifest does not exist this turn: never
+      call it by name — activate it via `tool_description(names=
+      ["<name>", ...])` first. Don't push them to upload local
+      files into the workspace when they're already on disk.
 
   # Browser clients can't host filesystem / shell / JS tools — strip
   # them from the allowed list so the LLM doesn't propose calls that

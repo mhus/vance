@@ -547,12 +547,16 @@ public final class ContextToolsApi implements ToolBus {
                 stable,
                 "\n\n## Available deferred tools\n\n"
                         + "These tools are listed by name + hint only (full schemas "
-                        + "are kept out of the manifest to save tokens). You can "
-                        + "call them directly — the engine activates them on first "
-                        + "use. If you need the full parameter schema first, call "
-                        + "`tool_description(names=[\"<name>\", ...])` — pass every "
-                        + "candidate in one call. `tool_list` shows the complete "
-                        + "name inventory including anything omitted here.\n");
+                        + "are kept out of the manifest to save tokens). To use one, "
+                        + "activate it first: `tool_description(names=[\"<name>\", "
+                        + "...])` — pass every candidate in one call; it returns the "
+                        + "schema and from the next turn the tool appears in your "
+                        + "manifest and you call it normally. Never call a tool by "
+                        + "name while it is not in your current manifest — endpoints "
+                        + "may silently drop such calls and the turn dies with an "
+                        + "empty response (observed 2026-09-12 on GLM-5.3-verda via "
+                        + "vLLM). `tool_list` shows the complete name inventory "
+                        + "including anything omitted here.\n");
     }
 
     /**
@@ -572,10 +576,12 @@ public final class ContextToolsApi implements ToolBus {
                 demoted,
                 "\n\n## Tools not in this turn's manifest\n\n"
                         + "These are also available, but their schemas did not fit "
-                        + "the endpoint's tool limit this turn. Calling one by name "
-                        + "works — the engine activates it on first use. Use "
-                        + "`tool_description(names=[\"<name>\", ...])` when you need "
-                        + "the parameters first.\n");
+                        + "the endpoint's tool limit this turn. Same protocol as the "
+                        + "deferred tools above: activate with "
+                        + "`tool_description(names=[\"<name>\", ...])` and call it once "
+                        + "it appears in your manifest. Never call a name your "
+                        + "manifest does not list — endpoints may drop such calls "
+                        + "silently and the turn dies.\n");
     }
 
     /**

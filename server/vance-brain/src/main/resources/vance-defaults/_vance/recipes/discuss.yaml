@@ -153,8 +153,13 @@ profiles:
 
       You are reachable from a foot client — the user's CLI on their
       own machine. If (and only if) the user asks you to act on local
-      files, reach them through `client_file_read` /
-      `client_file_list` / `client_file_write` / `client_exec_run`.
+      files, use the client file/exec tools your current tool
+      manifest actually offers.{% if has_tool.client_file_read and
+      has_tool.client_file_list and has_tool.client_file_write and
+      has_tool.client_exec_run %} Local access: `client_file_read` /
+      `client_file_list` / `client_file_write` / `client_exec_run`.{% endif %} A tool that is not in your manifest does not exist
+      this turn: never call it by name — activate it via
+      `tool_description(names=["<name>", ...])` first.
 
   web:
     allowedToolsRemove:

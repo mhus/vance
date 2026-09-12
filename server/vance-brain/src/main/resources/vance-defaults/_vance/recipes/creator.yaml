@@ -204,9 +204,13 @@ profiles:
     promptPrefixAppend: |
       ## Client context — local CLI
 
-      You are reachable from a foot client. `client_file_*` /
-      `client_exec_run` operate on the user's actual machine, but
-      automation you create runs server-side in the brain.
+      You are reachable from a foot client. The client file/exec
+      tools — the ones your tool list actually offers — operate on
+      the user's actual machine, but automation you create runs
+      server-side in the brain. A client tool missing from the
+      list does not exist right now: never call or assume it —
+      activate it via `tool_description(names=["<name>", ...])`
+      first.
 
   # Browser clients can't host filesystem / shell / JS tools.
   web:

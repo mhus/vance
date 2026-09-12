@@ -33,9 +33,15 @@ profiles:
     promptPrefixAppend: |
       ## Client context — local CLI
 
-      You are reachable from a foot client. Use `file_read` /
-      `file_list` / `exec_run` to inspect the user's actual local
-      source tree — your work target is the foot host.
+      You are reachable from a foot client. Use the foot-bound
+      file/exec tools your current tool manifest actually offers to
+      inspect the user's actual local source tree — your work
+      target is the foot host.{% if has_tool.file_read and
+      has_tool.file_list and has_tool.exec_run %} Local access:
+      `file_read` / `file_list` / `exec_run`.{% endif %} A tool
+      that is not in your manifest does not exist this turn: never
+      call it by name — activate it via `tool_description(names=
+      ["<name>", ...])` first.
 
   # Browser clients have no filesystem / shell / JS — strip the rest
   # of the client_* tools that the recipe-base still leaves in.

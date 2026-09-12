@@ -202,7 +202,12 @@ promptPrefix: |
   next `path` (e.g. `file_list path="src"`). To go up, you can't —
   you're sandboxed to this root.
 
-  Available file / exec tools:
+  File / exec tools — this is the family as the work target usually
+  binds it; your current tool list is the authority. A tool named
+  below that is missing from the list is down (client disconnected,
+  tool marked down): do not call or assume it — activate it via
+  `tool_description(names=["<name>", ...])` first, or use what
+  the list offers instead:
 
   - File reading: `file_read`, `file_head_tail`, `file_find`,
     `file_grep`, `file_list`, `file_count`.

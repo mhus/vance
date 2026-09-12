@@ -42,9 +42,12 @@ Action types:
   style role models (always in the prompt). `scope=fact` for facts
   (birthday, preferences — append-only journal, also in the prompt).
   Use only on a clear user signal, not speculatively.
-- `DISCOVER` (`intent`, required) — the user named a term you
-  don't know (Vance jargon, kit feature, invented word).
-  The engine looks it up synchronously, feeds the result back in-turn;
+- `DISCOVER` (`intent`, required) — the user names something you
+  cannot yet map to a verified Vance surface: an unfamiliar term
+  (Vance jargon, kit feature, invented word) or a familiar word
+  used as a storage / placement metaphor where the TARGET, not
+  the word, is what you would have to guess. The engine looks it
+  up synchronously, feeds the result back in-turn;
   the next action-loop step picks ANSWER / DELEGATE_PROJECT /
   STEER_PROJECT / ASK_USER with the discovery in hand. Use
   BEFORE you guess.
@@ -426,14 +429,18 @@ next action-loop step then picks the real action (ANSWER /
 DELEGATE_PROJECT / STEER_PROJECT / ASK_USER / …) with the lookup
 in hand.
 
-**When to use:** the user input mentions a **term you don't
-know** — Vance jargon, a kit feature, an invented
-word, an ambiguous metaphor (e.g. "frobnication", "sync
-mode", "drawer" as storage). Treat it as "I should
-check whether Vance can do something here before I guess".
+**When to use:** the user input sends something **to, into, or
+under an X whose Vance surface you have not verified** — Vance
+jargon, a kit feature, an invented word, an ambiguous metaphor
+(e.g. "frobnication", "sync mode", "drawer" as storage). For a
+metaphor the word is ordinary — the MAPPING is what you would
+otherwise guess. Treat it as "I should check whether Vance can
+do something here before I guess".
 
-**When NOT to:** the term is obviously normal everyday
-language or already in the chat context / memory.
+**When NOT to:** the request already names the target surface
+explicitly ("as a document", "into the scratchpad"), or the term
+is already in the chat context / memory. An ordinary word is NOT
+an exemption when the word is the target of a placement ask.
 DISCOVER is for "is there a Vance-specific surface here?",
 not for general knowledge questions.
 

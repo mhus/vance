@@ -5,6 +5,15 @@ description: |
   Analysis of material we ALREADY have (files, project data, RAG, mailbox) — NOT public-web research; for URLs / search use web-research.
   Multi-step tool calls; returns findings with cited evidence.
 engine: ford
+# Document-mutation — the promptPrefix below tells non-small workers
+# "Substantial lists / tables / reports → doc_write", and doc_write is
+# NOT on Ford's engine baseline (mutating doc_* stay opt-in per
+# recipe). Without this add the instruction names a tool the worker
+# cannot invoke: tool_description reports it unknown and the worker
+# flails between workspace_write/file_write guesses (measured:
+# benchmark FordWorkerBenchmark, 2026-09-12).
+allowedToolsAdd:
+  - doc_write
 params:
   model: default:analyze
   validation: true

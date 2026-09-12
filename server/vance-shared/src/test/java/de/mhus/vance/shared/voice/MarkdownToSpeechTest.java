@@ -12,8 +12,7 @@ class MarkdownToSpeechTest {
 
     @Test
     void strip_plainText_isIdempotent() {
-        assertThat(MarkdownToSpeech.strip("Hallo Welt."))
-                .isEqualTo("Hallo Welt.");
+        assertThat(MarkdownToSpeech.strip("Hallo Welt.")).isEqualTo("Hallo Welt.");
     }
 
     @Test
@@ -24,14 +23,12 @@ class MarkdownToSpeechTest {
 
     @Test
     void strip_imageLink_keepsAltText() {
-        assertThat(MarkdownToSpeech.strip("![Architektur](vance:/arch.png)"))
-                .isEqualTo("Architektur");
+        assertThat(MarkdownToSpeech.strip("![Architektur](vance:/arch.png)")).isEqualTo("Architektur");
     }
 
     @Test
     void strip_linkWithEmptyText_synthesisesHostMention() {
-        assertThat(MarkdownToSpeech.strip("[](https://example.com/path)"))
-                .isEqualTo("Link zu example.com");
+        assertThat(MarkdownToSpeech.strip("[](https://example.com/path)")).isEqualTo("Link zu example.com");
     }
 
     @Test
@@ -69,8 +66,7 @@ class MarkdownToSpeechTest {
 
     @Test
     void strip_header_addsTrailingPeriod() {
-        assertThat(MarkdownToSpeech.strip("## Einleitung"))
-                .isEqualTo("Einleitung.");
+        assertThat(MarkdownToSpeech.strip("## Einleitung")).isEqualTo("Einleitung.");
     }
 
     @Test
@@ -80,18 +76,21 @@ class MarkdownToSpeechTest {
                 - Eins
                 - Zwei
                 - Drei""";
-        assertThat(MarkdownToSpeech.strip(md))
-                .isEqualTo("Punkte:\nErstens: Eins; Zweitens: Zwei; Drittens: Drei");
+        assertThat(MarkdownToSpeech.strip(md)).isEqualTo("Punkte:\nErstens: Eins; Zweitens: Zwei; Drittens: Drei");
     }
 
     @Test
-    void strip_numberedList_collapsesWithGermanNumbers() {
+    void strip_numberedList_collapsesWithGermanOrdinals() {
+        // Same ordinal connectors as bullets — German's canonical spoken
+        // enumeration. The pre-2026-09-12 cardinal form ("Eins: …; Zwei: …")
+        // read as a table being read out and was inconsistent with the
+        // bullet path.
         String md = """
                 1. Anfangen
                 2. Weitermachen
                 3. Aufhören""";
         assertThat(MarkdownToSpeech.strip(md))
-                .isEqualTo("Eins: Anfangen; Zwei: Weitermachen; Drei: Aufhören");
+                .isEqualTo("Erstens: Anfangen; Zweitens: Weitermachen; Drittens: Aufhören");
     }
 
     @Test
@@ -114,20 +113,17 @@ class MarkdownToSpeechTest {
 
     @Test
     void strip_htmlTags_removed() {
-        assertThat(MarkdownToSpeech.strip("Text mit <span>Markup</span> drin."))
-                .isEqualTo("Text mit Markup drin.");
+        assertThat(MarkdownToSpeech.strip("Text mit <span>Markup</span> drin.")).isEqualTo("Text mit Markup drin.");
     }
 
     @Test
     void strip_footnoteRef_removed() {
-        assertThat(MarkdownToSpeech.strip("Text mit Fußnote[^1] dahinter."))
-                .isEqualTo("Text mit Fußnote dahinter.");
+        assertThat(MarkdownToSpeech.strip("Text mit Fußnote[^1] dahinter.")).isEqualTo("Text mit Fußnote dahinter.");
     }
 
     @Test
     void strip_blockquote_removesMarker() {
-        assertThat(MarkdownToSpeech.strip("> Zitat hier."))
-                .isEqualTo("Zitat hier.");
+        assertThat(MarkdownToSpeech.strip("> Zitat hier.")).isEqualTo("Zitat hier.");
     }
 
     @Test

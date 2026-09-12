@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
  *   <li>Headers ({@code #}/{@code ##}/...) → plain text + sentence-end
  *       period to hint a TTS pause.</li>
  *   <li>Bullet lists (- / *) → "Erstens: …; Zweitens: …; …".</li>
- *   <li>Numbered lists (1. / 2. / ...) → "Eins: …; Zwei: …; …".</li>
+ *   <li>Numbered lists (1. / 2. / ...) → "Erstens: …; Zweitens: …; …" (same ordinals as bullets).</li>
  *   <li>Bold/Italic/Strikethrough markers → stripped, text kept.</li>
  *   <li>Inline code {@code `x`} → {@code x} (markers removed).</li>
  *   <li>Horizontal rule ({@code ---}, {@code ***}) → ". ." (pause).</li>
@@ -44,57 +44,48 @@ public final class MarkdownToSpeech {
     // ── Patterns ─────────────────────────────────────────────────
 
     /** Fenced code block — opening fence with optional lang, then body until matching fence. */
-    private static final Pattern FENCED = Pattern.compile(
-            "(?ms)^( {0,3})(```+|~~~+)([^\\n]*)\\n(.*?)\\n\\1\\2[^\\n]*$");
+    private static final Pattern FENCED =
+            Pattern.compile("(?ms)^( {0,3})(```+|~~~+)([^\\n]*)\\n(.*?)\\n\\1\\2[^\\n]*$");
 
     /** Pipe-table block (header + separator + body rows). */
-    private static final Pattern TABLE = Pattern.compile(
-            "(?m)^\\|.+\\|\\s*\\n\\s*\\|[\\s|:\\-]+\\|\\s*\\n(?:\\s*\\|.+\\|\\s*\\n?)*");
+    private static final Pattern TABLE =
+            Pattern.compile("(?m)^\\|.+\\|\\s*\\n\\s*\\|[\\s|:\\-]+\\|\\s*\\n(?:\\s*\\|.+\\|\\s*\\n?)*");
 
     /** Image link: ![alt](url) — capture alt. */
-    private static final Pattern IMAGE_LINK = Pattern.compile(
-            "!\\[([^\\]]*)\\]\\(([^)]*)\\)");
+    private static final Pattern IMAGE_LINK = Pattern.compile("!\\[([^\\]]*)\\]\\(([^)]*)\\)");
 
     /** Regular link: [text](url) — capture text + url. */
-    private static final Pattern LINK = Pattern.compile(
-            "\\[([^\\]]*)\\]\\(([^)]*)\\)");
+    private static final Pattern LINK = Pattern.compile("\\[([^\\]]*)\\]\\(([^)]*)\\)");
 
     /** ATX heading: # text up to six levels. */
-    private static final Pattern HEADING = Pattern.compile(
-            "(?m)^ {0,3}#{1,6}\\s+(.*?)\\s*#*\\s*$");
+    private static final Pattern HEADING = Pattern.compile("(?m)^ {0,3}#{1,6}\\s+(.*?)\\s*#*\\s*$");
 
     /** Bullet list item: - / * / +. */
-    private static final Pattern BULLET_ITEM = Pattern.compile(
-            "(?m)^ {0,3}[*+\\-]\\s+(.*)$");
+    private static final Pattern BULLET_ITEM = Pattern.compile("(?m)^ {0,3}[*+\\-]\\s+(.*)$");
 
     /** Numbered list item: 1. text. */
-    private static final Pattern ORDERED_ITEM = Pattern.compile(
-            "(?m)^ {0,3}\\d+[.)]\\s+(.*)$");
+    private static final Pattern ORDERED_ITEM = Pattern.compile("(?m)^ {0,3}\\d+[.)]\\s+(.*)$");
 
     /** Horizontal rule: 3+ of the same dash/asterisk/underscore, optional spaces. */
-    private static final Pattern HRULE = Pattern.compile(
-            "(?m)^ {0,3}([-*_])(?:\\s*\\1){2,}\\s*$");
+    private static final Pattern HRULE = Pattern.compile("(?m)^ {0,3}([-*_])(?:\\s*\\1){2,}\\s*$");
 
     /** Inline-code, bold, italic markers. */
     private static final Pattern INLINE_CODE = Pattern.compile("`([^`]+)`");
+
     private static final Pattern BOLD_ITALIC = Pattern.compile("([*_]{1,3})(\\S(?:.*?\\S)?)\\1");
     private static final Pattern STRIKE = Pattern.compile("~~([^~]+)~~");
 
     /** HTML tags and footnote refs. */
     private static final Pattern HTML_TAG = Pattern.compile("<[^>]+>");
+
     private static final Pattern FOOTNOTE_REF = Pattern.compile("\\[\\^[^\\]]+\\]");
 
     /** Blockquote marker. */
     private static final Pattern BLOCKQUOTE = Pattern.compile("(?m)^\\s*>\\s?");
 
     private static final String[] ORDINALS_DE = {
-            "Erstens", "Zweitens", "Drittens", "Viertens", "Fünftens",
-            "Sechstens", "Siebtens", "Achtens", "Neuntens", "Zehntens",
-    };
-
-    private static final String[] NUMBERS_DE = {
-            "Eins", "Zwei", "Drei", "Vier", "Fünf",
-            "Sechs", "Sieben", "Acht", "Neun", "Zehn",
+        "Erstens", "Zweitens", "Drittens", "Viertens", "Fünftens",
+        "Sechstens", "Siebtens", "Achtens", "Neuntens", "Zehntens",
     };
 
     /**
@@ -149,17 +140,20 @@ public final class MarkdownToSpeech {
         s = replaceMatched(s, HEADING, m -> {
             String text = m.group(1).trim();
             if (text.isEmpty()) return "";
-            return text.endsWith(".") || text.endsWith("?") || text.endsWith("!")
-                    ? text
-                    : text + ".";
+            return text.endsWith(".") || text.endsWith("?") || text.endsWith("!") ? text : text + ".";
         });
 
         // ── 5. Horizontal rules → ". ."
         s = HRULE.matcher(s).replaceAll(". .");
 
-        // ── 6. Lists → "Erstens: …; Zweitens: …"
+        // ── 6. Lists → "Erstens: …; Zweitens: …" — bullets AND numbered
+        // lists collapse through the same ordinal connectors. The
+        // pre-2026-09-12 cardinal form for numbered lists ("Eins: …;
+        // Zwei: …") was internally inconsistent with the bullet path
+        // and read as a table being read out, not spoken enumeration
+        // — German's canonical spoken form is ordinals in both cases.
         s = collapseList(s, BULLET_ITEM, ORDINALS_DE);
-        s = collapseList(s, ORDERED_ITEM, NUMBERS_DE);
+        s = collapseList(s, ORDERED_ITEM, ORDINALS_DE);
 
         // ── 7. Blockquote marker stripped, content kept
         s = BLOCKQUOTE.matcher(s).replaceAll("");
@@ -174,9 +168,7 @@ public final class MarkdownToSpeech {
         s = FOOTNOTE_REF.matcher(s).replaceAll("");
 
         // ── 10. Collapse leftover whitespace
-        s = s.replaceAll("[ \\t]+", " ")
-              .replaceAll("\\n{3,}", "\n\n")
-              .trim();
+        s = s.replaceAll("[ \\t]+", " ").replaceAll("\\n{3,}", "\n\n").trim();
         return s;
     }
 
@@ -213,7 +205,7 @@ public final class MarkdownToSpeech {
 
     /**
      * Collapse consecutive list items into a single sentence with
-     * connector words (Erstens / Zweitens or Eins / Zwei). Items
+     * ordinal connector words (Erstens / Zweitens / …). Items
      * past the connector table fall back to their plain text.
      */
     private static String collapseList(String input, Pattern itemPattern, String[] connectors) {

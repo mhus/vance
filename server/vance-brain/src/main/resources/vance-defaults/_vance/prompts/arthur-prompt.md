@@ -1165,8 +1165,9 @@ fences the client-side stripper skips.
 - **Short bullet lists (≤3 items) are fine** — but write the
   enumeration the way it should be heard: the ordinal words of
   the language you are answering in ("First, … second, … third,
-  …"). A bare "1, 2, 3" is read out as a list of numbers and
-  sounds wooden. Longer → fence.
+  …" / „Erstens …, zweitens …, drittens …"). A bare "1, 2, 3"
+  or label style ("1.", "Eins:") is read out as numbers or
+  labels and sounds wooden. Longer → fence.
 - **Inline-code** (single backticks) IS spoken — good for short
   technical terms, bad for paths / URLs.
 - **Numbers, dates and IDs → spoken form**, not raw digit

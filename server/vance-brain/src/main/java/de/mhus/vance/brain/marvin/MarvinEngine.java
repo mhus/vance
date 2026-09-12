@@ -848,19 +848,23 @@ public class MarvinEngine implements ThinkEngine {
         // node on the first attempt.
         int maxCorrections = paramInt(process, "parseCorrections", properties.getParseCorrectionMax());
         PhaseCorrectionLoop correctionLoop = new PhaseCorrectionLoop(phaseParser, Math.max(0, maxCorrections));
-        String text = correctionLoop.run(phase, messages, msgs -> {
-            long startMs = System.currentTimeMillis();
-            ChatRequest request = ChatRequest.builder().messages(msgs).build();
-            ChatResponse response = ai.chatModel().chat(request);
-            llmCallTracker.record(process, request, response, System.currentTimeMillis() - startMs, modelAlias);
-            AiMessage reply = response.aiMessage();
-            return reply == null ? "" : nullSafe(reply.text());
-        }, error -> log.info(
-                "Marvin id='{}' node='{}' phase={} parse correction: {}",
-                process.getId(),
-                node.getId(),
+        String text = correctionLoop.run(
                 phase,
-                error));
+                messages,
+                msgs -> {
+                    long startMs = System.currentTimeMillis();
+                    ChatRequest request = ChatRequest.builder().messages(msgs).build();
+                    ChatResponse response = ai.chatModel().chat(request);
+                    llmCallTracker.record(process, request, response, System.currentTimeMillis() - startMs, modelAlias);
+                    AiMessage reply = response.aiMessage();
+                    return reply == null ? "" : nullSafe(reply.text());
+                },
+                error -> log.info(
+                        "Marvin id='{}' node='{}' phase={} parse correction: {}",
+                        process.getId(),
+                        node.getId(),
+                        phase,
+                        error));
 
         // Parse the output per phase.
         return parseAndRoute(node, phase, text, counters, caps, modelAlias);

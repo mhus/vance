@@ -60,22 +60,21 @@ public final class ArthurActionSchema {
 
     public static final String TOOL_NAME = "arthur_action";
 
-    public static final String TOOL_DESCRIPTION =
-            "Final structured action for this turn. Call this exactly once "
-                    + "per turn (after any read-tool calls like recipe_list / "
-                    + "manual_read you may need). The 'type' picks the branch, "
-                    + "'reason' explains the choice, and per-type fields carry "
-                    + "the content. Action availability depends on the current "
-                    + "process mode — see the system prompt for what's "
-                    + "available right now.";
+    public static final String TOOL_DESCRIPTION = "Final structured action for this turn. Call this exactly once "
+            + "per turn (after any read-tool calls like recipe_list / "
+            + "manual_read you may need). The 'type' picks the branch, "
+            + "'reason' explains the choice, and per-type fields carry "
+            + "the content. Action availability depends on the current "
+            + "process mode — see the system prompt for what's "
+            + "available right now.";
 
     // ── NORMAL/EXECUTING action types ────────────────────────────
-    public static final String TYPE_ANSWER     = "ANSWER";
-    public static final String TYPE_ASK_USER   = "ASK_USER";
-    public static final String TYPE_DELEGATE   = "DELEGATE";
-    public static final String TYPE_RELAY      = "RELAY";
-    public static final String TYPE_WAIT       = "WAIT";
-    public static final String TYPE_REJECT     = "REJECT";
+    public static final String TYPE_ANSWER = "ANSWER";
+    public static final String TYPE_ASK_USER = "ASK_USER";
+    public static final String TYPE_DELEGATE = "DELEGATE";
+    public static final String TYPE_RELAY = "RELAY";
+    public static final String TYPE_WAIT = "WAIT";
+    public static final String TYPE_REJECT = "REJECT";
 
     /**
      * Looks up a user-mentioned term / intent in the Vance knowledge
@@ -89,7 +88,7 @@ public final class ArthurActionSchema {
      * lookups (verify a fence syntax before drafting), the read-only
      * {@code how_do_i} tool stays available.
      */
-    public static final String TYPE_DISCOVER   = "DISCOVER";
+    public static final String TYPE_DISCOVER = "DISCOVER";
 
     /**
      * Persists something about the user into the cross-engine per-user
@@ -99,7 +98,7 @@ public final class ArthurActionSchema {
      * the model can capture a user fact whenever it surfaces, without
      * waiting for a mode transition.
      */
-    public static final String TYPE_LEARN      = "LEARN";
+    public static final String TYPE_LEARN = "LEARN";
 
     /**
      * Sends a short attention signal to the user on the current session
@@ -114,25 +113,47 @@ public final class ArthurActionSchema {
      */
     public static final String TYPE_NOTIFY_USER = "NOTIFY_USER";
 
+    /**
+     * Sends a short attention signal to every member of a named team
+     * — a wake notification (bell / beep / mobile push), not a chat
+     * message and not a project inbox post. Use at the end of a task
+     * or on a blocking problem so an away team knows to look and act
+     * (e.g. 'finished successfully' / 'stopped with errors'). The
+     * handler resolves the team via the {@code team_list} backing
+     * service and dispatches one best-effort notification per member
+     * through the {@code NotificationService}; single-member delivery
+     * failures are logged, not fatal. Available in NORMAL and
+     * EXECUTING modes.
+     */
+    public static final String TYPE_NOTIFY_TEAM = "NOTIFY_TEAM";
+
     // ── Plan-Mode action types ───────────────────────────────────
-    public static final String TYPE_START_PLAN      = "START_PLAN";
-    public static final String TYPE_PROPOSE_PLAN    = "PROPOSE_PLAN";
+    public static final String TYPE_START_PLAN = "START_PLAN";
+    public static final String TYPE_PROPOSE_PLAN = "PROPOSE_PLAN";
     public static final String TYPE_START_EXECUTION = "START_EXECUTION";
-    public static final String TYPE_TODO_UPDATE     = "TODO_UPDATE";
+    public static final String TYPE_TODO_UPDATE = "TODO_UPDATE";
 
     // ── LEARN scope / mode (mirror EddieActionSchema) ────────────
     public static final String LEARN_SCOPE_PERSONA = "persona";
-    public static final String LEARN_SCOPE_FACT    = "fact";
-    public static final Set<String> LEARN_SCOPES   = Set.of(
-            LEARN_SCOPE_PERSONA, LEARN_SCOPE_FACT);
-    public static final String LEARN_MODE_APPEND   = "append";
-    public static final String LEARN_MODE_REPLACE  = "replace";
+    public static final String LEARN_SCOPE_FACT = "fact";
+    public static final Set<String> LEARN_SCOPES = Set.of(LEARN_SCOPE_PERSONA, LEARN_SCOPE_FACT);
+    public static final String LEARN_MODE_APPEND = "append";
+    public static final String LEARN_MODE_REPLACE = "replace";
 
     public static final Set<String> SUPPORTED_TYPES = Set.of(
-            TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
-            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER,
+            TYPE_ANSWER,
+            TYPE_ASK_USER,
+            TYPE_DELEGATE,
+            TYPE_RELAY,
+            TYPE_WAIT,
+            TYPE_REJECT,
+            TYPE_LEARN,
+            TYPE_DISCOVER,
             TYPE_NOTIFY_USER,
-            TYPE_START_PLAN, TYPE_PROPOSE_PLAN, TYPE_START_EXECUTION,
+            TYPE_NOTIFY_TEAM,
+            TYPE_START_PLAN,
+            TYPE_PROPOSE_PLAN,
+            TYPE_START_EXECUTION,
             TYPE_TODO_UPDATE);
 
     /**
@@ -144,9 +165,17 @@ public final class ArthurActionSchema {
      * capture isn't gated by mode.
      */
     public static final Set<String> TYPES_FOR_NORMAL = Set.of(
-            TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
-            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER, TYPE_START_PLAN,
-            TYPE_NOTIFY_USER);
+            TYPE_ANSWER,
+            TYPE_ASK_USER,
+            TYPE_DELEGATE,
+            TYPE_RELAY,
+            TYPE_WAIT,
+            TYPE_REJECT,
+            TYPE_LEARN,
+            TYPE_DISCOVER,
+            TYPE_START_PLAN,
+            TYPE_NOTIFY_USER,
+            TYPE_NOTIFY_TEAM);
 
     /**
      * Action types allowed in {@code EXPLORING} mode — read-only
@@ -154,30 +183,35 @@ public final class ArthurActionSchema {
      * blocked. {@code LEARN} stays available — it's a side-effect on
      * user memory, not on the project workspace.
      */
-    public static final Set<String> TYPES_FOR_EXPLORING = Set.of(
-            TYPE_ANSWER, TYPE_LEARN, TYPE_DISCOVER,
-            TYPE_PROPOSE_PLAN, TYPE_START_PLAN);
+    public static final Set<String> TYPES_FOR_EXPLORING =
+            Set.of(TYPE_ANSWER, TYPE_LEARN, TYPE_DISCOVER, TYPE_PROPOSE_PLAN, TYPE_START_PLAN);
 
     /**
      * Action types allowed in {@code PLANNING} mode — interpreting
      * the user's reply to the proposed plan.
      */
-    public static final Set<String> TYPES_FOR_PLANNING = Set.of(
-            TYPE_ANSWER, TYPE_LEARN, TYPE_PROPOSE_PLAN, TYPE_START_EXECUTION,
-            TYPE_START_PLAN);
+    public static final Set<String> TYPES_FOR_PLANNING =
+            Set.of(TYPE_ANSWER, TYPE_LEARN, TYPE_PROPOSE_PLAN, TYPE_START_EXECUTION, TYPE_START_PLAN);
 
     /**
      * Action types allowed in {@code EXECUTING} mode — full work
      * vocabulary minus Plan-Mode entry actions.
      */
     public static final Set<String> TYPES_FOR_EXECUTING = Set.of(
-            TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
-            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER,
-            TYPE_START_PLAN, TYPE_TODO_UPDATE,
-            TYPE_NOTIFY_USER);
+            TYPE_ANSWER,
+            TYPE_ASK_USER,
+            TYPE_DELEGATE,
+            TYPE_RELAY,
+            TYPE_WAIT,
+            TYPE_REJECT,
+            TYPE_LEARN,
+            TYPE_DISCOVER,
+            TYPE_START_PLAN,
+            TYPE_TODO_UPDATE,
+            TYPE_NOTIFY_USER,
+            TYPE_NOTIFY_TEAM);
 
-    public static Set<String> typesForMode(
-            de.mhus.vance.api.thinkprocess.ProcessMode mode) {
+    public static Set<String> typesForMode(de.mhus.vance.api.thinkprocess.ProcessMode mode) {
         return switch (mode) {
             case NORMAL -> TYPES_FOR_NORMAL;
             case EXPLORING -> TYPES_FOR_EXPLORING;
@@ -188,8 +222,8 @@ public final class ArthurActionSchema {
 
     // ── Param keys ───────────────────────────────────────────────
     public static final String PARAM_MESSAGE = "message";
-    public static final String PARAM_PRESET  = "preset";
-    public static final String PARAM_PROMPT  = "prompt";
+    public static final String PARAM_PRESET = "preset";
+    public static final String PARAM_PROMPT = "prompt";
     /**
      * RELAY: stable handle of the {@code <process-event>} to relay,
      * copied verbatim from the {@code eventId} attribute the engine
@@ -204,9 +238,9 @@ public final class ArthurActionSchema {
 
     // LEARN params — mirror EddieActionSchema for symmetry.
     /** LEARN scope discriminator: {@code persona} or {@code fact}. */
-    public static final String PARAM_SCOPE   = "scope";
+    public static final String PARAM_SCOPE = "scope";
     /** LEARN persona-update mode: {@code append} or {@code replace}. */
-    public static final String PARAM_MODE    = "mode";
+    public static final String PARAM_MODE = "mode";
     /** LEARN body — persona-update text or fact-journal entry. */
     public static final String PARAM_CONTENT = "content";
 
@@ -230,18 +264,25 @@ public final class ArthurActionSchema {
      */
     public static final String PARAM_SEVERITY = "severity";
 
+    /**
+     * NOTIFY_TEAM: name of the team to notify. Resolved through the
+     * team service backing {@code team_list}; an unknown team is
+     * reported back to the model as a hint, not an exception.
+     */
+    public static final String PARAM_TEAM = "team";
+
     // Plan-Mode params
-    public static final String PARAM_GOAL    = "goal";
-    public static final String PARAM_PLAN    = "plan";
+    public static final String PARAM_GOAL = "goal";
+    public static final String PARAM_PLAN = "plan";
     public static final String PARAM_SUMMARY = "summary";
-    public static final String PARAM_TODOS   = "todos";
-    public static final String PARAM_NOTES   = "notes";
+    public static final String PARAM_TODOS = "todos";
+    public static final String PARAM_NOTES = "notes";
     public static final String PARAM_UPDATES = "updates";
 
     /** DISCOVER intent — the user-mentioned term / question / phrase
      *  that the LLM doesn't recognise. Passed to
      *  {@code DiscoveryService.discover}. */
-    public static final String PARAM_INTENT  = "intent";
+    public static final String PARAM_INTENT = "intent";
 
     /**
      * JSON schema (flat) covering all action types. Per-type
@@ -253,13 +294,25 @@ public final class ArthurActionSchema {
     public static Map<String, Object> schema() {
         Map<String, Object> typeProp = new LinkedHashMap<>();
         typeProp.put("type", "string");
-        typeProp.put("enum", List.of(
-                TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE,
-                TYPE_RELAY, TYPE_WAIT, TYPE_REJECT, TYPE_LEARN,
-                TYPE_DISCOVER, TYPE_NOTIFY_USER,
-                TYPE_START_PLAN, TYPE_PROPOSE_PLAN,
-                TYPE_START_EXECUTION, TYPE_TODO_UPDATE));
-        typeProp.put("description",
+        typeProp.put(
+                "enum",
+                List.of(
+                        TYPE_ANSWER,
+                        TYPE_ASK_USER,
+                        TYPE_DELEGATE,
+                        TYPE_RELAY,
+                        TYPE_WAIT,
+                        TYPE_REJECT,
+                        TYPE_LEARN,
+                        TYPE_DISCOVER,
+                        TYPE_NOTIFY_USER,
+                        TYPE_NOTIFY_TEAM,
+                        TYPE_START_PLAN,
+                        TYPE_PROPOSE_PLAN,
+                        TYPE_START_EXECUTION,
+                        TYPE_TODO_UPDATE));
+        typeProp.put(
+                "description",
                 "Which branch this turn takes. ANSWER = direct reply. "
                         + "ASK_USER = clarification question. DELEGATE = spawn "
                         + "a worker. RELAY = pass through a specific "
@@ -289,14 +342,16 @@ public final class ArthurActionSchema {
 
         Map<String, Object> reasonProp = new LinkedHashMap<>();
         reasonProp.put("type", "string");
-        reasonProp.put("description",
+        reasonProp.put(
+                "description",
                 "One short sentence explaining why this action was chosen. "
                         + "Required for audit and to force deliberate decisions. "
                         + "Never empty.");
 
         Map<String, Object> messageProp = new LinkedHashMap<>();
         messageProp.put("type", "string");
-        messageProp.put("description",
+        messageProp.put(
+                "description",
                 "User-facing text. Required for ANSWER, ASK_USER, REJECT, "
                         + "NOTIFY_TEAM. Optional for DELEGATE, WAIT, LEARN. "
                         + "Markdown allowed.");
@@ -304,7 +359,8 @@ public final class ArthurActionSchema {
         Map<String, Object> scopeProp = new LinkedHashMap<>();
         scopeProp.put("type", "string");
         scopeProp.put("enum", List.of(LEARN_SCOPE_PERSONA, LEARN_SCOPE_FACT));
-        scopeProp.put("description",
+        scopeProp.put(
+                "description",
                 "LEARN scope. 'persona' = how-to-talk-to-this-user summary, "
                         + "always loaded into the prompt (use for persona "
                         + "traits, communication style, preferences about the "
@@ -315,7 +371,8 @@ public final class ArthurActionSchema {
         Map<String, Object> modeProp = new LinkedHashMap<>();
         modeProp.put("type", "string");
         modeProp.put("enum", List.of(LEARN_MODE_APPEND, LEARN_MODE_REPLACE));
-        modeProp.put("description",
+        modeProp.put(
+                "description",
                 "LEARN persona update mode. 'replace' (default) overwrites "
                         + "the entire persona summary — use when you want a "
                         + "clean rewrite. 'append' adds to the end. Ignored "
@@ -323,23 +380,21 @@ public final class ArthurActionSchema {
 
         Map<String, Object> learnContentProp = new LinkedHashMap<>();
         learnContentProp.put("type", "string");
-        learnContentProp.put("description",
-                "LEARN body — persona-update text or factual journal entry. "
-                        + "Required for LEARN.");
+        learnContentProp.put(
+                "description", "LEARN body — persona-update text or factual journal entry. " + "Required for LEARN.");
 
         Map<String, Object> presetProp = new LinkedHashMap<>();
         presetProp.put("type", "string");
-        presetProp.put("description",
-                "Recipe name to spawn the worker from. OPTIONAL for DELEGATE.");
+        presetProp.put("description", "Recipe name to spawn the worker from. OPTIONAL for DELEGATE.");
 
         Map<String, Object> promptProp = new LinkedHashMap<>();
         promptProp.put("type", "string");
-        promptProp.put("description",
-                "Concrete instruction for the worker. Required for DELEGATE.");
+        promptProp.put("description", "Concrete instruction for the worker. Required for DELEGATE.");
 
         Map<String, Object> eventRefProp = new LinkedHashMap<>();
         eventRefProp.put("type", "string");
-        eventRefProp.put("description",
+        eventRefProp.put(
+                "description",
                 "Stable handle of the <process-event> to relay — copy "
                         + "the `eventId` attribute verbatim from one of the "
                         + "<process-event> markers in your current inbox. "
@@ -353,20 +408,23 @@ public final class ArthurActionSchema {
         // Plan-Mode params
         Map<String, Object> goalProp = new LinkedHashMap<>();
         goalProp.put("type", "string");
-        goalProp.put("description",
+        goalProp.put(
+                "description",
                 "Optional one-liner restating the task as you understand "
                         + "it. Used for START_PLAN — the goal you'll explore "
                         + "and plan against.");
 
         Map<String, Object> planProp = new LinkedHashMap<>();
         planProp.put("type", "string");
-        planProp.put("description",
+        planProp.put(
+                "description",
                 "Markdown plan text. Required for PROPOSE_PLAN. The user "
                         + "reads this and accepts / edits / rejects.");
 
         Map<String, Object> summaryProp = new LinkedHashMap<>();
         summaryProp.put("type", "string");
-        summaryProp.put("description",
+        summaryProp.put(
+                "description",
                 "One-line summary of the plan, used for spinner / log / "
                         + "inbox-announcement. Required for PROPOSE_PLAN.");
 
@@ -378,12 +436,10 @@ public final class ArthurActionSchema {
         idProp.put("description", "Stable id within the plan, e.g. \"1\".");
         Map<String, Object> contentProp = new LinkedHashMap<>();
         contentProp.put("type", "string");
-        contentProp.put("description",
-                "Imperative form, e.g. \"Token-Storage migrieren\".");
+        contentProp.put("description", "Imperative form, e.g. \"Token-Storage migrieren\".");
         Map<String, Object> activeFormProp = new LinkedHashMap<>();
         activeFormProp.put("type", "string");
-        activeFormProp.put("description",
-                "Optional present-continuous, e.g. \"Migriere Token-Storage\".");
+        activeFormProp.put("description", "Optional present-continuous, e.g. \"Migriere Token-Storage\".");
         todoItemProps.put("id", idProp);
         todoItemProps.put("content", contentProp);
         todoItemProps.put("activeForm", activeFormProp);
@@ -393,16 +449,15 @@ public final class ArthurActionSchema {
         Map<String, Object> todosProp = new LinkedHashMap<>();
         todosProp.put("type", "array");
         todosProp.put("items", todoItemSchema);
-        todosProp.put("description",
+        todosProp.put(
+                "description",
                 "TodoList: 3–8 plan steps. Required for PROPOSE_PLAN. "
                         + "Each item is a logical phase step with own value "
                         + "(not atomic tool-calls, not over-generalisations).");
 
         Map<String, Object> notesProp = new LinkedHashMap<>();
         notesProp.put("type", "string");
-        notesProp.put("description",
-                "Optional extra context from the user's approval. Used "
-                        + "for START_EXECUTION.");
+        notesProp.put("description", "Optional extra context from the user's approval. Used " + "for START_EXECUTION.");
 
         Map<String, Object> updateItemSchema = new LinkedHashMap<>();
         updateItemSchema.put("type", "object");
@@ -422,9 +477,9 @@ public final class ArthurActionSchema {
         Map<String, Object> updatesProp = new LinkedHashMap<>();
         updatesProp.put("type", "array");
         updatesProp.put("items", updateItemSchema);
-        updatesProp.put("description",
-                "TodoItem status updates. Required for TODO_UPDATE. "
-                        + "Items not listed are left untouched.");
+        updatesProp.put(
+                "description",
+                "TodoItem status updates. Required for TODO_UPDATE. " + "Items not listed are left untouched.");
 
         // ASK_USER options — optional structured picker. Same shape
         // as EddieActionSchema; the handler renders them as a Markdown
@@ -435,13 +490,15 @@ public final class ArthurActionSchema {
         Map<String, Object> optionItemProps = new LinkedHashMap<>();
         Map<String, Object> optionLabelProp = new LinkedHashMap<>();
         optionLabelProp.put("type", "string");
-        optionLabelProp.put("description",
+        optionLabelProp.put(
+                "description",
                 "Short label the user picks. 1-5 words ideal — this "
                         + "is what the user reads (and voice channels "
                         + "say aloud) as the choice text.");
         Map<String, Object> optionDescProp = new LinkedHashMap<>();
         optionDescProp.put("type", "string");
-        optionDescProp.put("description",
+        optionDescProp.put(
+                "description",
                 "Optional one-line clarification of what this option "
                         + "means / what happens when picked. Skipped "
                         + "when the label is self-explanatory.");
@@ -453,7 +510,8 @@ public final class ArthurActionSchema {
         Map<String, Object> optionsProp = new LinkedHashMap<>();
         optionsProp.put("type", "array");
         optionsProp.put("items", optionItemSchema);
-        optionsProp.put("description",
+        optionsProp.put(
+                "description",
                 "ASK_USER-only: structured options for a multiple-"
                         + "choice question. Use when the answer set is "
                         + "small (2-4) and discrete (yes/no, A/B/C). "
@@ -464,7 +522,8 @@ public final class ArthurActionSchema {
 
         Map<String, Object> intentProp = new LinkedHashMap<>();
         intentProp.put("type", "string");
-        intentProp.put("description",
+        intentProp.put(
+                "description",
                 "DISCOVER-only: the user-mentioned term / phrase / "
                         + "intent to look up in the Vance knowledge "
                         + "surface (manuals, skills, server tools). "
@@ -478,7 +537,8 @@ public final class ArthurActionSchema {
         Map<String, Object> severityProp = new LinkedHashMap<>();
         severityProp.put("type", "string");
         severityProp.put("enum", List.of("INFO", "WARN", "ERROR"));
-        severityProp.put("description",
+        severityProp.put(
+                "description",
                 "NOTIFY_USER-only: how loud the wake signal should be. "
                         + "'INFO' (default) = heads-up, task finished. "
                         + "'WARN' = needs attention soon (blocked, awaiting "

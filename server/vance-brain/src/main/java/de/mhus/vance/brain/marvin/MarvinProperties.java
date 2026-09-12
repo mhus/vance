@@ -41,4 +41,11 @@ public class MarvinProperties {
      *  the full reply stays in the sub-process's persistent chat
      *  history. */
     private int recipeReplyTruncateChars = 8000;
+
+    /** Per-phase parse-error corrections: a reply that fails to parse
+     *  is fed back to the model with the parser's error and retried,
+     *  up to this many times, before the node takes the documented
+     *  parse-failure path (spec §17). Same resilience contract as
+     *  StructuredActionEngine's malformed-JSON handling. */
+    private int parseCorrectionMax = 2;
 }

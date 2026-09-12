@@ -175,6 +175,21 @@ public class PhaseOutputParser {
         return Result.ok(new ValidateOutput(verdict, issues, hint, reason));
     }
 
+    /**
+     * Returns the parse error for the phase's output shape, or
+     * {@code null} when the reply parses. Phase-agnostic front door
+     * for the engine's correction loop: it only needs to know
+     * WHETHER a reply is usable, not the typed result.
+     */
+    public @Nullable String parseError(de.mhus.vance.api.marvin.WorkerPhase phase, @Nullable String raw) {
+        return switch (phase) {
+            case SCOPE -> parseScope(raw).error();
+            case REFLECT -> parseReflect(raw).error();
+            case POST_CHILDREN -> parsePostChildren(raw).error();
+            case CONCLUDE -> parseConclude(raw).error();
+            case VALIDATE -> parseValidate(raw).error();
+        };
+    }
     // ─────────────────── Helpers ───────────────────
 
     private static String noJsonError(String phase) {

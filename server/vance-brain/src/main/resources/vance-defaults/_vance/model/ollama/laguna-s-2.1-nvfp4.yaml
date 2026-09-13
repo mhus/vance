@@ -1,0 +1,27 @@
+wireName: laguna-s-2.1:nvfp4
+contextWindowTokens: 1048576
+defaultMaxOutputTokens: 8192
+# Frontier-class local MoE (118B total / 8B activated per token,
+# 70.2% Terminal-Bench 2.1) — genuinely LARGE, not the ~30B workhorse
+# class of the other local lanes. LARGE puts it on the same prompt
+# branch as the GLM-5.3 verda reference; the 30B locals stay SMALL.
+# The size field describes the model, not the lane.
+size: LARGE
+capabilities:
+- thinking
+timeoutSeconds: 600
+# Library declares text-only input — no vision capability.
+#
+# Reasoning shape: to be verified by wire probe once the model is
+# pulled; default assumption is the separate reasoning field (the
+# modern Ollama thinking-model convention, as measured on
+# qwen3.8:27b-mlx). If the probe shows inline think markup instead,
+# flip this to true — see the qwen3.6-35b entry for that path.
+stripThinkTags: false
+# Runs locally — no vendor bill. Zero rates declared rather than
+# omitted: a missing pricing block means "price unknown" and counts
+# against the usage report's coverage (see qwen3.6-35b.yaml).
+pricing:
+  currency: USD
+  inputPerMTok: 0.0
+  outputPerMTok: 0.0

@@ -12,11 +12,11 @@ capabilities:
 timeoutSeconds: 600
 # Library declares text-only input — no vision capability.
 #
-# Reasoning shape: to be verified by wire probe once the model is
-# pulled; default assumption is the separate reasoning field (the
-# modern Ollama thinking-model convention, as measured on
-# qwen3.8:27b-mlx). If the probe shows inline think markup instead,
-# flip this to true — see the qwen3.6-35b entry for that path.
+# Wire probe (2026-09-13): the reasoning arrives in the OpenAI
+# endpoint's separate reasoning field, content comes through clean —
+# no inline think markup (same shape as qwen3.8:27b-mlx, unlike
+# qwen3.6:35b). stripThinkTags stays off; the reasoning field takes
+# the same provider path as the GLM-5.3 verda lane.
 stripThinkTags: false
 # Runs locally — no vendor bill. Zero rates declared rather than
 # omitted: a missing pricing block means "price unknown" and counts

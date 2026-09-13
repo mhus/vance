@@ -1,0 +1,24 @@
+wireName: qwen3.8:27b-mlx
+contextWindowTokens: 262144
+defaultMaxOutputTokens: 8192
+# Same SMALL-tier call as the local peer family (see qwen3.6-35b.yaml):
+# the directive small prompt is what a ~30B model needs, and it keeps
+# the local benchmark lanes on one prompt branch (gemma4:31b-mlx,
+# muse-glimmer:30b-mlx, qwen3.6:35b are SMALL too).
+size: SMALL
+capabilities:
+- vision
+timeoutSeconds: 600
+# Qwen family emits its reasoning INLINE wrapped in think markup
+# rather than in a separate reasoning field (same as qwen3.6:35b —
+# the OpenAI-compatible Ollama endpoint hands the raw text
+# through). The sanitizer removes that markup from user-visible
+# content; the trace keeps the raw response for forensics.
+stripThinkTags: true
+# Runs locally — no vendor bill. Zero rates declared rather than
+# omitted: a missing pricing block means "price unknown" and counts
+# against the usage report's coverage (see qwen3.6-35b.yaml).
+pricing:
+  currency: USD
+  inputPerMTok: 0.0
+  outputPerMTok: 0.0

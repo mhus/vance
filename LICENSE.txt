@@ -34,7 +34,7 @@ Change License:       GNU Affero General Public License, version 3.0
 
 For information about alternative licensing arrangements for the Licensed
 Work — including commercial licenses that lift the restrictions of this
-License — please contact the Licensor at <contact-email>.
+License — please contact the Licensor at info@vancetope.com.
 
 A dual commercial license is available for parties whose intended use is
 outside the scope of the Additional Use Grant above (for example, providing

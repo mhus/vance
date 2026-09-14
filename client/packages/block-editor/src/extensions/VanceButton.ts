@@ -4,8 +4,9 @@ import VanceButtonNodeView from './VanceButtonNodeView.vue';
 
 /**
  * Tiptap node for {@code ```vance-button} blocks — a clickable button that
- * runs a project script. v1 supports {@code type: script} only: clicking
- * runs the {@code script} (a `.js` document) server-side. Config lives in
+ * triggers a server-side action. {@code type}: {@code script} (runs the
+ * {@code script} `.js` document) or a built-in workbook action such as
+ * {@code form-resolve} / {@code form-reset} (no script). Config lives in
  * the fence; running goes through a host callback so the block-editor stays
  * decoupled from REST.
  */
@@ -19,8 +20,8 @@ export const VanceButton = Node.create({
 
   addAttributes() {
     return {
-      type: { default: 'script' },   // v1: only "script"
-      script: { default: '' },       // vance: URI / path of the .js document
+      type: { default: 'script' },   // script | form-resolve | form-reset | …
+      script: { default: '' },       // vance: URI / path of the .js document (type: script)
       title: { default: '' },        // button label
     };
   },
@@ -41,8 +42,15 @@ export const VanceButton = Node.create({
 
   addOptions() {
     return {
-      /** Host-provided run: execute the button's script (by ref). */
-      runScript: null as null | ((scriptRef: string) => Promise<void>),
+      /**
+       * Host-provided run: execute this button's action server-side and
+       * return an optional summary message (score, confirmation) for
+       * inline display. The host is responsible for flushing pending
+       * editor saves before running (the action reads the page from the
+       * DB).
+       */
+      runButton: null as null
+        | ((button: { type: string; script: string; title: string }) => Promise<string | null>),
     };
   },
 

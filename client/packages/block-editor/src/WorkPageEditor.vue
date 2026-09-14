@@ -35,6 +35,7 @@ import {
   VanceEmbed,
   VanceForm,
   VanceInput,
+  VanceField,
   VanceButton,
   VanceCompose,
   type ComposeRunResult,
@@ -202,8 +203,13 @@ const props = withDefaults(
     /** Open the host input picker (slash `/input`) — pick or create a text
      *  doc, then call back via `insertInput`. */
     openInputPicker?: () => void;
-    /** Run a `vance-button` block's script (by ref) — host resolves + POSTs. */
-    runButtonScript?: (scriptRef: string) => Promise<void>;
+    /**
+     * Run a {@code vance-button} block's action server-side (script |
+     * form-resolve | form-reset) and return an optional summary message
+     * for inline display. The host flushes pending editor saves before
+     * running — the action reads the page fresh from the DB.
+     */
+    runButtonAction?: (button: { type: string; script: string; title: string }) => Promise<string | null>;
     /** Run a `vance-compose` block's inline YAML — host POSTs (async), resolves outputs. */
     runCompose?: (yaml: string) => Promise<ComposeRunResult>;
     /** Poll an in-flight compose run by id — host GETs status/tail/result. */
@@ -477,14 +483,15 @@ const editor = useEditor({
       // URI. Null → NodeView shows the fallback notice.
       formComponent: () => props.formComponent ?? null,
     }),
+    VanceField,
     VanceInput.configure({
       loadInput: (uri: string) => props.loadInput?.(uri) ?? Promise.resolve(''),
       saveInput: (uri: string, content: string, saveScript: string, session: boolean) =>
         props.saveInput?.(uri, content, saveScript, session) ?? Promise.resolve(),
     }),
     VanceButton.configure({
-      runScript: (scriptRef: string) =>
-        props.runButtonScript?.(scriptRef) ?? Promise.resolve(),
+      runButton: (button) =>
+        props.runButtonAction?.(button) ?? Promise.resolve(null),
     }),
     VanceCompose.configure({
       runCompose: (yaml: string) =>

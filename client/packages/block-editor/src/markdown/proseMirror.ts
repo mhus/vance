@@ -118,6 +118,20 @@ function blockToNode(b: Block): JSONContent {
         type: 'vanceButton',
         attrs: { type: b.buttonType, script: b.script, title: b.title },
       };
+    case 'field':
+      return {
+        type: 'vanceField',
+        attrs: {
+          id: b.id,
+          fieldType: b.fieldType,
+          question: b.question,
+          options: b.options,
+          solution: b.solution,
+          value: b.value,
+          verdict: b.verdict,
+          feedback: b.feedback,
+        },
+      };
     case 'compose':
       return { type: 'vanceCompose', attrs: { yaml: b.yaml } };
     case 'columns':
@@ -270,6 +284,20 @@ function nodeToBlock(node: JSONContent): Block[] {
         buttonType: (node.attrs?.type as string) ?? 'script',
         script: (node.attrs?.script as string) ?? '',
         title: (node.attrs?.title as string) ?? '',
+      }];
+    case 'vanceField':
+      return [{
+        kind: 'field',
+        id: (node.attrs?.id as string) ?? '',
+        fieldType: (node.attrs?.fieldType as string) ?? 'text',
+        question: (node.attrs?.question as string) ?? '',
+        options: Array.isArray(node.attrs?.options)
+          ? [...(node.attrs.options as string[])]
+          : [],
+        solution: node.attrs?.solution ?? null,
+        value: node.attrs?.value ?? null,
+        verdict: (node.attrs?.verdict as string | null) ?? null,
+        feedback: (node.attrs?.feedback as string | null) ?? null,
       }];
     case 'vanceCompose':
       return [{ kind: 'compose', yaml: (node.attrs?.yaml as string) ?? '' }];

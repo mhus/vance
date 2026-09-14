@@ -342,16 +342,39 @@ function onInputPicked(uri: string) {
 }
 
 // ── Button block (slash /button) — run the button's script ────────
-// A bare name resolves relative to the app folder; `vance:/…` is
-// project-absolute. Runs server-side via the script/run endpoint.
-async function runButtonScript(scriptRef: string): Promise<void> {
-  let ref = scriptRef.trim();
-  if (ref.startsWith('vance:')) ref = ref.slice('vance:'.length);
-  const path = ref.startsWith('/')
-    ? ref.slice(1)
-    : (folder.value ? `${folder.value}/${ref}` : ref);
-  const params = new URLSearchParams({ projectId: projectId.value, script: path });
-  await brainFetch<void>('POST', `addon/workbook/script/run?${params}`, { body: {} });
+// ── Button block (slash /button) — run the button's action ───────
+// `type: script` runs a .js document (bare name resolves relative to
+// the app folder, `vance:/…` is project-absolute) via the script/run
+// endpoint; built-in actions (form-resolve / form-reset) go through the
+// button/run endpoint, which executes them server-side over the
+// canonical block model. The action reads the page fresh from the DB, so
+// pending editor edits are flushed first and the save PUT is awaited.
+async function runButtonAction(
+  button: { type: string; script: string; title: string },
+): Promise<string | null> {
+  editorRef.value?.flush();
+  await saveChain;
+
+  if (button.type === 'script') {
+    let ref = button.script.trim();
+    if (ref.startsWith('vance:')) ref = ref.slice('vance:'.length);
+    const path = ref.startsWith('/')
+      ? ref.slice(1)
+      : (folder.value ? `${folder.value}/${ref}` : ref);
+    const params = new URLSearchParams({ projectId: projectId.value, script: path });
+    await brainFetch<void>('POST', `addon/workbook/script/run?${params}`, { body: {} });
+    return null;
+  }
+  const params = new URLSearchParams({
+    projectId: projectId.value,
+    doc: activePageView.value?.path ?? '',
+  });
+  const result = await brainFetch<{ message?: string | null }>(
+    'POST',
+    `addon/workbook/button/run?${params}`,
+    { body: { type: button.type, script: button.script, title: button.title } },
+  );
+  return result?.message ?? null;
 }
 
 /**
@@ -759,7 +782,16 @@ async function loadActivePageContent(options: { force?: boolean } = {}) {
   }
 }
 
-async function onEditorSave(body: string) {
+// Sequences page-content PUTs so button actions can await the latest
+// save before running (the action re-reads the page from the DB, never
+// from this editor).
+let saveChain: Promise<void> = Promise.resolve();
+
+function onEditorSave(body: string): void {
+  saveChain = saveChain.then(() => persistPageContent(body));
+}
+
+async function persistPageContent(body: string) {
   if (!activePageId.value) return;
   const id = activePageId.value;
   saveStatus.value = 'saving';
@@ -1817,7 +1849,7 @@ onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange)
           :load-input="loadInput"
           :save-input="saveInput"
           :open-input-picker="openInputPicker"
-          :run-button-script="runButtonScript"
+          :run-button-action="runButtonAction"
           :run-compose="runCompose"
           :poll-compose="pollCompose"
           :cancel-compose="cancelCompose"

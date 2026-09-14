@@ -152,12 +152,26 @@ function renderBlock(b: Block): string {
       if (b.session) body.session = true;
       return renderFence('vance-input', body);
     }
-    case 'button':
-      return renderFence('vance-button', {
+    case 'button': {
+      // `script` applies to type: script only — built-in actions
+      // (form-resolve / form-reset) carry no script key.
+      const body: Record<string, unknown> = {
         type: b.buttonType || 'script',
         title: b.title,
-        script: b.script,
-      });
+      };
+      if (b.script) body.script = b.script;
+      return renderFence('vance-button', body);
+    }
+    case 'field': {
+      const body: Record<string, unknown> = { id: b.id, type: b.fieldType };
+      if (b.question) body.question = b.question;
+      if (b.options.length > 0) body.options = b.options;
+      if (b.solution != null) body.solution = b.solution;
+      if (b.value != null) body.value = b.value;
+      if (b.verdict) body.verdict = b.verdict;
+      if (b.feedback) body.feedback = b.feedback;
+      return renderFence('vance-field', body);
+    }
     case 'columns': {
       // Outer fence must be longer than ANY inner fence so nested
       // code / vance-* / sub-columns blocks don't close the columns

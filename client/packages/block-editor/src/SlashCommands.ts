@@ -222,6 +222,27 @@ const ITEMS: SlashItemSpec[] = [
         .run(),
   },
   {
+    id: 'field',
+    titleKey: 'blockEditor.slash.field.title',
+    hintKey: 'blockEditor.slash.field.hint',
+    run: ({ editor, range }) =>
+      editor.chain().focus().deleteRange(range)
+        .insertContent({
+          type: 'vanceField',
+          attrs: {
+            id: '',
+            fieldType: 'text',
+            question: '',
+            options: [],
+            solution: null,
+            value: null,
+            verdict: null,
+            feedback: null,
+          },
+        })
+        .run(),
+  },
+  {
     id: 'compose',
     titleKey: 'blockEditor.slash.compose.title',
     hintKey: 'blockEditor.slash.compose.hint',

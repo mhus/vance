@@ -143,6 +143,9 @@ public final class DockerComposeSetupWizard {
                     s.getAnusPasswordHash().isBlank() ? "(none — REPL open)" : "(set)");
             out.printf("   3) Secret encryption pw: %s%n", mask(s.getEncryptionPassword()));
             out.printf("   4) Analysis (Fook):      %s%n", s.isFookEnabled() ? "enabled" : "disabled");
+            out.println("       Bug/feature triage, runs locally — tickets stay in the tenant.");
+            out.println("       Forwarding them to an external tracker stays off until an admin");
+            out.println("       enables it in the Fook settings (upstream mode, default 'never').");
             out.printf("   5) Access mode:          %s%n", s.isExternalAccess() ? "external URL" : "local (localhost)");
             if (s.isExternalAccess()) {
                 out.printf(

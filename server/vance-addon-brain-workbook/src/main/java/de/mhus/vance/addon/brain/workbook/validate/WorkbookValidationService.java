@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +36,8 @@ import org.yaml.snakeyaml.Yaml;
 public class WorkbookValidationService {
 
     /** Fence types this validator covers — used to flag malformed ones. */
-    private static final Set<String> KNOWN_FENCES = Set.of("vance-form", "vance-input", "vance-button", "vance-embed");
+    private static final Set<String> KNOWN_FENCES =
+            Set.of("vance-form", "vance-input", "vance-button", "vance-embed", "vance-field");
 
     private final DocumentService documentService;
     private final WorkbookFolderReader folderReader;
@@ -138,16 +140,22 @@ public class WorkbookValidationService {
 
     private int walkContent(String content, String docPath, DocRefs docs, List<Finding> findings) {
         List<Block> blocks = workPageParser.parseDocument(content).blocks();
-        return walk(blocks, docPath, docs, findings, new int[] {0});
+        return walk(blocks, docPath, docs, findings, new int[] {0}, new HashSet<String>());
     }
 
     /** Depth-first walk (descends into columns); returns count of checked fences. */
-    private int walk(List<Block> blocks, String docPath, DocRefs docs, List<Finding> findings, int[] fenceCount) {
+    private int walk(
+            List<Block> blocks,
+            String docPath,
+            DocRefs docs,
+            List<Finding> findings,
+            int[] fenceCount,
+            Set<String> fieldIds) {
         int checked = 0;
         for (Block b : blocks) {
             if (b instanceof Block.Columns cols) {
                 for (Block.Column c : cols.columns()) {
-                    checked += walk(c.blocks(), docPath, docs, findings, fenceCount);
+                    checked += walk(c.blocks(), docPath, docs, findings, fenceCount, fieldIds);
                 }
                 continue;
             }
@@ -163,6 +171,13 @@ public class WorkbookValidationService {
             if (matching.isEmpty()) continue;
             String location = docPath + " (" + fenceTag(b) + " #" + (++fenceCount[0]) + ")";
             ValidationContext ctx = new ValidationContext(docPath, location, docs);
+            if (b instanceof Block.Field f && f.id() != null && !f.id().isBlank() && !fieldIds.add(f.id())) {
+                findings.add(Finding.error(
+                        location,
+                        "duplicate-field-id",
+                        "duplicate field id '" + f.id()
+                                + "' — form actions address fields by id, ids must be unique per page."));
+            }
             for (BlockValidator v : matching) {
                 findings.addAll(v.validate(b, ctx));
             }
@@ -177,6 +192,7 @@ public class WorkbookValidationService {
             case Block.Input ignored -> "vance-input";
             case Block.Button ignored -> "vance-button";
             case Block.Embed ignored -> "vance-embed";
+            case Block.Field ignored -> "vance-field";
             default -> b.getClass().getSimpleName();
         };
     }

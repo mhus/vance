@@ -57,14 +57,34 @@ export type Block =
     }
   | {
       /**
-       * Clickable button that runs a project script. v1: {@code type:
-       * 'script'}, {@code script} is a vance: URI / path, {@code title}
-       * is the label.
+       * Clickable button that triggers a server-side action:
+       * {@code type: 'script'} (runs the {@code script} .js doc) or a
+       * built-in workbook action ({@code form-resolve} / {@code form-reset}).
+       * {@code title} is the label.
        */
       kind: 'button';
       buttonType: string;
       script: string;
       title: string;
+    }
+  | {
+      /**
+       * Interactive form field with its answer ({@code value}) inline in
+       * the page. {@code fieldType}: choice | multi | dropdown | text |
+       * textarea. {@code solution}/{@code value} are option index (number)
+       * for choice/dropdown, index list for multi, string for text/textarea;
+       * {@code null} when unset. {@code verdict}/{@code feedback} are
+       * form-resolve action output — the editor never writes them.
+       */
+      kind: 'field';
+      id: string;
+      fieldType: string;
+      question: string;
+      options: string[];
+      solution: unknown;
+      value: unknown;
+      verdict: string | null;
+      feedback: string | null;
     }
   | {
       kind: 'columns';

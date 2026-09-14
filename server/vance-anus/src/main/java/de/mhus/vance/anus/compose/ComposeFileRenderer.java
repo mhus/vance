@@ -43,8 +43,7 @@ final class ComposeFileRenderer {
 
     /** Whether auth cookies get the {@code Secure} flag (HTTPS origins only). */
     static boolean cookiesSecure(ComposeSetupState s) {
-        return s.isExternalAccess()
-                && s.getExternalUrl().strip().toLowerCase().startsWith("https://");
+        return s.isExternalAccess() && s.getExternalUrl().strip().toLowerCase().startsWith("https://");
     }
 
     /** Bare host (no scheme, no path) for Caddy's auto-HTTPS site address. */
@@ -276,9 +275,13 @@ final class ComposeFileRenderer {
                     docker compose --profile tools up -d
                     ```
                     """);
-            sb.append("- mongo-express: http://localhost:").append(s.getMongoExpressPort()).append('\n');
+            sb.append("- mongo-express: http://localhost:")
+                    .append(s.getMongoExpressPort())
+                    .append('\n');
             if (s.isRedisEnabled()) {
-                sb.append("- redis-commander: http://localhost:").append(s.getRedisUiPort()).append('\n');
+                sb.append("- redis-commander: http://localhost:")
+                        .append(s.getRedisUiPort())
+                        .append('\n');
             }
         }
         if (s.isAnusServiceEnabled()) {
@@ -378,7 +381,7 @@ final class ComposeFileRenderer {
                   VANCE_ENCRYPTION_PASSWORD: ${VANCE_ENCRYPTION_PASSWORD:?set VANCE_ENCRYPTION_PASSWORD in .env (no default - it is the master key for stored secrets)}
                   VANCE_INTERNAL_TOKEN: ${VANCE_INTERNAL_TOKEN:?set VANCE_INTERNAL_TOKEN in .env (no default - shared secret for the /internal endpoints)}
                   VANCE_BOOTSTRAP_ACME: ${VANCE_BOOTSTRAP_ACME:-false}
-                  VANCE_FOOK_ENABLED: ${VANCE_FOOK_ENABLED:-false}
+                  VANCE_FOOK_ENABLED: ${VANCE_FOOK_ENABLED:-true}
                   VANCE_WEB_PUBLICBASEURL: ${VANCE_WEB_PUBLICBASEURL:-http://localhost:9999}
                   VANCE_WEB_COOKIES_SECURE: ${VANCE_WEB_COOKIES_SECURE:-false}
             """;

@@ -15,12 +15,28 @@ import org.jspecify.annotations.Nullable;
  * stable.
  */
 public sealed interface Block
-        permits Block.Paragraph, Block.Heading, Block.BulletList,
-        Block.NumberedList, Block.TodoList, Block.Quote, Block.Code,
-        Block.Divider, Block.Image, Block.Table, Block.Callout,
-        Block.Toggle, Block.DataviewEmbed, Block.LinkCard,
-        Block.Embed, Block.Form, Block.Input, Block.Button, Block.Toc, Block.Columns,
-        Block.UnknownFence {
+        permits Block.Paragraph,
+                Block.Heading,
+                Block.BulletList,
+                Block.NumberedList,
+                Block.TodoList,
+                Block.Quote,
+                Block.Code,
+                Block.Divider,
+                Block.Image,
+                Block.Table,
+                Block.Callout,
+                Block.Toggle,
+                Block.DataviewEmbed,
+                Block.LinkCard,
+                Block.Embed,
+                Block.Form,
+                Block.Input,
+                Block.Button,
+                Block.Field,
+                Block.Toc,
+                Block.Columns,
+                Block.UnknownFence {
 
     /** Free-form text block (default for any non-special line group). */
     record Paragraph(String text) implements Block {}
@@ -55,8 +71,7 @@ public sealed interface Block
     record Table(List<String> headers, List<List<String>> rows) implements Block {}
 
     /** {@code ```vance-callout} fence. */
-    record Callout(String severity, @Nullable String title, String body)
-            implements Block {}
+    record Callout(String severity, @Nullable String title, String body) implements Block {}
 
     /**
      * {@code ```vance-toggle} fence. Body is raw Markdown which the
@@ -68,8 +83,8 @@ public sealed interface Block
     record DataviewEmbed(String source) implements Block {}
 
     /** {@code ```vance-link} fence — visual link card. */
-    record LinkCard(String href, @Nullable String title,
-                    @Nullable String description) implements Block {}
+    record LinkCard(
+            String href, @Nullable String title, @Nullable String description) implements Block {}
 
     /**
      * {@code ```vance-embed} fence — a kind-aware card referencing another
@@ -84,8 +99,11 @@ public sealed interface Block
      * {@code saveScript} (+ opt-in {@code session}) live in the fence, not the
      * data doc.
      */
-    record Form(String data, @Nullable String saveScript, boolean session,
-                @Nullable Map<String, Object> form) implements Block {}
+    record Form(
+            String data,
+            @Nullable String saveScript,
+            boolean session,
+            @Nullable Map<String, Object> form) implements Block {}
 
     /**
      * {@code ```vance-input} fence — single editable text value bound to a
@@ -93,15 +111,41 @@ public sealed interface Block
      * toggles textarea vs. single line. Optional recompute {@code saveScript}
      * (+ opt-in {@code session}) as with {@link Form}.
      */
-    record Input(String data, boolean multiline, @Nullable String saveScript,
-                 boolean session) implements Block {}
+    record Input(String data, boolean multiline, @Nullable String saveScript, boolean session) implements Block {}
 
     /**
-     * {@code ```vance-button} fence — a clickable button that runs a project
-     * {@code .js} {@code script} on click. {@code buttonType} is the fence's
-     * {@code type} (v1: {@code script}); {@code title} is the label.
+     * {@code ```vance-button} fence — a clickable button that triggers a
+     * server-side action on click. {@code buttonType} is the fence's
+     * {@code type}: {@code script} runs the project {@code .js} document
+     * named by {@code script}; built-in workbook actions like
+     * {@code form-resolve} / {@code form-reset} need no script.
+     * {@code title} is the label.
      */
-    record Button(String buttonType, String script, @Nullable String title)
+    record Button(
+            String buttonType, String script, @Nullable String title) implements Block {}
+
+    /**
+     * {@code ```vance-field} fence — one interactive form field whose answer
+     * lives inline in the page ({@code value}). {@code fieldType} is the
+     * fence's {@code type}: {@code choice | multi | dropdown | text |
+     * textarea}. {@code solution} and {@code value} are dynamic YAML
+     * payloads (as with {@link Form#form}): {@link Integer} for
+     * {@code choice}/{@code dropdown}, {@link List} of {@link Integer} for
+     * {@code multi}, {@link String} for {@code text}/{@code textarea}. A
+     * field with a {@code solution} is checkable by the {@code form-resolve}
+     * button action; without one it is a plain form element (checklists).
+     * {@code verdict} / {@code feedback} are action output — the editor
+     * never writes them; {@code form-reset} removes them again.
+     */
+    record Field(
+            String id,
+            String fieldType,
+            String question,
+            List<String> options,
+            @Nullable Object solution,
+            @Nullable Object value,
+            @Nullable String verdict,
+            @Nullable String feedback)
             implements Block {}
 
     /** {@code ```vance-toc} fence — auto table-of-contents (no body). */

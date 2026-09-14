@@ -217,6 +217,12 @@ public class WorkPageService {
             case Block.Form fo -> fo.data();
             case Block.Input in -> in.data();
             case Block.Button bt -> bt.title() == null ? "" : bt.title();
+            case Block.Field fd ->
+                fd.question()
+                        + " " + String.join(" ", fd.options())
+                        + (fd.value() == null ? "" : " " + fd.value())
+                        + (fd.verdict() == null ? "" : " " + fd.verdict())
+                        + (fd.feedback() == null ? "" : " " + fd.feedback());
             case Block.Toc ignored -> "";
             case Block.Columns cols -> {
                 StringBuilder sb = new StringBuilder();
@@ -368,6 +374,16 @@ public class WorkPageService {
                         strOrEmpty(raw, "script"),
                         str(raw, "title"));
             case "toc", "table-of-contents" -> new Block.Toc();
+            case "field" ->
+                new Block.Field(
+                        strOrEmpty(raw, "id"),
+                        strOr(raw, "fieldType", "text"),
+                        strOrEmpty(raw, "question"),
+                        strList(raw.get("options")),
+                        raw.get("solution"),
+                        raw.get("value"),
+                        str(raw, "verdict"),
+                        str(raw, "feedback"));
             case "columns" -> {
                 List<Block.Column> cols = new ArrayList<>();
                 for (Map<String, Object> cm : mapList(raw.get("columns"))) {
@@ -479,6 +495,17 @@ public class WorkPageService {
                 m.put("buttonType", bt.buttonType());
                 if (bt.title() != null) m.put("title", bt.title());
                 m.put("script", bt.script());
+            }
+            case Block.Field fd -> {
+                m.put("type", "field");
+                m.put("id", fd.id());
+                m.put("fieldType", fd.fieldType());
+                m.put("question", fd.question());
+                if (!fd.options().isEmpty()) m.put("options", fd.options());
+                if (fd.solution() != null) m.put("solution", fd.solution());
+                if (fd.value() != null) m.put("value", fd.value());
+                if (fd.verdict() != null) m.put("verdict", fd.verdict());
+                if (fd.feedback() != null) m.put("feedback", fd.feedback());
             }
             case Block.Toc ignored -> m.put("type", "toc");
             case Block.Columns cols -> {

@@ -45,8 +45,11 @@ public class WorkPageSerializer {
     }
 
     private static String escapeYaml(String value) {
-        if (value.contains("\n") || value.contains(":") || value.contains("#")
-                || value.contains("\"") || value.contains("'")) {
+        if (value.contains("\n")
+                || value.contains(":")
+                || value.contains("#")
+                || value.contains("\"")
+                || value.contains("'")) {
             return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
         }
         return value;
@@ -83,8 +86,11 @@ public class WorkPageSerializer {
             case Block.TodoList t -> {
                 StringBuilder s = new StringBuilder();
                 for (Block.TodoItem item : t.items()) {
-                    s.append("- [").append(item.checked() ? "x" : " ")
-                            .append("] ").append(item.text()).append("\n");
+                    s.append("- [")
+                            .append(item.checked() ? "x" : " ")
+                            .append("] ")
+                            .append(item.text())
+                            .append("\n");
                 }
                 yield s.toString();
             }
@@ -103,43 +109,80 @@ public class WorkPageSerializer {
             case Block.Divider ignored -> "---\n";
             case Block.Image img -> "![" + img.alt() + "](" + img.src() + ")\n";
             case Block.Table tbl -> renderTable(tbl);
-            case Block.Callout co -> renderFence("vance-callout", new LinkedHashMap<>() {{
-                put("severity", co.severity());
-                if (co.title() != null) put("title", co.title());
-                if (co.body() != null && !co.body().isEmpty()) put("body", co.body());
-            }});
-            case Block.Toggle tg -> renderFence("vance-toggle", new LinkedHashMap<>() {{
-                put("summary", tg.summary());
-                put("body", tg.body());
-            }});
-            case Block.DataviewEmbed dv -> renderFence("vance-dataview", new LinkedHashMap<>() {{
-                put("source", dv.source());
-            }});
-            case Block.LinkCard lc -> renderFence("vance-link", new LinkedHashMap<>() {{
-                put("href", lc.href());
-                if (lc.title() != null) put("title", lc.title());
-                if (lc.description() != null) put("description", lc.description());
-            }});
-            case Block.Embed em -> renderFence("vance-embed", new LinkedHashMap<>() {{
-                put("uri", em.uri());
-            }});
-            case Block.Form fo -> renderFence("vance-form", new LinkedHashMap<>() {{
-                put("data", fo.data());
-                if (fo.saveScript() != null) put("saveScript", fo.saveScript());
-                if (fo.session()) put("session", true);
-                if (fo.form() != null && !fo.form().isEmpty()) put("form", fo.form());
-            }});
-            case Block.Input in -> renderFence("vance-input", new LinkedHashMap<>() {{
-                put("data", in.data());
-                put("multiline", in.multiline());
-                if (in.saveScript() != null) put("saveScript", in.saveScript());
-                if (in.session()) put("session", true);
-            }});
-            case Block.Button bt -> renderFence("vance-button", new LinkedHashMap<>() {{
-                put("type", bt.buttonType());
-                if (bt.title() != null) put("title", bt.title());
-                put("script", bt.script());
-            }});
+            case Block.Callout co ->
+                renderFence("vance-callout", new LinkedHashMap<>() {
+                    {
+                        put("severity", co.severity());
+                        if (co.title() != null) put("title", co.title());
+                        if (co.body() != null && !co.body().isEmpty()) put("body", co.body());
+                    }
+                });
+            case Block.Toggle tg ->
+                renderFence("vance-toggle", new LinkedHashMap<>() {
+                    {
+                        put("summary", tg.summary());
+                        put("body", tg.body());
+                    }
+                });
+            case Block.DataviewEmbed dv ->
+                renderFence("vance-dataview", new LinkedHashMap<>() {
+                    {
+                        put("source", dv.source());
+                    }
+                });
+            case Block.LinkCard lc ->
+                renderFence("vance-link", new LinkedHashMap<>() {
+                    {
+                        put("href", lc.href());
+                        if (lc.title() != null) put("title", lc.title());
+                        if (lc.description() != null) put("description", lc.description());
+                    }
+                });
+            case Block.Embed em ->
+                renderFence("vance-embed", new LinkedHashMap<>() {
+                    {
+                        put("uri", em.uri());
+                    }
+                });
+            case Block.Form fo ->
+                renderFence("vance-form", new LinkedHashMap<>() {
+                    {
+                        put("data", fo.data());
+                        if (fo.saveScript() != null) put("saveScript", fo.saveScript());
+                        if (fo.session()) put("session", true);
+                        if (fo.form() != null && !fo.form().isEmpty()) put("form", fo.form());
+                    }
+                });
+            case Block.Input in ->
+                renderFence("vance-input", new LinkedHashMap<>() {
+                    {
+                        put("data", in.data());
+                        put("multiline", in.multiline());
+                        if (in.saveScript() != null) put("saveScript", in.saveScript());
+                        if (in.session()) put("session", true);
+                    }
+                });
+            case Block.Button bt ->
+                renderFence("vance-button", new LinkedHashMap<>() {
+                    {
+                        put("type", bt.buttonType());
+                        if (bt.title() != null) put("title", bt.title());
+                        if (bt.script() != null && !bt.script().isBlank()) put("script", bt.script());
+                    }
+                });
+            case Block.Field fd ->
+                renderFence("vance-field", new LinkedHashMap<>() {
+                    {
+                        put("id", fd.id());
+                        put("type", fd.fieldType());
+                        if (!fd.question().isEmpty()) put("question", fd.question());
+                        if (!fd.options().isEmpty()) put("options", fd.options());
+                        if (fd.solution() != null) put("solution", fd.solution());
+                        if (fd.value() != null) put("value", fd.value());
+                        if (fd.verdict() != null) put("verdict", fd.verdict());
+                        if (fd.feedback() != null) put("feedback", fd.feedback());
+                    }
+                });
             case Block.Toc ignored -> "```vance-toc\n```\n";
             case Block.Columns cols -> renderColumns(cols);
             case Block.UnknownFence uf -> {
@@ -170,9 +213,10 @@ public class WorkPageSerializer {
         for (int i = 0; i < cols.columns().size(); i++) {
             Block.Column col = cols.columns().get(i);
             if (i > 0) {
-                out.append(col.width() != null
-                        ? "\n<!--vance:column " + formatWidth(col.width()) + "-->\n"
-                        : "\n<!--vance:column-->\n");
+                out.append(
+                        col.width() != null
+                                ? "\n<!--vance:column " + formatWidth(col.width()) + "-->\n"
+                                : "\n<!--vance:column-->\n");
             }
             out.append(innerBodies.get(i));
         }

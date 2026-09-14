@@ -373,6 +373,20 @@ function parseFence(info: string, body: string): Block {
         script: str(parsed, 'script') ?? '',
         title: str(parsed, 'title') ?? '',
       };
+    case 'vance-field':
+      return {
+        kind: 'field',
+        id: str(parsed, 'id') ?? '',
+        fieldType: str(parsed, 'type') ?? 'text',
+        question: str(parsed, 'question') ?? '',
+        options: Array.isArray(parsed.options)
+          ? parsed.options.map((o) => (o == null ? '' : String(o)))
+          : [],
+        solution: parsed.solution ?? null,
+        value: parsed.value ?? null,
+        verdict: str(parsed, 'verdict'),
+        feedback: str(parsed, 'feedback'),
+      };
     default:
       // Not a core fence — an addon may own it (block-extension-registry).
       // Core fences above are privileged and win over any registration.

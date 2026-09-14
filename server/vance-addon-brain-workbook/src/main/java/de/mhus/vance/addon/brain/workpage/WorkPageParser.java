@@ -31,11 +31,11 @@ public class WorkPageParser {
     // Fence run is captured so a longer outer fence (vance-columns wraps
     // nested fenced blocks) can be closed only by an equally-long fence.
     private static final Pattern FENCE_OPEN = Pattern.compile("^(`{3,})(\\S*)\\s*$");
-    private static final Pattern COLUMN_SEP =
-            Pattern.compile("\\n<!--vance:column(?:\\s+([\\d.]+))?-->\\n");
+    private static final Pattern COLUMN_SEP = Pattern.compile("\\n<!--vance:column(?:\\s+([\\d.]+))?-->\\n");
     private static final Pattern DIVIDER = Pattern.compile("^---+\\s*$");
     private static final Pattern IMAGE_ONLY = Pattern.compile("^!\\[(.*?)]\\((.+?)\\)\\s*$");
-    private static final Pattern TABLE_DIVIDER = Pattern.compile("^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)+\\|?\\s*$");
+    private static final Pattern TABLE_DIVIDER =
+            Pattern.compile("^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)+\\|?\\s*$");
 
     private final Yaml yaml = new Yaml();
 
@@ -61,7 +61,9 @@ public class WorkPageParser {
                         Object d = m.get("description");
                         if (d != null) description = d.toString();
                     }
-                } catch (RuntimeException ignored) { /* fall through */ }
+                } catch (RuntimeException ignored) {
+                    /* fall through */
+                }
                 body = fullMarkdown.substring(end + 5);
             }
         }
@@ -77,7 +79,10 @@ public class WorkPageParser {
             String line = lines.get(i);
 
             // Skip blank lines between blocks.
-            if (line.isBlank()) { i++; continue; }
+            if (line.isBlank()) {
+                i++;
+                continue;
+            }
 
             // Fenced block?
             Matcher mFence = FENCE_OPEN.matcher(line);
@@ -169,7 +174,8 @@ public class WorkPageParser {
             }
 
             // Table — heuristic: pipe-bearing line followed by divider.
-            if (line.contains("|") && i + 1 < lines.size()
+            if (line.contains("|")
+                    && i + 1 < lines.size()
                     && TABLE_DIVIDER.matcher(lines.get(i + 1)).matches()) {
                 Block.Table tbl = parseTable(lines, i);
                 blocks.add(tbl);
@@ -181,8 +187,7 @@ public class WorkPageParser {
             List<String> paraLines = new ArrayList<>();
             while (i < lines.size()) {
                 String l = lines.get(i);
-                if (l.isBlank() || isBlockStart(l, i + 1 < lines.size() ? lines.get(i + 1) : ""))
-                    break;
+                if (l.isBlank() || isBlockStart(l, i + 1 < lines.size() ? lines.get(i + 1) : "")) break;
                 paraLines.add(l);
                 i++;
             }
@@ -232,34 +237,40 @@ public class WorkPageParser {
             return new Block.UnknownFence(info, body);
         }
         return switch (info) {
-            case "vance-callout" -> new Block.Callout(
-                    str(yamlBody, "severity", "info"),
-                    str(yamlBody, "title", null),
-                    str(yamlBody, "body", ""));
-            case "vance-toggle" -> new Block.Toggle(
-                    str(yamlBody, "summary", ""),
-                    str(yamlBody, "body", ""));
-            case "vance-dataview" -> new Block.DataviewEmbed(
-                    str(yamlBody, "source", ""));
-            case "vance-link" -> new Block.LinkCard(
-                    str(yamlBody, "href", ""),
-                    str(yamlBody, "title", null),
-                    str(yamlBody, "description", null));
+            case "vance-callout" ->
+                new Block.Callout(
+                        str(yamlBody, "severity", "info"), str(yamlBody, "title", null), str(yamlBody, "body", ""));
+            case "vance-toggle" -> new Block.Toggle(str(yamlBody, "summary", ""), str(yamlBody, "body", ""));
+            case "vance-dataview" -> new Block.DataviewEmbed(str(yamlBody, "source", ""));
+            case "vance-link" ->
+                new Block.LinkCard(
+                        str(yamlBody, "href", ""), str(yamlBody, "title", null), str(yamlBody, "description", null));
             case "vance-embed" -> new Block.Embed(str(yamlBody, "uri", ""));
-            case "vance-form" -> new Block.Form(
-                    str(yamlBody, "data", ""),
-                    str(yamlBody, "saveScript", null),
-                    boolVal(yamlBody, "session"),
-                    mapVal(yamlBody, "form"));
-            case "vance-input" -> new Block.Input(
-                    str(yamlBody, "data", ""),
-                    boolVal(yamlBody, "multiline"),
-                    str(yamlBody, "saveScript", null),
-                    boolVal(yamlBody, "session"));
-            case "vance-button" -> new Block.Button(
-                    str(yamlBody, "type", "script"),
-                    str(yamlBody, "script", ""),
-                    str(yamlBody, "title", null));
+            case "vance-form" ->
+                new Block.Form(
+                        str(yamlBody, "data", ""),
+                        str(yamlBody, "saveScript", null),
+                        boolVal(yamlBody, "session"),
+                        mapVal(yamlBody, "form"));
+            case "vance-input" ->
+                new Block.Input(
+                        str(yamlBody, "data", ""),
+                        boolVal(yamlBody, "multiline"),
+                        str(yamlBody, "saveScript", null),
+                        boolVal(yamlBody, "session"));
+            case "vance-button" ->
+                new Block.Button(
+                        str(yamlBody, "type", "script"), str(yamlBody, "script", ""), str(yamlBody, "title", null));
+            case "vance-field" ->
+                new Block.Field(
+                        str(yamlBody, "id", ""),
+                        str(yamlBody, "type", "text"),
+                        str(yamlBody, "question", ""),
+                        strListVal(yamlBody, "options"),
+                        yamlBody.get("solution"),
+                        yamlBody.get("value"),
+                        str(yamlBody, "verdict", null),
+                        str(yamlBody, "feedback", null));
             default -> new Block.UnknownFence(info, body);
         };
     }
@@ -273,7 +284,7 @@ public class WorkPageParser {
         Matcher m = COLUMN_SEP.matcher(body);
         List<String> parts = new ArrayList<>();
         List<Double> widths = new ArrayList<>();
-        widths.add(null);   // first column carries no explicit width
+        widths.add(null); // first column carries no explicit width
         int last = 0;
         while (m.find()) {
             parts.add(body.substring(last, m.start()));
@@ -288,8 +299,7 @@ public class WorkPageParser {
         return new Block.Columns(cols);
     }
 
-    private static @org.jspecify.annotations.Nullable Double parseWidth(
-            @org.jspecify.annotations.Nullable String raw) {
+    private static @org.jspecify.annotations.Nullable Double parseWidth(@org.jspecify.annotations.Nullable String raw) {
         if (raw == null) return null;
         try {
             double d = Double.parseDouble(raw);
@@ -305,8 +315,7 @@ public class WorkPageParser {
         return v != null && Boolean.parseBoolean(v.toString());
     }
 
-    private static @org.jspecify.annotations.Nullable Map<String, Object> mapVal(
-            Map<String, Object> m, String key) {
+    private static @org.jspecify.annotations.Nullable Map<String, Object> mapVal(Map<String, Object> m, String key) {
         Object v = m.get(key);
         return v instanceof Map<?, ?> mm ? coerceMap(mm) : null;
     }
@@ -329,9 +338,7 @@ public class WorkPageParser {
         String trimmed = line.trim();
         if (trimmed.startsWith("|")) trimmed = trimmed.substring(1);
         if (trimmed.endsWith("|")) trimmed = trimmed.substring(0, trimmed.length() - 1);
-        return Arrays.stream(trimmed.split("\\|", -1))
-                .map(String::trim)
-                .toList();
+        return Arrays.stream(trimmed.split("\\|", -1)).map(String::trim).toList();
     }
 
     private static List<String> splitLines(String s) {
@@ -354,5 +361,11 @@ public class WorkPageParser {
         Object v = m.get(key);
         if (v == null) return fallback;
         return v.toString();
+    }
+
+    private static List<String> strListVal(Map<String, Object> m, String key) {
+        Object v = m.get(key);
+        if (!(v instanceof List<?> list)) return List.of();
+        return list.stream().map(o -> o == null ? "" : o.toString()).toList();
     }
 }

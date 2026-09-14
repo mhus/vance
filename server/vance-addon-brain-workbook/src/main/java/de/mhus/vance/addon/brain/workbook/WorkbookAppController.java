@@ -1,5 +1,8 @@
 package de.mhus.vance.addon.brain.workbook;
 
+import de.mhus.vance.addon.brain.workbook.action.ButtonActionContext;
+import de.mhus.vance.addon.brain.workbook.action.ButtonActionResult;
+import de.mhus.vance.addon.brain.workbook.action.WorkbookButtonService;
 import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -54,6 +57,7 @@ public class WorkbookAppController {
     private final WorkbookInputService inputService;
     private final WorkbookScriptService scriptService;
     private final de.mhus.vance.addon.brain.workbook.validate.WorkbookValidationService validationService;
+    private final WorkbookButtonService buttonService;
 
     @GetMapping("/brain/{tenant}/addon/workbook/validate")
     public WorkbookValidationResponse validate(
@@ -789,6 +793,21 @@ public class WorkbookAppController {
         authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
         scriptService.run(tenant, projectId, script, currentUser(httpRequest));
         return ResponseEntity.noContent().build();
+    }
+
+    /** Run a {@code vance-button} block's action ({@code type: script | form-resolve | form-reset}). */
+    @PostMapping("/brain/{tenant}/addon/workbook/button/run")
+    public WorkbookButtonRunResponse runButton(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("doc") String docPath,
+            @RequestBody Map<String, Object> button,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        ButtonActionResult result = buttonService.run(
+                new ButtonActionContext(tenant, projectId, currentUser(httpRequest), docPath, button));
+        return new WorkbookButtonRunResponse(result.message());
     }
 
     @PostMapping("/brain/{tenant}/addon/workbook/rebuild")

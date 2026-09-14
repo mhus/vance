@@ -153,6 +153,22 @@ function parseBody(body: string | undefined): Block[] {
   return parse(body);
 }
 
+
+/** Human-readable rendering of a field's answer for the read-only view:
+ * option index (choice/dropdown), index list (multi), or the raw text.
+ */
+function fieldValueText(block: Block & { kind: 'field' }): string {
+  if (block.value == null) return '—';
+  if (Array.isArray(block.value)) {
+    return block.value
+      .map((i) => (typeof i === 'number' && block.options[i] != null ? block.options[i] : String(i)))
+      .join(', ');
+  }
+  if (typeof block.value === 'number' && block.options[block.value] != null) {
+    return block.options[block.value];
+  }
+  return String(block.value);
+}
 const items = computed(() => props.blocks ?? []);
 </script>
 
@@ -362,6 +378,21 @@ const items = computed(() => props.blocks ?? []);
         <div class="vance-block-card__hint">Runnable in the editor.</div>
       </div>
 
+      <div v-else-if="block.kind === 'field'" class="vance-block-card" :class="{
+        'vance-block-card--correct': block.verdict === 'correct',
+        'vance-block-card--wrong': block.verdict === 'wrong',
+      }">
+        <div class="vance-block-card__label">
+          {{ block.question || t('blockEditor.blocks.field') }}
+          <span v-if="block.verdict === 'correct'" class="vance-field-view__mark">✓</span>
+          <span v-else-if="block.verdict === 'wrong'" class="vance-field-view__mark">✗</span>
+        </div>
+        <div class="vance-block-card__hint">
+          {{ fieldValueText(block) }}
+        </div>
+        <div v-if="block.feedback" class="vance-block-card__hint">{{ block.feedback }}</div>
+      </div>
+
       <pre v-else-if="block.kind === 'unknown-fence'" class="vance-unknown-fence">
         <div class="vance-unknown-fence__label">Unknown block: {{ block.info }}</div>
         <code>{{ block.body }}</code>
@@ -565,4 +596,16 @@ const items = computed(() => props.blocks ?? []);
   color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
   word-break: break-all;
 }
+.vance-block-card--correct {
+  border-color: var(--color-success);
+  background: color-mix(in oklab, var(--color-success) 8%, transparent);
+}
+.vance-block-card--wrong {
+  border-color: var(--color-error);
+  background: color-mix(in oklab, var(--color-error) 8%, transparent);
+}
+.vance-field-view__mark { font-weight: 700; margin-left: 0.3em; }
+.vance-block-card--correct .vance-field-view__mark { color: var(--color-success); }
+.vance-block-card--wrong .vance-field-view__mark { color: var(--color-error); }
+
 </style>

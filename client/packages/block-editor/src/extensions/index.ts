@@ -8,6 +8,7 @@ export { VanceUnknownFence } from './VanceUnknownFence';
 export { VanceEmbed, type EmbedDocMeta } from './VanceEmbed';
 export { VanceForm } from './VanceForm';
 export { VanceInput } from './VanceInput';
+export { VanceField } from './VanceField';
 export { VanceButton } from './VanceButton';
 export {
   VanceCompose,

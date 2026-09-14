@@ -3,9 +3,11 @@
  * NodeView for the {@code vance-button} block.
  *
  * - **work mode** (read-only page): a clickable button (label = `title`);
- *   click runs the `script` via the host `runScript` callback.
- * - **design mode**: inputs for title / script (+ type; v1 is `script`
- *   only), written back to the block attributes.
+ *   click runs the button's action (type + script) via the host
+ *   `runButton` callback and shows the returned summary message (score,
+ *   confirmation) inline.
+ * - **design mode**: inputs for type / title / script (`script` applies to
+ *   `type: script` only), written back to the block attributes.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useT } from '../useT';
@@ -16,7 +18,9 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 const t = useT();
 
 interface ExtensionOptions {
-  runScript?: ((scriptRef: string) => Promise<void>) | null;
+  runButton?:
+    | ((button: { type: string; script: string; title: string }) => Promise<string | null>)
+    | null;
 }
 
 const props = defineProps<{
@@ -26,7 +30,13 @@ const props = defineProps<{
   extension: { options: ExtensionOptions };
 }>();
 
-const type = computed(() => (props.node.attrs?.type as string | null) ?? 'script');
+const BUTTON_TYPES = ['script', 'form-resolve', 'form-reset'] as const;
+
+const type = computed(() =>
+  BUTTON_TYPES.includes(props.node.attrs?.type as (typeof BUTTON_TYPES)[number])
+    ? (props.node.attrs.type as string)
+    : 'script',
+);
 const script = computed(() => (props.node.attrs?.script as string | null) ?? '');
 const title = computed(() => (props.node.attrs?.title as string | null) ?? '');
 
@@ -43,24 +53,27 @@ onBeforeUnmount(() => {
 
 const running = ref(false);
 const error = ref<string | null>(null);
-const ranAt = ref(false);
+const message = ref<string | null>(null);
 
 async function run() {
-  const runner = props.extension.options.runScript;
-  if (!runner || !script.value.trim() || running.value) return;
+  const runner = props.extension.options.runButton;
+  if (!runner || running.value) return;
+  if (type.value === 'script' && !script.value.trim()) return;
   running.value = true;
   error.value = null;
-  ranAt.value = false;
+  message.value = null;
   try {
-    await runner(script.value.trim());
-    ranAt.value = true;
+    message.value = await runner({ type: type.value, script: script.value.trim(), title: title.value });
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Script failed';
+    error.value = e instanceof Error ? e.message : 'Action failed';
   } finally {
     running.value = false;
   }
 }
 
+function onType(e: Event) {
+  props.updateAttributes({ type: (e.target as HTMLSelectElement).value });
+}
 function onTitle(e: Event) {
   props.updateAttributes({ title: (e.target as HTMLInputElement).value });
 }
@@ -74,8 +87,10 @@ function onScript(e: Event) {
     <!-- DESIGN: config inputs -->
     <div v-if="editable" class="vance-button__design" contenteditable="false">
       <div class="vance-button__row">
-        <select class="vance-button__inp" :value="type" disabled @mousedown.stop>
+        <select class="vance-button__inp" :value="type" @change="onType" @mousedown.stop>
           <option value="script">{{ t('blockEditor.button.typeScript') }}</option>
+          <option value="form-resolve">{{ t('blockEditor.button.typeFormResolve') }}</option>
+          <option value="form-reset">{{ t('blockEditor.button.typeFormReset') }}</option>
         </select>
         <input
           class="vance-button__inp"
@@ -88,6 +103,7 @@ function onScript(e: Event) {
         />
       </div>
       <input
+        v-if="type === 'script'"
         class="vance-button__inp"
         :placeholder="t('blockEditor.button.scriptPlaceholder')"
         :value="script"
@@ -103,10 +119,10 @@ function onScript(e: Event) {
       <button
         type="button"
         class="vance-button__btn"
-        :disabled="running || !script"
+        :disabled="running || (type === 'script' && !script)"
         @click="run"
-      >{{ running ? '…' : (title || 'Run') }}</button>
-      <span v-if="ranAt" class="vance-button__ok">✓</span>
+      >{{ running ? '…' : (title || t('blockEditor.button.runDefault')) }}</button>
+      <span v-if="message" class="vance-button__ok">{{ message }}</span>
       <span v-if="error" class="vance-button__error">{{ error }}</span>
     </div>
   </NodeViewWrapper>
@@ -144,6 +160,7 @@ function onScript(e: Event) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 .vance-button__btn {
   border: 1px solid var(--color-primary);
@@ -156,7 +173,7 @@ function onScript(e: Event) {
   cursor: pointer;
 }
 .vance-button__btn:disabled { opacity: 0.55; cursor: default; }
-.vance-button__ok { color: var(--color-success); font-size: 0.9rem; }
+.vance-button__ok { color: var(--color-success); font-size: 0.85rem; }
 .vance-button__error {
   color: var(--color-error);
   font-size: 0.8rem;

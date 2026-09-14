@@ -148,6 +148,15 @@ class ComposeFileRendererTest {
     }
 
     @Test
+    void fook_defaultOn_localTriageUpstreamNeedsConsent() {
+        // Default on: triage is local (tickets stay in the tenant); forwarding
+        // to an external tracker is a separate admin consent, not this switch.
+        assertThat(ComposeFileRenderer.renderEnv(new ComposeSetupState())).containsEntry("VANCE_FOOK_ENABLED", "true");
+        assertThat(ComposeFileRenderer.renderCompose(new ComposeSetupState()))
+                .contains("VANCE_FOOK_ENABLED: ${VANCE_FOOK_ENABLED:-true}");
+    }
+
+    @Test
     void env_local_defaultsPublicBaseUrlToLocalhostVancePort() {
         ComposeSetupState s = new ComposeSetupState();
         s.setFacePort(9090);
@@ -221,8 +230,9 @@ class ComposeFileRendererTest {
 
         Map<String, String> env = ComposeFileRenderer.renderEnv(s);
 
-        assertThat(env).containsKeys("MONGO_EXPRESS_USERNAME",
-                "MONGO_EXPRESS_PASSWORD", "MONGO_EXPRESS_PORT", "REDIS_UI_PORT");
+        assertThat(env)
+                .containsKeys(
+                        "MONGO_EXPRESS_USERNAME", "MONGO_EXPRESS_PASSWORD", "MONGO_EXPRESS_PORT", "REDIS_UI_PORT");
     }
 
     @Test

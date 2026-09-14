@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parse, parseDocument } from './parser';
 import { serialize, serializeDocument } from './serializer';
-import type { WorkPageDocument } from './blocks';
+import type { Block, WorkPageDocument } from './blocks';
 
 /**
  * Block-level Markdown codec. The parser output shape is asserted directly
@@ -63,6 +63,80 @@ describe('serialize/parse — round-trip fixpoint', () => {
     const twice = serialize(parse(once));
     expect(twice).toBe(once);
     expect(once).toContain('[[Wikilink]]');
+  });
+});
+
+describe('serialize/parse — vance-field + vance-button actions', () => {
+  it('a field fence with value/verdict round-trips as a stable canonical form', () => {
+    const md = [
+      '```vance-field',
+      'id: q1',
+      'type: choice',
+      'question: "Was gehört zur 3NF?"',
+      'options:',
+      '  - Keine transitiven Abhängigkeiten',
+      '  - Jede Zeile einzigartig',
+      'solution: 0',
+      'value: 1',
+      'verdict: wrong',
+      'feedback: Schau dir transitive Abhängigkeiten an.',
+      '```',
+    ].join('\n');
+    const once = serialize(parse(md));
+    const twice = serialize(parse(once));
+    expect(twice).toBe(once);
+    expect(once).toContain('type: choice');
+    expect(once).toContain('verdict: wrong');
+    const blocks = parse(once);
+    const field = blocks.find((b) => b.kind === 'field');
+    expect(field).toMatchObject({ id: 'q1', fieldType: 'choice', value: 1, verdict: 'wrong' });
+  });
+
+  it('multi fields keep index arrays, text fields keep strings', () => {
+    const md = [
+      '```vance-field',
+      'id: q2',
+      'type: multi',
+      'question: Welche?',
+      'options:',
+      '  - a',
+      '  - b',
+      'solution:',
+      '  - 0',
+      '  - 2',
+      'value:',
+      '  - 1',
+      '```',
+      '',
+      '```vance-field',
+      'id: q3',
+      'type: textarea',
+      'question: Erkläre.',
+      'value: |',
+      '  meine Antwort',
+      '```',
+    ].join('\n');
+    const once = serialize(parse(md));
+    const twice = serialize(parse(once));
+    expect(twice).toBe(once);
+    const fields = parse(once).filter((b): b is Block & { kind: 'field' } => b.kind === 'field');
+    const multi = fields.find((b) => b.id === 'q2');
+    expect(multi).toMatchObject({ solution: [0, 2], value: [1] });
+    const text = fields.find((b) => b.id === 'q3');
+    expect(text).toMatchObject({ value: 'meine Antwort\n' });
+  });
+
+  it('a form-resolve button carries no script key', () => {
+    const md = [
+      '```vance-button',
+      'type: form-resolve',
+      'title: Auflösen',
+      '```',
+    ].join('\n');
+    const once = serialize(parse(md));
+    expect(once).toContain('type: form-resolve');
+    expect(once).not.toContain('script:');
+    expect(serialize(parse(once))).toBe(once);
   });
 });
 

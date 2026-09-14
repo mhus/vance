@@ -238,7 +238,7 @@ const kindAllowed = computed(() => KIND_ALLOWED_MIMES.has(createMime.value));
 const KIND_CREATE_OPTIONS = [
   'list', 'checklist', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet',
   'slides', 'diagram', 'calendar', 'timeline', 'application', 'data', 'records', 'schema',
-  'compose', 'vance-workflow',
+  'compose', 'vance-workflow', 'qrcode',
 ] as const;
 
 // Human-facing labels where the raw kind id would be unclear. The id stays
@@ -246,6 +246,7 @@ const KIND_CREATE_OPTIONS = [
 const KIND_LABELS: Record<string, string> = {
   compose: 'Workspace Compose',
   'vance-workflow': 'Workflow (Magrathea)',
+  qrcode: 'QR Code',
 };
 
 // Kinds whose body only exists as YAML — their stub generator has no
@@ -376,6 +377,13 @@ function buildKindStub(kind: string, mime: string): string {
         + '    type: terminal\n'
         + '    outcome: failure\n';
     }
+  }
+  if (kind === 'qrcode') {
+    // Payload after the front matter; flat front-matter keys are the
+    // render options (see kindViews/qrcodeCodec.ts).
+    if (isMd) return '---\nkind: qrcode\nlabel: Scan me\n---\nhttps://example.com\n';
+    if (isJson) return '{\n  "$meta": { "kind": "qrcode" },\n  "content": "https://example.com",\n  "label": "Scan me"\n}\n';
+    if (isYaml) return '$meta:\n  kind: qrcode\ncontent: https://example.com\nlabel: Scan me\n';
   }
   if (isMd) return `---\nkind: ${kind}\n---\n`;
   if (isJson) return `{\n  "$meta": { "kind": "${kind}" }\n}\n`;

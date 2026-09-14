@@ -124,4 +124,33 @@ export function registerBuiltInKinds(): void {
       () => import('@/kindViews/AgeDocumentView.vue'),
     ),
   });
+
+  // ── QR Code: payload rendered as a scannable symbol ───────────
+  // Body = payload (URL or any text) plus optional flat render
+  // options — the identity codec keeps the Edit toggle a raw
+  // CodeEditor (write the URL, see the symbol), QrCodeView parses
+  // the front-matter / YAML / JSON options itself (qrcodeCodec.ts).
+  // Text mimes only: a qrcode-typed binary makes no sense, and the
+  // sniffing parser needs a textual body.
+  registerKind<string>({
+    id: 'qrcode',
+    matches: (kind, mime) => {
+      if ((kind ?? '').toLowerCase() !== 'qrcode') return false;
+      const m = (mime ?? '').toLowerCase();
+      return m === ''
+        || m === 'text/markdown'
+        || m === 'text/x-markdown'
+        || m === 'text/plain'
+        || m === 'application/json'
+        || m === 'application/yaml'
+        || m === 'application/x-yaml'
+        || m === 'text/yaml'
+        || m === 'text/x-yaml';
+    },
+    parse: (body) => body,
+    serialize: (doc) => doc,
+    view: defineAsyncComponent(
+      () => import('@/kindViews/QrCodeView.vue'),
+    ),
+  });
 }

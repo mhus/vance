@@ -3079,6 +3079,12 @@ export default {
     formula: {
       empty: 'Empty formula.',
     },
+    qrcode: {
+      empty: 'Empty QR code — write the text or URL to encode into the document body.',
+      error: 'The QR code could not be rendered:',
+      canvasLabel: 'QR code',
+      download: 'Download PNG',
+    },
     office: {
       sdkFailed: 'Could not load the SDK from {url}: ',
       loading: 'Loading the Office editor…',

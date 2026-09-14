@@ -28,7 +28,8 @@ class KindRegistryTest {
             name("schema"),
             name("application"),
             name("compose"),
-            name("formula"));
+            name("formula"),
+            name("qrcode"));
 
     @Test
     void formulaKind_isRegistered() {
@@ -51,13 +52,22 @@ class KindRegistryTest {
     }
 
     @Test
+    void qrcodeKind_handlerResolves() {
+        KindRegistry registry = new KindRegistry(BUILT_INS);
+        registry.collect();
+
+        KindHandler handler = registry.handlerFor("qrcode");
+        assertThat(handler).isNotNull();
+        assertThat(handler.getName()).isEqualTo("qrcode");
+    }
+
+    @Test
     void allBuiltInKinds_areRegistered() {
         KindRegistry registry = new KindRegistry(BUILT_INS);
         registry.collect();
 
         assertThat(registry.names())
-                .containsExactlyInAnyOrder(
-                        "text", "slides", "schema", "application", "compose", "formula");
+                .containsExactlyInAnyOrder("text", "slides", "schema", "application", "compose", "formula", "qrcode");
     }
 
     @Test
@@ -72,7 +82,6 @@ class KindRegistryTest {
     @Test
     void blankName_throws() {
         KindRegistry registry = new KindRegistry(List.of(name("  ")));
-        org.assertj.core.api.Assertions.assertThatThrownBy(registry::collect)
-                .isInstanceOf(IllegalStateException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(registry::collect).isInstanceOf(IllegalStateException.class);
     }
 }

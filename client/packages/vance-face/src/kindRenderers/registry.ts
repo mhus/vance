@@ -88,6 +88,7 @@ const AudioView   = defineAsyncComponent(() => import('@/kindViews/AudioView.vue
 const VideoView   = defineAsyncComponent(() => import('@/kindViews/VideoView.vue'));
 const YouTubeView = defineAsyncComponent(() => import('@/kindViews/YouTubeView.vue'));
 const FormulaView  = defineAsyncComponent(() => import('@/kindViews/FormulaView.vue'));
+const QrCodeView  = defineAsyncComponent(() => import('@/kindViews/QrCodeView.vue'));
 
 /**
  * Registry of Vance-specific rich-content renderers. ONLY Vance kinds
@@ -148,6 +149,11 @@ export const kindRegistry: Record<string, KindRenderer> = {
   // Math / chemistry formulas — KaTeX + mhchem. Body is raw LaTeX
   // (display mode by default; `mixed=true` for delimiter parsing).
   formula: { inline: FormulaView, embedded: FormulaView, label: 'Formula', icon: 'ƒ' },
+
+  // QR Code — payload (usually a URL) drawn as a scannable symbol.
+  // Stored documents render from their body; the inline fence body
+  // IS the payload (options via fence params).
+  qrcode: { inline: QrCodeView, embedded: QrCodeView, label: 'QR Code', icon: '🔳' },
 
   // Sheet: embedded-only data card (read-only mini-grid) with a
   // "Bearbeiten" dialog that opens the full SheetView editor — mirrors

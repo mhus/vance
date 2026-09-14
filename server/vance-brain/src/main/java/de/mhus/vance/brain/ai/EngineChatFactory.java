@@ -65,16 +65,14 @@ public class EngineChatFactory {
     private final MetricService metricService;
     private final AuditService auditService;
     private final de.mhus.vance.brain.tools.budget.ObservedToolLimitRegistry observedToolLimits;
+    private final EmptyResponseDiagnosticService emptyResponseDiagnostics;
 
     /**
      * Build the {@link EngineChatBundle} the engine should drive its
      * turn against. Defaults the notifier and (conditionally) the
      * trace-writer.
      */
-    public EngineChatBundle forProcess(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            String engineName) {
+    public EngineChatBundle forProcess(ThinkProcessDocument process, ThinkEngineContext ctx, String engineName) {
         return forProcess(process, ctx, engineName, AiChatOptions.builder().build());
     }
 
@@ -86,12 +84,8 @@ public class EngineChatFactory {
      * {@code null} on {@code baseOptions}.
      */
     public EngineChatBundle forProcess(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            String engineName,
-            AiChatOptions baseOptions) {
-        ChatBehavior behavior = ChatBehaviorBuilder.fromProcess(
-                process, ctx.settingService(), aiModelResolver);
+            ThinkProcessDocument process, ThinkEngineContext ctx, String engineName, AiChatOptions baseOptions) {
+        ChatBehavior behavior = ChatBehaviorBuilder.fromProcess(process, ctx.settingService(), aiModelResolver);
         AiChatOptions options = applyDefaults(baseOptions, process, ctx, engineName);
         // Billing attribution comes from the process, not from the options:
         // a tenant-pinned process leaves options.projectId unset so the
@@ -116,10 +110,7 @@ public class EngineChatFactory {
     }
 
     private AiChatOptions applyDefaults(
-            AiChatOptions base,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            String engineName) {
+            AiChatOptions base, ThinkProcessDocument process, ThinkEngineContext ctx, String engineName) {
         // Thread the process's scope into the options so the per-call
         // provider (Anthropic/Gemini/OpenAI/…) consults ModelCatalog
         // with the same tenant/project view that the engine sees. Any
@@ -132,15 +123,13 @@ public class EngineChatFactory {
         // the _tenant layer, so the catalog must be read with the same view.
         // A project-scoped catalog lookup on a tenant-scoped endpoint is the
         // very layer-mixing the pinning exists to prevent.
-        if (base.getProjectId() == null
-                && ChatBehaviorBuilder.readAiConfigScope(process) == AiConfigScope.CASCADE) {
+        if (base.getProjectId() == null && ChatBehaviorBuilder.readAiConfigScope(process) == AiConfigScope.CASCADE) {
             base.setProjectId(process.getProjectId());
         }
         // Default user-notifier — only fires for resilience events
         // (retry, chain-advance). Caller's notifier always wins.
         if (base.getUserNotifier() == null) {
-            base.setUserNotifier(msg -> progressEmitter.emitStatus(
-                    process, StatusTag.PROVIDER, msg));
+            base.setUserNotifier(msg -> progressEmitter.emitStatus(process, StatusTag.PROVIDER, msg));
         }
         // Trace-writer is attached unconditionally so audit always fires.
         // The DB-write leg gates on ctx.traceLlm() inside the lambda —
@@ -151,8 +140,7 @@ public class EngineChatFactory {
         if (base.getLlmTraceWriter() == null) {
             base.setLlmTraceWriter((req, resp, ms) -> {
                 if (ctx.traceLlm()) {
-                    LlmTraceRecorder.record(
-                            ctx.llmTraceService(), process, engineName, req, resp, ms);
+                    LlmTraceRecorder.record(ctx.llmTraceService(), process, engineName, req, resp, ms);
                 }
                 Integer tokensIn = null;
                 Integer tokensOut = null;
@@ -160,9 +148,8 @@ public class EngineChatFactory {
                     tokensIn = resp.tokenUsage().inputTokenCount();
                     tokensOut = resp.tokenUsage().outputTokenCount();
                 }
-                String modelAlias = (req.parameters() == null)
-                        ? null
-                        : req.parameters().modelName();
+                String modelAlias =
+                        (req.parameters() == null) ? null : req.parameters().modelName();
                 auditService.llmEngineCall(
                         process.getTenantId(),
                         process.getProjectId(),
@@ -170,22 +157,45 @@ public class EngineChatFactory {
                         process.getId(),
                         engineName,
                         modelAlias,
-                        tokensIn, tokensOut,
-                        ms, resp != null, null);
+                        tokensIn,
+                        tokensOut,
+                        ms,
+                        resp != null,
+                        null);
             });
         }
         // Learn the endpoint's real tools-array cap from its own
         // rejection. Without this a stale/missing `maxTools:` keeps
         // failing every turn; with it the next turn's surface fits.
         if (base.getToolLimitLearner() == null) {
-            base.setToolLimitLearner((label, errorText, requested) ->
-                    observedToolLimits.learnFrom(label, errorText, requested));
+            base.setToolLimitLearner(
+                    (label, errorText, requested) -> observedToolLimits.learnFrom(label, errorText, requested));
         }
         // Default metric-service — always set so every engine-spawned
         // chat pushes char-length distribution summaries to Prometheus.
         // Caller's explicit MetricService wins (tests pass null/mock).
         if (base.getMetricService() == null) {
             base.setMetricService(metricService);
+        }
+        // Default empty-response diagnostics — fires once per chat call
+        // when the resilient layer exhausts its empty-completion budget,
+        // with the full request (messages + tools array) as evidence. The
+        // service decides phantom tool call vs. genuine blank and
+        // escalates accordingly (Megadodo always, Fook gated). Caller's
+        // sink wins — tests and engines with their own reporting keep
+        // control.
+        if (base.getEmptyResponseDiagnosticSink() == null) {
+            base.setEmptyResponseDiagnosticSink(
+                    (req, modelLabel, attempts) -> emptyResponseDiagnostics.onEmptyResponseExhausted(
+                            new EmptyResponseDiagnosticService.DiagnosticCall(
+                                    process.getTenantId(),
+                                    process.getProjectId(),
+                                    process.getSessionId(),
+                                    process.getId(),
+                                    engineName),
+                            req,
+                            modelLabel,
+                            attempts));
         }
         // Recipe-level cache kill — `params.disableCache: true` on the
         // applied recipe lands on the spawned process's engineParams.
@@ -293,8 +303,10 @@ public class EngineChatFactory {
                 log.warn("Recipe param '{}' is not a number: '{}' — ignoring", key, s);
             }
         } else if (!(v instanceof String)) {
-            log.warn("Recipe param '{}' has unexpected type {} — ignoring",
-                    key, v.getClass().getSimpleName());
+            log.warn(
+                    "Recipe param '{}' has unexpected type {} — ignoring",
+                    key,
+                    v.getClass().getSimpleName());
         }
         return null;
     }
@@ -314,8 +326,10 @@ public class EngineChatFactory {
                 log.warn("Recipe param '{}' is not an integer: '{}' — ignoring", key, s);
             }
         } else if (!(v instanceof String)) {
-            log.warn("Recipe param '{}' has unexpected type {} — ignoring",
-                    key, v.getClass().getSimpleName());
+            log.warn(
+                    "Recipe param '{}' has unexpected type {} — ignoring",
+                    key,
+                    v.getClass().getSimpleName());
         }
         return null;
     }
@@ -335,14 +349,15 @@ public class EngineChatFactory {
                 log.warn("Recipe param '{}' is not a long: '{}' — ignoring", key, s);
             }
         } else if (!(v instanceof String)) {
-            log.warn("Recipe param '{}' has unexpected type {} — ignoring",
-                    key, v.getClass().getSimpleName());
+            log.warn(
+                    "Recipe param '{}' has unexpected type {} — ignoring",
+                    key,
+                    v.getClass().getSimpleName());
         }
         return null;
     }
 
-    private static @Nullable List<String> readStringList(
-            Map<String, Object> params, String key) {
+    private static @Nullable List<String> readStringList(Map<String, Object> params, String key) {
         Object v = params.get(key);
         if (v == null) {
             return null;
@@ -359,8 +374,10 @@ public class EngineChatFactory {
         if (v instanceof String s && !s.isEmpty()) {
             return List.of(s);
         }
-        log.warn("Recipe param '{}' has unexpected type {} — ignoring",
-                key, v.getClass().getSimpleName());
+        log.warn(
+                "Recipe param '{}' has unexpected type {} — ignoring",
+                key,
+                v.getClass().getSimpleName());
         return null;
     }
 
@@ -404,13 +421,14 @@ public class EngineChatFactory {
         }
         if (v instanceof String s) {
             return ThinkingLevel.fromString(s).orElseGet(() -> {
-                log.warn("Unknown params.thinking='{}' on process '{}' — falling back to OFF",
-                        s, process.getId());
+                log.warn("Unknown params.thinking='{}' on process '{}' — falling back to OFF", s, process.getId());
                 return ThinkingLevel.OFF;
             });
         }
-        log.warn("params.thinking on process '{}' has unexpected type {} — ignoring",
-                process.getId(), v.getClass().getSimpleName());
+        log.warn(
+                "params.thinking on process '{}' has unexpected type {} — ignoring",
+                process.getId(),
+                v.getClass().getSimpleName());
         return ThinkingLevel.OFF;
     }
 
@@ -438,17 +456,13 @@ public class EngineChatFactory {
      * (overnight assistants, scheduled agents). Default 5min suits
      * interactive sessions.
      */
-    private static boolean recipeAllowsLongTtl(
-            ThinkProcessDocument process, SettingService settings) {
+    private static boolean recipeAllowsLongTtl(ThinkProcessDocument process, SettingService settings) {
         String recipeName = process.getRecipeName();
         if (recipeName == null || recipeName.isBlank()) {
             return false;
         }
         String raw = settings.getStringValueCascade(
-                process.getTenantId(),
-                process.getProjectId(),
-                process.getId(),
-                SETTING_CACHE_TTL_LONG_RECIPES);
+                process.getTenantId(), process.getProjectId(), process.getId(), SETTING_CACHE_TTL_LONG_RECIPES);
         Set<String> allowlist = parseRecipeList(raw);
         return allowlist.contains(recipeName);
     }

@@ -44,8 +44,8 @@ class ChainedAiChat implements AiChat {
      * "never" on its own — {@link RetryPolicy#shouldRetry(Throwable)} also
      * honours langchain4j's typed retriable marker.)
      */
-    private static final RetryPolicy ADVANCE_ONLY = new RetryPolicy(
-            1, Duration.ofMillis(1), Duration.ofMillis(1), List.of());
+    private static final RetryPolicy ADVANCE_ONLY =
+            new RetryPolicy(1, Duration.ofMillis(1), Duration.ofMillis(1), List.of());
 
     private final String name;
     private final List<AiChat> entries;
@@ -65,7 +65,11 @@ class ChainedAiChat implements AiChat {
         List<ChainEntry> outerChain = entries.stream()
                 .map(c -> new ChainEntry(c.streamingChatModel(), c.getName(), ADVANCE_ONLY))
                 .toList();
-        this.streaming = new ResilientStreamingChatModel(outerChain);
+        // Both levels (inner per-entry, outer across-entries) get the same
+        // sink — the fire-once guard applied at the composition point
+        // (AiModelService.createChat) keeps exactly one of them winning.
+        this.streaming =
+                new ResilientStreamingChatModel(outerChain, null, null, options.getEmptyResponseDiagnosticSink());
         List<SyncChainEntry> outerSyncChain = entries.stream()
                 .map(c -> new SyncChainEntry(c.chatModel(), c.getName(), ADVANCE_ONLY))
                 .toList();
@@ -74,7 +78,8 @@ class ChainedAiChat implements AiChat {
                 options.getUserNotifier(),
                 options.getToolLimitLearner(),
                 options.getSyncCallDeadline(),
-                options.getSyncAnsweredBy());
+                options.getSyncAnsweredBy(),
+                options.getEmptyResponseDiagnosticSink());
     }
 
     @Override
@@ -110,10 +115,7 @@ class ChainedAiChat implements AiChat {
     }
 
     @Override
-    public String askStream(
-            String question,
-            Consumer<String> tokenConsumer,
-            List<ResolvedAttachment> attachments) {
+    public String askStream(String question, Consumer<String> tokenConsumer, List<ResolvedAttachment> attachments) {
         // Convenience wrapper — engines use streamingChatModel() directly.
         // Single-entry primary delegation keeps this simple.
         return entries.get(0).askStream(question, tokenConsumer, attachments);

@@ -142,7 +142,8 @@ public class StandardAiChat implements AiChat {
                 options.getUserNotifier(),
                 options.getToolLimitLearner(),
                 options.getSyncCallDeadline(),
-                options.getSyncAnsweredBy());
+                options.getSyncAnsweredBy(),
+                options.getEmptyResponseDiagnosticSink());
     }
 
     /**
@@ -189,7 +190,8 @@ public class StandardAiChat implements AiChat {
         StreamingChatModel resilient = new ResilientStreamingChatModel(
                 List.of(new ChainEntry(logged, name, RetryPolicy.DEFAULT)),
                 options.getUserNotifier(),
-                options.getToolLimitLearner());
+                options.getToolLimitLearner(),
+                options.getEmptyResponseDiagnosticSink());
         return SanitizingStreamingChatModel.wrapIfNeeded(resilient, messageParser);
     }
 

@@ -195,6 +195,23 @@ public class AiChatOptions {
     private @Nullable MetricService metricService;
 
     /**
+     * Optional diagnostic sink fired once per chat call when the
+     * resilient retry layer exhausts its budget on empty completions
+     * — the post-mortem evidence for the empty-response analysis
+     * (phantom tool call vs. genuine blank provider reply). Receives
+     * the full request, tools array included, because the tool name a
+     * model hallucinated never arrives as data — the request text is
+     * the only evidence.
+     *
+     * <p>{@link EngineChatFactory} fills this from the injected bean
+     * by default, so engine-spawned chats always report; a fire-once
+     * guard is applied at the composition point in
+     * {@code AiModelService.createChat}. {@code null} disables the
+     * diagnostics silently.
+     */
+    private @Nullable EmptyResponseDiagnosticSink emptyResponseDiagnosticSink;
+
+    /**
      * Where to place the {@code cache_control} marker on the
      * outbound request. Default {@link CacheBoundary#SYSTEM_AND_TOOLS}
      * — the wirtschaftlich sweet spot for most engines. Set to

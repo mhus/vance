@@ -32,12 +32,11 @@ import org.junit.jupiter.api.Test;
 class ResilientChatModelTest {
 
     /** Tiny backoff so retries don't slow the suite down. */
-    private static final RetryPolicy FAST = new RetryPolicy(
-            3, Duration.ofMillis(1), Duration.ofMillis(2), List.of("overloaded"));
+    private static final RetryPolicy FAST =
+            new RetryPolicy(3, Duration.ofMillis(1), Duration.ofMillis(2), List.of("overloaded"));
 
-    private static final ChatRequest REQUEST = ChatRequest.builder()
-            .messages(UserMessage.from("hi"))
-            .build();
+    private static final ChatRequest REQUEST =
+            ChatRequest.builder().messages(UserMessage.from("hi")).build();
 
     private static ChatResponse response(String text) {
         return ChatResponse.builder().aiMessage(AiMessage.from(text)).build();
@@ -92,8 +91,8 @@ class ResilientChatModelTest {
     @Test
     void a_transient_failure_is_retried_on_the_same_entry() {
         AtomicInteger calls = new AtomicInteger();
-        ResilientChatModel model = new ResilientChatModel(List.of(entry("openai:a",
-                scripted(calls, new RuntimeException("server overloaded"), response("ok")))));
+        ResilientChatModel model = new ResilientChatModel(
+                List.of(entry("openai:a", scripted(calls, new RuntimeException("server overloaded"), response("ok")))));
 
         assertThat(model.chat(REQUEST).aiMessage().text()).isEqualTo("ok");
         assertThat(calls.get()).isEqualTo(2);
@@ -104,8 +103,8 @@ class ResilientChatModelTest {
         AtomicInteger calls = new AtomicInteger();
         // "invalid api key" matches no retry pattern: repeating it just
         // asks the same question and gets the same answer.
-        ResilientChatModel model = new ResilientChatModel(List.of(entry("openai:a",
-                scripted(calls, new RuntimeException("invalid api key")))));
+        ResilientChatModel model = new ResilientChatModel(
+                List.of(entry("openai:a", scripted(calls, new RuntimeException("invalid api key")))));
 
         assertThatThrownBy(() -> model.chat(REQUEST))
                 .isInstanceOf(AiChatException.class)
@@ -131,10 +130,8 @@ class ResilientChatModelTest {
     @Test
     void all_entries_failing_surfaces_the_last_cause() {
         ResilientChatModel model = new ResilientChatModel(List.of(
-                entry("openai:a", scripted(new AtomicInteger(),
-                        new RuntimeException("overloaded"))),
-                entry("ollama:b", scripted(new AtomicInteger(),
-                        new RuntimeException("connection refused")))));
+                entry("openai:a", scripted(new AtomicInteger(), new RuntimeException("overloaded"))),
+                entry("ollama:b", scripted(new AtomicInteger(), new RuntimeException("connection refused")))));
 
         assertThatThrownBy(() -> model.chat(REQUEST))
                 .isInstanceOf(AiChatException.class)
@@ -190,12 +187,13 @@ class ResilientChatModelTest {
     @Test
     void the_deadline_stops_the_retries_rather_than_running_them_out() {
         AtomicInteger calls = new AtomicInteger();
-        RetryPolicy slow = new RetryPolicy(
-                5, Duration.ofSeconds(30), Duration.ofSeconds(60), List.of("overloaded"));
+        RetryPolicy slow = new RetryPolicy(5, Duration.ofSeconds(30), Duration.ofSeconds(60), List.of("overloaded"));
         ResilientChatModel model = new ResilientChatModel(
-                List.of(new SyncChainEntry(
-                        scripted(calls, new RuntimeException("overloaded")), "openai:a", slow)),
-                null, null, Duration.ofMillis(50), null);
+                List.of(new SyncChainEntry(scripted(calls, new RuntimeException("overloaded")), "openai:a", slow)),
+                null,
+                null,
+                Duration.ofMillis(50),
+                null);
 
         long startMs = System.currentTimeMillis();
         assertThatThrownBy(() -> model.chat(REQUEST)).isInstanceOf(AiChatException.class);
@@ -211,7 +209,10 @@ class ResilientChatModelTest {
         AtomicInteger calls = new AtomicInteger();
         ResilientChatModel model = new ResilientChatModel(
                 List.of(entry("openai:a", slow(calls, 60, response("slow but fine")))),
-                null, null, Duration.ofMillis(10), null);
+                null,
+                null,
+                Duration.ofMillis(10),
+                null);
 
         // The budget bounds how long we keep *trying*. An in-flight request
         // belongs to the HTTP client's timeout; killing it here would drop
@@ -226,10 +227,13 @@ class ResilientChatModelTest {
     void the_entry_that_answered_is_reported_not_the_one_asked_first() {
         AtomicReference<String> answered = new AtomicReference<>();
         ResilientChatModel model = new ResilientChatModel(
-                List.of(entry("openai:a", scripted(new AtomicInteger(),
-                                new RuntimeException("invalid api key"))),
+                List.of(
+                        entry("openai:a", scripted(new AtomicInteger(), new RuntimeException("invalid api key"))),
                         entry("ollama:b", scripted(new AtomicInteger(), response("ok")))),
-                null, null, null, answered::set);
+                null,
+                null,
+                null,
+                answered::set);
 
         model.chat(REQUEST);
 
@@ -242,9 +246,11 @@ class ResilientChatModelTest {
     void nothing_is_reported_when_no_entry_answered() {
         AtomicReference<String> answered = new AtomicReference<>();
         ResilientChatModel model = new ResilientChatModel(
-                List.of(entry("openai:a", scripted(new AtomicInteger(),
-                        new RuntimeException("invalid api key")))),
-                null, null, null, answered::set);
+                List.of(entry("openai:a", scripted(new AtomicInteger(), new RuntimeException("invalid api key")))),
+                null,
+                null,
+                null,
+                answered::set);
 
         assertThatThrownBy(() -> model.chat(REQUEST)).isInstanceOf(AiChatException.class);
         assertThat(answered.get()).isNull();
@@ -253,8 +259,7 @@ class ResilientChatModelTest {
     @Test
     void a_throwing_report_hook_does_not_break_the_call() {
         ResilientChatModel model = new ResilientChatModel(
-                List.of(entry("openai:a", scripted(new AtomicInteger(), response("ok")))),
-                null, null, null, label -> {
+                List.of(entry("openai:a", scripted(new AtomicInteger(), response("ok")))), null, null, null, label -> {
                     throw new IllegalStateException("sink is broken");
                 });
 
@@ -265,15 +270,82 @@ class ResilientChatModelTest {
     void retries_and_advances_are_narrated_to_the_notifier() {
         List<String> notes = new ArrayList<>();
         ResilientChatModel model = new ResilientChatModel(
-                List.of(entry("openai:a", scripted(new AtomicInteger(),
-                                new RuntimeException("overloaded"))),
+                List.of(
+                        entry("openai:a", scripted(new AtomicInteger(), new RuntimeException("overloaded"))),
                         entry("ollama:b", scripted(new AtomicInteger(), response("ok")))),
-                notes::add, null, null, null);
+                notes::add,
+                null,
+                null,
+                null);
 
         model.chat(REQUEST);
 
         assertThat(notes).anyMatch(n -> n.contains("retry 1/3"));
         assertThat(notes).anyMatch(n -> n.contains("falling back to ollama:b"));
+    }
+
+    // ──────────────────── empty-response diagnostics ────────────────────
+
+    /** Records every sink fire for assertion. */
+    private static final class RecordingSink implements EmptyResponseDiagnosticSink {
+        final List<String> fires = new java.util.ArrayList<>();
+
+        @Override
+        public void onEmptyResponseExhausted(ChatRequest request, String modelLabel, int attempts) {
+            fires.add(modelLabel + " x" + attempts);
+        }
+    }
+
+    @Test
+    void allEntriesEmpty_firesSinkOnceWithTotalAttempts() {
+        RecordingSink sink = new RecordingSink();
+        ResilientChatModel model = new ResilientChatModel(
+                List.of(
+                        entry("openai:a", scripted(new AtomicInteger(), empty())),
+                        entry("ollama:b", scripted(new AtomicInteger(), empty()))),
+                null,
+                null,
+                null,
+                null,
+                sink);
+
+        ChatResponse delivered = model.chat(REQUEST);
+
+        // Both entries exhausted their empty budget (3 each), the sink
+        // fired once for the whole chain with the last entry's label.
+        assertThat(delivered.aiMessage().text()).isEmpty();
+        assertThat(sink.fires).containsExactly("ollama:b x6");
+    }
+
+    @Test
+    void emptyAtOutputCap_doesNotFireSink() {
+        RecordingSink sink = new RecordingSink();
+        ResilientChatModel model = new ResilientChatModel(
+                List.of(entry("openai:a", scripted(new AtomicInteger(), truncatedEmpty()))),
+                null,
+                null,
+                null,
+                null,
+                sink);
+
+        model.chat(REQUEST);
+
+        assertThat(sink.fires).isEmpty();
+    }
+
+    @Test
+    void recoveredAfterEmptyReply_doesNotFireSink() {
+        RecordingSink sink = new RecordingSink();
+        ResilientChatModel model = new ResilientChatModel(
+                List.of(entry("openai:a", scripted(new AtomicInteger(), empty(), response("ok")))),
+                null,
+                null,
+                null,
+                null,
+                sink);
+
+        assertThat(model.chat(REQUEST).aiMessage().text()).isEqualTo("ok");
+        assertThat(sink.fires).isEmpty();
     }
 
     // ──────────────────── construction ────────────────────

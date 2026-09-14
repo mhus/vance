@@ -4,7 +4,6 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
-import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.output.FinishReason;
 import java.util.List;
@@ -97,32 +96,37 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
      * {@code addSuppressed} on it, and streaming turns arrive concurrently.
      */
     private static AiChatException emptyResponse(boolean atOutputCap) {
-        return new AiChatException(
-                atOutputCap ? EMPTY_AT_OUTPUT_CAP_MESSAGE : EMPTY_RESPONSE_MESSAGE);
+        return new AiChatException(atOutputCap ? EMPTY_AT_OUTPUT_CAP_MESSAGE : EMPTY_RESPONSE_MESSAGE);
     }
 
     /**
      * Single shared scheduler — used only to delay the retry trigger.
      * Daemon threads keep the JVM exitable.
      */
-    private static final ScheduledExecutorService SCHEDULER =
-            Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "ai-resilient-retry");
-                t.setDaemon(true);
-                return t;
-            });
+    private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "ai-resilient-retry");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final List<ChainEntry> chain;
     private final @Nullable Consumer<String> userNotifier;
     private final @Nullable ToolLimitLearner toolLimitLearner;
+    private final @Nullable EmptyResponseDiagnosticSink emptyResponseSink;
 
     public ResilientStreamingChatModel(List<ChainEntry> chain) {
-        this(chain, null, null);
+        this(chain, null, null, null);
+    }
+
+    public ResilientStreamingChatModel(List<ChainEntry> chain, @Nullable Consumer<String> userNotifier) {
+        this(chain, userNotifier, null, null);
     }
 
     public ResilientStreamingChatModel(
-            List<ChainEntry> chain, @Nullable Consumer<String> userNotifier) {
-        this(chain, userNotifier, null);
+            List<ChainEntry> chain,
+            @Nullable Consumer<String> userNotifier,
+            @Nullable ToolLimitLearner toolLimitLearner) {
+        this(chain, userNotifier, toolLimitLearner, null);
     }
 
     /**
@@ -136,17 +140,25 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
      *                      the user-progress side-channel so the user
      *                      understands why a turn is taking longer.
      *                      {@code null} disables the hook.
+     * @param emptyResponseSink optional post-mortem hook fired once when
+     *                      the chain gives up on empty completions
+     *                      (not at the output-token cap — that case is
+     *                      a deterministic wall, not evidence);
+     *                      {@link EmptyResponseDiagnosticSink} for the
+     *                      contract. {@code null} disables the hook.
      */
     public ResilientStreamingChatModel(
             List<ChainEntry> chain,
             @Nullable Consumer<String> userNotifier,
-            @Nullable ToolLimitLearner toolLimitLearner) {
+            @Nullable ToolLimitLearner toolLimitLearner,
+            @Nullable EmptyResponseDiagnosticSink emptyResponseSink) {
         if (chain == null || chain.isEmpty()) {
             throw new IllegalArgumentException("chain must contain at least one entry");
         }
         this.chain = List.copyOf(chain);
         this.userNotifier = userNotifier;
         this.toolLimitLearner = toolLimitLearner;
+        this.emptyResponseSink = emptyResponseSink;
     }
 
     @Override
@@ -166,17 +178,15 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
      * @param previousError  the error from the previously exhausted entry
      *                       (used as final cause if everything fails)
      */
-    private void attempt(int chainIdx,
-                         int attempt,
-                         ChatRequest request,
-                         StreamingChatResponseHandler caller,
-                         Throwable previousError) {
+    private void attempt(
+            int chainIdx,
+            int attempt,
+            ChatRequest request,
+            StreamingChatResponseHandler caller,
+            Throwable previousError) {
         if (chainIdx >= chain.size()) {
-            Throwable cause = previousError != null
-                    ? previousError
-                    : new RuntimeException("no chain entries");
-            caller.onError(new AiChatException(
-                    "All " + chain.size() + " chat-model chain entries exhausted", cause));
+            Throwable cause = previousError != null ? previousError : new RuntimeException("no chain entries");
+            caller.onError(new AiChatException("All " + chain.size() + " chat-model chain entries exhausted", cause));
             return;
         }
         ChainEntry entry = chain.get(chainIdx);
@@ -190,8 +200,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         // Tool-call deltas are relayed for the same reason and likewise do not
         // set it: a chain entry that streamed argument tokens and then failed
         // produced no output the caller kept.
-        StreamingChatResponseHandler internal =
-                new ForwardingStreamingChatResponseHandler(caller) {
+        StreamingChatResponseHandler internal = new ForwardingStreamingChatResponseHandler(caller) {
             @Override
             public void onPartialResponse(String partial) {
                 markEmitted(partial);
@@ -244,22 +253,25 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             // Some providers throw synchronously on bad request rather
             // than calling onError — funnel both paths through the same
             // handler so retry / chain-advance still applies.
-            handleError(chainIdx, attempt, request, caller, entry,
-                    emitted.get(), synchronousFail);
+            handleError(chainIdx, attempt, request, caller, entry, emitted.get(), synchronousFail);
         }
     }
 
-    private void handleError(int chainIdx,
-                             int attempt,
-                             ChatRequest request,
-                             StreamingChatResponseHandler caller,
-                             ChainEntry entry,
-                             boolean emitted,
-                             Throwable error) {
+    private void handleError(
+            int chainIdx,
+            int attempt,
+            ChatRequest request,
+            StreamingChatResponseHandler caller,
+            ChainEntry entry,
+            boolean emitted,
+            Throwable error) {
         if (emitted) {
             // Caller already saw partials; cannot replay safely.
-            log.warn("ResilientChatModel '{}': mid-stream error after first partial — "
-                    + "propagating without retry: {}", entry.label(), errorSummary(error));
+            log.warn(
+                    "ResilientChatModel '{}': mid-stream error after first partial — "
+                            + "propagating without retry: {}",
+                    entry.label(),
+                    errorSummary(error));
             caller.onError(error);
             return;
         }
@@ -272,7 +284,8 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             // 400), so fail now — and remember the real cap so the next
             // turn's tool-surface budget cuts to fit.
             int requested = request.toolSpecifications() == null
-                    ? 0 : request.toolSpecifications().size();
+                    ? 0
+                    : request.toolSpecifications().size();
             java.util.OptionalInt learned = java.util.OptionalInt.empty();
             if (toolLimitLearner != null) {
                 try {
@@ -281,50 +294,53 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                     log.debug("toolLimitLearner threw: {}", learnFail.toString());
                 }
             }
-            log.warn("ResilientChatModel '{}': endpoint rejected {} tool schemas as too many — "
+            log.warn(
+                    "ResilientChatModel '{}': endpoint rejected {} tool schemas as too many — "
                             + "not advancing the chain (same request shape everywhere): {}",
-                    entry.label(), requested, errorSummary(error));
+                    entry.label(),
+                    requested,
+                    errorSummary(error));
             // Only promise a different outcome when the cap is actually known
             // now. Without a learned number the next turn builds the very same
             // manifest, and "retry" would send the caller into an identical
             // failure — the durable fix is `maxTools:` in the model document.
             String remedy = learned.isPresent()
-                    ? " The endpoint's limit of " + learned.getAsInt()
-                            + " is now known — retry the turn."
+                    ? " The endpoint's limit of " + learned.getAsInt() + " is now known — retry the turn."
                     : " The endpoint stated no limit, so a retry would fail the same way:"
                             + " set 'maxTools:' for this model (or its provider) first.";
             caller.onError(new AiChatException(
-                    "Tool manifest too large for " + entry.label() + " (" + requested
-                            + " schemas)." + remedy,
-                    error));
+                    "Tool manifest too large for " + entry.label() + " (" + requested + " schemas)." + remedy, error));
             return;
         }
         if (!entry.policy().shouldRetry(error)) {
             // Genuine error, not transient — try next chain entry (which
             // for Phase A means: there is none, so we fail). We pass the
             // error so the final exception preserves the cause.
-            log.warn("ResilientChatModel '{}': non-retriable error → advance: {}",
-                    entry.label(), errorSummary(error));
+            log.warn("ResilientChatModel '{}': non-retriable error → advance: {}", entry.label(), errorSummary(error));
             notifyChainAdvance(entry, chainIdx, error);
             attempt(chainIdx + 1, 1, request, caller, error);
             return;
         }
         if (attempt < entry.policy().maxAttempts()) {
             long backoffMs = entry.policy().backoffFor(attempt).toMillis();
-            log.warn("ResilientChatModel '{}': transient failure (attempt {}/{}), "
-                            + "retry in {}ms — {}",
-                    entry.label(), attempt, entry.policy().maxAttempts(),
-                    backoffMs, errorSummary(error));
+            log.warn(
+                    "ResilientChatModel '{}': transient failure (attempt {}/{}), " + "retry in {}ms — {}",
+                    entry.label(),
+                    attempt,
+                    entry.policy().maxAttempts(),
+                    backoffMs,
+                    errorSummary(error));
             notifyRetry(entry, attempt, backoffMs, error);
             CompletableFuture.runAsync(
-                    () -> attempt(chainIdx, attempt + 1, request, caller, error),
-                    delayed(backoffMs));
+                    () -> attempt(chainIdx, attempt + 1, request, caller, error), delayed(backoffMs));
             return;
         }
         // Budget for this entry exhausted — advance to next chain entry
         // (for Phase A: none, so the recursion call ends with all-exhausted).
-        log.warn("ResilientChatModel '{}': retry budget exhausted after {} attempts → advance",
-                entry.label(), entry.policy().maxAttempts());
+        log.warn(
+                "ResilientChatModel '{}': retry budget exhausted after {} attempts → advance",
+                entry.label(),
+                entry.policy().maxAttempts());
         notifyChainAdvance(entry, chainIdx, error);
         attempt(chainIdx + 1, 1, request, caller, error);
     }
@@ -336,12 +352,13 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
      * error, the empty response is delivered via {@code onCompleteResponse}
      * so the caller keeps its existing empty-reply handling.
      */
-    private void handleEmptyComplete(int chainIdx,
-                                     int attempt,
-                                     ChatRequest request,
-                                     StreamingChatResponseHandler caller,
-                                     ChainEntry entry,
-                                     ChatResponse complete) {
+    private void handleEmptyComplete(
+            int chainIdx,
+            int attempt,
+            ChatRequest request,
+            StreamingChatResponseHandler caller,
+            ChainEntry entry,
+            ChatResponse complete) {
         // finish=LENGTH is a deterministic wall, not a glitch: the model
         // spent its whole output-token budget before emitting anything
         // visible. Re-issuing the same request reproduces it exactly, so
@@ -351,17 +368,20 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         int maxAttempts = Math.min(entry.policy().maxAttempts(), EMPTY_MAX_ATTEMPTS);
         if (!atOutputCap && attempt < maxAttempts) {
             long backoffMs = entry.policy().backoffFor(attempt).toMillis();
-            log.warn("ResilientChatModel '{}': empty response (attempt {}/{}), retry in {}ms",
-                    entry.label(), attempt, maxAttempts, backoffMs);
+            log.warn(
+                    "ResilientChatModel '{}': empty response (attempt {}/{}), retry in {}ms",
+                    entry.label(),
+                    attempt,
+                    maxAttempts,
+                    backoffMs);
             notifyRetry(entry, attempt, backoffMs, cause);
             CompletableFuture.runAsync(
-                    () -> attempt(chainIdx, attempt + 1, request, caller, cause),
-                    delayed(backoffMs));
+                    () -> attempt(chainIdx, attempt + 1, request, caller, cause), delayed(backoffMs));
             return;
         }
         String why = atOutputCap
-                ? "empty response at the output-token cap (finish=LENGTH, maxOutputTokens="
-                        + maxOutputTokens(request) + ") — not retriable"
+                ? "empty response at the output-token cap (finish=LENGTH, maxOutputTokens=" + maxOutputTokens(request)
+                        + ") — not retriable"
                 : "empty response, retry budget exhausted after " + attempt + " attempt(s)";
         if (chainIdx + 1 < chain.size()) {
             log.warn("ResilientChatModel '{}': {} → advance", entry.label(), why);
@@ -375,6 +395,16 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         // travels with it, so the engine can tell "hit the cap" from
         // "provider returned blanks" when it words its user-facing message.
         log.warn("ResilientChatModel '{}': {} — delivering empty", entry.label(), why);
+        // Empty-at-cap is a deterministic wall (see the class note) — it is
+        // excluded here because it is not evidence of a phantom tool call,
+        // only a mis-sized budget. Everything else exhausted is worth a
+        // post-mortem: the sink decides from the request whether this looks
+        // like a hallucinated tool name and escalates accordingly. The
+        // once-guard at the composition point keeps chained setups firing
+        // exactly once per logical call.
+        if (!atOutputCap) {
+            EmptyResponseDiagnosticSink.fire(emptyResponseSink, request, entry.label(), attempt);
+        }
         caller.onCompleteResponse(complete);
     }
 
@@ -408,12 +438,9 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         Consumer<String> n = userNotifier;
         if (n == null) return;
         try {
-            n.accept(String.format("%s transient failure — %s · retry %d/%d in %.1fs",
-                    entry.label(),
-                    errorSummary(error),
-                    attempt,
-                    entry.policy().maxAttempts(),
-                    backoffMs / 1000.0));
+            n.accept(String.format(
+                    "%s transient failure — %s · retry %d/%d in %.1fs",
+                    entry.label(), errorSummary(error), attempt, entry.policy().maxAttempts(), backoffMs / 1000.0));
         } catch (RuntimeException notifyFail) {
             // Resilience hook must never break the resilience itself.
             log.debug("userNotifier threw on retry: {}", notifyFail.toString());
@@ -425,10 +452,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         if (n == null) return;
         String next = chainIdx + 1 < chain.size() ? chain.get(chainIdx + 1).label() : "<exhausted>";
         try {
-            n.accept(String.format("%s exhausted — %s · falling back to %s",
-                    entry.label(),
-                    errorSummary(error),
-                    next));
+            n.accept(String.format("%s exhausted — %s · falling back to %s", entry.label(), errorSummary(error), next));
         } catch (RuntimeException notifyFail) {
             log.debug("userNotifier threw on chain-advance: {}", notifyFail.toString());
         }

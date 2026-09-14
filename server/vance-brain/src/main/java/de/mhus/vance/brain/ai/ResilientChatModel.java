@@ -106,8 +106,7 @@ public class ResilientChatModel implements ChatModel {
      * {@code addSuppressed} on it.
      */
     private static AiChatException emptyResponse(boolean atOutputCap) {
-        return new AiChatException(
-                atOutputCap ? EMPTY_AT_OUTPUT_CAP_MESSAGE : EMPTY_RESPONSE_MESSAGE);
+        return new AiChatException(atOutputCap ? EMPTY_AT_OUTPUT_CAP_MESSAGE : EMPTY_RESPONSE_MESSAGE);
     }
 
     /**
@@ -134,9 +133,34 @@ public class ResilientChatModel implements ChatModel {
     private final @Nullable ToolLimitLearner toolLimitLearner;
     private final @Nullable Duration deadline;
     private final @Nullable Consumer<String> answeredBy;
+    private final @Nullable EmptyResponseDiagnosticSink emptyResponseSink;
 
     public ResilientChatModel(List<SyncChainEntry> chain) {
-        this(chain, null, null, null, null);
+        this(chain, null, null, null, null, null);
+    }
+
+    /**
+     * Variant of the full constructor with the empty-response
+     * diagnostic sink — see {@link EmptyResponseDiagnosticSink} for
+     * the contract (fired once when the chain exhausts its empty
+     * budget, never for the deterministic output-cap case).
+     */
+    public ResilientChatModel(
+            List<SyncChainEntry> chain,
+            @Nullable Consumer<String> userNotifier,
+            @Nullable ToolLimitLearner toolLimitLearner,
+            @Nullable Duration deadline,
+            @Nullable Consumer<String> answeredBy,
+            @Nullable EmptyResponseDiagnosticSink emptyResponseSink) {
+        if (chain == null || chain.isEmpty()) {
+            throw new IllegalArgumentException("chain must contain at least one entry");
+        }
+        this.chain = List.copyOf(chain);
+        this.userNotifier = userNotifier;
+        this.toolLimitLearner = toolLimitLearner;
+        this.deadline = deadline;
+        this.answeredBy = answeredBy;
+        this.emptyResponseSink = emptyResponseSink;
     }
 
     /**
@@ -157,14 +181,7 @@ public class ResilientChatModel implements ChatModel {
             @Nullable ToolLimitLearner toolLimitLearner,
             @Nullable Duration deadline,
             @Nullable Consumer<String> answeredBy) {
-        if (chain == null || chain.isEmpty()) {
-            throw new IllegalArgumentException("chain must contain at least one entry");
-        }
-        this.chain = List.copyOf(chain);
-        this.userNotifier = userNotifier;
-        this.toolLimitLearner = toolLimitLearner;
-        this.deadline = deadline;
-        this.answeredBy = answeredBy;
+        this(chain, userNotifier, toolLimitLearner, deadline, answeredBy, null);
     }
 
     @Override
@@ -197,7 +214,7 @@ public class ResilientChatModel implements ChatModel {
         Throwable lastError = null;
         ChatResponse lastEmpty = null;
         SyncChainEntry lastEmptyFrom = null;
-
+        int totalEmptyAttempts = 0;
         for (int chainIdx = 0; chainIdx < chain.size(); chainIdx++) {
             SyncChainEntry entry = chain.get(chainIdx);
             int emptyBudget = Math.min(entry.policy().maxAttempts(), EMPTY_MAX_ATTEMPTS);
@@ -214,14 +231,20 @@ public class ResilientChatModel implements ChatModel {
                         throw verdict.toException(error);
                     }
                     if (!entry.policy().shouldRetry(error)) {
-                        log.warn("ResilientChatModel '{}': non-retriable error → {}: {}",
-                                entry.label(), nextStep(chainIdx), errorSummary(error));
+                        log.warn(
+                                "ResilientChatModel '{}': non-retriable error → {}: {}",
+                                entry.label(),
+                                nextStep(chainIdx),
+                                errorSummary(error));
                         notifyChainAdvance(entry, chainIdx, error);
                         break;
                     }
                     if (attempt >= entry.policy().maxAttempts()) {
-                        log.warn("ResilientChatModel '{}': retry budget exhausted after {} "
-                                + "attempts → {}", entry.label(), attempt, nextStep(chainIdx));
+                        log.warn(
+                                "ResilientChatModel '{}': retry budget exhausted after {} " + "attempts → {}",
+                                entry.label(),
+                                attempt,
+                                nextStep(chainIdx));
                         notifyChainAdvance(entry, chainIdx, error);
                         break;
                     }
@@ -246,12 +269,14 @@ public class ResilientChatModel implements ChatModel {
                 AiChatException cause = emptyResponse(atOutputCap);
                 lastError = cause;
                 emptyAttempts++;
+                totalEmptyAttempts++;
                 if (atOutputCap || emptyAttempts >= emptyBudget) {
-                    log.warn("ResilientChatModel '{}': {} → {}", entry.label(),
+                    log.warn(
+                            "ResilientChatModel '{}': {} → {}",
+                            entry.label(),
                             atOutputCap
                                     ? "empty response at the output-token cap (finish=LENGTH)"
-                                    : "empty response, budget exhausted after "
-                                            + emptyAttempts + " attempt(s)",
+                                    : "empty response, budget exhausted after " + emptyAttempts + " attempt(s)",
                             nextStep(chainIdx));
                     notifyChainAdvance(entry, chainIdx, cause);
                     break;
@@ -267,7 +292,8 @@ public class ResilientChatModel implements ChatModel {
             }
 
             if (deadlineExpired(deadlineAtNanos) && chainIdx + 1 < chain.size()) {
-                log.warn("ResilientChatModel: call deadline reached — not advancing to '{}'",
+                log.warn(
+                        "ResilientChatModel: call deadline reached — not advancing to '{}'",
                         chain.get(chainIdx + 1).label());
                 break;
             }
@@ -277,14 +303,26 @@ public class ResilientChatModel implements ChatModel {
             // No entry produced a non-empty reply. Deliver the last empty
             // one unchanged, finish reason included, so the caller can tell
             // "hit the cap" from "provider returned blanks".
-            log.warn("ResilientChatModel: all {} entries returned empty — delivering empty",
-                    chain.size());
+            log.warn("ResilientChatModel: all {} entries returned empty — delivering empty", chain.size());
             // Reported here too: this response came from a model, and a caller
             // that names the answering model would otherwise show nothing for
             // exactly the case worth naming. The deadline path a few lines up
             // already reports; not doing it here made the two disagree.
             if (lastEmptyFrom != null) {
                 reportAnsweredBy(lastEmptyFrom);
+            }
+            // Post-mortem evidence for the empty-response analysis — same
+            // contract as the streaming twin: the output-cap case is a
+            // deterministic wall and excluded, everything else may carry a
+            // hallucinated tool name that never reached us as data. The
+            // once-guard at the composition point keeps chained setups
+            // firing exactly once per logical call.
+            if (!isAtOutputCap(lastEmpty)) {
+                EmptyResponseDiagnosticSink.fire(
+                        emptyResponseSink,
+                        request,
+                        lastEmptyFrom != null ? lastEmptyFrom.label() : "unknown",
+                        totalEmptyAttempts);
             }
             return lastEmpty;
         }
@@ -298,8 +336,8 @@ public class ResilientChatModel implements ChatModel {
      * {@code false} when the caller must stop trying — either the budget
      * is spent already, or sleeping would spend it.
      */
-    private boolean sleepBeforeRetry(SyncChainEntry entry, int attempt,
-            @Nullable Long deadlineAtNanos, Throwable error) {
+    private boolean sleepBeforeRetry(
+            SyncChainEntry entry, int attempt, @Nullable Long deadlineAtNanos, Throwable error) {
         long backoffMs = entry.policy().backoffFor(attempt).toMillis();
         if (deadlineAtNanos != null) {
             long remainingMs =
@@ -308,15 +346,21 @@ public class ResilientChatModel implements ChatModel {
                 // Deliberately not "sleep for whatever is left": the retry
                 // would start with no time to complete, so it only delays
                 // the failure the caller is already waiting for.
-                log.warn("ResilientChatModel '{}': deadline leaves {}ms — "
-                                + "stopping instead of retrying in {}ms",
-                        entry.label(), Math.max(remainingMs, 0), backoffMs);
+                log.warn(
+                        "ResilientChatModel '{}': deadline leaves {}ms — " + "stopping instead of retrying in {}ms",
+                        entry.label(),
+                        Math.max(remainingMs, 0),
+                        backoffMs);
                 return false;
             }
         }
-        log.warn("ResilientChatModel '{}': transient failure (attempt {}/{}), retry in {}ms — {}",
-                entry.label(), attempt, entry.policy().maxAttempts(),
-                backoffMs, errorSummary(error));
+        log.warn(
+                "ResilientChatModel '{}': transient failure (attempt {}/{}), retry in {}ms — {}",
+                entry.label(),
+                attempt,
+                entry.policy().maxAttempts(),
+                backoffMs,
+                errorSummary(error));
         notifyRetry(entry, attempt, backoffMs, error);
         try {
             Thread.sleep(backoffMs);
@@ -346,11 +390,8 @@ public class ResilientChatModel implements ChatModel {
     }
 
     private AiChatException exhausted(@Nullable Throwable lastError) {
-        Throwable cause = lastError != null
-                ? lastError
-                : new RuntimeException("no chain entries");
-        return new AiChatException(
-                "All " + chain.size() + " chat-model chain entries exhausted", cause);
+        Throwable cause = lastError != null ? lastError : new RuntimeException("no chain entries");
+        return new AiChatException("All " + chain.size() + " chat-model chain entries exhausted", cause);
     }
 
     private void reportAnsweredBy(SyncChainEntry entry) {
@@ -370,14 +411,14 @@ public class ResilientChatModel implements ChatModel {
      * would answer with the identical 400, so advancing burns the fallback
      * for nothing. Returns {@code null} when this is an ordinary error.
      */
-    private @Nullable ToolLimitVerdict toolLimitVerdict(
-            ChatRequest request, SyncChainEntry entry, Throwable error) {
+    private @Nullable ToolLimitVerdict toolLimitVerdict(ChatRequest request, SyncChainEntry entry, Throwable error) {
         String errorText = ToolLimitError.messageOf(error);
         if (!ToolLimitError.isTooManyTools(errorText)) {
             return null;
         }
         int requested = request.toolSpecifications() == null
-                ? 0 : request.toolSpecifications().size();
+                ? 0
+                : request.toolSpecifications().size();
         OptionalInt learned = OptionalInt.empty();
         if (toolLimitLearner != null) {
             try {
@@ -386,9 +427,12 @@ public class ResilientChatModel implements ChatModel {
                 log.debug("toolLimitLearner threw: {}", learnFail.toString());
             }
         }
-        log.warn("ResilientChatModel '{}': endpoint rejected {} tool schemas as too many — "
+        log.warn(
+                "ResilientChatModel '{}': endpoint rejected {} tool schemas as too many — "
                         + "not advancing the chain (same request shape everywhere): {}",
-                entry.label(), requested, errorSummary(error));
+                entry.label(),
+                requested,
+                errorSummary(error));
         return new ToolLimitVerdict(entry.label(), requested, learned);
     }
 
@@ -398,13 +442,11 @@ public class ResilientChatModel implements ChatModel {
             // known now — otherwise the next turn builds the same manifest
             // and a "retry" walks into the identical failure.
             String remedy = learned.isPresent()
-                    ? " The endpoint's limit of " + learned.getAsInt()
-                            + " is now known — retry the turn."
+                    ? " The endpoint's limit of " + learned.getAsInt() + " is now known — retry the turn."
                     : " The endpoint stated no limit, so a retry would fail the same way:"
                             + " set 'maxTools:' for this model (or its provider) first.";
             return new AiChatException(
-                    "Tool manifest too large for " + label + " (" + requested
-                            + " schemas)." + remedy, cause);
+                    "Tool manifest too large for " + label + " (" + requested + " schemas)." + remedy, cause);
         }
     }
 
@@ -426,9 +468,9 @@ public class ResilientChatModel implements ChatModel {
         Consumer<String> n = userNotifier;
         if (n == null) return;
         try {
-            n.accept(String.format("%s transient failure — %s · retry %d/%d in %.1fs",
-                    entry.label(), errorSummary(error), attempt,
-                    entry.policy().maxAttempts(), backoffMs / 1000.0));
+            n.accept(String.format(
+                    "%s transient failure — %s · retry %d/%d in %.1fs",
+                    entry.label(), errorSummary(error), attempt, entry.policy().maxAttempts(), backoffMs / 1000.0));
         } catch (RuntimeException notifyFail) {
             log.debug("userNotifier threw on retry: {}", notifyFail.toString());
         }
@@ -439,8 +481,7 @@ public class ResilientChatModel implements ChatModel {
         if (n == null) return;
         String next = chainIdx + 1 < chain.size() ? chain.get(chainIdx + 1).label() : "<exhausted>";
         try {
-            n.accept(String.format("%s exhausted — %s · falling back to %s",
-                    entry.label(), errorSummary(error), next));
+            n.accept(String.format("%s exhausted — %s · falling back to %s", entry.label(), errorSummary(error), next));
         } catch (RuntimeException notifyFail) {
             log.debug("userNotifier threw on chain-advance: {}", notifyFail.toString());
         }

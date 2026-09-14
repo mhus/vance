@@ -31,11 +31,10 @@ public class AiModelService {
 
     @jakarta.annotation.PostConstruct
     public void postConstruct() {
-        this.providers = providerBeans.stream().collect(
-                Collectors.toUnmodifiableMap(AiModelProvider::getType, p -> p, (a, b) -> {
-                    throw new IllegalStateException(
-                            "Duplicate AiModelProvider type: " + a.getType()
-                                    + " — " + a.getClass() + " vs " + b.getClass());
+        this.providers = providerBeans.stream()
+                .collect(Collectors.toUnmodifiableMap(AiModelProvider::getType, p -> p, (a, b) -> {
+                    throw new IllegalStateException("Duplicate AiModelProvider type: " + a.getType() + " — "
+                            + a.getClass() + " vs " + b.getClass());
                 }));
         log.info("Registered AI providers: {}", providers.keySet());
     }
@@ -47,14 +46,11 @@ public class AiModelService {
      * @throws IllegalArgumentException if the wire-name in {@code config}
      *         maps to no known {@link ProviderType}
      */
-    public AiChat createChat(
-            AiChatConfig config, AiChatOptions options, CallAttribution attribution) {
+    public AiChat createChat(AiChatConfig config, AiChatOptions options, CallAttribution attribution) {
         ProviderType type = ProviderType.requireWireName(config.provider());
         AiModelProvider provider = providers.get(type);
         if (provider == null) {
-            throw new AiChatException(
-                    "No adapter for provider " + type
-                            + " — registered: " + providers.keySet());
+            throw new AiChatException("No adapter for provider " + type + " — registered: " + providers.keySet());
         }
         return provider.createChat(config, options, attribution);
     }
@@ -76,23 +72,35 @@ public class AiModelService {
      * inherits it instead of starting its own — see the deadline note
      * there.
      */
-    public AiChat createChat(
-            ChatBehavior behavior, AiChatOptions options, CallAttribution attribution) {
+    public AiChat createChat(ChatBehavior behavior, AiChatOptions options, CallAttribution attribution) {
+        // Guard the diagnostic sink once per logical call: in a fallback
+        // chain the resilient layer nests (outer across-models, inner
+        // per-model), and both levels share this one guarded sink —
+        // whichever empty exhaustion happens first fires, all later ones
+        // (remaining inner chains, the outer final delivery) are swallowed.
+        // Without the guard, a chained call would file one diagnostic per
+        // chain entry.
+        AiChatOptions effective = options.getEmptyResponseDiagnosticSink() == null
+                ? options
+                : options.toBuilder()
+                        .emptyResponseDiagnosticSink(
+                                EmptyResponseDiagnosticSink.once(options.getEmptyResponseDiagnosticSink()))
+                        .build();
         if (behavior.entries().size() == 1) {
-            return createChat(behavior.entries().get(0).config(), options, attribution);
+            return createChat(behavior.entries().get(0).config(), effective, attribution);
         }
         // Every entry gets its own chat and therefore its own accounting
         // decorator, its own model name and its own rate snapshot — which is
         // what makes a fallback bill as the model that actually answered.
         List<AiChat> built = behavior.entries().stream()
-                .map(e -> createChat(e.config(), options, attribution))
+                .map(e -> createChat(e.config(), effective, attribution))
                 .toList();
         String name = behavior.entries().stream()
                 .map(ChatBehavior.Entry::label)
                 .reduce((a, b) -> a + "+" + b)
                 .orElse("chained");
         log.debug("ChatBehavior chain built: {} ({} entries)", name, built.size());
-        return new ChainedAiChat(name, built, options);
+        return new ChainedAiChat(name, built, effective);
     }
 
     /** Wire-names of all registered providers, in no particular order. */

@@ -28,12 +28,10 @@ import org.junit.jupiter.api.Test;
 class ResilientStreamingChatModelTest {
 
     /** Tiny backoff so the scheduled retries don't slow the test down. */
-    private static final RetryPolicy FAST = new RetryPolicy(
-            3, Duration.ofMillis(1), Duration.ofMillis(2), List.of());
+    private static final RetryPolicy FAST = new RetryPolicy(3, Duration.ofMillis(1), Duration.ofMillis(2), List.of());
 
-    private static final ChatRequest REQUEST = ChatRequest.builder()
-            .messages(UserMessage.from("hi"))
-            .build();
+    private static final ChatRequest REQUEST =
+            ChatRequest.builder().messages(UserMessage.from("hi")).build();
 
     private static ChatResponse response(String text) {
         return ChatResponse.builder().aiMessage(AiMessage.from(text)).build();
@@ -62,8 +60,8 @@ class ResilientStreamingChatModelTest {
     void emptyCompletion_isRetried_andRecoveredReplyReachesCaller() throws Exception {
         AtomicInteger calls = new AtomicInteger();
         StreamingChatModel delegate = scripted(calls, response(""), response("real answer"));
-        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
-                List.of(new ChainEntry(delegate, "primary", FAST)));
+        ResilientStreamingChatModel model =
+                new ResilientStreamingChatModel(List.of(new ChainEntry(delegate, "primary", FAST)));
 
         AtomicReference<String> delivered = new AtomicReference<>();
         CountDownLatch done = new CountDownLatch(1);
@@ -78,19 +76,24 @@ class ResilientStreamingChatModelTest {
     void persistentEmpty_isDeliveredAsEmpty_notAsError() throws Exception {
         AtomicInteger calls = new AtomicInteger();
         StreamingChatModel delegate = scripted(calls, response(""));
-        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
-                List.of(new ChainEntry(delegate, "primary", FAST)));
+        ResilientStreamingChatModel model =
+                new ResilientStreamingChatModel(List.of(new ChainEntry(delegate, "primary", FAST)));
 
         AtomicReference<String> delivered = new AtomicReference<>();
         AtomicReference<Throwable> errored = new AtomicReference<>();
         CountDownLatch done = new CountDownLatch(1);
         model.chat(REQUEST, new StreamingChatResponseHandler() {
-            @Override public void onPartialResponse(String partial) { }
-            @Override public void onCompleteResponse(ChatResponse complete) {
+            @Override
+            public void onPartialResponse(String partial) {}
+
+            @Override
+            public void onCompleteResponse(ChatResponse complete) {
                 delivered.set(complete.aiMessage().text());
                 done.countDown();
             }
-            @Override public void onError(Throwable error) {
+
+            @Override
+            public void onError(Throwable error) {
                 errored.set(error);
                 done.countDown();
             }
@@ -107,19 +110,24 @@ class ResilientStreamingChatModelTest {
     void emptyAtOutputCap_isNotRetried_andDeliveredAsEmpty() throws Exception {
         AtomicInteger calls = new AtomicInteger();
         StreamingChatModel delegate = scripted(calls, truncatedEmpty());
-        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
-                List.of(new ChainEntry(delegate, "primary", FAST)));
+        ResilientStreamingChatModel model =
+                new ResilientStreamingChatModel(List.of(new ChainEntry(delegate, "primary", FAST)));
 
         AtomicReference<ChatResponse> delivered = new AtomicReference<>();
         AtomicReference<Throwable> errored = new AtomicReference<>();
         CountDownLatch done = new CountDownLatch(1);
         model.chat(REQUEST, new StreamingChatResponseHandler() {
-            @Override public void onPartialResponse(String partial) { }
-            @Override public void onCompleteResponse(ChatResponse complete) {
+            @Override
+            public void onPartialResponse(String partial) {}
+
+            @Override
+            public void onCompleteResponse(ChatResponse complete) {
                 delivered.set(complete);
                 done.countDown();
             }
-            @Override public void onError(Throwable error) {
+
+            @Override
+            public void onError(Throwable error) {
                 errored.set(error);
                 done.countDown();
             }
@@ -143,9 +151,8 @@ class ResilientStreamingChatModelTest {
         AtomicInteger fallbackCalls = new AtomicInteger();
         StreamingChatModel primary = scripted(primaryCalls, truncatedEmpty());
         StreamingChatModel fallback = scripted(fallbackCalls, response("fallback answer"));
-        ResilientStreamingChatModel model = new ResilientStreamingChatModel(List.of(
-                new ChainEntry(primary, "primary", FAST),
-                new ChainEntry(fallback, "fallback", FAST)));
+        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
+                List.of(new ChainEntry(primary, "primary", FAST), new ChainEntry(fallback, "fallback", FAST)));
 
         AtomicReference<String> delivered = new AtomicReference<>();
         CountDownLatch done = new CountDownLatch(1);
@@ -170,8 +177,8 @@ class ResilientStreamingChatModelTest {
                 handler.onCompleteResponse(response(""));
             }
         };
-        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
-                List.of(new ChainEntry(delegate, "primary", FAST)));
+        ResilientStreamingChatModel model =
+                new ResilientStreamingChatModel(List.of(new ChainEntry(delegate, "primary", FAST)));
 
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<String> delivered = new AtomicReference<>();
@@ -184,15 +191,91 @@ class ResilientStreamingChatModelTest {
         assertThat(delivered.get()).isEmpty();
     }
 
-    private static StreamingChatResponseHandler completeOnly(
-            AtomicReference<String> delivered, CountDownLatch done) {
+    /** One attempt, no retry — the policy a fallback chain uses between entries. */
+    private static final RetryPolicy ADVANCE =
+            new RetryPolicy(1, Duration.ofMillis(1), Duration.ofMillis(1), List.of());
+
+    // ──────────────────── empty-response diagnostics ────────────────────
+
+    /** Records every sink fire for assertion. */
+    private static final class RecordingSink implements EmptyResponseDiagnosticSink {
+        final List<String> fires = new java.util.ArrayList<>();
+
+        @Override
+        public void onEmptyResponseExhausted(ChatRequest request, String modelLabel, int attempts) {
+            fires.add(modelLabel + " x" + attempts);
+        }
+    }
+
+    @Test
+    void persistentEmpty_firesSinkOnce() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        StreamingChatModel delegate = scripted(calls, response(""));
+        RecordingSink sink = new RecordingSink();
+        ResilientStreamingChatModel model =
+                new ResilientStreamingChatModel(List.of(new ChainEntry(delegate, "primary", FAST)), null, null, sink);
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> delivered = new AtomicReference<>();
+        model.chat(REQUEST, completeOnly(delivered, done));
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(delivered.get()).isEmpty();
+        assertThat(sink.fires).containsExactly("primary x3");
+    }
+
+    @Test
+    void truncatedEmpty_doesNotFireSink() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        StreamingChatModel delegate = scripted(calls, truncatedEmpty());
+        RecordingSink sink = new RecordingSink();
+        ResilientStreamingChatModel model =
+                new ResilientStreamingChatModel(List.of(new ChainEntry(delegate, "primary", FAST)), null, null, sink);
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> delivered = new AtomicReference<>();
+        model.chat(REQUEST, completeOnly(delivered, done));
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(sink.fires).isEmpty();
+    }
+
+    @Test
+    void twoEmptyEntries_fireSinkOnceWithLastLabel() throws Exception {
+        AtomicInteger callsA = new AtomicInteger();
+        AtomicInteger callsB = new AtomicInteger();
+        RecordingSink sink = new RecordingSink();
+        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
+                List.of(
+                        new ChainEntry(scripted(callsA, response("")), "a", ADVANCE),
+                        new ChainEntry(scripted(callsB, response("")), "b", ADVANCE)),
+                null,
+                null,
+                sink);
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> delivered = new AtomicReference<>();
+        model.chat(REQUEST, completeOnly(delivered, done));
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        // First entry advances (no retry budget on ADVANCE_ONLY), second
+        // gives up — one fire, from the final entry.
+        assertThat(sink.fires).containsExactly("b x1");
+    }
+
+    private static StreamingChatResponseHandler completeOnly(AtomicReference<String> delivered, CountDownLatch done) {
         return new StreamingChatResponseHandler() {
-            @Override public void onPartialResponse(String partial) { }
-            @Override public void onCompleteResponse(ChatResponse complete) {
+            @Override
+            public void onPartialResponse(String partial) {}
+
+            @Override
+            public void onCompleteResponse(ChatResponse complete) {
                 delivered.set(complete.aiMessage().text());
                 done.countDown();
             }
-            @Override public void onError(Throwable error) {
+
+            @Override
+            public void onError(Throwable error) {
                 done.countDown();
             }
         };

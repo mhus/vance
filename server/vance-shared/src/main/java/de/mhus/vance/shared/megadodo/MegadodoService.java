@@ -107,8 +107,7 @@ public class MegadodoService {
                 .message("Project '" + projectName + "' closed"));
     }
 
-    public void projectRenamed(
-            String tenantId, String projectName, String newProjectName, @Nullable String actor) {
+    public void projectRenamed(String tenantId, String projectName, String newProjectName, @Nullable String actor) {
         // projectId stays null like the other lifecycle rows — and here that is
         // load-bearing rather than convention: rows tagged with the project are
         // rewritten by the rename, so a row tagged with the *old* name would
@@ -223,12 +222,7 @@ public class MegadodoService {
      * saying so is the point: an arrival row alone cannot express "left,
      * and nobody took over".
      */
-    public void projectHomeReleased(
-            String tenantId,
-            String projectName,
-            String node,
-            String podId,
-            String address) {
+    public void projectHomeReleased(String tenantId, String projectName, String node, String podId, String address) {
         record(builder(tenantId, /*projectId*/ null, "project.home", projectName)
                 .phase(MegadodoPhase.SINGLE)
                 .severity(MegadodoSeverity.WARN)
@@ -250,12 +244,7 @@ public class MegadodoService {
      * elsewhere. The pod noticed by reconciling its own renewal count, so
      * this is the one involuntary departure that has a witness.
      */
-    public void projectHomeLost(
-            String tenantId,
-            String projectName,
-            String node,
-            String podId,
-            String address) {
+    public void projectHomeLost(String tenantId, String projectName, String node, String podId, String address) {
         record(builder(tenantId, /*projectId*/ null, "project.home", projectName)
                 .phase(MegadodoPhase.SINGLE)
                 .severity(MegadodoSeverity.ERROR)
@@ -281,11 +270,7 @@ public class MegadodoService {
      * @param reason    why placement failed — capacity, or the bring itself
      */
     public void projectHomeless(
-            String tenantId,
-            String projectName,
-            @Nullable String lastNode,
-            @Nullable Instant lastSeen,
-            String reason) {
+            String tenantId, String projectName, @Nullable String lastNode, @Nullable Instant lastSeen, String reason) {
         record(builder(tenantId, /*projectId*/ null, "project.home", projectName)
                 .phase(MegadodoPhase.SINGLE)
                 .severity(MegadodoSeverity.ERROR)
@@ -295,8 +280,7 @@ public class MegadodoService {
                 .message("Project '" + projectName + "' has no home and could not be placed"
                         + (lastNode == null
                                 ? ""
-                                : " — last ran on " + lastNode
-                                        + (lastSeen == null ? "" : " until " + lastSeen))
+                                : " — last ran on " + lastNode + (lastSeen == null ? "" : " until " + lastSeen))
                         + suffix(reason)));
     }
 
@@ -305,8 +289,7 @@ public class MegadodoService {
     // traceId = sessionId: a session's life is the operation, so the
     // create row and the delete row pair up on their own.
 
-    public void sessionCreated(
-            String tenantId, String projectId, String sessionId, @Nullable String actor) {
+    public void sessionCreated(String tenantId, String projectId, String sessionId, @Nullable String actor) {
         record(builder(tenantId, projectId, "session.lifecycle", sessionId)
                 .phase(MegadodoPhase.START)
                 .actor(actor)
@@ -315,8 +298,7 @@ public class MegadodoService {
                 .message("Session opened"));
     }
 
-    public void sessionDeleted(
-            String tenantId, @Nullable String projectId, String sessionId, @Nullable String actor) {
+    public void sessionDeleted(String tenantId, @Nullable String projectId, String sessionId, @Nullable String actor) {
         record(builder(tenantId, projectId, "session.lifecycle", sessionId)
                 .phase(MegadodoPhase.END)
                 .outcome("success")
@@ -335,8 +317,7 @@ public class MegadodoService {
                 .phase(MegadodoPhase.START)
                 .refType(MegadodoRefType.USER)
                 .refId(userName)
-                .message((serviceAccount ? "Service account '" : "User '")
-                        + userName + "' created"));
+                .message((serviceAccount ? "Service account '" : "User '") + userName + "' created"));
     }
 
     public void userDeleted(String tenantId, String userName) {
@@ -400,20 +381,17 @@ public class MegadodoService {
      *                note) — this is what tells the reader what to fix
      */
     public void toolHealthChanged(
-            String tenantId,
-            @Nullable String projectId,
-            String toolName,
-            boolean down,
-            @Nullable String details) {
+            String tenantId, @Nullable String projectId, String toolName, boolean down, @Nullable String details) {
         record(builder(tenantId, projectId, "tool.health", toolName)
                 .phase(down ? MegadodoPhase.START : MegadodoPhase.END)
                 .severity(down ? MegadodoSeverity.WARN : MegadodoSeverity.INFO)
                 .outcome(down ? null : "success")
                 .refType(MegadodoRefType.TOOL)
                 .refId(toolName)
-                .message(down
-                        ? "Tool '" + toolName + "' disabled" + suffix(details)
-                        : "Tool '" + toolName + "' available again" + suffix(details)));
+                .message(
+                        down
+                                ? "Tool '" + toolName + "' disabled" + suffix(details)
+                                : "Tool '" + toolName + "' available again" + suffix(details)));
     }
 
     // ─── Scheduler ─────────────────────────────────────────────
@@ -452,9 +430,10 @@ public class MegadodoService {
                 .refType(MegadodoRefType.SCHEDULER)
                 .refId(schedulerName)
                 .logPath(logPath)
-                .message(success
-                        ? "Scheduler '" + schedulerName + "' finished"
-                        : "Scheduler '" + schedulerName + "' failed" + suffix(cause)));
+                .message(
+                        success
+                                ? "Scheduler '" + schedulerName + "' finished"
+                                : "Scheduler '" + schedulerName + "' failed" + suffix(cause)));
     }
 
     /**
@@ -463,11 +442,7 @@ public class MegadodoService {
      * and a trace that never ends reads as "still running".
      */
     public void schedulerRunSkipped(
-            String tenantId,
-            String projectId,
-            String schedulerName,
-            String runId,
-            String reason) {
+            String tenantId, String projectId, String schedulerName, String runId, String reason) {
         record(builder(tenantId, projectId, "scheduler.run", runId)
                 .phase(MegadodoPhase.END)
                 .severity(MegadodoSeverity.WARN)
@@ -479,8 +454,7 @@ public class MegadodoService {
 
     // ─── Ursa hooks ────────────────────────────────────────────
 
-    public void hookRunStarted(
-            String tenantId, String projectId, String hookName, String runId, String eventName) {
+    public void hookRunStarted(String tenantId, String projectId, String hookName, String runId, String eventName) {
         record(builder(tenantId, projectId, "hook.run", runId)
                 .phase(MegadodoPhase.START)
                 .refType(MegadodoRefType.HOOK)
@@ -489,21 +463,17 @@ public class MegadodoService {
     }
 
     public void hookRunFinished(
-            String tenantId,
-            String projectId,
-            String hookName,
-            String runId,
-            boolean success,
-            @Nullable String cause) {
+            String tenantId, String projectId, String hookName, String runId, boolean success, @Nullable String cause) {
         record(builder(tenantId, projectId, "hook.run", runId)
                 .phase(MegadodoPhase.END)
                 .severity(success ? MegadodoSeverity.INFO : MegadodoSeverity.ERROR)
                 .outcome(success ? "success" : "failure")
                 .refType(MegadodoRefType.HOOK)
                 .refId(hookName)
-                .message(success
-                        ? "Hook '" + hookName + "' finished"
-                        : "Hook '" + hookName + "' failed" + suffix(cause)));
+                .message(
+                        success
+                                ? "Hook '" + hookName + "' finished"
+                                : "Hook '" + hookName + "' failed" + suffix(cause)));
     }
 
     // ─── Ursa events (inbound triggers) ────────────────────────
@@ -531,9 +501,74 @@ public class MegadodoService {
                 .refType(MegadodoRefType.EVENT)
                 .refId(eventName)
                 .logPath(logPath)
-                .message(success
-                        ? "Event '" + eventName + "' handled"
-                        : "Event '" + eventName + "' failed" + suffix(cause)));
+                .message(
+                        success
+                                ? "Event '" + eventName + "' handled"
+                                : "Event '" + eventName + "' failed" + suffix(cause)));
+    }
+
+    // ─── LLM diagnostics ────────────────────────────────────────
+    //
+    // Fired by the empty-response analysis when a chat call exhausted
+    // its retry budget on empty completions. The phantom variant is the
+    // actionable one: the model named a tool that is not in the offered
+    // set — the name never arrives as data, so the request text is the
+    // only evidence and the feed row points at the first named tool.
+
+    /**
+     * A chat call exhausted its empty-completion budget and the
+     * conversation text names at least one tool that was not offered
+     * — the leading suspect for a provider silently dropping the
+     * response after a hallucinated ("phantom") tool call.
+     *
+     * <p>{@code origin} says where the name entered the conversation:
+     * {@code prompt} (engine/recipe text — a prompt bug), {@code user}
+     * (the user asked for the tool) or {@code context} (history).
+     * One WARN row per occurrence; no outcome — there is nothing to
+     * succeed at, the engine already delivered its own empty-reply
+     * handling to the user.
+     */
+    public void phantomToolCallSuspected(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String traceId,
+            String modelLabel,
+            List<String> candidateTools,
+            String origin,
+            int attempts) {
+        String first = candidateTools.get(0);
+        String more = candidateTools.size() > 1
+                ? " (also named: " + String.join(", ", candidateTools.subList(1, candidateTools.size())) + ")"
+                : "";
+        record(builder(tenantId, projectId, "llm.diagnostic", traceId)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.WARN)
+                .refType(MegadodoRefType.TOOL)
+                .refId(first)
+                .message("Empty model response after " + attempts
+                        + " attempt(s) — suspected phantom tool call: '" + first
+                        + "' is named in the conversation but not offered"
+                        + more + " (origin: " + origin + ", model: " + modelLabel + ")"));
+    }
+
+    /**
+     * A chat call exhausted its empty-completion budget and the
+     * conversation text names no tool outside the offered set —
+     * a genuine blank provider reply with no actionable in-conversation
+     * evidence. Reported so the case is countable; the phantom variant
+     * is the one with a fix attached.
+     */
+    public void emptyModelResponse(
+            String tenantId, @Nullable String projectId, @Nullable String traceId, String modelLabel, int attempts) {
+        record(builder(tenantId, projectId, "llm.diagnostic", traceId)
+                .phase(MegadodoPhase.SINGLE)
+                .severity(MegadodoSeverity.WARN)
+                .refType(MegadodoRefType.PROCESS)
+                .refId(traceId)
+                .message("Empty model response after " + attempts
+                        + " attempt(s) — no phantom tool call found in the"
+                        + " conversation; provider returned blanks (model: "
+                        + modelLabel + ")"));
     }
 
     // ─── Trillian ──────────────────────────────────────────────
@@ -622,9 +657,7 @@ public class MegadodoService {
                 .refId(kitName)
                 .message("Kit '" + kitName + "' " + verbFor(mode)
                         + (sourceUrl == null || sourceUrl.isBlank() ? "" : " from " + sourceUrl)
-                        + (incomplete
-                                ? " — incompletely" + suffix(String.join("; ", heldBack))
-                                : "")));
+                        + (incomplete ? " — incompletely" + suffix(String.join("; ", heldBack)) : "")));
     }
 
     /** A kit was installed, updated or applied — and did not work out. */
@@ -643,8 +676,7 @@ public class MegadodoService {
                 .actor(actor)
                 .refType(MegadodoRefType.KIT)
                 .refId(subject)
-                .message("Kit '" + subject + "' could not be " + verbFor(mode)
-                        + suffix(reason)));
+                .message("Kit '" + subject + "' could not be " + verbFor(mode) + suffix(reason)));
     }
 
     /**
@@ -654,12 +686,7 @@ public class MegadodoService {
      *              between forgetting a kit and deleting what it wrote
      */
     public void kitUninstalled(
-            String tenantId,
-            String projectId,
-            String kitId,
-            boolean prune,
-            @Nullable String actor,
-            String traceId) {
+            String tenantId, String projectId, String kitId, boolean prune, @Nullable String actor, String traceId) {
         record(builder(tenantId, projectId, "kit.lifecycle", traceId)
                 .phase(MegadodoPhase.SINGLE)
                 // Not an error, but it removes things — WARN so it stands out
@@ -701,11 +728,7 @@ public class MegadodoService {
      * reported by {@link #kitImportFailed} like anyone else's.
      */
     public void kitProvisioningFailed(
-            String tenantId,
-            String projectId,
-            String subject,
-            @Nullable String reason,
-            String traceId) {
+            String tenantId, String projectId, String subject, @Nullable String reason, String traceId) {
         record(builder(tenantId, projectId, "kit.provisioning", traceId)
                 .phase(MegadodoPhase.SINGLE)
                 .severity(MegadodoSeverity.ERROR)
@@ -745,11 +768,13 @@ public class MegadodoService {
         if (cursor != null) {
             // Strictly after the last row of the previous page in
             // (timestamp DESC, id DESC) order.
-            timeBounds.add(new Criteria().orOperator(
-                    Criteria.where("timestamp").lt(cursor.timestamp()),
-                    new Criteria().andOperator(
-                            Criteria.where("timestamp").is(cursor.timestamp()),
-                            Criteria.where("_id").lt(cursor.id()))));
+            timeBounds.add(new Criteria()
+                    .orOperator(
+                            Criteria.where("timestamp").lt(cursor.timestamp()),
+                            new Criteria()
+                                    .andOperator(
+                                            Criteria.where("timestamp").is(cursor.timestamp()),
+                                            Criteria.where("_id").lt(cursor.id()))));
         }
         if (!timeBounds.isEmpty()) {
             c = c.andOperator(timeBounds.toArray(new Criteria[0]));
@@ -795,13 +820,10 @@ public class MegadodoService {
      * {@code event_log} lookups those views used to do.
      */
     public List<MegadodoEventDocument> listForRef(
-            String tenantId,
-            @Nullable String projectId,
-            MegadodoRefType refType,
-            String refId,
-            int limit) {
-        return query(new MegadodoQuery(tenantId, projectId, null, null, null, null,
-                refType, refId, null, null, null, limit)).items();
+            String tenantId, @Nullable String projectId, MegadodoRefType refType, String refId, int limit) {
+        return query(new MegadodoQuery(
+                        tenantId, projectId, null, null, null, null, refType, refId, null, null, null, limit))
+                .items();
     }
 
     /**
@@ -810,10 +832,7 @@ public class MegadodoService {
      * has moved past it.
      */
     public Optional<MegadodoEventDocument> latestForRef(
-            String tenantId,
-            @Nullable String projectId,
-            MegadodoRefType refType,
-            String refId) {
+            String tenantId, @Nullable String projectId, MegadodoRefType refType, String refId) {
         List<MegadodoEventDocument> rows = listForRef(tenantId, projectId, refType, refId, 1);
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
@@ -836,15 +855,12 @@ public class MegadodoService {
      *                  ({@code projectId == null}: user created, project
      *                  created — they belong to no project scope)
      */
-    public List<MegadodoEventDocument> byTrace(
-            String tenantId, @Nullable String projectId, String traceId) {
+    public List<MegadodoEventDocument> byTrace(String tenantId, @Nullable String projectId, String traceId) {
         Criteria c = Criteria.where("tenantId").is(tenantId).and("traceId").is(traceId);
         if (projectId != null && !projectId.isBlank()) {
             c = c.and("projectId").is(projectId);
         }
-        Query q = new Query(c)
-                .with(Sort.by(Sort.Order.asc("timestamp")))
-                .limit(500);
+        Query q = new Query(c).with(Sort.by(Sort.Order.asc("timestamp"))).limit(500);
         return mongoTemplate.find(q, MegadodoEventDocument.class);
     }
 
@@ -858,8 +874,10 @@ public class MegadodoService {
         MegadodoEventDocument doc = builder.build();
         int retentionDays = retentionDaysFor(doc.getTenantId(), doc.getProjectId());
         if (retentionDays < 0) {
-            log.trace("Megadodo — write skipped (retention<0) for action='{}' tenant='{}'",
-                    doc.getAction(), doc.getTenantId());
+            log.trace(
+                    "Megadodo — write skipped (retention<0) for action='{}' tenant='{}'",
+                    doc.getAction(),
+                    doc.getTenantId());
             return;
         }
         if (doc.getTimestamp() == null || doc.getTimestamp() == Instant.EPOCH) {
@@ -876,8 +894,11 @@ public class MegadodoService {
             mongoTemplate.insert(doc);
         } catch (RuntimeException ex) {
             // Never let the feed break what it observes.
-            log.warn("Megadodo write failed for action='{}' trace='{}': {}",
-                    doc.getAction(), doc.getTraceId(), ex.toString());
+            log.warn(
+                    "Megadodo write failed for action='{}' trace='{}': {}",
+                    doc.getAction(),
+                    doc.getTraceId(),
+                    ex.toString());
         }
     }
 
@@ -902,8 +923,7 @@ public class MegadodoService {
         // Through the cache, not the cascade: this runs on every single feed
         // row, and the cascade is three uncached Mongo reads for a number that
         // changes approximately never. See RetentionSettingCache.
-        int days = retentionCache.days(
-                tenantId, projectId, SETTING_RETENTION_DAYS, defaultRetentionDays);
+        int days = retentionCache.days(tenantId, projectId, SETTING_RETENTION_DAYS, defaultRetentionDays);
         if (days <= 0) return days;
         return Math.min(MAX_RETENTION_DAYS, days);
     }
@@ -928,7 +948,8 @@ public class MegadodoService {
     }
 
     /** One page plus the cursor for the next one. */
-    public record MegadodoPage(List<MegadodoEventDocument> items, @Nullable String nextCursor) {}
+    public record MegadodoPage(
+            List<MegadodoEventDocument> items, @Nullable String nextCursor) {}
 
     /**
      * Keyset position, Base64 of {@code <epochMillis>|<mongoId>}. Opaque to
@@ -938,15 +959,16 @@ public class MegadodoService {
 
         String encode() {
             String raw = timestamp.toEpochMilli() + "|" + id;
-            return Base64.getUrlEncoder().withoutPadding()
+            return Base64.getUrlEncoder()
+                    .withoutPadding()
                     .encodeToString(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
 
         static @Nullable Cursor decode(@Nullable String encoded) {
             if (encoded == null || encoded.isBlank()) return null;
             try {
-                String raw = new String(Base64.getUrlDecoder().decode(encoded),
-                        java.nio.charset.StandardCharsets.UTF_8);
+                String raw =
+                        new String(Base64.getUrlDecoder().decode(encoded), java.nio.charset.StandardCharsets.UTF_8);
                 String[] parts = CURSOR_SEPARATOR.split(raw, 2);
                 if (parts.length != 2) return null;
                 return new Cursor(Instant.ofEpochMilli(Long.parseLong(parts[0])), parts[1]);

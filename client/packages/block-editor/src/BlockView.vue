@@ -169,6 +169,22 @@ function fieldValueText(block: Block & { kind: 'field' }): string {
   }
   return String(block.value);
 }
+
+/** Correct option text(s) for the resolved state (choice/dropdown/multi). */
+function fieldSolutionText(block: Block & { kind: 'field' }): string {
+  if (block.solution == null) return '';
+  if (Array.isArray(block.solution)) {
+    return block.solution
+      .map((i) => (typeof i === 'number' && block.options[i] != null ? block.options[i] : ''))
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (typeof block.solution === 'number' && block.options[block.solution] != null) {
+    return block.options[block.solution];
+  }
+  return '';
+}
+
 const items = computed(() => props.blocks ?? []);
 </script>
 
@@ -389,6 +405,9 @@ const items = computed(() => props.blocks ?? []);
         </div>
         <div class="vance-block-card__hint">
           {{ fieldValueText(block) }}
+        </div>
+        <div v-if="block.verdict && fieldSolutionText(block)" class="vance-block-card__hint">
+          ✓ {{ fieldSolutionText(block) }}
         </div>
         <div v-if="block.feedback" class="vance-block-card__hint">{{ block.feedback }}</div>
       </div>

@@ -112,7 +112,7 @@ class FormActionsTest {
     }
 
     @Test
-    void reset_clearsVerdictAndFeedback_keepsValues() {
+    void reset_clearsMarkingsAndAnswers() {
         DocumentDocument doc = workpage("workpage");
         when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
         when(workPageService.readDocument(doc))
@@ -126,19 +126,20 @@ class FormActionsTest {
 
         ButtonActionResult r = reset.run(ctx("form-reset"));
 
-        assertThat(r.message()).contains("Markings cleared");
+        assertThat(r.message()).contains("Markings and answers cleared");
         ArgumentCaptor<WorkPageDocument> saved = ArgumentCaptor.forClass(WorkPageDocument.class);
         verify(workPageService).writeDocument(org.mockito.ArgumentMatchers.eq(doc), saved.capture());
         List<Block> blocks = saved.getValue().blocks();
-        assertThat(((Block.Field) blocks.get(0)).verdict()).isNull();
-        assertThat(((Block.Field) blocks.get(0)).feedback()).isNull();
-        assertThat(((Block.Field) blocks.get(0)).value()).isEqualTo(0); // answer kept
-        assertThat(((Block.Field) blocks.get(1)).verdict()).isNull(); // feedback-only also cleared
-        assertThat(((Block.Field) blocks.get(1)).value()).isEqualTo(1);
+        for (Block b : blocks) {
+            Block.Field f = (Block.Field) b;
+            assertThat(f.verdict()).isNull();
+            assertThat(f.feedback()).isNull();
+            assertThat(f.value()).isNull(); // answers cleared too — fresh run
+        }
     }
 
     @Test
-    void reset_noMarkings_doesNotWrite() {
+    void reset_alreadyClean_doesNotWrite() {
         DocumentDocument doc = workpage("workpage");
         when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
         when(workPageService.readDocument(doc))
@@ -146,12 +147,12 @@ class FormActionsTest {
                         "Quiz",
                         null,
                         List.of(
-                                field("q1", "choice", 0, 1, null, null),
-                                field("c1", "text", null, "note", null, null))));
+                                field("q1", "choice", 0, null, null, null),
+                                field("c1", "text", null, null, null, null))));
 
         ButtonActionResult r = reset.run(ctx("form-reset"));
 
-        assertThat(r.message()).contains("No markings to clear");
+        assertThat(r.message()).contains("Nothing to clear");
         verify(workPageService, never()).writeDocument(any(), any());
     }
 

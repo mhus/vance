@@ -523,8 +523,9 @@ quizzes, exam preparation, checklists and questionnaires.
 
 `form-resolve` grades every field with a `solution` mechanically (by index;
 unanswered counts as wrong; `text`/`textarea` are not graded yet), marks each
-field green/red inline and returns the score. `form-reset` clears the
-markings and keeps the answers. Do NOT build a `vance-form` + `records` doc +
+field green/red inline — the correct option is revealed (✓) and a wrong
+selection marked (✗) — and returns the score. `form-reset` clears the
+markings **and** the answers. Do NOT build a `vance-form` + `records` doc +
 `saveScript` + result-embed pipeline for a quiz — the field/button pair is
 the mechanism. Interleave prose, callouts and toggles between the fields for
 explanations; `workbook_validate` checks ids, types, options and bounds.

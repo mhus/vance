@@ -11,11 +11,11 @@ import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code vance-button} {@code type: form-reset} — removes the
+ * {@code vance-button} {@code type: form-reset} — resets the page's
+ * {@code vance-field} blocks to a clean state: removes the
  * {@code verdict}/{@code feedback} markings written by {@code form-resolve}
- * (or an LLM grading turn) from every {@code vance-field} on the page. The
- * answers ({@code value}) are deliberately kept — reset clears the
- * markings, not the work.
+ * (or an LLM grading turn) **and** clears the answers ({@code value}) — a
+ * fresh run at the quiz, not just un-marked old answers.
  */
 @Component
 public class FormResetActionHandler implements ButtonActionHandler {
@@ -39,22 +39,24 @@ public class FormResetActionHandler implements ButtonActionHandler {
         WorkPageDocument page = workPageService.readDocument(doc);
         List<Block> blocks = new ArrayList<>(page.blocks());
         boolean changed = FieldWalk.walk(blocks, field -> {
-            if (field.verdict() == null && field.feedback() == null) return null;
+            if (field.verdict() == null && field.feedback() == null && field.value() == null) {
+                return null;
+            }
             return new Block.Field(
                     field.id(),
                     field.fieldType(),
                     field.question(),
                     field.options(),
                     field.solution(),
-                    field.value(),
+                    null,
                     null,
                     null);
         });
         if (changed) {
             workPageService.writeDocument(doc, page.withBlocks(blocks));
-            return new ButtonActionResult("Markings cleared — answers kept.");
+            return new ButtonActionResult("Markings and answers cleared.");
         }
-        return new ButtonActionResult("No markings to clear.");
+        return new ButtonActionResult("Nothing to clear.");
     }
 
     private DocumentDocument findWorkPage(ButtonActionContext ctx) {

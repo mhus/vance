@@ -219,8 +219,8 @@ server-side over the canonical block model):
   `verdict` (+ drops a stale `feedback`) into the fences, marks the fields
   green/red in the live editor and returns the score. No fields to check →
   no write.
-- **`form-reset`**: removes `verdict`/`feedback` from all fields — the
-  **answers are kept**, only the markings go.
+- **`form-reset`**: removes `verdict`/`feedback` from all fields **and
+  clears the answers (`value`)** — a fresh run at the quiz.
 
 Use a records `form` when the user collects **data rows** and wants something
 **computed** from them; use `field` blocks when the user **answers

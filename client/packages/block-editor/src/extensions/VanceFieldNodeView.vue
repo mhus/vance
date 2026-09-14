@@ -71,6 +71,28 @@ function asText(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+
+const resolved = computed(() => verdict.value === 'correct' || verdict.value === 'wrong');
+
+function isSelected(i: number): boolean {
+  if (fieldType.value === 'multi') return asIndices(value.value).includes(i);
+  return asIndex(value.value) === i;
+}
+
+function isSolutionOption(i: number): boolean {
+  if (fieldType.value === 'multi') return asIndices(solution.value).includes(i);
+  return asIndex(solution.value) === i;
+}
+
+/** Per-option marking in resolved state: green on the correct option, red on a wrong selection. */
+function optionClass(i: number): string {
+  if (!resolved.value) return '';
+  if (isSolutionOption(i)) return 'vance-field__option--correct';
+  if (isSelected(i)) return 'vance-field__option--wrong';
+  return '';
+}
+
+
 const closed = computed(() => ['choice', 'multi', 'dropdown'].includes(fieldType.value));
 
 function pick(idx: number) {
@@ -93,6 +115,21 @@ const solutionText = computed(() => {
   return Array.isArray(solution.value)
     ? asIndices(solution.value).join(', ')
     : String(solution.value);
+});
+
+/** Correct option(s) as display text — shown next to the select when resolved. */
+const correctText = computed(() => {
+  if (fieldType.value === 'multi') {
+    return asIndices(solution.value)
+      .map((i) => options.value[i])
+      .filter((o): o is string => typeof o === 'string')
+      .join(', ');
+  }
+  if (fieldType.value === 'dropdown') {
+    const i = asIndex(solution.value);
+    return i != null ? (options.value[i] ?? '') : '';
+  }
+  return '';
 });
 
 function onId(e: Event) {
@@ -193,7 +230,12 @@ const verdictClass = computed(() => {
 
       <!-- choice: radio list -->
       <div v-if="fieldType === 'choice'" class="vance-field__options">
-        <label v-for="(opt, i) in options" :key="i" class="vance-field__option">
+        <label
+          v-for="(opt, i) in options"
+          :key="i"
+          class="vance-field__option"
+          :class="optionClass(i)"
+        >
           <input
             type="radio"
             :name="`vance-field-${id}`"
@@ -203,12 +245,22 @@ const verdictClass = computed(() => {
             @keydown.stop
           />
           <span>{{ opt }}</span>
+          <span v-if="resolved && isSolutionOption(i)" class="vance-field__mark">✓</span>
+          <span
+            v-else-if="resolved && isSelected(i)"
+            class="vance-field__mark vance-field__mark--wrong"
+          >✗</span>
         </label>
       </div>
 
       <!-- multi: checkbox list -->
       <div v-else-if="fieldType === 'multi'" class="vance-field__options">
-        <label v-for="(opt, i) in options" :key="i" class="vance-field__option">
+        <label
+          v-for="(opt, i) in options"
+          :key="i"
+          class="vance-field__option"
+          :class="optionClass(i)"
+        >
           <input
             type="checkbox"
             :checked="asIndices(value).includes(i)"
@@ -217,6 +269,11 @@ const verdictClass = computed(() => {
             @keydown.stop
           />
           <span>{{ opt }}</span>
+          <span v-if="resolved && isSolutionOption(i)" class="vance-field__mark">✓</span>
+          <span
+            v-else-if="resolved && isSelected(i)"
+            class="vance-field__mark vance-field__mark--wrong"
+          >✗</span>
         </label>
       </div>
 
@@ -232,6 +289,11 @@ const verdictClass = computed(() => {
         <option value="" disabled>{{ t('blockEditor.field.selectPlaceholder') }}</option>
         <option v-for="(opt, i) in options" :key="i" :value="String(i)">{{ opt }}</option>
       </select>
+
+      <span
+        v-if="fieldType === 'dropdown' && resolved && correctText"
+        class="vance-field__hint"
+      >✓ {{ correctText }}</span>
 
       <!-- text / textarea -->
       <textarea
@@ -336,6 +398,19 @@ const verdictClass = computed(() => {
   align-items: baseline;
   font-size: 0.85rem;
 }
+.vance-field__option--correct span {
+  color: var(--color-success);
+}
+.vance-field__option--correct .vance-field__mark { color: var(--color-success); font-weight: 700; }
+.vance-field__option--wrong span {
+  color: var(--color-error);
+}
+.vance-field__option--wrong .vance-field__mark--wrong { color: var(--color-error); font-weight: 700; }
+.vance-field__hint {
+  color: var(--color-success);
+  font-size: 0.85rem;
+}
+
 .vance-field--correct .vance-field__mark {
   color: var(--color-success);
   font-weight: 700;

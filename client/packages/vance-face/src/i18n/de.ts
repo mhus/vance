@@ -3331,6 +3331,7 @@ export default {
       typeFormResolve: 'Auflösen',
       typeFormReset: 'Zurücksetzen',
       runDefault: 'Ausführen',
+      score: '{correct} von {total} richtig',
       titlePlaceholder: 'Titel des Knopfs…',
       scriptPlaceholder: 'Skript (z.B. myscript.js oder vance:/apps/x/run.js)',
     },

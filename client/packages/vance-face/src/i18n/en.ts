@@ -3310,6 +3310,7 @@ export default {
       typeFormResolve: 'Resolve',
       typeFormReset: 'Reset',
       runDefault: 'Run',
+      score: '{correct} of {total} correct',
       titlePlaceholder: 'Button title…',
       scriptPlaceholder: 'script (e.g. myscript.js or vance:/apps/x/run.js)',
     },

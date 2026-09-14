@@ -770,7 +770,10 @@ async function loadActivePageContent(options: { force?: boolean } = {}) {
       `documents/${encodeURIComponent(id)}/content`,
     );
     const ours = lastSavedBodies.value.get(id);
-    if (!options.force && ours != null && fresh === ours) {
+    if (ours != null && fresh === ours) {
+      // Our own echo — never rebuild, even on force (identical content
+      // would not trip the source-watch anyway; the early return just
+      // keeps the loading state clean).
       return;
     }
     activeMarkdown.value = fresh;
@@ -1318,11 +1321,18 @@ useDocumentPrefixReaction({
   onRemoteChange: async (paths) => {
     const activeId = activePageId.value;
     if (activeId != null && withinSelfWriteWindow(activeId)) {
-      // Self-echo of our own write. Skip the tree reload too — even
-      // though setContent on the editor is guarded by the quiet
-      // window, re-running scanWorkbook replaces `view.value` and
-      // forces a parent re-render that interacts badly with the
-      // Tiptap editor lifecycle (focus / cursor get lost).
+      // Usually the echo of our own write — but a server-side button
+      // action (form-resolve / form-reset writing verdicts) lands in the
+      // same window. Distinguish by content, not by timing alone:
+      // loadActivePageContent suppresses our own last body verbatim and
+      // applies anything else (the verdicts). No tree scan in the quiet
+      // window — re-running scanWorkbook replaces `view.value` and forces
+      // a parent re-render that interacts badly with the Tiptap editor
+      // lifecycle (focus / cursor get lost).
+      const activePath = activePageView.value?.path;
+      if (activePath && paths.includes(activePath)) {
+        await loadActivePageContent({ force: true });
+      }
       return;
     }
     // Refresh tree first; then reload the active page only if it was

@@ -42,13 +42,37 @@ const title = computed(() => (props.node.attrs?.title as string | null) ?? '');
 
 const editable = ref(props.editor.isEditable);
 function syncEditable() { editable.value = props.editor.isEditable; }
+
+// Persistently derived score for form-resolve buttons: the action's
+// response message is transient (the action write comes back as a remote
+// write and rebuilds the node views), but the verdicts live in the
+// document — so the button keeps showing the score after the reload.
+const fieldStats = ref({ resolved: 0, correct: 0 });
+function syncFieldStats() {
+  let resolved = 0;
+  let correct = 0;
+  props.editor.state.doc.descendants((node) => {
+    if (node.type.name === 'vanceField') {
+      const v = node.attrs?.verdict;
+      if (v === 'correct' || v === 'wrong') {
+        resolved++;
+        if (v === 'correct') correct++;
+      }
+    }
+    return true;
+  });
+  fieldStats.value = { resolved, correct };
+}
 onMounted(() => {
+  syncFieldStats();
   props.editor.on('update', syncEditable);
   props.editor.on('transaction', syncEditable);
+  props.editor.on('transaction', syncFieldStats);
 });
 onBeforeUnmount(() => {
   props.editor.off('update', syncEditable);
   props.editor.off('transaction', syncEditable);
+  props.editor.off('transaction', syncFieldStats);
 });
 
 const running = ref(false);
@@ -123,6 +147,10 @@ function onScript(e: Event) {
         @click="run"
       >{{ running ? '…' : (title || t('blockEditor.button.runDefault')) }}</button>
       <span v-if="message" class="vance-button__ok">{{ message }}</span>
+      <span
+        v-else-if="type === 'form-resolve' && fieldStats.resolved > 0"
+        class="vance-button__ok"
+      >{{ t('blockEditor.button.score', { correct: fieldStats.correct, total: fieldStats.resolved }) }}</span>
       <span v-if="error" class="vance-button__error">{{ error }}</span>
     </div>
   </NodeViewWrapper>

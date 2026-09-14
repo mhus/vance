@@ -170,6 +170,7 @@ function renderBlock(b: Block): string {
       if (b.value != null) body.value = b.value;
       if (b.verdict) body.verdict = b.verdict;
       if (b.feedback) body.feedback = b.feedback;
+      if (b.judge && Object.keys(b.judge).length > 0) body.judge = b.judge;
       return renderFence('vance-field', body);
     }
     case 'columns': {

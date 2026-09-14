@@ -81,7 +81,7 @@ class FieldBlockValidatorTest {
     @Test
     void missingQuestion_warnsOnly() {
         List<Finding> f =
-                validator.validate(new Block.Field("q1", "text", "", List.of(), null, null, null, null), ctx());
+                validator.validate(new Block.Field("q1", "text", "", List.of(), null, null, null, null, null), ctx());
         assertThat(errors(f)).isEmpty();
         assertThat(codes(f)).contains("missing-question");
     }
@@ -105,7 +105,7 @@ class FieldBlockValidatorTest {
             @Nullable Object value,
             @Nullable String verdict,
             @Nullable String feedback) {
-        return new Block.Field(id, type, "Frage?", options, solution, value, verdict, feedback);
+        return new Block.Field(id, type, "Frage?", options, solution, value, verdict, feedback, null);
     }
 
     private static List<Finding> errors(List<Finding> f) {

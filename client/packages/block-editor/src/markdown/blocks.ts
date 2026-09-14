@@ -85,6 +85,12 @@ export type Block =
       value: unknown;
       verdict: string | null;
       feedback: string | null;
+      /**
+       * Free-text LLM grading config (text/textarea only).
+       * `judge.criteria` tells the internal form-judge what a correct
+       * answer must contain. `null` = not graded.
+       */
+      judge: Record<string, unknown> | null;
     }
   | {
       kind: 'columns';

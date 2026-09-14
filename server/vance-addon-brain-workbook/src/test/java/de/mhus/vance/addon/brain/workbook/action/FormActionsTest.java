@@ -33,7 +33,10 @@ class FormActionsTest {
 
     private final DocumentService documentService = mock(DocumentService.class);
     private final WorkPageService workPageService = mock(WorkPageService.class);
-    private final FormResolveActionHandler resolve = new FormResolveActionHandler(documentService, workPageService);
+    private final de.mhus.vance.brain.ai.light.LightLlmService lightLlmService =
+            mock(de.mhus.vance.brain.ai.light.LightLlmService.class);
+    private final FormResolveActionHandler resolve =
+            new FormResolveActionHandler(documentService, workPageService, lightLlmService);
     private final FormResetActionHandler reset = new FormResetActionHandler(documentService, workPageService);
 
     @Test
@@ -53,7 +56,7 @@ class FormActionsTest {
 
         ButtonActionResult r = resolve.run(ctx("form-resolve"));
 
-        assertThat(r.message()).isEqualTo("1 of 3 answers correct");
+        assertThat(r.message()).isEqualTo("3 of 3 answers graded, 1 correct");
         ArgumentCaptor<WorkPageDocument> saved = ArgumentCaptor.forClass(WorkPageDocument.class);
         verify(workPageService).writeDocument(org.mockito.ArgumentMatchers.eq(doc), saved.capture());
         List<Block> blocks = saved.getValue().blocks();
@@ -83,7 +86,7 @@ class FormActionsTest {
 
         ButtonActionResult r = resolve.run(ctx("form-resolve"));
 
-        assertThat(r.message()).isEqualTo("1 of 2 answers correct");
+        assertThat(r.message()).isEqualTo("2 of 2 answers graded, 1 correct");
         ArgumentCaptor<WorkPageDocument> saved = ArgumentCaptor.forClass(WorkPageDocument.class);
         verify(workPageService).writeDocument(org.mockito.ArgumentMatchers.eq(doc), saved.capture());
         List<Block> blocks = saved.getValue().blocks();
@@ -109,6 +112,113 @@ class FormActionsTest {
 
         assertThat(r.message()).contains("Nothing to check");
         verify(workPageService, never()).writeDocument(any(), any());
+    }
+
+    @Test
+    void resolve_gradesFreeTextViaJudge_llmWrittenVerdictAndFeedback() {
+        DocumentDocument doc = workpage("workpage");
+        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.readDocument(doc))
+                .thenReturn(new WorkPageDocument(
+                        "Quiz",
+                        null,
+                        List.of(
+                                field(
+                                        "q1",
+                                        "text",
+                                        "Referenz",
+                                        "gute Antwort",
+                                        null,
+                                        null,
+                                        Map.of("criteria", "must mention X")),
+                                field("q2", "choice", 0, 1, null, null))));
+        when(lightLlmService.callForJson(any()))
+                .thenReturn(Map.of("verdict", "correct", "feedback", "nennt X — passt"));
+
+        ButtonActionResult r = resolve.run(ctx("form-resolve"));
+
+        // judged text = correct, the choice (value 1, solution 0) = wrong
+        assertThat(r.message()).isEqualTo("2 of 2 answers graded, 1 correct");
+        // judge called once, on the internal recipe, tenant/project-scoped,
+        // with question + criteria + answer in the prompt
+        var captor = ArgumentCaptor.forClass(de.mhus.vance.brain.ai.light.LightLlmRequest.class);
+        verify(lightLlmService).callForJson(captor.capture());
+        assertThat(captor.getValue().getRecipeName()).isEqualTo("form-judge");
+        assertThat(captor.getValue().getTenantId()).isEqualTo("t");
+        assertThat(captor.getValue().getProjectId()).isEqualTo("p");
+        assertThat(captor.getValue().getUserPrompt()).contains("must mention X").contains("gute Antwort");
+        ArgumentCaptor<WorkPageDocument> saved = ArgumentCaptor.forClass(WorkPageDocument.class);
+        verify(workPageService).writeDocument(org.mockito.ArgumentMatchers.eq(doc), saved.capture());
+        Block.Field judged = (Block.Field) saved.getValue().blocks().get(0);
+        assertThat(judged.verdict()).isEqualTo("correct");
+        assertThat(judged.feedback()).isEqualTo("nennt X — passt");
+        assertThat(judged.judge()).isEqualTo(Map.of("criteria", "must mention X"));
+    }
+
+    @Test
+    void resolve_freeTextWithoutJudge_isNotGraded_noLlmCall() {
+        DocumentDocument doc = workpage("workpage");
+        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        // solution alone on a text field = human-readable reference, not graded
+        when(workPageService.readDocument(doc))
+                .thenReturn(new WorkPageDocument(
+                        "Quiz", null, List.of(field("q1", "text", "Referenz", "antwort", null, null))));
+
+        ButtonActionResult r = resolve.run(ctx("form-resolve"));
+
+        assertThat(r.message()).contains("Nothing to check");
+        org.mockito.Mockito.verifyNoInteractions(lightLlmService);
+        verify(workPageService, never()).writeDocument(any(), any());
+    }
+
+    @Test
+    void resolve_blankFreeTextAnswer_isWrongWithoutLlmCall() {
+        DocumentDocument doc = workpage("workpage");
+        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.readDocument(doc))
+                .thenReturn(new WorkPageDocument(
+                        "Quiz",
+                        null,
+                        List.of(field("q1", "text", null, "", null, null, Map.of("criteria", "must mention X")))));
+
+        ButtonActionResult r = resolve.run(ctx("form-resolve"));
+
+        assertThat(r.message()).isEqualTo("1 of 1 answers graded, 0 correct");
+        org.mockito.Mockito.verifyNoInteractions(lightLlmService);
+        ArgumentCaptor<WorkPageDocument> saved = ArgumentCaptor.forClass(WorkPageDocument.class);
+        verify(workPageService).writeDocument(org.mockito.ArgumentMatchers.eq(doc), saved.capture());
+        assertThat(((Block.Field) saved.getValue().blocks().get(0)).verdict()).isEqualTo("wrong");
+    }
+
+    @Test
+    void resolve_judgeFailure_skipsField_butGradesTheRest() {
+        DocumentDocument doc = workpage("workpage");
+        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.readDocument(doc))
+                .thenReturn(new WorkPageDocument(
+                        "Quiz",
+                        null,
+                        List.of(
+                                field(
+                                        "q1",
+                                        "textarea",
+                                        "Referenz",
+                                        "antwort",
+                                        null,
+                                        null,
+                                        Map.of("criteria", "must mention X")),
+                                field("q2", "choice", 0, 0, null, null))));
+        when(lightLlmService.callForJson(any()))
+                .thenThrow(new de.mhus.vance.brain.ai.light.LightLlmException("provider exhausted"));
+
+        ButtonActionResult r = resolve.run(ctx("form-resolve"));
+
+        assertThat(r.message())
+                .isEqualTo("1 of 2 answers graded, 1 correct — 1 field(s) could not be graded (LLM judge failed)");
+        // the judge field is untouched (no verdict, no write of that block)
+        Block.Field judged = (Block.Field) savedBlocksOf(doc).get(0);
+        assertThat(judged.verdict()).isNull();
+        assertThat(((Block.Field) savedBlocksOf(doc).get(1)).verdict()).isEqualTo("correct");
     }
 
     @Test
@@ -184,7 +294,24 @@ class FormActionsTest {
 
     private static Block.Field field(
             String id, String type, Object solution, Object value, String verdict, String feedback) {
-        return new Block.Field(id, type, "Frage?", List.of("a", "b", "c"), solution, value, verdict, feedback);
+        return field(id, type, solution, value, verdict, feedback, null);
+    }
+
+    private static Block.Field field(
+            String id,
+            String type,
+            Object solution,
+            Object value,
+            String verdict,
+            String feedback,
+            Map<String, Object> judge) {
+        return new Block.Field(id, type, "Frage?", List.of("a", "b", "c"), solution, value, verdict, feedback, judge);
+    }
+
+    private List<Block> savedBlocksOf(DocumentDocument doc) {
+        ArgumentCaptor<WorkPageDocument> saved = ArgumentCaptor.forClass(WorkPageDocument.class);
+        verify(workPageService).writeDocument(org.mockito.ArgumentMatchers.eq(doc), saved.capture());
+        return saved.getValue().blocks();
     }
 
     private DocumentDocument workpage(String kind) {

@@ -32,6 +32,9 @@ export const VanceField = Node.create({
       value: { default: null },
       verdict: { default: null },          // correct | wrong — action output
       feedback: { default: null },         // action output
+      // Free-text grading config (text/textarea) — judge.criteria
+      // feeds the internal form-judge LightLlm profile on form-resolve.
+      judge: { default: null },
     };
   },
 

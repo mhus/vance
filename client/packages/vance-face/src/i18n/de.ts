@@ -3347,6 +3347,7 @@ export default {
       solutionPlaceholder: 'Lösung (Index, bei Mehrfachwahl „0, 2“, sonst Text)',
       answerPlaceholder: 'Antwort…',
       selectPlaceholder: '— Bitte wählen —',
+      judgePlaceholder: 'Bewertungskriterien für den LLM-Judge (Freitext; leer = nicht bewertet)…',
     },
     embed: {
       refresh: 'Aktualisieren — eingebettete Dokumente aktualisieren sich nicht selbst',

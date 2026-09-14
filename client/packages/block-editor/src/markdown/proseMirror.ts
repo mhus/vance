@@ -130,6 +130,7 @@ function blockToNode(b: Block): JSONContent {
           value: b.value,
           verdict: b.verdict,
           feedback: b.feedback,
+          judge: b.judge,
         },
       };
     case 'compose':
@@ -298,6 +299,10 @@ function nodeToBlock(node: JSONContent): Block[] {
         value: node.attrs?.value ?? null,
         verdict: (node.attrs?.verdict as string | null) ?? null,
         feedback: (node.attrs?.feedback as string | null) ?? null,
+        judge:
+          node.attrs?.judge && typeof node.attrs.judge === 'object'
+            ? { ...(node.attrs.judge as Record<string, unknown>) }
+            : null,
       }];
     case 'vanceCompose':
       return [{ kind: 'compose', yaml: (node.attrs?.yaml as string) ?? '' }];

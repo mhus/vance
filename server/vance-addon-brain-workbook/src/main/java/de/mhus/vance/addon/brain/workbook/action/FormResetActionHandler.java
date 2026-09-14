@@ -50,7 +50,8 @@ public class FormResetActionHandler implements ButtonActionHandler {
                     field.solution(),
                     null,
                     null,
-                    null);
+                    null,
+                    field.judge());
         });
         if (changed) {
             workPageService.writeDocument(doc, page.withBlocks(blocks));

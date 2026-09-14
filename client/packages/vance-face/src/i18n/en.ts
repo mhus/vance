@@ -3326,6 +3326,7 @@ export default {
       solutionPlaceholder: 'Solution (index, comma list for multi, else text)',
       answerPlaceholder: 'Answer…',
       selectPlaceholder: '— pick —',
+      judgePlaceholder: 'Grading criteria for the LLM judge (free text; empty = not graded)…',
     },
     embed: {
       refresh: "Refresh — embedded documents don't auto-update",

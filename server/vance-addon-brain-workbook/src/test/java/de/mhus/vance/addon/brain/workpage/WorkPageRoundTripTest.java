@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.workpage;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -145,7 +146,8 @@ class WorkPageRoundTripTest {
                 0,
                 1,
                 "wrong",
-                "Schau dir transitive Abhängigkeiten nochmal an.")));
+                "Schau dir transitive Abhängigkeiten nochmal an.",
+                null)));
     }
 
     @Test
@@ -159,8 +161,9 @@ class WorkPageRoundTripTest {
                         List.of(0, 2),
                         List.of(1),
                         null,
+                        null,
                         null),
-                new Block.Field("q3", "dropdown", "Welcher Typ?", List.of("x", "y"), 1, null, null, null),
+                new Block.Field("q3", "dropdown", "Welcher Typ?", List.of("x", "y"), 1, null, null, null, null),
                 new Block.Field(
                         "q4",
                         "text",
@@ -169,7 +172,8 @@ class WorkPageRoundTripTest {
                         "Keine transitiven Abhängigkeiten.",
                         "",
                         null,
-                        null)));
+                        null,
+                        Map.of("criteria", "must mention transitive dependencies"))));
     }
 
     @Test

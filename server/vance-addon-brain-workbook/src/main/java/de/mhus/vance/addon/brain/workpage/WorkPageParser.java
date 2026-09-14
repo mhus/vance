@@ -270,7 +270,8 @@ public class WorkPageParser {
                         yamlBody.get("solution"),
                         yamlBody.get("value"),
                         str(yamlBody, "verdict", null),
-                        str(yamlBody, "feedback", null));
+                        str(yamlBody, "feedback", null),
+                        mapVal(yamlBody, "judge"));
             default -> new Block.UnknownFence(info, body);
         };
     }

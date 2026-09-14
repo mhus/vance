@@ -131,11 +131,15 @@ public sealed interface Block
      * textarea}. {@code solution} and {@code value} are dynamic YAML
      * payloads (as with {@link Form#form}): {@link Integer} for
      * {@code choice}/{@code dropdown}, {@link List} of {@link Integer} for
-     * {@code multi}, {@link String} for {@code text}/{@code textarea}. A
+     * {@code multi}, {@code String} for {@code text}/{@code textarea}. A
      * field with a {@code solution} is checkable by the {@code form-resolve}
      * button action; without one it is a plain form element (checklists).
      * {@code verdict} / {@code feedback} are action output — the editor
      * never writes them; {@code form-reset} removes them again.
+     * {@code judge} (text/textarea only) configures the free-text LLM
+     * grading — {@code judge.criteria} tells the judge what a correct
+     * answer must contain; without a {@code judge} a text field is not
+     * graded (a bare {@code solution} is a human-readable reference).
      */
     record Field(
             String id,
@@ -145,7 +149,8 @@ public sealed interface Block
             @Nullable Object solution,
             @Nullable Object value,
             @Nullable String verdict,
-            @Nullable String feedback)
+            @Nullable String feedback,
+            @Nullable Map<String, Object> judge)
             implements Block {}
 
     /** {@code ```vance-toc} fence — auto table-of-contents (no body). */

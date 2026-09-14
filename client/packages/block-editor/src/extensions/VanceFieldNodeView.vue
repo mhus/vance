@@ -45,6 +45,11 @@ const solution = computed(() => props.node.attrs?.solution ?? null);
 const value = computed(() => props.node.attrs?.value ?? null);
 const verdict = computed(() => (props.node.attrs?.verdict as string | null) ?? null);
 const feedback = computed(() => (props.node.attrs?.feedback as string | null) ?? null);
+const judge = computed(() =>
+  props.node.attrs?.judge && typeof props.node.attrs.judge === 'object'
+    ? (props.node.attrs.judge as Record<string, unknown>)
+    : null,
+);
 
 const editable = ref(props.editor.isEditable);
 function syncEditable() {
@@ -168,6 +173,16 @@ function onSolution(e: Event) {
   props.updateAttributes({ solution: raw });
 }
 
+const judgeCriteria = computed(() =>
+  judge.value && typeof judge.value.criteria === 'string' ? judge.value.criteria : '',
+);
+function onJudgeCriteria(e: Event) {
+  const v = (e.target as HTMLTextAreaElement).value;
+  props.updateAttributes({
+    judge: v.trim() === '' ? null : { ...(judge.value ?? {}), criteria: v },
+  });
+}
+
 const verdictClass = computed(() => {
   if (verdict.value === 'correct') return 'vance-field--correct';
   if (verdict.value === 'wrong') return 'vance-field--wrong';
@@ -219,6 +234,16 @@ const verdictClass = computed(() => {
         :placeholder="t('blockEditor.field.solutionPlaceholder')"
         :value="solutionText"
         @input="onSolution"
+        @mousedown.stop
+        @keydown.stop
+      />
+      <textarea
+        v-if="fieldType === 'text' || fieldType === 'textarea'"
+        class="vance-field__inp"
+        rows="2"
+        :placeholder="t('blockEditor.field.judgePlaceholder')"
+        :value="judgeCriteria"
+        @input="onJudgeCriteria"
         @mousedown.stop
         @keydown.stop
       />

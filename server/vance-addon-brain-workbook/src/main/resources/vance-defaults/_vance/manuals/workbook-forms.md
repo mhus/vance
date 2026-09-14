@@ -203,6 +203,8 @@ data document, no script.
   `solution` is a plain form element (checklist, survey).
 - Never author `value`, `verdict` or `feedback`: `value` is the user's
   answer, `verdict`/`feedback` are grading output written by the action.
+- For free-text questions add `judge.criteria` (see above) — the judge
+  config travels in the element, so each question carries its own rubric.
 - Interleave prose, callouts and toggles between the fields — a quiz page
   is a normal workpage.
 
@@ -214,11 +216,16 @@ server-side over the canonical block model):
 { "type": "button", "buttonType": "form-reset", "title": "Zurücksetzen" }
 ```
 
-- **`form-resolve`**: grades every field with a `solution` mechanically by
-  index (unanswered = wrong; `text`/`textarea` are not graded yet), writes
-  `verdict` (+ drops a stale `feedback`) into the fences, marks the fields
-  green/red in the live editor and returns the score. No fields to check →
-  no write.
+- **`form-resolve`**: grades every checkable field. Closed types by
+  `solution` index (unanswered = wrong). Free-text fields (`text`/
+  `textarea`) only when they carry a `judge` map — the internal
+  `form-judge` LLM profile grades against `judge.criteria` (plus the
+  `solution` as reference) and writes `verdict` **and** `feedback`; a bare
+  `solution` on a text field is a human-readable reference, not graded; a
+  blank answer is `wrong` without an LLM call. A judge failure skips that
+  field (reported in the score message) instead of aborting the resolve.
+  Writes verdicts/feedback into the fences, marks the fields green/red in
+  the live editor and returns the score. No fields to check → no write.
 - **`form-reset`**: removes `verdict`/`feedback` from all fields **and
   clears the answers (`value`)** — a fresh run at the quiz.
 

@@ -1,0 +1,55 @@
+description: |
+  Internal LightLlmService config profile used by FormResolveActionHandler
+  to grade free-text `vance-field` answers (type text/textarea with a
+  `judge` fence config). NOT spawnable — marked `internal: true` so the
+  standard recipe selector skips it.
+
+  The handler builds the user prompt: the question, the field's
+  `solution` (a reference answer, when present), the `judge.criteria`
+  (what a correct answer must contain) and the student's answer.
+
+  Pebble variables: none — everything arrives in the user prompt.
+
+  Output: ONE JSON object, no markdown fences, no prose around it:
+
+      { "verdict": "correct" | "wrong", "feedback": "<text>" }
+engine: jeltz
+internal: true
+params:
+  model: default:fast
+  maxAttempts: 2
+  temperature: 0.1
+promptPrefix: |
+  You are grading a free-text answer on a quiz page. Judge ONLY what is
+  written in the student's answer — never assume what the student "meant
+  to say". Grade against the grading criteria (when present) and the
+  reference answer (when present).
+
+  ## Rules
+
+  - "correct" only if the answer satisfies every stated criterion
+    (or, without criteria, is factually equivalent to the reference
+    answer). Anything missing, vague, or factually off is "wrong".
+  - A different wording than the reference answer is fine — judge
+    content, not phrasing.
+  - The `feedback` field:
+    - one or two sentences, in the SAME language as the question and
+      the student's answer,
+    - name what the answer got right or wrong against the criteria,
+    - name the missing or wrong part concretely enough that the
+      student can learn from it, but do not reveal more than the
+      criteria and reference answer state,
+    - do not praise, do not flatter, no greeting, no signature.
+
+  ## Output shape
+
+  Reply with exactly ONE JSON object, no prose around it:
+
+      { "verdict": "correct", "feedback": "<one or two sentences>" }
+
+  or
+
+      { "verdict": "wrong", "feedback": "<one or two sentences>" }
+tags:
+  - internal
+  - form-judge

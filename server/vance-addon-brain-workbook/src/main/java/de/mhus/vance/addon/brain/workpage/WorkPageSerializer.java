@@ -181,6 +181,7 @@ public class WorkPageSerializer {
                         if (fd.value() != null) put("value", fd.value());
                         if (fd.verdict() != null) put("verdict", fd.verdict());
                         if (fd.feedback() != null) put("feedback", fd.feedback());
+                        if (fd.judge() != null && !fd.judge().isEmpty()) put("judge", fd.judge());
                     }
                 });
             case Block.Toc ignored -> "```vance-toc\n```\n";

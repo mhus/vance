@@ -238,6 +238,7 @@ const ITEMS: SlashItemSpec[] = [
             value: null,
             verdict: null,
             feedback: null,
+            judge: null,
           },
         })
         .run(),

@@ -386,6 +386,10 @@ function parseFence(info: string, body: string): Block {
         value: parsed.value ?? null,
         verdict: str(parsed, 'verdict'),
         feedback: str(parsed, 'feedback'),
+        judge:
+          parsed.judge && typeof parsed.judge === 'object' && !Array.isArray(parsed.judge)
+            ? (parsed.judge as Record<string, unknown>)
+            : null,
       };
     default:
       // Not a core fence — an addon may own it (block-extension-registry).

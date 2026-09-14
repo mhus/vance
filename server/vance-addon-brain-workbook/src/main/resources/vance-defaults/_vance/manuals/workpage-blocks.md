@@ -513,6 +513,22 @@ quizzes, exam preparation, checklists and questionnaires.
   the user's answer; `verdict`/`feedback` are written by the `form-resolve`
   button action, never by you.
 
+- **Free-text grading (`text`/`textarea` only):** add a `judge` map with
+  `criteria` — what a correct answer must contain. `form-resolve` then grades
+  the answer with the internal `form-judge` LLM profile (server-side,
+  schema-validated) and writes `verdict` **and** a short `feedback`. A bare
+  `solution` on a text field is only a human-readable reference — without a
+  `judge` the field is not graded. A blank answer is `wrong` without an LLM
+  call. Judge keys are open — unknown keys round-trip untouched, so a future
+  `strictness` key will not break older pages.
+
+```json
+{ "type": "field", "id": "q6", "fieldType": "textarea",
+  "question": "Erkläre die 3NF in einem Satz.",
+  "solution": "Keine transitiven Abhängigkeiten zwischen Nicht-Schlüsseln.",
+  "judge": { "criteria": "must mention transitive dependencies AND non-key attributes" } }
+```
+
 **Quiz recipe** — append the questions as `field` blocks, then two buttons
 (the grading runs server-side, no script needed):
 
@@ -521,9 +537,9 @@ quizzes, exam preparation, checklists and questionnaires.
 { "type": "button", "buttonType": "form-reset", "title": "Zurücksetzen" }
 ```
 
-`form-resolve` grades every field with a `solution` mechanically (by index;
-unanswered counts as wrong; `text`/`textarea` are not graded yet), marks each
-field green/red inline — the correct option is revealed (✓) and a wrong
+`form-resolve` grades every checkable field — closed types by index
+(unanswered counts as wrong), free-text fields with a `judge` config via the
+LLM judge (verdict + feedback) — marks each
 selection marked (✗) — and returns the score. `form-reset` clears the
 markings **and** the answers. Do NOT build a `vance-form` + `records` doc +
 `saveScript` + result-embed pipeline for a quiz — the field/button pair is

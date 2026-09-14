@@ -80,6 +80,8 @@ describe('serialize/parse — vance-field + vance-button actions', () => {
       'value: 1',
       'verdict: wrong',
       'feedback: Schau dir transitive Abhängigkeiten an.',
+      'judge:',
+      '  criteria: must mention transitive dependencies',
       '```',
     ].join('\n');
     const once = serialize(parse(md));
@@ -89,7 +91,13 @@ describe('serialize/parse — vance-field + vance-button actions', () => {
     expect(once).toContain('verdict: wrong');
     const blocks = parse(once);
     const field = blocks.find((b) => b.kind === 'field');
-    expect(field).toMatchObject({ id: 'q1', fieldType: 'choice', value: 1, verdict: 'wrong' });
+    expect(field).toMatchObject({
+      id: 'q1',
+      fieldType: 'choice',
+      value: 1,
+      verdict: 'wrong',
+      judge: { criteria: 'must mention transitive dependencies' },
+    });
   });
 
   it('multi fields keep index arrays, text fields keep strings', () => {

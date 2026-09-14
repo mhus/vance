@@ -383,7 +383,8 @@ public class WorkPageService {
                         raw.get("solution"),
                         raw.get("value"),
                         str(raw, "verdict"),
-                        str(raw, "feedback"));
+                        str(raw, "feedback"),
+                        mapVal(raw.get("judge")));
             case "columns" -> {
                 List<Block.Column> cols = new ArrayList<>();
                 for (Map<String, Object> cm : mapList(raw.get("columns"))) {
@@ -506,6 +507,7 @@ public class WorkPageService {
                 if (fd.value() != null) m.put("value", fd.value());
                 if (fd.verdict() != null) m.put("verdict", fd.verdict());
                 if (fd.feedback() != null) m.put("feedback", fd.feedback());
+                if (fd.judge() != null) m.put("judge", fd.judge());
             }
             case Block.Toc ignored -> m.put("type", "toc");
             case Block.Columns cols -> {

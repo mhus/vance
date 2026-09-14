@@ -7,6 +7,7 @@ import de.mhus.vance.shared.llmusage.LlmUsageService;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.WeekFields;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -74,25 +75,17 @@ public class LlmUsageReportService {
         MatchOperation match = matchTenantWindow(tenantId, from, to, projectId);
 
         // The stored `day` is a yyyy-MM-dd string (see LlmUsageDailyDocument
-        // — a UTC calendar day, not an instant), so it is turned back into a
-        // date before $dateTrunc can widen it to a week or month.
-        Document asDate = new Document(
-                "$dateFromString",
-                new Document()
-                        .append("dateString", "$day")
-                        .append("format", "%Y-%m-%d")
-                        .append("timezone", "UTC"));
-        Document trunc = new Document(
-                "$dateTrunc",
-                new Document()
-                        .append("date", asDate)
-                        .append("unit", bucket.unit())
-                        .append("binSize", 1));
-        Document groupKey = new Document().append("ts", trunc).append("currency", "$currency");
+        // — a UTC calendar day, not an instant). Widening it to a week or
+        // month happens as a $dateToString format, not as $dateTrunc: the
+        // production database on the mini host is MongoDB 4.4, and $dateTrunc
+        // is 5.0+. The key stays a canonical string per bucket
+        // ('2026-09-14', '2026-09', '2026-37') — zero-padded, so the Mongo
+        // sort and the Java parse agree on the order.
+        Document groupKey = new Document().append("ts", bucket.keyExpression()).append("currency", "$currency");
 
         List<UsageBucketDto> rows = runPipeline(match, groupStage(groupKey), Sort.by(Sort.Order.asc("_id.ts")), doc -> {
             Document key = doc.get("_id", Document.class);
-            return row(doc).bucketStart(key.getDate("ts").toInstant())
+            return row(doc).bucketStart(bucket.startOf(key.getString("ts")))
                     .currency(asString(key.get("currency"), ""))
                     .build();
         });
@@ -282,26 +275,99 @@ public class LlmUsageReportService {
     }
 
     /**
-     * Bucketing granularity for {@link #summary}. Matches Mongo
-     * {@code $dateTrunc} unit names so we can pass it straight through.
+     * Bucketing granularity for {@link #summary}. Accepts the wire
+     * names {@code day} / {@code week} / {@code month}; anything else
+     * falls back to {@code day}.
+     *
+     * <p>Each bucket carries a canonical {@link #keyExpression()} Mongo
+     * expression that projects the stored {@code day} string into the
+     * bucket's own key string, and the matching {@link #startOf(String)}
+     * parser that turns that key back into the row's {@code bucketStart}
+     * instant. Both halves must agree — the tests pin the ISO-week edge
+     * (a Friday in January can belong to the previous year's week 53).
+     *
+     * <p>Deliberately no {@code $dateTrunc}: it is MongoDB 5.0+, and the
+     * production database is 4.4. Everything used here —
+     * {@code $dateFromString}, {@code $dateToString} — predates 4.0.
      */
     private enum TimeBucket {
-        DAY("day"),
-        WEEK("week"),
-        MONTH("month");
+        /** Group by the stored day string itself — {@code 2026-09-14}. */
+        DAY("day", null) {
+            @Override
+            Object keyExpression() {
+                return "$day";
+            }
 
-        private final String unit;
+            @Override
+            Instant startOf(String key) {
+                return LocalDate.parse(key).atStartOfDay(ZoneOffset.UTC).toInstant();
+            }
+        },
 
-        TimeBucket(String unit) {
-            this.unit = unit;
+        /** ISO 8601 week — {@code 2026-37}, Monday-based, week 1 holds Jan 4. */
+        WEEK("week", "%G-%V") {
+            @Override
+            Instant startOf(String key) {
+                int split = key.indexOf('-');
+                int weekBasedYear = Integer.parseInt(key, 0, split, 10);
+                int week = Integer.parseInt(key, split + 1, key.length(), 10);
+                // Jan 4th is always in ISO week 1; snapping it to its Monday
+                // gives week 1's start, every later week is whole weeks away.
+                LocalDate mondayOfWeekOne = LocalDate.of(weekBasedYear, 1, 4).with(WeekFields.ISO.dayOfWeek(), 1);
+                return mondayOfWeekOne
+                        .plusWeeks(week - 1L)
+                        .atStartOfDay(ZoneOffset.UTC)
+                        .toInstant();
+            }
+        },
+
+        /** Calendar month — {@code 2026-09}. */
+        MONTH("month", "%Y-%m") {
+            @Override
+            Instant startOf(String key) {
+                int split = key.indexOf('-');
+                return LocalDate.of(
+                                Integer.parseInt(key, 0, split, 10),
+                                Integer.parseInt(key, split + 1, key.length(), 10),
+                                1)
+                        .atStartOfDay(ZoneOffset.UTC)
+                        .toInstant();
+            }
+        };
+
+        /** {@code $dateToString} format of the bucket key, or {@code null}
+         * when the stored day string is already the key. */
+        private final @Nullable String format;
+
+        /** Label on the wire ({@link #parse} input, DTO {@code bucketBy}). */
+        private final String label;
+
+        TimeBucket(String label, @Nullable String format) {
+            this.label = label;
+            this.format = format;
         }
 
-        String unit() {
-            return unit;
+        /**
+         * Mongo expression producing the group key from the stored row —
+         * a bare field path for {@link #DAY}, a {@code $dateToString}
+         * expression otherwise.
+         */
+        Object keyExpression() {
+            Document asDate = new Document(
+                    "$dateFromString",
+                    new Document()
+                            .append("dateString", "$day")
+                            .append("format", "%Y-%m-%d")
+                            .append("timezone", "UTC"));
+            return new Document(
+                    "$dateToString", new Document().append("date", asDate).append("format", format));
         }
+
+        /** The bucket a key string belongs to, as a UTC instant. */
+        abstract Instant startOf(String key);
 
         String label() {
-            return unit;
+            return label;
         }
 
         static TimeBucket parse(@Nullable String raw) {

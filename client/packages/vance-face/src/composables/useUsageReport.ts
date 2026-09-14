@@ -12,7 +12,9 @@ import { brainFetch } from '@vance/shared';
  *
  * <p>Each loader takes the params it needs and writes the response
  * into its own ref. Loading + error are merged across all of them so a
- * single spinner / banner can drive the tab.
+ * single spinner / banner can drive the tab. A cut that fails leaves
+ * its ref at {@code null} but does not wipe the cuts that answered —
+ * the banner reports, the data stays.
  */
 export function useUsageReport(): {
   summary: Ref<UsageReportDto | null>;
@@ -38,7 +40,13 @@ export function useUsageReport(): {
     error.value = null;
     const window = buildQuery({ from: params.from, to: params.to });
     try {
-      const [s, p, m, e, r] = await Promise.all([
+      // allSettled, not all: the five cuts are independent reads, and one
+      // failing endpoint must not blank the four that answered — a single
+      // 500 (the Mongo 4.4 summary crash) made the whole view look like
+      // "nothing was recorded at all" while the database was fine.
+      // Failed cuts stay null, the error banner names the failure, the
+      // rest renders.
+      const [s, p, m, c, r] = await Promise.allSettled([
         brainFetch<UsageReportDto>('GET', `usage/summary?${buildQuery({
           from: params.from,
           to: params.to,
@@ -50,14 +58,19 @@ export function useUsageReport(): {
         brainFetch<UsageReportDto>('GET', `usage/by-caller?${window}`),
         brainFetch<UsageReportDto>('GET', `usage/by-recipe?${window}`),
       ]);
-      summary.value = s;
-      byProject.value = p;
-      byModel.value = m;
-      byCaller.value = e;
-      byRecipe.value = r;
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load usage report.';
-      reset();
+      if (s.status === 'fulfilled') summary.value = s.value;
+      if (p.status === 'fulfilled') byProject.value = p.value;
+      if (m.status === 'fulfilled') byModel.value = m.value;
+      if (c.status === 'fulfilled') byCaller.value = c.value;
+      if (r.status === 'fulfilled') byRecipe.value = r.value;
+      for (const result of [s, p, m, c, r]) {
+        if (result.status === 'rejected') {
+          error.value = result.reason instanceof Error
+            ? result.reason.message
+            : 'Failed to load usage report.';
+          break;
+        }
+      }
     } finally {
       loading.value = false;
     }

@@ -476,6 +476,10 @@ export default {
     blockedHint: '{n} process(es) waiting for you',
   },
 
+  workingProject: {
+    tooltip: 'Hub focus project — actions without an explicit project land in “{name}”',
+  },
+
   header: {
     connection: {
       connected: 'Connected — live',

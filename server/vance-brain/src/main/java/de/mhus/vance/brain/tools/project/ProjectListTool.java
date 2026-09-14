@@ -1,11 +1,11 @@
 package de.mhus.vance.brain.tools.project;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,7 +22,11 @@ import org.springframework.stereotype.Component;
  *
  * <p>Used primarily by the Eddie hub engine so the user can ask
  * „welche Projekte gibt es?" and get a real answer instead of an
- * intent-without-action turn.
+ * intent-without-action turn. The row of the caller's working-project
+ * spot (see {@code project_switch}) carries {@code active: true} and
+ * the top-level {@code activeProject} field names it once — so a hub
+ * LLM sees its current focus in the same call instead of a separate
+ * {@code project_current} round-trip.
  */
 @Component
 @RequiredArgsConstructor
@@ -30,16 +34,22 @@ public class ProjectListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "includeSystem", Map.of(
-                            "type", "boolean",
-                            "description", "Include SYSTEM-kind projects "
-                                    + "(e.g. the per-user Eddie hub). "
-                                    + "Defaults to false."),
-                    "includeClosed", Map.of(
-                            "type", "boolean",
-                            "description", "Include CLOSED projects. "
-                                    + "Defaults to false.")),
+            "properties",
+                    Map.of(
+                            "includeSystem",
+                                    Map.of(
+                                            "type",
+                                            "boolean",
+                                            "description",
+                                            "Include SYSTEM-kind projects "
+                                                    + "(e.g. the per-user Eddie hub). "
+                                                    + "Defaults to false."),
+                            "includeClosed",
+                                    Map.of(
+                                            "type",
+                                            "boolean",
+                                            "description",
+                                            "Include CLOSED projects. " + "Defaults to false.")),
             "required", List.of());
 
     private final ProjectService projectService;
@@ -54,7 +64,9 @@ public class ProjectListTool implements Tool {
     public String description() {
         return "List the projects in the current tenant that YOU can read. Returns name, "
                 + "title, kind, status, projectGroupId. SYSTEM and ARCHIVED are hidden by "
-                + "default. The list is filtered by your permissions — a project missing "
+                + "default. Your active working project (set via project_switch) is "
+                + "marked active=true and named as top-level activeProject. The list is "
+                + "filtered by your permissions — a project missing "
                 + "from it may still exist and simply be out of your reach. Never conclude "
                 + "from this list that a project does not exist.";
     }
@@ -82,7 +94,13 @@ public class ProjectListTool implements Tool {
         boolean includeSystem = boolParam(params, "includeSystem", false);
         boolean includeClosed = boolParam(params, "includeClosed", false)
                 || boolParam(params, "includeArchived", false); // legacy alias
-
+        // The caller's working-project spot (Eddie's current focus, set
+        // via project_switch). Null for engines without a spot — Arthur
+        // and Ford sessions are project-bound, so there is nothing to
+        // mark. Read from the dispatcher-threaded context field, the
+        // same trust boundary as EddieContext: the spot is process state,
+        // not an LLM-provided param.
+        String spot = ctx.workingProjectId();
         // Authorized list from the source — ProjectService owns the READ
         // check; the tool only supplies the caller identity.
         List<ProjectDocument> all = projectService.listReadableBy(
@@ -92,8 +110,7 @@ public class ProjectListTool implements Tool {
             if (!includeSystem && p.getKind() == ProjectKind.SYSTEM) {
                 continue;
             }
-            if (!includeClosed && p.getStatus() != null
-                    && p.getStatus().name().equals("CLOSED")) {
+            if (!includeClosed && p.getStatus() != null && p.getStatus().name().equals("CLOSED")) {
                 continue;
             }
             Map<String, Object> row = new LinkedHashMap<>();
@@ -101,13 +118,19 @@ public class ProjectListTool implements Tool {
             if (p.getTitle() != null) {
                 row.put("title", p.getTitle());
             }
-            row.put("kind", p.getKind() == null
-                    ? ProjectKind.NORMAL.name() : p.getKind().name());
+            row.put(
+                    "kind",
+                    p.getKind() == null
+                            ? ProjectKind.NORMAL.name()
+                            : p.getKind().name());
             if (p.getStatus() != null) {
                 row.put("status", p.getStatus().name());
             }
             if (p.getProjectGroupId() != null) {
                 row.put("projectGroupId", p.getProjectGroupId());
+            }
+            if (spot != null && spot.equals(p.getName())) {
+                row.put("active", true);
             }
             rows.add(row);
         }
@@ -115,6 +138,12 @@ public class ProjectListTool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("projects", rows);
         out.put("count", rows.size());
+        // Name the spot once at top level too — the marked row may be
+        // filtered out (e.g. spot = own SYSTEM hub, includeSystem=false),
+        // and the LLM should not scan the rows to learn its focus.
+        if (spot != null) {
+            out.put("activeProject", spot);
+        }
         // Say in the result itself that this is a permission-filtered
         // view. Without it the only available inference from "not in the
         // list" is "does not exist" — which is what agents concluded, and
@@ -122,9 +151,11 @@ public class ProjectListTool implements Tool {
         // phantom missing project. No names and no totals: the caller
         // learns that its view is partial, nothing about what it misses.
         out.put("filteredByPermissions", true);
-        out.put("note", "Only projects you have access to are listed. "
-                + "A project you cannot see may still exist — if you expected one and it "
-                + "is absent, treat that as missing access, not as a missing project.");
+        out.put(
+                "note",
+                "Only projects you have access to are listed. "
+                        + "A project you cannot see may still exist — if you expected one and it "
+                        + "is absent, treat that as missing access, not as a missing project.");
         return out;
     }
 

@@ -13,6 +13,7 @@ import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.PlanStateInitialPusher;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
+import de.mhus.vance.brain.progress.WorkingProjectPusher;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
@@ -56,6 +57,7 @@ public class SessionResumeHandler implements WsHandler {
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final ProcessCountsPusher processCountsPusher;
     private final PlanStateInitialPusher planStateInitialPusher;
+    private final WorkingProjectPusher workingProjectPusher;
     private final RequestAuthority authority;
     private final ThinkProcessService thinkProcessService;
     private final SessionLifecycleService sessionLifecycle;
@@ -254,6 +256,10 @@ public class SessionResumeHandler implements WsHandler {
         // plan (Arthur/Eddie Plan-Mode, Frankie/Benjy TodoList) without
         // waiting for the next engine mutation.
         planStateInitialPusher.pushInitial(wsSession, ctx.getTenantId(), doc.getSessionId());
+        // Working-project badge: which project the hub's chat-process
+        // currently coordinates (Eddie's spot). Deltas follow on every
+        // spot mutation via the WorkingProjectChangedEvent.
+        workingProjectPusher.pushInitial(wsSession, ctx.getTenantId(), doc.getSessionId());
         // Look up the chat-process name (typically "chat") so the
         // client can set its active-process pointer in the same round
         // trip — same convenience SessionBootstrapResponse provides.

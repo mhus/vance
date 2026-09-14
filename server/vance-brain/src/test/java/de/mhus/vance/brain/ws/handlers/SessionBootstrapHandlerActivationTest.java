@@ -20,6 +20,7 @@ import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.PlanStateInitialPusher;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
+import de.mhus.vance.brain.progress.WorkingProjectPusher;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
@@ -114,6 +115,9 @@ class SessionBootstrapHandlerActivationTest {
     private PlanStateInitialPusher planStateInitialPusher;
 
     @Mock
+    private WorkingProjectPusher workingProjectPusher;
+
+    @Mock
     private HomeBootstrapService homeBootstrapService;
 
     @Mock
@@ -145,6 +149,7 @@ class SessionBootstrapHandlerActivationTest {
                 inboxSummaryPusher,
                 processCountsPusher,
                 planStateInitialPusher,
+                workingProjectPusher,
                 homeBootstrapService,
                 authority,
                 actionRegistry,

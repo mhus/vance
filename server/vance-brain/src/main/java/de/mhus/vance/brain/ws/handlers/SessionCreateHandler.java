@@ -10,6 +10,7 @@ import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.PlanStateInitialPusher;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
+import de.mhus.vance.brain.progress.WorkingProjectPusher;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
@@ -58,6 +59,7 @@ public class SessionCreateHandler implements WsHandler {
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final ProcessCountsPusher processCountsPusher;
     private final PlanStateInitialPusher planStateInitialPusher;
+    private final WorkingProjectPusher workingProjectPusher;
     private final HomeBootstrapService homeBootstrapService;
     private final RequestAuthority authority;
     private final ThinkProcessService thinkProcessService;
@@ -187,6 +189,10 @@ public class SessionCreateHandler implements WsHandler {
         // plan (Arthur/Eddie Plan-Mode, Frankie/Benjy TodoList) without
         // waiting for the next engine mutation.
         planStateInitialPusher.pushInitial(wsSession, ctx.getTenantId(), created.getSessionId());
+        // Working-project badge: which project the hub's chat-process
+        // currently coordinates (Eddie's spot). Null here — the chat
+        // process is spawned below — which is the correct initial state.
+        workingProjectPusher.pushInitial(wsSession, ctx.getTenantId(), created.getSessionId());
 
         // Auto-spawn the session-chat think-process. Greeting is pushed
         // as chat-message-appended frames before the response so the

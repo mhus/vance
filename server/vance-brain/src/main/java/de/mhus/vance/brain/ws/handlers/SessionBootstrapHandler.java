@@ -17,6 +17,7 @@ import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.PlanStateInitialPusher;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
+import de.mhus.vance.brain.progress.WorkingProjectPusher;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
@@ -85,6 +86,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final ProcessCountsPusher processCountsPusher;
     private final PlanStateInitialPusher planStateInitialPusher;
+    private final WorkingProjectPusher workingProjectPusher;
     private final HomeBootstrapService homeBootstrapService;
     private final RequestAuthority authority;
     private final ActionExecutorRegistry actionRegistry;
@@ -192,6 +194,10 @@ public class SessionBootstrapHandler implements WsHandler {
         // plan (Arthur/Eddie Plan-Mode, Frankie/Benjy TodoList) without
         // waiting for the next engine mutation.
         planStateInitialPusher.pushInitial(wsSession, ctx.getTenantId(), session.getSessionId());
+        // Working-project badge: which project the hub's chat-process
+        // currently coordinates (Eddie's spot). Deltas follow on every
+        // spot mutation via the WorkingProjectChangedEvent.
+        workingProjectPusher.pushInitial(wsSession, ctx.getTenantId(), session.getSessionId());
 
         // ── Auto-spawn the session-chat process ──────────────────────────
         // Idempotent: re-bootstrap of an existing session adopts the chat

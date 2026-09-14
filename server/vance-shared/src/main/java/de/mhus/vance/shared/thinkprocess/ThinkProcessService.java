@@ -1232,7 +1232,15 @@ public class ThinkProcessService {
      * a {@code ProjectDocument.name}, not a Mongo id. Blank/null is
      * coerced to {@code null} so the field stays canonical.
      *
-     * @return {@code true} if the row exists and was updated
+     * <p>Publishes a {@link WorkingProjectChangedEvent} when the spot
+     * actually moved — the single write path covers the LLM
+     * {@code project_switch} tool, the WS {@code project-switch} request
+     * and Eddie's DELEGATE side-effect alike.
+     *
+     * @return {@code true} if the row exists and the spot now equals the
+     *         requested value. A re-set of the identical value is a
+     *         successful no-op (no event) — callers must not treat an
+     *         idempotent switch as a failure.
      */
     public boolean setWorkingProjectId(String processId, @Nullable String workingProjectId) {
         String normalised = (workingProjectId == null || workingProjectId.isBlank()) ? null : workingProjectId.trim();
@@ -1240,12 +1248,18 @@ public class ThinkProcessService {
         Update update = normalised == null
                 ? new Update().unset("workingProjectId")
                 : new Update().set("workingProjectId", normalised);
-        UpdateResult result = mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
-        if (result.getModifiedCount() > 0) {
-            log.debug("Eddie working-project set id='{}' workingProjectId={}", processId, normalised);
-            return true;
+        ThinkProcessDocument prior = mongoTemplate.findAndModify(
+                query, update, FindAndModifyOptions.options().returnNew(false), ThinkProcessDocument.class);
+        if (prior == null) {
+            return false;
         }
-        return false;
+        boolean changed = !java.util.Objects.equals(normalised, prior.getWorkingProjectId());
+        if (changed) {
+            log.debug("Eddie working-project set id='{}' workingProjectId={}", processId, normalised);
+            eventPublisher.publishEvent(
+                    new WorkingProjectChangedEvent(processId, prior.getTenantId(), prior.getSessionId(), normalised));
+        }
+        return true;
     }
 
     /** Convenience — equivalent to {@code setWorkingProjectId(processId, null)}. */

@@ -15,6 +15,7 @@ import {
 import { setUiLocale } from '@/i18n';
 import InboxBadge from './InboxBadge.vue';
 import ProcessCountsBadge from './ProcessCountsBadge.vue';
+import WorkingProjectBadge from './WorkingProjectBadge.vue';
 import FookSupportModal from './FookSupportModal.vue';
 import TenantLogo from './TenantLogo.vue';
 import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
@@ -266,6 +267,11 @@ function openFook(): void {
            costs no space in the common case. Fed by the process-counts
            push (see planning/process-visibility.md §4.A). -->
       <ProcessCountsBadge />
+
+      <!-- Working-project badge — which project the hub's chat-process
+           currently coordinates (Eddie's spot). Self-hiding when no spot
+           is set. Fed by the working-project-changed push. -->
+      <WorkingProjectBadge />
 
       <!-- Editor-specific topbar slot — e.g. the project selector in the
            document editor. Sits between the breadcrumbs and the

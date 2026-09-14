@@ -18,6 +18,7 @@ import ReconnectOverlay from '@/ws/ReconnectOverlay.vue';
 import SessionTakeoverDialog from '@/ws/SessionTakeoverDialog.vue';
 import { useNotificationSubscription } from '@/notification/useNotificationSubscription';
 import { useProcessCountsSubscription } from '@/process/useProcessCountsSubscription';
+import { useWorkingProjectSubscription } from '@/process/useWorkingProjectSubscription';
 import { countsAvailable } from '@/process/processCountsStore';
 import { processPanelOpen } from '@/process/processPanelState';
 import ProcessPanel from './ProcessPanel.vue';
@@ -336,6 +337,9 @@ const { socket: wsSocket, status: wsStatus } = useWsConnection();
 useNotificationSubscription(wsSocket);
 // Feeds the topbar process badge; resets itself when the socket drops.
 useProcessCountsSubscription(wsSocket);
+// Feeds the topbar working-project badge (Eddie's spot); resets itself
+// when the socket drops.
+useWorkingProjectSubscription(wsSocket);
 
 const derivedConnectionState = computed<'connected' | 'idle' | 'occupied'>(() => {
   if (wsStatus.value === 'reconnecting' || wsStatus.value === 'down') return 'occupied';

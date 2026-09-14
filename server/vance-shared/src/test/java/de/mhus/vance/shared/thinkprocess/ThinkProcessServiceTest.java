@@ -76,9 +76,12 @@ class ThinkProcessServiceTest {
 
     @Test
     void drainPending_returnsAccumulatedMessages_inInsertionOrder() {
-        EngineMessageDocument m1 = EngineMessageDocument.builder().messageId("m1").build();
-        EngineMessageDocument m2 = EngineMessageDocument.builder().messageId("m2").build();
-        EngineMessageDocument m3 = EngineMessageDocument.builder().messageId("m3").build();
+        EngineMessageDocument m1 =
+                EngineMessageDocument.builder().messageId("m1").build();
+        EngineMessageDocument m2 =
+                EngineMessageDocument.builder().messageId("m2").build();
+        EngineMessageDocument m3 =
+                EngineMessageDocument.builder().messageId("m3").build();
         when(engineMessageService.drainInbox("p-1")).thenReturn(List.of(m1, m2, m3));
 
         List<PendingMessageDocument> drained = service.drainPending("p-1");
@@ -101,9 +104,7 @@ class ThinkProcessServiceTest {
 
         // Defensive: even when the process disappears mid-call, callers
         // get an empty list (not NPE).
-        assertThat(service.drainPending("ghost"))
-                .isNotNull()
-                .isEmpty();
+        assertThat(service.drainPending("ghost")).isNotNull().isEmpty();
     }
 
     @Test
@@ -127,8 +128,8 @@ class ThinkProcessServiceTest {
         ThinkProcessDocument prior = process("p-1");
         prior.setStatus(ThinkProcessStatus.INIT);
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(prior);
 
         boolean ok = service.updateStatus("p-1", ThinkProcessStatus.PAUSED);
@@ -140,8 +141,8 @@ class ThinkProcessServiceTest {
     @Test
     void updateStatus_returnsFalse_andSkipsEvent_whenProcessUnknown() {
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(null);
 
         boolean ok = service.updateStatus("ghost", ThinkProcessStatus.PAUSED);
@@ -155,18 +156,21 @@ class ThinkProcessServiceTest {
         ThinkProcessDocument prior = process("p-1");
         prior.setStatus(ThinkProcessStatus.RUNNING);
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(prior);
 
         service.updateStatus("p-1", ThinkProcessStatus.PAUSED);
 
         // TOCTOU guard: the atomic query must exclude an already-CLOSED row so
         // a concurrent DONE/STALE can't be reset to a live status.
-        org.mockito.ArgumentCaptor<Query> captor =
-                org.mockito.ArgumentCaptor.forClass(Query.class);
-        verify(mongoTemplate).findAndModify(captor.capture(), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class));
+        org.mockito.ArgumentCaptor<Query> captor = org.mockito.ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate)
+                .findAndModify(
+                        captor.capture(),
+                        any(Update.class),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class));
         org.bson.Document q = captor.getValue().getQueryObject();
         assertThat(q).containsKey("status");
         assertThat(q.toString()).contains("$ne").contains("CLOSED");
@@ -175,8 +179,7 @@ class ThinkProcessServiceTest {
     @Test
     void updateStatus_rejectsClosedRoute() {
         // CLOSED requires CloseReason — has its own dedicated method.
-        assertThatThrownBy(() ->
-                service.updateStatus("p-1", ThinkProcessStatus.CLOSED))
+        assertThatThrownBy(() -> service.updateStatus("p-1", ThinkProcessStatus.CLOSED))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("CloseReason");
     }
@@ -186,8 +189,8 @@ class ThinkProcessServiceTest {
         ThinkProcessDocument prior = process("p-1");
         prior.setStatus(ThinkProcessStatus.RUNNING);
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(prior);
 
         boolean ok = service.closeProcess("p-1", CloseReason.STOPPED);
@@ -201,8 +204,8 @@ class ThinkProcessServiceTest {
         // Status filter `status != CLOSED` makes findAndModify return null
         // for an already-closed row → no event fires.
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(null);
 
         boolean ok = service.closeProcess("p-1", CloseReason.STOPPED);
@@ -217,8 +220,8 @@ class ThinkProcessServiceTest {
     void claimFinalReplyEmission_returnsTrue_onFirstClaim() {
         // findAndModify flips false→true and returns the prior (non-null) doc.
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(process("p-1"));
 
         assertThat(service.claimFinalReplyEmission("p-1")).isTrue();
@@ -229,8 +232,8 @@ class ThinkProcessServiceTest {
         // The `finalReplyEmitted != true` guard makes findAndModify return null
         // once the latch is set → duplicate/late re-activation cannot re-emit.
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(null);
 
         assertThat(service.claimFinalReplyEmission("p-1")).isFalse();
@@ -240,8 +243,7 @@ class ThinkProcessServiceTest {
 
     @Test
     void requestHalt_setsFlagAtomically_returnsTrueOnHit() {
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class)))
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(UpdateResult.acknowledged(1, 1L, null));
 
         assertThat(service.requestHalt("p-1")).isTrue();
@@ -269,16 +271,14 @@ class ThinkProcessServiceTest {
     void updateMode_writesTheModeFieldAtomically() {
         UpdateResult ok = mock(UpdateResult.class);
         when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(ok);
 
         boolean changed = service.updateMode("p-1", ProcessMode.EXPLORING);
 
         assertThat(changed).isTrue();
-        org.mockito.ArgumentCaptor<Update> captor =
-                org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
+        org.mockito.ArgumentCaptor<Update> captor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(), eq(ThinkProcessDocument.class));
         Object setOps = captor.getValue().getUpdateObject().get("$set");
         assertThat(setOps.toString()).contains("mode").contains("EXPLORING");
     }
@@ -287,8 +287,8 @@ class ThinkProcessServiceTest {
     void updateMode_returnsFalse_whenProcessNotFound() {
         UpdateResult miss = mock(UpdateResult.class);
         when(miss.getModifiedCount()).thenReturn(0L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(miss);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(miss);
 
         assertThat(service.updateMode("ghost", ProcessMode.PLANNING)).isFalse();
     }
@@ -297,20 +297,26 @@ class ThinkProcessServiceTest {
     void setTodos_replacesEntireListAtomically() {
         UpdateResult ok = mock(UpdateResult.class);
         when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(ok);
 
         List<TodoItem> todos = List.of(
-                TodoItem.builder().id("1").status(TodoStatus.PENDING).content("a").build(),
-                TodoItem.builder().id("2").status(TodoStatus.PENDING).content("b").build());
+                TodoItem.builder()
+                        .id("1")
+                        .status(TodoStatus.PENDING)
+                        .content("a")
+                        .build(),
+                TodoItem.builder()
+                        .id("2")
+                        .status(TodoStatus.PENDING)
+                        .content("b")
+                        .build());
 
         boolean changed = service.setTodos("p-1", todos);
 
         assertThat(changed).isTrue();
-        org.mockito.ArgumentCaptor<Update> captor =
-                org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
+        org.mockito.ArgumentCaptor<Update> captor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(), eq(ThinkProcessDocument.class));
         Object setOps = captor.getValue().getUpdateObject().get("$set");
         assertThat(setOps.toString()).contains("todos");
     }
@@ -319,14 +325,26 @@ class ThinkProcessServiceTest {
     void updateTodoStatuses_appliesUpdates_andLeavesUnlistedItemsUntouched() {
         ThinkProcessDocument doc = process("p-1");
         doc.setTodos(new ArrayList<>(List.of(
-                TodoItem.builder().id("1").status(TodoStatus.PENDING).content("a").build(),
-                TodoItem.builder().id("2").status(TodoStatus.PENDING).content("b").build(),
-                TodoItem.builder().id("3").status(TodoStatus.PENDING).content("c").build())));
+                TodoItem.builder()
+                        .id("1")
+                        .status(TodoStatus.PENDING)
+                        .content("a")
+                        .build(),
+                TodoItem.builder()
+                        .id("2")
+                        .status(TodoStatus.PENDING)
+                        .content("b")
+                        .build(),
+                TodoItem.builder()
+                        .id("3")
+                        .status(TodoStatus.PENDING)
+                        .content("c")
+                        .build())));
         when(repository.findById("p-1")).thenReturn(Optional.of(doc));
         UpdateResult ok = mock(UpdateResult.class);
         when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(ok);
 
         var updates = new java.util.LinkedHashMap<String, TodoStatus>();
         updates.put("1", TodoStatus.COMPLETED);
@@ -335,10 +353,8 @@ class ThinkProcessServiceTest {
         boolean changed = service.updateTodoStatuses("p-1", updates);
 
         assertThat(changed).isTrue();
-        org.mockito.ArgumentCaptor<Update> captor =
-                org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
+        org.mockito.ArgumentCaptor<Update> captor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(), eq(ThinkProcessDocument.class));
         // The update payload contains the rebuilt list (3 items, two
         // statuses applied, item 2 untouched). We don't reflect-into
         // the embedded array — verifying the $set + $inc structure is
@@ -350,8 +366,11 @@ class ThinkProcessServiceTest {
     @Test
     void updateTodoStatuses_returnsFalse_whenNoChange() {
         ThinkProcessDocument doc = process("p-1");
-        doc.setTodos(new ArrayList<>(List.of(
-                TodoItem.builder().id("1").status(TodoStatus.COMPLETED).content("a").build())));
+        doc.setTodos(new ArrayList<>(List.of(TodoItem.builder()
+                .id("1")
+                .status(TodoStatus.COMPLETED)
+                .content("a")
+                .build())));
         when(repository.findById("p-1")).thenReturn(Optional.of(doc));
 
         // Update demands COMPLETED, item is already COMPLETED → no-op
@@ -361,8 +380,7 @@ class ThinkProcessServiceTest {
         boolean changed = service.updateTodoStatuses("p-1", updates);
 
         assertThat(changed).isFalse();
-        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class));
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class));
     }
 
     @Test
@@ -376,18 +394,20 @@ class ThinkProcessServiceTest {
 
     @Test
     void updateTodoStatuses_returnsFalse_whenUpdatesAreEmpty() {
-        assertThat(service.updateTodoStatuses(
-                "p-1", new java.util.LinkedHashMap<>())).isFalse();
+        assertThat(service.updateTodoStatuses("p-1", new java.util.LinkedHashMap<>()))
+                .isFalse();
         // Critically: no Mongo call at all when the input is empty.
-        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class));
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class));
     }
 
     @Test
     void updateTodoStatuses_silentlyIgnoresUnknownTodoIds() {
         ThinkProcessDocument doc = process("p-1");
-        doc.setTodos(new ArrayList<>(List.of(
-                TodoItem.builder().id("1").status(TodoStatus.PENDING).content("a").build())));
+        doc.setTodos(new ArrayList<>(List.of(TodoItem.builder()
+                .id("1")
+                .status(TodoStatus.PENDING)
+                .content("a")
+                .build())));
         when(repository.findById("p-1")).thenReturn(Optional.of(doc));
 
         var updates = new java.util.LinkedHashMap<String, TodoStatus>();
@@ -396,8 +416,7 @@ class ThinkProcessServiceTest {
         boolean changed = service.updateTodoStatuses("p-1", updates);
 
         assertThat(changed).isFalse();
-        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class));
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class));
     }
 
     // ─── workerLinks (Eddie's per-worker mirror) ─────────────────────────
@@ -406,8 +425,8 @@ class ThinkProcessServiceTest {
     void upsertWorkerLink_pullsByIdThenPushesNewSnapshot() {
         UpdateResult ok = mock(UpdateResult.class);
         when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(ok);
 
         de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot snap =
                 de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
@@ -422,16 +441,13 @@ class ThinkProcessServiceTest {
 
         var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
         verify(mongoTemplate, org.mockito.Mockito.times(2))
-                .updateFirst(any(Query.class), captor.capture(),
-                        eq(ThinkProcessDocument.class));
+                .updateFirst(any(Query.class), captor.capture(), eq(ThinkProcessDocument.class));
         java.util.List<Update> updates = captor.getAllValues();
         // First call pulls the existing entry (if any), second pushes the
         // fresh snapshot. Combining pull+push into one update document is
         // rejected by Mongo 5+ with ConflictingUpdateOperators.
-        assertThat(updates.get(0).getUpdateObject()).containsKey("$pull")
-                .doesNotContainKey("$push");
-        assertThat(updates.get(1).getUpdateObject()).containsKey("$push")
-                .doesNotContainKey("$pull");
+        assertThat(updates.get(0).getUpdateObject()).containsKey("$pull").doesNotContainKey("$push");
+        assertThat(updates.get(1).getUpdateObject()).containsKey("$push").doesNotContainKey("$pull");
     }
 
     @Test
@@ -441,25 +457,22 @@ class ThinkProcessServiceTest {
                         .workerProcessId("")
                         .build();
 
-        assertThatThrownBy(() -> service.upsertWorkerLink("eddie-1", bad))
-                .isInstanceOf(IllegalArgumentException.class);
-        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class));
+        assertThatThrownBy(() -> service.upsertWorkerLink("eddie-1", bad)).isInstanceOf(IllegalArgumentException.class);
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class));
     }
 
     @Test
     void removeWorkerLink_pullsTheMatchingEntry() {
         UpdateResult ok = mock(UpdateResult.class);
         when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(ok);
 
         boolean removed = service.removeWorkerLink("eddie-1", "w-2");
 
         assertThat(removed).isTrue();
         var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(), eq(ThinkProcessDocument.class));
         assertThat(captor.getValue().getUpdateObject()).containsKey("$pull");
     }
 
@@ -476,25 +489,28 @@ class ThinkProcessServiceTest {
         ThinkProcessDocument doc = process("eddie-1");
         doc.setWorkerLinks(new ArrayList<>(List.of(
                 de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
-                        .workerProcessId("w-1").build(),
+                        .workerProcessId("w-1")
+                        .build(),
                 de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
-                        .workerProcessId("w-2").build())));
+                        .workerProcessId("w-2")
+                        .build())));
         when(mongoTemplate.findOne(any(Query.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(doc);
 
         var links = service.findWorkerLinks("eddie-1");
 
-        assertThat(links).extracting(
-                        de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot::getWorkerProcessId)
+        assertThat(links)
+                .extracting(de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot::getWorkerProcessId)
                 .containsExactly("w-1", "w-2");
     }
 
     @Test
     void findWorkerLink_byId_returnsMatchOrEmpty() {
         ThinkProcessDocument doc = process("eddie-1");
-        doc.setWorkerLinks(new ArrayList<>(List.of(
-                de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
-                        .workerProcessId("w-1").workerProcessName("arthur").build())));
+        doc.setWorkerLinks(new ArrayList<>(List.of(de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot.builder()
+                .workerProcessId("w-1")
+                .workerProcessName("arthur")
+                .build())));
         when(mongoTemplate.findOne(any(Query.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(doc);
 
@@ -508,97 +524,160 @@ class ThinkProcessServiceTest {
     // ─── workingProjectId (Eddie's spot pointer) ─────────────────────────
 
     @Test
-    void setWorkingProjectId_setsTheField_whenNonBlank() {
-        UpdateResult ok = mock(UpdateResult.class);
-        when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
+    void setWorkingProjectId_setsTheField_andPublishesEvent() {
+        when(mongoTemplate.findAndModify(
+                        any(Query.class),
+                        any(Update.class),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class)))
+                .thenReturn(process("eddie-1"));
 
         boolean changed = service.setWorkingProjectId("eddie-1", "projA");
 
         assertThat(changed).isTrue();
         var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
+        verify(mongoTemplate)
+                .findAndModify(
+                        any(Query.class),
+                        captor.capture(),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class));
         org.bson.Document raw = captor.getValue().getUpdateObject();
         assertThat(raw).containsKey("$set");
         assertThat(raw.toString()).contains("workingProjectId").contains("projA");
+        var events = org.mockito.ArgumentCaptor.forClass(WorkingProjectChangedEvent.class);
+        verify(eventPublisher).publishEvent(events.capture());
+        assertThat(events.getValue().workingProjectId()).isEqualTo("projA");
+        assertThat(events.getValue().tenantId()).isEqualTo("acme");
+        assertThat(events.getValue().sessionId()).isEqualTo("sess-1");
     }
 
     @Test
     void setWorkingProjectId_trimsWhitespace_beforePersisting() {
-        UpdateResult ok = mock(UpdateResult.class);
-        when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
+        when(mongoTemplate.findAndModify(
+                        any(Query.class),
+                        any(Update.class),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class)))
+                .thenReturn(process("eddie-1"));
 
         service.setWorkingProjectId("eddie-1", "  projA  ");
 
         var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
+        verify(mongoTemplate)
+                .findAndModify(
+                        any(Query.class),
+                        captor.capture(),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class));
         // The trimmed canonical form lands in Mongo — no leading/trailing
         // whitespace ever becomes part of the project identifier.
         assertThat(captor.getValue().getUpdateObject().toString())
-                .contains("projA").doesNotContain("  projA");
+                .contains("projA")
+                .doesNotContain("  projA");
     }
 
     @Test
     void setWorkingProjectId_blank_unsetsTheField() {
-        UpdateResult ok = mock(UpdateResult.class);
-        when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
+        ThinkProcessDocument prior = process("eddie-1");
+        prior.setWorkingProjectId("projA");
+        when(mongoTemplate.findAndModify(
+                        any(Query.class),
+                        any(Update.class),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class)))
+                .thenReturn(prior);
 
         boolean changed = service.setWorkingProjectId("eddie-1", "");
 
         assertThat(changed).isTrue();
         var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
+        verify(mongoTemplate)
+                .findAndModify(
+                        any(Query.class),
+                        captor.capture(),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class));
         // Blank input is normalised to null → $unset, keeping the
         // field's "absent" state canonical (no stored empty string).
         assertThat(captor.getValue().getUpdateObject()).containsKey("$unset");
+        var events = org.mockito.ArgumentCaptor.forClass(WorkingProjectChangedEvent.class);
+        verify(eventPublisher).publishEvent(events.capture());
+        assertThat(events.getValue().workingProjectId()).isNull();
     }
 
     @Test
     void setWorkingProjectId_null_unsetsTheField() {
-        UpdateResult ok = mock(UpdateResult.class);
-        when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
+        ThinkProcessDocument prior = process("eddie-1");
+        prior.setWorkingProjectId("projA");
+        when(mongoTemplate.findAndModify(
+                        any(Query.class),
+                        any(Update.class),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class)))
+                .thenReturn(prior);
 
         service.setWorkingProjectId("eddie-1", null);
 
         var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
+        verify(mongoTemplate)
+                .findAndModify(
+                        any(Query.class),
+                        captor.capture(),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class));
         assertThat(captor.getValue().getUpdateObject()).containsKey("$unset");
     }
 
     @Test
+    void setWorkingProjectId_sameValue_isSuccessfulNoOpWithoutEvent() {
+        ThinkProcessDocument prior = process("eddie-1");
+        prior.setWorkingProjectId("projA");
+        when(mongoTemplate.findAndModify(
+                        any(Query.class),
+                        any(Update.class),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class)))
+                .thenReturn(prior);
+
+        // Re-setting the identical spot is a success — callers (the
+        // WS project-switch handler) must not treat it as a failure.
+        assertThat(service.setWorkingProjectId("eddie-1", "projA")).isTrue();
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
     void clearWorkingProjectId_delegatesToSetWithNull() {
-        UpdateResult ok = mock(UpdateResult.class);
-        when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
+        when(mongoTemplate.findAndModify(
+                        any(Query.class),
+                        any(Update.class),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class)))
+                .thenReturn(process("eddie-1"));
 
         service.clearWorkingProjectId("eddie-1");
 
         var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
+        verify(mongoTemplate)
+                .findAndModify(
+                        any(Query.class),
+                        captor.capture(),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class));
         assertThat(captor.getValue().getUpdateObject()).containsKey("$unset");
     }
 
     @Test
     void setWorkingProjectId_returnsFalse_whenProcessUnknown() {
-        UpdateResult miss = mock(UpdateResult.class);
-        when(miss.getModifiedCount()).thenReturn(0L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(miss);
+        when(mongoTemplate.findAndModify(
+                        any(Query.class),
+                        any(Update.class),
+                        any(FindAndModifyOptions.class),
+                        eq(ThinkProcessDocument.class)))
+                .thenReturn(null);
 
         assertThat(service.setWorkingProjectId("ghost", "projA")).isFalse();
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     // ─── findDescendantIds (cross-process history scope resolution) ─────
@@ -619,8 +698,7 @@ class ThinkProcessServiceTest {
     @Test
     void findDescendantIds_leafProcess_returnsOnlySelf() {
         when(repository.findById("p-leaf")).thenReturn(Optional.of(process("p-leaf")));
-        when(repository.findByTenantIdAndParentProcessId("acme", "p-leaf"))
-                .thenReturn(List.of());
+        when(repository.findByTenantIdAndParentProcessId("acme", "p-leaf")).thenReturn(List.of());
 
         assertThat(service.findDescendantIds("p-leaf")).containsExactly("p-leaf");
     }
@@ -633,38 +711,29 @@ class ThinkProcessServiceTest {
                 .thenReturn(List.of(process("a"), process("b")));
         when(repository.findByTenantIdAndParentProcessId("acme", "a"))
                 .thenReturn(List.of(process("a1"), process("a2")));
-        when(repository.findByTenantIdAndParentProcessId("acme", "b"))
-                .thenReturn(List.of(process("b1")));
-        when(repository.findByTenantIdAndParentProcessId("acme", "a1"))
-                .thenReturn(List.of());
-        when(repository.findByTenantIdAndParentProcessId("acme", "a2"))
-                .thenReturn(List.of());
-        when(repository.findByTenantIdAndParentProcessId("acme", "b1"))
-                .thenReturn(List.of());
+        when(repository.findByTenantIdAndParentProcessId("acme", "b")).thenReturn(List.of(process("b1")));
+        when(repository.findByTenantIdAndParentProcessId("acme", "a1")).thenReturn(List.of());
+        when(repository.findByTenantIdAndParentProcessId("acme", "a2")).thenReturn(List.of());
+        when(repository.findByTenantIdAndParentProcessId("acme", "b1")).thenReturn(List.of());
 
-        assertThat(service.findDescendantIds("root"))
-                .containsExactlyInAnyOrder("root", "a", "b", "a1", "a2", "b1");
+        assertThat(service.findDescendantIds("root")).containsExactlyInAnyOrder("root", "a", "b", "a1", "a2", "b1");
     }
 
     @Test
     void findDescendantIds_brokenCycle_isBoundedAndReturnsVisitedSet() {
         // Pathological data: a → b, b → a. The BFS must not loop forever.
         when(repository.findById("a")).thenReturn(Optional.of(process("a")));
-        when(repository.findByTenantIdAndParentProcessId("acme", "a"))
-                .thenReturn(List.of(process("b")));
-        when(repository.findByTenantIdAndParentProcessId("acme", "b"))
-                .thenReturn(List.of(process("a")));
+        when(repository.findByTenantIdAndParentProcessId("acme", "a")).thenReturn(List.of(process("b")));
+        when(repository.findByTenantIdAndParentProcessId("acme", "b")).thenReturn(List.of(process("a")));
 
-        assertThat(service.findDescendantIds("a"))
-                .containsExactlyInAnyOrder("a", "b");
+        assertThat(service.findDescendantIds("a")).containsExactlyInAnyOrder("a", "b");
     }
 
     // ─── retargetProject (session move) ─────────────────────────────────
 
     @Test
     void retargetProject_setsProjectIdOnAllSessionProcesses_leavingWorkingProjectIdUntouched() {
-        when(mongoTemplate.updateMulti(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class)))
+        when(mongoTemplate.updateMulti(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
                 .thenReturn(UpdateResult.acknowledged(2, 2L, null));
 
         int n = service.retargetProject("acme", "sess-1", "projB");
@@ -672,8 +741,8 @@ class ThinkProcessServiceTest {
         assertThat(n).isEqualTo(2);
         var updateCaptor = org.mockito.ArgumentCaptor.forClass(Update.class);
         var queryCaptor = org.mockito.ArgumentCaptor.forClass(Query.class);
-        verify(mongoTemplate).updateMulti(queryCaptor.capture(), updateCaptor.capture(),
-                eq(ThinkProcessDocument.class));
+        verify(mongoTemplate)
+                .updateMulti(queryCaptor.capture(), updateCaptor.capture(), eq(ThinkProcessDocument.class));
         String updateJson = updateCaptor.getValue().getUpdateObject().toJson();
         assertThat(updateJson).contains("projectId").contains("projB");
         assertThat(updateJson).doesNotContain("workingProjectId");

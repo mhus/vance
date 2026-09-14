@@ -475,6 +475,10 @@ export default {
     blockedHint: '{n} Prozess(e) warten auf dich',
   },
 
+  workingProject: {
+    tooltip: 'Fokus-Projekt des Hubs — Aktionen ohne explizites Projekt landen in „{name}“',
+  },
+
   header: {
     connection: {
       connected: 'Verbunden — live',

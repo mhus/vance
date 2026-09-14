@@ -46,6 +46,7 @@ public final class MessageType {
      * the foot CLI's participant lookup.
      */
     public static final String SESSION_WHO = "session-who";
+
     public static final String PROJECT_LIST = "project-list";
     public static final String PROJECTGROUP_LIST = "projectgroup-list";
 
@@ -59,6 +60,19 @@ public final class MessageType {
      * effective spot.
      */
     public static final String PROJECT_SWITCH = "project-switch";
+
+    /**
+     * Server-initiated notification: the working-project spot
+     * ({@code ThinkProcessDocument.workingProjectId}) of the bound
+     * session's chat process moved — via the LLM {@code project_switch}
+     * brain-tool, the WS {@link #PROJECT_SWITCH} request, or Eddie's
+     * DELEGATE side-effect after {@code project_create}. Payload:
+     * {@link WorkingProjectNotification} with the new spot ({@code null}
+     * = cleared). Pushed to every connection of the session, plus once
+     * at welcome / resume / bootstrap so clients can show where the
+     * hub's focus is without polling.
+     */
+    public static final String WORKING_PROJECT_CHANGED = "working-project-changed";
 
     public static final String PROCESS_CREATE = "process-create";
     public static final String PROCESS_STEER = "process-steer";
@@ -399,6 +413,7 @@ public final class MessageType {
      * {@code planning/script-cortex.md} §"WS-Messages".
      */
     public static final String SCRIPT_EXECUTION_STARTED = "script-execution-started";
+
     public static final String SCRIPT_EXECUTION_LOG = "script-execution-log";
     public static final String SCRIPT_EXECUTION_FINISHED = "script-execution-finished";
     public static final String SCRIPT_EXECUTION_FAILED = "script-execution-failed";
@@ -692,6 +707,5 @@ public final class MessageType {
      */
     public static final String CLIENT_INTERRUPT = "client-interrupt";
 
-    private MessageType() {
-    }
+    private MessageType() {}
 }

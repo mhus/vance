@@ -15,7 +15,7 @@
  * All native inputs stop event propagation so clicks never leak into
  * ProseMirror's selection / drag-handle machinery.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useT } from '../useT';
 import { NodeViewWrapper } from '@tiptap/vue-3';
 import type { Editor } from '@tiptap/core';
@@ -110,6 +110,23 @@ function toggleMulti(idx: number) {
 }
 function setText(v: string) {
   props.updateAttributes({ value: v });
+}
+
+// Auto-grow the free-text answer textarea: the whole answer stays
+// visible, no inner scrollbar (same pattern as the vance-input block).
+const answerTaRef = ref<HTMLTextAreaElement | null>(null);
+function autoGrow() {
+  const el = answerTaRef.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+watch([value, fieldType, editable], () => {
+  void nextTick(autoGrow);
+});
+function onAnswerInput(e: Event) {
+  setText((e.target as HTMLTextAreaElement).value);
+  autoGrow();
 }
 
 // ── design mode: config helpers ───────────────────────────────────
@@ -323,11 +340,12 @@ const verdictClass = computed(() => {
       <!-- text / textarea -->
       <textarea
         v-else-if="fieldType === 'textarea'"
-        class="vance-field__inp"
+        ref="answerTaRef"
+        class="vance-field__inp vance-field__answer"
         rows="2"
         :placeholder="t('blockEditor.field.answerPlaceholder')"
         :value="asText(value)"
-        @input="setText(($event.target as HTMLTextAreaElement).value)"
+        @input="onAnswerInput"
         @mousedown.stop
         @keydown.stop
       />
@@ -397,6 +415,12 @@ const verdictClass = computed(() => {
   flex-direction: column;
   gap: 0.25rem;
 }
+.vance-field__answer {
+  resize: none;
+  overflow: hidden;
+  min-height: 2.6em;
+}
+
 .vance-field__option {
   display: flex;
   align-items: center;

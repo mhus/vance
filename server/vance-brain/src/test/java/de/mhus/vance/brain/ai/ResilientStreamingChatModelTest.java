@@ -259,8 +259,32 @@ class ResilientStreamingChatModelTest {
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
         // First entry advances (no retry budget on ADVANCE_ONLY), second
-        // gives up — one fire, from the final entry.
-        assertThat(sink.fires).containsExactly("b x1");
+        // gives up — one fire, with the total across the chain.
+        assertThat(sink.fires).containsExactly("b x2");
+    }
+
+    @Test
+    void genuineEmptyBeforeCapWall_stillFiresWithGenuineLabel() throws Exception {
+        // Entry a returns a genuine blank, entry b ends the call on an
+        // output-cap wall: the delivered response is the cap wall, but the
+        // genuine blank from a is still countable evidence.
+        AtomicInteger callsA = new AtomicInteger();
+        AtomicInteger callsB = new AtomicInteger();
+        RecordingSink sink = new RecordingSink();
+        ResilientStreamingChatModel model = new ResilientStreamingChatModel(
+                List.of(
+                        new ChainEntry(scripted(callsA, response("")), "a", ADVANCE),
+                        new ChainEntry(scripted(callsB, truncatedEmpty()), "b", ADVANCE)),
+                null,
+                null,
+                sink);
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> delivered = new AtomicReference<>();
+        model.chat(REQUEST, completeOnly(delivered, done));
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(sink.fires).containsExactly("a x1");
     }
 
     private static StreamingChatResponseHandler completeOnly(AtomicReference<String> delivered, CountDownLatch done) {

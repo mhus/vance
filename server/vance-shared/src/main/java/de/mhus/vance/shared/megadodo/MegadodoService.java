@@ -536,6 +536,12 @@ public class MegadodoService {
             List<String> candidateTools,
             String origin,
             int attempts) {
+        // Defensive: callers arrive here only with a non-empty diff, but
+        // this is a public feed API — fail fast beats an IndexOutOfBounds
+        // inside the recording path.
+        if (candidateTools.isEmpty()) {
+            throw new IllegalArgumentException("candidateTools must not be empty — use emptyModelResponse()");
+        }
         String first = candidateTools.get(0);
         String more = candidateTools.size() > 1
                 ? " (also named: " + String.join(", ", candidateTools.subList(1, candidateTools.size())) + ")"

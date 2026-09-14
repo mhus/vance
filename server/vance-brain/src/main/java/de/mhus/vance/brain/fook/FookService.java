@@ -118,6 +118,14 @@ public class FookService {
     private final AtomicInteger inFlight = new AtomicInteger();
 
     // ─── public API ─────────────────────────────────────────────────
+    /**
+     * Master-switch state — reporting surfaces call this to
+     * short-circuit before {@link #submit}, which guards as
+     * defense-in-depth and throws when disabled.
+     */
+    public boolean isEnabled() {
+        return enabled;
+    }
 
     /**
      * Enqueue a submission for asynchronous triage. Returns the

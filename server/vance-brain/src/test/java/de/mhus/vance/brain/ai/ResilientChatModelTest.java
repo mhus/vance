@@ -318,6 +318,29 @@ class ResilientChatModelTest {
     }
 
     @Test
+    void genuineEmptyBeforeCapWall_stillFiresWithGenuineLabel() {
+        // Entry a exhausts its empty budget with genuine blanks, entry
+        // b ends the call on an output-cap wall: the delivered response
+        // is the cap wall, but the genuine blanks from a are still
+        // countable evidence — the fire names a, not the cap entry b.
+        RecordingSink sink = new RecordingSink();
+        ResilientChatModel model = new ResilientChatModel(
+                List.of(
+                        entry("openai:a", scripted(new AtomicInteger(), empty(), empty(), empty())),
+                        entry("ollama:b", scripted(new AtomicInteger(), truncatedEmpty()))),
+                null,
+                null,
+                null,
+                null,
+                sink);
+
+        ChatResponse delivered = model.chat(REQUEST);
+
+        assertThat(delivered.aiMessage().text()).isEmpty();
+        assertThat(sink.fires).containsExactly("openai:a x3");
+    }
+
+    @Test
     void emptyAtOutputCap_doesNotFireSink() {
         RecordingSink sink = new RecordingSink();
         ResilientChatModel model = new ResilientChatModel(

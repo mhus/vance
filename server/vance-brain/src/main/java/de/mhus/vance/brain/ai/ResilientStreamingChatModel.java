@@ -163,7 +163,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
 
     @Override
     public void chat(ChatRequest request, StreamingChatResponseHandler caller) {
-        attempt(0, 1, request, caller, null);
+        attempt(0, 1, request, caller, null, new EmptyEvidence());
     }
 
     /**
@@ -177,13 +177,17 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
      * @param caller         the upstream handler we're decorating
      * @param previousError  the error from the previously exhausted entry
      *                       (used as final cause if everything fails)
+     * @param evidence      per-call accumulator of non-cap empty attempts,
+     *                       threaded through retry / advance so the terminal
+     *                       fire can count the whole chain
      */
     private void attempt(
             int chainIdx,
             int attempt,
             ChatRequest request,
             StreamingChatResponseHandler caller,
-            Throwable previousError) {
+            Throwable previousError,
+            EmptyEvidence evidence) {
         if (chainIdx >= chain.size()) {
             Throwable cause = previousError != null ? previousError : new RuntimeException("no chain entries");
             caller.onError(new AiChatException("All " + chain.size() + " chat-model chain entries exhausted", cause));
@@ -235,7 +239,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                 // Only retriable while nothing has been emitted — a
                 // re-issue after partials would duplicate output.
                 if (!emitted.get() && isEmpty(complete)) {
-                    handleEmptyComplete(chainIdx, attempt, request, caller, entry, complete);
+                    handleEmptyComplete(chainIdx, attempt, request, caller, entry, complete, evidence);
                     return;
                 }
                 super.onCompleteResponse(complete);
@@ -243,7 +247,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
 
             @Override
             public void onError(Throwable error) {
-                handleError(chainIdx, attempt, request, caller, entry, emitted.get(), error);
+                handleError(chainIdx, attempt, request, caller, entry, emitted.get(), error, evidence);
             }
         };
 
@@ -253,7 +257,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             // Some providers throw synchronously on bad request rather
             // than calling onError — funnel both paths through the same
             // handler so retry / chain-advance still applies.
-            handleError(chainIdx, attempt, request, caller, entry, emitted.get(), synchronousFail);
+            handleError(chainIdx, attempt, request, caller, entry, emitted.get(), synchronousFail, evidence);
         }
     }
 
@@ -264,7 +268,8 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             StreamingChatResponseHandler caller,
             ChainEntry entry,
             boolean emitted,
-            Throwable error) {
+            Throwable error,
+            EmptyEvidence evidence) {
         if (emitted) {
             // Caller already saw partials; cannot replay safely.
             log.warn(
@@ -318,7 +323,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             // error so the final exception preserves the cause.
             log.warn("ResilientChatModel '{}': non-retriable error → advance: {}", entry.label(), errorSummary(error));
             notifyChainAdvance(entry, chainIdx, error);
-            attempt(chainIdx + 1, 1, request, caller, error);
+            attempt(chainIdx + 1, 1, request, caller, error, evidence);
             return;
         }
         if (attempt < entry.policy().maxAttempts()) {
@@ -332,7 +337,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                     errorSummary(error));
             notifyRetry(entry, attempt, backoffMs, error);
             CompletableFuture.runAsync(
-                    () -> attempt(chainIdx, attempt + 1, request, caller, error), delayed(backoffMs));
+                    () -> attempt(chainIdx, attempt + 1, request, caller, error, evidence), delayed(backoffMs));
             return;
         }
         // Budget for this entry exhausted — advance to next chain entry
@@ -342,7 +347,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                 entry.label(),
                 entry.policy().maxAttempts());
         notifyChainAdvance(entry, chainIdx, error);
-        attempt(chainIdx + 1, 1, request, caller, error);
+        attempt(chainIdx + 1, 1, request, caller, error, evidence);
     }
 
     /**
@@ -358,12 +363,21 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             ChatRequest request,
             StreamingChatResponseHandler caller,
             ChainEntry entry,
-            ChatResponse complete) {
+            ChatResponse complete,
+            EmptyEvidence evidence) {
         // finish=LENGTH is a deterministic wall, not a glitch: the model
         // spent its whole output-token budget before emitting anything
         // visible. Re-issuing the same request reproduces it exactly, so
         // skip straight to chain-advance / delivery.
         boolean atOutputCap = isAtOutputCap(complete);
+        if (!atOutputCap) {
+            // Only non-cap empties are evidence — LENGTH walls are
+            // deterministic and stay out of the count, but genuine blanks
+            // keep the call countable even when a later entry ends it
+            // on the cap.
+            evidence.attempts++;
+            evidence.lastLabel = entry.label();
+        }
         AiChatException cause = emptyResponse(atOutputCap);
         int maxAttempts = Math.min(entry.policy().maxAttempts(), EMPTY_MAX_ATTEMPTS);
         if (!atOutputCap && attempt < maxAttempts) {
@@ -376,7 +390,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                     backoffMs);
             notifyRetry(entry, attempt, backoffMs, cause);
             CompletableFuture.runAsync(
-                    () -> attempt(chainIdx, attempt + 1, request, caller, cause), delayed(backoffMs));
+                    () -> attempt(chainIdx, attempt + 1, request, caller, cause, evidence), delayed(backoffMs));
             return;
         }
         String why = atOutputCap
@@ -386,7 +400,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         if (chainIdx + 1 < chain.size()) {
             log.warn("ResilientChatModel '{}': {} → advance", entry.label(), why);
             notifyChainAdvance(entry, chainIdx, cause);
-            attempt(chainIdx + 1, 1, request, caller, cause);
+            attempt(chainIdx + 1, 1, request, caller, cause, evidence);
             return;
         }
         // No provider produced a non-empty reply. Deliver the empty
@@ -395,17 +409,29 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         // travels with it, so the engine can tell "hit the cap" from
         // "provider returned blanks" when it words its user-facing message.
         log.warn("ResilientChatModel '{}': {} — delivering empty", entry.label(), why);
-        // Empty-at-cap is a deterministic wall (see the class note) — it is
-        // excluded here because it is not evidence of a phantom tool call,
-        // only a mis-sized budget. Everything else exhausted is worth a
-        // post-mortem: the sink decides from the request whether this looks
-        // like a hallucinated tool name and escalates accordingly. The
-        // once-guard at the composition point keeps chained setups firing
-        // exactly once per logical call.
-        if (!atOutputCap) {
-            EmptyResponseDiagnosticSink.fire(emptyResponseSink, request, entry.label(), attempt);
+        // Output-cap walls are deterministic (see the class note) and stay
+        // out of the count — genuine empties observed anywhere in the chain
+        // fire here, even when the delivered response itself is a cap wall,
+        // so the case stays countable. The sink decides from the request
+        // whether this looks like a hallucinated tool name; the once-guard
+        // at the composition point keeps chained setups firing exactly once
+        // per logical call.
+        if (evidence.attempts > 0) {
+            EmptyResponseDiagnosticSink.fire(emptyResponseSink, request, evidence.lastLabel, evidence.attempts);
         }
         caller.onCompleteResponse(complete);
+    }
+
+    /**
+     * Per-call accumulator for empty-response evidence, threaded through
+     * the retry/advance recursion — one logical {@code chat()} call owns
+     * exactly one instance. Counts non-cap empty attempts only; the label
+     * remembers the entry that produced the last evidence-bearing empty,
+     * which can differ from the entry whose cap wall ended the call.
+     */
+    private static final class EmptyEvidence {
+        int attempts;
+        String lastLabel;
     }
 
     /** True when a completed response carries neither text nor a tool call. */

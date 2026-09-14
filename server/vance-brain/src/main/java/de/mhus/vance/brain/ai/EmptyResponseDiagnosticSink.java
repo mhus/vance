@@ -22,7 +22,15 @@ import org.jspecify.annotations.Nullable;
  * and both layers share one guarded sink built by
  * {@link #once(EmptyResponseDiagnosticSink)}. Empty completions at the
  * output-token cap ({@code finish=LENGTH}) are deterministic walls, not
- * evidence, and never reach the sink.
+ * evidence, and are excluded from the attempt count; genuine empties
+ * observed earlier in the chain still fire when the call ends on a
+ * cap wall, so they stay countable.
+ *
+ * <p>Only chats spawned through {@code EngineChatFactory} get the
+ * default sink — callers that build {@code AiChatOptions} themselves
+ * (light LLM calls, memory compaction, FIM) carry {@code null} and
+ * report nothing. That is the intended scope: engine turns are where
+ * the empty-budget chain exists.
  */
 public interface EmptyResponseDiagnosticSink {
 
@@ -32,8 +40,12 @@ public interface EmptyResponseDiagnosticSink {
      * @param request    the request as last issued — messages and
      *                   {@code tools} array for the candidate diff
      * @param modelLabel label of the chain entry that produced the
-     *                   final empty response
-     * @param attempts   total empty attempts across the chain
+     *                   last evidence-bearing (non-cap) empty
+     *                   response — may differ from the entry whose
+     *                   cap wall ended the call
+     * @param attempts   empty attempts across the chain, excluding
+     *                   output-cap walls (they are deterministic and
+     *                   not evidence)
      */
     void onEmptyResponseExhausted(ChatRequest request, String modelLabel, int attempts);
 

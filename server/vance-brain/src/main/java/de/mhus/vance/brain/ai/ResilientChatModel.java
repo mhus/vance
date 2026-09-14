@@ -214,7 +214,8 @@ public class ResilientChatModel implements ChatModel {
         Throwable lastError = null;
         ChatResponse lastEmpty = null;
         SyncChainEntry lastEmptyFrom = null;
-        int totalEmptyAttempts = 0;
+        int genuineEmptyAttempts = 0;
+        SyncChainEntry lastGenuineEmptyFrom = null;
         for (int chainIdx = 0; chainIdx < chain.size(); chainIdx++) {
             SyncChainEntry entry = chain.get(chainIdx);
             int emptyBudget = Math.min(entry.policy().maxAttempts(), EMPTY_MAX_ATTEMPTS);
@@ -269,7 +270,14 @@ public class ResilientChatModel implements ChatModel {
                 AiChatException cause = emptyResponse(atOutputCap);
                 lastError = cause;
                 emptyAttempts++;
-                totalEmptyAttempts++;
+                if (!atOutputCap) {
+                    // Only non-cap empties are evidence: a LENGTH wall is
+                    // deterministic and stays out of the count, but genuine
+                    // blanks keep the call countable even when a later
+                    // entry ends it on the cap.
+                    genuineEmptyAttempts++;
+                    lastGenuineEmptyFrom = entry;
+                }
                 if (atOutputCap || emptyAttempts >= emptyBudget) {
                     log.warn(
                             "ResilientChatModel '{}': {} → {}",
@@ -312,17 +320,18 @@ public class ResilientChatModel implements ChatModel {
                 reportAnsweredBy(lastEmptyFrom);
             }
             // Post-mortem evidence for the empty-response analysis — same
-            // contract as the streaming twin: the output-cap case is a
-            // deterministic wall and excluded, everything else may carry a
-            // hallucinated tool name that never reached us as data. The
+            // contract as the streaming twin: output-cap walls are
+            // deterministic and stay out of the count, but genuine empties
+            // from anywhere in the chain fire, so the case stays countable
+            // even when the delivered response itself is a cap wall. The
             // once-guard at the composition point keeps chained setups
             // firing exactly once per logical call.
-            if (!isAtOutputCap(lastEmpty)) {
+            if (genuineEmptyAttempts > 0) {
                 EmptyResponseDiagnosticSink.fire(
                         emptyResponseSink,
                         request,
-                        lastEmptyFrom != null ? lastEmptyFrom.label() : "unknown",
-                        totalEmptyAttempts);
+                        lastGenuineEmptyFrom != null ? lastGenuineEmptyFrom.label() : "unknown",
+                        genuineEmptyAttempts);
             }
             return lastEmpty;
         }

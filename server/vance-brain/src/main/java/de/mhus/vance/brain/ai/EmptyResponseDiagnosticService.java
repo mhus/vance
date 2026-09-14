@@ -184,9 +184,11 @@ public class EmptyResponseDiagnosticService {
 
     /**
      * Analyzes one exhausted chain of empty completions and reports it:
-     * Megadodo always, Fook only for the phantom case and only when the
-     * dedup gate allows it. Never throws — a diagnostic that breaks the
-     * call it is reporting on would be worse than no diagnostic.
+     * Megadodo always, Fook only for the phantom case, only when Fook is
+     * enabled (submit throws when disabled — reporting surfaces
+     * short-circuit) and only when the dedup gate allows it. Never throws
+     * — a diagnostic that breaks the call it is reporting on would be
+     * worse than no diagnostic.
      */
     public void onEmptyResponseExhausted(DiagnosticCall call, ChatRequest request, String modelLabel, int attempts) {
         try {
@@ -200,7 +202,12 @@ public class EmptyResponseDiagnosticService {
                         diagnosis.candidates(),
                         diagnosis.origin(),
                         attempts);
-                if (gateAllows(call.tenantId(), modelLabel, diagnosis.candidates())) {
+                // Short-circuit before submit: FookService.submit guards
+                // disabled state with an exception (defense-in-depth), and
+                // burning the dedup marker for a ticket that cannot be
+                // filed would silence the report for the whole re-arm
+                // window. The Megadodo row above already fired either way.
+                if (fookService.isEnabled() && gateAllows(call.tenantId(), modelLabel, diagnosis.candidates())) {
                     fookService.submit(SubmissionRequest.builder()
                             .text(evidence(call, request, modelLabel, attempts, diagnosis))
                             .reporter(TicketReporter.builder()
@@ -333,7 +340,21 @@ public class EmptyResponseDiagnosticService {
         if (names == null) {
             Set<String> computed = new TreeSet<>();
             for (var tool : builtInToolSource.getObject().list()) {
-                computed.add(tool.name());
+                // The token diff collects lowercase [a-z0-9_] tokens, so
+                // the names it matches against are normalized the same
+                // way. A name that still carries characters outside the
+                // token class after lowercasing (dot, hyphen, …) can never
+                // appear as a token — warn once instead of leaving the
+                // name silently undetectable.
+                String normalized = tool.name().toLowerCase(Locale.ROOT);
+                if (!TOKEN.matcher(normalized).matches()) {
+                    log.warn(
+                            "Built-in tool name '{}' cannot be detected by the empty-response token diff "
+                                    + "(characters outside [a-z0-9_] after lowercasing) — phantom tool calls "
+                                    + "naming it will be reported as a genuine blank reply",
+                            tool.name());
+                }
+                computed.add(normalized);
             }
             names = computed;
             builtInNames = names;
@@ -345,8 +366,10 @@ public class EmptyResponseDiagnosticService {
 
     /**
      * True when this signature has not been reported within the re-arm
-     * window — and marks it as reported either way, so a burst of
-     * identical occurrences files at most one ticket per window.
+     * window — and marks it as reported either way, so sequential
+     * occurrences file at most one ticket per window. Concurrent
+     * occurrences can race past the check once per window — see the
+     * mark-before-submit note inside.
      */
     boolean gateAllows(String tenantId, String modelLabel, List<String> candidates) {
         String markerKey = SETTING_REPORTED_PREFIX + signature(modelLabel, candidates);
@@ -356,12 +379,14 @@ public class EmptyResponseDiagnosticService {
         if (reported != null && withinReArmWindow(tenantId, reported, now)) {
             return false;
         }
-        // Mark before submitting: a burst of identical occurrences races
-        // through this check concurrently, and the loser of that race
-        // would double-file. Mark-first makes the window hold even when
-        // the submission below fails — a lost ticket is re-filed on the
-        // next occurrence after the window, a duplicated one is not
-        // retractable.
+        // Mark before submitting: the window then holds even when the
+        // submission below fails — a lost ticket is re-filed on the next
+        // occurrence after the window, a duplicated one is not retractable.
+        // The check-then-act is NOT atomic: two threads (or two pods,
+        // the marker lives in the shared settings collection) can both
+        // read an absent marker and both file. Best effort, accepted —
+        // the window bounds the common sequential burst, and the worst
+        // case of the race is one extra ticket per window, not a flood.
         settingService.setStringValue(
                 tenantId,
                 SettingService.SCOPE_PROJECT,
@@ -458,11 +483,15 @@ public class EmptyResponseDiagnosticService {
                 .append("\n\n");
         out.append("The tool name never arrived as data — no unknown-tool error, ")
                 .append("no tool-call request; it was reconstructed from the ")
-                .append("request text against the offered tools array. Likely ")
-                .append("causes: a prompt teaches a tool the recipe did not add ")
-                .append("(check the recipe's allowedToolsAdd), the user asked for ")
-                .append("a tool outside this surface, or history mentions a tool ")
-                .append("that the current surface no longer offers.");
+                .append("request text against the tools array as sent. Likely ")
+                .append("causes, in order of probability: a prompt teaches a tool ")
+                .append("the recipe did not add (check the recipe's ")
+                .append("allowedToolsAdd), the turn's tool-surface budget ")
+                .append("demoted a tool that IS in the surface (check maxTools ")
+                .append("and family demotion — the sent array is smaller than ")
+                .append("the surface), the user asked for a tool outside this ")
+                .append("surface, or history mentions a tool the current surface ")
+                .append("no longer offers.");
         return out.toString();
     }
 }

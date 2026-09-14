@@ -57,6 +57,9 @@ class EmptyResponseDiagnosticServiceTest {
         builtIns = mock(BuiltInToolSource.class);
         megadodo = mock(MegadodoService.class);
         fook = mock(FookService.class);
+        // The ticket path short-circuits on the master switch — the mock
+        // default (false) would silently disable every submission.
+        when(fook.isEnabled()).thenReturn(true);
         settings = mock(SettingService.class);
         // Build the inventory first, then stub list(): each tool() call
         // opens its own when() stub, and a stub opened inside another
@@ -200,6 +203,24 @@ class EmptyResponseDiagnosticServiceTest {
                 .contains("doc_write")
                 .contains("glm-5.3")
                 .contains("origin: prompt");
+    }
+
+    @Test
+    void fookDisabled_firesMegadodo_butNeitherGateNorSubmit() {
+        // The master switch short-circuits before the gate: no marker
+        // burn (which would silence the signature for the whole re-arm
+        // window), no submit (which would throw — reporting surfaces
+        // short-circuit, the exception is defense-in-depth).
+        when(fook.isEnabled()).thenReturn(false);
+
+        service()
+                .onEmptyResponseExhausted(
+                        call(), request("use doc_write", "user text", null, "doc_read"), "glm-5.3", 3);
+
+        verify(megadodo)
+                .phantomToolCallSuspected(anyString(), any(), any(), anyString(), anyList(), anyString(), anyInt());
+        verify(fook, never()).submit(any());
+        verify(settings, never()).setStringValue(anyString(), anyString(), anyString(), anyString(), anyString());
     }
 
     @Test

@@ -785,6 +785,30 @@ async function loadActivePageContent(options: { force?: boolean } = {}) {
   }
 }
 
+/**
+ * Silent content probe used inside the self-write quiet window. Fetches
+ * the active page without any loading state (the editor must never be
+ * unmounted over an echo of our own save — the rebuild would come from
+ * the stale `activeMarkdown` and discard everything typed since the last
+ * load). Equal to the last body we PUT → our echo, nothing happens at
+ * all. Different → a server-side write (button action verdicts): apply
+ * it, but only while the editor has no unsaved or in-flight changes —
+ * button actions flush + await the save chain first, so a dirty editor
+ * here means the user is actively typing and must not be clobbered.
+ */
+async function probeRemotePageChange(id: string) {
+  try {
+    const fresh = await brainFetchText(`documents/${encodeURIComponent(id)}/content`);
+    const ours = lastSavedBodies.value.get(id);
+    if (ours != null && fresh === ours) return;
+    if (saveStatus.value === 'dirty' || saveStatus.value === 'saving') return;
+    activeMarkdown.value = fresh;
+  } catch {
+    // A failed probe must never disturb the editor — next real change
+    // outside the quiet window does the full reload.
+  }
+}
+
 // Sequences page-content PUTs so button actions can await the latest
 // save before running (the action re-reads the page from the DB, never
 // from this editor).
@@ -1323,15 +1347,17 @@ useDocumentPrefixReaction({
     if (activeId != null && withinSelfWriteWindow(activeId)) {
       // Usually the echo of our own write — but a server-side button
       // action (form-resolve / form-reset writing verdicts) lands in the
-      // same window. Distinguish by content, not by timing alone:
-      // loadActivePageContent suppresses our own last body verbatim and
-      // applies anything else (the verdicts). No tree scan in the quiet
-      // window — re-running scanWorkbook replaces `view.value` and forces
-      // a parent re-render that interacts badly with the Tiptap editor
-      // lifecycle (focus / cursor get lost).
+      // same window. Distinguish by content, not by timing alone — via a
+      // SILENT probe (probeRemotePageChange): loadActivePageContent would
+      // toggle the loading state and unmount the editor on every echo, and
+      // the remount comes from `activeMarkdown`, which lags behind what
+      // the editor just saved — silently discarding the newest keystrokes
+      // (observed live: typed text vanished on every auto-save). No tree
+      // scan in the quiet window either — re-running scanWorkbook replaces
+      // `view.value` and interacts badly with the Tiptap lifecycle.
       const activePath = activePageView.value?.path;
       if (activePath && paths.includes(activePath)) {
-        await loadActivePageContent({ force: true });
+        await probeRemotePageChange(activeId);
       }
       return;
     }

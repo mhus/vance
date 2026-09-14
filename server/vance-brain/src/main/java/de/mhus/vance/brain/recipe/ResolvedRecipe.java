@@ -123,6 +123,16 @@ public record ResolvedRecipe(
          */
         boolean web,
         /**
+         * Which project kind this recipe belongs to — the picker
+         * filter behind {@code projectKind:} in the recipe YAML
+         * ({@code normal} / {@code system} / {@code any}). Drives the
+         * user-facing recipe list: a {@code system} recipe (Eddie) shows
+         * only in hub projects, {@code normal} ones only in regular
+         * projects; {@code ANY} opts into both. Default {@code NORMAL} —
+         * see {@link RecipeProjectKind}.
+         */
+        RecipeProjectKind projectKind,
+        /**
          * Optional human-readable display name for clients that surface
          * the recipe to the user (Web-UI recipe picker, future mobile
          * UIs). When {@code null}, the {@link #name} is used as fallback.
@@ -238,11 +248,78 @@ public record ResolvedRecipe(
                 internal,
                 listed,
                 false,
+                RecipeProjectKind.NORMAL,
                 title,
                 null,
                 tags,
                 guards,
                 List.of(),
+                source);
+    }
+
+    /**
+     * Backward-compatible constructor for call sites that predate the
+     * {@code projectKind} picker filter — passes
+     * {@link RecipeProjectKind#NORMAL}: a call site that does not know
+     * about the field means a recipe without one, and every recipe
+     * written before the field existed is a regular-project recipe.
+     */
+    public ResolvedRecipe(
+            String name,
+            String description,
+            String engine,
+            Map<String, Object> params,
+            @Nullable String promptPrefix,
+            PromptMode promptMode,
+            @Nullable String dataRelayCorrection,
+            List<String> allowedToolsAdd,
+            List<String> allowedToolsRemove,
+            List<String> allowedToolsDefer,
+            List<String> allowedToolsKeep,
+            List<String> allowedToolsDropFirst,
+            Map<String, RecipeModeBlock> modes,
+            Map<String, ProfileBlock> profiles,
+            List<String> defaultActiveSkills,
+            @Nullable List<String> allowedSkills,
+            List<String> triggerKeywords,
+            boolean locked,
+            boolean internal,
+            boolean listed,
+            boolean web,
+            @Nullable String title,
+            @Nullable String category,
+            List<String> tags,
+            List<GuardConfig> guards,
+            List<String> tenants,
+            RecipeSource source) {
+        this(
+                name,
+                description,
+                engine,
+                params,
+                promptPrefix,
+                promptMode,
+                dataRelayCorrection,
+                allowedToolsAdd,
+                allowedToolsRemove,
+                allowedToolsDefer,
+                allowedToolsKeep,
+                allowedToolsDropFirst,
+                modes,
+                profiles,
+                defaultActiveSkills,
+                allowedSkills,
+                triggerKeywords,
+                locked,
+                internal,
+                listed,
+                web,
+                RecipeProjectKind.NORMAL,
+                title,
+                category,
+                tags,
+                guards,
+                tenants,
                 source);
     }
 }

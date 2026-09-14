@@ -232,6 +232,7 @@ public class RecipeLoader {
         // recipe load, not the first turn that picks the recipe.
         compileTemplate(renderer, promptPrefix, "promptPrefix");
         PromptMode promptMode = parsePromptMode(spec.get("promptMode"));
+        RecipeProjectKind projectKind = parseProjectKind(spec.get("projectKind"));
         String dataRelayCorrection = stringOrNull(spec.get("dataRelayCorrection"));
         List<String> add = stringList(spec.get("allowedToolsAdd"), "allowedToolsAdd");
         List<String> remove = stringList(spec.get("allowedToolsRemove"), "allowedToolsRemove");
@@ -281,6 +282,7 @@ public class RecipeLoader {
                 internal,
                 listed,
                 web,
+                projectKind,
                 title,
                 category,
                 tags,
@@ -712,6 +714,26 @@ public class RecipeLoader {
             return PromptMode.valueOf(s.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("unknown promptMode '" + s + "' — expected APPEND or OVERWRITE", e);
+        }
+    }
+
+    /**
+     * Parses the optional {@code projectKind} picker filter
+     * ({@code normal} / {@code system} / {@code any}). Absent means
+     * {@link RecipeProjectKind#NORMAL} — every recipe written before the
+     * field existed is a regular-project recipe. Unknown values fail
+     * the recipe load, not the picker: a typo would otherwise silently
+     * hide the recipe from (or leak it into) a whole picker.
+     */
+    private static RecipeProjectKind parseProjectKind(Object raw) {
+        if (raw == null) return RecipeProjectKind.NORMAL;
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("'projectKind' must be a string");
+        }
+        try {
+            return RecipeProjectKind.valueOf(s.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("unknown projectKind '" + s + "' — expected NORMAL, SYSTEM or ANY", e);
         }
     }
 

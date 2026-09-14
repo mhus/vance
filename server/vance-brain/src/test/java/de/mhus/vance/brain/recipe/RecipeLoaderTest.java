@@ -323,6 +323,61 @@ class RecipeLoaderTest {
                 .hasMessageContaining("'category' must be a string");
     }
 
+    @Test
+    void load_projectKind_defaultsToNormal() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: ford
+                """);
+
+        // Absent field = regular-project recipe. Every recipe written
+        // before projectKind existed must keep its old picker behaviour.
+        assertThat(loader.load("acme", "p-1", "analyze").orElseThrow().projectKind())
+                .isEqualTo(RecipeProjectKind.NORMAL);
+    }
+
+    @Test
+    void load_projectKind_isParsed() {
+        stubRecipe("""
+                description: Hub chat
+                engine: eddie
+                projectKind: system
+                """);
+
+        assertThat(loader.load("acme", "p-1", "analyze").orElseThrow().projectKind())
+                .isEqualTo(RecipeProjectKind.SYSTEM);
+    }
+
+    @Test
+    void load_unknownProjectKind_isRejected() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: ford
+                projectKind: hub
+                """);
+
+        // A typo must fail the recipe load, not the picker: silently
+        // defaulting would hide the recipe from (or leak it into) a
+        // whole picker without any error anywhere.
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("unknown projectKind 'hub'")
+                .hasMessageContaining("NORMAL, SYSTEM or ANY");
+    }
+
+    @Test
+    void load_nonStringProjectKind_isRejected() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: ford
+                projectKind: 42
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("'projectKind' must be a string");
+    }
+
     private void stubRecipe(String yaml) {
         LookupResult hit = new LookupResult(
                 RecipeLoader.RECIPE_PATH_PREFIX + "analyze" + RecipeLoader.RECIPE_PATH_SUFFIX,

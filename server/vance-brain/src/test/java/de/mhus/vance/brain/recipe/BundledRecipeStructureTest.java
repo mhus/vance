@@ -57,7 +57,8 @@ class BundledRecipeStructureTest {
             "listed",
             "locked",
             "web",
-            "tenants");
+            "tenants",
+            "projectKind");
 
     @Test
     void noBundledRecipeHidesATopLevelFieldInsideParams() {

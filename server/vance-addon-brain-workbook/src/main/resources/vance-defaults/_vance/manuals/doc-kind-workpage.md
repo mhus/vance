@@ -73,6 +73,10 @@ Quick reference:
 | toc | fenced `vance-toc` (auto from h1/h2/h3) |
 | columns | 4-backtick fenced `vance-columns` with `<!--vance:column-->` separators |
 | embed | fenced `vance-embed` with `uri:` body (kind-aware reference card) |
+| form | fenced `vance-form` — typed data-entry over a records doc |
+| input | fenced `vance-input` — one editable text bound to a file |
+| field | fenced `vance-field` — inline quiz/form field (`choice`/`multi`/`dropdown`/`text`/`textarea`) with the answer stored in the page |
+| button | fenced `vance-button` — `script` / `form-resolve` / `form-reset` server-side action |
 
 ## Tool inventory
 

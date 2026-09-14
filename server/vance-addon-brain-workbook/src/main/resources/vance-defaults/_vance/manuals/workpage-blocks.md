@@ -1,5 +1,5 @@
 ---
-triggers: workpage block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document, form, input, reactive form, data entry, text input, saveScript, button, run script button, action button, fence block, vance-form, vance-form fence, form fence, vance-embed, vance-embed fence, embed fence, vance-input, vance-input fence, vance-button, vance-button fence
+triggers: workpage block, block type, paragraph, heading, bullet, numbered list, todo, checkbox, quote, code block, image, image width, table, callout, info box, warning box, toggle, accordion, columns, multi-column, link card, table of contents, toc, divider, dataview, embed, embedded document, vance uri, reference document, form, input, reactive form, data entry, text input, saveScript, button, run script button, action button, fence block, vance-form, vance-form fence, form fence, vance-embed, vance-embed fence, embed fence, vance-input, vance-input fence, vance-button, vance-button fence, field, form field, vance-field, vance-field fence, quiz, test, exam, exam prep, exam preparation, multiple choice, single choice, checkbox question, dropdown question, free text question, questionnaire, self test, grade answers, resolve answers, form-resolve, form-reset, resolve button
 summary: Copy-paste cheatsheet for every workpage block type. JSON shape for `workpage_create` / `workpage_block_append` tools plus the underlying Markdown the block round-trips to. Use this when you need to pick the right block or look up the exact param keys.
 ---
 # WorkPage Block Cheatsheet
@@ -463,12 +463,71 @@ script: vance:update_all.js
 ```
 ```
 
-A **clickable button** that runs a project `.js` script server-side on click
-(v1 `type: script` only). `script` is a `vance:` URI — a bare name resolves
-relative to the **app folder**, `vance:/abs/path.js` is project-absolute.
-`title` is the label. Use this for an explicit "run this now" action; use
-`form`/`input` `saveScript` when the script should run on data save. The script
-is a project document — create it with `doc_write`, not `work_file_write`.
+A **clickable button** that triggers a server-side action. `buttonType`:
+`script` runs the project `.js` document named by `script` (a bare name
+resolves relative to the **app folder**, `vance:/abs/path.js` is
+project-absolute) — create it with `doc_write`, not `work_file_write`. The
+built-in form actions `form-resolve` / `form-reset` grade / clear the page's
+`field` blocks — they carry **no `script`**. `title` is the label. Use
+`form`/`input` `saveScript` when a script should run on data save instead.
+
+
+## field
+
+```json
+{
+  "type": "field",
+  "id": "q1",
+  "fieldType": "choice",
+  "question": "Was gehört zur 3NF?",
+  "options": ["Keine transitiven Abhängigkeiten", "Jede Zeile einzigartig"],
+  "solution": 0
+}
+```
+
+```markdown
+```vance-field
+id: q1
+type: choice            # choice | multi | dropdown | text | textarea
+question: Was gehört zur 3NF?
+options:
+  - Keine transitiven Abhängigkeiten
+  - Jede Zeile einzigartig
+solution: 0
+```
+```
+
+An **inline form field** — the user's answer (`value`) is stored in the page
+itself (the fence), not in a data document. One participant. Use it for
+quizzes, exam preparation, checklists and questionnaires.
+
+- `id` (required, unique per page): stable identity — grading and results
+  address the field by it.
+- `fieldType`: `choice` (radio list), `multi` (checkbox list), `dropdown`,
+  `text` (single line), `textarea` (multi line).
+- `solution` (optional): the correct option index (`choice`/`dropdown`), a
+  list of indices (`multi`), or a reference string (`text`/`textarea`).
+  **A field without `solution` is a plain form element** (checklist,
+  survey) — it renders fine and is simply never graded.
+- **Never set `value`, `verdict` or `feedback` when authoring.** `value` is
+  the user's answer; `verdict`/`feedback` are written by the `form-resolve`
+  button action, never by you.
+
+**Quiz recipe** — append the questions as `field` blocks, then two buttons
+(the grading runs server-side, no script needed):
+
+```json
+{ "type": "button", "buttonType": "form-resolve", "title": "Auflösen" }
+{ "type": "button", "buttonType": "form-reset", "title": "Zurücksetzen" }
+```
+
+`form-resolve` grades every field with a `solution` mechanically (by index;
+unanswered counts as wrong; `text`/`textarea` are not graded yet), marks each
+field green/red inline and returns the score. `form-reset` clears the
+markings and keeps the answers. Do NOT build a `vance-form` + `records` doc +
+`saveScript` + result-embed pipeline for a quiz — the field/button pair is
+the mechanism. Interleave prose, callouts and toggles between the fields for
+explanations; `workbook_validate` checks ids, types, options and bounds.
 
 ## dataview
 
@@ -512,4 +571,6 @@ Headings must be unique; duplicates throw and you disambiguate with `index`. Hea
 | "Show the result of another document (computed file, chart)" | `embed`, `uri` = `vance:/<path>?kind=<kind>` |
 | "Let the user fill in structured data (a form)" | `form`, `data` = `vance:/<records-doc>?kind=records` |
 | "Let the user edit one free-text value" | `input`, `data` = `vance:/<text-doc>?kind=text` |
-| "A button that runs a script / computes on click" | `button`, `type: script`, `script` = `vance:<script>.js`. For recompute on data save, use the form's/input's fence `saveScript` instead. See `manual_read('workbook-forms')`. |
+| "Build a quiz / multiple-choice test / exam prep page" | `field` blocks with `solution` + `button` `form-resolve` + `form-reset`. NOT a `vance-form` + `saveScript` pipeline — see `field` above |
+| "A checklist / questionnaire the user ticks on the page" | `field` blocks (no `solution`) — the answer is stored in the page |
+| "A button that runs a script / computes on click" | `button`, `buttonType: script`, `script` = `vance:<script>.js`. `form-resolve`/`form-reset` for grading. For recompute on data save, use the form's/input's fence `saveScript` instead. See `manual_read('workbook-forms')`. |

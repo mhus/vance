@@ -26,45 +26,64 @@ import org.springframework.stereotype.Component;
 public class WorkbookValidateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string",
-                        "description", "A workbook folder (e.g. 'apps/grades') or a "
-                                + "single workpage document path (e.g. "
-                                + "'apps/grades/rechner.workpage.md')."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "path",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "A workbook folder (e.g. 'apps/grades') or a "
+                                            + "single workpage document path (e.g. "
+                                            + "'apps/grades/rechner.workpage.md')."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path"));
 
     private final EddieContext eddieContext;
     private final WorkbookValidationService validationService;
 
-    public WorkbookValidateTool(EddieContext eddieContext,
-                                WorkbookValidationService validationService) {
+    public WorkbookValidateTool(EddieContext eddieContext, WorkbookValidationService validationService) {
         this.eddieContext = eddieContext;
         this.validationService = validationService;
     }
 
-    @Override public String name() { return "workbook_validate"; }
+    @Override
+    public String name() {
+        return "workbook_validate";
+    }
 
     @Override
     public String description() {
         return "Statically validate a workbook folder or a single workpage: "
-                + "checks vance-form/input/button/embed fences for required keys, "
+                + "checks vance-form/input/button/field/embed fences for required keys, "
                 + "resolvable references (config/uri/script/saveScript exist + right "
-                + "kind + .js), field types, and legacy $meta on the data doc. "
+                + "kind + .js), form field types, inline field ids/types/options/bounds, "
+                + "button action types, and legacy $meta on the data doc. "
                 + "Read-only. Returns { ok, errors, warnings, findings[] }. Does NOT "
                 + "check runtime script logic. Run it after building/editing.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
         return Set.of("read-only", "workbook", "document");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -75,8 +94,11 @@ public class WorkbookValidateTool implements Tool {
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         WorkbookValidationService.Result result =
                 validationService.validate(ctx.tenantId(), project.getName(), path.trim());
-        log.info("WorkbookValidateTool path='{}' ok={} errors+warnings={}",
-                path, result.ok(), result.findings().size());
+        log.info(
+                "WorkbookValidateTool path='{}' ok={} errors+warnings={}",
+                path,
+                result.ok(),
+                result.findings().size());
         return result.toMap();
     }
 }

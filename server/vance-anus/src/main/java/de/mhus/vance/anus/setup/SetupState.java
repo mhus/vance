@@ -28,6 +28,7 @@ class SetupState {
     private @Nullable String userEmail;
     /** Plaintext, only populated for newly-created users. */
     private @Nullable String userPassword;
+
     private boolean userCreated;
 
     /** Track edits so {@code save()} only calls {@code userService.update} when needed. */
@@ -56,7 +57,8 @@ class SetupState {
      * The settings namespace this state writes under, or {@code null} when no
      * provider is picked / a custom one is not yet named.
      */
-    @Nullable String effectiveInstance() {
+    @Nullable
+    String effectiveInstance() {
         ProviderPreset p = provider;
         if (p == null) {
             return null;
@@ -71,4 +73,16 @@ class SetupState {
     private @Nullable String embeddingApiKey;
 
     private @Nullable String serperKey;
+
+    /**
+     * {@code true} when this state was built by the headless agent mode
+     * ({@code --config}) rather than the interactive wizard. Changes how
+     * {@code writeProviderSettings} treats the <b>derived</b> AI keys (aliases,
+     * embedding wiring) — keys the config never names: they are bootstrapped
+     * only when absent so an operator's Web-UI edits survive config re-runs.
+     * Keys the config does state ({@code ai.default.provider} /
+     * {@code ai.default.model}, the instance's own type/base-url/key) stay
+     * declarative and are re-asserted on every run.
+     */
+    private boolean headless;
 }

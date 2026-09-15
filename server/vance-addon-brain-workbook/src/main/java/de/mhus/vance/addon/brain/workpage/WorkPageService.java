@@ -91,6 +91,23 @@ public class WorkPageService {
         return parser.parseDocument(body);
     }
 
+    /**
+     * Finds the workpage document at {@code path} or throws — the lookup
+     * the button action handlers share: the document must exist and be a
+     * {@code workpage}, anything else fails closed with the path in the
+     * message. The caller stays in the workpage domain (read / write via
+     * this service), never on raw document lookups.
+     */
+    public DocumentDocument requireByPath(String tenantId, String projectId, String path) {
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
+                .orElseThrow(() -> new ToolException("workpage not found: " + path));
+        if (!KIND.equals(doc.getKind())) {
+            throw new ToolException("'" + path + "' is not a workpage (kind=" + doc.getKind() + ").");
+        }
+        return doc;
+    }
+
     public DocumentDocument writeDocument(DocumentDocument doc, WorkPageDocument page) {
         String body = serializer.serializeDocument(page);
         return documentService.update(

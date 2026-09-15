@@ -1,12 +1,12 @@
 package de.mhus.vance.anus.compose;
 
 import de.mhus.vance.anus.BuildInfo;
+import de.mhus.vance.anus.setup.AgentConfigReader;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,9 +17,6 @@ import org.jline.reader.UserInterruptException;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.jspecify.annotations.Nullable;
-import org.yaml.snakeyaml.LoaderOptions;
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * Standalone terminal wizard for {@code anus --setup-docker-compose}.
@@ -164,7 +161,7 @@ public final class DockerComposeSetupWizard {
         PrintWriter out = new PrintWriter(System.out, true, StandardCharsets.UTF_8);
         PrintWriter err = new PrintWriter(System.err, true, StandardCharsets.UTF_8);
         try {
-            Map<String, Object> config = readConfigYaml(configSource);
+            Map<String, Object> config = AgentConfigReader.read(configSource);
 
             out.println("Vancetope — Docker Compose Setup (config mode)");
             out.printf("%s%n", BuildInfo.line());
@@ -215,38 +212,6 @@ public final class DockerComposeSetupWizard {
             err.flush();
             return 1;
         }
-    }
-
-    /**
-     * Reads the agent config from a file path, or stdin when {@code source}
-     * is {@code "-"}. {@link SafeConstructor} keeps the parse to plain
-     * maps/scalars — agent-supplied input must not be able to instantiate
-     * arbitrary Java types.
-     */
-    private static Map<String, Object> readConfigYaml(String source) throws IOException {
-        String yamlText = "-".equals(source)
-                ? new String(System.in.readAllBytes(), StandardCharsets.UTF_8)
-                : Files.readString(Path.of(source), StandardCharsets.UTF_8);
-        Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
-        Object root;
-        try {
-            root = yaml.load(yamlText);
-        } catch (org.yaml.snakeyaml.error.YAMLException e) {
-            // Includes SafeConstructor refusing !!java tags — agent input stays data.
-            throw new IOException("config is not valid YAML: " + e.getMessage(), e);
-        }
-        if (root == null) {
-            throw new IOException("config is empty");
-        }
-        if (!(root instanceof Map<?, ?> map)) {
-            throw new IOException("config must be a YAML mapping of settings, got "
-                    + root.getClass().getSimpleName());
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : map.entrySet()) {
-            out.put(String.valueOf(e.getKey()), e.getValue());
-        }
-        return out;
     }
 
     /** Writes the four generated stack files into {@code dir}. */

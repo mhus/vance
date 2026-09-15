@@ -8,8 +8,6 @@ import de.mhus.vance.brain.ai.light.LightLlmException;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.toolpack.ToolException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -57,13 +55,10 @@ public class FormResolveActionHandler implements ButtonActionHandler {
                     "verdict", Map.of("type", "string", "enum", List.of("correct", "wrong")),
                     "feedback", Map.of("type", "string")));
 
-    private final DocumentService documentService;
     private final WorkPageService workPageService;
     private final LightLlmService lightLlmService;
 
-    public FormResolveActionHandler(
-            DocumentService documentService, WorkPageService workPageService, LightLlmService lightLlmService) {
-        this.documentService = documentService;
+    public FormResolveActionHandler(WorkPageService workPageService, LightLlmService lightLlmService) {
         this.workPageService = workPageService;
         this.lightLlmService = lightLlmService;
     }
@@ -78,7 +73,7 @@ public class FormResolveActionHandler implements ButtonActionHandler {
 
     @Override
     public ButtonActionResult run(ButtonActionContext ctx) {
-        DocumentDocument doc = findWorkPage(ctx);
+        DocumentDocument doc = workPageService.requireByPath(ctx.tenantId(), ctx.projectId(), ctx.pagePath());
         WorkPageDocument page = workPageService.readDocument(doc);
         List<Block> blocks = new ArrayList<>(page.blocks());
         int[] checkable = {0};
@@ -190,15 +185,5 @@ public class FormResolveActionHandler implements ButtonActionHandler {
                 out.get("verdict") instanceof String v && ("correct".equals(v) || "wrong".equals(v)) ? v : "wrong";
         String feedback = out.get("feedback") instanceof String f && !f.isBlank() ? f : null;
         return new Grade(verdict, feedback);
-    }
-
-    private DocumentDocument findWorkPage(ButtonActionContext ctx) {
-        DocumentDocument doc = documentService
-                .findByPath(ctx.tenantId(), ctx.projectId(), ctx.pagePath())
-                .orElseThrow(() -> new ToolException("workpage not found: " + ctx.pagePath()));
-        if (!WorkPageService.KIND.equals(doc.getKind())) {
-            throw new ToolException("'" + ctx.pagePath() + "' is not a workpage (kind=" + doc.getKind() + ").");
-        }
-        return doc;
     }
 }

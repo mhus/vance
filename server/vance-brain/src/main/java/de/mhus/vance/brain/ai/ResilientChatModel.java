@@ -327,11 +327,11 @@ public class ResilientChatModel implements ChatModel {
             // once-guard at the composition point keeps chained setups
             // firing exactly once per logical call.
             if (genuineEmptyAttempts > 0) {
+                // lastGenuineEmptyFrom is non-null here by construction:
+                // the counter only increments in the same branch that assigns
+                // the label — the old "unknown" fallback was dead code.
                 EmptyResponseDiagnosticSink.fire(
-                        emptyResponseSink,
-                        request,
-                        lastGenuineEmptyFrom != null ? lastGenuineEmptyFrom.label() : "unknown",
-                        genuineEmptyAttempts);
+                        emptyResponseSink, request, lastGenuineEmptyFrom.label(), genuineEmptyAttempts);
             }
             return lastEmpty;
         }

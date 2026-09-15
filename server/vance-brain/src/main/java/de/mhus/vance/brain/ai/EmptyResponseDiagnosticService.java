@@ -68,6 +68,15 @@ import org.springframework.stereotype.Service;
  *       nothing actionable beyond the provider.</li>
  * </ul>
  *
+ * <h2>Scope of the tool inventory</h2>
+ * Candidates are matched against the <b>built-in</b> inventory only — every
+ * {@code Tool} bean the server registers, add-ons included. Tool-pack
+ * tools (MCP / REST packs, client-side) are deliberately out of scope:
+ * their names are not in the server's bean inventory, so a phantom call
+ * naming one classifies as a genuine blank reply — countable, but not
+ * actionable by this diff. The same holds for any name that is not a
+ * registered tool at all (fully hallucinated names match nothing either).
+ *
  * <h2>Deduplication gate</h2>
  * A phantom call is deterministic — the same prompt, the same recipe,
  * the same model produce it again every turn. Without a gate that would
@@ -76,7 +85,11 @@ import org.springframework.stereotype.Service;
  * {@code ai.diagnostic.phantomToolCall.reported.<signature>}) carries the
  * last report instant. A new report for the same signature is allowed
  * only after the re-arm window (default 14 days, tenant-tunable via
- * {@code ai.diagnostic.phantomToolCall.reArmDays}).
+ * {@code ai.diagnostic.phantomToolCall.reArmDays}). Writing a marker also
+ * purges the <i>lapsed</i> ones of the tenant — a marker outside its
+ * window is semantically dead (the gate re-arms that signature anyway),
+ * so the collection stays bounded instead of growing one row per
+ * model×candidate-set forever.
  */
 @Service
 @Slf4j
@@ -393,6 +406,34 @@ public class EmptyResponseDiagnosticService {
                 HomeBootstrapService.TENANT_PROJECT_NAME,
                 markerKey,
                 now.toString());
+        // Bound the marker collection: a marker whose window has lapsed is
+        // semantically dead (the gate above already re-arms that signature),
+        // so drop it instead of letting one row per model×candidate-set
+        // accumulate in the settings forever. Same for unparseable values.
+        // Best effort — a purge failure must never block the report.
+        try {
+            Duration window = reArmWindow(tenantId);
+            for (var setting : settingService.findAll(
+                    tenantId, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME)) {
+                String key = setting.getKey();
+                if (!key.startsWith(SETTING_REPORTED_PREFIX) || key.equals(markerKey)) {
+                    continue;
+                }
+                String value = setting.getValue();
+                boolean stale;
+                try {
+                    stale = !Instant.parse(value).plus(window).isAfter(now);
+                } catch (RuntimeException e) {
+                    stale = true;
+                }
+                if (stale) {
+                    settingService.delete(
+                            tenantId, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key);
+                }
+            }
+        } catch (RuntimeException e) {
+            log.debug("Marker purge failed for tenant '{}': {}", tenantId, e.toString());
+        }
         return true;
     }
 

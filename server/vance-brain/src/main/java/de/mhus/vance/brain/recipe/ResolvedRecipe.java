@@ -3,6 +3,7 @@ package de.mhus.vance.brain.recipe;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import java.util.List;
 import java.util.Map;
+import lombok.Builder;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -10,7 +11,14 @@ import org.jspecify.annotations.Nullable;
  * {@link RecipeResolver#resolve} but <em>before</em> caller-supplied
  * params have been merged in. Carries the parsed YAML fields plus the
  * cascade source attribution.
+ *
+ * <p>{@code @Builder} exists so new call sites never have to count 28
+ * positional arguments — every new component historically broke the
+ * hand-written compat constructor below and every unprepared call site
+ * with it. The canonical and the compat constructors stay as they are
+ * (tests use both); the builder is additive, not a migration.
  */
+@Builder
 public record ResolvedRecipe(
         String name,
         String description,

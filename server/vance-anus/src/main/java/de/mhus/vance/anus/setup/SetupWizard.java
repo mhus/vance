@@ -13,22 +13,15 @@ import de.mhus.vance.shared.user.UserService;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jline.reader.LineReader;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
-import org.yaml.snakeyaml.LoaderOptions;
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * Interactive setup wizard for {@code anus --setup}.
@@ -143,7 +136,14 @@ public class SetupWizard {
      * create-or-pick flow): an existing tenant/user is adopted and only
      * fields the config actually supplies are updated; a missing one is
      * created. Re-running the same config is therefore a no-op, which is what
-     * makes it safe for deploy scripts and agents.
+     * makes it safe for deploy scripts and agents. The AI block is the one
+     * exception and stays declarative: keys the config itself states
+     * ({@code ai.default.provider} / {@code ai.default.model}, the
+     * instance's type, base URL and key) are re-asserted on every run —
+     * the config is the declared desired state. Keys the config never
+     * mentions (the {@code ai.alias.default.*} tiers, the embedding
+     * wiring) are bootstrapped once and never clobbered: an operator who
+     * split the tiers in the Web-UI keeps that split across config re-runs.
      *
      * @return process exit code — 0 saved / plan printed, 1 rejected or IO failure
      */
@@ -151,7 +151,7 @@ public class SetupWizard {
         PrintWriter out = new PrintWriter(System.out, true, StandardCharsets.UTF_8);
         PrintWriter err = new PrintWriter(System.err, true, StandardCharsets.UTF_8);
         try {
-            SetupConfigParser.Parsed config = SetupConfigParser.parse(readConfigYaml(configSource));
+            SetupConfigParser.Parsed config = SetupConfigParser.parse(AgentConfigReader.read(configSource));
 
             List<String> problems = new ArrayList<>();
             SetupState state = buildHeadlessState(config, problems);
@@ -198,6 +198,8 @@ public class SetupWizard {
      */
     private SetupState buildHeadlessState(SetupConfigParser.Parsed config, List<String> problems) {
         SetupState state = new SetupState();
+        // Marks the derived-AI-keys bootstrap-only rule (see SetupState.headless).
+        state.setHeadless(true);
 
         String tenantName = config.tenantName();
         state.setTenantId(tenantName);
@@ -287,38 +289,6 @@ public class SetupWizard {
                     StringUtils.isBlank(state.getAiApiKey()) ? "(keep existing)" : "<set>");
         }
         out.printf("  serper-key — %s%n", StringUtils.isBlank(state.getSerperKey()) ? "absent" : "<set>");
-    }
-
-    /**
-     * Reads the agent config from a file path, or stdin when {@code source}
-     * is {@code "-"}. {@link SafeConstructor} keeps the parse to plain
-     * maps/scalars — agent-supplied input must not be able to instantiate
-     * arbitrary Java types.
-     */
-    private static Map<String, Object> readConfigYaml(String source) throws IOException {
-        String yamlText = "-".equals(source)
-                ? new String(System.in.readAllBytes(), StandardCharsets.UTF_8)
-                : Files.readString(Path.of(source), StandardCharsets.UTF_8);
-        Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
-        Object root;
-        try {
-            root = yaml.load(yamlText);
-        } catch (org.yaml.snakeyaml.error.YAMLException e) {
-            // Includes SafeConstructor refusing !!java tags — agent input stays data.
-            throw new IOException("config is not valid YAML: " + e.getMessage(), e);
-        }
-        if (root == null) {
-            throw new IOException("config is empty");
-        }
-        if (!(root instanceof Map<?, ?> map)) {
-            throw new IOException(
-                    "config must be a YAML mapping, got " + root.getClass().getSimpleName());
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : map.entrySet()) {
-            out.put(String.valueOf(e.getKey()), e.getValue());
-        }
-        return out;
     }
 
     // ──────────────────────── overview ────────────────────────
@@ -982,9 +952,26 @@ public class SetupWizard {
         // edit-mode call fail closed (see specification/public/
         // follow-up.md §5). Leave it unset — the follow-up service then
         // stays on the chat path, which works with this model.
+        //
+        // The config never names an alias — they are derived. In the
+        // headless ensure mode they are therefore bootstrapped only while
+        // absent, never re-asserted: an operator who split the tiers in
+        // the Web-UI keeps that split across config re-runs. The
+        // interactive wizard keeps writing them unconditionally — the
+        // operator confirmed the full plan, aliases included.
         String fqModel = instance + ":" + state.getAiModel();
         for (String alias : List.of("fast", "analyze", "deep", "web", "code")) {
-            setString(tenantId, "ai.alias.default." + alias, fqModel, null);
+            if (state.isHeadless()) {
+                setStringIfAbsent(
+                        tenantId,
+                        SettingService.SCOPE_PROJECT,
+                        HomeBootstrapService.TENANT_PROJECT_NAME,
+                        "ai.alias.default." + alias,
+                        fqModel,
+                        null);
+            } else {
+                setString(tenantId, "ai.alias.default." + alias, fqModel, null);
+            }
         }
         if (!StringUtils.isBlank(state.getAiApiKey())) {
             settingService.setEncryptedPassword(
@@ -995,11 +982,22 @@ public class SetupWizard {
                     state.getAiApiKey());
             out.println("  + API key written for instance '" + instance + "'");
         }
+        // Embedding wiring is derived like the aliases: written once, then
+        // owned by the Web-UI in headless mode (same if-absent rule). For
+        // providers without their own embeddings the in-process 'embedded'
+        // provider is the documented fallback.
         if (preset.supportsEmbedding()) {
-            setString(tenantId, "ai.embedding.provider", instance, "Embedding provider for RAG indexing.");
+            setDerivedAiString(
+                    state, tenantId, "ai.embedding.provider", instance, "Embedding provider for RAG indexing.");
             String embedKey =
                     StringUtils.isBlank(state.getEmbeddingApiKey()) ? state.getAiApiKey() : state.getEmbeddingApiKey();
-            if (!StringUtils.isBlank(embedKey)) {
+            if (!StringUtils.isBlank(embedKey)
+                    && (!state.isHeadless()
+                            || StringUtils.isBlank(settingService.getStringValue(
+                                    tenantId,
+                                    SettingService.SCOPE_PROJECT,
+                                    HomeBootstrapService.TENANT_PROJECT_NAME,
+                                    "ai.embedding.apiKey")))) {
                 settingService.setEncryptedPassword(
                         tenantId,
                         SettingService.SCOPE_PROJECT,
@@ -1008,9 +1006,8 @@ public class SetupWizard {
                         embedKey);
             }
         } else {
-            // In-process model, no key. Matches the embedded provider in
-            // ai.embedding.provider's documented vocabulary.
-            setString(
+            setDerivedAiString(
+                    state,
                     tenantId,
                     "ai.embedding.provider",
                     "embedded",
@@ -1182,6 +1179,28 @@ public class SetupWizard {
         }
         settingService.set(tenantId, scope, refId, key, value, SettingType.STRING, description);
         return true;
+    }
+
+    /**
+     * Writes one of the <b>derived</b> AI keys (aliases, embedding wiring)
+     * to the tenant's {@code _tenant} project. The config never names these
+     * keys, so the headless ensure mode bootstraps them only while absent —
+     * an operator's Web-UI edits survive config re-runs. The interactive
+     * wizard re-asserts them: the operator confirmed the full plan.
+     */
+    private void setDerivedAiString(
+            SetupState state, String tenantId, String key, String value, @Nullable String description) {
+        if (state.isHeadless()) {
+            setStringIfAbsent(
+                    tenantId,
+                    SettingService.SCOPE_PROJECT,
+                    HomeBootstrapService.TENANT_PROJECT_NAME,
+                    key,
+                    value,
+                    description);
+        } else {
+            setString(tenantId, key, value, description);
+        }
     }
 
     private void setString(String tenantId, String key, String value, @Nullable String description) {

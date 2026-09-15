@@ -327,6 +327,51 @@ class EmptyResponseDiagnosticServiceTest {
     }
 
     @Test
+    void gate_writingAMarker_purgesLapsedOnes_keepsFreshAndUnrelated() {
+        when(settings.getStringValueCascade(anyString(), any(), any(), anyString()))
+                .thenReturn(null);
+        String freshKey = EmptyResponseDiagnosticService.SETTING_REPORTED_PREFIX + "fresh";
+        String lapsedKey = EmptyResponseDiagnosticService.SETTING_REPORTED_PREFIX + "lapsed";
+        String garbageKey = EmptyResponseDiagnosticService.SETTING_REPORTED_PREFIX + "garbage";
+        String ownKey = EmptyResponseDiagnosticService.SETTING_REPORTED_PREFIX
+                + EmptyResponseDiagnosticService.signature("glm-5.3", List.of("doc_write"));
+        when(settings.findAll("tenant-a", SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME))
+                .thenReturn(List.of(
+                        setting(freshKey, NOW.minus(Duration.ofDays(1)).toString()),
+                        setting(lapsedKey, NOW.minus(Duration.ofDays(15)).toString()),
+                        setting(garbageKey, "not-an-instant"),
+                        setting("ai.default.model", NOW.toString()),
+                        // the marker this very call just wrote — stale value, but
+                        // never purged
+                        setting(ownKey, NOW.minus(Duration.ofDays(90)).toString())));
+
+        assertThat(service().gateAllows("tenant-a", "glm-5.3", List.of("doc_write")))
+                .isTrue();
+
+        verify(settings)
+                .delete("tenant-a", SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, lapsedKey);
+        verify(settings)
+                .delete("tenant-a", SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, garbageKey);
+        verify(settings, never())
+                .delete("tenant-a", SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, freshKey);
+        verify(settings, never())
+                .delete("tenant-a", SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, ownKey);
+        verify(settings, never())
+                .delete(
+                        "tenant-a",
+                        SettingService.SCOPE_PROJECT,
+                        HomeBootstrapService.TENANT_PROJECT_NAME,
+                        "ai.default.model");
+    }
+
+    private static de.mhus.vance.shared.settings.SettingDocument setting(String key, String value) {
+        return de.mhus.vance.shared.settings.SettingDocument.builder()
+                .key(key)
+                .value(value)
+                .build();
+    }
+
+    @Test
     void signature_isStableAndBounded() {
         String a = EmptyResponseDiagnosticService.signature("glm-5.3", List.of("doc_write"));
         String b = EmptyResponseDiagnosticService.signature("glm-5.3", List.of("doc_write"));

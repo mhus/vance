@@ -12,37 +12,34 @@ import de.mhus.vance.addon.brain.workpage.Block;
 import de.mhus.vance.addon.brain.workpage.WorkPageDocument;
 import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.ToolException;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
  * Unit tests for {@link FormResolveActionHandler} and
- * {@link FormResetActionHandler} against a mocked {@link WorkPageService} +
- * {@link DocumentService} — the handlers are thin transforms over the block
- * list, so the tests pin the grading/reset semantics and the
- * write-only-when-changed behaviour.
+ * {@link FormResetActionHandler} against a mocked {@link WorkPageService}
+ * — the handlers are thin transforms over the block list, so the tests pin
+ * the grading/reset semantics and the write-only-when-changed behaviour.
+ * The fail-closed page lookup itself is covered by
+ * {@code WorkPageServiceRequireByPathTest}.
  */
 class FormActionsTest {
 
     private static final String PAGE = "apps/g/quiz.workpage.md";
 
-    private final DocumentService documentService = mock(DocumentService.class);
     private final WorkPageService workPageService = mock(WorkPageService.class);
     private final de.mhus.vance.brain.ai.light.LightLlmService lightLlmService =
             mock(de.mhus.vance.brain.ai.light.LightLlmService.class);
-    private final FormResolveActionHandler resolve =
-            new FormResolveActionHandler(documentService, workPageService, lightLlmService);
-    private final FormResetActionHandler reset = new FormResetActionHandler(documentService, workPageService);
+    private final FormResolveActionHandler resolve = new FormResolveActionHandler(workPageService, lightLlmService);
+    private final FormResetActionHandler reset = new FormResetActionHandler(workPageService);
 
     @Test
     void resolve_gradesClosedTypes_skipsTextAndSolutionlessFields() {
         DocumentDocument doc = workpage("workpage");
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.requireByPath("t", "p", PAGE)).thenReturn(doc);
         when(workPageService.readDocument(doc))
                 .thenReturn(new WorkPageDocument(
                         "Quiz",
@@ -72,7 +69,7 @@ class FormActionsTest {
     @Test
     void resolve_staleFeedbackIsCleared_answersAndFieldsWithoutSolutionUntouched() {
         DocumentDocument doc = workpage("workpage");
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.requireByPath("t", "p", PAGE)).thenReturn(doc);
         when(workPageService.readDocument(doc))
                 .thenReturn(new WorkPageDocument(
                         "Quiz",
@@ -99,7 +96,7 @@ class FormActionsTest {
     @Test
     void resolve_noCheckableFields_doesNotWrite() {
         DocumentDocument doc = workpage("workpage");
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.requireByPath("t", "p", PAGE)).thenReturn(doc);
         when(workPageService.readDocument(doc))
                 .thenReturn(new WorkPageDocument(
                         "Checkliste",
@@ -117,7 +114,7 @@ class FormActionsTest {
     @Test
     void resolve_gradesFreeTextViaJudge_llmWrittenVerdictAndFeedback() {
         DocumentDocument doc = workpage("workpage");
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.requireByPath("t", "p", PAGE)).thenReturn(doc);
         when(workPageService.readDocument(doc))
                 .thenReturn(new WorkPageDocument(
                         "Quiz",
@@ -158,7 +155,7 @@ class FormActionsTest {
     @Test
     void resolve_freeTextWithoutJudge_isNotGraded_noLlmCall() {
         DocumentDocument doc = workpage("workpage");
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.requireByPath("t", "p", PAGE)).thenReturn(doc);
         // solution alone on a text field = human-readable reference, not graded
         when(workPageService.readDocument(doc))
                 .thenReturn(new WorkPageDocument(
@@ -174,7 +171,7 @@ class FormActionsTest {
     @Test
     void resolve_blankFreeTextAnswer_isWrongWithoutLlmCall() {
         DocumentDocument doc = workpage("workpage");
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.requireByPath("t", "p", PAGE)).thenReturn(doc);
         when(workPageService.readDocument(doc))
                 .thenReturn(new WorkPageDocument(
                         "Quiz",
@@ -193,7 +190,7 @@ class FormActionsTest {
     @Test
     void resolve_judgeFailure_skipsField_butGradesTheRest() {
         DocumentDocument doc = workpage("workpage");
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.requireByPath("t", "p", PAGE)).thenReturn(doc);
         when(workPageService.readDocument(doc))
                 .thenReturn(new WorkPageDocument(
                         "Quiz",
@@ -224,7 +221,7 @@ class FormActionsTest {
     @Test
     void reset_clearsMarkingsAndAnswers() {
         DocumentDocument doc = workpage("workpage");
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.requireByPath("t", "p", PAGE)).thenReturn(doc);
         when(workPageService.readDocument(doc))
                 .thenReturn(new WorkPageDocument(
                         "Quiz",
@@ -251,7 +248,7 @@ class FormActionsTest {
     @Test
     void reset_alreadyClean_doesNotWrite() {
         DocumentDocument doc = workpage("workpage");
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.requireByPath("t", "p", PAGE)).thenReturn(doc);
         when(workPageService.readDocument(doc))
                 .thenReturn(new WorkPageDocument(
                         "Quiz",
@@ -268,8 +265,8 @@ class FormActionsTest {
 
     @Test
     void resolve_nonWorkpageDoc_failsClosed() {
-        DocumentDocument doc = workpage("text");
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.of(doc));
+        when(workPageService.requireByPath("t", "p", PAGE))
+                .thenThrow(new ToolException("'" + PAGE + "' is not a workpage (kind=text)."));
 
         assertThatThrownBy(() -> resolve.run(ctx("form-resolve")))
                 .isInstanceOf(ToolException.class)
@@ -279,7 +276,7 @@ class FormActionsTest {
 
     @Test
     void resolve_missingDoc_failsClosed() {
-        when(documentService.findByPath("t", "p", PAGE)).thenReturn(Optional.empty());
+        when(workPageService.requireByPath("t", "p", PAGE)).thenThrow(new ToolException("workpage not found: " + PAGE));
 
         assertThatThrownBy(() -> resolve.run(ctx("form-resolve")))
                 .isInstanceOf(ToolException.class)

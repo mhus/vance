@@ -4,8 +4,6 @@ import de.mhus.vance.addon.brain.workpage.Block;
 import de.mhus.vance.addon.brain.workpage.WorkPageDocument;
 import de.mhus.vance.addon.brain.workpage.WorkPageService;
 import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.toolpack.ToolException;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -20,11 +18,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class FormResetActionHandler implements ButtonActionHandler {
 
-    private final DocumentService documentService;
     private final WorkPageService workPageService;
 
-    public FormResetActionHandler(DocumentService documentService, WorkPageService workPageService) {
-        this.documentService = documentService;
+    public FormResetActionHandler(WorkPageService workPageService) {
         this.workPageService = workPageService;
     }
 
@@ -35,7 +31,7 @@ public class FormResetActionHandler implements ButtonActionHandler {
 
     @Override
     public ButtonActionResult run(ButtonActionContext ctx) {
-        DocumentDocument doc = findWorkPage(ctx);
+        DocumentDocument doc = workPageService.requireByPath(ctx.tenantId(), ctx.projectId(), ctx.pagePath());
         WorkPageDocument page = workPageService.readDocument(doc);
         List<Block> blocks = new ArrayList<>(page.blocks());
         boolean changed = FieldWalk.walk(blocks, field -> {
@@ -58,15 +54,5 @@ public class FormResetActionHandler implements ButtonActionHandler {
             return new ButtonActionResult("Markings and answers cleared.");
         }
         return new ButtonActionResult("Nothing to clear.");
-    }
-
-    private DocumentDocument findWorkPage(ButtonActionContext ctx) {
-        DocumentDocument doc = documentService
-                .findByPath(ctx.tenantId(), ctx.projectId(), ctx.pagePath())
-                .orElseThrow(() -> new ToolException("workpage not found: " + ctx.pagePath()));
-        if (!WorkPageService.KIND.equals(doc.getKind())) {
-            throw new ToolException("'" + ctx.pagePath() + "' is not a workpage (kind=" + doc.getKind() + ").");
-        }
-        return doc;
     }
 }

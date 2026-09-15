@@ -845,6 +845,19 @@ export default {
         'Assistenten sind YAML-Formulare unter _vance/wizards/, die zu strukturierten Prompts werden.',
       submit: 'Prompt erstellen',
     },
+    skills: {
+      tabLabel: 'Skills',
+      title: 'Skills',
+      activeBadge: 'aktiv',
+      oneShotBadge: 'einmalig',
+      refresh: 'Liste aktualisieren',
+      play: 'In die Eingabe schreiben',
+      emptyHeadline: 'Keine Skills verfügbar',
+      emptyBody:
+        'Skills sind SKILL.md-Dokumente in der Cascade (User/Projekt/Vance), die für den laufenden Prozess aktiviert werden.',
+      noProcessHeadline: 'Kein aktiver Prozess',
+      noProcessBody: 'Skills gelten pro Prozess — starte einen Chat, um die Liste zu sehen.',
+    },
     planMode: {
       modeBadgeTooltip: 'Aktueller Modus des Chat-Prozesses (Arthur Plan-Mode)',
       planTitle: 'Plan',

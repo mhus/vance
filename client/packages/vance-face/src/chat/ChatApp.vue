@@ -1049,6 +1049,7 @@ function openInCortex(): void {
       <ChatRightPanel
         v-if="liveOk"
         ref="rightPanelRef"
+        :socket="socket!"
         :events="progressEvents"
         :project-id="chatProjectId || undefined"
         :session-key="chatProcessName ?? undefined"

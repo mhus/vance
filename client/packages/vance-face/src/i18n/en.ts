@@ -845,6 +845,19 @@ export default {
         'Wizards are YAML forms under _vance/wizards/ that turn into structured prompts.',
       submit: 'Generate prompt',
     },
+    skills: {
+      tabLabel: 'Skills',
+      title: 'Skills',
+      activeBadge: 'active',
+      oneShotBadge: 'one-shot',
+      refresh: 'Refresh list',
+      play: 'Write into the composer',
+      emptyHeadline: 'No skills available',
+      emptyBody:
+        'Skills are SKILL.md documents in the cascade (user/project/Vance) that get activated on the running process.',
+      noProcessHeadline: 'No active process',
+      noProcessBody: 'Skills are per-process — start a chat to see the list.',
+    },
     planMode: {
       modeBadgeTooltip: 'Current chat-process mode (Arthur Plan-Mode)',
       planTitle: 'Plan',

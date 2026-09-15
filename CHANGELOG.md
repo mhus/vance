@@ -9,6 +9,15 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
 
 ## [Unreleased]
 
+### Changed
+
+- **Pinned image tags** — the Docker Compose scaffolder (`--setup-docker-compose`)
+  now defaults `IMAGE_TAG` to its own build version instead of `latest`
+  (release builds pin the exact version, snapshot/dev builds fall back to
+  `latest`). A wizard re-run with a newer image bumps the pin — re-running the
+  wizard IS the update path; `latest` remains available as an explicit rolling
+  channel. The generated README documents the update flow.
+
 ## [0.4.0] - 2026-09-15
 
 ### Added

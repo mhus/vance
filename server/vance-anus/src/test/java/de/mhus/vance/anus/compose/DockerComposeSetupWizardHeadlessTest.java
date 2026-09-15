@@ -2,6 +2,7 @@ package de.mhus.vance.anus.compose;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.anus.BuildInfo;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -148,6 +149,68 @@ class DockerComposeSetupWizardHeadlessTest {
         assertThat(second).containsEntry("VANCE_DEFAULT_LANGUAGE", "German");
         assertThat(second).containsEntry("VANCE_FOOK_ENABLED", "false");
         assertThat(second.get("VANCE_ENCRYPTION_PASSWORD")).isEqualTo(first.get("VANCE_ENCRYPTION_PASSWORD"));
+    }
+
+    @Test
+    void firstRun_pinsTheWizardVersionAsImageTag() throws IOException {
+        feedStdin(VALID_CONFIG);
+
+        int exit = DockerComposeSetupWizard.runHeadless(dir, "-", false);
+
+        assertThat(exit).isZero();
+        // IMAGE_TAG is an attribute of the wizard binary, not a fixed default:
+        // release builds pin their exact version, development builds fall
+        // back to the latest rolling tag.
+        assertThat(DotEnvFile.read(dir.resolve(".env"))).containsEntry("IMAGE_TAG", BuildInfo.imageTagDefault());
+    }
+
+    @Test
+    void reRun_bumpsAPinnedImageTagToTheWizardVersion() throws IOException {
+        feedStdin(VALID_CONFIG);
+        DockerComposeSetupWizard.runHeadless(dir, "-", false);
+        Path envPath = dir.resolve(".env");
+        String before = Files.readString(envPath, StandardCharsets.UTF_8);
+        // A previous release pinned the stack; simulate an older hand pin.
+        Files.writeString(envPath, before.replaceAll("IMAGE_TAG=.*", "IMAGE_TAG=0.4.0"), StandardCharsets.UTF_8);
+
+        // Re-run with a minimal config — nothing about the image was asked.
+        feedStdin("face-port: 4321\n");
+        int exit = DockerComposeSetupWizard.runHeadless(dir, "-", false);
+
+        assertThat(exit).isZero();
+        // The pin is replaced by the version of the wizard binary that ran —
+        // that re-run IS the update path.
+        Map<String, String> second = DotEnvFile.read(envPath);
+        assertThat(second.get("IMAGE_TAG")).isNotEqualTo("0.4.0");
+        assertThat(second.get("IMAGE_TAG")).isEqualTo(BuildInfo.imageTagDefault());
+    }
+
+    @Test
+    void reRun_keepsTheLatestRollingChannel() throws IOException {
+        feedStdin(VALID_CONFIG);
+        DockerComposeSetupWizard.runHeadless(dir, "-", false);
+        Path envPath = dir.resolve(".env");
+        String before = Files.readString(envPath, StandardCharsets.UTF_8);
+        Files.writeString(envPath, before.replaceAll("IMAGE_TAG=.*", "IMAGE_TAG=latest"), StandardCharsets.UTF_8);
+
+        feedStdin("face-port: 4321\n");
+        int exit = DockerComposeSetupWizard.runHeadless(dir, "-", false);
+
+        // `latest` is the one deliberate opt-in carried over — a re-run never
+        // silently pins a rolling-channel user.
+        assertThat(exit).isZero();
+        assertThat(DotEnvFile.read(envPath)).containsEntry("IMAGE_TAG", "latest");
+    }
+
+    @Test
+    void config_canPinAnImageTagExplicitly() throws IOException {
+        feedStdin("image-tag: 1.2.3\n");
+
+        int exit = DockerComposeSetupWizard.runHeadless(dir, "-", false);
+
+        assertThat(exit).isZero();
+        // An explicit config value always wins over the wizard default.
+        assertThat(DotEnvFile.read(dir.resolve(".env"))).containsEntry("IMAGE_TAG", "1.2.3");
     }
 
     @Test

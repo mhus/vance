@@ -473,7 +473,18 @@ public final class DockerComposeSetupWizard {
         env.forEach((k, v) -> {
             switch (k) {
                 case "VANCE_IMAGE_NAMESPACE" -> s.setImageNamespace(v);
-                case "IMAGE_TAG" -> s.setImageTag(v);
+                case "IMAGE_TAG" -> {
+                    // Carried over only as the rolling channel: `latest` is a
+                    // deliberate opt-in a re-run must not silently switch off.
+                    // A version pin is NOT config — it is an attribute of the
+                    // wizard binary (the state default), so a re-run with a
+                    // newer image bumps the stack to that version. Pinning an
+                    // older version stays an explicit input of the run (menu
+                    // item 16 / config `image-tag`).
+                    if ("latest".equals(v)) {
+                        s.setImageTag(v);
+                    }
+                }
                 case "MONGO_INITDB_ROOT_USERNAME" -> s.setMongoUser(v);
                 case "MONGO_INITDB_ROOT_PASSWORD" -> s.setMongoPassword(v);
                 case "VANCE_MONGODB_DATABASE" -> s.setMongoDatabase(v);

@@ -49,9 +49,7 @@ final class DotEnvFile {
     }
 
     private static String unquote(String v) {
-        if (v.length() >= 2
-                && ((v.startsWith("\"") && v.endsWith("\""))
-                        || (v.startsWith("'") && v.endsWith("'")))) {
+        if (v.length() >= 2 && ((v.startsWith("\"") && v.endsWith("\"")) || (v.startsWith("'") && v.endsWith("'")))) {
             return v.substring(1, v.length() - 1);
         }
         return v;
@@ -72,6 +70,9 @@ final class DotEnvFile {
         sb.append("# any keys the wizard does not manage. Never commit your secrets.\n\n");
 
         section(sb, "Image source");
+        sb.append("#   IMAGE_TAG pins the stack to the version of the wizard that rendered\n");
+        sb.append("#   this file — update by re-running the wizard of the NEW version, it\n");
+        sb.append("#   bumps the pin and re-renders these files (see README.md, \"Update\").\n");
         put(sb, managed, "VANCE_IMAGE_NAMESPACE");
         put(sb, managed, "IMAGE_TAG");
 

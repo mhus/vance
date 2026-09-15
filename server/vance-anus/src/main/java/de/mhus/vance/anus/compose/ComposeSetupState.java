@@ -25,8 +25,17 @@ class ComposeSetupState {
 
     // ── image source ──────────────────────────────────────────────
     private String imageNamespace = "mhus";
-    /** Expert-only. */
-    private String imageTag = "latest";
+    /**
+     * Expert-only. Pins the stack to the version of the wizard binary that
+     * renders the files — a release build pins its exact version, anything
+     * development falls back to {@code latest} (see
+     * {@link de.mhus.vance.anus.BuildInfo#imageTagDefault()}). A wizard
+     * re-run with a newer image therefore bumps the pin; {@code latest} is
+     * the one value carried over from an existing {@code .env} (a deliberate
+     * rolling-channel opt-in — see
+     * {@link DockerComposeSetupWizard#prefillFromEnv}).
+     */
+    private String imageTag = de.mhus.vance.anus.BuildInfo.imageTagDefault();
 
     // ── mongodb ───────────────────────────────────────────────────
     private String mongoUser = "root";

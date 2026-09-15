@@ -262,9 +262,34 @@ final class ComposeFileRenderer {
                 docker compose start             # start it again
                 docker compose restart brain     # restart a single service
                 docker compose down              # remove containers (./data is kept)
-                docker compose pull && docker compose up -d   # update to newer images
+                docker compose pull && docker compose up -d   # pull the pinned tag + roll (see "Update")
                 ```
                 """.formatted(BuildInfo.line(), url, url));
+
+        sb.append("""
+
+                ## Update
+
+                This stack is **pinned**: `IMAGE_TAG` in `.env` names the exact
+                version of the wizard that rendered these files. Updating to a
+                new version therefore means re-running the wizard from the
+                **new** image — it bumps the pin and re-renders these files with
+                the current template — then pulling and rolling. Data is migrated
+                automatically when the new brain boots.
+
+                ```bash
+                set -a; source .env; set +a
+                docker run --rm -it -v "$PWD:/data" \\
+                  "$VANCE_IMAGE_NAMESPACE/vancetope-anus:<NEW VERSION>" --setup-docker-compose
+                docker compose pull && docker compose up -d
+                ```
+
+                Rolling channel instead: pick `latest` for \"Image tag\" in the
+                wizard (expert mode). Then the pin never changes and
+                `docker compose pull && docker compose up -d` alone is the whole
+                update; re-run the wizard only when the release notes say the
+                generated files changed.
+                """);
 
         if (s.isToolsEnabled()) {
             sb.append("""

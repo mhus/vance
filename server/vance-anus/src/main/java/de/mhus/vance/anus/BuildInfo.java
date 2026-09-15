@@ -46,6 +46,27 @@ public final class BuildInfo {
     }
 
     /**
+     * Image tag a scaffolded stack pins to: the exact reactor version on a
+     * release build, {@code latest} on anything development ({@code -SNAPSHOT}
+     * or an unfiltered {@code dev} classpath). Mirrors what the publishing
+     * side pushes — {@code wb image push} ships development builds as
+     * {@code latest} only, {@code wb release publish} ships the same build
+     * under both {@code <version>} and {@code latest} — so a pinned tag
+     * always resolves on the registry.
+     */
+    public static String imageTagDefault() {
+        return imageTagDefault(VERSION);
+    }
+
+    /** Pure form of {@link #imageTagDefault()} for tests. */
+    static String imageTagDefault(String version) {
+        if (version.isBlank() || version.contains("SNAPSHOT") || version.equals("dev")) {
+            return "latest";
+        }
+        return version;
+    }
+
+    /**
      * Pulls {@code vance.build.<key>} out of {@code /application.yml}. Anchors on
      * the {@code build:} block so an unrelated {@code version:}/{@code time:} key
      * elsewhere in the file cannot shadow it. An unfiltered value (still bearing

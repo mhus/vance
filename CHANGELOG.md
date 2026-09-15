@@ -9,6 +9,8 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-15
+
 ### Added
 
 - **Vance Capture** — browser extension for Chrome, Firefox, and Safari:

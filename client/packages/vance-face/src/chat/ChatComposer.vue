@@ -322,12 +322,12 @@ function closeAttachmentMenu(): void {
 }
 
 /**
- * Composer mode: single-line uses Enter to send (Shift+Enter for a hard
- * break), multi-line uses Ctrl/Cmd+Enter (because plain Enter is the
- * obvious gesture for newline once the user has multiple lines).
+ * Composer mode: single-line (Enter sends, Shift+Enter hard break) stays
+ * exactly one row tall; multi-line (Ctrl/Cmd+Enter sends, Enter breaks)
+ * auto-grows with the text up to a cap and scrolls beyond it. Toggled by
+ * the ¶ button pinned next to the send button in the card's toolbar row.
  */
 const multiline = ref(false);
-const composerRows = computed(() => (multiline.value ? 4 : 1));
 const composerPlaceholder = computed(() => {
   if (autoAiOn.value) return t('chat.autoAi.placeholder');
   return multiline.value
@@ -1246,8 +1246,8 @@ onBeforeUnmount(() => {
       </span>
     </div>
 
-    <VAlert v-if="sendError" variant="error" class="mb-2">{{ sendError }}</VAlert>
-    <VAlert v-if="speechError" variant="warning" class="mb-2">{{ speechError }}</VAlert>
+    <VAlert v-if="sendError" variant="error" class="mb-2 max-w-3xl mx-auto">{{ sendError }}</VAlert>
+    <VAlert v-if="speechError" variant="warning" class="mb-2 max-w-3xl mx-auto">{{ speechError }}</VAlert>
 
     <!-- Pending-attachment chips. Cleared by send() on success;
          per-chip ✕ removes a single entry before send. Two flavours:
@@ -1255,7 +1255,7 @@ onBeforeUnmount(() => {
          to-be-uploaded files. -->
     <div
       v-if="selectedFiles.length > 0 || selectedDocs.length > 0"
-      class="max-w-5xl mx-auto mb-2 flex flex-wrap gap-2"
+      class="max-w-3xl mx-auto mb-2 flex flex-wrap gap-2"
     >
       <div
         v-for="(doc, idx) in selectedDocs"
@@ -1292,174 +1292,195 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="max-w-5xl mx-auto flex gap-2 items-end relative">
-      <!-- Narrow-viewport menu toggle. CSS hides it on wide screens
-           and turns .composer-tools into a popup on narrow. -->
-      <VButton
-        variant="ghost"
-        size="sm"
-        class="composer-tools-toggle"
-        :title="composerToolsOpen ? 'Hide tools' : 'Show tools'"
-        @click="composerToolsOpen = !composerToolsOpen"
-      >
-        ⋯
-      </VButton>
-
-      <div
-        class="composer-tools"
-        :class="{ 'composer-tools--open': composerToolsOpen }"
-      >
-        <VButton
-          variant="ghost"
-          size="sm"
-          :title="multiline ? $t('chat.multilineToggleSingle') : $t('chat.multilineToggleMulti')"
-          @click="multiline = !multiline"
-        >
-          {{ multiline ? '▲' : '▼' }}
-        </VButton>
-        <div v-if="speechSupported || speakerSupported" class="flex gap-1 items-center">
-          <VButton
-            v-if="talkModeSupported"
-            variant="ghost"
-            size="sm"
-            :class="talkStatus === 'ACTIVE' ? 'text-success animate-pulse'
-              : talkStatus === 'LISTENING' ? 'text-info'
-              : talkStatus === 'PAUSED' ? 'text-warning' : ''"
-            :title="talkStatus === 'PAUSED' ? $t('chat.speech.talkModePausedHint')
-              : talkStatus === 'LISTENING' ? $t('chat.speech.talkModeListeningHint')
-              : talkStatus === 'ACTIVE' ? $t('chat.speech.talkModeStop')
-              : $t('chat.speech.talkModeStart')"
-            @click="toggleTalkMode"
-          >
-            {{ talkStatus === 'PAUSED' ? '⏸️' : talkStatus === 'LISTENING' ? '👂' : '📞' }}
-          </VButton>
-          <VButton
-            v-if="speechSupported"
-            variant="ghost"
-            size="sm"
-            :class="speechRecording ? 'text-error animate-pulse' : ''"
-            :title="speechRecording ? $t('chat.speech.stopSpeechToText') : $t('chat.speech.startSpeechToText')"
-            @click="toggleSpeech"
-          >
-            🎤
-          </VButton>
-          <VButton
-            v-if="speakerSupported"
-            variant="ghost"
-            size="sm"
-            :class="speakerEnabled ? (speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : ''"
-            :title="speakerEnabled ? $t('chat.speech.muteIncoming') : $t('chat.speech.readAloud')"
-            @click="toggleSpeaker"
-          >
-            {{ speakerEnabled ? '🔊' : '🔇' }}
-          </VButton>
-          <!-- Quick-adjust sliders for volume + rate. Saved server-side
-               on every input event — these are the user's persistent
-               default, not a session-only override. Voice + language
-               live on the profile page. -->
-          <VRange
-            v-if="speakerSupported"
-            size="xs"
-            class="w-16"
-            :min="MIN_VOLUME"
-            :max="MAX_VOLUME"
-            :step="0.05"
-            :model-value="speechVolume"
-            :title="$t('chat.speech.volume') + ': ' + Math.round(speechVolume * 100) + '%'"
-            @input="onVolumeInput"
-          />
-          <VRange
-            v-if="speakerSupported"
-            size="xs"
-            class="w-16"
-            :min="MIN_RATE"
-            :max="MAX_RATE"
-            :step="0.05"
-            :model-value="speechRate"
-            :title="$t('chat.speech.rate') + ': ' + speechRate.toFixed(2) + '×'"
-            @input="onRateInput"
-          />
-        </div>
-        <!-- Hidden file picker — paperclip button below opens it.
-             Drag-and-drop on the surrounding footer bypasses this
-             input entirely; this is just the explicit-pick path. -->
-        <input
-          ref="fileInputRef"
-          type="file"
-          class="hidden"
-          multiple
-          @change="onFilePickerChange"
-        />
-        <!-- Host (e.g. Cortex) declared a current-file source → render
-             the 📎 button as a DaisyUI dropdown so the user can choose
-             between picking a fresh file and attaching the contextual
-             one without a roundtrip. Without that source we keep the
-             single-click direct picker — same UX as standalone chat. -->
-        <VDropdown
-          v-if="currentFileSource"
-          position="top"
-          trigger-variant="ghost"
-          trigger-size="sm"
-          :trigger-disabled="sending || uploading || !chatProcessName"
-          :trigger-title="$t('chat.attachments.pickerTooltip')"
-          menu-class="mb-2 w-72"
-        >
-          <template #trigger>📎</template>
-          <li>
-            <a @click="closeAttachmentMenu(); fileInputRef?.click()">
-              <span aria-hidden="true">📎</span>
-              <span class="flex-1">{{ $t('chat.attachments.pickFromComputer') }}</span>
-            </a>
-          </li>
-          <li>
-            <a @click="closeAttachmentMenu(); attachCurrentFile()">
-              <span aria-hidden="true">📄</span>
-              <span class="flex-1 min-w-0">
-                <span class="block text-xs opacity-60">
-                  {{ $t('chat.attachments.attachCurrentFile') }}
-                </span>
-                <span class="block truncate font-mono">{{ currentFileSource.label }}</span>
-              </span>
-            </a>
-          </li>
-        </VDropdown>
-        <VButton
-          v-else
-          variant="ghost"
-          size="sm"
-          :disabled="sending || uploading || !chatProcessName"
-          :title="$t('chat.attachments.pickerTooltip')"
-          @click="() => fileInputRef?.click()"
-        >
-          📎
-        </VButton>
-      </div>
-      <div class="flex-1" @focusin="onComposerFocusIn" @focusout="onComposerFocusOut">
+    <!-- Composer card: one centered, rounded frame that owns the border and
+         the focus ring. The textarea renders `plain` (frameless) inside it;
+         the toolbar row below carries the speech/attachment tools on the
+         left and the ¶ multiline toggle + send on the right. Single-line by
+         default; multi-line mode auto-grows up to 8 rows, then scrolls. -->
+    <div
+      class="max-w-3xl mx-auto relative rounded-2xl border border-base-300
+             bg-base-100 shadow-sm transition-shadow
+             focus-within:border-primary focus-within:shadow-md"
+    >
+      <div class="px-3 pt-1" @focusin="onComposerFocusIn" @focusout="onComposerFocusOut">
         <VTextarea
           v-model="composerText"
           :placeholder="composerPlaceholder"
-          :rows="composerRows"
+          :rows="multiline ? 2 : 1"
+          :auto-grow="multiline"
+          :max-rows="8"
+          :mono="false"
+          plain
           @keydown="onComposerKeydown"
         />
       </div>
-      <VButton
-        variant="primary"
-        :disabled="(!composerText.trim() && selectedFiles.length === 0 && selectedDocs.length === 0)
-          || sending || uploading || !chatProcessName"
-        :loading="sending || uploading"
-        :title="$t('chat.send')"
-        @click="send"
-      >
-        ▶
-      </VButton>
-      <VButton
-        v-if="sending"
-        variant="danger"
-        :title="$t('chat.pauseTooltip')"
-        @click="pause"
-      >
-        ⏸
-      </VButton>
+      <div class="flex items-center gap-1 px-2 pb-1.5">
+        <!-- Narrow-viewport menu toggle. CSS hides it on wide screens
+             and turns .composer-tools into a popup on narrow. -->
+        <VButton
+          variant="ghost"
+          size="sm"
+          class="composer-tools-toggle"
+          :title="composerToolsOpen ? 'Hide tools' : 'Show tools'"
+          @click="composerToolsOpen = !composerToolsOpen"
+        >
+          ⋯
+        </VButton>
+        <div
+          class="composer-tools"
+          :class="{ 'composer-tools--open': composerToolsOpen }"
+        >
+          <div v-if="speechSupported || speakerSupported" class="flex gap-1 items-center">
+            <VButton
+              v-if="talkModeSupported"
+              variant="ghost"
+              size="sm"
+              :class="talkStatus === 'ACTIVE' ? 'text-success animate-pulse'
+                : talkStatus === 'LISTENING' ? 'text-info'
+                : talkStatus === 'PAUSED' ? 'text-warning' : ''"
+              :title="talkStatus === 'PAUSED' ? $t('chat.speech.talkModePausedHint')
+                : talkStatus === 'LISTENING' ? $t('chat.speech.talkModeListeningHint')
+                : talkStatus === 'ACTIVE' ? $t('chat.speech.talkModeStop')
+                : $t('chat.speech.talkModeStart')"
+              @click="toggleTalkMode"
+            >
+              {{ talkStatus === 'PAUSED' ? '⏸️' : talkStatus === 'LISTENING' ? '👂' : '📞' }}
+            </VButton>
+            <VButton
+              v-if="speechSupported"
+              variant="ghost"
+              size="sm"
+              :class="speechRecording ? 'text-error animate-pulse' : ''"
+              :title="speechRecording ? $t('chat.speech.stopSpeechToText') : $t('chat.speech.startSpeechToText')"
+              @click="toggleSpeech"
+            >
+              🎤
+            </VButton>
+            <VButton
+              v-if="speakerSupported"
+              variant="ghost"
+              size="sm"
+              :class="speakerEnabled ? (speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : ''"
+              :title="speakerEnabled ? $t('chat.speech.muteIncoming') : $t('chat.speech.readAloud')"
+              @click="toggleSpeaker"
+            >
+              {{ speakerEnabled ? '🔊' : '🔇' }}
+            </VButton>
+            <!-- Quick-adjust sliders for volume + rate. Session-only
+                 overrides; the persistent defaults live on the profile
+                 page and are picked up on the next mount. -->
+            <VRange
+              v-if="speakerSupported"
+              size="xs"
+              class="w-16"
+              :min="MIN_VOLUME"
+              :max="MAX_VOLUME"
+              :step="0.05"
+              :model-value="speechVolume"
+              :title="$t('chat.speech.volume') + ': ' + Math.round(speechVolume * 100) + '%'"
+              @input="onVolumeInput"
+            />
+            <VRange
+              v-if="speakerSupported"
+              size="xs"
+              class="w-16"
+              :min="MIN_RATE"
+              :max="MAX_RATE"
+              :step="0.05"
+              :model-value="speechRate"
+              :title="$t('chat.speech.rate') + ': ' + speechRate.toFixed(2) + '×'"
+              @input="onRateInput"
+            />
+          </div>
+          <!-- Hidden file picker — paperclip button below opens it.
+               Drag-and-drop on the surrounding footer bypasses this
+               input entirely; this is just the explicit-pick path. -->
+          <input
+            ref="fileInputRef"
+            type="file"
+            class="hidden"
+            multiple
+            @change="onFilePickerChange"
+          />
+          <!-- Host (e.g. Cortex) declared a current-file source → render
+               the 📎 button as a DaisyUI dropdown so the user can choose
+               between picking a fresh file and attaching the contextual
+               one without a roundtrip. Without that source we keep the
+               single-click direct picker — same UX as standalone chat. -->
+          <VDropdown
+            v-if="currentFileSource"
+            position="top"
+            trigger-variant="ghost"
+            trigger-size="sm"
+            :trigger-disabled="sending || uploading || !chatProcessName"
+            :trigger-title="$t('chat.attachments.pickerTooltip')"
+            menu-class="mb-2 w-72"
+          >
+            <template #trigger>📎</template>
+            <li>
+              <a @click="closeAttachmentMenu(); fileInputRef?.click()">
+                <span aria-hidden="true">📎</span>
+                <span class="flex-1">{{ $t('chat.attachments.pickFromComputer') }}</span>
+              </a>
+            </li>
+            <li>
+              <a @click="closeAttachmentMenu(); attachCurrentFile()">
+                <span aria-hidden="true">📄</span>
+                <span class="flex-1 min-w-0">
+                  <span class="block text-xs opacity-60">
+                    {{ $t('chat.attachments.attachCurrentFile') }}
+                  </span>
+                  <span class="block truncate font-mono">{{ currentFileSource.label }}</span>
+                </span>
+              </a>
+            </li>
+          </VDropdown>
+          <VButton
+            v-else
+            variant="ghost"
+            size="sm"
+            :disabled="sending || uploading || !chatProcessName"
+            :title="$t('chat.attachments.pickerTooltip')"
+            @click="() => fileInputRef?.click()"
+          >
+            📎
+          </VButton>
+        </div>
+        <div class="flex-1"></div>
+        <!-- Multi-line toggle — the pilcrow marks the paragraph mode.
+             Stays pinned next to the input in every viewport (it is NOT
+             part of the collapsible tools cluster). -->
+        <VButton
+          variant="ghost"
+          size="sm"
+          :class="multiline ? 'btn-active text-primary' : ''"
+          :title="multiline ? $t('chat.multilineToggleSingle') : $t('chat.multilineToggleMulti')"
+          :aria-pressed="multiline"
+          @click="multiline = !multiline"
+        >
+          ¶
+        </VButton>
+        <VButton
+          variant="primary"
+          size="sm"
+          :disabled="(!composerText.trim() && selectedFiles.length === 0 && selectedDocs.length === 0)
+            || sending || uploading || !chatProcessName"
+          :loading="sending || uploading"
+          :title="$t('chat.send')"
+          @click="send"
+        >
+          ▶
+        </VButton>
+        <VButton
+          v-if="sending"
+          variant="danger"
+          size="sm"
+          :title="$t('chat.pauseTooltip')"
+          @click="pause"
+        >
+          ⏸
+        </VButton>
+      </div>
     </div>
   </div>
 </template>
@@ -1471,14 +1492,15 @@ onBeforeUnmount(() => {
 .composer-tools {
   display: flex;
   gap: 0.5rem;
-  align-items: flex-end;
+  align-items: center;
 }
 
 /* Forced-compact mode for embedded hosts (e.g. Cortex's right panel)
    where the parent column is narrow but the viewport isn't — the
    media-query gate below would otherwise leave the full toolbar in
    place and overflow horizontally. Mirrors the narrow-viewport rules
-   1:1; keep both blocks in sync. */
+   1:1; keep both blocks in sync. The popup anchors to the composer card
+   (nearest positioned ancestor) and opens above it. */
 .composer--compact .composer-tools-toggle {
   display: inline-flex;
 }
@@ -1489,7 +1511,7 @@ onBeforeUnmount(() => {
   display: flex;
   position: absolute;
   bottom: calc(100% + 0.5rem);
-  left: 0.5rem;
+  left: 0;
   z-index: 50;
   padding: 0.5rem;
   background-color: var(--color-base-100);
@@ -1514,7 +1536,7 @@ onBeforeUnmount(() => {
     display: flex;
     position: absolute;
     bottom: calc(100% + 0.5rem);
-    left: 0.5rem;
+    left: 0;
     z-index: 20;
     padding: 0.5rem;
     background-color: var(--color-base-100);

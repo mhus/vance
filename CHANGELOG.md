@@ -9,6 +9,132 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
 
 ## [Unreleased]
 
+### Added
+
+- **Vance Capture** — browser extension for Chrome, Firefox, and Safari:
+  links jump into the web UI (link list + grabbed document), a second button
+  imports the displayed page itself, and one extension can serve multiple
+  targets. Store packages (AMO source archive, Safari project) build with a
+  single command.
+- **Integration tokens** — long-lived, narrowed credentials for foreign tools:
+  an `scp` profile plus a project `pid` pin per token; a token can carry
+  multiple profiles, and revocation checks the project pin against lost updates.
+- **Web grab** — `POST /grab` imports the page the browser shows as a document
+  (HTML to Markdown, no outgoing request).
+- **Age encryption** — age-encrypted documents where the server stores only
+  ciphertext and the key stays with the user: `vance-age` as the Java facade
+  (jagged), `@vance/age` as the TS wrapper, decrypt/edit/convert in Cortex,
+  decryption in the foot view (passphrase or identity file), and `doc_encrypt`
+  as an agent tool that checks the write gate before encrypting.
+- **Benjy** — iterative orchestration engine for small models: the task queue
+  is the state; safety nets measure progress and cost, not volume; a structural
+  item-charge cap; todos projection with `todos-updated`, journal records rendered
+  as markdown, and a delegation manual for spawning orchestrators.
+- **Zaphod session mode** — reactive council chat per user turn, with head
+  replies as interim notes, a pinned synthesis model, a philosophical-council
+  recipe, and a council category for all Zaphod recipes.
+- **Shooty guard system** — the completion guard becomes a guard system with
+  points: a START point in Ford (Trillian inherits Frankie's wiring) whose
+  guard can replace the turn prompt entirely.
+- **Workbook forms and quizzes** — `vance-field` block and a button action
+  registry; quiz UX with reset, resolve, and persistent score; free-text
+  answers graded by an internal form-judge LLM profile.
+- **Report themes** — per-customer CSS themes with a PDF export menu in
+  Cortex, a server-side theme-css endpoint, and a themed markdown preview
+  in the web UI.
+- **Scheduled model discovery** — opt-in via `vance.ai-models.discovery.enabled`;
+  captures model info and endpoint pricing, and writes prices as `auto:true`
+  manual docs (discovery and pricing stay source-separated).
+- **AI configuration** — provider instances configurable per endpoint,
+  `tlsInsecure` sidecar flag for private-CA gateways, a `default:chat` alias
+  for chat surfaces, the `ai_model_current` tool, and creator support for
+  model-definition setup without operator detours.
+- **File tools** — If-Match guard: `contentHash` on `file_read`,
+  `expectedContentHash` on `file_edit`/`file_write`.
+- **Tools** — `defaults_list`/`defaults_read` for bundled vance-defaults,
+  `location_get` as a client tool (browser-native permission state), and
+  `doc_write` in the analyze recipe.
+- **Follow-up** — optional FIM-completion path for the edit mode.
+- **Cortex** — menu mount points (View/Actions/Extras) and selection translate
+  for every text document.
+- **Inbox** — compose a message into a user's or team's inbox; finished items
+  return to the list.
+- **Chat** — composer card (centered single-line input, ¶ toggle, auto-grow)
+  and a skills tab in the right panel (list, active markers, play-to-composer).
+- **Foot** — `/new` and `/ui-new` start a session from the recipe picker.
+- **Recipe picker** — category grouping, a slim search field, and a projectKind
+  filter (Eddie only in hub pickers, project recipes only in project pickers).
+- **UI theming** — tenant-wide web-UI customization: custom CSS and a header logo.
+- **Eddie** — the working-project spot is visible to LLM and user (list marking
+  plus live push).
+- **GTD** — capture field with auto-focus, drag-sort within a bucket list, and
+  a trash bucket swept on rebuild instead of deleting on check-off.
+- **Web UI** — project memory per browser tab, and visibility levels (Run view
+  on, Store down).
+- **`qrcode` kind** — payload body rendered as a scannable QR symbol.
+- **Setup agent mode** — both anus setup wizards are headless-driveable via
+  YAML config, fail-closed.
+- **Empty-response diagnostics** — phantom tool call detection and reporting.
+- **Marvin** — bounded parse-error correction loop for phase outputs.
+- **Creator** — source analysis with version stamps, `brain_info`, and
+  `git_checkout` commit/depth; BenjyArchitect for Slart authoring of Benjy
+  outer-recipes.
+- **Facelift** — Capacitor 8 toolchain, optional PIN lock, Play Store release
+  signing, real Android icons and splash, and i18n across the federation
+  boundary.
+- **Build hygiene** — ESLint in the client workspace (lint fails the build),
+  Spotless formatting for Java sources (palantir-java-format, ratcheted from
+  origin/main), and PMD static analysis with a curated ruleset, baseline, and
+  six adoption rounds.
+
+### Changed
+
+- "Vance" replaced by "Vancetope" in user-visible titles; license contact
+  email filled in (info@vancetope.com).
+- German strings swept out of the English surface (Workbook, Binder, and the
+  UI at large).
+- Client dependencies: js-yaml 5 (namespace import), Electron 44,
+  `@types/node` 26, npm minor/patch group; Actions setup-java 6, Maven
+  minor/patch group.
+- Arthur prompt: Slartibartfast only via manual, never a blind preset; the
+  DISCOVER trigger sharpened (known words as placement metaphers are
+  discovery cases).
+- Trillian: the recipe alias removed — `void` and `adam` stand side by side.
+
+### Fixed
+
+- Workbook: typing no longer vanishes on auto-save (silent quiet-window
+  probe), quiz action writes survive the self-write window, and the page list
+  becomes a drawer on phone width.
+- Brain: a worker-turn exception closes INCOMPLETE and wakes the parent;
+  deferred tools only via activate-first (direct calls on unlisted names die
+  on restricted endpoints); `AiModelResolver` resolves named provider
+  instances in the tenant default; `modelAlias` builds via provider instance
+  instead of wire name; `AgeContentException` returns 400 instead of 500 on
+  `PUT /content`.
+- Usage: summary without `$dateTrunc` (MongoDB 4.4 compatibility), and one
+  failing report cut no longer blanks the tab.
+- Face: chat auto-scroll only when the user is reading at the end; the process
+  panel shows terminated processes by default; the plan-box closure notice
+  keeps the final list in the transcript; login no longer fails on iOS
+  auto-capitalization; the Compose dialog shows no stale error; block editor
+  empty document, save echo, and modal handle; the Cortex router writes the
+  address before the handoff reads it.
+- Voice: numbered lists spoken with ordinal connectors.
+- Facelift: `/config.json` verify routed through the main process (CORS), the
+  iOS generators no longer revert names and the speech key, and the adaptive
+  icon uses the real assets.
+- Benjy: journal state, wallclock phase, and empty-state guard.
+- Zaphod: silent session heads fixed.
+- Vogon: bundled intake/workflow examples follow the current schema.
+- Settings: the encrypted write path drops the description; only a
+  foot-backend registration counts as a CLIENT work target.
+- Capture: match patterns without ports, Safari loads module scripts, a
+  missing expiry reads "unknown" instead of "never", and an honest 401
+  message.
+- Web grab and project memory: five conversion review findings fixed, and
+  project-memory seeding runs in its own watcher.
+
 ## [0.3.0] - 2026-08-28
 
 ### Added

@@ -441,6 +441,12 @@ defineExpose({ reload });
                 <div class="text-xs text-base-content/60">
                   {{ t('designer.files', { count: design.fileCount }) }}
                 </div>
+                <!-- Description inside the click/drag surface: the whole
+                     card answers, not just the title. -->
+                <div
+                  v-if="design.description"
+                  class="text-xs text-base-content/60 mt-1 line-clamp-2"
+                >{{ design.description }}</div>
               </button>
               <button
                 type="button"
@@ -455,10 +461,6 @@ defineExpose({ reload });
                 @click.stop="openDeleteModal(design)"
               >✕</button>
             </div>
-            <div
-              v-if="design.description"
-              class="text-xs text-base-content/60 mt-1 line-clamp-2"
-            >{{ design.description }}</div>
           </div>
         </VueDraggable>
       </div>

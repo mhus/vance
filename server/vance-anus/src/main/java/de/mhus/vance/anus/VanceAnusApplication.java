@@ -40,21 +40,26 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 @SpringBootApplication(
         scanBasePackages = {"de.mhus.vance.anus", "de.mhus.vance.shared"},
         exclude = {
-                DataRedisAutoConfiguration.class,
-                DataRedisReactiveAutoConfiguration.class,
-                DataRedisRepositoriesAutoConfiguration.class})
+            DataRedisAutoConfiguration.class,
+            DataRedisReactiveAutoConfiguration.class,
+            DataRedisRepositoriesAutoConfiguration.class
+        })
 @EnableMongoRepositories(basePackages = {"de.mhus.vance.shared"})
 @EnableMongoAuditing
 // vance-shared declares WorkspaceProperties as the only @ConfigurationProperties
 // bean — Brain enables it explicitly, Anus has to do the same so the
 // WorkspaceService picked up by component scan can be wired. AccessProperties
 // is Anus's own; AnusExceptionResolver and AuthAspect rely on it being a bean.
-@EnableConfigurationProperties({WorkspaceProperties.class, AccessProperties.class,
-        AnusBrainProperties.class, DevModeProperties.class,
-        de.mhus.vance.shared.audit.AuditServiceProperties.class,
-        // Anus shares the migration engine (SchemaMigrationService is component-scanned
-        // from vance-shared) but has no boot trigger — it never migrates on its own.
-        de.mhus.vance.shared.schema.SchemaMigrationProperties.class})
+@EnableConfigurationProperties({
+    WorkspaceProperties.class,
+    AccessProperties.class,
+    AnusBrainProperties.class,
+    DevModeProperties.class,
+    de.mhus.vance.shared.audit.AuditServiceProperties.class,
+    // Anus shares the migration engine (SchemaMigrationService is component-scanned
+    // from vance-shared) but has no boot trigger — it never migrates on its own.
+    de.mhus.vance.shared.schema.SchemaMigrationProperties.class
+})
 @EnableAspectJAutoProxy
 public class VanceAnusApplication {
 
@@ -75,12 +80,25 @@ public class VanceAnusApplication {
             System.exit(2);
             return;
         }
+        // A --config/--dry-run that survived every bootstrap belongs to no setup
+        // mode — fail with a usage error instead of leaking it into Spring's argv.
+        for (String a : remaining) {
+            if (SetupBootstrap.CONFIG_FLAG.equals(a) || SetupBootstrap.DRY_RUN_FLAG.equals(a)) {
+                System.err.println("anus: " + a + " needs --setup or --setup-docker-compose");
+                System.exit(2);
+                return;
+            }
+        }
         if (DockerComposeSetupBootstrap.isMode()) {
             // Pure offline file scaffolder — writes docker-compose.yml + .env
             // into the mounted volume and exits. Runs BEFORE Spring Boot so the
             // Mongo-dependent context never boots (no database exists yet at
             // this point in a fresh install).
-            System.exit(DockerComposeSetupWizard.run());
+            String configSource = DockerComposeSetupBootstrap.configSource();
+            int exitCode = configSource != null
+                    ? DockerComposeSetupWizard.runHeadless(configSource, DockerComposeSetupBootstrap.isDryRun())
+                    : DockerComposeSetupWizard.run();
+            System.exit(exitCode);
             return;
         }
         SpringApplication app = new SpringApplication(VanceAnusApplication.class);

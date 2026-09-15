@@ -108,9 +108,13 @@ public class OneShotCommandRunner implements ApplicationRunner {
     }
 
     private int runSetup() {
-        log.info("Anus --setup: starting interactive setup wizard");
+        String configSource = SetupBootstrap.configSource();
+        log.info("Anus --setup: {} mode", configSource != null ? "agent config" : "interactive wizard");
         accessService.armForSudo();
         try {
+            if (configSource != null) {
+                return setupWizard.runHeadless(configSource, SetupBootstrap.isDryRun());
+            }
             setupWizard.run();
             return 0;
         } finally {

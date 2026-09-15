@@ -6,8 +6,10 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
@@ -15,6 +17,9 @@ import org.jline.reader.UserInterruptException;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.jspecify.annotations.Nullable;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * Standalone terminal wizard for {@code anus --setup-docker-compose}.
@@ -36,6 +41,11 @@ import org.jspecify.annotations.Nullable;
  *   <li>On save: write {@code .env} (merged) + {@code docker-compose.yml} and
  *       print the next steps.</li>
  * </ol>
+ *
+ * <p>Agent mode ({@code --config <path|->}, see {@link #runHeadless}): the
+ * same state machinery, but every parameter comes from a YAML config and no
+ * terminal is ever opened — all validation is fail-closed, there is no
+ * prompt an agent could not answer. Spec: {@code specification/setup-agent-mode.md}.
  */
 public final class DockerComposeSetupWizard {
 
@@ -56,6 +66,29 @@ public final class DockerComposeSetupWizard {
     /** Entry point from {@code VanceAnusApplication.main}. Returns the process exit code. */
     public static int run() {
         return new DockerComposeSetupWizard().execute();
+    }
+
+    /**
+     * Headless entry for agent-driven runs ({@code --config <path|->}): all
+     * parameters come from a YAML config — {@code "-"} reads stdin, so the
+     * config (which may carry secrets) never has to land on the filesystem.
+     * The wizard validates, renders and — unless {@code dryRun} — writes the
+     * four stack files, then exits. No terminal is opened: no JLine, no
+     * {@code /dev/tty}, so this runs inside a plain {@code docker run -i} pipe.
+     *
+     * <p>Output discipline: secret values are never printed — a dry-run masks
+     * them, a real run lists only file paths. Failures name the offending
+     * config keys, never their values.
+     *
+     * @return process exit code — 0 written / plan printed, 1 rejected or IO failure
+     */
+    public static int runHeadless(String configSource, boolean dryRun) {
+        return new DockerComposeSetupWizard().executeHeadless(configSource, dryRun, resolveOutputDir());
+    }
+
+    /** Test seam: the same headless run against an explicit output directory. */
+    static int runHeadless(Path dir, String configSource, boolean dryRun) {
+        return new DockerComposeSetupWizard().executeHeadless(configSource, dryRun, dir);
     }
 
     private int execute() {
@@ -114,12 +147,7 @@ public final class DockerComposeSetupWizard {
         Path caddyPath = dir.resolve("Caddyfile");
         Path readmePath = dir.resolve("README.md");
         try {
-            Files.createDirectories(dir);
-            Map<String, String> managed = ComposeFileRenderer.renderEnv(state);
-            Files.writeString(envPath, DotEnvFile.render(managed, existingEnv), StandardCharsets.UTF_8);
-            Files.writeString(composePath, ComposeFileRenderer.renderCompose(state), StandardCharsets.UTF_8);
-            Files.writeString(caddyPath, ComposeFileRenderer.renderCaddyfile(), StandardCharsets.UTF_8);
-            Files.writeString(readmePath, ComposeFileRenderer.renderReadme(state), StandardCharsets.UTF_8);
+            writeGeneratedFiles(dir, state, existingEnv);
         } catch (IOException e) {
             out.println("Write failed: " + e.getMessage());
             out.flush();
@@ -128,6 +156,133 @@ public final class DockerComposeSetupWizard {
 
         printDone(out, state, envPath, composePath, readmePath, caddyPath);
         return 0;
+    }
+
+    // ──────────────────────── agent (config) mode ────────────────────────
+
+    private int executeHeadless(String configSource, boolean dryRun, Path dir) {
+        PrintWriter out = new PrintWriter(System.out, true, StandardCharsets.UTF_8);
+        PrintWriter err = new PrintWriter(System.err, true, StandardCharsets.UTF_8);
+        try {
+            Map<String, Object> config = readConfigYaml(configSource);
+
+            out.println("Vancetope — Docker Compose Setup (config mode)");
+            out.printf("%s%n", BuildInfo.line());
+            out.printf("Output directory: %s%n", dir.toAbsolutePath());
+            if (dryRun) {
+                out.println("Dry run — nothing will be written.");
+            }
+            out.println();
+
+            // Same pre-fill the interactive run gets: absent config keys keep
+            // the values of a previous run, so re-runs stay idempotent.
+            ComposeSetupState state = new ComposeSetupState();
+            Map<String, String> existingEnv = DotEnvFile.read(dir.resolve(".env"));
+            if (!existingEnv.isEmpty()) {
+                prefillFromEnv(state, existingEnv);
+                state.setLoadedExisting(true);
+                out.println("Found an existing .env — keys absent from the config keep its values.");
+            }
+            ComposeSetupConfig.applyTo(config, state, secrets);
+            ensureSecrets(state);
+
+            if (dryRun) {
+                printDryRun(out, state);
+                out.println("Dry run — nothing written.");
+                out.flush();
+                return 0;
+            }
+            writeGeneratedFiles(dir, state, existingEnv);
+            out.println("Wrote:");
+            out.printf("  - %s%n", dir.resolve("docker-compose.yml").toAbsolutePath());
+            out.printf("  - %s%n", dir.resolve(".env").toAbsolutePath());
+            out.printf("  - %s%n", dir.resolve("Caddyfile").toAbsolutePath());
+            out.printf("  - %s%n", dir.resolve("README.md").toAbsolutePath());
+            out.println();
+            out.printf("Setup complete — wrote 4 file(s) to %s%n", dir.toAbsolutePath());
+            out.flush();
+            return 0;
+        } catch (ComposeSetupConfig.ConfigValidationException e) {
+            err.println("Config rejected — " + e.problems().size() + " problem(s):");
+            for (String problem : e.problems()) {
+                err.println("  - " + problem);
+            }
+            err.println("Setup failed — nothing written.");
+            err.flush();
+            return 1;
+        } catch (IOException e) {
+            err.println("Setup failed: " + e.getMessage());
+            err.flush();
+            return 1;
+        }
+    }
+
+    /**
+     * Reads the agent config from a file path, or stdin when {@code source}
+     * is {@code "-"}. {@link SafeConstructor} keeps the parse to plain
+     * maps/scalars — agent-supplied input must not be able to instantiate
+     * arbitrary Java types.
+     */
+    private static Map<String, Object> readConfigYaml(String source) throws IOException {
+        String yamlText = "-".equals(source)
+                ? new String(System.in.readAllBytes(), StandardCharsets.UTF_8)
+                : Files.readString(Path.of(source), StandardCharsets.UTF_8);
+        Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
+        Object root;
+        try {
+            root = yaml.load(yamlText);
+        } catch (org.yaml.snakeyaml.error.YAMLException e) {
+            // Includes SafeConstructor refusing !!java tags — agent input stays data.
+            throw new IOException("config is not valid YAML: " + e.getMessage(), e);
+        }
+        if (root == null) {
+            throw new IOException("config is empty");
+        }
+        if (!(root instanceof Map<?, ?> map)) {
+            throw new IOException("config must be a YAML mapping of settings, got "
+                    + root.getClass().getSimpleName());
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            out.put(String.valueOf(e.getKey()), e.getValue());
+        }
+        return out;
+    }
+
+    /** Writes the four generated stack files into {@code dir}. */
+    private static void writeGeneratedFiles(Path dir, ComposeSetupState s, Map<String, String> existingEnv)
+            throws IOException {
+        Files.createDirectories(dir);
+        Map<String, String> managed = ComposeFileRenderer.renderEnv(s);
+        Files.writeString(dir.resolve(".env"), DotEnvFile.render(managed, existingEnv), StandardCharsets.UTF_8);
+        Files.writeString(
+                dir.resolve("docker-compose.yml"), ComposeFileRenderer.renderCompose(s), StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("Caddyfile"), ComposeFileRenderer.renderCaddyfile(), StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("README.md"), ComposeFileRenderer.renderReadme(s), StandardCharsets.UTF_8);
+    }
+
+    /** {@code .env} keys whose values are secrets — masked in dry-run output. */
+    private static final Set<String> SECRET_ENV_KEYS = Set.of(
+            "MONGO_INITDB_ROOT_PASSWORD",
+            "VANCE_ENCRYPTION_PASSWORD",
+            "VANCE_INTERNAL_TOKEN",
+            "VANCE_ANUS_PASSWORD_HASH",
+            "MONGO_EXPRESS_PASSWORD");
+
+    /**
+     * Prints the effective state as a dry-run plan. Secret values are masked
+     * — stdout is exactly what a deploy pipeline captures in its logs, so
+     * nothing generated here is allowed to appear there in the clear.
+     */
+    private static void printDryRun(PrintWriter out, ComposeSetupState s) {
+        out.println("Effective configuration (secrets masked):");
+        for (Map.Entry<String, String> e : ComposeFileRenderer.renderEnv(s).entrySet()) {
+            String value =
+                    SECRET_ENV_KEYS.contains(e.getKey()) ? (e.getValue().isBlank() ? "" : "<set>") : e.getValue();
+            out.printf("  %s=%s%n", e.getKey(), value);
+        }
+        out.println("docker-compose.yml, Caddyfile and README.md render the same way as a real run");
+        out.println("(they contain no secrets). Unmanaged keys in an existing .env are carried over.");
     }
 
     // ──────────────────────── menu ────────────────────────
@@ -337,7 +492,7 @@ public final class DockerComposeSetupWizard {
 
     // ──────────────────────── helpers ────────────────────────
 
-    private Path resolveOutputDir() {
+    private static Path resolveOutputDir() {
         String override = System.getenv("VANCE_COMPOSE_OUT_DIR");
         if (override != null && !override.isBlank()) {
             return Path.of(override);

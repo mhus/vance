@@ -10,15 +10,25 @@ import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
+import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jline.reader.LineReader;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * Interactive setup wizard for {@code anus --setup}.
@@ -117,6 +127,191 @@ public class SetupWizard {
         }
 
         save(out, state);
+    }
+
+    // ──────────────────────── agent (config) mode ────────────────────────
+
+    /**
+     * Headless entry for agent-driven runs ({@code --setup --config <path|->}):
+     * all parameters come from a YAML config — {@code "-"} reads stdin, so
+     * the config (which carries the user password and the AI API key) never
+     * has to land on the filesystem. No terminal is opened, no prompt can
+     * appear — validation is fail-closed and reports every problem at once.
+     * Spec: {@code specification/setup-agent-mode.md}.
+     *
+     * <p><b>Ensure semantics</b> (unlike the interactive wizard's explicit
+     * create-or-pick flow): an existing tenant/user is adopted and only
+     * fields the config actually supplies are updated; a missing one is
+     * created. Re-running the same config is therefore a no-op, which is what
+     * makes it safe for deploy scripts and agents.
+     *
+     * @return process exit code — 0 saved / plan printed, 1 rejected or IO failure
+     */
+    public int runHeadless(String configSource, boolean dryRun) {
+        PrintWriter out = new PrintWriter(System.out, true, StandardCharsets.UTF_8);
+        PrintWriter err = new PrintWriter(System.err, true, StandardCharsets.UTF_8);
+        try {
+            SetupConfigParser.Parsed config = SetupConfigParser.parse(readConfigYaml(configSource));
+
+            List<String> problems = new ArrayList<>();
+            SetupState state = buildHeadlessState(config, problems);
+            if (!problems.isEmpty()) {
+                err.println("Config rejected — " + problems.size() + " problem(s):");
+                for (String problem : problems) {
+                    err.println("  - " + problem);
+                }
+                err.println("Setup failed — nothing written.");
+                err.flush();
+                return 1;
+            }
+
+            if (dryRun) {
+                printHeadlessPlan(out, state);
+                out.println("Dry run — nothing written.");
+                out.flush();
+                return 0;
+            }
+            save(out, state);
+            out.printf("Setup complete — tenant=%s user=%s%n", state.getTenantId(), state.getUserName());
+            out.flush();
+            return 0;
+        } catch (SetupConfigParser.SetupConfigException e) {
+            err.println("Config rejected — " + e.problems().size() + " problem(s):");
+            for (String problem : e.problems()) {
+                err.println("  - " + problem);
+            }
+            err.println("Setup failed — nothing written.");
+            err.flush();
+            return 1;
+        } catch (IOException e) {
+            err.println("Setup failed: " + e.getMessage());
+            err.flush();
+            return 1;
+        }
+    }
+
+    /**
+     * Maps the parsed config onto a {@link SetupState} with ensure semantics.
+     * All problems (collected, not thrown) are database-dependent ones the
+     * pure parser cannot see: missing password for a new user, a password on
+     * an existing user, a missing API key for a new tenant.
+     */
+    private SetupState buildHeadlessState(SetupConfigParser.Parsed config, List<String> problems) {
+        SetupState state = new SetupState();
+
+        String tenantName = config.tenantName();
+        state.setTenantId(tenantName);
+        TenantDocument existingTenant = tenantService.findByName(tenantName).orElse(null);
+        if (existingTenant == null) {
+            state.setTenantCreated(true);
+            state.setTenantTitle(config.tenantTitle() == null ? tenantName : config.tenantTitle());
+        } else {
+            // Keep the DB title when the config does not supply one — save()
+            // diffs the field and a null here would wipe it.
+            state.setTenantCreated(false);
+            state.setTenantTitle(config.tenantTitle() == null ? existingTenant.getTitle() : config.tenantTitle());
+        }
+
+        UserDocument existingUser = existingTenant == null
+                ? null
+                : userService.findByTenantAndName(tenantName, config.userName()).orElse(null);
+        state.setUserName(config.userName());
+        if (existingUser == null) {
+            if (StringUtils.isBlank(config.userPassword())) {
+                problems.add("user.password: required — user '" + config.userName() + "' does not exist yet");
+            } else {
+                try {
+                    passwordPolicyService.validate(config.userPassword());
+                } catch (de.mhus.vance.shared.password.PasswordPolicyException e) {
+                    problems.add("user.password: " + e.getMessage());
+                }
+            }
+            state.setUserCreated(true);
+            state.setUserTitle(config.userTitle() == null ? config.userName() : config.userTitle());
+            state.setUserEmail(config.userEmail());
+            state.setUserPassword(config.userPassword());
+        } else {
+            if (StringUtils.isNotBlank(config.userPassword())) {
+                problems.add("user.password: user '" + config.userName()
+                        + "' exists — the setup wizard does not change passwords; remove the key");
+            }
+            state.setUserCreated(false);
+            // Same keep-what-is-there rule as the tenant title: only fields the
+            // config supplies count as an update.
+            state.setUserTitle(config.userTitle() == null ? existingUser.getTitle() : config.userTitle());
+            state.setUserEmail(config.userEmail() == null ? existingUser.getEmail() : config.userEmail());
+            state.setUserFieldsChanged(config.userTitle() != null || config.userEmail() != null);
+        }
+
+        state.setProvider(config.provider());
+        state.setInstanceName(config.instanceName());
+        state.setAiModel(config.aiModel());
+        state.setAiApiKey(config.aiApiKey());
+        state.setBaseUrl(config.baseUrl());
+        state.setEmbeddingApiKey(config.embeddingApiKey());
+        state.setSerperKey(config.serperKey());
+
+        // AI gate mirrors confirmSave(): a half-configured provider is a hard
+        // error; no provider / no key on an EXISTING tenant is a deliberate
+        // skip. A new tenant has no key to keep, so it needs one up front.
+        if (config.aiConfigured() && existingTenant == null && StringUtils.isBlank(config.aiApiKey())) {
+            problems.add("ai.api-key: required — tenant '" + tenantName + "' is new, no existing key to keep");
+        }
+        return state;
+    }
+
+    /** Prints the effective plan. Secret values are masked — stdout may be captured in logs. */
+    private void printHeadlessPlan(PrintWriter out, SetupState state) {
+        out.println("Plan (secrets masked, existing values shown as kept):");
+        out.printf("  tenant '%s' — %s%n", state.getTenantId(), state.isTenantCreated() ? "create" : "ensure (exists)");
+        out.printf(
+                "  user '%s' — %s%n",
+                state.getUserName(), state.isUserCreated() ? "create (password hashed on save)" : "ensure (exists)");
+        ProviderPreset p = state.getProvider();
+        if (p == null) {
+            out.println("  ai — not configured (set a provider later in the Web-UI)");
+        } else {
+            String instance = state.effectiveInstance();
+            out.printf(
+                    "  ai — provider=%s instance=%s model=%s api-key=%s%n",
+                    p.name().toLowerCase(java.util.Locale.ROOT),
+                    instance,
+                    state.getAiModel(),
+                    StringUtils.isBlank(state.getAiApiKey()) ? "(keep existing)" : "<set>");
+        }
+        out.printf("  serper-key — %s%n", StringUtils.isBlank(state.getSerperKey()) ? "absent" : "<set>");
+    }
+
+    /**
+     * Reads the agent config from a file path, or stdin when {@code source}
+     * is {@code "-"}. {@link SafeConstructor} keeps the parse to plain
+     * maps/scalars — agent-supplied input must not be able to instantiate
+     * arbitrary Java types.
+     */
+    private static Map<String, Object> readConfigYaml(String source) throws IOException {
+        String yamlText = "-".equals(source)
+                ? new String(System.in.readAllBytes(), StandardCharsets.UTF_8)
+                : Files.readString(Path.of(source), StandardCharsets.UTF_8);
+        Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
+        Object root;
+        try {
+            root = yaml.load(yamlText);
+        } catch (org.yaml.snakeyaml.error.YAMLException e) {
+            // Includes SafeConstructor refusing !!java tags — agent input stays data.
+            throw new IOException("config is not valid YAML: " + e.getMessage(), e);
+        }
+        if (root == null) {
+            throw new IOException("config is empty");
+        }
+        if (!(root instanceof Map<?, ?> map)) {
+            throw new IOException(
+                    "config must be a YAML mapping, got " + root.getClass().getSimpleName());
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            out.put(String.valueOf(e.getKey()), e.getValue());
+        }
+        return out;
     }
 
     // ──────────────────────── overview ────────────────────────

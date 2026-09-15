@@ -41,6 +41,17 @@ package de.mhus.vance.shared.jwt;
  *       revocation is the {@code jti} registry row, checked per request.
  *       That check is what makes a long-lived token acceptable at all.
  *   </li>
+ *   <li>{@link #DESIGN_PREVIEW} — short-lived, read-only credential for
+ *       the designer app's sandboxed content route
+ *       ({@code GET /brain/{tenant}/addon/designer/content/...}). Claims
+ *       carry {@code pid} (project) and {@code fld} (app folder) and pin the
+ *       token to exactly that app folder. It is never accepted as a bearer
+ *       token by the access filters — only the designer content controller
+ *       validates it, so it cannot reach any other REST surface even when
+ *       leaked. The token travels as a <em>path segment</em>, not a query
+ *       parameter, so that relative sub-resource URLs inside the sandboxed
+ *       (opaque-origin) iframe keep carrying it.
+ *   </li>
  * </ul>
  *
  * <p>The discriminator is carried in the {@code tt} claim. Tokens that
@@ -52,7 +63,8 @@ public enum TokenType {
     ACCESS,
     REFRESH,
     SCRIPT_RUN,
-    INTEGRATION;
+    INTEGRATION,
+    DESIGN_PREVIEW;
 
     /** JSON value for the {@code tt} claim — lower-case enum name. */
     public String wireValue() {

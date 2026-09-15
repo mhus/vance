@@ -18,9 +18,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -55,62 +55,79 @@ public class DocWriteTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name. Defaults "
-                                    + "to the active project."),
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Document path inside the project, "
-                                    + "e.g. 'reports/q3-summary.md' or "
-                                    + "'diagrams/login-flow.md'. If a doc at "
-                                    + "this path already exists its body is "
-                                    + "overwritten; otherwise it is created."),
-                    "kind", Map.of(
-                            "type", "string",
-                            "description", "Document kind — pick by "
-                                    + "content shape, NOT by file extension. "
-                                    + "Known kinds: diagram (Mermaid: "
-                                    + "flowchart / sequence / state / ER / "
-                                    + "gantt / gitGraph / journey / pie / "
-                                    + "C4 / timeline), mindmap (radial "
-                                    + "bullets), chart (numeric data with "
-                                    + "axes), graph (node/edge network), "
-                                    + "records (typed table), sheet "
-                                    + "(spreadsheet cells), list, checklist, "
-                                    + "tree, slides (deck), application "
-                                    + "(kit-defined app), data (raw JSON), "
-                                    + "formula (KaTeX/mhchem-rendered math "
-                                    + "or chemistry), schema. Addons can add more kinds — "
-                                    + "the registry is open. Name the kind that "
-                                    + "matches the content you are writing; a body "
-                                    + "whose main content is a fenced diagram, chart "
-                                    + "or graph block is one of those kinds. This is "
-                                    + "about the CONTENT, not the file format — "
-                                    + "'markdown file' is not a kind. Unsure which "
-                                    + "one fits? Leave it out, or ask "
-                                    + "how_do_i('which document kind fits <your "
-                                    + "content>') — do not guess. On overwrite, omit "
-                                    + "to keep the existing kind."),
-                    "content", Map.of(
-                            "type", "string",
-                            "description", "Document body. Replaces whatever "
-                                    + "was there before. For typed kinds the "
-                                    + "shape is kind-specific (see "
-                                    + "`manual_read('kind-<kind>')`)."),
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Optional human title."),
-                    "tags", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description", "Optional tag list."),
-                    "mimeType", Map.of(
-                            "type", "string",
-                            "description", "Optional MIME type override. "
-                                    + "Defaults to a kind-appropriate value "
-                                    + "(text/markdown or application/json).")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults " + "to the active project."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document path inside the project, "
+                                                    + "e.g. 'reports/q3-summary.md' or "
+                                                    + "'diagrams/login-flow.md'. If a doc at "
+                                                    + "this path already exists its body is "
+                                                    + "overwritten; otherwise it is created."),
+                            "kind",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document kind — pick by "
+                                                    + "content shape, NOT by file extension. "
+                                                    + "Known kinds: diagram (Mermaid: "
+                                                    + "flowchart / sequence / state / ER / "
+                                                    + "gantt / gitGraph / journey / pie / "
+                                                    + "C4 / timeline), mindmap (radial "
+                                                    + "bullets), chart (numeric data with "
+                                                    + "axes), graph (node/edge network), "
+                                                    + "records (typed table), sheet "
+                                                    + "(spreadsheet cells), list, checklist, "
+                                                    + "tree, slides (deck), application "
+                                                    + "(kit-defined app), data (raw JSON), "
+                                                    + "formula (KaTeX/mhchem-rendered math "
+                                                    + "or chemistry), schema. Addons can add more kinds — "
+                                                    + "the registry is open. Name the kind that "
+                                                    + "matches the content you are writing; a body "
+                                                    + "whose main content is a fenced diagram, chart "
+                                                    + "or graph block is one of those kinds. This is "
+                                                    + "about the CONTENT, not the file format — "
+                                                    + "'markdown file' is not a kind. Unsure which "
+                                                    + "one fits? Leave it out, or ask "
+                                                    + "how_do_i('which document kind fits <your "
+                                                    + "content>') — do not guess. On overwrite, omit "
+                                                    + "to keep the existing kind."),
+                            "content",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document body. Replaces whatever "
+                                                    + "was there before. For typed kinds the "
+                                                    + "shape is kind-specific (see "
+                                                    + "`manual_read('kind-<kind>')`)."),
+                            "title",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional human title."),
+                            "tags",
+                                    Map.of(
+                                            "type", "array",
+                                            "items", Map.of("type", "string"),
+                                            "description", "Optional tag list."),
+                            "mimeType",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional MIME type override. "
+                                                    + "Defaults to a kind-appropriate value "
+                                                    + "(text/markdown or application/json).")),
             "required", List.of("path", "content"));
 
     private final KindToolSupport support;
@@ -118,9 +135,13 @@ public class DocWriteTool implements Tool {
     private final KindRegistry kindRegistry;
     private final DocumentLinkBuilder linkBuilder;
 
-    @Override public String name() { return "doc_write"; }
+    @Override
+    public String name() {
+        return "doc_write";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Write a document — create new at the given path, or "
                 + "overwrite the whole body if it already exists. Pick "
                 + "`kind` by content shape (NOT file extension): `diagram` "
@@ -138,9 +159,13 @@ public class DocWriteTool implements Tool {
                 + "unsure.";
     }
 
-    @Override public boolean primary() { return true; }
+    @Override
+    public boolean primary() {
+        return true;
+    }
 
-    @Override public Set<String> labels() {
+    @Override
+    public Set<String> labels() {
         return Set.of("doc-management", "text-edit", "eddie", "write", "document");
     }
 
@@ -164,7 +189,8 @@ public class DocWriteTool implements Tool {
      * not per-turn work and the prompt prefix stays stable — which matters,
      * because a description that changed between turns would break the cache.
      */
-    @Override public Map<String, Object> paramsSchema() {
+    @Override
+    public Map<String, Object> paramsSchema() {
         Map<String, Object> cached = schemaWithKinds;
         if (cached == null) {
             cached = buildSchemaWithKinds();
@@ -187,12 +213,9 @@ public class DocWriteTool implements Tool {
         Collections.sort(names);
         if (names.isEmpty()) return SCHEMA;
 
-        Map<String, Object> properties =
-                new LinkedHashMap<>((Map<String, Object>) SCHEMA.get("properties"));
-        Map<String, Object> kind =
-                new LinkedHashMap<>((Map<String, Object>) properties.get("kind"));
-        kind.put("description", kind.get("description")
-                + " Registered here: " + String.join(", ", names) + ".");
+        Map<String, Object> properties = new LinkedHashMap<>((Map<String, Object>) SCHEMA.get("properties"));
+        Map<String, Object> kind = new LinkedHashMap<>((Map<String, Object>) properties.get("kind"));
+        kind.put("description", kind.get("description") + " Registered here: " + String.join(", ", names) + ".");
         properties.put("kind", kind);
 
         Map<String, Object> out = new LinkedHashMap<>(SCHEMA);
@@ -212,16 +235,17 @@ public class DocWriteTool implements Tool {
         String mimeType = KindToolSupport.paramString(params, "mimeType");
         @SuppressWarnings("unchecked")
         List<String> tags = params.get("tags") instanceof List<?> l
-                ? l.stream().filter(String.class::isInstance).map(String.class::cast).toList()
+                ? l.stream()
+                        .filter(String.class::isInstance)
+                        .map(String.class::cast)
+                        .toList()
                 : null;
 
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
-        support.enforceDocWrite(ctx, project.getName(), path,
-                de.mhus.vance.shared.permission.Action.CREATE);
+        support.enforceDocWrite(ctx, project.getName(), path, de.mhus.vance.shared.permission.Action.CREATE);
         DocumentService docService = support.documentService();
 
-        Optional<DocumentDocument> existing =
-                docService.findByPath(ctx.tenantId(), project.getName(), path);
+        Optional<DocumentDocument> existing = docService.findByPath(ctx.tenantId(), project.getName(), path);
         // An age-encrypted document is the one existing doc a write would
         // destroy outright — the model cannot re-encrypt, so refuse before
         // anything else looks at the body.
@@ -233,7 +257,7 @@ public class DocWriteTool implements Tool {
         // generated content.
         AgeDocumentGuard.requireCreatable(resolvedKind, content);
         if (mimeType == null) {
-            mimeType = defaultMimeFor(resolvedKind);
+            mimeType = defaultMime(resolvedKind, path);
         }
 
         DocumentDocument result;
@@ -303,10 +327,22 @@ public class DocWriteTool implements Tool {
         return out;
     }
 
+    /**
+     * The mime a write without an explicit {@code mimeType} gets. The
+     * path's extension is the author's file-type declaration — an
+     * {@code index.html} must land as {@code text/html} whatever the kind
+     * defaulted to (the sandboxed designer preview serves the stored mime,
+     * and nosniff turns a wrong one into raw source). The kind's default
+     * only answers for paths that carry no recognisable extension.
+     */
+    static String defaultMime(String resolvedKind, String path) {
+        String fromPath = DocumentService.mimeFromPath(path);
+        return "text/plain".equals(fromPath) ? defaultMimeFor(resolvedKind) : fromPath;
+    }
+
     private static String defaultMimeFor(String kind) {
         return switch (kind) {
-            case "list", "checklist", "tree", "mindmap", "records",
-                    "slides", "text", "diagram" -> "text/markdown";
+            case "list", "checklist", "tree", "mindmap", "records", "slides", "text", "diagram" -> "text/markdown";
             case "sheet", "graph", "chart", "data", "schema" -> "application/json";
             // Detected armor bodies get the marker mime so the row is typed
             // age from its first moment.

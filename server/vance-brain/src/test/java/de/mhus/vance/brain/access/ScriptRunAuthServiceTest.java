@@ -35,9 +35,7 @@ class ScriptRunAuthServiceTest {
     void accepts_loopbackPeerAndRunningEntry() {
         stubRegistry("run-1", "acme", "proj", ExecutionStatus.RUNNING);
 
-        boolean ok = service.isAcceptable(
-                claims("alice", "acme", "run-1", "proj", null),
-                request("127.0.0.1"));
+        boolean ok = service.isAcceptable(claims("alice", "acme", "run-1", "proj", null), request("127.0.0.1"));
 
         assertThat(ok).isTrue();
     }
@@ -46,9 +44,7 @@ class ScriptRunAuthServiceTest {
     void accepts_loopbackIpv6() {
         stubRegistry("run-1", "acme", "proj", ExecutionStatus.RUNNING);
 
-        boolean ok = service.isAcceptable(
-                claims("alice", "acme", "run-1", "proj", null),
-                request("::1"));
+        boolean ok = service.isAcceptable(claims("alice", "acme", "run-1", "proj", null), request("::1"));
 
         assertThat(ok).isTrue();
     }
@@ -57,9 +53,7 @@ class ScriptRunAuthServiceTest {
     void rejects_nonLoopbackPeer() {
         stubRegistry("run-1", "acme", "proj", ExecutionStatus.RUNNING);
 
-        boolean ok = service.isAcceptable(
-                claims("alice", "acme", "run-1", "proj", null),
-                request("10.0.0.5"));
+        boolean ok = service.isAcceptable(claims("alice", "acme", "run-1", "proj", null), request("10.0.0.5"));
 
         assertThat(ok).isFalse();
     }
@@ -68,9 +62,7 @@ class ScriptRunAuthServiceTest {
     void rejects_unknownRunId() {
         when(registry.list(any(), any())).thenReturn(List.of());
 
-        boolean ok = service.isAcceptable(
-                claims("alice", "acme", "ghost", "proj", null),
-                request("127.0.0.1"));
+        boolean ok = service.isAcceptable(claims("alice", "acme", "ghost", "proj", null), request("127.0.0.1"));
 
         assertThat(ok).isFalse();
     }
@@ -79,9 +71,7 @@ class ScriptRunAuthServiceTest {
     void rejects_terminalStatus() {
         stubRegistry("run-1", "acme", "proj", ExecutionStatus.COMPLETED);
 
-        boolean ok = service.isAcceptable(
-                claims("alice", "acme", "run-1", "proj", null),
-                request("127.0.0.1"));
+        boolean ok = service.isAcceptable(claims("alice", "acme", "run-1", "proj", null), request("127.0.0.1"));
 
         assertThat(ok).isFalse();
     }
@@ -90,9 +80,7 @@ class ScriptRunAuthServiceTest {
     void rejects_projectMismatchEvenIfRunning() {
         stubRegistry("run-1", "acme", "proj-A", ExecutionStatus.RUNNING);
 
-        boolean ok = service.isAcceptable(
-                claims("alice", "acme", "run-1", "proj-B", null),
-                request("127.0.0.1"));
+        boolean ok = service.isAcceptable(claims("alice", "acme", "run-1", "proj-B", null), request("127.0.0.1"));
 
         assertThat(ok).isFalse();
     }
@@ -100,9 +88,8 @@ class ScriptRunAuthServiceTest {
     @Test
     void rejects_missingRunIdClaim() {
         boolean ok = service.isAcceptable(
-                VanceJwtClaims.user("alice", "acme",
-                        Instant.now(), Instant.now().plusSeconds(60),
-                        TokenType.SCRIPT_RUN),
+                VanceJwtClaims.user(
+                        "alice", "acme", Instant.now(), Instant.now().plusSeconds(60), TokenType.SCRIPT_RUN),
                 request("127.0.0.1"));
 
         assertThat(ok).isFalse();
@@ -111,10 +98,18 @@ class ScriptRunAuthServiceTest {
     @Test
     void rejects_missingProjectClaim() {
         boolean ok = service.isAcceptable(
-                new VanceJwtClaims("alice", "acme", Instant.now(),
+                new VanceJwtClaims(
+                        "alice",
+                        "acme",
+                        Instant.now(),
                         Instant.now().plusSeconds(60),
                         TokenType.SCRIPT_RUN,
-                        "run-1", null, null, null, null),
+                        "run-1",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
                 request("127.0.0.1"));
 
         assertThat(ok).isFalse();
@@ -125,22 +120,28 @@ class ScriptRunAuthServiceTest {
     private void stubRegistry(String runId, String tenant, String project, ExecutionStatus status) {
         Instant now = Instant.now();
         ExecutionRegistryEntry entry = new ExecutionRegistryEntry(
-                "job-" + runId, ExecutionOwner.Brain.INSTANCE,
-                tenant, project, "sess", null,
-                "true", "ws",
-                now, now, status == ExecutionStatus.RUNNING ? null : now,
-                status, status == ExecutionStatus.RUNNING ? null : 0,
-                "stdout.log", "stderr.log",
+                "job-" + runId,
+                ExecutionOwner.Brain.INSTANCE,
+                tenant,
+                project,
+                "sess",
+                null,
+                "true",
+                "ws",
+                now,
+                now,
+                status == ExecutionStatus.RUNNING ? null : now,
+                status,
+                status == ExecutionStatus.RUNNING ? null : 0,
+                "stdout.log",
+                "stderr.log",
                 Map.of(ExecLabels.KEY_RUN_ID, runId));
-        when(registry.list(any(ExecutionScopeFilter.class),
-                any())).thenReturn(List.of(entry));
+        when(registry.list(any(ExecutionScopeFilter.class), any())).thenReturn(List.of(entry));
     }
 
-    private static VanceJwtClaims claims(
-            String user, String tenant, String runId, String project, String session) {
-        return VanceJwtClaims.scriptRun(user, tenant,
-                Instant.now(), Instant.now().plusSeconds(60),
-                runId, project, session);
+    private static VanceJwtClaims claims(String user, String tenant, String runId, String project, String session) {
+        return VanceJwtClaims.scriptRun(
+                user, tenant, Instant.now(), Instant.now().plusSeconds(60), runId, project, session);
     }
 
     private static HttpServletRequest request(String remoteAddr) {

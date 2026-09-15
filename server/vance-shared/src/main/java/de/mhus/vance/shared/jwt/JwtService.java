@@ -11,8 +11,8 @@ import java.security.PublicKey;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.List;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -64,8 +64,7 @@ public class JwtService {
      * so {@link de.mhus.vance.shared.access.AccessFilterBase} can reject
      * them on regular API requests.
      */
-    public String createToken(String tenantId, String username, Instant expiresAt,
-                              TokenType type) {
+    public String createToken(String tenantId, String username, Instant expiresAt, TokenType type) {
         PrivateKey privateKey = signingKey(tenantId);
 
         Instant now = Instant.now();
@@ -90,8 +89,10 @@ public class JwtService {
      * status is the primary revocation channel.
      */
     public String createScriptRunToken(
-            String tenantId, String username,
-            String runId, String projectId,
+            String tenantId,
+            String username,
+            String runId,
+            String projectId,
             @Nullable String sessionId,
             @Nullable Instant expiresAt) {
         PrivateKey privateKey = signingKey(tenantId);
@@ -125,8 +126,10 @@ public class JwtService {
      * revocation channel.
      */
     public String createIntegrationToken(
-            String tenantId, String username,
-            String tokenId, List<String> scopeProfiles,
+            String tenantId,
+            String username,
+            String tokenId,
+            List<String> scopeProfiles,
             @Nullable String projectId,
             @Nullable Instant expiresAt) {
         PrivateKey privateKey = signingKey(tenantId);
@@ -147,14 +150,35 @@ public class JwtService {
         return builder.signWith(privateKey).compact();
     }
 
+    /**
+     * Mints a {@link TokenType#DESIGN_PREVIEW} token scoped to one
+     * designer-app folder. The token authenticates nothing but the addon's
+     * own content route — the access filters reject it as a bearer — so
+     * a leak can only ever re-read files under {@code appFolder} that the
+     * minter could already read, and only until {@code expiresAt}.
+     */
+    public String createDesignPreviewToken(
+            String tenantId, String username, String projectId, String appFolder, Instant expiresAt) {
+        PrivateKey privateKey = signingKey(tenantId);
+
+        var builder = Jwts.builder()
+                .subject(username)
+                .claim(VanceJwtClaims.CLAIM_TENANT_ID, tenantId)
+                .claim(VanceJwtClaims.CLAIM_TOKEN_TYPE, TokenType.DESIGN_PREVIEW.wireValue())
+                .claim(VanceJwtClaims.CLAIM_PROJECT_ID, projectId)
+                .claim(VanceJwtClaims.CLAIM_APP_FOLDER, appFolder)
+                .issuedAt(Date.from(Instant.now()))
+                .expiration(Date.from(expiresAt));
+        return builder.signWith(privateKey).compact();
+    }
+
     private PrivateKey signingKey(String tenantId) {
-        PrivateKey privateKey = keyService.getLatestPrivateKey(tenantId, KeyPurpose.JWT_SIGNING)
-                .orElseThrow(() -> new IllegalStateException(
-                        "No JWT signing key for tenant '" + tenantId + "'"));
+        PrivateKey privateKey = keyService
+                .getLatestPrivateKey(tenantId, KeyPurpose.JWT_SIGNING)
+                .orElseThrow(() -> new IllegalStateException("No JWT signing key for tenant '" + tenantId + "'"));
         if (!"EC".equalsIgnoreCase(privateKey.getAlgorithm())) {
             throw new IllegalStateException(
-                    "JWT signing key for tenant '" + tenantId + "' is not EC — got "
-                            + privateKey.getAlgorithm());
+                    "JWT signing key for tenant '" + tenantId + "' is not EC — got " + privateKey.getAlgorithm());
         }
         return privateKey;
     }
@@ -241,6 +265,7 @@ public class JwtService {
         String sessionId = claims.get(VanceJwtClaims.CLAIM_SESSION_ID, String.class);
         List<String> scopeProfiles = scopeProfiles(claims);
         String tokenId = claims.getId();
+        String appFolder = claims.get(VanceJwtClaims.CLAIM_APP_FOLDER, String.class);
         return new VanceJwtClaims(
                 username,
                 tenantId,
@@ -251,6 +276,7 @@ public class JwtService {
                 projectId,
                 sessionId,
                 scopeProfiles,
-                tokenId);
+                tokenId,
+                appFolder);
     }
 }

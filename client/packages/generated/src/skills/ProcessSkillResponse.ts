@@ -10,4 +10,6 @@ export interface ProcessSkillResponse {
   processName: string;
   activeSkills: ActiveSkillRefDto[];
   availableSkills: SkillSummaryDto[];
+  newlyActivated: boolean;
+  lifecycle: string;
 }

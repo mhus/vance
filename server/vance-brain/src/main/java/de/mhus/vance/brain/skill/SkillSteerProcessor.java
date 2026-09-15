@@ -89,8 +89,7 @@ public class SkillSteerProcessor {
      * activation — there is no in-flight turn to cover the work, so the
      * skill kicks it off itself.
      */
-    public ActivationResult activate(
-            ThinkProcessDocument process, String skillName, boolean oneShot) {
+    public ActivationResult activate(ThinkProcessDocument process, String skillName, boolean oneShot) {
         return activate(process, skillName, oneShot, /*runAction*/ true, null, null);
     }
 
@@ -137,8 +136,7 @@ public class SkillSteerProcessor {
             boolean runAction,
             @Nullable String rawArgs,
             @Nullable String senderUserId) {
-        return activate(process, skillName, oneShot, runAction, rawArgs, senderUserId,
-                /*allowSpawn*/ true);
+        return activate(process, skillName, oneShot, runAction, rawArgs, senderUserId, /*allowSpawn*/ true);
     }
 
     /**
@@ -164,8 +162,16 @@ public class SkillSteerProcessor {
             throw new SkillNotAllowedByRecipeException(skillName, process.getRecipeName());
         }
         SkillScopeContext scope = scopeFor(process);
-        ResolvedSkill skill = skillResolver.resolve(scope, skillName)
-                .orElseThrow(() -> new UnknownSkillException(skillName));
+        ResolvedSkill skill =
+                skillResolver.resolve(scope, skillName).orElseThrow(() -> new UnknownSkillException(skillName));
+        // Disabled is an activation gate, not a visibility one — the name
+        // resolved, so refusing with the "what to do" answer beats an
+        // "unknown skill" that would send the user hunting for a typo.
+        // Pins the spec line "weder explizit noch implizit aktivierbar":
+        // the implicit side is SkillTriggerMatcher's enabled check.
+        if (!skill.enabled()) {
+            throw new DisabledSkillException(skill.name());
+        }
 
         String args = rawArgs == null || rawArgs.isBlank() ? null : rawArgs.strip();
         // Validate up front: a missing required argument must fail the
@@ -188,9 +194,11 @@ public class SkillSteerProcessor {
             // empty body it stays a pure configuration macro. See
             // specification/public/skills.md §2a.
             skillCommandRunner.run(process, skill.activate(), "activate", skill.name());
-            log.info("Skill activate id='{}' name='{}' lifecycle=shot "
-                            + "(fired {} command(s), not persisted)",
-                    process.getId(), skill.name(), skill.activate().size());
+            log.info(
+                    "Skill activate id='{}' name='{}' lifecycle=shot " + "(fired {} command(s), not persisted)",
+                    process.getId(),
+                    skill.name(),
+                    skill.activate().size());
             if (runAction) {
                 fireAction(process, skill, args);
                 injectUnconsumedArgs(process, skill, args, senderUserId);
@@ -199,9 +207,8 @@ public class SkillSteerProcessor {
         }
 
         List<ActiveSkillRefEmbedded> active = mutableActive(process);
-        Optional<ActiveSkillRefEmbedded> existing = active.stream()
-                .filter(a -> skillName.equals(a.getName()))
-                .findFirst();
+        Optional<ActiveSkillRefEmbedded> existing =
+                active.stream().filter(a -> skillName.equals(a.getName())).findFirst();
         if (existing.isPresent()) {
             // Idempotent: keep the existing entry but flip oneShot if
             // the user just asked for sticky.
@@ -222,8 +229,7 @@ public class SkillSteerProcessor {
             if (dirty) {
                 persist(process, active);
             }
-            log.debug("Skill activate id='{}' name='{}' (already active)",
-                    process.getId(), skillName);
+            log.debug("Skill activate id='{}' name='{}' (already active)", process.getId(), skillName);
             if (runAction) {
                 injectUnconsumedArgs(process, skill, args, senderUserId);
             }
@@ -239,8 +245,12 @@ public class SkillSteerProcessor {
                 .build();
         active.add(ref);
         persist(process, active);
-        log.info("Skill activate id='{}' name='{}' source={} oneShot={}",
-                process.getId(), skill.name(), skill.source(), oneShot);
+        log.info(
+                "Skill activate id='{}' name='{}' source={} oneShot={}",
+                process.getId(),
+                skill.name(),
+                skill.source(),
+                oneShot);
         // Fire the activate sequence only on a fresh activation — an
         // already-active skill (handled above) must not re-fire.
         skillCommandRunner.run(process, skill.activate(), "activate", skill.name());
@@ -283,17 +293,23 @@ public class SkillSteerProcessor {
             @Nullable String args,
             @Nullable String senderUserId) {
         if (!runAction) {
-            log.debug("Skill activate id='{}' name='{}' run=spawn suppressed — "
-                            + "auto-trigger path does not spawn",
-                    process.getId(), skill.name());
+            log.debug(
+                    "Skill activate id='{}' name='{}' run=spawn suppressed — " + "auto-trigger path does not spawn",
+                    process.getId(),
+                    skill.name());
             return new ActivationResult(skill, false, mutableActive(process));
         }
-        String childId = skillSpawnRunner.spawn(process, skill, child ->
-                activate(child, skill.name(), oneShot, /*runAction*/ true,
-                        rawArgs, senderUserId, /*allowSpawn*/ false));
-        log.info("Skill activate id='{}' name='{}' run=spawn recipe='{}' → child id='{}'"
-                        + " (caller unchanged{})",
-                process.getId(), skill.name(), skill.run().recipe(), childId,
+        String childId = skillSpawnRunner.spawn(
+                process,
+                skill,
+                child -> activate(
+                        child, skill.name(), oneShot, /*runAction*/ true, rawArgs, senderUserId, /*allowSpawn*/ false));
+        log.info(
+                "Skill activate id='{}' name='{}' run=spawn recipe='{}' → child id='{}'" + " (caller unchanged{})",
+                process.getId(),
+                skill.name(),
+                skill.run().recipe(),
+                childId,
                 args == null ? "" : ", args passed to child");
         return new ActivationResult(skill, true, mutableActive(process));
     }
@@ -316,8 +332,7 @@ public class SkillSteerProcessor {
      * {@code activate:} sequence so the turn observes the freshly-set state.
      * No-op when {@code action:} is absent/blank.
      */
-    private void fireAction(
-            ThinkProcessDocument process, ResolvedSkill skill, @Nullable String rawArgs) {
+    private void fireAction(ThinkProcessDocument process, ResolvedSkill skill, @Nullable String rawArgs) {
         String template = turnPromptTemplate(skill);
         if (template == null) {
             return;
@@ -326,21 +341,25 @@ public class SkillSteerProcessor {
         try {
             prompt = templateRenderer.render(template, renderContext(process, skill, rawArgs));
         } catch (PromptTemplateException e) {
-            log.warn("Skill turn-prompt id='{}' name='{}' has invalid Pebble — "
-                            + "firing unrendered: {}",
-                    process.getId(), skill.name(), e.getMessage());
+            log.warn(
+                    "Skill turn-prompt id='{}' name='{}' has invalid Pebble — " + "firing unrendered: {}",
+                    process.getId(),
+                    skill.name(),
+                    e.getMessage());
             prompt = template;
         }
         if (prompt == null || prompt.isBlank()) {
             return;
         }
-        SteerMessage.UserChatInput injected = new SteerMessage.UserChatInput(
-                Instant.now(), null, ACTION_SENDER, prompt);
-        thinkProcessService.appendPending(
-                process.getId(), SteerMessageCodec.toDocument(injected));
+        SteerMessage.UserChatInput injected =
+                new SteerMessage.UserChatInput(Instant.now(), null, ACTION_SENDER, prompt);
+        thinkProcessService.appendPending(process.getId(), SteerMessageCodec.toDocument(injected));
         eventEmitter.scheduleTurn(process.getId());
-        log.info("Skill turn-prompt fired id='{}' name='{}' — scheduled turn ({} chars)",
-                process.getId(), skill.name(), prompt.length());
+        log.info(
+                "Skill turn-prompt fired id='{}' name='{}' — scheduled turn ({} chars)",
+                process.getId(),
+                skill.name(),
+                prompt.length());
     }
 
     /**
@@ -405,16 +424,16 @@ public class SkillSteerProcessor {
         if (rawArgs == null || rawArgs.isBlank() || skill.consumesArgs()) {
             return;
         }
-        String sender = senderUserId == null || senderUserId.isBlank()
-                ? ACTION_SENDER : senderUserId;
-        SteerMessage.UserChatInput injected = new SteerMessage.UserChatInput(
-                Instant.now(), null, sender, rawArgs);
-        thinkProcessService.appendPending(
-                process.getId(), SteerMessageCodec.toDocument(injected));
+        String sender = senderUserId == null || senderUserId.isBlank() ? ACTION_SENDER : senderUserId;
+        SteerMessage.UserChatInput injected = new SteerMessage.UserChatInput(Instant.now(), null, sender, rawArgs);
+        thinkProcessService.appendPending(process.getId(), SteerMessageCodec.toDocument(injected));
         eventEmitter.scheduleTurn(process.getId());
-        log.info("Skill args passed through as user message id='{}' name='{}' ({} chars) — "
+        log.info(
+                "Skill args passed through as user message id='{}' name='{}' ({} chars) — "
                         + "skill declares no arguments:",
-                process.getId(), skill.name(), rawArgs.length());
+                process.getId(),
+                skill.name(),
+                rawArgs.length());
     }
 
     public List<ActiveSkillRefEmbedded> clear(ThinkProcessDocument process, String skillName) {
@@ -425,8 +444,7 @@ public class SkillSteerProcessor {
         boolean removed = active.removeIf(ref -> {
             if (!skillName.equals(ref.getName())) return false;
             if (ref.isFromRecipe()) {
-                log.warn("Skill clear id='{}' name='{}' rejected — recipe-bound",
-                        process.getId(), skillName);
+                log.warn("Skill clear id='{}' name='{}' rejected — recipe-bound", process.getId(), skillName);
                 return false;
             }
             return true;
@@ -452,8 +470,7 @@ public class SkillSteerProcessor {
         }
         if (kept.size() != active.size()) {
             persist(process, kept);
-            log.info("Skill clearAll id='{}' kept={} (recipe-bound)",
-                    process.getId(), kept.size());
+            log.info("Skill clearAll id='{}' kept={} (recipe-bound)", process.getId(), kept.size());
             for (String name : removedNames) {
                 fireDeactivate(process, name);
             }
@@ -469,12 +486,12 @@ public class SkillSteerProcessor {
      */
     private void fireDeactivate(ThinkProcessDocument process, String skillName) {
         try {
-            skillResolver.resolve(scopeFor(process), skillName).ifPresent(skill ->
-                    skillCommandRunner.run(
-                            process, skill.deactivate(), "deactivate", skill.name()));
+            skillResolver
+                    .resolve(scopeFor(process), skillName)
+                    .ifPresent(
+                            skill -> skillCommandRunner.run(process, skill.deactivate(), "deactivate", skill.name()));
         } catch (RuntimeException e) {
-            log.warn("Skill deactivate id='{}' name='{}' resolve failed: {}",
-                    process.getId(), skillName, e.toString());
+            log.warn("Skill deactivate id='{}' name='{}' resolve failed: {}", process.getId(), skillName, e.toString());
         }
     }
 
@@ -483,12 +500,10 @@ public class SkillSteerProcessor {
     }
 
     private SkillScopeContext scopeFor(ThinkProcessDocument process) {
-        SessionDocument session = sessionService.findBySessionId(process.getSessionId())
-                .orElse(null);
-        String userId = session != null && !session.getUserId().isBlank()
-                ? session.getUserId() : null;
-        String projectId = session != null && !session.getProjectId().isBlank()
-                ? session.getProjectId() : null;
+        SessionDocument session =
+                sessionService.findBySessionId(process.getSessionId()).orElse(null);
+        String userId = session != null && !session.getUserId().isBlank() ? session.getUserId() : null;
+        String projectId = session != null && !session.getProjectId().isBlank() ? session.getProjectId() : null;
         return SkillScopeContext.of(process.getTenantId(), userId, projectId);
     }
 
@@ -504,17 +519,11 @@ public class SkillSteerProcessor {
 
     /** Result of an {@code ACTIVATE} call. */
     public record ActivationResult(
-            ResolvedSkill skill,
-            boolean newlyActivated,
-            List<ActiveSkillRefEmbedded> activeAfter) {
-    }
+            ResolvedSkill skill, boolean newlyActivated, List<ActiveSkillRefEmbedded> activeAfter) {}
 
     /** Convenience dispatcher used by the WebSocket handler. */
     public List<ActiveSkillRefEmbedded> apply(
-            ThinkProcessDocument process,
-            ProcessSkillCommand command,
-            String skillName,
-            boolean oneShot) {
+            ThinkProcessDocument process, ProcessSkillCommand command, String skillName, boolean oneShot) {
         return apply(process, command, skillName, oneShot, null, null);
     }
 
@@ -528,7 +537,7 @@ public class SkillSteerProcessor {
             @Nullable String senderUserId) {
         return switch (command) {
             case ACTIVATE ->
-                    activate(process, skillName, oneShot, rawArgs, senderUserId).activeAfter();
+                activate(process, skillName, oneShot, rawArgs, senderUserId).activeAfter();
             case CLEAR -> clear(process, skillName);
             case CLEAR_ALL -> clearAll(process);
             case LIST -> mutableActive(process);

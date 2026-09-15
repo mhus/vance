@@ -9,8 +9,6 @@ import de.mhus.vance.shared.keystore.KeyService;
 import io.jsonwebtoken.Jwts;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -41,13 +39,11 @@ class JwtServiceTest {
         // Default wiring — single key for tenantA / tenantB.
         when(keyService.getLatestPrivateKey("acme", KeyPurpose.JWT_SIGNING))
                 .thenReturn(Optional.of(tenantA.getPrivate()));
-        when(keyService.getPublicKeys("acme", KeyPurpose.JWT_SIGNING))
-                .thenReturn(List.of(tenantA.getPublic()));
+        when(keyService.getPublicKeys("acme", KeyPurpose.JWT_SIGNING)).thenReturn(List.of(tenantA.getPublic()));
 
         when(keyService.getLatestPrivateKey("other", KeyPurpose.JWT_SIGNING))
                 .thenReturn(Optional.of(tenantB.getPrivate()));
-        when(keyService.getPublicKeys("other", KeyPurpose.JWT_SIGNING))
-                .thenReturn(List.of(tenantB.getPublic()));
+        when(keyService.getPublicKeys("other", KeyPurpose.JWT_SIGNING)).thenReturn(List.of(tenantB.getPublic()));
     }
 
     @Test
@@ -61,17 +57,15 @@ class JwtServiceTest {
         assertThat(claims.get().username()).isEqualTo("alice");
         assertThat(claims.get().tenantId()).isEqualTo("acme");
         assertThat(claims.get().issuedAt()).isNotNull();
-        assertThat(claims.get().expiresAt())
-                .isCloseTo(exp, within1Sec()); // jjwt rounds to second
+        assertThat(claims.get().expiresAt()).isCloseTo(exp, within1Sec()); // jjwt rounds to second
     }
 
     @Test
     void createToken_throws_whenNoSigningKey() {
-        when(keyService.getLatestPrivateKey("nobody", KeyPurpose.JWT_SIGNING))
-                .thenReturn(Optional.empty());
+        when(keyService.getLatestPrivateKey("nobody", KeyPurpose.JWT_SIGNING)).thenReturn(Optional.empty());
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                        jwt.createToken("nobody", "alice", Instant.now().plusSeconds(60)))
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> jwt.createToken("nobody", "alice", Instant.now().plusSeconds(60)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("nobody");
     }
@@ -119,8 +113,7 @@ class JwtServiceTest {
         when(keyService.getPublicKeys("acme", KeyPurpose.JWT_SIGNING))
                 .thenReturn(List.of(tenantA_rotated.getPublic(), tenantA.getPublic()));
 
-        String token = jwt.createToken("acme", "alice",
-                Instant.now().plusSeconds(60));
+        String token = jwt.createToken("acme", "alice", Instant.now().plusSeconds(60));
 
         assertThat(jwt.validateToken(token)).isPresent();
     }
@@ -136,8 +129,7 @@ class JwtServiceTest {
     void createToken_defaultsToAccess_whenTypeNotPassed() {
         // The 3-arg overload is the historical API — every existing
         // call site mints ACCESS tokens. Verify that contract.
-        String token = jwt.createToken("acme", "alice",
-                Instant.now().plusSeconds(60));
+        String token = jwt.createToken("acme", "alice", Instant.now().plusSeconds(60));
 
         Optional<VanceJwtClaims> claims = jwt.validateToken(token);
 
@@ -147,8 +139,7 @@ class JwtServiceTest {
 
     @Test
     void createToken_withRefreshType_writesRefreshClaim() {
-        String token = jwt.createToken("acme", "alice",
-                Instant.now().plusSeconds(60), TokenType.REFRESH);
+        String token = jwt.createToken("acme", "alice", Instant.now().plusSeconds(60), TokenType.REFRESH);
 
         Optional<VanceJwtClaims> claims = jwt.validateToken(token);
 
@@ -180,10 +171,7 @@ class JwtServiceTest {
     @Test
     void createScriptRunToken_roundTripsAllClaims() {
         Instant exp = Instant.now().plus(24, ChronoUnit.HOURS);
-        String token = jwt.createScriptRunToken(
-                "acme", "alice",
-                "run-42", "proj-9", "sess-7",
-                exp);
+        String token = jwt.createScriptRunToken("acme", "alice", "run-42", "proj-9", "sess-7", exp);
 
         Optional<VanceJwtClaims> claims = jwt.validateToken(token);
 
@@ -199,14 +187,33 @@ class JwtServiceTest {
     @Test
     void createScriptRunToken_omitsSessionWhenNull() {
         String token = jwt.createScriptRunToken(
-                "acme", "alice",
-                "run-42", "proj-9", null,
-                Instant.now().plusSeconds(60));
+                "acme", "alice", "run-42", "proj-9", null, Instant.now().plusSeconds(60));
 
         Optional<VanceJwtClaims> claims = jwt.validateToken(token);
 
         assertThat(claims).isPresent();
         assertThat(claims.get().sessionId()).isNull();
+    }
+
+    @Test
+    void createDesignPreviewToken_roundTripsAllClaims() {
+        Instant exp = Instant.now().plus(30, ChronoUnit.MINUTES);
+        String token = jwt.createDesignPreviewToken("acme", "alice", "web-redesign", "designs", exp);
+
+        Optional<VanceJwtClaims> claims = jwt.validateToken(token);
+
+        assertThat(claims).isPresent();
+        assertThat(claims.get().tokenType()).isEqualTo(TokenType.DESIGN_PREVIEW);
+        assertThat(claims.get().username()).isEqualTo("alice");
+        assertThat(claims.get().tenantId()).isEqualTo("acme");
+        assertThat(claims.get().projectId()).isEqualTo("web-redesign");
+        assertThat(claims.get().appFolder()).isEqualTo("designs");
+        assertThat(claims.get().expiresAt()).isCloseTo(exp, within1Sec());
+        // A design-preview token is never a bearer: the claims shapes
+        // it must not carry stay null.
+        assertThat(claims.get().runId()).isNull();
+        assertThat(claims.get().tokenId()).isNull();
+        assertThat(claims.get().scopeProfiles()).isEmpty();
     }
 
     @Test
@@ -225,7 +232,6 @@ class JwtServiceTest {
     }
 
     private static org.assertj.core.data.TemporalUnitOffset within1Sec() {
-        return new org.assertj.core.data.TemporalUnitWithinOffset(
-                1, ChronoUnit.SECONDS);
+        return new org.assertj.core.data.TemporalUnitWithinOffset(1, ChronoUnit.SECONDS);
     }
 }

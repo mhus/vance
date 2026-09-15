@@ -1,0 +1,44 @@
+{
+  "name": "@vance-addon/designer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Client surface of the Designer Brain addon — a designer app shows the design folders under an app folder and previews the selected design in a sandboxed iframe served by the addon's path-token content route. TypeScript DTOs (generated from Java), REST helpers and the Vue app component.",
+  "license": "SEE LICENSE IN ../../../client/LICENSE.txt",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "build": "vue-tsc -b && vite build",
+    "dev": "vite",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@vance/components": "workspace:*",
+    "@vance/kind-registry": "workspace:*",
+    "@vance/shared": "workspace:*",
+    "vue-draggable-plus": "^0.6.1"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.21.1",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11",
+    "vue": "^3.5.42",
+    "vue-tsc": "^3.3.11"
+  }
+}

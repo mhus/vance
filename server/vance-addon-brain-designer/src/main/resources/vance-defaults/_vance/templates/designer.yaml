@@ -1,0 +1,25 @@
+title:       { de: "Designer", en: "Designer" }
+description: { de: "Eine Sammlung von Web-Designs — jedes Design ein Ordner mit index.html, CSS und Assets, live in einer Sandbox-Vorschau. Kommt mit einem laufenden Starter-Design.",
+               en: "A collection of web designs — each design a folder with an index.html, CSS and assets, live in a sandboxed preview. Comes with a running starter design." }
+icon: swatch
+tags: [app, designer]
+
+# `app:` routes this template through DesignerApplication.create — the same
+# entry point `designer_app_create` uses — so the manifest is serialised by
+# the codec rather than typed out here, and the apply seeds the same starter
+# design the tool path seeds. The folder is chosen by the user; designs are
+# created afterwards in the app (chat or doc_write) — so this form stays at
+# the two fields that have no other home.
+app: designer
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+    help:  { de: "Zum Beispiel „Website-Redesign\" oder „Landing-Page-Entwürfe\".",
+             en: "For example \"Website redesign\" or \"Landing page drafts\"." }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

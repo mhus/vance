@@ -35,4 +35,17 @@ public class ProcessSkillResponse {
     /** Populated for {@link ProcessSkillCommand#LIST} responses. */
     @Builder.Default
     private List<SkillSummaryDto> availableSkills = new ArrayList<>();
+
+    /**
+     * Populated for {@link ProcessSkillCommand#ACTIVATE} responses:
+     * {@code true} when this call activated the skill freshly (firing its
+     * {@code action:} turn), {@code false} when it was already active
+     * (arguments updated at most). The UI needs the difference — "activated"
+     * and "already active" are different sentences, and a fired turn is
+     * visible in the chat as work starting.
+     */
+    private Boolean newlyActivated;
+
+    /** Lifecycle of the activated skill, for {@link ProcessSkillCommand#ACTIVATE} replies. */
+    private String lifecycle;
 }

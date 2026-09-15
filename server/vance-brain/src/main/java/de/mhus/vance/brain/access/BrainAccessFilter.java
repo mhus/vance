@@ -50,8 +50,7 @@ public class BrainAccessFilter extends AccessFilterBase {
      * route so the security trade-off (token in URL → access logs,
      * referer headers, history) stays minimal.
      */
-    private static final Pattern DOCUMENT_CONTENT_PATH =
-            Pattern.compile("^/brain/[^/]+/documents/[^/]+/content/?$");
+    private static final Pattern DOCUMENT_CONTENT_PATH = Pattern.compile("^/brain/[^/]+/documents/[^/]+/content/?$");
 
     /**
      * WebSocket upgrade endpoint. The browser {@code WebSocket()} API
@@ -61,8 +60,7 @@ public class BrainAccessFilter extends AccessFilterBase {
      * Acceptable here because the JWT is short-lived and the WS
      * connection itself authenticates by socket identity afterwards.
      */
-    private static final Pattern WS_UPGRADE_PATH =
-            Pattern.compile("^/brain/[^/]+/ws/?$");
+    private static final Pattern WS_UPGRADE_PATH = Pattern.compile("^/brain/[^/]+/ws/?$");
 
     /**
      * External event-trigger endpoint —
@@ -74,8 +72,7 @@ public class BrainAccessFilter extends AccessFilterBase {
      * {@code /brain/{tenant}/event/...} typos don't accidentally
      * open up.
      */
-    private static final Pattern EVENT_TRIGGER_PATH =
-            Pattern.compile("^/brain/[^/]+/event/[^/]+/[^/]+/?$");
+    private static final Pattern EVENT_TRIGGER_PATH = Pattern.compile("^/brain/[^/]+/event/[^/]+/[^/]+/?$");
 
     /**
      * Office download / callback endpoints called by the ONLYOFFICE /
@@ -96,15 +93,26 @@ public class BrainAccessFilter extends AccessFilterBase {
      * this filter keeps the JWT requirement and tenant-mismatch check from
      * rejecting it. See {@code planning/webdav-support.md} §3.
      */
-    private static final Pattern WEBDAV_PATH =
-            Pattern.compile("^/brain/[^/]+/webdav(?:/.*)?$");
+    private static final Pattern WEBDAV_PATH = Pattern.compile("^/brain/[^/]+/webdav(?:/.*)?$");
+
+    /**
+     * Designer-app sandboxed content route —
+     * {@code /brain/{tenant}/addon/designer/content/…}. The browser loads
+     * these URLs from an iframe with {@code sandbox} (opaque origin): no
+     * Authorization header, no cookies on sub-resource requests. Auth is a
+     * short-lived {@code DESIGN_PREVIEW} JWT carried as a path segment, so
+     * relative sub-resource URLs keep carrying it; the
+     * {@code DesignerContentController} validates that token itself.
+     */
+    private static final Pattern DESIGNER_CONTENT_PATH = Pattern.compile("^/brain/[^/]+/addon/designer/content/.+$");
 
     private final ScriptRunAuthService scriptRunAuthService;
     private final IntegrationTokenAuthService integrationTokenAuthService;
 
-    public BrainAccessFilter(JwtService jwtService,
-                             ScriptRunAuthService scriptRunAuthService,
-                             IntegrationTokenAuthService integrationTokenAuthService) {
+    public BrainAccessFilter(
+            JwtService jwtService,
+            ScriptRunAuthService scriptRunAuthService,
+            IntegrationTokenAuthService integrationTokenAuthService) {
         super(jwtService);
         this.scriptRunAuthService = scriptRunAuthService;
         this.integrationTokenAuthService = integrationTokenAuthService;
@@ -151,6 +159,12 @@ public class BrainAccessFilter extends AccessFilterBase {
             // WebDAV uses HTTP Basic-Auth handled inside the milton stack.
             return false;
         }
+        if (DESIGNER_CONTENT_PATH.matcher(requestUri).matches()) {
+            // Designer sandbox content — the controller authenticates the
+            // path-segment DESIGN_PREVIEW token itself (see the pattern's
+            // comment above).
+            return false;
+        }
         return true;
     }
 
@@ -171,9 +185,7 @@ public class BrainAccessFilter extends AccessFilterBase {
         // ScriptRunAuthService does the extra checks in isClaimsAcceptable.
         // INTEGRATION tokens are profile- and registry-gated the same way,
         // via IntegrationTokenAuthService.
-        return type == TokenType.ACCESS
-                || type == TokenType.SCRIPT_RUN
-                || type == TokenType.INTEGRATION;
+        return type == TokenType.ACCESS || type == TokenType.SCRIPT_RUN || type == TokenType.INTEGRATION;
     }
 
     @Override

@@ -25,6 +25,12 @@ import org.jspecify.annotations.Nullable;
  * shared with the script-run shape — both mean the same thing there, "this
  * token is pinned to that project", so a second claim for it would be two
  * spellings of one fact.
+ *
+ * <p>The design-preview field ({@link #appFolder}) is populated only for
+ * {@link TokenType#DESIGN_PREVIEW} tokens and pins the credential to one
+ * designer-app folder. {@code projectId} is shared with the script-run and
+ * integration shapes — "pinned to that project" means the same thing in all
+ * three.
  */
 public record VanceJwtClaims(
         String username,
@@ -36,7 +42,9 @@ public record VanceJwtClaims(
         @Nullable String projectId,
         @Nullable String sessionId,
         List<String> scopeProfiles,
-        @Nullable String tokenId) {
+        @Nullable String tokenId,
+        /** App-folder scope of a {@link TokenType#DESIGN_PREVIEW} token. */
+        @Nullable String appFolder) {
 
     public VanceJwtClaims {
         scopeProfiles = scopeProfiles == null ? List.of() : List.copyOf(scopeProfiles);
@@ -72,16 +80,23 @@ public record VanceJwtClaims(
      */
     public static final String CLAIM_TOKEN_ID = "jti";
 
+    /** JWT claim name for the app-folder scope of a
+     *  {@link TokenType#DESIGN_PREVIEW} token.
+     */
+    public static final String CLAIM_APP_FOLDER = "fld";
+
     /**
      * Standard user-token shape — no script-run scope fields. Matches
      * the historical 5-arg construction call-sites.
      */
     public static VanceJwtClaims user(
-            String username, String tenantId,
-            @Nullable Instant issuedAt, @Nullable Instant expiresAt,
+            String username,
+            String tenantId,
+            @Nullable Instant issuedAt,
+            @Nullable Instant expiresAt,
             TokenType tokenType) {
-        return new VanceJwtClaims(username, tenantId, issuedAt, expiresAt,
-                tokenType, null, null, null, List.of(), null);
+        return new VanceJwtClaims(
+                username, tenantId, issuedAt, expiresAt, tokenType, null, null, null, List.of(), null, null);
     }
 
     /**
@@ -89,11 +104,25 @@ public record VanceJwtClaims(
      * always {@link TokenType#SCRIPT_RUN}.
      */
     public static VanceJwtClaims scriptRun(
-            String username, String tenantId,
-            @Nullable Instant issuedAt, @Nullable Instant expiresAt,
-            String runId, String projectId, @Nullable String sessionId) {
-        return new VanceJwtClaims(username, tenantId, issuedAt, expiresAt,
-                TokenType.SCRIPT_RUN, runId, projectId, sessionId, List.of(), null);
+            String username,
+            String tenantId,
+            @Nullable Instant issuedAt,
+            @Nullable Instant expiresAt,
+            String runId,
+            String projectId,
+            @Nullable String sessionId) {
+        return new VanceJwtClaims(
+                username,
+                tenantId,
+                issuedAt,
+                expiresAt,
+                TokenType.SCRIPT_RUN,
+                runId,
+                projectId,
+                sessionId,
+                List.of(),
+                null,
+                null);
     }
 
     /**
@@ -106,10 +135,49 @@ public record VanceJwtClaims(
      * omits it.
      */
     public static VanceJwtClaims integration(
-            String username, String tenantId,
-            @Nullable Instant issuedAt, @Nullable Instant expiresAt,
-            String tokenId, List<String> scopeProfiles, @Nullable String projectId) {
-        return new VanceJwtClaims(username, tenantId, issuedAt, expiresAt,
-                TokenType.INTEGRATION, null, projectId, null, scopeProfiles, tokenId);
+            String username,
+            String tenantId,
+            @Nullable Instant issuedAt,
+            @Nullable Instant expiresAt,
+            String tokenId,
+            List<String> scopeProfiles,
+            @Nullable String projectId) {
+        return new VanceJwtClaims(
+                username,
+                tenantId,
+                issuedAt,
+                expiresAt,
+                TokenType.INTEGRATION,
+                null,
+                projectId,
+                null,
+                scopeProfiles,
+                tokenId,
+                null);
+    }
+
+    /**
+     * Design-preview shape — pins read access to one designer-app folder.
+     * Type is always {@link TokenType#DESIGN_PREVIEW}.
+     */
+    public static VanceJwtClaims designPreview(
+            String username,
+            String tenantId,
+            @Nullable Instant issuedAt,
+            @Nullable Instant expiresAt,
+            String projectId,
+            String appFolder) {
+        return new VanceJwtClaims(
+                username,
+                tenantId,
+                issuedAt,
+                expiresAt,
+                TokenType.DESIGN_PREVIEW,
+                null,
+                projectId,
+                null,
+                List.of(),
+                null,
+                appFolder);
     }
 }

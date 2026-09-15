@@ -43,8 +43,7 @@ public class SecurityContextFactory {
         String username = (String) request.getAttribute(AccessFilterBase.ATTR_USERNAME);
         String tenantId = (String) request.getAttribute(AccessFilterBase.ATTR_TENANT_ID);
         if (username == null || tenantId == null) {
-            throw new IllegalStateException(
-                    "No authenticated user on request — BrainAccessFilter must run first");
+            throw new IllegalStateException("No authenticated user on request — BrainAccessFilter must run first");
         }
         List<String> teams = resolveTeams(tenantId, username);
         String confinedTo = credentialProjectConfinement(request);
@@ -69,13 +68,11 @@ public class SecurityContextFactory {
      * it does close the gap where a script token reached a project other than
      * the run's — the claim said which one and nobody downstream compared it.
      */
-    private static @org.jspecify.annotations.Nullable String credentialProjectConfinement(
-            HttpServletRequest request) {
+    private static @org.jspecify.annotations.Nullable String credentialProjectConfinement(HttpServletRequest request) {
         if (!(request.getAttribute(AccessFilterBase.ATTR_CLAIMS) instanceof VanceJwtClaims claims)) {
             return null;
         }
-        boolean confined = claims.tokenType() == TokenType.INTEGRATION
-                || claims.tokenType() == TokenType.SCRIPT_RUN;
+        boolean confined = claims.tokenType() == TokenType.INTEGRATION || claims.tokenType() == TokenType.SCRIPT_RUN;
         if (!confined) {
             return null;
         }
@@ -105,8 +102,7 @@ public class SecurityContextFactory {
      * Not request-cached — cross-scope tool actions are rare; the hot
      * per-dispatch path caches teams in {@code ToolDispatcher} itself.
      */
-    public SecurityContext forToolSubject(String tenantId,
-            @org.jspecify.annotations.Nullable String userId) {
+    public SecurityContext forToolSubject(String tenantId, @org.jspecify.annotations.Nullable String userId) {
         if (userId == null || userId.isBlank()) {
             return SecurityContext.SYSTEM;
         }
@@ -129,6 +125,29 @@ public class SecurityContextFactory {
         return path != null && path.startsWith("_vance/")
                 ? de.mhus.vance.shared.permission.WriteActor.system(subject)
                 : de.mhus.vance.shared.permission.WriteActor.user(subject);
+    }
+
+    /**
+     * Build a {@link SecurityContext} from a verified
+     * {@link TokenType#DESIGN_PREVIEW} token — the designer app's sandboxed
+     * content route authenticates its path-segment token itself and still
+     * runs the per-request READ check, so a permission change takes effect on
+     * the next fetch, not when the token expires.
+     *
+     * <p>The token's {@code pid} claim becomes the context's project
+     * confinement — the same attenuation an integration credential gets —
+     * so the check can only ever come out <em>more</em> restrictive than the
+     * minting user's own rights.
+     */
+    public SecurityContext fromDesignPreviewClaims(VanceJwtClaims claims) {
+        if (claims.tokenType() != TokenType.DESIGN_PREVIEW) {
+            throw new IllegalArgumentException("Not a design-preview token: " + claims.tokenType());
+        }
+        return SecurityContext.restrictedUser(
+                claims.username(),
+                claims.tenantId(),
+                resolveTeams(claims.tenantId(), claims.username()),
+                claims.projectId());
     }
 
     private List<String> resolveTeams(String tenantId, String username) {

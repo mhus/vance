@@ -11,15 +11,13 @@ import type {
   DocumentDto,
   ProcessCommandRequest,
   ProcessCommandResponse,
-  ProcessSkillRequest,
-  ProcessSkillResponse,
   ProcessProgressNotification,
   SessionListRequest,
   SessionListResponse,
   SessionRosterData,
   SwitchToNotification,
 } from '@vance/generated';
-import { EngineCommandOutcome, ProcessSkillCommand } from '@vance/generated';
+import { EngineCommandOutcome } from '@vance/generated';
 import {
   bindSession,
   ensureBound as wsEnsureBound,
@@ -46,6 +44,7 @@ import {
   type FollowUpConversationContext,
 } from '@composables/useFollowUpSuggestion';
 import { ChatClientToolService } from './chatClientToolService';
+import { parseSkillCommand, sendSkillCommand } from './skillCommand';
 
 const { t } = useI18n();
 
@@ -434,9 +433,9 @@ function renderEngineCommand(r: ProcessCommandResponse): string {
 
 /**
  * Handles a {@code /skill …} (or {@code /skill-list} / {@code /skill-clear})
- * command from the composer — the web equivalent of foot's skill slash
- * commands. Round-trips a {@code process-skill} WS request and renders the
- * outcome as an ephemeral activity line. See planning/engine-commands.md §4.
+ * command from the composer. Parsing, round-trip and reply rendering live
+ * in the shared {@code skillCommand.ts} — every composer host gets the same
+ * behaviour; Cortex dropped this command for as long as it lived only here.
  */
 async function onSkillCommandFromComposer(line: string): Promise<void> {
   const sock = socket.value;
@@ -446,77 +445,8 @@ async function onSkillCommandFromComposer(line: string): Promise<void> {
     chatViewRef.value?.pushCommandActivity(`${line} → no active process`);
     return;
   }
-  const parts = line.trim().split(/\s+/).filter(Boolean);
-  const head = parts[0];
-
-  let command: ProcessSkillCommand;
-  let skillName: string | undefined;
-  let oneShot = false;
-  // Raw trailing text of `/skill <name> [--once] <rest…>`. The brain decides
-  // what happens with it — bound into the skill's prompt template when it
-  // declares `arguments:`, injected as a plain user message otherwise. Never
-  // both, so we must not send it as a chat message here as well.
-  let args: string | undefined;
-
-  if (head === '/skill-list') {
-    command = ProcessSkillCommand.LIST;
-  } else if (head === '/skill-clear') {
-    command = parts[1] ? ProcessSkillCommand.CLEAR : ProcessSkillCommand.CLEAR_ALL;
-    skillName = parts[1];
-  } else {
-    // head === '/skill'
-    const sub = parts[1];
-    if (!sub) {
-      chatViewRef.value?.pushCommandActivity(
-        '/skill → usage: /skill list | clear [name] | <name> [--once] [args…]');
-      return;
-    }
-    if (sub === 'list') {
-      command = ProcessSkillCommand.LIST;
-    } else if (sub === 'clear') {
-      command = parts[2] ? ProcessSkillCommand.CLEAR : ProcessSkillCommand.CLEAR_ALL;
-      skillName = parts[2];
-    } else {
-      command = ProcessSkillCommand.ACTIVATE;
-      skillName = sub;
-      oneShot = parts.includes('--once');
-      const rest = parts.slice(2).filter((p) => p !== '--once').join(' ');
-      args = rest.length > 0 ? rest : undefined;
-    }
-  }
-
-  try {
-    const reply = await sock.send<ProcessSkillRequest, ProcessSkillResponse>('process-skill', {
-      processName: process,
-      command,
-      skillName,
-      oneShot,
-      args,
-    });
-    chatViewRef.value?.pushCommandActivity(renderSkillReply(command, skillName, reply));
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    chatViewRef.value?.pushCommandActivity(`/skill → error: ${msg}`);
-  }
-}
-
-function renderSkillReply(
-  command: ProcessSkillCommand,
-  skillName: string | undefined,
-  r: ProcessSkillResponse,
-): string {
-  if (command === ProcessSkillCommand.LIST) {
-    const active = r.activeSkills.map((a) => a.name).join(', ') || '—';
-    const available = (r.availableSkills ?? []).map((s) => s.name).join(', ') || '—';
-    return `/skill list → active: ${active}  ·  available: ${available}`;
-  }
-  if (command === ProcessSkillCommand.CLEAR) {
-    return `/skill → cleared ${skillName}`;
-  }
-  if (command === ProcessSkillCommand.CLEAR_ALL) {
-    return '/skill → cleared all';
-  }
-  return `/skill → activated ${skillName}`;
+  const reply = await sendSkillCommand(sock, process, parseSkillCommand(line));
+  chatViewRef.value?.pushCommandActivity(reply);
 }
 function onWizardDeepLinkFromView(detail: { name: string; prefill: Record<string, string> }): void {
   rightPanelRef.value?.openWizard(detail.name, detail.prefill);

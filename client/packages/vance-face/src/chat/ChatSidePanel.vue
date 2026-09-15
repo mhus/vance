@@ -19,6 +19,7 @@ import {
 } from '@/ws/wsConnectionStore';
 import { VAlert, VBackButton, VButton } from '@/components';
 import ChatView from '@/chat/ChatView.vue';
+import { parseSkillCommand, sendSkillCommand } from '@/chat/skillCommand';
 import ChatComposer, {
   type ComposerCurrentFileSource,
 } from '@/chat/ChatComposer.vue';
@@ -321,6 +322,23 @@ onBeforeUnmount(() => {
 // like a working control and swallows the click, leaving the process
 // waiting on an answer the user believes they gave.
 
+/**
+ * `/skill …` from the composer — the same handling /chat runs, from the
+ * shared helper. The chat-process of this session is the fixed "chat"
+ * process, so no lookup is needed. Renders the outcome as an ephemeral
+ * activity line, exactly like the full-page chat.
+ */
+async function onSkillCommand(line: string): Promise<void> {
+  const sock = socket.value;
+  if (!sock) return;
+  if (!sessionBound.value) {
+    chatViewRef.value?.pushCommandActivity(`${line} → no active process`);
+    return;
+  }
+  const reply = await sendSkillCommand(sock, CHAT_PROCESS_NAME, parseSkillCommand(line));
+  chatViewRef.value?.pushCommandActivity(reply);
+}
+
 function onLocalEcho(msg: ChatMessageDto): void {
   chatViewRef.value?.appendLocalEcho(msg);
 }
@@ -416,6 +434,7 @@ function onRollbackEcho(messageId: string): void {
           @paused="serverTurnActive = false"
           @local-echo="onLocalEcho"
           @rollback-echo="onRollbackEcho"
+          @skill-command="onSkillCommand"
         />
       </div>
     </template>

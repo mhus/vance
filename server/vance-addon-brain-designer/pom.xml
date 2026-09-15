@@ -1,0 +1,211 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.mhus.vance</groupId>
+        <artifactId>vance</artifactId>
+        <version>0.5.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>vance-addon-brain-designer</artifactId>
+    <name>vance-addon-brain-designer</name>
+    <description>Designer Vance Application packaged as a first-party Brain addon. A designer app is a folder of designs — each design a subfolder of plain web files (index.html + css/js/assets) previewed in a sandboxed iframe. The addon bundles the DesignerApplication, its REST surface (view, preview-session mint, path-token content route), the create tool and the wire-contract DTOs (DesignerView, DesignInfo, DesignerPreviewSession). The Maven build generates the matching TypeScript interfaces straight into the colocated client/ pnpm package, which also carries the Vue UI and REST helpers. Loaded by Spring Boot via META-INF/spring/.../AutoConfiguration.imports.</description>
+    <packaging>jar</packaging>
+
+    <properties>
+        <!--
+          Skips the federation-remote build of @vance-addon/designer
+          that bakes into the .vab bundle's face/ tree. Default: run it,
+          so a fresh `mvn package` keeps the Web-UI artefact in sync
+          with the addon source. CI / headless environments without
+          pnpm on PATH can pass -Dskip.pnpm=true.
+        -->
+        <skip.pnpm>false</skip.pnpm>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-api</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-shared</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-brain</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!--
+          Filter META-INF/vance-addon.yaml so ${project.version} is
+          substituted; everything else under src/main/resources is
+          copied verbatim (binary-safe, no surprise expansion).
+        -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>META-INF/vance-addon.yaml</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>META-INF/vance-addon.yaml</exclude>
+                </excludes>
+            </resource>
+        </resources>
+        <plugins>
+            <!--
+              Generates TypeScript interfaces from this addon's @GenerateTypeScript-annotated
+              DTOs straight into the colocated client/ workspace package. Output is the
+              addon's own source tree — no shared @vance/generated coupling.
+            -->
+            <plugin>
+                <groupId>de.mhus.vance</groupId>
+                <artifactId>generate-java-to-ts-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-ts-dtos</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <inputDirectory>${project.basedir}/src/main/java</inputDirectory>
+                            <outputDirectory>${project.basedir}/client/src/generated</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              Federation-remote build of the addon's client/ pnpm
+              package. Runs in prepare-package so the dist/ tree exists
+              when the assembly below copies it into the .vab face/.
+              Mirrors vance-api's pnpm step; skippable via -Dskip.pnpm=true.
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.3</version>
+                <executions>
+                    <execution>
+                        <id>build-addon-face</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>pnpm</executable>
+                            <workingDirectory>${project.basedir}/../..</workingDirectory>
+                            <arguments>
+                                <argument>--filter</argument>
+                                <argument>@vance-addon/designer</argument>
+                                <argument>build</argument>
+                            </arguments>
+                            <skip>${skip.pnpm}</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              Build the .vab bundle in the package phase. Layout per
+              planning/addon-system.md §1.5 — see src/assembly/vab.xml.
+              Output is target/${artifactId}-${version}.zip; the antrun
+              execution below renames it to .vab.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>vab</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/vab.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <finalName>${project.artifactId}-${project.version}</finalName>
+                            <!--
+                              Do not register the assembly as a Maven attached
+                              artifact: antrun rename-vab below moves the .zip
+                              to .vab, so install:install would fail looking
+                              for the .zip. The .vab is consumed via file glob
+                              in /default-addons/, not via the Maven repo.
+                            -->
+                            <attach>false</attach>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              maven-assembly-plugin can only emit a .zip; the file
+              extension is hardcoded per format. Rename it to .vab so
+              the bootstrap script's /default-addons/*.vab glob picks
+              it up. Runs after assembly (plugin order within the same
+              phase respects pom declaration order).
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>rename-vab</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <move file="${project.build.directory}/${project.artifactId}-${project.version}.zip"
+                                      tofile="${project.build.directory}/${project.artifactId}-${project.version}.vab"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

@@ -1,0 +1,15 @@
+# Vance Brain addon manifest. Read by the brain bootstrap entrypoint
+# (Docker ENTRYPOINT shell script) to determine where to unpack this
+# bundle on the shared /shared/addons/<id>/<version>/ volume. Spring
+# Boot itself only needs the AutoConfiguration.imports descriptor
+# inside the JAR — this file is purely for the bootstrap.
+id: designer
+version: "@project.version@"
+
+# Document-kind ids this addon's ./register expose contributes. The Web-UI
+# reads these to decide WHICH remote to fetch when a document of that kind
+# is opened -- a load trigger, not a copy of the matching rule (matches()
+# still decides once loaded). Quoted because a bare application:<x> is one
+# space away from being read as a mapping.
+kinds:
+  - "application:designer"

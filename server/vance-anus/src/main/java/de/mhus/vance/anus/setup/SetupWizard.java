@@ -232,8 +232,15 @@ public class SetupWizard {
             state.setUserPassword(config.userPassword());
         } else {
             if (StringUtils.isNotBlank(config.userPassword())) {
-                problems.add("user.password: user '" + config.userName()
-                        + "' exists — the setup wizard does not change passwords; remove the key");
+                // Idempotent ensure: the SAME password as the stored one is a
+                // no-op (verified, never overwritten) so re-running an unchanged
+                // config passes. A DIFFERENT one is refused — the wizard does not
+                // change passwords, and a silent reset would be worse.
+                String hash = existingUser.getPasswordHash();
+                if (hash == null || !passwordService.verify(config.userPassword(), hash)) {
+                    problems.add("user.password: user '" + config.userName()
+                            + "' exists — the setup wizard does not change passwords; remove the key");
+                }
             }
             state.setUserCreated(false);
             // Same keep-what-is-there rule as the tenant title: only fields the

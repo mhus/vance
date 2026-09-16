@@ -10,10 +10,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Lightweight read-only view of a skill for chat / picker UIs. Carries
- * what the user needs to recognise and pick a skill — name, title,
- * description, tags, and the cascade source. The full editing payload
- * (triggers, prompt-extension, reference docs) is not part of this
+ * Read-only view of a skill for chat / picker UIs. Carries what the
+ * user needs to recognise, pick and understand a skill — identity,
+ * description, auto-triggers and the behavioural metadata (lifecycle,
+ * tools, arguments, reference docs, scripts, command sequences). The
+ * editing payload (the prompt-extension body) is not part of this
  * surface; editors go through the document layer directly.
  */
 @Data
@@ -34,6 +35,56 @@ public class SkillSummaryDto {
 
     @Builder.Default
     private List<String> tags = new ArrayList<>();
+
+    /**
+     * Auto-activation configuration, shown so a user can see what a
+     * skill reacts to before activating it manually. Read-only view of
+     * the SKILL.md {@code triggers:} frontmatter (skills.md §2).
+     */
+    @Builder.Default
+    private List<SkillTriggerDto> triggers = new ArrayList<>();
+
+    /**
+     * Lifecycle vocabulary: {@code sticky} (default — activation
+     * persists, body injected every turn until cleared) or {@code shot}
+     * (fires once as a prompt/config macro, never becomes active).
+     * Lowercase, matching {@code ProcessSkillResponse#getLifecycle()}.
+     */
+    private String lifecycle;
+
+    /** Tool names the skill adds to the turn's whitelist while active. */
+    @Builder.Default
+    private List<String> tools = new ArrayList<>();
+
+    /** Manual folder paths the skill contributes to {@code manual_read} while active. */
+    @Builder.Default
+    private List<String> manualPaths = new ArrayList<>();
+
+    /** Invocation arguments the skill binds trailing text into (skills.md §2b). */
+    @Builder.Default
+    private List<SkillArgumentDto> arguments = new ArrayList<>();
+
+    /** Reference docs attached to the skill, with their load mode. */
+    @Builder.Default
+    private List<SkillReferenceDocDto> referenceDocs = new ArrayList<>();
+
+    /** Scripts the skill mounts as virtual tools while active (skills.md §13). */
+    @Builder.Default
+    private List<SkillScriptDto> scripts = new ArrayList<>();
+
+    /**
+     * Engine-command sequence fired once on activation (skills.md §2a),
+     * rendered back to the canonical {@code verb rest…} string form.
+     */
+    @Builder.Default
+    private List<String> activate = new ArrayList<>();
+
+    /**
+     * Engine-command sequence fired on clear; never fired for
+     * {@code lifecycle: shot} (skills.md §2a).
+     */
+    @Builder.Default
+    private List<String> deactivate = new ArrayList<>();
 
     private boolean enabled;
 

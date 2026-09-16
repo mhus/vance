@@ -7,6 +7,6 @@ import { SkillReferenceDocLoadMode } from './SkillReferenceDocLoadMode';
 
 export interface SkillReferenceDocDto {
   title: string;
-  content: string;
+  summary?: string;
   loadMode: SkillReferenceDocLoadMode;
 }

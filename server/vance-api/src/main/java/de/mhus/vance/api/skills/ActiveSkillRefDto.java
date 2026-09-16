@@ -31,6 +31,14 @@ public class ActiveSkillRefDto {
     private Instant activatedAt;
 
     /**
+     * Marks skills the spawning recipe activated (its
+     * {@code defaultActiveSkills}) — those cannot be cleared by the
+     * user ({@code /skill clear} leaves them, see skills.md §7a), so a
+     * client can disable its deactivate control.
+     */
+    private boolean fromRecipe;
+
+    /**
      * Raw trailing text the skill was activated with
      * ({@code /skill <name> <rest…>}), when it declares
      * {@code arguments:}. Surfaced so a client can show what a sticky

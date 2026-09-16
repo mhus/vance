@@ -4,9 +4,15 @@ import de.mhus.vance.api.skills.ActiveSkillRefDto;
 import de.mhus.vance.api.skills.ProcessSkillCommand;
 import de.mhus.vance.api.skills.ProcessSkillRequest;
 import de.mhus.vance.api.skills.ProcessSkillResponse;
+import de.mhus.vance.api.skills.ScriptParamDto;
+import de.mhus.vance.api.skills.SkillArgumentDto;
+import de.mhus.vance.api.skills.SkillReferenceDocDto;
+import de.mhus.vance.api.skills.SkillScriptDto;
 import de.mhus.vance.api.skills.SkillSummaryDto;
+import de.mhus.vance.api.skills.SkillTriggerDto;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.skill.ResolvedSkill;
@@ -215,13 +221,19 @@ public class ProcessSkillHandler implements WsHandler {
         }
     }
 
-    private static List<ActiveSkillRefDto> toActiveDtoList(List<ActiveSkillRefEmbedded> active) {
+    /**
+     * Maps the embedded active-skill refs for the wire. Package-private so
+     * the DTO contract (notably {@code fromRecipe}) is unit-tested at the
+     * mapping site, not through a full WS round-trip.
+     */
+    static List<ActiveSkillRefDto> toActiveDtoList(List<ActiveSkillRefEmbedded> active) {
         List<ActiveSkillRefDto> out = new ArrayList<>(active.size());
         for (ActiveSkillRefEmbedded ref : active) {
             out.add(ActiveSkillRefDto.builder()
                     .name(ref.getName())
                     .resolvedFromScope(ref.getResolvedFromScope())
                     .oneShot(ref.isOneShot())
+                    .fromRecipe(ref.isFromRecipe())
                     .activatedAt(ref.getActivatedAt())
                     .args(ref.getArgs())
                     .build());
@@ -229,16 +241,108 @@ public class ProcessSkillHandler implements WsHandler {
         return out;
     }
 
-    private static SkillSummaryDto toSummary(ResolvedSkill skill) {
+    /**
+     * Maps a resolved skill for the picker/listing. Package-private for the
+     * same reason as {@link #toActiveDtoList} — the full projection
+     * (triggers, lifecycle, arguments, command sequences) is DTO
+     * contract, tested directly.
+     */
+    static SkillSummaryDto toSummary(ResolvedSkill skill) {
         return SkillSummaryDto.builder()
                 .name(skill.name())
                 .title(skill.title())
                 .description(skill.description())
                 .version(skill.version())
                 .tags(skill.tags())
+                .triggers(toTriggerDtos(skill.triggers()))
+                .lifecycle(skill.lifecycle().name().toLowerCase())
+                .tools(skill.tools())
+                .manualPaths(skill.manualPaths())
+                .arguments(toArgumentDtos(skill.arguments()))
+                .referenceDocs(toReferenceDocDtos(skill.referenceDocs()))
+                .scripts(toScriptDtos(skill.scripts()))
+                .activate(renderCommands(skill.activate()))
+                .deactivate(renderCommands(skill.deactivate()))
                 .enabled(skill.enabled())
                 .source(skill.source())
                 .build();
+    }
+
+    private static List<SkillTriggerDto> toTriggerDtos(List<ResolvedSkill.Trigger> triggers) {
+        List<SkillTriggerDto> out = new ArrayList<>(triggers.size());
+        for (ResolvedSkill.Trigger trigger : triggers) {
+            out.add(SkillTriggerDto.builder()
+                    .type(trigger.type())
+                    .pattern(trigger.pattern())
+                    .keywords(trigger.keywords())
+                    .build());
+        }
+        return out;
+    }
+
+    private static List<SkillArgumentDto> toArgumentDtos(List<ResolvedSkill.Argument> arguments) {
+        List<SkillArgumentDto> out = new ArrayList<>(arguments.size());
+        for (ResolvedSkill.Argument argument : arguments) {
+            out.add(SkillArgumentDto.builder()
+                    .name(argument.name())
+                    .type(argument.type())
+                    .description(argument.description())
+                    .required(argument.required())
+                    .build());
+        }
+        return out;
+    }
+
+    private static List<SkillReferenceDocDto> toReferenceDocDtos(List<ResolvedSkill.ReferenceDoc> referenceDocs) {
+        List<SkillReferenceDocDto> out = new ArrayList<>(referenceDocs.size());
+        for (ResolvedSkill.ReferenceDoc doc : referenceDocs) {
+            out.add(SkillReferenceDocDto.builder()
+                    .title(doc.title())
+                    .summary(doc.summary())
+                    .loadMode(doc.loadMode())
+                    .build());
+        }
+        return out;
+    }
+
+    private static List<SkillScriptDto> toScriptDtos(List<ResolvedSkill.Script> scripts) {
+        List<SkillScriptDto> out = new ArrayList<>(scripts.size());
+        for (ResolvedSkill.Script script : scripts) {
+            out.add(SkillScriptDto.builder()
+                    .name(script.name())
+                    .target(script.target())
+                    .description(script.description())
+                    .params(toScriptParamDtos(script.params()))
+                    .build());
+        }
+        return out;
+    }
+
+    private static List<ScriptParamDto> toScriptParamDtos(List<ResolvedSkill.Script.ScriptParam> params) {
+        List<ScriptParamDto> out = new ArrayList<>(params.size());
+        for (ResolvedSkill.Script.ScriptParam param : params) {
+            out.add(ScriptParamDto.builder()
+                    .name(param.name())
+                    .type(param.type())
+                    .description(param.description())
+                    .required(param.required())
+                    .build());
+        }
+        return out;
+    }
+
+    /**
+     * Renders the parsed command back to the canonical {@code verb rest…}
+     * string the author wrote (skills.md §2a) — the display form for
+     * read-only listings.
+     */
+    private static List<String> renderCommands(List<EngineCommand> commands) {
+        List<String> out = new ArrayList<>(commands.size());
+        for (EngineCommand command : commands) {
+            Object text = command.args().get("text");
+            out.add(text == null ? command.name() : command.name() + " " + text);
+        }
+        return out;
     }
 
     private static boolean isBlank(@org.jspecify.annotations.Nullable String s) {

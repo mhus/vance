@@ -10,5 +10,6 @@ export interface ActiveSkillRefDto {
   resolvedFromScope: SkillScope;
   oneShot: boolean;
   activatedAt: Date;
+  fromRecipe: boolean;
   args: string;
 }

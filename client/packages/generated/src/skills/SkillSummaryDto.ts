@@ -3,7 +3,11 @@
  Source: de.mhus.vance.api.skills.SkillSummaryDto
 */
 
+import { SkillTriggerDto } from './SkillTriggerDto';
+import { SkillReferenceDocDto } from './SkillReferenceDocDto';
+import { SkillScriptDto } from './SkillScriptDto';
 import { SkillScope } from './SkillScope';
+import { SkillArgumentDto } from './SkillArgumentDto';
 
 export interface SkillSummaryDto {
   name: string;
@@ -11,6 +15,15 @@ export interface SkillSummaryDto {
   description: string;
   version: string;
   tags: string[];
+  triggers: SkillTriggerDto[];
+  lifecycle: string;
+  tools: string[];
+  manualPaths: string[];
+  arguments: SkillArgumentDto[];
+  referenceDocs: SkillReferenceDocDto[];
+  scripts: SkillScriptDto[];
+  activate: string[];
+  deactivate: string[];
   enabled: boolean;
   source: SkillScope;
 }

@@ -254,6 +254,7 @@ export * from './skills/ActiveSkillRefDto';
 export * from './skills/ProcessSkillCommand';
 export * from './skills/ProcessSkillRequest';
 export * from './skills/ProcessSkillResponse';
+export * from './skills/SkillArgumentDto';
 export * from './skills/SkillReferenceDocDto';
 export * from './skills/SkillReferenceDocLoadMode';
 export * from './skills/SkillScope';

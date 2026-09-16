@@ -116,6 +116,11 @@ function initMermaid(): void {
     theme: h.theme,
     look: h.look,
     fontFamily: h.fontFamily,
+    // Mermaid 12 made ELK the default layout engine, silently re-laying
+    // out existing flowchart/state/class documents. Pin dagre to keep
+    // saved diagrams rendering exactly as they did on Mermaid 11 —
+    // theme and look are already pinned above.
+    layout: 'dagre',
   });
 }
 

@@ -5,6 +5,7 @@ import de.mhus.vance.api.skills.ProcessSkillCommand;
 import de.mhus.vance.api.skills.ProcessSkillRequest;
 import de.mhus.vance.api.skills.ProcessSkillResponse;
 import de.mhus.vance.api.skills.SkillSummaryDto;
+import de.mhus.vance.api.skills.SkillTriggerDto;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.SessionService;
@@ -33,10 +34,7 @@ public class SkillCommandHelper {
     private final ChatTerminal terminal;
     private final SessionService sessions;
 
-    public SkillCommandHelper(
-            ConnectionService connection,
-            ChatTerminal terminal,
-            SessionService sessions) {
+    public SkillCommandHelper(ConnectionService connection, ChatTerminal terminal, SessionService sessions) {
         this.connection = connection;
         this.terminal = terminal;
         this.sessions = sessions;
@@ -69,7 +67,8 @@ public class SkillCommandHelper {
             for (ActiveSkillRefDto ref : response.getActiveSkills()) {
                 terminal.info("  ✓ " + ref.getName()
                         + "  [" + ref.getResolvedFromScope() + "]"
-                        + (ref.isOneShot() ? "  (once)" : ""));
+                        + (ref.isOneShot() ? "  (once)" : "")
+                        + (ref.isFromRecipe() ? "  (recipe)" : ""));
             }
         }
         if (response.getAvailableSkills().isEmpty()) {
@@ -81,7 +80,9 @@ public class SkillCommandHelper {
             String marker = activeNames.contains(dto.getName()) ? "  ✓ " : "    ";
             terminal.info(marker + dto.getName()
                     + "  [" + dto.getSource() + "]"
-                    + "  — " + dto.getDescription());
+                    + ("shot".equals(dto.getLifecycle()) ? "  (macro)" : "")
+                    + "  — " + dto.getDescription()
+                    + autoTriggerSuffix(dto));
         }
     }
 
@@ -95,7 +96,7 @@ public class SkillCommandHelper {
                     .processName(processName)
                     .command(ProcessSkillCommand.CLEAR_ALL)
                     .build());
-            terminal.info("cleared. active skills now: " + response.getActiveSkills().size());
+            terminal.info(clearMessage(null, response));
             return;
         }
         ProcessSkillResponse response = sendSkillRequest(ProcessSkillRequest.builder()
@@ -103,8 +104,7 @@ public class SkillCommandHelper {
                 .command(ProcessSkillCommand.CLEAR)
                 .skillName(skillName)
                 .build());
-        terminal.info("cleared '" + skillName + "'. active skills now: "
-                + response.getActiveSkills().size());
+        terminal.info(clearMessage(skillName, response));
     }
 
     /**
@@ -118,13 +118,11 @@ public class SkillCommandHelper {
      * well would deliver the text twice to a declaring skill. See
      * {@code specification/public/skills.md} §6.
      */
-    public void activate(
-            String processName,
-            String skillName,
-            boolean oneShot,
-            List<String> trailingMessageTokens) throws Exception {
+    public void activate(String processName, String skillName, boolean oneShot, List<String> trailingMessageTokens)
+            throws Exception {
         String args = trailingMessageTokens == null || trailingMessageTokens.isEmpty()
-                ? null : String.join(" ", trailingMessageTokens);
+                ? null
+                : String.join(" ", trailingMessageTokens);
         ProcessSkillResponse response = sendSkillRequest(ProcessSkillRequest.builder()
                 .processName(processName)
                 .command(ProcessSkillCommand.ACTIVATE)
@@ -132,10 +130,7 @@ public class SkillCommandHelper {
                 .oneShot(oneShot)
                 .args(args)
                 .build());
-        terminal.info("→ skill '" + skillName + "' activated"
-                + (oneShot ? " (once)" : "")
-                + (args == null ? "" : " with args")
-                + ". active skills now: " + response.getActiveSkills().size());
+        terminal.info(activationMessage(skillName, response, oneShot, args == null));
     }
 
     /**
@@ -155,14 +150,77 @@ public class SkillCommandHelper {
         return new ParsedActivateArgs(oneShot, remaining);
     }
 
-    public record ParsedActivateArgs(boolean oneShot, List<String> trailingTokens) {
+    public record ParsedActivateArgs(boolean oneShot, List<String> trailingTokens) {}
+
+    /**
+     * Renders the post-ACTIVATE sentence from the response — the same
+     * wording the web composer shows (skills.md §4a): "already active"
+     * (arguments updated at most) and "fired (macro)" for a
+     * {@code lifecycle: shot} skill are different outcomes than a fresh
+     * sticky activation.
+     */
+    static String activationMessage(
+            String skillName, ProcessSkillResponse response, boolean oneShot, boolean withArgs) {
+        String prefix = "→ skill '" + skillName + "'" + (oneShot ? " (once)" : "") + (withArgs ? " with args" : "");
+        if (Boolean.FALSE.equals(response.getNewlyActivated())) {
+            return prefix + " is already active (arguments updated at most)";
+        }
+        if ("shot".equals(response.getLifecycle())) {
+            return prefix + " fired (macro) — one-shot prompt/config, never becomes active";
+        }
+        int count = response.getActiveSkills() == null
+                ? 0
+                : response.getActiveSkills().size();
+        return prefix + " activated — in effect from the next turn. Active skills: " + count;
+    }
+
+    /**
+     * Renders the post-CLEAR sentence. A recipe-bound skill is silently
+     * kept by the brain (skills.md §7a) — the reply still lists it, so
+     * the honest sentence is "kept", not "cleared".
+     */
+    static String clearMessage(@Nullable String skillName, ProcessSkillResponse response) {
+        List<ActiveSkillRefDto> active = response.getActiveSkills() == null ? List.of() : response.getActiveSkills();
+        if (skillName == null || skillName.isBlank()) {
+            List<String> kept = active.stream()
+                    .filter(ActiveSkillRefDto::isFromRecipe)
+                    .map(ActiveSkillRefDto::getName)
+                    .toList();
+            if (kept.isEmpty()) {
+                return "cleared all. active skills now: " + active.size();
+            }
+            return "cleared all except recipe-bound (" + String.join(", ", kept) + "). active skills now: "
+                    + active.size();
+        }
+        boolean stillActive = active.stream().anyMatch(ref -> skillName.equals(ref.getName()));
+        if (stillActive) {
+            return "kept '" + skillName + "' — bundled by the recipe, stays active for the process";
+        }
+        return "cleared '" + skillName + "'. active skills now: " + active.size();
+    }
+
+    /**
+     * Trigger hint appended to an available-skill row: the words and
+     * patterns Arthur auto-activates the skill on (skills.md §4c), so
+     * the line-based list shows what the web panel's info modal shows.
+     */
+    static String autoTriggerSuffix(SkillSummaryDto dto) {
+        if (dto.getTriggers() == null || dto.getTriggers().isEmpty()) {
+            return "";
+        }
+        List<String> tokens = new ArrayList<>();
+        for (SkillTriggerDto trigger : dto.getTriggers()) {
+            if (trigger.getKeywords() != null) {
+                tokens.addAll(trigger.getKeywords());
+            }
+            if (trigger.getPattern() != null) {
+                tokens.add("/" + trigger.getPattern() + "/");
+            }
+        }
+        return tokens.isEmpty() ? "" : "  [auto: " + String.join(", ", tokens) + "]";
     }
 
     private ProcessSkillResponse sendSkillRequest(ProcessSkillRequest request) throws Exception {
-        return connection.request(
-                MessageType.PROCESS_SKILL,
-                request,
-                ProcessSkillResponse.class,
-                SKILL_TIMEOUT);
+        return connection.request(MessageType.PROCESS_SKILL, request, ProcessSkillResponse.class, SKILL_TIMEOUT);
     }
 }

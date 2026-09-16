@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.recipe;
 
+import de.mhus.vance.brain.recipe.RecipeProjectKind;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.toolpack.Tool;
@@ -14,11 +15,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Detailed view of one recipe — full default-params, prompt-prefix,
- * tool adjustments, source attribution. Secondary because the LLM
- * rarely needs more than {@code recipe_list} returns; pull this only
- * when you want to know exactly what defaults a recipe applies before
- * overriding them.
+ * Detailed view of one recipe — <b>every</b> parsed field, so a caller
+ * can reconstruct the recipe file. That matters when writing a
+ * project-level override (e.g. adding {@code webTheme:}): the
+ * recipe cascade is first-hit-wins with no merge, so the override
+ * must carry every field the original had — anything this tool does
+ * not show would be silently lost. Secondary because the LLM rarely
+ * needs more than {@code recipe_list} returns; pull this only when
+ * you want to know exactly what a recipe applies, or before writing
+ * an override.
  */
 @Component
 @RequiredArgsConstructor
@@ -26,10 +31,12 @@ public class RecipeDescribeTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Recipe name to describe.")),
+            "properties",
+                    Map.of(
+                            "name",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Recipe name to describe.")),
             "required", List.of("name"));
 
     private final RecipeResolver resolver;
@@ -41,8 +48,9 @@ public class RecipeDescribeTool implements Tool {
 
     @Override
     public String description() {
-        return "Get the full configuration of one recipe — engine, default "
-                + "params, prompt-prefix, tool adjustments, source.";
+        return "Get the complete configuration of one recipe — every parsed"
+                + " field (engine, params, prompts, tool adjustments, guards, modes,"
+                + " profiles, metadata, source), so an override can carry them all.";
     }
 
     @Override
@@ -72,8 +80,7 @@ public class RecipeDescribeTool implements Tool {
         if (!(rawName instanceof String name) || name.isBlank()) {
             throw new ToolException("'name' is required");
         }
-        Optional<ResolvedRecipe> resolved = resolver.resolve(
-                ctx.tenantId(), ctx.projectId(), name);
+        Optional<ResolvedRecipe> resolved = resolver.resolve(ctx.tenantId(), ctx.projectId(), name);
         if (resolved.isEmpty()) {
             throw new ToolException("Unknown recipe '" + name + "'");
         }
@@ -93,6 +100,63 @@ public class RecipeDescribeTool implements Tool {
         }
         if (!r.allowedToolsRemove().isEmpty()) {
             out.put("allowedToolsRemove", r.allowedToolsRemove());
+        }
+        if (!r.allowedToolsDefer().isEmpty()) {
+            out.put("allowedToolsDefer", r.allowedToolsDefer());
+        }
+        if (!r.allowedToolsKeep().isEmpty()) {
+            out.put("allowedToolsKeep", r.allowedToolsKeep());
+        }
+        if (!r.allowedToolsDropFirst().isEmpty()) {
+            out.put("allowedToolsDropFirst", r.allowedToolsDropFirst());
+        }
+        if (!r.modes().isEmpty()) {
+            out.put("modes", r.modes());
+        }
+        if (!r.profiles().isEmpty()) {
+            out.put("profiles", r.profiles());
+        }
+        if (!r.defaultActiveSkills().isEmpty()) {
+            out.put("defaultActiveSkills", r.defaultActiveSkills());
+        }
+        if (r.allowedSkills() != null) {
+            out.put("allowedSkills", r.allowedSkills());
+        }
+        if (!r.triggerKeywords().isEmpty()) {
+            out.put("triggerKeywords", r.triggerKeywords());
+        }
+        if (!r.guards().isEmpty()) {
+            out.put("guards", r.guards());
+        }
+        if (!r.tenants().isEmpty()) {
+            out.put("tenants", r.tenants());
+        }
+        if (r.dataRelayCorrection() != null) {
+            out.put("dataRelayCorrection", r.dataRelayCorrection());
+        }
+        // Metadata / picker surface — display-only fields, but a
+        // project-level override that omits them loses them (no merge
+        // between cascade layers), so they belong in the complete view.
+        if (r.title() != null) {
+            out.put("title", r.title());
+        }
+        if (r.category() != null) {
+            out.put("category", r.category());
+        }
+        if (r.webTheme() != null) {
+            out.put("webTheme", r.webTheme());
+        }
+        if (r.projectKind() != RecipeProjectKind.NORMAL) {
+            out.put("projectKind", r.projectKind().name());
+        }
+        if (r.internal()) {
+            out.put("internal", true);
+        }
+        if (r.listed()) {
+            out.put("listed", true);
+        }
+        if (r.web()) {
+            out.put("web", true);
         }
         if (r.locked()) {
             out.put("locked", true);

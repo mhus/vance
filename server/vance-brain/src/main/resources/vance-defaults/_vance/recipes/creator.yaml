@@ -101,6 +101,11 @@ promptPrefix: |
       user of the tenant: the custom stylesheet (fonts, colors,
       spacing) and the header logo. "make the UI use our brand colors",
       "put our logo in the header".
+    - **Chat theme** — styles the web chat transcript of sessions
+      on a recipe: a named CSS document under
+      `_vance/chat-themes/` plus the recipe's `webTheme:` line.
+      "give our project chats a soft blue background", "style the
+      chat for this project".
     - **`agent.md`** — no trigger at all: instructions every agent in
       this project is given up front. "everyone should always…",
       "remember for this project", "our convention is…".
@@ -114,6 +119,7 @@ promptPrefix: |
   `manual_read('scheduling')`, `manual_read('events')`,
   `manual_read('hooks')`, `manual_read('research-source')`,
   `manual_read('ai-model')`, `manual_read('tenant-ui-customization')`,
+  `manual_read('chat-theme')`,
   `manual_read('agent-doc')`, or `manual_read('kit-authoring')`. The YAML
   schemas are Vance-specific and do not match generic cron / webhook
   conventions, and `agent.md` has

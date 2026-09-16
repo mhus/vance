@@ -34,47 +34,54 @@ class BrainAccessFilterTest {
     void setUp() {
         JwtService jwtService = mock(JwtService.class);
         scriptRunAuthService = mock(ScriptRunAuthService.class);
-        filter = new BrainAccessFilter(jwtService, scriptRunAuthService,
-                mock(IntegrationTokenAuthService.class));
+        filter = new BrainAccessFilter(jwtService, scriptRunAuthService, mock(IntegrationTokenAuthService.class));
     }
 
     // ──────────────── shouldRequireAuthentication: bypass allowlist ────────────────
 
     @ParameterizedTest
-    @ValueSource(strings = {
-        "/actuator/health",
-        "/actuator/prometheus",
-        "/internal/document/changed",
-        "/face/addons",
-        "/brain/acme/access/bob",       // token mint — client has no token yet
-        "/brain/acme/access/bob/",      // trailing slash tolerated
-        "/brain/acme/logout",
-        "/brain/acme/logout/",
-        "/brain/acme/event/proj/deploy", // external event trigger (own bearer check)
-        "/brain/acme/office/download/file1",
-        "/brain/acme/office/callback/file1",
-        "/brain/acme/webdav",           // WebDAV Basic-Auth handled by milton
-        "/brain/acme/webdav/folder/note.md",
-    })
+    @ValueSource(
+            strings = {
+                "/actuator/health",
+                "/actuator/prometheus",
+                "/internal/document/changed",
+                "/face/addons",
+                "/brain/acme/access/bob", // token mint — client has no token yet
+                "/brain/acme/access/bob/", // trailing slash tolerated
+                "/brain/acme/logout",
+                "/brain/acme/logout/",
+                "/brain/acme/event/proj/deploy", // external event trigger (own bearer check)
+                "/brain/acme/office/download/file1",
+                "/brain/acme/office/callback/file1",
+                "/brain/acme/webdav", // WebDAV Basic-Auth handled by milton
+                "/brain/acme/webdav/folder/note.md",
+                "/brain/acme/addon/designer/skill-preview/doc1/token", // sandboxed iframe, path-token auth
+                "/brain/acme/addon/designer/skill-preview/doc1/token/", // trailing slash tolerated
+                "/brain/acme/addon/designer/content/doc1/token/landing/index.html",
+            })
     void allowlistedPaths_doNotRequireBearerAuth(String uri) {
         assertThat(filter.shouldRequireAuthentication(uri, "GET")).isFalse();
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-        "/brain/acme/sessions",              // ordinary API path
-        "/brain/acme/documents/doc1/content", // content route requires auth (query-token is a separate gate)
-        "/brain/acme/access/bob/extra",       // mint + extra segment → not the mint shape
-        "/brain/acme/event/proj",             // event trigger missing the event name
-        "/brain/acme/event/proj/deploy/extra", // event trigger with an extra segment
-        "/brain/acme/office/download",        // office callback missing the file segment
-        "/brain/acme/office/delete/file1",    // office verb not in (download|callback)
-        "/brain/acme/webdavx",                // prefix typo must NOT open webdav bypass
-        "/brain/acme/logoutx",                // typo
-        "/actuatorx/foo",                     // not the /actuator/ prefix
-        "/internalx/foo",                     // not the /internal/ prefix
-        "/facex/foo",                         // not the /face/ prefix
-    })
+    @ValueSource(
+            strings = {
+                "/brain/acme/sessions", // ordinary API path
+                "/brain/acme/documents/doc1/content", // content route requires auth (query-token is a separate gate)
+                "/brain/acme/access/bob/extra", // mint + extra segment → not the mint shape
+                "/brain/acme/event/proj", // event trigger missing the event name
+                "/brain/acme/event/proj/deploy/extra", // event trigger with an extra segment
+                "/brain/acme/office/download", // office callback missing the file segment
+                "/brain/acme/office/delete/file1", // office verb not in (download|callback)
+                "/brain/acme/webdavx", // prefix typo must NOT open webdav bypass
+                "/brain/acme/logoutx", // typo
+                "/actuatorx/foo", // not the /actuator/ prefix
+                "/internalx/foo", // not the /internal/ prefix
+                "/facex/foo", // not the /face/ prefix
+                "/brain/acme/addon/designer/skill-preview/doc1", // missing token segment
+                "/brain/acme/addon/designer/skill-preview/doc1/token/extra", // extra segment → not the preview shape
+                "/brain/acme/addon/designer/skill-previewx/doc1/token", // typo must NOT open the bypass
+            })
     void nonAllowlistedPaths_requireBearerAuth(String uri) {
         assertThat(filter.shouldRequireAuthentication(uri, "GET")).isTrue();
     }
@@ -83,22 +90,26 @@ class BrainAccessFilterTest {
 
     @Test
     void queryToken_allowedForGetContentAndWsUpgrade() {
-        assertThat(filter.allowsQueryToken("/brain/acme/documents/doc1/content", "GET")).isTrue();
+        assertThat(filter.allowsQueryToken("/brain/acme/documents/doc1/content", "GET"))
+                .isTrue();
         assertThat(filter.allowsQueryToken("/brain/acme/ws", "GET")).isTrue();
         assertThat(filter.allowsQueryToken("/brain/acme/ws/", "GET")).isTrue();
     }
 
     @Test
     void queryToken_rejectedOnNonGetEvenForAllowedRoutes() {
-        assertThat(filter.allowsQueryToken("/brain/acme/documents/doc1/content", "POST")).isFalse();
+        assertThat(filter.allowsQueryToken("/brain/acme/documents/doc1/content", "POST"))
+                .isFalse();
         assertThat(filter.allowsQueryToken("/brain/acme/ws", "POST")).isFalse();
     }
 
     @Test
     void queryToken_rejectedForOtherRoutesAndNearMisses() {
         assertThat(filter.allowsQueryToken("/brain/acme/sessions", "GET")).isFalse();
-        assertThat(filter.allowsQueryToken("/brain/acme/documents/doc1/content/extra", "GET")).isFalse();
-        assertThat(filter.allowsQueryToken("/brain/acme/documents/content", "GET")).isFalse();
+        assertThat(filter.allowsQueryToken("/brain/acme/documents/doc1/content/extra", "GET"))
+                .isFalse();
+        assertThat(filter.allowsQueryToken("/brain/acme/documents/content", "GET"))
+                .isFalse();
     }
 
     // ──────────────── isTokenTypeAcceptable ────────────────
@@ -115,13 +126,15 @@ class BrainAccessFilterTest {
     @Test
     void claims_acceptedWhenPathTenantMatchesJwtTenant() {
         VanceJwtClaims claims = access("bob", "acme");
-        assertThat(filter.isClaimsAcceptable(claims, get("/brain/acme/sessions"))).isTrue();
+        assertThat(filter.isClaimsAcceptable(claims, get("/brain/acme/sessions")))
+                .isTrue();
     }
 
     @Test
     void claims_rejectedOnTenantMismatch() {
         VanceJwtClaims claims = access("bob", "evil");
-        assertThat(filter.isClaimsAcceptable(claims, get("/brain/acme/sessions"))).isFalse();
+        assertThat(filter.isClaimsAcceptable(claims, get("/brain/acme/sessions")))
+                .isFalse();
     }
 
     @Test
@@ -146,7 +159,8 @@ class BrainAccessFilterTest {
     @Test
     void scriptRunClaims_stillRejectedOnTenantMismatchBeforeDelegation() {
         VanceJwtClaims claims = VanceJwtClaims.user("_script", "evil", null, null, TokenType.SCRIPT_RUN);
-        assertThat(filter.isClaimsAcceptable(claims, get("/brain/acme/documents/doc1/content"))).isFalse();
+        assertThat(filter.isClaimsAcceptable(claims, get("/brain/acme/documents/doc1/content")))
+                .isFalse();
     }
 
     // ──────────────── helpers ────────────────

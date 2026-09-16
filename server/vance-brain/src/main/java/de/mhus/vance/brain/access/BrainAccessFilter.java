@@ -106,6 +106,21 @@ public class BrainAccessFilter extends AccessFilterBase {
      */
     private static final Pattern DESIGNER_CONTENT_PATH = Pattern.compile("^/brain/[^/]+/addon/designer/content/.+$");
 
+    /**
+     * Designer-app skill style-preview route —
+     * {@code /brain/{tenant}/addon/designer/skill-preview/{appDocId}/{token}}.
+     * Same sandboxed-iframe situation as the content route above: the
+     * iframe cannot carry an {@code Authorization} header, auth is the
+     * short-lived {@code DESIGN_PREVIEW} JWT as a path segment, and the
+     * {@code DesignerContentController} validates it per request. The
+     * served document is self-contained (skill {@code style.css}
+     * inlined around a fixed demo body), so unlike the content route
+     * no sub-resources ever resolve inside the token prefix — one
+     * request, one token validation.
+     */
+    private static final Pattern DESIGNER_SKILL_PREVIEW_PATH =
+            Pattern.compile("^/brain/[^/]+/addon/designer/skill-preview/[^/]+/[^/]+/?$");
+
     private final ScriptRunAuthService scriptRunAuthService;
     private final IntegrationTokenAuthService integrationTokenAuthService;
 
@@ -163,6 +178,12 @@ public class BrainAccessFilter extends AccessFilterBase {
             // Designer sandbox content — the controller authenticates the
             // path-segment DESIGN_PREVIEW token itself (see the pattern's
             // comment above).
+            return false;
+        }
+        if (DESIGNER_SKILL_PREVIEW_PATH.matcher(requestUri).matches()) {
+            // Designer skill style previews — the controller authenticates
+            // the path-segment DESIGN_PREVIEW token itself (see the
+            // pattern's comment above).
             return false;
         }
         return true;

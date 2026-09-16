@@ -80,6 +80,15 @@ same from the next turn on.) The addon bundles one **example**, `design-blueprin
 explicitly (`/skill design-blueprint`). Copy and adapt it for a house
 style; installed kits may carry more.
 
+**The `style.css` convention.** A design skill carries its house stylesheet
+as a `style.css` sibling of its `SKILL.md` — the same file name a design
+folder uses. It is the skill's *real* stylesheet (also declared as its
+reference doc, so `manual_read` can load it), never a preview-only copy:
+the app's "Design skills" dialogue renders it live, around a fixed demo
+body, as a small style preview next to each skill. Keep it a complete,
+responsive stylesheet — it is both the preview source and the starting
+point the skill tells you to adapt.
+
 ## Responsive & dark mode
 
 The preview toolbar can render a design at phone width (390px), tablet

@@ -351,6 +351,18 @@ function onAskUserPick(label: string): void {
 function onRollbackEcho(messageId: string): void {
   chatViewRef.value?.rollbackLocalEcho(messageId);
 }
+
+/**
+ * Writes text into the composer without sending — the skill-pickers' ▶
+ * path: the user sees what would fire, may append arguments, and stays
+ * the one who submits. Exposed for the host's provide chain (mounted
+ * app views have no composer of their own), not for internal use.
+ */
+defineExpose({
+  insertPrompt(text: string): void {
+    composerRef.value?.setText(text);
+  },
+});
 </script>
 
 <template>

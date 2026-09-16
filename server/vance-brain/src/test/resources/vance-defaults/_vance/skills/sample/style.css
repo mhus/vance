@@ -1,0 +1,6 @@
+/*
+ * Test fixture for SkillLoaderReadSkillFileTest — deliberately NOT a
+ * skill folder (no SKILL.md), so the bundled-skills classpath glob
+ * never discovers it. Only the sibling read addresses it.
+ */
+body { color: fixture-style-marker; }

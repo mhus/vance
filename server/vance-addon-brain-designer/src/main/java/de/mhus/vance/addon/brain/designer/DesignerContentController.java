@@ -10,10 +10,15 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
+import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.ToolException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -77,6 +82,8 @@ public class DesignerContentController {
     private final PermissionService permissionService;
     private final SecurityContextFactory securityContextFactory;
     private final DesignerApplication designerApplication;
+    private final DesignerSkillService skillService;
+    private final ThinkProcessService thinkProcessService;
     // ── Web-UI endpoints (session-authenticated) ───────────────────
 
     /**
@@ -264,6 +271,69 @@ public class DesignerContentController {
         return loadView(tenant, projectId, folder);
     }
 
+    // ── Design skills (session-authenticated listing) ──────────────
+
+    /**
+     * Lists the design skills visible in the app's project scope: skills
+     * tagged {@code design}, with the style.css convention reported per
+     * skill. {@code sessionId}+{@code processName} are optional — when a
+     * chat is open, the response joins in each skill's activation state
+     * for that chat's think-process; without them the {@code active} flag
+     * stays absent (there is no activation state without a process, and
+     * "inactive" would be a claim the server cannot make).
+     *
+     * <p>READ on the project guards the listing; READ on the think-process
+     * (the same resource the {@code process-skill} WS LIST enforces) guards
+     * the active-state join. A stale process reference degrades to
+     * "nothing active" instead of failing the whole catalogue.
+     */
+    @GetMapping("/brain/{tenant}/addon/designer/design-skills")
+    public DesignerSkillList designSkills(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam(value = "sessionId", required = false) @Nullable String sessionId,
+            @RequestParam(value = "processName", required = false) @Nullable String processName,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        String username = AccessFilterBase.usernameOrNull(httpRequest);
+        if (username == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED, "design-skill listing needs an authenticated user");
+        }
+
+        Map<String, Boolean> activeByRecipe = null;
+        if (sessionId != null && !sessionId.isBlank() && processName != null && !processName.isBlank()) {
+            Optional<ThinkProcessDocument> process = thinkProcessService.findByName(tenant, sessionId, processName);
+            if (process.isPresent()) {
+                ThinkProcessDocument found = process.get();
+                authority.enforce(
+                        httpRequest,
+                        new Resource.ThinkProcess(
+                                found.getTenantId(),
+                                found.getProjectId(),
+                                found.getSessionId(),
+                                found.getId() == null ? "" : found.getId()),
+                        Action.READ);
+                activeByRecipe = new LinkedHashMap<>();
+                for (ActiveSkillRefEmbedded ref : found.getActiveSkills()) {
+                    // name → recipe-bound: the SkillPanel parity that lets
+                    // the UI disable its clear button for recipe skills.
+                    activeByRecipe.put(ref.getName(), ref.isFromRecipe());
+                }
+            } else {
+                // The chat the client believes in has no process yet (or is
+                // gone) — the truthful statement is "nothing is active",
+                // not a failed catalogue.
+                activeByRecipe = Map.of();
+            }
+        }
+
+        return DesignerSkillList.builder()
+                .skills(skillService.list(tenant, username, projectId, activeByRecipe))
+                .build();
+    }
+
     // ── Sandboxed content route (path-token authenticated) ─────────
 
     /**
@@ -345,6 +415,60 @@ public class DesignerContentController {
         // HttpMessageConverter for a bare InputStream — the resource
         // form is what the document-content endpoint streams too.
         return ResponseEntity.ok().headers(headers).body(new InputStreamResource(documentService.loadContent(doc)));
+    }
+
+    // ── Skill style preview (path-token authenticated) ─────────────
+
+    /**
+     * Serves the style preview of one design skill for the catalogue's
+     * small sandboxed boxes: the fixed demo body wrapped in the skill's
+     * real {@code style.css}, inlined — one self-contained document, no
+     * sub-resources, so the opaque-origin iframe needs no relative-URL
+     * token carrying beyond this one request.
+     *
+     * <p>Same trust model as the content route: the {@code DESIGN_PREVIEW}
+     * token authenticates (never as a bearer), the URL's app document id
+     * pins it to one app manifest, and each fetch re-checks READ on that
+     * manifest from the token claims. What the token extends to, beyond
+     * the app folder files, is the design skills' stylesheets of the
+     * token's project scope — the catalogue the same token's app already
+     * shows. Failures stay coarse: bad token, wrong pin, unknown or
+     * style-less skill all answer {@code 404}.
+     */
+    @GetMapping("/brain/{tenant}/addon/designer/skill-preview/{appDocId}/{token}")
+    public ResponseEntity<String> skillPreview(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("appDocId") String appDocId,
+            @PathVariable("token") String token,
+            @RequestParam("skill") String skillName) {
+
+        VanceJwtClaims claims = previewTokenService
+                .validate(token, tenant)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+
+        DocumentDocument appDoc =
+                documentService.findById(appDocId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(appDoc.getTenantId())
+                || !claims.projectId().equals(appDoc.getProjectId())
+                || !appDoc.getPath().equals(DesignerPaths.manifestPath(claims.appFolder()))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+
+        // The token authenticates; READ re-checked per fetch authorises —
+        // the same rule every content fetch follows.
+        SecurityContext subject = securityContextFactory.fromDesignPreviewClaims(claims);
+        permissionService.enforce(
+                subject, new Resource.Document(tenant, claims.projectId(), appDoc.getPath()), Action.READ);
+
+        String css = skillService
+                .readStyle(tenant, claims.username(), claims.projectId(), skillName)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.TEXT_HTML);
+        headers.set("X-Content-Type-Options", "nosniff");
+        headers.setCacheControl("no-cache");
+        return ResponseEntity.ok().headers(headers).body(DesignerSkillService.renderPreviewHtml(css));
     }
 
     // ── Helpers ───────────────────────────────────────────────────

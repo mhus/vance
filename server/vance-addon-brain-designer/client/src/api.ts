@@ -1,8 +1,9 @@
 import { brainBaseUrl, brainFetch, getTenantId } from '@vance/shared';
-import type { DesignerPreviewSession } from './generated/designer/DesignerPreviewSession';
 import type { DesignerDesignCreateRequest } from './generated/designer/DesignerDesignCreateRequest';
 import type { DesignerDesignMetaRequest } from './generated/designer/DesignerDesignMetaRequest';
+import type { DesignerPreviewSession } from './generated/designer/DesignerPreviewSession';
 import type { DesignerReorderRequest } from './generated/designer/DesignerReorderRequest';
+import type { DesignerSkillList } from './generated/designer/DesignerSkillList';
 import type { DesignerView } from './generated/designer/DesignerView';
 
 function qs(params: Record<string, string>): string {
@@ -133,4 +134,59 @@ export function designContentUrl(
     .map((s) => encodeURIComponent(s))
     .join('/');
   return `${base}/${inner}`;
+}
+
+/**
+ * Lists the design skills visible in the app's project scope — skills
+ * tagged `design`, with the style.css convention reported per skill.
+ *
+ * When a chat is open, pass its session and process name: the server
+ * joins in each skill's activation state for that chat's think-process
+ * (READ-enforced on the process, same as the `process-skill` WS LIST).
+ * Without them `active` stays absent from the response — without a
+ * running chat there is no activation state, and "inactive" would be a
+ * claim nobody can make.
+ */
+export async function getDesignSkills(
+  projectId: string,
+  sessionId?: string | null,
+  processName?: string | null,
+): Promise<DesignerSkillList> {
+  const params: Record<string, string> = { projectId };
+  if (sessionId && processName) {
+    params.sessionId = sessionId;
+    params.processName = processName;
+  }
+  return brainFetch<DesignerSkillList>('GET', `addon/designer/design-skills?${qs(params)}`);
+}
+
+/**
+ * Style-preview URL for the skill catalogue's small sandboxed boxes:
+ *
+ * `<base>/brain/<tenant>/addon/designer/skill-preview/<appDocId>/<token>?skill=<name>`
+ *
+ * Same trust model as the content route — the short-lived preview token
+ * sits as a path segment because the iframe runs at an opaque origin
+ * with no cookies and no headers. The served document is self-contained
+ * (the skill's real `style.css` inlined around a fixed demo body), so
+ * unlike the content route there are no relative sub-resources and the
+ * token only has to survive this one request.
+ */
+export function designSkillPreviewUrl(
+  appDocumentId: string,
+  token: string,
+  skill: string,
+): string {
+  const tenant = getTenantId();
+  if (!tenant) return '';
+  const segments = [
+    'brain',
+    encodeURIComponent(tenant),
+    'addon',
+    'designer',
+    'skill-preview',
+    encodeURIComponent(appDocumentId),
+    encodeURIComponent(token),
+  ];
+  return `${brainBaseUrl()}/${segments.join('/')}?${qs({ skill })}`;
 }

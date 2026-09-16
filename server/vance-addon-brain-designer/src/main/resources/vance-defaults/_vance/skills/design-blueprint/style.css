@@ -1,7 +1,9 @@
 /*
  * Designer Blueprint Stylesheet — the design-blueprint example skill's
- * reference asset. Mobile-first, light/dark aware, zero dependencies.
- * Adapt the tokens at the top; the structure below stays useful.
+ * style.css (the design-skill convention: this exact sibling path feeds
+ * the designer app's style previews). Mobile-first, light/dark aware,
+ * zero dependencies. Adapt the tokens at the top; the structure below
+ * stays useful.
  */
 
 :root {

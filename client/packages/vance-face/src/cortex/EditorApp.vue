@@ -31,7 +31,14 @@ import {
   ShareModal,
 } from '@/components';
 import { brainFetch } from '@vance/shared';
-import type { DocumentDto, SessionSummaryRichDto, ShareSubjectDto } from '@vance/generated';
+import type {
+  DocumentDto,
+  ProcessSkillRequest,
+  ProcessSkillResponse,
+  SessionSummaryRichDto,
+  ShareSubjectDto,
+} from '@vance/generated';
+import { ProcessSkillCommand } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import DocumentPresenceStrip from '@/ws/DocumentPresenceStrip.vue';
 import { brainFetchText } from '@vance/shared';
@@ -39,7 +46,7 @@ import {
   isAudioVideoMime,
   tryThreeWayMerge,
 } from '@/composables/useDocumentChangeReaction';
-import { onDocumentChanged } from '@/ws/wsConnectionStore';
+import { onDocumentChanged, useWsConnection } from '@/ws/wsConnectionStore';
 import SanitizedHtmlView from '@/components/SanitizedHtmlView.vue';
 import MarkdownView from '@/components/MarkdownView.vue';
 import VanceEmbedView from '@/components/VanceEmbedView.vue';
@@ -270,6 +277,40 @@ provide('vance:compose-output-component', ComposeOutput);
 // pass it so the run binds to the session's primary chat process — the
 // workspace/target is then shared with the chat (see ComposeController).
 provide('vance:session-id', sessionId);
+
+/**
+ * Composer prefill for mounted app views — federated remotes have no
+ * composer of their own. The skill-pickers' ▶ path: the text lands in
+ * the composer unsent, the user may append arguments and stays the one
+ * who submits. Returns whether a chat panel took the write (a chatless
+ * tab answers false so the caller can fall back to a hint).
+ */
+const rightPanelRef = ref<InstanceType<typeof CortexRightPanel> | null>(null);
+provide('vance:compose-prompt', (text: string): boolean => {
+  return rightPanelRef.value?.insertPrompt(text) ?? false;
+});
+
+/**
+ * Skill clear for the chat beside the app — the same {@code process-skill}
+ * CLEAR round-trip the SkillPanel does, provided so mounted app views can
+ * offer the ✕ without owning a socket. Only CLEAR: activation stays a
+ * composer affair (the ▶ provide above). The chat process name is bound
+ * host-side; the reply carries the post-mutation {@code activeSkills} so
+ * callers update their rows without a follow-up LIST.
+ */
+const { socket: brainSocket } = useWsConnection();
+provide('vance:process-skill-clear', async (skillName: string): Promise<ProcessSkillResponse> => {
+  if (!brainSocket.value) {
+    throw new Error('chat connection is down');
+  }
+  return brainSocket.value.send<ProcessSkillRequest, ProcessSkillResponse>('process-skill', {
+    processName: 'chat',
+    command: ProcessSkillCommand.CLEAR,
+    skillName,
+    oneShot: false,
+  });
+});
+
 
 /**
  * The custom app in the foreground, when one is mounted.
@@ -2196,6 +2237,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
            without a bound session: Discussion is about the open document. The
            Chat tab falls back to the session picker on its own. -->
       <CortexRightPanel
+        ref="rightPanelRef"
         v-if="projectId"
         :session-id="hasSession && sessionId && clientToolService ? sessionId : null"
         :project-id="projectId"

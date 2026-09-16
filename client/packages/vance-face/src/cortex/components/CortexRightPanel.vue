@@ -62,6 +62,22 @@ type RightTab = 'chat' | 'threads' | 'help';
 const activeTab = ref<RightTab>('chat');
 
 const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocument));
+
+/**
+ * Composer write-through for the host's provide chain — the panel is
+ * mounted per session and keyed by it, so the function resolves the
+ * current chat panel at call time, not at mount time.
+ */
+const cortexChatPanelRef = ref<InstanceType<typeof CortexChatPanel> | null>(null);
+
+function insertPrompt(text: string): boolean {
+  const panel = cortexChatPanelRef.value;
+  if (!panel) return false;
+  panel.insertPrompt(text);
+  return true;
+}
+
+defineExpose({ insertPrompt });
 </script>
 
 <template>
@@ -108,6 +124,7 @@ const helpPath = computed<string | null>(() => resolveHelpPath(props.activeDocum
              a chat work without it (null ↔ id mounts and unmounts on their
              own); this covers the third case. -->
         <CortexChatPanel
+          ref="cortexChatPanelRef"
           v-if="sessionId"
           :key="sessionId"
           :session-id="sessionId"

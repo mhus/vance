@@ -16,7 +16,7 @@ action: |
   conversation — there is nothing to do right now unless a brief is
   already on the table.
 referenceDocs:
-  - file: references/blueprint.css
+  - file: style.css
     title: Designer Blueprint Stylesheet
     loadMode: ON_DEMAND
 ---
@@ -35,12 +35,14 @@ design in a designer app (`app: designer`).
    If none exists, `designer_app_create(folder=…, title=…)` first and embed
    the returned link. Read the app manual on demand:
    `manual_read('app-designer')`.
-2. **Load the blueprint stylesheet** — it is the skill's reference doc:
-   `manual_read('Designer Blueprint Stylesheet')`. It defines the token
-   set (colors, spacing, fonts), a responsive layout and dark-mode
-   support. Use it as the starting point for the design's `style.css` and
-   adapt — do not write a stylesheet from scratch when the user has no
-   style opinion.
+2. **Load the blueprint stylesheet** — `style.css` next to this skill's
+   `SKILL.md`: `manual_read('Designer Blueprint Stylesheet')`. It defines
+   the token set (colors, spacing, fonts), a responsive layout and
+   dark-mode support. Use it as the starting point for the design's
+   `style.css` and adapt — do not write a stylesheet from scratch when
+   the user has no style opinion. (The `style.css` file name is the
+   design-skill convention: the designer app renders it as a live style
+   preview in its skill catalogue — keep it a real, complete stylesheet.)
 3. **Write real files** into `<folder>/<design>/` via `doc_write`:
    - `index.html` — the entry, exact name, lowercase. Semantic sections:
      header with nav, hero (headline + subline + one call-to-action),

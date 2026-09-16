@@ -39,6 +39,27 @@ export default {
     emptyBody:
       '„Neues Design" anlegen — oder den Chat bitten ' +
       '(„erstelle ein Design landing-page in dieser App").',
+    skills: {
+      button: 'Design-Skills',
+      title: 'Design-Skills',
+      refresh: 'Skill-Liste neu laden',
+      activeBadge: 'aktiv',
+      chatHint: 'Aktivierungen leben im offenen Chat — aktivieren mit /skill <name> im Composer.',
+      noChatHint:
+        'Öffne einen Chat, um zu sehen, welche Design-Skills dort aktiv sind — ohne Chat hat ein Skill keinen Aktivierungsstatus.',
+      emptyHeadline: 'Keine Design-Skills',
+      emptyBody:
+        'Skills mit dem Tag „design" erscheinen hier. Mit einer style.css neben der SKILL.md zeigen sie zusätzlich eine Live-Stilvorschau.',
+      previewOf: 'Stil-Vorschau — {name}',
+      noStyle: 'Keine style.css — keine Vorschau',
+      play: 'Im Chat aktivieren — schreibt „/skill <name>" in den Composer',
+      clear: 'Im Chat deaktivieren',
+      recipeBound: 'Vom Recipe gebunden — diese Aktivierung gehört der Chat-Konfiguration',
+      error: {
+        load: 'Design-Skills konnten nicht geladen werden: {message}',
+        clear: 'Der Skill konnte nicht deaktiviert werden: {message}',
+      },
+    },
     error: {
       load: 'Designs konnten nicht geladen werden: {message}',
       mint: 'Vorschau-Sitzung konnte nicht geöffnet werden: {message}',

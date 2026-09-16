@@ -79,6 +79,46 @@ public class SkillLoader {
             return Optional.empty();
         }
         String stem = name.toLowerCase().trim();
+        return resolveTier(tenantId, userId, projectId, stem)
+                .map(hit -> parse(stem, hit.raw(), hit.scope(), hit.siblings(), stem));
+    }
+
+    /**
+     * Reads one sibling file of a skill — {@code relativePath} against the
+     * skill folder, from the same cascade tier that carries the
+     * {@code SKILL.md} (the same tier-pinning rule as reference docs: never
+     * re-cascaded, so a user-layer skill cannot read a same-named file out
+     * of another tier). Empty when the skill is unknown or has no such
+     * file. A traversal-shaped path is rejected outright.
+     *
+     * <p>Deliberately independent of {@code enabled}: this is a raw asset
+     * read (a style sample for a preview, not an activation), and the
+     * caller owns whatever permission applies.
+     */
+    public Optional<String> readSkillFile(
+            String tenantId, @Nullable String userId, @Nullable String projectId, String name, String relativePath) {
+        if (name == null || name.isBlank() || relativePath == null || relativePath.isBlank()) {
+            return Optional.empty();
+        }
+        String cleaned = relativePath.trim();
+        if (cleaned.startsWith("/") || cleaned.contains("..") || cleaned.contains("\\")) {
+            return Optional.empty();
+        }
+        String stem = name.toLowerCase().trim();
+        return resolveTier(tenantId, userId, projectId, stem)
+                .flatMap(hit -> hit.siblings().read(stem, cleaned));
+    }
+
+    /** The tier a skill resolved into: scope, tier-pinned sibling reader, raw SKILL.md. */
+    private record TierHit(SkillScope scope, SiblingReader siblings, String raw) {}
+
+    /**
+     * Finds the cascade tier carrying the named skill's {@code SKILL.md}:
+     * USER (own hub project only) → PROJECT → VANCE → RESOURCE, innermost
+     * hit wins.
+     */
+    private Optional<TierHit> resolveTier(
+            String tenantId, @Nullable String userId, @Nullable String projectId, String stem) {
         String entryPath = entryPathFor(stem);
 
         // 1. USER layer (own user only — caller filters / enforces this).
@@ -86,8 +126,10 @@ public class SkillLoader {
             String userProject = HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId;
             Optional<DocumentDocument> userDoc = documentService.findByPath(tenantId, userProject, entryPath);
             if (userDoc.isPresent()) {
-                return Optional.of(
-                        parse(stem, userDoc.get(), SkillScope.USER, new ProjectSiblingReader(tenantId, userProject)));
+                return Optional.of(new TierHit(
+                        SkillScope.USER,
+                        new ProjectSiblingReader(tenantId, userProject),
+                        readDocAsString(userDoc.get())));
             }
         }
 
@@ -98,14 +140,14 @@ public class SkillLoader {
         if (hit.isEmpty()) return Optional.empty();
         LookupResult result = hit.get();
 
-        SkillScope scope = mapScope(result.source());
         SiblingReader siblingReader =
                 switch (result.source()) {
                     case PROJECT -> new ProjectSiblingReader(tenantId, effectiveProjectId);
                     case VANCE -> new ProjectSiblingReader(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME);
                     case RESOURCE -> new ResourceSiblingReader();
                 };
-        return Optional.of(parse(stem, result, scope, siblingReader));
+        String raw = result.content() == null ? "" : result.content();
+        return Optional.of(new TierHit(mapScope(result.source()), siblingReader, raw));
     }
 
     // ─── Listing ───────────────────────────────────────────────────────────
@@ -225,11 +267,6 @@ public class SkillLoader {
 
     private ResolvedSkill parse(String stem, DocumentDocument doc, SkillScope scope, SiblingReader siblings) {
         String content = readDocAsString(doc);
-        return parse(stem, content, scope, siblings, stem);
-    }
-
-    private ResolvedSkill parse(String stem, LookupResult result, SkillScope scope, SiblingReader siblings) {
-        String content = result.content() == null ? "" : result.content();
         return parse(stem, content, scope, siblings, stem);
     }
 

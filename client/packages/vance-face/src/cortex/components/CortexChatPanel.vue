@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type {
   ActiveAppContext,
   BoundDocSelection,
@@ -141,10 +141,24 @@ async function onConversationExported(
     console.warn('Failed to open exported conversation in Cortex', e);
   }
 }
+
+/**
+ * Composer write-through for the host's provide chain — a mounted app
+ * view (federated remote, no composer of its own) asks the chat beside
+ * it to prefill the composer; this panel is one hop of that chain.
+ */
+const chatSidePanelRef = ref<InstanceType<typeof ChatSidePanel> | null>(null);
+
+defineExpose({
+  insertPrompt(text: string): void {
+    chatSidePanelRef.value?.insertPrompt(text);
+  },
+});
 </script>
 
 <template>
   <ChatSidePanel
+    ref="chatSidePanelRef"
     :session-id="sessionId"
     :project-id="projectId"
     :tool-service="toolService ?? null"

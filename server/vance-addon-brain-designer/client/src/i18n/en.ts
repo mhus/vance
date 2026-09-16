@@ -45,6 +45,27 @@ export default {
     emptyBody:
       'Click "New design" to create the first one — or ask the chat ' +
       '("create a design landing-page in this app").',
+    skills: {
+      button: 'Design skills',
+      title: 'Design skills',
+      refresh: 'Refresh skill list',
+      activeBadge: 'active',
+      chatHint: 'Activations live in the open chat — activate with /skill <name> in the composer.',
+      noChatHint:
+        'Open a chat to see which design skills are active there — without one, a skill has no activation state.',
+      emptyHeadline: 'No design skills',
+      emptyBody:
+        'Skills tagged "design" appear here. With a style.css next to their SKILL.md they also show a live style preview.',
+      previewOf: 'Style preview — {name}',
+      noStyle: 'No style.css — no preview',
+      play: 'Activate in the chat — puts "/skill <name>" into the composer',
+      clear: 'Deactivate in the chat',
+      recipeBound: 'Bound by the recipe — the chat config owns this activation',
+      error: {
+        load: 'Could not load design skills: {message}',
+        clear: 'Could not deactivate the skill: {message}',
+      },
+    },
     error: {
       load: 'Could not load designs: {message}',
       mint: 'Could not open a preview session: {message}',

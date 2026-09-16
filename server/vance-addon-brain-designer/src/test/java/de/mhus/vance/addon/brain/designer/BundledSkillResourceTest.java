@@ -64,14 +64,14 @@ class BundledSkillResourceTest {
         assertThat(meta.get("action")).asString().contains("nothing to do right now");
         assertThat(referenceDocs).hasSize(1);
         assertThat(referenceDocs.get(0))
-                .containsEntry("file", "references/blueprint.css")
+                .containsEntry("file", "style.css")
                 .containsEntry("title", "Designer Blueprint Stylesheet")
                 .containsEntry("loadMode", "ON_DEMAND");
     }
 
     @Test
     void bundledSkill_referenceFileShipsAndIsNotEmpty() throws Exception {
-        String css = read("vance-defaults/_vance/skills/" + SKILL + "/references/blueprint.css");
+        String css = read("vance-defaults/_vance/skills/" + SKILL + "/style.css");
 
         // The skill's whole point is a usable sample asset: it must carry
         // the two things the body promises — responsive breakpoints and

@@ -4,6 +4,7 @@ import {
   useAppEntry,
   vanceRef,
   VAlert,
+  VBadge,
   VButton,
   VEmptyState,
   VInput,
@@ -16,12 +17,15 @@ import {
   createPreviewSession,
   deleteDesign,
   designContentUrl,
+  designSkillPreviewUrl,
   getDesigner,
+  getDesignSkills,
   reorderDesigns,
   updateDesignMeta,
 } from './api';
 import type { DesignInfo } from './generated/designer/DesignInfo';
 import type { DesignerPreviewSession } from './generated/designer/DesignerPreviewSession';
+import type { DesignerSkill } from './generated/designer/DesignerSkill';
 import type { DesignerView } from './generated/designer/DesignerView';
 import { useT } from './i18n';
 
@@ -80,6 +84,124 @@ const editDescription = ref('');
 const deleteModal = ref(false);
 const deleteName = ref('');
 
+// ── Design-skill catalogue ──────────────────────────────────────
+
+// The chat beside the app, if one is open: the host provides the bound
+// WS session id (null in chatless tabs). Only with a chat does a skill
+// have an activation state — without one the catalogue shows skills and
+// previews, but no active badges.
+const sessionId = inject<import('vue').Ref<string | null>>('vance:session-id', ref(null));
+
+// The process name a session's chat runs under — the same contract the
+// host's chat panel (`ChatSidePanel`) uses; the server resolves
+// session id + process name to the think-process that owns the
+// active skills.
+const CHAT_PROCESS_NAME = 'chat';
+
+const skillsModal = ref(false);
+const skills = ref<DesignerSkill[]>([]);
+const skillsLoading = ref(false);
+const skillsError = ref<string | null>(null);
+const skillsLoaded = ref(false);
+/** Name of the skill whose CLEAR round-trip is in flight — row spinner. */
+const clearingSkill = ref<string | null>(null);
+
+// ── Chat steering: the SkillPanel parity ────────────────────────
+//
+// Both hooks come from the host (Cortex provides them; any other mount
+// answers null and the buttons stay hidden). They are the same two paths
+// the SkillPanel uses: ▶ is a composer prefill — the user may append
+// skill arguments and stays the one who submits; ✕ is the same
+// `process-skill` CLEAR round-trip, host-side wrapped so this remote
+// needs no socket of its own.
+
+const composePrompt = inject<((text: string) => boolean) | null>('vance:compose-prompt', null);
+
+/**
+ * Wire-format mirror of the `process-skill` reply's active-skill refs —
+ * `@vance/generated` is not a remote dependency (same deliberate mirror
+ * as the host's own clientToolService).
+ */
+interface SkillClearReply {
+  activeSkills?: { name: string; fromRecipe?: boolean }[] | null;
+}
+
+const processSkillClear = inject<((skillName: string) => Promise<SkillClearReply>) | null>(
+  'vance:process-skill-clear',
+  null,
+);
+
+/** Whether the tab has a chat session bound — the active-badges gate. */
+const chatOpen = computed(() => sessionId.value !== null);
+
+async function loadSkills(): Promise<void> {
+  skillsLoading.value = true;
+  skillsError.value = null;
+  try {
+    const list = await getDesignSkills(props.projectId, sessionId.value, CHAT_PROCESS_NAME);
+    skills.value = list.skills ?? [];
+    skillsLoaded.value = true;
+  } catch (e) {
+    skillsError.value = t('designer.skills.error', { message: (e as Error).message });
+  } finally {
+    skillsLoading.value = false;
+  }
+}
+
+/**
+ * Opens the design-skill catalogue. The style previews reuse the main
+ * preview's session token — same mint, same sandbox — so the dialog
+ * first makes sure one exists, then lists.
+ */
+async function openSkillsModal(): Promise<void> {
+  skillsModal.value = true;
+  void ensureSession();
+  await loadSkills();
+}
+
+/** The sandboxed style-preview URL of one skill; empty when it has none. */
+function skillPreviewUrl(skill: DesignerSkill): string {
+  if (!skill.style || !session.value?.token) return '';
+  return designSkillPreviewUrl(props.documentId, session.value.token, skill.name);
+}
+
+/**
+ * ▶ — the SkillPanel activation path: prefill the composer with
+ * {@code /skill <name>} (trailing space invites arguments) and let the
+ * user submit. The modal closes because the composer it writes to sits
+ * behind the backdrop — otherwise the click would look like a no-op.
+ */
+function playSkill(skill: DesignerSkill): void {
+  if (!composePrompt?.(`/skill ${skill.name} `)) return;
+  skillsModal.value = false;
+}
+
+/**
+ * ✕ — the SkillPanel clear path: a direct CLEAR round-trip (no composer
+ * echo, CLEAR takes no arguments). The reply carries the post-mutation
+ * {@code activeSkills}, so the badges update without a follow-up
+ * listing; a recipe-bound skill answers disabled, exactly like the panel.
+ */
+async function clearSkill(skill: DesignerSkill): Promise<void> {
+  if (!processSkillClear) return;
+  clearingSkill.value = skill.name;
+  skillsError.value = null;
+  try {
+    const reply = await processSkillClear(skill.name);
+    const activeByName = new Map(
+      (reply.activeSkills ?? []).map((a) => [a.name, a.fromRecipe ?? false]),
+    );
+    skills.value = skills.value.map((s) => ({
+      ...s,
+      active: activeByName.has(s.name),
+      fromRecipe: activeByName.get(s.name),
+    }));
+  } catch (e) {
+    skillsError.value = t('designer.skills.error.clear', { message: (e as Error).message });
+  } finally {
+    clearingSkill.value = null;
+  }
+}
 const selectedDesign = computed<DesignInfo | null>(() => {
   if (!selected.value) return null;
   return designs.value.find((d) => d.name === selected.value) ?? null;
@@ -383,6 +505,9 @@ defineExpose({ reload });
         class="text-sm text-base-content/60"
       >{{ t('designer.designs', { count: view.designs.length }) }}</span>
       <div class="flex-1" />
+      <!-- The design-skill catalogue: every skill tagged `design`, each
+           with a live style preview of its style.css. -->
+      <VButton variant="ghost" @click="openSkillsModal">{{ t('designer.skills.button') }}</VButton>
       <VButton
         variant="primary"
         size="sm"
@@ -586,5 +711,123 @@ defineExpose({ reload });
         </div>
       </template>
     </VModal>
+
+    <!-- Design-skill catalogue: one row per skill tagged `design` — a
+         small sandboxed style preview on the left (the skill's real
+         style.css around a fixed demo body, served by the addon's
+         token-authenticated skill-preview route), name, description and
+         activation state on the right. -->
+    <VModal v-model="skillsModal" :title="t('designer.skills.title')" size="md" class="designer-skills-modal">
+      <div class="flex flex-col gap-3 h-full">
+        <div class="flex items-center gap-2">
+          <div class="flex-1 text-sm text-base-content/60">
+            <span v-if="chatOpen">{{ t('designer.skills.chatHint') }}</span>
+            <span v-else>{{ t('designer.skills.noChatHint') }}</span>
+          </div>
+          <VButton
+            variant="ghost"
+            size="sm"
+            :loading="skillsLoading"
+            :title="t('designer.skills.refresh')"
+            @click="loadSkills"
+          >⟳</VButton>
+        </div>
+
+        <VAlert v-if="skillsError" variant="error">{{ skillsError }}</VAlert>
+
+        <VEmptyState
+          v-else-if="skillsLoaded && skills.length === 0"
+          :headline="t('designer.skills.emptyHeadline')"
+          :body="t('designer.skills.emptyBody')"
+        />
+
+        <div v-else class="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
+          <div
+            v-for="skill in skills"
+            :key="skill.name"
+            class="flex gap-3 items-stretch rounded-lg border border-base-300 p-2"
+          >
+            <!-- Style preview: same opaque-origin sandbox as the main
+                 preview; without a style.css the skill shows a plain
+                 box instead of pretending. -->
+            <div class="w-44 shrink-0 h-32 rounded-md border border-base-300 overflow-hidden bg-white">
+              <iframe
+                v-if="skillPreviewUrl(skill)"
+                :src="skillPreviewUrl(skill)"
+                class="w-full h-full border-0"
+                sandbox="allow-scripts"
+                referrerpolicy="no-referrer"
+                :title="t('designer.skills.previewOf', { name: skill.title })"
+              />
+              <div
+                v-else
+                class="w-full h-full flex items-center justify-center text-center text-xs text-base-content/40 px-2"
+              >{{ t('designer.skills.noStyle') }}</div>
+            </div>
+
+            <div class="flex-1 min-w-0 flex flex-col gap-1">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="font-semibold">{{ skill.title }}</span>
+                <VBadge v-if="skill.active" variant="success" size="xs" outline>
+                  {{ t('designer.skills.activeBadge') }}
+                </VBadge>
+                <VBadge variant="neutral" size="xs" outline>{{ skill.source }}</VBadge>
+              <div v-if="chatOpen" class="flex items-center gap-1">
+                <!-- ▶ — composer prefill (the user may append arguments and
+                     submits); ✕ — direct CLEAR round-trip, disabled when the
+                     recipe bound the skill. Same pair the SkillPanel offers. -->
+                <VButton
+                  v-if="composePrompt && !skill.active"
+                  variant="ghost"
+                  size="sm"
+                  :title="t('designer.skills.play')"
+                  @click="playSkill(skill)"
+                >▶</VButton>
+                <VButton
+                  v-if="processSkillClear && skill.active"
+                  variant="ghost"
+                  size="sm"
+                  :loading="clearingSkill === skill.name"
+                  :disabled="skill.fromRecipe"
+                  :title="skill.fromRecipe
+                    ? t('designer.skills.recipeBound')
+                    : t('designer.skills.clear')"
+                  @click="clearSkill(skill)"
+                >✕</VButton>
+              </div>
+              </div>
+              <div class="text-[11px] opacity-50 font-mono truncate">{{ skill.name }}</div>
+              <div v-if="skill.description" class="text-xs opacity-70">{{ skill.description }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </VModal>
   </div>
 </template>
+
+<style scoped>
+/*
+ * The skills catalogue keeps a fixed 80%-viewport frame instead of
+ * growing with its content: header and chat hint stay put, the rows
+ * scroll inside. The class rides on the VModal's root (Vue merges the
+ * fallthrough class onto the dialog element); the box itself is
+ * VModal-internal, hence :deep — sizing the box from outside is the
+ * intended escape hatch, VModal deliberately owns no height knob.
+ */
+.designer-skills-modal :deep(.modal-box) {
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * VModal wraps the default slot in a plain div; the frame only works
+ * if that wrapper stretches — then the slot's own h-full column and
+ * the list's flex-1/min-h-0 do the rest.
+ */
+.designer-skills-modal :deep(.modal-box > div) {
+  flex: 1;
+  min-height: 0;
+}
+</style>

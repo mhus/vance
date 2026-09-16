@@ -26,8 +26,7 @@ public class SkillResolver {
      * carries the name, or if the matched skill is disabled.
      */
     public Optional<ResolvedSkill> resolve(SkillScopeContext ctx, String name) {
-        return loader.load(ctx.tenantId(), ctx.userId(), ctx.projectId(), name)
-                .filter(ResolvedSkill::enabled);
+        return loader.load(ctx.tenantId(), ctx.userId(), ctx.projectId(), name).filter(ResolvedSkill::enabled);
     }
 
     /**
@@ -41,8 +40,7 @@ public class SkillResolver {
         }
         List<ResolvedSkill> out = new ArrayList<>(names.size());
         for (String name : names) {
-            ResolvedSkill skill = resolve(ctx, name)
-                    .orElseThrow(() -> new UnknownSkillException(name));
+            ResolvedSkill skill = resolve(ctx, name).orElseThrow(() -> new UnknownSkillException(name));
             out.add(skill);
         }
         return out;
@@ -55,5 +53,14 @@ public class SkillResolver {
      */
     public List<ResolvedSkill> listAvailable(SkillScopeContext ctx) {
         return loader.listAvailable(ctx.tenantId(), ctx.userId(), ctx.projectId());
+    }
+
+    /**
+     * Reads one sibling file of a skill from the tier that carries its
+     * {@code SKILL.md} — see {@link SkillLoader#readSkillFile} for the
+     * tier-pinning and traversal rules. Empty when unknown or absent.
+     */
+    public Optional<String> readSkillFile(SkillScopeContext ctx, String name, String relativePath) {
+        return loader.readSkillFile(ctx.tenantId(), ctx.userId(), ctx.projectId(), name, relativePath);
     }
 }

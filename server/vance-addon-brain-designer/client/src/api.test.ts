@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { configurePlatform, StorageKeys } from '@vance/shared';
-import { designContentUrl } from './api';
+import { designContentUrl, designSkillPreviewUrl } from './api';
 
 /**
  * The URL builder is security-relevant surface: the token must end up
@@ -72,5 +72,67 @@ describe('designContentUrl', () => {
       },
     });
     expect(designContentUrl('doc1', 'tok', 'landing', '')).toBe('');
+  });
+});
+
+describe('designSkillPreviewUrl', () => {
+  beforeEach(() => {
+    const store = new Map<string, string>();
+    store.set(StorageKeys.identityTenantId, 'acme');
+    configurePlatform({
+      storage: {
+        secureStore: {
+          get: () => null,
+          set: () => undefined,
+          remove: () => undefined,
+        },
+        prefsStore: {
+          get: (k: string) => store.get(k) ?? null,
+          set: (k: string, v: string) => store.set(k, v),
+          remove: (k: string) => store.delete(k),
+        },
+      },
+      rest: {
+        baseUrl: 'https://brain.example',
+        authMode: 'cookie',
+        refreshAccess: async () => false,
+        onUnauthorized: () => undefined,
+      },
+    });
+  });
+
+  it('builds the token path with the skill as a query parameter', () => {
+    // The token must be a path segment (opaque-origin iframe — no
+    // headers); the skill name goes into the query because nothing
+    // relative ever resolves against this URL: the served document is
+    // self-contained, so the token has to survive this one request only.
+    const url = designSkillPreviewUrl('doc 1', 'eyJhbGci.x', 'house style');
+    expect(url).toBe(
+      'https://brain.example/brain/acme/addon/designer/skill-preview/doc%201/eyJhbGci.x?skill=house+style',
+    );
+  });
+
+  it('returns empty without a tenant', () => {
+    configurePlatform({
+      storage: {
+        secureStore: {
+          get: () => null,
+          set: () => undefined,
+          remove: () => undefined,
+        },
+        prefsStore: {
+          get: () => null,
+          set: () => undefined,
+          remove: () => undefined,
+        },
+      },
+      rest: {
+        baseUrl: '',
+        authMode: 'cookie',
+        refreshAccess: async () => false,
+        onUnauthorized: () => undefined,
+      },
+    });
+    expect(designSkillPreviewUrl('doc1', 'tok', 'x')).toBe('');
   });
 });

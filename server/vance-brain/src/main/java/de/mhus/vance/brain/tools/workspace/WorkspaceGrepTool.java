@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.workspace;
 
 import de.mhus.vance.api.tools.FileWalkDefaults;
+import de.mhus.vance.brain.tools.RegexGuard;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
@@ -162,6 +163,12 @@ public class WorkspaceGrepTool implements Tool {
             throw new ToolException("Invalid regex: " + e.getMessage(), e);
         }
 
+        // Shared wall-clock budget for the whole grep — the (untrusted) regex
+        // is matched against every line of every scanned file, exactly like
+        // doc_grep_path; a catastrophic-backtracking pattern must not pin the
+        // lane thread.
+        long deadline = System.nanoTime() + REGEX_BUDGET_NANOS;
+
         PathMatcher matcher = GlobMatchers.buildGlobMatcher(pathGlob);
 
         List<String> files;
@@ -223,7 +230,7 @@ public class WorkspaceGrepTool implements Tool {
             }
             filesScanned++;
             for (int i = 0; i < lines.length; i++) {
-                if (!pattern.matcher(lines[i]).find()) continue;
+                if (!matchGuarded(pattern, lines[i], deadline)) continue;
                 if (matches.size() >= limit) {
                     truncated = true;
                     break;
@@ -264,6 +271,20 @@ public class WorkspaceGrepTool implements Tool {
         out.put("truncated", truncated);
         out.put("matches", matches);
         return out;
+    }
+
+    private static final long REGEX_BUDGET_NANOS = 2_000_000_000L; // 2s per grep call
+
+    /** {@link RegexGuard#find} but mapping a budget overrun to a clean ToolException. */
+    private static boolean matchGuarded(Pattern pattern, String line, long deadline) {
+        try {
+            return RegexGuard.find(pattern, line, deadline);
+        } catch (RegexGuard.RegexBudgetExceeded e) {
+            throw new ToolException(
+                    "regex too slow — possible catastrophic backtracking; "
+                            + "simplify the pattern (avoid nested quantifiers like (a+)+).",
+                    e);
+        }
     }
 
     private static int clampNonNeg(Integer raw) {

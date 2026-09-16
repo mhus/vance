@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.workspace;
 
 import de.mhus.vance.api.tools.FileWalkDefaults;
+import de.mhus.vance.brain.tools.RegexGuard;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
@@ -151,6 +152,12 @@ public class WorkspaceCountTool implements Tool {
             throw new ToolException("Invalid regex: " + e.getMessage(), e);
         }
 
+        // Shared wall-clock budget for the whole count — the (untrusted)
+        // regex is matched against every line of every counted file, exactly
+        // like work_file_grep; a catastrophic-backtracking pattern must not
+        // pin the lane thread.
+        long deadline = System.nanoTime() + REGEX_BUDGET_NANOS;
+
         // 'path' is a file *or* a directory, like the CLIENT backend: naming
         // a file counts just that file, naming a directory walks its subtree,
         // omitting it walks the whole RootDir.
@@ -264,7 +271,7 @@ public class WorkspaceCountTool implements Tool {
                 long matchedChars = 0;
                 long matchedLines = 0;
                 for (String line : lines) {
-                    if (pattern.matcher(line).find()) {
+                    if (matchGuarded(pattern, line, deadline)) {
                         matchedLines++;
                         matchedChars += line.length();
                     }
@@ -293,6 +300,20 @@ public class WorkspaceCountTool implements Tool {
         out.put("chars", totalChars);
         out.put("bytes", totalBytes);
         return out;
+    }
+
+    private static final long REGEX_BUDGET_NANOS = 2_000_000_000L; // 2s per count call
+
+    /** {@link RegexGuard#find} but mapping a budget overrun to a clean ToolException. */
+    private static boolean matchGuarded(Pattern pattern, String line, long deadline) {
+        try {
+            return RegexGuard.find(pattern, line, deadline);
+        } catch (RegexGuard.RegexBudgetExceeded e) {
+            throw new ToolException(
+                    "regex too slow — possible catastrophic backtracking; "
+                            + "simplify the pattern (avoid nested quantifiers like (a+)+).",
+                    e);
+        }
     }
 
     private static Integer intOrNull(Map<String, Object> params, String key) {

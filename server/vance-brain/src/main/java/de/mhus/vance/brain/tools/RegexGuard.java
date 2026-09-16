@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.kinds;
+package de.mhus.vance.brain.tools;
 
 import java.util.regex.Pattern;
 
@@ -10,16 +10,20 @@ import java.util.regex.Pattern;
  * that checks a deadline in {@code charAt} aborts the match without any watchdog
  * thread. A single shared deadline across all lines of one tool call bounds both
  * the single-catastrophic-line and the many-lines cases.
+ *
+ * <p>Shared by every tool that matches an LLM-supplied pattern against
+ * caller-visible text: the doc-side scans ({@code doc_grep},
+ * {@code doc_grep_path}, {@code doc_count}) and the workspace twins
+ * ({@code work_file_grep}, {@code work_file_count}).
  */
-final class RegexGuard {
+public final class RegexGuard {
 
     private RegexGuard() {}
 
     /** Thrown when the regex work exceeds its wall-clock budget. */
-    static final class RegexBudgetExceeded extends RuntimeException {
+    public static final class RegexBudgetExceeded extends RuntimeException {
         RegexBudgetExceeded() {
-            super("regex evaluation exceeded its time budget "
-                    + "(possible catastrophic backtracking)");
+            super("regex evaluation exceeded its time budget " + "(possible catastrophic backtracking)");
         }
     }
 
@@ -28,7 +32,7 @@ final class RegexGuard {
      * {@link RegexBudgetExceeded} once {@code deadlineNanos}
      * ({@link System#nanoTime()} scale) has passed.
      */
-    static boolean find(Pattern pattern, String line, long deadlineNanos) {
+    public static boolean find(Pattern pattern, String line, long deadlineNanos) {
         return pattern.matcher(new DeadlineCharSequence(line, deadlineNanos)).find();
     }
 

@@ -54,5 +54,8 @@ document body.
 
 - `doc_head_tail` — first and/or last N lines, rows carry 1-based
   `lineNumber` (feed straight into `doc_replace_lines` or `doc_read_lines`).
-- `doc_count` on one document (path/id) — lines / chars (+ optional regex
-  match count) without paging through the body.
+- `doc_count` on one document (path/id) — lines / chars / bytes (+ optional
+  regex match count) without paging through the body. Doc tools count lines
+  like `doc_read_lines` (a trailing newline yields a final empty line),
+  which is one more than `file_count`'s wc-style count for the same
+  content — line numbers stay interchangeable across the doc family.

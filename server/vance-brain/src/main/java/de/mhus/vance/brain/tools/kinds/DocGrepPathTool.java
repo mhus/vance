@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.api.documents.AgeDocumentKind;
+import de.mhus.vance.brain.tools.RegexGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.jaglan.JaglanPaths;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -8,6 +9,7 @@ import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -264,7 +266,10 @@ public class DocGrepPathTool implements Tool {
             if (wholeProject && JaglanPaths.isMounted(d.getPath())) continue;
             candidates.add(d);
         }
-        candidates.sort(java.util.Comparator.comparing(DocumentDocument::getPath));
+        // Nulls-first: a row without a path (defensive — the path is the
+        // addressing key) must not turn the sort into a 500 mid-scan.
+        candidates.sort(
+                Comparator.comparing(DocumentDocument::getPath, Comparator.nullsFirst(Comparator.naturalOrder())));
         return new ScanScope(candidates, DocScanBudget.fromParams(params), wholeProject ? "*" : pathPrefix);
     }
 

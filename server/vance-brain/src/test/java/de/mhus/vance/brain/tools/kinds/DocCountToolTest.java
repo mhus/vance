@@ -55,7 +55,10 @@ class DocCountToolTest {
 
     @Test
     void singleDoc_countsLinesAndChars() {
-        DocumentDocument d = doc("documents/a.md", "one\ntwo\nthree");
+        // Non-ASCII body with a diverging size metadata: bytes must come
+        // from the counted body (UTF-8: é = 2 bytes), not from the row's
+        // size field — lines/chars/bytes describe the same text.
+        DocumentDocument d = doc("documents/a.md", "one\nhéllo");
         when(support.loadDocument(any(), any())).thenReturn(d);
 
         Map<String, Object> p = new HashMap<>();
@@ -63,9 +66,10 @@ class DocCountToolTest {
 
         Map<String, Object> out = tool.invoke(p, CTX);
 
-        assertThat(out.get("lines")).isEqualTo(3L);
-        assertThat(out.get("chars")).isEqualTo((long) "one\ntwo\nthree".length());
-        assertThat(out.get("bytes")).isEqualTo(d.getSize());
+        assertThat(out.get("lines")).isEqualTo(2L);
+        assertThat(out.get("chars")).isEqualTo((long) "one\nhéllo".length());
+        assertThat(out.get("bytes"))
+                .isEqualTo((long) "one\nhéllo".getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
     }
 
     @Test
@@ -97,6 +101,8 @@ class DocCountToolTest {
 
         assertThat(out.get("scannedDocuments")).isEqualTo(2);
         assertThat(out.get("lines")).isEqualTo(3L); // a.md (2) + b.md (1), c.md not reached
+        // Byte aggregate over the scanned docs' claimed sizes (a.md "x\nx" = 3, b.md = 1).
+        assertThat(out.get("bytes")).isEqualTo(4L);
         assertThat(out.get("truncated")).isEqualTo(true);
         assertThat((String) out.get("warning")).contains("maxScannedDocs cap of 2");
         verify(support, never()).readBody(docs.get(2), CTX);

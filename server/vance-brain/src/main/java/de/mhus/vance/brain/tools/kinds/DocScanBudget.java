@@ -128,6 +128,14 @@ public final class DocScanBudget {
     }
 
     /**
+     * Bytes claimed across the scanned documents (metadata sizes) — the
+     * aggregate a count-style consumer reports as its {@code bytes} total.
+     */
+    public long totalBytes() {
+        return totalBytes;
+    }
+
+    /**
      * The result {@code warning} for a budget-stopped scan. Null when the
      * scan ran to completion — a warning without a stop would be noise, and
      * the regular {@code truncated} flag covers the match-limit case.

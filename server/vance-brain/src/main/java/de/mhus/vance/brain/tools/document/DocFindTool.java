@@ -205,7 +205,8 @@ public class DocFindTool implements Tool {
                         ? Comparator.comparing(
                                         DocumentDocument::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
                                 .reversed()
-                        : Comparator.comparing(DocumentDocument::getPath);
+                        : Comparator.comparing(
+                                DocumentDocument::getPath, Comparator.nullsFirst(Comparator.naturalOrder()));
         matched.sort(order);
 
         List<Map<String, Object>> rows = new ArrayList<>();

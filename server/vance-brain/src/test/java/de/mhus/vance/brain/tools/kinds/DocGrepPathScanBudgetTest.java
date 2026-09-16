@@ -90,7 +90,6 @@ class DocGrepPathScanBudgetTest {
                 .contains("maxScannedDocs cap of 2")
                 .contains("2 of 3 candidate documents")
                 .contains("narrow the pathPrefix");
-        // Path order is deterministic: d0, d1 scanned, d2 not.
         // Path order is deterministic: d0, d1 scanned, d2 never fetched.
         verify(support, never()).readBody(docs.get(2), CTX);
     }

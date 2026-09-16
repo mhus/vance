@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.kinds;
+package de.mhus.vance.brain.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

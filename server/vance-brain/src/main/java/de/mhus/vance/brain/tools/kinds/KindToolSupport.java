@@ -465,7 +465,8 @@ public class KindToolSupport {
      * {@code expectedContentHash} against the current body and refuse the
      * change on mismatch — the overwrite of a concurrently modified document
      * (user in the Cortex tab, second process, skill) becomes a readable
-     * error instead of a silent lost update. No-op when the param is absent.
+     * error instead of clobbering stale expectations. No-op when the param is
+     * absent. Check-then-act, not a CAS — see {@link #checkContentHash}.
      *
      * <p>Call before any content matching (snippet search, line-range
      * anchors): a stale read usually breaks those too, and the model should
@@ -483,6 +484,14 @@ public class KindToolSupport {
      * parsed (and presence-decided) the guard themselves — e.g. the upsert in
      * {@code doc_write}, where an expected hash on a vanished path is its own
      * named refusal.
+     *
+     * <p>The guard is check-then-act, not an atomic compare-and-swap: the
+     * window between this check and the subsequent write is small but real, so
+     * it reliably refuses <em>stale reads</em> (its purpose — the model editing
+     * a document the user changed meanwhile), while a truly concurrent writer
+     * in that window can still slip through. Same contract as the {@code file_*}
+     * side (work-target.md); a hard serialisation would need a version field
+     * on the document row, which is a separate decision.
      */
     public static void checkContentHash(String expectedContentHash, DocumentDocument doc, String currentBody) {
         String actual = ContentHashes.sha256Hex(currentBody);

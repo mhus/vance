@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.document;
 
+import de.mhus.vance.brain.documents.DocumentBufferService;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -55,6 +56,7 @@ public class DocReadTool implements Tool {
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
+    private final DocumentBufferService bufferService;
 
     @Override
     public String name() {
@@ -130,7 +132,7 @@ public class DocReadTool implements Tool {
         }
 
         AgeDocumentGuard.requireReadable(doc);
-        String content = loadAsText(doc);
+        String content = loadAsText(doc, ctx);
         int fullLength = content.length();
         boolean truncated = fullLength > MAX_BODY_CHARS;
         String body = truncated ? content.substring(0, MAX_BODY_CHARS) : content;
@@ -154,10 +156,21 @@ public class DocReadTool implements Tool {
         return out;
     }
 
-    private String loadAsText(DocumentDocument doc) {
-        if (documentService.readContent(doc) != null) {
-            return documentService.readContent(doc);
+    /**
+     * The body behind the If-Match {@code contentHash} — so it must describe
+     * exactly the state a subsequent {@code doc_edit} / {@code doc_append}
+     * compares against ({@code KindToolSupport.readBody}): an in-flight
+     * buffered write of this process is visible here too. The body is fetched
+     * once — a hash source that reads storage twice per call would double the
+     * very cost class the read tools just bounded.
+     */
+    private String loadAsText(DocumentDocument doc, ToolInvocationContext ctx) {
+        if (ctx.processId() != null) {
+            String buffered = bufferService.peekBody(ctx.processId(), doc.getId());
+            if (buffered != null) return buffered;
         }
+        String content = documentService.readContent(doc);
+        if (content != null) return content;
         try (InputStream in = documentService.loadContent(doc)) {
             byte[] bytes = in.readAllBytes();
             return new String(bytes, StandardCharsets.UTF_8);

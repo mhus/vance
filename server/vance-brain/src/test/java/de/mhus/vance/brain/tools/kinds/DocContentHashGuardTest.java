@@ -7,9 +7,11 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.documents.DocumentBufferService;
 import de.mhus.vance.brain.tools.document.DocReadTool;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
@@ -231,11 +233,37 @@ class DocContentHashGuardTest {
         Map<String, Object> p = new HashMap<>();
         p.put("id", "doc-1");
 
-        DocReadTool tool = new DocReadTool(eddieContextMock(), documentService);
+        DocReadTool tool = new DocReadTool(eddieContextMock(), documentService, bufferService());
         Map<String, Object> out = tool.invoke(p, CTX);
 
         assertThat((Boolean) out.get("truncated")).isTrue();
         assertThat(out.get("contentHash")).isEqualTo(ContentHashes.sha256Hex(body));
+        // The hash source fetches the body exactly once — the old
+        // null-check-plus-scan pattern read storage twice per call.
+        verify(documentService, times(1)).readContent(longDoc);
+    }
+
+    @Test
+    void docRead_seesInFlightBufferedWrites_hashCoversWhatDocEditCompares() {
+        DocumentDocument stored = new DocumentDocument();
+        stored.setId("doc-1");
+        stored.setTenantId("acme");
+        stored.setPath("notes/x.md");
+        when(documentService.findById("doc-1")).thenReturn(Optional.of(stored));
+        DocumentBufferService buffer = bufferService();
+        when(buffer.peekBody(CTX.processId(), "doc-1")).thenReturn("buffered body");
+
+        Map<String, Object> p = new HashMap<>();
+        p.put("id", "doc-1");
+
+        Map<String, Object> out = new DocReadTool(eddieContextMock(), documentService, buffer).invoke(p, CTX);
+
+        // The If-Match token must describe the same state a subsequent
+        // doc_edit compares against — KindToolSupport.readBody peeks the
+        // buffer too, so the hash covers the buffered body, not the stale
+        // storage row.
+        assertThat(out.get("contentHash")).isEqualTo(ContentHashes.sha256Hex("buffered body"));
+        verify(documentService, never()).readContent(stored);
     }
 
     // ── fixtures ──────────────────────────────────────────────────────
@@ -268,5 +296,11 @@ class DocContentHashGuardTest {
         when(project.getName()).thenReturn("proj-a");
         when(eddie.resolveProject(any(), any(), anyBoolean())).thenReturn(project);
         return eddie;
+    }
+
+    private DocumentBufferService bufferService() {
+        // Unstubbed by default: peekBody returns null, so doc_read falls
+        // through to the storage read like a process without buffered writes.
+        return mock(DocumentBufferService.class);
     }
 }

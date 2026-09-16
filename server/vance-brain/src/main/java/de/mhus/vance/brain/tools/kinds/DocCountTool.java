@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.api.documents.AgeDocumentKind;
+import de.mhus.vance.brain.tools.RegexGuard;
 import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -9,6 +10,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -23,8 +25,17 @@ import org.springframework.stereotype.Component;
 /**
  * Count lines and characters for one document (selector) or across every
  * document under a path prefix — the doc-side twin of {@code file_count}.
- * An optional regex narrows the line count to matches (wc-style stats),
- * with {@code chars} aggregating the matched line text.
+ *
+ * <p>An optional regex narrows the line count to matches (wc-style
+ * stats), with {@code chars} aggregating the matched line text. The regex
+ * runs under the shared {@link RegexGuard} wall-clock budget — the
+ * pattern is untrusted LLM input, and a catastrophic-backtracking
+ * pattern must not pin the lane thread.
+ *
+ * <p>Line semantics mirror {@code doc_read_lines} / {@code doc_grep}
+ * rather than {@code file_count}: split at line terminators, so a trailing
+ * newline yields a final empty line ({@code file_count} counts wc-style,
+ * where a trailing newline terminates the last line instead).
  *
  * <p>The prefix scan is a class-3 cost (one storage fetch per document),
  * so it runs under the shared {@link DocScanBudget}: capped
@@ -81,9 +92,10 @@ public class DocCountTool implements Tool {
 
     @Override
     public String description() {
-        return "Count lines and characters for a single document (path/id) or across every "
+        return "Count lines, characters and bytes for a single document (path/id) or across every "
                 + "document under a path prefix. Optional regex narrows the count to matching "
-                + "lines (wc-style stats). The prefix scan is budgeted — at most "
+                + "lines (wc-style stats). Lines follow doc_read_lines semantics: a trailing "
+                + "newline yields a final empty line. The prefix scan is budgeted — at most "
                 + DocScanBudget.DEFAULT_MAX_SCANNED_DOCS
                 + " documents per call (raise via maxScannedDocs), oversized documents skipped; "
                 + "a stopped scan reports truncated=true and a warning.";
@@ -120,20 +132,26 @@ public class DocCountTool implements Tool {
             throw new ToolException("Invalid regex: " + e.getMessage(), e);
         }
 
+        // Shared wall-clock budget for the whole count — the (untrusted)
+        // regex is matched against every line of every scanned doc, exactly
+        // like doc_grep_path; a catastrophic-backtracking pattern must not
+        // pin the lane thread.
+        long deadline = System.nanoTime() + REGEX_BUDGET_NANOS;
+
         boolean single = KindToolSupport.paramString(params, "path") != null
                 || KindToolSupport.paramString(params, "id") != null;
         if (single) {
-            return countSingle(params, ctx, pattern, patternStr);
+            return countSingle(params, ctx, pattern, patternStr, deadline);
         }
-        return countScan(params, ctx, pattern, patternStr);
+        return countScan(params, ctx, pattern, patternStr, deadline);
     }
 
     private Map<String, Object> countSingle(
-            Map<String, Object> params, ToolInvocationContext ctx, Pattern pattern, String patternStr) {
+            Map<String, Object> params, ToolInvocationContext ctx, Pattern pattern, String patternStr, long deadline) {
         DocumentDocument doc = support.loadDocument(params, ctx);
         AgeDocumentGuard.requireReadable(doc);
         String body = support.readBody(doc, ctx);
-        Counts counts = Counts.count(body, pattern);
+        Counts counts = Counts.count(body, pattern, deadline);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", doc.getId());
@@ -142,12 +160,15 @@ public class DocCountTool implements Tool {
         out.put("lines", pattern == null ? counts.lines() : counts.matchingLines());
         if (pattern != null) out.put("totalLines", counts.lines());
         out.put("chars", pattern == null ? counts.chars() : counts.matchedChars());
-        out.put("bytes", doc.getSize());
+        // Same source as lines/chars: the body that was actually counted, not
+        // the size metadata (which describes the stored row and can diverge
+        // from an in-flight buffered write).
+        out.put("bytes", (long) body.getBytes(StandardCharsets.UTF_8).length);
         return out;
     }
 
     private Map<String, Object> countScan(
-            Map<String, Object> params, ToolInvocationContext ctx, Pattern pattern, String patternStr) {
+            Map<String, Object> params, ToolInvocationContext ctx, Pattern pattern, String patternStr, long deadline) {
         String pathPrefix = DocumentService.resolveScope(KindToolSupport.paramString(params, "pathPrefix"));
         boolean wholeProject = pathPrefix.isEmpty();
         DocScanBudget budget = DocScanBudget.fromParams(params);
@@ -162,8 +183,10 @@ public class DocCountTool implements Tool {
             if (wholeProject && JaglanPaths.isMounted(d.getPath())) continue;
             candidates.add(d);
         }
-        candidates.sort(Comparator.comparing(DocumentDocument::getPath));
-
+        // Nulls-first: a row without a path (defensive — the path is the
+        // addressing key) must not turn the sort into a 500 mid-scan.
+        candidates.sort(
+                Comparator.comparing(DocumentDocument::getPath, Comparator.nullsFirst(Comparator.naturalOrder())));
         long totalLines = 0;
         long totalMatchingLines = 0;
         long totalChars = 0;
@@ -177,7 +200,7 @@ public class DocCountTool implements Tool {
                 }
                 continue; // oversized, skipped
             }
-            Counts counts = Counts.count(support.readBody(d, ctx), pattern);
+            Counts counts = Counts.count(support.readBody(d, ctx), pattern, deadline);
             totalLines += counts.lines();
             totalMatchingLines += counts.matchingLines();
             totalChars += counts.chars();
@@ -193,10 +216,27 @@ public class DocCountTool implements Tool {
         out.put("lines", pattern == null ? totalLines : totalMatchingLines);
         if (pattern != null) out.put("totalLines", totalLines);
         out.put("chars", pattern == null ? totalChars : matchedChars);
+        // Byte aggregate over the scanned documents (metadata sizes — the
+        // same numbers the budget claimed), file_count-style.
+        out.put("bytes", budget.totalBytes());
         out.put("truncated", truncated);
         String warning = budget.warning(candidates.size(), wholeProject ? "*" : pathPrefix);
         if (warning != null) out.put("warning", warning);
         return out;
+    }
+
+    private static final long REGEX_BUDGET_NANOS = 2_000_000_000L; // 2s per count call
+
+    /** {@link RegexGuard#find} but mapping a budget overrun to a clean ToolException. */
+    private static boolean matchGuarded(Pattern pattern, String line, long deadline) {
+        try {
+            return RegexGuard.find(pattern, line, deadline);
+        } catch (RegexGuard.RegexBudgetExceeded e) {
+            throw new ToolException(
+                    "regex too slow — possible catastrophic backtracking; "
+                            + "simplify the pattern (avoid nested quantifiers like (a+)+).",
+                    e);
+        }
     }
 
     /**
@@ -207,7 +247,7 @@ public class DocCountTool implements Tool {
      */
     private record Counts(long lines, long matchingLines, long chars, long matchedChars) {
 
-        static Counts count(String body, Pattern pattern) {
+        static Counts count(String body, Pattern pattern, long deadline) {
             String[] lines = body.split("\\R", -1);
             if (pattern == null) {
                 return new Counts(lines.length, 0, body.length(), 0);
@@ -215,7 +255,7 @@ public class DocCountTool implements Tool {
             long matchingLines = 0;
             long matchedChars = 0;
             for (String line : lines) {
-                if (pattern.matcher(line).find()) {
+                if (matchGuarded(pattern, line, deadline)) {
                     matchingLines++;
                     matchedChars += line.length();
                 }

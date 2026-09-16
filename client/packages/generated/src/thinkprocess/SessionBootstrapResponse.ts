@@ -16,5 +16,6 @@ export interface SessionBootstrapResponse {
   chatProcessId?: string;
   chatProcessName?: string;
   chatEngine?: string;
+  chatTheme?: string;
   planStates: ProcessPlanState[];
 }

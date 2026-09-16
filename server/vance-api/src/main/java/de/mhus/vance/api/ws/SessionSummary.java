@@ -90,4 +90,15 @@ public class SessionSummary {
      * re-fetch the chat history.
      */
     private @Nullable String lastMessagePreview;
+
+    /**
+     * Chat theme name the web client should style this session's
+     * transcript with — the {@code webTheme:} value of the recipe its
+     * chat process runs, or {@code default} when none applies
+     * (engine-default chat process, recipe without a {@code webTheme:},
+     * or a recipe that no longer loads — fail-open). {@code null} when
+     * the session has no chat process yet; clients map that to
+     * {@code default} as well. See {@code planning/chat-themes.md}.
+     */
+    private @Nullable String chatTheme;
 }

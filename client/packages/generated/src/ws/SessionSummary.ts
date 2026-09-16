@@ -21,4 +21,5 @@ export interface SessionSummary {
   profile?: string;
   firstUserMessage?: string;
   lastMessagePreview?: string;
+  chatTheme?: string;
 }

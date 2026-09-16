@@ -62,6 +62,15 @@ public class SessionBootstrapResponse {
     private @Nullable String chatEngine;
 
     /**
+     * Chat theme name behind the session's recipe (from the
+     * {@code webTheme:} line) — the name the web client fetches from
+     * {@code GET …/chat-themes/{name}/css} and injects over the
+     * transcript. {@code default} when the recipe carries no
+     * {@code webTheme}; {@code null} only when there is no chat
+     * process at all. See {@code ChatThemeResolver#effectiveThemeName}.
+     */
+    private @Nullable String chatTheme;
+    /**
      * The persisted plan state of the session's processes (non-CLOSED,
      * with a non-NORMAL mode or a non-empty todo list) — empty when no
      * process is showing a plan. Same carrier rationale as the resume

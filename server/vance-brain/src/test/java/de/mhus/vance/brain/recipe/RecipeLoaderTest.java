@@ -173,6 +173,57 @@ class RecipeLoaderTest {
     }
 
     @Test
+    void load_webTheme_valid_isResolved() {
+        stubRecipe("""
+                description: Themed chat worker
+                engine: arthur
+                webTheme: acme-dark
+                """);
+
+        assertThat(loader.load("acme", "p-1", "analyze"))
+                .hasValueSatisfying(r -> assertThat(r.webTheme()).isEqualTo("acme-dark"));
+    }
+
+    @Test
+    void load_webTheme_absent_isNull() {
+        stubRecipe("""
+                description: Plain worker
+                engine: arthur
+                """);
+
+        assertThat(loader.load("acme", "p-1", "analyze"))
+                .hasValueSatisfying(r -> assertThat(r.webTheme()).isNull());
+    }
+
+    @Test
+    void load_webTheme_blank_isNull() {
+        stubRecipe("""
+                description: Blank theme worker
+                engine: arthur
+                webTheme: "  "
+                """);
+
+        assertThat(loader.load("acme", "p-1", "analyze"))
+                .hasValueSatisfying(r -> assertThat(r.webTheme()).isNull());
+    }
+
+    @Test
+    void load_webTheme_invalid_failsFast() {
+        // The name becomes a path segment of the chat-theme endpoint —
+        // a typo is a load-time error, not a silently never-applying
+        // theme (existence, however, is runtime fail-open).
+        stubRecipe("""
+                description: Traversal attempt
+                engine: arthur
+                webTheme: "../evil"
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("webTheme");
+    }
+
+    @Test
     void load_invalidPromptTemplate_failsFast() {
         stubRecipe("""
                 description: bad template

@@ -85,6 +85,7 @@ public class RecipeController {
                     .title(r.title())
                     .description(r.description())
                     .category(r.category())
+                    .webTheme(r.webTheme())
                     .build());
         }
         return recipeCategoriesService.arrange(tenant, project, out);

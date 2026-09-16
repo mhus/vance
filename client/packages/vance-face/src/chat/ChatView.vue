@@ -28,11 +28,13 @@ import MessageBubble from './MessageBubble.vue';
 import FollowUpGhost from './FollowUpGhost.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
 import ChatActivityStrip from './ChatActivityStrip.vue';
+import ChatTheme from './ChatTheme.vue';
 import { applyProgress, createActivityState } from './chatActivity';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 import { buildFollowUpContext, type FollowUpContext } from './followUpContext';
 import { useWsConnection } from '@/ws/wsConnectionStore';
 import { planClosureContent } from './planClosure';
+import { resolvedUiTheme } from '@/platform';
 
 type ProcessModeName = 'NORMAL' | 'EXPLORING' | 'PLANNING' | 'EXECUTING';
 
@@ -55,6 +57,12 @@ const props = defineProps<{
   /** Project that owns this session — used for the header label and
    *  the document-ref store. */
   chatProjectId: string;
+  /**
+   * Chat theme name for this session — resolved server-side from the
+   *  recipe's {@code webTheme} (see ChatTheme.vue). {@code null} means
+   *  "no theme known"; the frame then fetches the {@code default}
+   *  theme. */
+  chatTheme?: string | null;
   /** Active follow-up reply suggestion (reply mode). Rendered as a
    *  ghost bubble below the most-recent assistant message; {@code null}
    *  hides the bubble entirely. Computed by the parent so the
@@ -887,13 +895,29 @@ onBeforeUnmount(() => {
       </VButton>
     </div>
 
-    <div ref="messageContainer" class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+    <!-- Chat theme scope root: the transcript scroll container. The
+         session theme's CSS is scoped server-side to `.chat-theme`,
+         and `data-mode` mirrors the resolved light/dark mode so a
+         theme can address its own root (see ChatTheme.vue). -->
+    <div
+      ref="messageContainer"
+      class="flex-1 min-h-0 overflow-y-auto px-6 py-4 chat-theme"
+      :data-mode="resolvedUiTheme"
+    >
       <!-- `data-print-root` is what Cmd+P prints: the conversation, all
            of it, without the shell around it. The print layer unwinds
            this container's scroll region so the whole history flows
            onto paper instead of the visible screenful — see
            `style/print.css`. Only set when this view owns the page
            (see the {@code printable} prop). -->
+      <!-- Chat session theme frame: fetches the recipe's chat theme CSS
+           and scopes it to the transcript. `default` when the
+           session carries no theme — the server-side default is the
+           normal state (rule-free bundle, visual no-op). -->
+      <ChatTheme
+        :theme-name="chatTheme ?? 'default'"
+        :project-id="chatProjectId || null"
+      >
       <div
         :data-print-root="printable ? '' : null"
         class="max-w-5xl mx-auto flex flex-col gap-3"
@@ -1000,6 +1024,7 @@ onBeforeUnmount(() => {
           :streaming="true"
         />
       </div>
+      </ChatTheme>
     </div>
 
     <ChatActivityStrip

@@ -8,12 +8,26 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Prefixes every selector in a CSS string with a fixed scope class so a
- * theme served to the web-UI preview cannot leak onto the rest of the
- * page. {@code h1 { color: red }} becomes
- * {@code .markdown-document-preview h1 { color: red }}; a theme that
- * accidentally writes {@code body { background: red }} becomes
- * {@code .markdown-document-preview body { … }} which never matches
- * (there is no {@code body} below the component).
+ * theme served to the web UI cannot leak onto the rest of the page.
+ * {@code h1 { color: red }} becomes {@code .markdown-document-preview h1
+ * { color: red }}; a theme that accidentally writes {@code body { background:
+ * red }} becomes {@code .markdown-document-preview body { … }} which never
+ * matches (there is no {@code body} below the component).
+ *
+ * <p>The scope class is a parameter — the prefixer is shared between the
+ * markdown document preview ({@code .markdown-document-preview}, see
+ * {@code report-themes.md} §9) and the chat transcript styling
+ * ({@code .chat-theme}, see {@code chat-themes.md}). The scoping mechanics
+ * are identical for both; only the fence differs.
+ *
+ * <p><b>Pre-scoped pass-through.</b> A selector that already contains the
+ * scope class is left untouched. This is the deliberate escape hatch for
+ * authors who need control the plain descendant prefix cannot express —
+ * most importantly mode selectors on the scope root itself
+ * ({@code .chat-theme[data-mode=dark] .bubble}): the chat dark mode lives
+ * on the {@code <html>} ancestor, and a descendant prefix can never address
+ * an ancestor qualifier. A pre-scoped selector still cannot leak (everything
+ * stays under the scope class), it just opts out of the rewriting.
  *
  * <p>The scoping is the web-UI equivalent of the PDF path's encapsulation:
  * the PDF is its own document, so the theme applies globally inside it;
@@ -49,9 +63,8 @@ public final class CssScopePrefixer {
     public static final String SCOPE = ".markdown-document-preview";
 
     /** At-rules whose body must be left untouched (selector-less / frame selectors). */
-    private static final Pattern PRESERVE_AT_RULE_START = Pattern.compile(
-        "@(?:page|font-face|keyframes)\\s*[^{]*\\{",
-        Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern PRESERVE_AT_RULE_START =
+            Pattern.compile("@(?:page|font-face|keyframes)\\s*[^{]*\\{", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     private CssScopePrefixer() {
         // utility class
@@ -68,6 +81,29 @@ public final class CssScopePrefixer {
      * @return scoped CSS, never {@code null}
      */
     public static String scope(@Nullable String css) {
+        return scope(css, SCOPE);
+    }
+
+    /**
+     * Returns the input CSS with every element-selecting rule scoped under
+     * the given scope class — the shared entry point behind
+     * {@link #scope(String)}. Selectors that already contain the scope
+     * class are passed through untouched (see the class comment: the
+     * pre-scoped escape hatch).
+     *
+     * @param css already-filtered theme CSS (see {@link CssSanitizer}),
+     *            may be {@code null}
+     * @param scopeClass the scope class to prefix every selector with,
+     *                    including its leading dot (e.g.
+     *                    {@code ".chat-theme"}). Never prefixed onto
+     *                    selectors that already carry it. Must not be
+     *                    blank.
+     * @return scoped CSS, never {@code null}
+     */
+    public static String scope(@Nullable String css, String scopeClass) {
+        if (scopeClass == null || scopeClass.isBlank()) {
+            throw new IllegalArgumentException("scopeClass must not be blank");
+        }
         if (css == null || css.isEmpty()) return "";
         String work = css;
 
@@ -112,7 +148,7 @@ public final class CssScopePrefixer {
         // whose opening brace starts a block we recurse into), plain
         // rules (selector-list + body), and stray text (whitespace,
         // comments) which is passed through.
-        work = walkTopLevel(work);
+        work = walkTopLevel(work, scopeClass);
 
         // Restore preserves. The walker leaves placeholders verbatim
         // (they are never prefixed), so a plain text substitution is
@@ -130,7 +166,7 @@ public final class CssScopePrefixer {
      * {@code @supports}, the block is a wrapper whose inner content is
      * itself a list of rules — we recurse by re-walking the inner text.
      */
-    private static String walkTopLevel(String css) {
+    private static String walkTopLevel(String css, String scopeClass) {
         StringBuilder out = new StringBuilder(css.length());
         int i = 0;
         int n = css.length();
@@ -164,11 +200,11 @@ public final class CssScopePrefixer {
             String trimmedHead = head.trim();
 
             if (trimmedHead.regionMatches(true, 0, "@media", 0, 6)
-                || trimmedHead.regionMatches(true, 0, "@supports", 0, 9)) {
+                    || trimmedHead.regionMatches(true, 0, "@supports", 0, 9)) {
                 // Conditional at-rule: keep the header, recurse into the body.
                 out.append(head);
                 out.append('{');
-                out.append(walkTopLevel(body));
+                out.append(walkTopLevel(body, scopeClass));
                 out.append('}');
             } else if (trimmedHead.isEmpty()) {
                 // No selector (stray block) — pass through unchanged.
@@ -195,18 +231,18 @@ public final class CssScopePrefixer {
                         String after = rest.substring(tokEnd + 2);
                         out.append(before);
                         out.append(token);
-                        out.append(prefixSelectorList(after));
+                        out.append(prefixSelectorList(after, scopeClass));
                         out.append(" {");
                         out.append(body);
                         out.append('}');
                     } else {
-                        out.append(prefixSelectorList(head));
+                        out.append(prefixSelectorList(head, scopeClass));
                         out.append(" {");
                         out.append(body);
                         out.append('}');
                     }
                 } else {
-                    out.append(prefixSelectorList(head));
+                    out.append(prefixSelectorList(head, scopeClass));
                     out.append(" {");
                     out.append(body);
                     out.append('}');
@@ -217,15 +253,14 @@ public final class CssScopePrefixer {
         return out.toString();
     }
 
-    private static String prefixSelectorList(String selectors) {
+    private static String prefixSelectorList(String selectors, String scopeClass) {
         // Preserve leading whitespace (newlines, indentation inside an
         // @media block) so a rule keeps its layout after the prefix is
         // inserted. Trailing whitespace is dropped — the caller appends
         // " {" and we don't want a double space.
         String leading = "";
         int firstNonWs = 0;
-        while (firstNonWs < selectors.length()
-            && Character.isWhitespace(selectors.charAt(firstNonWs))) firstNonWs++;
+        while (firstNonWs < selectors.length() && Character.isWhitespace(selectors.charAt(firstNonWs))) firstNonWs++;
         if (firstNonWs > 0) leading = selectors.substring(0, firstNonWs);
         String trimmed = selectors.substring(firstNonWs).trim();
         if (trimmed.isEmpty()) return selectors;
@@ -247,12 +282,12 @@ public final class CssScopePrefixer {
             if (c == '(') depth++;
             else if (c == ')') depth = Math.max(0, depth - 1);
             else if (c == ',' && depth == 0) {
-                result.append(prefixOne(noComments.substring(start, i).trim()));
+                result.append(prefixOne(noComments.substring(start, i).trim(), scopeClass));
                 result.append(", ");
                 start = i + 1;
             }
         }
-        result.append(prefixOne(noComments.substring(start).trim()));
+        result.append(prefixOne(noComments.substring(start).trim(), scopeClass));
         return leading + result;
     }
 
@@ -280,17 +315,26 @@ public final class CssScopePrefixer {
         return out.toString();
     }
 
-    private static String prefixOne(String selector) {
+    private static String prefixOne(String selector, String scopeClass) {
         if (selector.isEmpty()) return selector;
-        // The scope class is doubled (.markdown-document-preview twice)
-        // so the rule's specificity matches a Vue scoped style like
-        // `.markdown-view[data-v-xxx] a` (one class + one attribute = 0,2,0).
-        // A single .markdown-document-preview would lose the cascade
-        // to MarkdownView's scoped styles and the theme would not apply
+        // Pre-scoped selectors pass through untouched — see the class
+        // comment. The token check is boundary-aware: ".chat-theme" does
+        // not count as contained in ".chat-theme-dark", but does count in
+        // ".chat-theme[data-mode=dark] .bubble".
+        if (Pattern.compile(Pattern.quote(scopeClass) + "(?![\\w-])")
+                .matcher(selector)
+                .find()) {
+            return selector;
+        }
+        // The scope class is doubled (e.g. .markdown-document-preview
+        // twice) so the rule's specificity matches a Vue scoped style
+        // like `.markdown-view[data-v-xxx] a` (one class + one attribute
+        // = 0,2,0). A single scope class would lose the cascade to
+        // MarkdownView's scoped styles and the theme would not apply
         // to links, code backgrounds, etc. Doubling gives 0,2,0 too, and
         // source order then decides — the theme <style> comes after the
         // scoped styles in the DOM, so the theme wins ties.
-        String scope = SCOPE + SCOPE;
+        String scope = scopeClass + scopeClass;
         // One form covers both cases: a leading combinator (`> h1`) reads as
         // "direct child of the scope root" once the class is on its left,
         // which is exactly the same concatenation a plain selector needs.

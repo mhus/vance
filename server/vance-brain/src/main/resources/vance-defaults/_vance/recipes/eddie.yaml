@@ -15,6 +15,10 @@ description: |
   project. Default for engine 'eddie' when no specific recipe is
   named.
 engine: eddie
+# Chat look for sessions on this recipe: soft pastel blue transcript
+# (_vance/chat-themes/eddie.css). Pure UI metadata — never read by spawn
+# or engine logic. See specification/public/chat-themes.md.
+webTheme: eddie
 params:
   # Degradation ladder, first configured wins: engine-specific eddie →
   # surface-tier chat → strong analyze tier → ai.default.*.

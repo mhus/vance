@@ -1,0 +1,49 @@
+/* Vance default chat theme — intentionally no rules.
+ *
+ * This file is the normal state of every web chat session: a recipe
+ * without a `webTheme:` line (or with a name that does not resolve)
+ * serves this stylesheet. Keeping it rule-free means "no theme" and
+ * "default theme" render identically — the chat keeps its own design
+ * (Vue scoped styles on the message components), nothing shifts.
+ *
+ * It is also the template to copy when authoring a chat theme, and an
+ * override point: a `default.css` in the `_vance` tenant project or in
+ * a user project replaces this file for every chat of that scope.
+ *
+ * ── Authoring contract ──────────────────────────────────────────────
+ *
+ * 1. Prefer design tokens over hard-coded colors. The chat runs in
+ *    light and dark mode; the DaisyUI variables below flip with the
+ *    mode, so rules built on them survive both:
+ *
+ *      --color-primary            accent (buttons, links, focus)
+ *      --color-primary-content   text on a primary fill
+ *      --color-base-100 … -300    page / card / hover surfaces
+ *      --color-base-content       default text on those surfaces
+ *      --color-neutral, --color-neutral-content
+ *      --color-info / -success / -warning / -error (…-content)
+ *
+ *    Rules using hard-coded colors only look right in one mode.
+ *
+ * 2. The served CSS is fenced to the transcript root (class
+ *    `chat-theme`); plain selectors apply below it:
+ *
+ *      .msg-user { border-left-color: var(--color-primary); }
+ *
+ * 3. A selector that already contains `.chat-theme` is passed through
+ *    untouched — the escape hatch for rules the plain prefix cannot
+ *    express, most importantly dark-mode overrides:
+ *
+ *      .chat-theme[data-mode=dark] .msg-user { border-left-color: var(--color-info); }
+ *
+ *    The transcript container mirrors the active mode in its
+ *    `data-mode` attribute ("light" | "dark").
+ *
+ * 4. No CSS nesting, no `&` — the scope prefixer walks flat rules only.
+ *    Nesting renders wrong in the browser (a documented limit, same as
+ *    for report themes).
+ *
+ * 5. Filtered constructs never reach the browser: `@import`, external
+ *    `url()` (only `url(data:…)` survives), `javascript:` URIs. Custom
+ *    fonts must be embedded as data URIs; prefer system fonts.
+ */

@@ -43,4 +43,14 @@ public class RecipeListedDto {
      * form the trailing group.
      */
     private @Nullable String category;
+
+    /**
+     * Optional chat theme name ({@code webTheme:} in the recipe YAML) —
+     * what the web chat transcript of a session running this recipe is
+     * styled with. Pure display metadata: {@code null} means the neutral
+     * bundled default. Surfaced for picker previews; the authoritative
+     * per-session value rides {@code session-bootstrap} and the session
+     * list ({@code chatTheme} on the session DTOs).
+     */
+    private @Nullable String webTheme;
 }

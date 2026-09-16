@@ -13,6 +13,12 @@
 // is registered the first time {@link applyTheme} runs and re-uses the
 // same handler for every later call.
 
+// The resolved mode is also mirrored into a reactive ref
+// ({@link resolvedUiTheme}) for components that need it as a binding —
+// see the chat theme frame.
+
+import { ref } from 'vue';
+
 import { getActiveTheme, type WebUiTheme } from './webUiSession';
 
 type ResolvedTheme = 'light' | 'dark';
@@ -28,10 +34,22 @@ function resolveTheme(value: WebUiTheme): ResolvedTheme {
   return window.matchMedia(DARK_QUERY).matches ? 'dark' : 'light';
 }
 
+/**
+ * The resolved light/dark mode as a reactive ref, mirrored from
+ * {@code paintResolved}. The chat theme frame binds it onto the
+ * transcript container ({@code data-mode}) so a chat theme can write
+ * mode-specific rules against its own scope root (
+ * {@code .chat-theme[data-mode=dark] …}) — the mode itself lives on
+ * {@code <html>}, an ancestor a descendant-scoped stylesheet cannot
+ * address.
+ */
+export const resolvedUiTheme = ref<ResolvedTheme>('light');
+
 function paintResolved(resolved: ResolvedTheme): void {
   const root = document.documentElement;
   root.dataset.theme = resolved;
   root.classList.toggle('dark', resolved === 'dark');
+  resolvedUiTheme.value = resolved;
 }
 
 /**

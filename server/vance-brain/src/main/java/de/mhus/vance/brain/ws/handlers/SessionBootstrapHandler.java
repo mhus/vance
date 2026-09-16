@@ -83,6 +83,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final SessionConnectionRegistry connectionRegistry;
     private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;
     private final SessionChatBootstrapper chatBootstrapper;
+    private final de.mhus.vance.brain.chattheme.ChatThemeResolver chatThemeResolver;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final ProcessCountsPusher processCountsPusher;
     private final PlanStateInitialPusher planStateInitialPusher;
@@ -326,6 +327,15 @@ public class SessionBootstrapHandler implements WsHandler {
                 .chatProcessId(chatProcess == null ? null : chatProcess.getId())
                 .chatProcessName(chatProcess == null ? null : chatProcess.getName())
                 .chatEngine(chatProcess == null ? null : chatProcess.getThinkEngine())
+                // The web chat transcript theme: the recipe's webTheme, or the
+                // default theme when the chat process runs without a recipe.
+                // Resolved server-side — the client never loads the recipe, it
+                // only fetches the CSS under this name.
+                .chatTheme(
+                        chatProcess == null
+                                ? null
+                                : chatThemeResolver.effectiveThemeName(
+                                        ctx.getTenantId(), session.getProjectId(), chatProcess.getRecipeName()))
                 .planStates(planStateInitialPusher.collectPlanStates(ctx.getTenantId(), session.getSessionId()))
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.SESSION_BOOTSTRAP, response);

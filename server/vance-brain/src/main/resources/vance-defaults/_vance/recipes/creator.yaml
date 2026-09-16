@@ -33,6 +33,13 @@ description: |
   sources: `brain_info` reports the running version, `git_checkout`
   clones the public repo at exactly that revision.
 engine: ford
+# Chat look for sessions on this recipe: soft pastel red transcript
+# (_vance/chat-themes/creator.css). Applies when this recipe runs as
+# the session chat (picked in the recipe picker / chatRecipe override) —
+# worker echoes in other sessions inherit that session's theme. Pure
+# UI metadata, never read by spawn or engine logic. See
+# specification/public/chat-themes.md.
+webTheme: creator
 params:
   # Worker ladder, first configured wins: engine-specific creator (tenant
   # override for this worker specifically) → strong analyze tier → ai.default.*.

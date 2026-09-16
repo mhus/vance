@@ -131,6 +131,7 @@ class RecipeControllerTest {
                 projectKind,
                 null, // title
                 null, // category
+                null, // webTheme
                 List.of(), // tags
                 List.of(), // guards
                 List.of(), // tenants

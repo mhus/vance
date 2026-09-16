@@ -51,6 +51,7 @@ public class SessionListController {
     private final SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
     private final RequestAuthority authority;
+    private final de.mhus.vance.brain.chattheme.ChatThemeResolver chatThemeResolver;
 
     @GetMapping
     public List<SessionSummaryRichDto> list(
@@ -75,10 +76,17 @@ public class SessionListController {
         }
 
         Map<String, String> recipeByProcessId = collectChatRecipes(sessions);
+        // Memo for resolveChatTheme — keyed on project + recipe.
+        Map<String, String> themeMemo = new HashMap<>();
         List<SessionSummaryRichDto> out = new ArrayList<>(sessions.size());
         for (SessionDocument s : sessions) {
             String recipe = s.getChatProcessId() == null ? null : recipeByProcessId.get(s.getChatProcessId());
-            out.add(toDto(s, recipe));
+            // Theme resolution is a recipe-cascade read per (project,
+            // recipe) — memoised per request so a session list with many
+            // sessions of the same project costs one load per recipe, not
+            // one per session.
+            String theme = resolveChatTheme(tenant, s.getProjectId(), recipe, themeMemo);
+            out.add(toDto(s, recipe, theme));
         }
         return out;
     }
@@ -105,6 +113,18 @@ public class SessionListController {
             }
         }
         return byProcessId;
+    }
+
+    /**
+     * The chat theme name for a session's recipe, memoised per request.
+     * {@code null} recipe (engine-default chat process, or none yet)
+     * needs no lookup — the client maps it to the {@code default} theme.
+     */
+    private String resolveChatTheme(
+            String tenant, @Nullable String projectId, @Nullable String recipe, Map<String, String> memo) {
+        if (recipe == null) return null;
+        String key = projectId + "\n" + recipe;
+        return memo.computeIfAbsent(key, k -> chatThemeResolver.effectiveThemeName(tenant, projectId, recipe));
     }
 
     private static Set<SessionStatus> resolveStatuses(@Nullable List<String> raw, boolean includeArchived) {
@@ -137,10 +157,14 @@ public class SessionListController {
      * dependency surface. The list endpoint above does the join.
      */
     static SessionSummaryRichDto toDto(SessionDocument s) {
-        return toDto(s, null);
+        return toDto(s, null, null);
     }
 
     static SessionSummaryRichDto toDto(SessionDocument s, @Nullable String chatRecipe) {
+        return toDto(s, chatRecipe, null);
+    }
+
+    static SessionSummaryRichDto toDto(SessionDocument s, @Nullable String chatRecipe, @Nullable String chatTheme) {
         List<String> tags = s.getTags() == null ? List.of() : new ArrayList<>(s.getTags());
         return SessionSummaryRichDto.builder()
                 .sessionId(s.getSessionId())
@@ -161,6 +185,7 @@ public class SessionListController {
                 .pinned(s.isPinned())
                 .allowMultipleClients(s.isAllowMultipleClients())
                 .chatRecipe(chatRecipe)
+                .chatTheme(chatTheme)
                 .firstUserMessage(s.getFirstUserMessage())
                 .lastMessagePreview(s.getLastMessagePreview())
                 .lastMessageRole(s.getLastMessageRole())

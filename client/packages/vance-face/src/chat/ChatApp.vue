@@ -135,6 +135,14 @@ const connectionTooltip = computed<string | undefined>(() => {
 const chatProcessName = ref<string | null>(null);
 const chatProjectId = ref<string>('');
 /**
+ * Chat theme name of the bound session (the recipe's `webTheme`,
+ * resolved server-side on session-list), or {@code null} when the
+ * session carries none — the chat view then styles with the bundled
+ * default theme. Fetched together with the project id in
+ * {@link resolveSessionAndProcess}; see ChatTheme.vue.
+ */
+const chatTheme = ref<string | null>(null);
+/**
  * Display name of the bound session, fetched together with the
  * project id in {@link resolveSessionAndProcess}. Empty when no
  * session is bound or the session-list lookup failed. Drives the
@@ -250,9 +258,14 @@ async function resolveSessionAndProcess(sessionId: string): Promise<void> {
     const summary = resp.sessions?.find((s) => s.sessionId === sessionId);
     chatProjectId.value = summary?.projectId ?? '';
     sessionDisplayName.value = summary?.displayName ?? null;
+    // The recipe-driven chat theme (server-resolved name; the frame
+    // maps null → default). A failed lookup is a styling no-op,
+    // never an error state.
+    chatTheme.value = summary?.chatTheme ?? null;
   } catch {
     chatProjectId.value = '';
     sessionDisplayName.value = null;
+    chatTheme.value = null;
   }
   // The chat-process name is fixed by SessionChatBootstrapper to
   // CHAT_PROCESS_NAME = "chat" — exactly one per session.
@@ -575,6 +588,7 @@ async function openSocketForPicker(): Promise<boolean> {
   progressEvents.value = [];
   chatProcessName.value = null;
   chatProjectId.value = '';
+  chatTheme.value = null;
   return true;
 }
 
@@ -949,6 +963,7 @@ function openInCortex(): void {
           :mediation="mediation"
           :chat-process-name="chatProcessName"
           :chat-project-id="chatProjectId"
+          :chat-theme="chatTheme"
           :follow-up-suggestion="followUpSuggestion"
           printable
           @leave="leaveLive"

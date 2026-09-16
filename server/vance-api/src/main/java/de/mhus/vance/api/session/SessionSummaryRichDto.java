@@ -93,6 +93,15 @@ public class SessionSummaryRichDto {
      */
     private @Nullable String chatRecipe;
 
+    /**
+     * Chat theme name the web client should style the session's
+     * transcript with: the {@code webTheme:} value of the recipe
+     * behind {@link #chatRecipe}, resolved at list time. {@code null}
+     * when no recipe applies — clients fetch the {@code default} theme
+     * then. See {@code planning/chat-themes.md}.
+     */
+    private @Nullable String chatTheme;
+
     // ─── Denormalised chat preview (set by ChatMessageService.append) ───
 
     /** Stable topic — first user message, truncated. */

@@ -156,6 +156,17 @@ public record ResolvedRecipe(
          * {@code RecipeCategoriesService}).
          */
         @Nullable String category,
+        /**
+         * Web chat theme name ({@code webTheme:} in the recipe YAML,
+         * validated against {@code [a-z0-9-]+} at load time). Pure UI
+         * metadata for the web chat transcript — never read by spawn or
+         * engine logic. The value names a stylesheet under
+         * {@code _vance/chat-themes/} that the web chat fetches when a
+         * session of this recipe runs; {@code null} means the neutral
+         * bundled default. See {@code planning/chat-themes.md} and
+         * {@code ChatThemeResolver}.
+         */
+        @Nullable String webTheme,
         List<String> tags,
         /**
          * Completion guards (recipe {@code guard:} block). Engine-agnostic:
@@ -259,6 +270,7 @@ public record ResolvedRecipe(
                 RecipeProjectKind.NORMAL,
                 title,
                 null,
+                null,
                 tags,
                 guards,
                 List.of(),
@@ -325,6 +337,7 @@ public record ResolvedRecipe(
                 RecipeProjectKind.NORMAL,
                 title,
                 category,
+                null,
                 tags,
                 guards,
                 tenants,

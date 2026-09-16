@@ -1,0 +1,15 @@
+/* Eddie chat theme — soft pastel blue transcript.
+ *
+ * Selected by `webTheme: eddie` in the bundled eddie recipe. The
+ * background rules use the pre-scoped form (they address the scope
+ * root itself, so they pass the server-side prefixer untouched and
+ * paint the full message area); the dark variant keeps the same hue
+ * family, dimmed to sit behind the dark-mode bubbles.
+ */
+.chat-theme {
+  background-color: #e6f0fa;
+}
+
+.chat-theme[data-mode='dark'] {
+  background-color: #14202e;
+}

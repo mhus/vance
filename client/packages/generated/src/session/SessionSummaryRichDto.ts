@@ -25,6 +25,7 @@ export interface SessionSummaryRichDto {
   pinned: boolean;
   allowMultipleClients: boolean;
   chatRecipe?: string;
+  chatTheme?: string;
   firstUserMessage?: string;
   lastMessagePreview?: string;
   lastMessageRole?: string;

@@ -51,6 +51,17 @@ public class RecipeLoader {
     /** File suffix kept on the document path; the recipe name itself does not carry it. */
     public static final String RECIPE_PATH_SUFFIX = ".yaml";
 
+    /**
+     * Valid {@code webTheme:} values — a chat theme name is also a
+     * path segment of the chat-theme endpoint, so the same charset the
+     * {@code ChatThemeResolver} accepts applies here. Kept as its own
+     * constant rather than importing the resolver's: the loader is in
+     * the recipe layer, the resolver in the chat-theme layer, and a
+     * copy of one regex beats a layer cross-dependency for a rule
+     * that changes for both at once anyway.
+     */
+    private static final java.util.regex.Pattern CHAT_THEME_NAME = java.util.regex.Pattern.compile("[a-z0-9-]+");
+
     private final DocumentService documentService;
     private final PromptTemplateRenderer templateRenderer;
 
@@ -251,6 +262,7 @@ public class RecipeLoader {
         boolean web = spec.get("web") instanceof Boolean wb && wb;
         String title = stringOrNull(spec.get("title"));
         String category = parseCategory(spec.get("category"));
+        String webTheme = parseWebTheme(spec.get("webTheme"));
         List<String> tags = stringList(spec.get("tags"), "tags");
         List<String> tenants = stringList(spec.get("tenants"), "tenants");
         List<GuardConfig> guards = parseGuards(spec.get("guard"));
@@ -285,6 +297,7 @@ public class RecipeLoader {
                 projectKind,
                 title,
                 category,
+                webTheme,
                 tags,
                 guards,
                 tenants,
@@ -639,6 +652,32 @@ public class RecipeLoader {
         }
         String normalized = s.trim().toLowerCase(java.util.Locale.ROOT);
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    /**
+     * Parses the optional {@code webTheme:} field — the chat theme
+     * name of the recipe's web sessions (see
+     * {@code planning/chat-themes.md}).
+     *
+     * <p>Unlike {@code category} (normalised, display-only), an invalid
+     * value <b>fails the recipe load</b>: the name later becomes a path
+     * segment of the chat-theme endpoint, and a typo here is an author
+     * error to hear about at load time, not a silently never-applying
+     * theme. The serving endpoint still degrades unknown *but valid*
+     * names to the default theme (fail-open) — existence is runtime,
+     * well-formedness is load time.
+     */
+    private static String parseWebTheme(Object raw) {
+        if (raw == null) return null;
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("'webTheme' must be a string");
+        }
+        String name = s.trim();
+        if (name.isEmpty()) return null;
+        if (!CHAT_THEME_NAME.matcher(name).matches()) {
+            throw new IllegalStateException("'webTheme' must match [a-z0-9-]+, got '" + name + "'");
+        }
+        return name;
     }
 
     /**

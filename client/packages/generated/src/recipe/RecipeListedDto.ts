@@ -8,4 +8,5 @@ export interface RecipeListedDto {
   title?: string;
   description?: string;
   category?: string;
+  webTheme?: string;
 }

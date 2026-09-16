@@ -106,6 +106,9 @@ class SessionBootstrapHandlerActivationTest {
     private SessionChatBootstrapper chatBootstrapper;
 
     @Mock
+    private de.mhus.vance.brain.chattheme.ChatThemeResolver chatThemeResolver;
+
+    @Mock
     private InboxPendingSummaryPusher inboxSummaryPusher;
 
     @Mock
@@ -146,6 +149,7 @@ class SessionBootstrapHandlerActivationTest {
                 connectionRegistry,
                 rosterBroadcaster,
                 chatBootstrapper,
+                chatThemeResolver,
                 inboxSummaryPusher,
                 processCountsPusher,
                 planStateInitialPusher,

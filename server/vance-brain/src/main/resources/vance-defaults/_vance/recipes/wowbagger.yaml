@@ -1,0 +1,45 @@
+# Wowbagger default recipe — bulk record processor (§4a architecture).
+#
+# Wowbagger is a Ford-style chat agent over a mechanical worker pool: the
+# agent talks to the user, analyzes the source, configures the run via the
+# wowbagger_* tools and steers the pool (start/stop/resize/re-run). The
+# pool grinds records through LightLm worker calls in parallel chunks and
+# publishes each finished chunk as a document (atomic commit, crash-safe
+# resume). See planning/wowbagger-engine.md.
+#
+# No task/source spawn params: a run without configuration is not an
+# error — the agent asks the user (or reads the source) and calls
+# wowbagger_configure itself. The persisted structure lives in
+# engineParams.wowbaggerState, not in recipe params.
+
+title: "Wowbagger — Bulk Record Processor"
+listed: true
+category: workers
+description: |
+  Bulk processor for large, uniform record sets (lines or JSONL in the
+  project workspace). A chat agent sets up the run with you — task,
+  source, formats, chunk size, thread count — then drives a mechanical
+  worker pool through it: parallel chunks on a fast worker model, each
+  finished chunk published as a document immediately (visible progress,
+  crash-safe resume), ordered result merge at the end. Pause, resume,
+  resize and re-run failed chunks at any point; the agent wakes up on
+  progress, failures and completion.
+engine: wowbagger
+params:
+  model: default:ford,default:analyze
+  # Safety-net cap for the agent's tool loop (Ford-style natural stop).
+  maxIterations: 40
+  # Agent prompt lives in the document cascade: project → _vance →
+  # classpath (vance-defaults/_vance/prompts/). The engine injects a
+  # live status block (structure, run state, threads, failures) into
+  # every turn — the agent always knows where the run stands.
+  promptDocument: _vance/prompts/wowbagger-prompt.md
+  # Worker calls are NOT made by this recipe: the pool calls the
+  # internal wowbagger-worker profile (jeltz/LightLm, fast tier) —
+  # bulk throughput never touches the agent's model tier.
+  # Cost gate: the resolved worker model must match the operator
+  # allowlist setting wowbagger.allowed-models (comma-separated,
+  # * wildcards, project or _tenant scope) or configure/start refuse.
+tags:
+  - worker
+  - engine-default

@@ -1,0 +1,35 @@
+# Internal config profile for Wowbagger worker calls — consumed by
+# LightLlmService, NOT spawnable (internal: true). Called once per chunk:
+# the engine hands over the per-run task instruction plus the chunk's
+# records; this profile pins the model and the output discipline.
+#
+# The retry budget lives in the ENGINE (chunkRetries — fresh call per
+# retry), not in a schema loop: worker output is lines, not JSON.
+
+description: |
+  Internal config profile for Wowbagger worker calls (LightLlm, not
+  spawnable): per-run task + chunk records in, one output line per
+  record out. Pinned to the fast tier — bulk throughput is the point.
+engine: jeltz
+internal: true
+params:
+  model: default:fast
+  temperature: 0.1
+promptPrefix: |
+  You are a Wowbagger worker. You receive a task instruction and a block
+  of input records, exactly one record per line. Process EVERY record
+  independently and reply with exactly one output line per input line,
+  in the same order.
+
+  Output rules:
+  - Line N of your reply is the result of line N of the input.
+  - Output lines only — no headers, no comments, no blank lines,
+    no markdown fences, no numbering.
+  - If the task asks for JSON objects, each output line is one JSON
+    object on a single line (JSONL).
+  - Never merge, split or reorder records. If a single record cannot be
+    processed, still emit an output line for it (e.g. an error JSON
+    object or an empty result) — the line count must always match.
+tags:
+  - internal
+  - wowbagger

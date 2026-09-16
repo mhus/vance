@@ -2,8 +2,6 @@ package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.brain.documents.DocumentBufferService;
 import de.mhus.vance.brain.documents.DocumentInvalidationEmitter;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -11,6 +9,9 @@ import de.mhus.vance.shared.document.kind.validate.Finding;
 import de.mhus.vance.shared.document.kind.validate.KindValidationResult;
 import de.mhus.vance.shared.document.kind.validate.KindValidationService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.ContentHashes;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,18 +67,17 @@ public class KindToolSupport {
      * The resolver decides — reserved-prefix writes need ADMIN (R4),
      * ordinary project docs need WRITER (R3).
      */
-    public void enforceDocWrite(ToolInvocationContext ctx, String projectName, String path,
-            de.mhus.vance.shared.permission.Action action) {
+    public void enforceDocWrite(
+            ToolInvocationContext ctx, String projectName, String path, de.mhus.vance.shared.permission.Action action) {
         permissionService.enforce(
                 contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new de.mhus.vance.shared.permission.Resource.Document(
-                        ctx.tenantId(), projectName, path),
+                new de.mhus.vance.shared.permission.Resource.Document(ctx.tenantId(), projectName, path),
                 action);
     }
 
     /** Overload for an already-loaded document. */
-    public void enforceDocWrite(ToolInvocationContext ctx, DocumentDocument doc,
-            de.mhus.vance.shared.permission.Action action) {
+    public void enforceDocWrite(
+            ToolInvocationContext ctx, DocumentDocument doc, de.mhus.vance.shared.permission.Action action) {
         enforceDocWrite(ctx, doc.getProjectId(), doc.getPath(), action);
     }
 
@@ -92,14 +92,12 @@ public class KindToolSupport {
      * actor so the DocumentService chokepoint sees a real reason, not a
      * transitional default. (F1)
      */
-    public de.mhus.vance.shared.permission.WriteActor writeActor(
-            ToolInvocationContext ctx, String path) {
+    public de.mhus.vance.shared.permission.WriteActor writeActor(ToolInvocationContext ctx, String path) {
         return contextFactory.writeActor(ctx.tenantId(), ctx.userId(), path);
     }
 
     /** Overload for an already-loaded document. */
-    public de.mhus.vance.shared.permission.WriteActor writeActor(
-            ToolInvocationContext ctx, DocumentDocument doc) {
+    public de.mhus.vance.shared.permission.WriteActor writeActor(ToolInvocationContext ctx, DocumentDocument doc) {
         return writeActor(ctx, doc.getPath());
     }
 
@@ -122,8 +120,7 @@ public class KindToolSupport {
                 contextFactory.forToolSubject(ctx.tenantId(), ctx.userId());
         boolean admin = permissionService.check(
                 subject,
-                new de.mhus.vance.shared.permission.Resource.Project(
-                        ctx.tenantId(), doc.getProjectId()),
+                new de.mhus.vance.shared.permission.Resource.Project(ctx.tenantId(), doc.getProjectId()),
                 de.mhus.vance.shared.permission.Action.ADMIN);
         return admin || subject.subjectId().equals(doc.getCreatedBy());
     }
@@ -146,8 +143,7 @@ public class KindToolSupport {
      * {@link #enforceDocWrite}. (permission-system read path)
      */
     public void enforceDocRead(ToolInvocationContext ctx, DocumentDocument doc) {
-        enforceDocWrite(ctx, doc.getProjectId(), doc.getPath(),
-                de.mhus.vance.shared.permission.Action.READ);
+        enforceDocWrite(ctx, doc.getProjectId(), doc.getPath(), de.mhus.vance.shared.permission.Action.READ);
     }
 
     /**
@@ -158,8 +154,7 @@ public class KindToolSupport {
      * source so no such tool can mutate a document it may only read.
      */
     public DocumentDocument loadDocumentForWrite(
-            Map<String, Object> params, ToolInvocationContext ctx,
-            de.mhus.vance.shared.permission.Action action) {
+            Map<String, Object> params, ToolInvocationContext ctx, de.mhus.vance.shared.permission.Action action) {
         DocumentDocument doc = loadDocument(params, ctx);
         enforceDocWrite(ctx, doc, action);
         return doc;
@@ -203,9 +198,10 @@ public class KindToolSupport {
         }
         // Path branch: resolveProject already enforces Project READ.
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        DocumentDocument disk = documentService.findByPath(ctx.tenantId(), project.getName(), path)
-                .orElseThrow(() -> new ToolException(
-                        "Document '" + path + "' not found in project '" + project.getName() + "'"));
+        DocumentDocument disk = documentService
+                .findByPath(ctx.tenantId(), project.getName(), path)
+                .orElseThrow(() ->
+                        new ToolException("Document '" + path + "' not found in project '" + project.getName() + "'"));
         // Re-route through the buffer so subsequent reads in this
         // process see our writes.
         DocumentDocument buffered = bufferService.read(ctx.processId(), disk.getId());
@@ -221,8 +217,8 @@ public class KindToolSupport {
     public DocumentDocument requireKind(DocumentDocument doc, Set<String> expected) {
         String kind = doc.getKind();
         if (kind == null || !expected.contains(kind.toLowerCase())) {
-            throw new ToolException("Document " + identify(doc)
-                    + " has kind '" + kind + "', expected one of " + expected);
+            throw new ToolException(
+                    "Document " + identify(doc) + " has kind '" + kind + "', expected one of " + expected);
         }
         return doc;
     }
@@ -287,8 +283,7 @@ public class KindToolSupport {
      * there is nothing actionable to report. Callers that ignore the return
      * value keep the old void-style behaviour.
      */
-    public @Nullable Map<String, Object> writeBody(
-            DocumentDocument doc, String newBody, ToolInvocationContext ctx) {
+    public @Nullable Map<String, Object> writeBody(DocumentDocument doc, String newBody, ToolInvocationContext ctx) {
         enforceDocWrite(ctx, doc, de.mhus.vance.shared.permission.Action.WRITE);
         bufferService.writeBody(ctx.processId(), doc.getId(), newBody);
         bufferService.flush(ctx.processId(), doc.getId());
@@ -315,8 +310,7 @@ public class KindToolSupport {
      * {@code kind} drives the check; a blank kind falls back to header
      * inference inside the service.
      */
-    public @Nullable Map<String, Object> validateWritten(
-            DocumentDocument doc, String body, ToolInvocationContext ctx) {
+    public @Nullable Map<String, Object> validateWritten(DocumentDocument doc, String body, ToolInvocationContext ctx) {
         try {
             KindValidationResult result = validationService.validateContent(
                     ctx.tenantId(), doc.getProjectId(), doc.getKind(), body, doc.getPath());
@@ -373,7 +367,11 @@ public class KindToolSupport {
         Object v = params.get(key);
         if (v instanceof Number n) return n.intValue();
         if (v instanceof String s) {
-            try { return Integer.parseInt(s.trim()); } catch (NumberFormatException e) { return null; }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
         }
         return null;
     }
@@ -415,15 +413,86 @@ public class KindToolSupport {
      *  their own {@code paramsSchema}. */
     public static Map<String, Object> documentSelectorProperties() {
         return Map.of(
-                "projectId", Map.of(
-                        "type", "string",
-                        "description", "Optional project name. Defaults to the active project."),
-                "path", Map.of(
-                        "type", "string",
-                        "description", "Document path inside the project."),
-                "id", Map.of(
-                        "type", "string",
-                        "description", "Alternative: Mongo id of the document. Use one of path/id."));
+                "projectId",
+                        Map.of(
+                                "type", "string",
+                                "description", "Optional project name. Defaults to the active project."),
+                "path",
+                        Map.of(
+                                "type", "string",
+                                "description", "Document path inside the project."),
+                "id",
+                        Map.of(
+                                "type", "string",
+                                "description", "Alternative: Mongo id of the document. Use one of path/id."));
+    }
+
+    // ── If-Match (contentHash) guard ────────────────────────────────
+
+    /**
+     * Schema fragment for the optional {@code expectedContentHash} write
+     * param, shared by the doc_* write tools so the guard reads identically
+     * everywhere it is declared. Same contract as the file_* side — see the
+     * If-Match protocol in {@code specification/public/work-target.md}.
+     */
+    public static Map<String, Object> expectedContentHashProperty() {
+        return Map.of(
+                "type",
+                "string",
+                "description",
+                "Optional If-Match guard: the contentHash from your last read "
+                        + "(doc_read / doc_read_lines) of this document. The change is refused "
+                        + "when the document changed meanwhile.");
+    }
+
+    /**
+     * The optional {@code expectedContentHash} param. A blank value is an
+     * error, not an absent guard: an empty string signals a confused caller,
+     * not a deliberate omit. Same rule as the file_* side.
+     */
+    public static @Nullable String expectedContentHashOrNull(@Nullable Map<String, Object> params) {
+        String raw = paramRawString(params, "expectedContentHash");
+        if (raw == null) return null;
+        if (raw.isBlank()) {
+            throw new ToolException("'expectedContentHash' must be a non-empty string — pass the "
+                    + "contentHash from your last read, or omit it");
+        }
+        return raw;
+    }
+
+    /**
+     * Doc-side twin of the file_* If-Match protocol: verify the caller's
+     * {@code expectedContentHash} against the current body and refuse the
+     * change on mismatch — the overwrite of a concurrently modified document
+     * (user in the Cortex tab, second process, skill) becomes a readable
+     * error instead of a silent lost update. No-op when the param is absent.
+     *
+     * <p>Call before any content matching (snippet search, line-range
+     * anchors): a stale read usually breaks those too, and the model should
+     * get the "read again" advice, not a content-mismatch hint.
+     */
+    public static void enforceContentHashMatch(
+            @Nullable Map<String, Object> params, DocumentDocument doc, String currentBody) {
+        String expected = expectedContentHashOrNull(params);
+        if (expected == null) return;
+        checkContentHash(expected, doc, currentBody);
+    }
+
+    /**
+     * String-arg core of {@link #enforceContentHashMatch}, for callers that
+     * parsed (and presence-decided) the guard themselves — e.g. the upsert in
+     * {@code doc_write}, where an expected hash on a vanished path is its own
+     * named refusal.
+     */
+    public static void checkContentHash(String expectedContentHash, DocumentDocument doc, String currentBody) {
+        String actual = ContentHashes.sha256Hex(currentBody);
+        if (!expectedContentHash.equals(actual)) {
+            throw new ToolException("Document changed since it was read (contentHash mismatch: expected "
+                    + ContentHashes.abbreviate(expectedContentHash)
+                    + ", found " + ContentHashes.abbreviate(actual)
+                    + ") — read the document again and retry with the current contentHash "
+                    + "(id=" + doc.getId() + ", path='" + doc.getPath() + "')");
+        }
     }
 
     /**
@@ -440,9 +509,11 @@ public class KindToolSupport {
      */
     public static Map<String, Object> documentSelectorPropertiesWithIdAlias() {
         Map<String, Object> p = new LinkedHashMap<>(documentSelectorProperties());
-        p.put("documentId", Map.of(
-                "type", "string",
-                "description", "Deprecated alias for 'id'. Prefer path or id."));
+        p.put(
+                "documentId",
+                Map.of(
+                        "type", "string",
+                        "description", "Deprecated alias for 'id'. Prefer path or id."));
         return p;
     }
 

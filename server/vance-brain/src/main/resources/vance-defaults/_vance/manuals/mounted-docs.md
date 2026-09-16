@@ -20,7 +20,10 @@ fetched from the source each time.
 `doc_find`, `doc_grep`, `memory_search` and `doc_list_in_folder` **do not
 see mounted files.** They scan `documents/` by default, and `_ext/` is
 deliberately outside it — a foreign library must not turn up in every
-search for a note.
+search for a note. Whole-project scans agree: `doc_grep_path` and
+`doc_count` with `pathPrefix='*'` skip `_ext/` on purpose (one mounted
+read can be an external fetch). Only an explicit `_ext/…` prefix scans
+mounted files, deliberately.
 
 So: **never say a file is unavailable, or that the project has no such
 document, before calling `mount_list`.** If the user mentions a library, an

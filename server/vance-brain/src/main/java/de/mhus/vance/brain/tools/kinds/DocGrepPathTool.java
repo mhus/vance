@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.api.documents.AgeDocumentKind;
 import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.jaglan.JaglanPaths;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -53,8 +54,11 @@ public class DocGrepPathTool implements Tool {
                         "Path-prefix scope. Omitted/blank → defaults to 'documents/' "
                                 + "(excludes trash, kit config, chat attachments, engine scratch, "
                                 + "and other system folders). Pass '*' to search the entire "
-                                + "project. Pass any specific prefix (e.g. 'documents/notes/', "
-                                + "'_vance/trash/') to narrow further or address a system folder explicitly."));
+                                + "project (mounted docs under '_ext/' are excluded from a whole-"
+                                + "project scan — use the Jaglan search tools for those; an explicit "
+                                + "'_ext/…' prefix scans them deliberately). Pass any specific prefix "
+                                + "(e.g. 'documents/notes/', '_vance/trash/') to narrow further or "
+                                + "address a system folder explicitly."));
         p.put(
                 "pattern",
                 Map.of("type", "string", "description", "Java regex pattern. Use plain substrings for literal match."));
@@ -83,6 +87,7 @@ public class DocGrepPathTool implements Tool {
                         "description",
                         "Cap on total matches across all documents. Default: " + DEFAULT_LIMIT + ", max: " + MAX_LIMIT
                                 + "."));
+        p.put("maxScannedDocs", DocScanBudget.maxScannedDocsProperty());
         return p;
     }
 
@@ -99,7 +104,11 @@ public class DocGrepPathTool implements Tool {
                 + "Returns either matching lines (with documentId, path, line number, optionally "
                 + "context lines before/after) or just the list of files containing at least one "
                 + "match. Age-encrypted documents are skipped — their bodies are ciphertext. "
-                + "Capped at " + MAX_LIMIT + " matches.";
+                + "The scan is budgeted: at most " + DocScanBudget.DEFAULT_MAX_SCANNED_DOCS
+                + " documents (raise via maxScannedDocs, hard cap " + DocScanBudget.MAX_SCANNED_DOCS_PARAM_CAP
+                + ") and documents over " + (DocScanBudget.MAX_DOC_BYTES / (1024 * 1024)) + " MB are "
+                + "skipped; a stopped scan reports truncated=true and a warning. Capped at "
+                + MAX_LIMIT + " matches.";
     }
 
     @Override
@@ -145,42 +154,58 @@ public class DocGrepPathTool implements Tool {
 
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
         List<DocumentDocument> all = support.documentService().listByProject(ctx.tenantId(), project.getName());
+        ScanScope scope = prepareScope(all, pathPrefix, params);
 
         if ("files_with_matches".equals(outputMode)) {
             List<Map<String, Object>> hits = new ArrayList<>();
-            int scanned = 0;
-            for (DocumentDocument d : all) {
-                if (!pathPrefix.isEmpty() && !d.getPath().startsWith(pathPrefix)) continue;
-                if (AgeDocumentKind.isAgeEncrypted(d.getKind(), d.getMimeType())) continue;
-                if (support.readBody(d, ctx) == null) continue;
-                scanned++;
-                if (containsMatch(support.readBody(d, ctx), pattern, deadline)) {
+            boolean truncated = false;
+            for (DocumentDocument d : scope.candidates()) {
+                if (!scope.budget().tryClaim(d.getSize())) {
+                    if (scope.budget().exhausted()) {
+                        truncated = true;
+                        break;
+                    }
+                    continue; // oversized, skipped
+                }
+                // One fetch per document — this mode used to read every body
+                // twice (null-check plus the actual scan).
+                String body = support.readBody(d, ctx);
+                if (containsMatch(body, pattern, deadline)) {
                     Map<String, Object> hit = new LinkedHashMap<>();
                     hit.put("documentId", d.getId());
                     hit.put("path", d.getPath());
                     hits.add(hit);
-                    if (hits.size() >= limit) break;
+                    if (hits.size() >= limit) {
+                        truncated = true;
+                        break;
+                    }
                 }
             }
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("projectId", project.getName());
             out.put("pattern", patternStr);
-            out.put("scannedDocuments", scanned);
+            out.put("scannedDocuments", scope.budget().scannedDocs());
+            out.put("skippedOversized", scope.budget().skippedOversized());
             out.put("matchCount", hits.size());
+            out.put("truncated", truncated);
+            String warning = scope.budget().warning(scope.candidates().size(), scope.display());
+            if (warning != null) out.put("warning", warning);
             out.put("matches", hits);
             return out;
         }
 
         // content mode
         List<Map<String, Object>> hits = new ArrayList<>();
-        int scanned = 0;
         boolean truncated = false;
         outer:
-        for (DocumentDocument d : all) {
-            if (pathPrefix != null && !d.getPath().startsWith(pathPrefix)) continue;
-            if (AgeDocumentKind.isAgeEncrypted(d.getKind(), d.getMimeType())) continue;
-            if (support.readBody(d, ctx) == null) continue;
-            scanned++;
+        for (DocumentDocument d : scope.candidates()) {
+            if (!scope.budget().tryClaim(d.getSize())) {
+                if (scope.budget().exhausted()) {
+                    truncated = true;
+                    break outer;
+                }
+                continue; // oversized, skipped
+            }
             String[] lines = support.readBody(d, ctx).split("\\R", -1);
             for (int i = 0; i < lines.length; i++) {
                 if (!matchGuarded(pattern, lines[i], deadline)) continue;
@@ -213,12 +238,37 @@ public class DocGrepPathTool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("projectId", project.getName());
         out.put("pattern", patternStr);
-        out.put("scannedDocuments", scanned);
+        out.put("scannedDocuments", scope.budget().scannedDocs());
+        out.put("skippedOversized", scope.budget().skippedOversized());
         out.put("matchCount", hits.size());
         out.put("truncated", truncated);
+        String warning = scope.budget().warning(scope.candidates().size(), scope.display());
+        if (warning != null) out.put("warning", warning);
         out.put("matches", hits);
         return out;
     }
+
+    /**
+     * The scan set for one invocation: prefix- and age-filtered, path-sorted
+     * (so early stops at a budget are deterministic and fair), with mounted
+     * docs excluded from a whole-project ('*') scan — one mounted read can
+     * be an external fetch, which is a different cost profile than a storage
+     * fetch. An explicit {@code _ext/…} prefix keeps them, deliberately.
+     */
+    private ScanScope prepareScope(List<DocumentDocument> all, String pathPrefix, Map<String, Object> params) {
+        boolean wholeProject = pathPrefix.isEmpty();
+        List<DocumentDocument> candidates = new ArrayList<>();
+        for (DocumentDocument d : all) {
+            if (!pathPrefix.isEmpty() && !d.getPath().startsWith(pathPrefix)) continue;
+            if (AgeDocumentKind.isAgeEncrypted(d.getKind(), d.getMimeType())) continue;
+            if (wholeProject && JaglanPaths.isMounted(d.getPath())) continue;
+            candidates.add(d);
+        }
+        candidates.sort(java.util.Comparator.comparing(DocumentDocument::getPath));
+        return new ScanScope(candidates, DocScanBudget.fromParams(params), wholeProject ? "*" : pathPrefix);
+    }
+
+    private record ScanScope(List<DocumentDocument> candidates, DocScanBudget budget, String display) {}
 
     private static final long REGEX_BUDGET_NANOS = 2_000_000_000L; // 2s per grep call
 

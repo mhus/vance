@@ -1,10 +1,10 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.ContentHashes;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,26 +32,47 @@ public class DocReadLinesTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("startLine", Map.of("type", "integer",
-                "description", "1-based line number to start from. Default: 1."));
-        p.put("maxLines", Map.of("type", "integer",
-                "description", "Number of lines to return. Default: " + DEFAULT_LIMIT
-                        + ", max: " + MAX_LIMIT + "."));
+        p.put("startLine", Map.of("type", "integer", "description", "1-based line number to start from. Default: 1."));
+        p.put(
+                "maxLines",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "Number of lines to return. Default: " + DEFAULT_LIMIT + ", max: " + MAX_LIMIT + "."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_read_lines"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_read_lines";
+    }
+
+    @Override
+    public String description() {
         return "Read a slice of an inline document by line range, prefixed with line numbers "
                 + "in `<n>\\t<line>` format. Use `startLine` (1-based) and `maxLines` to page through "
-                + "large bodies without loading the whole thing into context.";
+                + "large bodies without loading the whole thing into context. Every result carries "
+                + "a `contentHash` over the full body — pass it to doc_edit/doc_write as "
+                + "expectedContentHash to refuse the change when the document changed meanwhile.";
     }
-    @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("text-search", "eddie", "read-only"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("text-search", "eddie", "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
@@ -72,15 +93,26 @@ public class DocReadLinesTool implements Tool {
         int offset = offsetParam == null ? 1 : Math.max(1, offsetParam);
         int limit = limitParam == null ? DEFAULT_LIMIT : Math.min(MAX_LIMIT, Math.max(1, limitParam));
 
-        String[] lines = support.readBody(doc, ctx).split("\\R", -1);
+        String body = support.readBody(doc, ctx);
+        String contentHash = ContentHashes.sha256Hex(body);
+        String[] lines = body.split("\\R", -1);
         int total = lines.length;
         if (offset > total) {
-            return Map.of("documentId", doc.getId(),
-                    "totalLines", total,
-                    "startLine", offset,
-                    "returnedLines", 0,
-                    "content", "",
-                    "truncated", false);
+            return Map.of(
+                    "documentId",
+                    doc.getId(),
+                    "totalLines",
+                    total,
+                    "startLine",
+                    offset,
+                    "returnedLines",
+                    0,
+                    "content",
+                    "",
+                    "contentHash",
+                    contentHash,
+                    "truncated",
+                    false);
         }
         int end = Math.min(total, offset - 1 + limit);
         StringBuilder out = new StringBuilder();
@@ -94,6 +126,9 @@ public class DocReadLinesTool implements Tool {
         result.put("startLine", offset);
         result.put("returnedLines", end - (offset - 1));
         result.put("truncated", end < total);
+        // If-Match token for doc_edit/doc_write expectedContentHash — over
+        // the FULL body, independent of the served window (work-target.md).
+        result.put("contentHash", contentHash);
         result.put("content", out.toString());
         return result;
     }

@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
-import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.toolpack.core.ContentHashes;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,40 +44,80 @@ public class DocReplaceLinesTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("fromLine", Map.of("type", "integer",
-                "description", "1-based line number where replacement starts (inclusive)."));
-        p.put("toLine", Map.of("type", "integer",
-                "description", "1-based line number where replacement ends (inclusive). "
-                        + "Set toLine = fromLine - 1 to insert above fromLine without replacing."));
-        p.put("newContent", Map.of("type", "string",
-                "description", "Replacement text. Trailing newlines are normalised."));
-        p.put("expectedFirstLine", Map.of("type", "string",
-                "description", "Optional guard: the expected text of the FIRST line in the "
-                        + "range (line `fromLine`). If it doesn't match the document, the call "
-                        + "errors instead of patching the wrong lines — line numbers can go "
-                        + "stale when a document changes between your read and this write. "
-                        + "Compared whitespace-insensitively. Strongly recommended."));
-        p.put("expectedLastLine", Map.of("type", "string",
-                "description", "Optional guard: expected text of the LAST line in the range "
-                        + "(line `toLine`). Same purpose as expectedFirstLine; ignored for a "
-                        + "pure insert (toLine = fromLine - 1)."));
+        p.put(
+                "fromLine",
+                Map.of("type", "integer", "description", "1-based line number where replacement starts (inclusive)."));
+        p.put(
+                "toLine",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "1-based line number where replacement ends (inclusive). "
+                                + "Set toLine = fromLine - 1 to insert above fromLine without replacing."));
+        p.put(
+                "newContent",
+                Map.of("type", "string", "description", "Replacement text. Trailing newlines are normalised."));
+        p.put(
+                "expectedFirstLine",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional guard: the expected text of the FIRST line in the "
+                                + "range (line `fromLine`). If it doesn't match the document, the call "
+                                + "errors instead of patching the wrong lines — line numbers can go "
+                                + "stale when a document changes between your read and this write. "
+                                + "Compared whitespace-insensitively. Strongly recommended."));
+        p.put(
+                "expectedLastLine",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional guard: expected text of the LAST line in the range "
+                                + "(line `toLine`). Same purpose as expectedFirstLine; ignored for a "
+                                + "pure insert (toLine = fromLine - 1)."));
+        p.put("expectedContentHash", KindToolSupport.expectedContentHashProperty());
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_replace_lines"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_replace_lines";
+    }
+
+    @Override
+    public String description() {
         return "Replace lines [fromLine, toLine] (1-based, inclusive) of an inline document with "
                 + "newContent. Use this when you know the line range — e.g. from a doc_grep or "
                 + "doc_read_lines result — and want a precise line-level patch without the uniqueness "
-                + "constraints of doc_edit.";
+                + "constraints of doc_edit. Pass the contentHash from your last read as "
+                + "expectedContentHash to refuse the patch when the document changed since "
+                + "that read.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("text-edit", "eddie", "write", "document"); }
-    @Override public Set<String> prakLabels() { return Set.of("knowledge", "documents"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("text-edit", "eddie", "write", "document");
+    }
+
+    @Override
+    public Set<String> prakLabels() {
+        return Set.of("knowledge", "documents");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -88,17 +129,22 @@ public class DocReplaceLinesTool implements Tool {
         String expectedFirst = KindToolSupport.paramString(params, "expectedFirstLine");
         String expectedLast = KindToolSupport.paramString(params, "expectedLastLine");
 
-        String[] lines = support.readBody(doc, ctx).split("\\R", -1);
+        String body = support.readBody(doc, ctx);
+        // If-Match guard before the line anchors: a stale contentHash is the
+        // strongest stale signal — check it first so the model gets the
+        // "read again" advice, not a line-anchor mismatch hint.
+        KindToolSupport.enforceContentHashMatch(params, doc, body);
+        String[] lines = body.split("\\R", -1);
         int total = lines.length;
         if (fromLine < 1) throw new ToolException("fromLine must be >= 1");
         if (fromLine > total + 1) {
-            throw new ToolException("fromLine " + fromLine + " exceeds document length "
-                    + total + " (max insert position is " + (total + 1) + ")");
+            throw new ToolException("fromLine " + fromLine + " exceeds document length " + total
+                    + " (max insert position is " + (total + 1) + ")");
         }
         boolean insertOnly = toLine == fromLine - 1;
         if (!insertOnly && toLine < fromLine) {
-            throw new ToolException("toLine " + toLine + " must be >= fromLine " + fromLine
-                    + " (or fromLine - 1 for pure insert)");
+            throw new ToolException(
+                    "toLine " + toLine + " must be >= fromLine " + fromLine + " (or fromLine - 1 for pure insert)");
         }
         // Härtung (1): fail loud instead of silently clamping. An out-of-range
         // toLine almost always means the line numbers are stale (the document
@@ -143,7 +189,8 @@ public class DocReplaceLinesTool implements Tool {
         // so the loop above already accounts for it (via the inner
         // newline). For explicit clarity though, keep it simple.
 
-        Map<String, Object> validation = support.writeBody(doc, out.toString(), ctx);
+        String updated = out.toString();
+        Map<String, Object> validation = support.writeBody(doc, updated, ctx);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("documentId", doc.getId());
@@ -152,6 +199,8 @@ public class DocReplaceLinesTool implements Tool {
         result.put("toLine", insertOnly ? fromLine - 1 : toLine);
         result.put("inserted", insertOnly);
         result.put("newLineCount", countLines(newContent));
+        // Chainable If-Match token for the next write (work-target.md protocol).
+        result.put("contentHash", ContentHashes.sha256Hex(updated));
         if (validation != null) result.put("validation", validation);
         return result;
     }

@@ -10,6 +10,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.ContentHashes;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -127,7 +128,16 @@ public class DocWriteTool implements Tool {
                                             "description",
                                             "Optional MIME type override. "
                                                     + "Defaults to a kind-appropriate value "
-                                                    + "(text/markdown or application/json).")),
+                                                    + "(text/markdown or application/json)."),
+                            "expectedContentHash",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional If-Match guard: the contentHash "
+                                                    + "from your last read of this document. The "
+                                                    + "overwrite is refused when the document changed "
+                                                    + "(or vanished) meanwhile.")),
             "required", List.of("path", "content"));
 
     private final KindToolSupport support;
@@ -154,7 +164,9 @@ public class DocWriteTool implements Tool {
                 + "is optional — on overwrite the existing kind is kept, on "
                 + "create it defaults to `text`. Full overwrite is the "
                 + "bluntest write; prefer `doc_edit` or `doc_replace_lines` "
-                + "when only a portion needs to change. Body shape is "
+                + "when only a portion needs to change. Pass the contentHash from "
+                + "your last read as expectedContentHash to refuse the overwrite when "
+                + "the document changed (or vanished) since that read. Body shape is "
                 + "kind-specific — see `manual_read('kind-<kind>')` when "
                 + "unsure.";
     }
@@ -250,6 +262,20 @@ public class DocWriteTool implements Tool {
         // destroy outright — the model cannot re-encrypt, so refuse before
         // anything else looks at the body.
         existing.ifPresent(AgeDocumentGuard::requireWritable);
+        // If-Match guard: an expectedContentHash implies the caller believes a
+        // specific version exists at this path — refuse the overwrite when
+        // the body drifted, and refuse the silent resurrect when it vanished
+        // (same rules as file_write, work-target.md).
+        String expectedContentHash = KindToolSupport.expectedContentHashOrNull(params);
+        if (expectedContentHash != null) {
+            if (existing.isEmpty()) {
+                throw new ToolException("expectedContentHash given but no document exists at '" + path
+                        + "' — it may have been deleted meanwhile. Omit expectedContentHash to "
+                        + "create it deliberately.");
+            }
+            KindToolSupport.checkContentHash(
+                    expectedContentHash, existing.get(), support.readBody(existing.get(), ctx));
+        }
         String existingKind = existing.map(DocumentDocument::getKind).orElse(null);
         String resolvedKind = kindResolver.resolve(requestedKind, existingKind, content);
         // kind=age with a model-produced body is the creation-side twin of
@@ -316,6 +342,9 @@ public class DocWriteTool implements Tool {
         out.put("kind", result.getKind());
         if (result.getMimeType() != null) out.put("mimeType", result.getMimeType());
         out.put("overwritten", overwritten);
+        // Chainable If-Match token: the caller can pass this straight back as
+        // expectedContentHash on the next write without re-reading.
+        out.put("contentHash", ContentHashes.sha256Hex(content));
         // Pre-built Markdown link so the LLM can embed the doc into
         // its reply without a second tool round-trip.
         out.put("markdownLink", linkBuilder.linkFor(result, ctx.projectId()));

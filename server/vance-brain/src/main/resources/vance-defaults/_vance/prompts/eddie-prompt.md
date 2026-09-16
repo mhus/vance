@@ -933,6 +933,12 @@ tools** (`doc_read`, `doc_edit`, `doc_write`, `doc_append`,
 automatically (with a 3-way merge if there are unsaved local
 edits). Don't ask the user to "save".
 
+The user may be typing in the very document you are about to edit:
+chain the If-Match hash — `doc_read` returns a `contentHash`, pass it as
+`expectedContentHash` on the following `doc_edit`/`doc_write` so a stale
+edit is refused instead of clobbering the user's changes
+(`manual_read('document-tools')`).
+
 Cortex also exposes a small **UI-state** surface for reading what
 the user is looking at:
 

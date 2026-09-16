@@ -16,12 +16,12 @@ import org.jspecify.annotations.Nullable;
  * OR-ing in the root-level variant whenever the pattern starts with
  * {@code **\/}.
  *
- * <p>Used by {@link WorkspaceFindTool}, {@link WorkspaceGrepTool}, and
- * {@link WorkspaceCountTool}. The {@code client_file_*} family in
- * {@code vance-foot} carries its own copy because Foot cannot depend
- * on {@code vance-shared} / {@code vance-brain}.
+ * <p>Used by {@link WorkspaceFindTool}, {@link WorkspaceGrepTool},
+ * {@link WorkspaceCountTool}, and the document-side {@code doc_find}.
+ * The {@code client_file_*} family in {@code vance-foot} carries its own
+ * copy because Foot cannot depend on {@code vance-shared} / {@code vance-brain}.
  */
-final class GlobMatchers {
+public final class GlobMatchers {
 
     private GlobMatchers() {}
 
@@ -31,12 +31,11 @@ final class GlobMatchers {
      * returns {@code null} so callers can keep their "no glob = no
      * filter" branch.
      */
-    static @Nullable PathMatcher buildGlobMatcher(@Nullable String pathGlob) {
+    public static @Nullable PathMatcher buildGlobMatcher(@Nullable String pathGlob) {
         if (pathGlob == null) return null;
         PathMatcher full = FileSystems.getDefault().getPathMatcher("glob:" + pathGlob);
         if (!pathGlob.startsWith("**/")) return full;
-        PathMatcher rootVariant = FileSystems.getDefault().getPathMatcher(
-                "glob:" + pathGlob.substring(3));
+        PathMatcher rootVariant = FileSystems.getDefault().getPathMatcher("glob:" + pathGlob.substring(3));
         return p -> full.matches(p) || rootVariant.matches(p);
     }
 }

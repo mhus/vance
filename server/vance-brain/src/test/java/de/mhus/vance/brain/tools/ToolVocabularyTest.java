@@ -116,6 +116,8 @@ class ToolVocabularyTest {
                         "doc_version_restore",
                         "file_read",
                         "file_grep",
+                        "doc_head_tail",
+                        "doc_count",
                         "work_file_read");
     }
 
@@ -134,6 +136,25 @@ class ToolVocabularyTest {
         // contentHash every read returns.
         assertThat(declaredParams(tools.get("file_edit"))).contains("expectedContentHash");
         assertThat(declaredParams(tools.get("file_write"))).contains("expectedContentHash");
+        // The doc_* write tools run the same protocol against their read side
+        // (doc_read / doc_read_lines return contentHash).
+        assertThat(declaredParams(tools.get("doc_edit"))).contains("expectedContentHash");
+        assertThat(declaredParams(tools.get("doc_write"))).contains("expectedContentHash");
+        assertThat(declaredParams(tools.get("doc_append"))).contains("expectedContentHash");
+        assertThat(declaredParams(tools.get("doc_replace_lines"))).contains("expectedContentHash");
+        // Scan budget + file_find-parity vocabulary on the doc side.
+        assertThat(declaredParams(tools.get("doc_grep_path"))).contains("maxScannedDocs");
+        assertThat(declaredParams(tools.get("doc_count"))).contains("pathPrefix", "maxScannedDocs");
+        assertThat(declaredParams(tools.get("doc_head_tail"))).contains("head", "tail");
+        assertThat(declaredParams(tools.get("doc_find")))
+                .contains(
+                        "pathGlob",
+                        "pathPrefix",
+                        "minSizeBytes",
+                        "maxSizeBytes",
+                        "createdAfter",
+                        "createdBefore",
+                        "sortBy");
         assertThat(declaredParams(tools.get("doc_concat"))).contains("newPath");
         assertThat(declaredParams(tools.get("doc_version_restore"))).contains("newPath");
         assertThat(declaredParams(tools.get("doc_list_in_folder"))).contains("pathPrefix");

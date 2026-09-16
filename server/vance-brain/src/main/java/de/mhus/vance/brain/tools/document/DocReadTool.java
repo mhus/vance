@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.document;
 
 import de.mhus.vance.brain.tools.eddie.EddieContext;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.ContentHashes;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -14,7 +15,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -31,19 +31,26 @@ public class DocReadTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name. Defaults "
-                                    + "to the active project."),
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Document path inside the project, "
-                                    + "e.g. 'notes/thesis/ch1.md'."),
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "Alternative: Mongo id of the "
-                                    + "document. Use one of path/id.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults " + "to the active project."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document path inside the project, " + "e.g. 'notes/thesis/ch1.md'."),
+                            "id",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Alternative: Mongo id of the " + "document. Use one of path/id.")),
             "required", List.of());
 
     private final EddieContext eddieContext;
@@ -61,7 +68,10 @@ public class DocReadTool implements Tool {
                 + "tags, mimeType, content (text). Long documents are "
                 + "truncated past " + MAX_BODY_CHARS + " characters — when "
                 + "'truncated' is true, page on with doc_read_lines "
-                + "(startLine/maxLines); re-reading here returns the same prefix.";
+                + "(startLine/maxLines); re-reading here returns the same prefix. "
+                + "Every result carries a contentHash over the full body — pass it to "
+                + "doc_edit/doc_write as expectedContentHash to refuse the change when the "
+                + "document changed meanwhile.";
     }
 
     @Override
@@ -104,20 +114,19 @@ public class DocReadTool implements Tool {
 
         DocumentDocument doc;
         if (id != null) {
-            doc = documentService.findById(id)
-                    .orElseThrow(() -> new ToolException(
-                            "Document with id '" + id + "' not found"));
+            doc = documentService
+                    .findById(id)
+                    .orElseThrow(() -> new ToolException("Document with id '" + id + "' not found"));
             // Sanity: doc must belong to the caller's tenant.
             if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException("Document with id '" + id
-                        + "' is not in your tenant");
+                throw new ToolException("Document with id '" + id + "' is not in your tenant");
             }
         } else {
             ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-            doc = documentService.findByPath(ctx.tenantId(), project.getName(), path)
+            doc = documentService
+                    .findByPath(ctx.tenantId(), project.getName(), path)
                     .orElseThrow(() -> new ToolException(
-                            "Document '" + path + "' not found in project '"
-                                    + project.getName() + "'"));
+                            "Document '" + path + "' not found in project '" + project.getName() + "'"));
         }
 
         AgeDocumentGuard.requireReadable(doc);
@@ -137,6 +146,9 @@ public class DocReadTool implements Tool {
             out.put("tags", doc.getTags());
         }
         out.put("contentLength", fullLength);
+        // If-Match token for doc_edit/doc_write expectedContentHash — over
+        // the FULL body, never the truncated window (work-target.md protocol).
+        out.put("contentHash", ContentHashes.sha256Hex(content));
         out.put("truncated", truncated);
         out.put("content", body);
         return out;
@@ -150,13 +162,11 @@ public class DocReadTool implements Tool {
             byte[] bytes = in.readAllBytes();
             return new String(bytes, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Failed to read document content: " + e.getMessage(), e);
+            throw new ToolException("Failed to read document content: " + e.getMessage(), e);
         }
     }
 
-    private static @org.jspecify.annotations.Nullable String paramString(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String paramString(Map<String, Object> params, String key) {
         if (params == null) return null;
         Object v = params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;

@@ -223,7 +223,10 @@ promptPrefix: |
      applied when the file changed in between — on a refusal, re-read
      and retry. A successful edit/write returns the new `contentHash`
      for the next change, so you rarely need to re-read between
-     consecutive edits of the same file.
+     consecutive edits of the same file. The same protocol runs on
+     documents: `doc_read`/`doc_read_lines` return `contentHash`, the
+     `doc_*` write tools take `expectedContentHash` (see
+     `manual_read('document-tools')`).
   2. **One logical change per edit.** If a refactor touches five
      files, make five sequential edit calls — don't bundle.
   3. **Verify after non-trivial change.** Run the relevant tests

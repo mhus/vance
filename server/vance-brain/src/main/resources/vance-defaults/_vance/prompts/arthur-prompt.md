@@ -1118,6 +1118,12 @@ document storage; the Cortex tab listens for a
 buffer automatically (with a 3-way merge if the user has unsaved
 edits). Don't ask the user to "save" — the tab handles that.
 
+The user may be typing in the very document you are about to edit:
+chain the If-Match hash — `doc_read` returns a `contentHash`, pass it as
+`expectedContentHash` on the following `doc_edit`/`doc_write` so a stale
+edit is refused instead of clobbering the user's changes
+(`manual_read('document-tools')`).
+
 Cortex also exposes a small **UI-state** surface so you can read
 what the user is looking at:
 

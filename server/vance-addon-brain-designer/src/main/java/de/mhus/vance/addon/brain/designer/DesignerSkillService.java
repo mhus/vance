@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.designer;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.brain.skill.SkillScopeContext;
+import de.mhus.vance.brain.tools.report.CssSanitizer;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -93,8 +94,21 @@ public class DesignerSkillService {
      * <p>Server-rendered on purpose: the demo body has one authority, and
      * the preview iframe gets a self-contained document — no sub-resources,
      * hence no auth dance inside the sandbox.
+     *
+     * <p><b>The stylesheet is untrusted input.</b> A style.css is a
+     * project/user-authored document, and this method's output is served
+     * as {@code text/html} — so the CSS goes through the same pipeline the
+     * chat themes use ({@link CssSanitizer}: no external {@code @import},
+     * no {@code url()}/schemes, no expression vectors; self-containment is
+     * the preview's contract anyway), and every {@code </style} occurrence
+     * is backslash-escaped afterwards: the HTML tokenizer would otherwise
+     * hand everything after an injected close tag to the parser as live
+     * markup. The escaped form is inert CSS garbage, so a clean stylesheet
+     * renders unchanged and the promise above holds — what differs between
+     * two previews is the style, never the markup.
      */
     public static String renderPreviewHtml(String css) {
+        String safe = escapeStyleClose(CssSanitizer.sanitize(css));
         return """
                 <!DOCTYPE html>
                 <html lang="en">
@@ -112,6 +126,17 @@ public class DesignerSkillService {
                 <p><button type="button">Button</button></p>
                 </body>
                 </html>
-                """.formatted(css);
+                """.formatted(safe);
+    }
+
+    /**
+     * Neutralises every {@code </style} in inlined CSS for the HTML
+     * tokenizer: {@code <\/style} is the standard escape (a backslash
+     * before a non-hex character is a valid CSS escape outside strings,
+     * and the tokenizer no longer sees a close tag). The document's own
+     * closing tag is written by the template, outside this input.
+     */
+    static String escapeStyleClose(String css) {
+        return css.replaceAll("(?i)</style", "<\\\\/style");
     }
 }

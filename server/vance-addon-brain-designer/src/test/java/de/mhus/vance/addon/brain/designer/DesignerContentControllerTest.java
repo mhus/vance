@@ -1,13 +1,26 @@
 package de.mhus.vance.addon.brain.designer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
+import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import jakarta.servlet.http.HttpServletRequest;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 /**
  * Pure tests for the content route's URI-tail parsing — the piece that
- * decides which file a sandboxed iframe URL addresses. No Spring context:
- * the mapping logic is static and the security-relevant part.
+ * decides which file a sandboxed iframe URL addresses — plus the
+ * {@code view} endpoint's project-READ enforcement. No Spring context:
+ * the mapping logic is static, the enforcement check is plain Mockito.
  */
 class DesignerContentControllerTest {
 
@@ -95,5 +108,32 @@ class DesignerContentControllerTest {
         // then fails on token validation anyway.
         assertThat(DesignerContentController.innerPathAfter("/brain/acme/documents"))
                 .isEqualTo("");
+    }
+
+    @Test
+    void view_enforcesProjectRead() {
+        // The catalogue names designs, titles and file lists of the project
+        // folder — project content, so the same project READ applies as
+        // for the design-skill listing. Pins that an authenticated
+        // tenant user cannot enumerate a foreign project's designer app.
+        DesignerFolderReader folderReader = Mockito.mock(DesignerFolderReader.class);
+        RequestAuthority authority = Mockito.mock(RequestAuthority.class);
+        DocumentService documentService = Mockito.mock(DocumentService.class);
+        HttpServletRequest httpRequest = Mockito.mock(HttpServletRequest.class);
+        var controller = new DesignerContentController(
+                folderReader,
+                Mockito.mock(DesignerPreviewTokenService.class),
+                documentService,
+                authority,
+                Mockito.mock(PermissionService.class),
+                Mockito.mock(SecurityContextFactory.class),
+                Mockito.mock(DesignerApplication.class),
+                Mockito.mock(DesignerSkillService.class),
+                Mockito.mock(ThinkProcessService.class));
+        when(folderReader.scan("acme", "p1", "myapp")).thenReturn(new DesignerFolderReader.Scan(List.of()));
+
+        controller.view("acme", "p1", "myapp", httpRequest);
+
+        verify(authority).enforce(httpRequest, new Resource.Project("acme", "p1"), Action.READ);
     }
 }

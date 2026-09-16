@@ -98,4 +98,39 @@ class DesignerSkillServiceTest {
         assertThat(html).contains("<a href=\"#\">Link</a>");
         assertThat(html).contains("<button type=\"button\">Button</button>");
     }
+
+    @Test
+    void renderPreviewHtml_neutralizesAnInjectedStyleClose() {
+        // A style.css is user-authored and the output is served as
+        // text/html: a literal </style> would hand everything after it
+        // to the HTML tokenizer as live markup. The escaped form
+        // (<\/style) is inert for the tokenizer and valid CSS garbage —
+        // and the document keeps exactly one closing tag: its own.
+        String html = DesignerSkillService.renderPreviewHtml("body { color: red; }\n</style><script>alert(1)</script>");
+
+        assertThat(html).contains("body { color: red; }");
+        assertThat(html).contains("<\\/style");
+        assertThat(countOccurrences(html, "</style")).isEqualTo(1);
+    }
+
+    @Test
+    void renderPreviewHtml_filtersCssVectorsBeforeInlining() {
+        // The chat-theme pipeline applies here too: external imports and
+        // url() fetches have no place in a self-contained sandbox preview.
+        String html = DesignerSkillService.renderPreviewHtml(
+                "@import 'https://evil/x.css';\nh1 { background: url('https://evil/x.png'); color: red; }");
+
+        assertThat(html).doesNotContain("@import").doesNotContain("evil");
+        assertThat(html).contains("color: red;");
+    }
+
+    private static long countOccurrences(String haystack, String needle) {
+        long count = 0;
+        int at = haystack.indexOf(needle);
+        while (at >= 0) {
+            count++;
+            at = haystack.indexOf(needle, at + needle.length());
+        }
+        return count;
+    }
 }

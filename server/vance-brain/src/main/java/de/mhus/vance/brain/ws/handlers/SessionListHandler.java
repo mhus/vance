@@ -5,6 +5,7 @@ import de.mhus.vance.api.ws.SessionListRequest;
 import de.mhus.vance.api.ws.SessionListResponse;
 import de.mhus.vance.api.ws.SessionSummary;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.chattheme.ChatThemeResolver;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
@@ -13,9 +14,16 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -34,8 +42,8 @@ public class SessionListHandler implements WsHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final SessionService sessionService;
-    private final de.mhus.vance.shared.thinkprocess.ThinkProcessService thinkProcessService;
-    private final de.mhus.vance.brain.chattheme.ChatThemeResolver chatThemeResolver;
+    private final ThinkProcessService thinkProcessService;
+    private final ChatThemeResolver chatThemeResolver;
     private final RequestAuthority authority;
 
     @Override
@@ -74,8 +82,8 @@ public class SessionListHandler implements WsHandler {
         // repo call, same join as the REST session list), then recipeName →
         // webTheme (memoised per request — one recipe load per
         // (project, recipe), not per session).
-        java.util.Map<String, String> recipeByProcessId = collectChatRecipes(documents);
-        java.util.Map<String, String> themeMemo = new java.util.HashMap<>();
+        Map<String, String> recipeByProcessId = collectChatRecipes(documents);
+        Map<String, String> themeMemo = new HashMap<>();
 
         List<SessionSummary> summaries = documents.stream()
                 .map(doc -> toSummary(
@@ -105,7 +113,7 @@ public class SessionListHandler implements WsHandler {
                 .title(doc.getTitle())
                 .icon(doc.getIcon())
                 .color(doc.getColor())
-                .tags(doc.getTags() == null ? java.util.List.of() : new java.util.ArrayList<>(doc.getTags()))
+                .tags(doc.getTags() == null ? List.of() : new ArrayList<>(doc.getTags()))
                 .pinned(doc.isPinned())
                 .profile(doc.getProfile())
                 .firstUserMessage(doc.getFirstUserMessage())
@@ -121,15 +129,15 @@ public class SessionListHandler implements WsHandler {
      * {@code ChatThemeResolver.effectiveThemeName} maps to the default
      * theme.
      */
-    private java.util.Map<String, String> collectChatRecipes(List<SessionDocument> documents) {
-        java.util.Set<String> chatProcessIds = new java.util.LinkedHashSet<>();
+    private Map<String, String> collectChatRecipes(List<SessionDocument> documents) {
+        Set<String> chatProcessIds = new LinkedHashSet<>();
         for (SessionDocument s : documents) {
             String id = s.getChatProcessId();
             if (id != null && !id.isBlank()) chatProcessIds.add(id);
         }
-        if (chatProcessIds.isEmpty()) return java.util.Map.of();
-        java.util.Map<String, String> byProcessId = new java.util.HashMap<>(chatProcessIds.size());
-        for (de.mhus.vance.shared.thinkprocess.ThinkProcessDocument p : thinkProcessService.findByIds(chatProcessIds)) {
+        if (chatProcessIds.isEmpty()) return Map.of();
+        Map<String, String> byProcessId = new HashMap<>(chatProcessIds.size());
+        for (ThinkProcessDocument p : thinkProcessService.findByIds(chatProcessIds)) {
             if (p.getRecipeName() != null && !p.getRecipeName().isBlank()) {
                 byProcessId.put(p.getId(), p.getRecipeName());
             }
@@ -138,15 +146,13 @@ public class SessionListHandler implements WsHandler {
     }
 
     /** Memoised {@code recipe → webTheme} resolution, per request. */
-    private String chatThemeFor(
-            String tenant, String projectId, @Nullable String recipe, java.util.Map<String, String> memo) {
+    private String chatThemeFor(String tenant, String projectId, @Nullable String recipe, Map<String, String> memo) {
         if (recipe == null) return null;
         String key = projectId + "\n" + recipe;
         return memo.computeIfAbsent(key, k -> chatThemeResolver.effectiveThemeName(tenant, projectId, recipe));
     }
 
     private static long toEpochMillis(@Nullable Instant instant) {
-
         return instant == null ? 0L : instant.toEpochMilli();
     }
 

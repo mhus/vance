@@ -90,6 +90,11 @@ public class DesignerContentController {
      * Scans the app folder and returns the design catalogue plus the
      * manifest's title/description. Read-only, live — no registry
      * document in between.
+     *
+     * <p>Project READ is enforced here — the same visibility as the
+     * design-skill listing: the catalogue names designs, titles and
+     * file lists of the project folder, so it is project content,
+     * not tenant-wide config.
      */
     @GetMapping("/brain/{tenant}/addon/designer/view")
     public DesignerView view(
@@ -98,6 +103,7 @@ public class DesignerContentController {
             @RequestParam("folder") String folder,
             HttpServletRequest httpRequest) {
 
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         return loadView(tenant, projectId, folder);
     }
 

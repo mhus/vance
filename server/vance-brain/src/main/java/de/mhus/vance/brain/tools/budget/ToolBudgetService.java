@@ -70,10 +70,23 @@ public class ToolBudgetService {
     // Access-order LRU behind a synchronized wrapper: get() reorders and
     // put() may evict, so both mutate and a plain map would not survive
     // the concurrent turns that read it.
-    private final Map<String, CachedLimit> limitCache = java.util.Collections.synchronizedMap(
-            new java.util.LinkedHashMap<String, CachedLimit>(64, 0.75f, true) {
+    private final Map<String, CachedLimit> limitCache =
+            java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<String, CachedLimit>(64, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(Map.Entry<String, CachedLimit> eldest) {
+                    return size() > LIMIT_CACHE_MAX;
+                }
+            });
+
+    /**
+     * Frozen demand snapshots, keyed {@code tenant|processId|role}. Same
+     * LRU construction and bound as {@link #limitCache} — see
+     * {@link #frozenDemand} for the freeze rationale.
+     */
+    private final Map<String, Map<String, Long>> demandCache = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<String, Map<String, Long>>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Map<String, Long>> eldest) {
                     return size() > LIMIT_CACHE_MAX;
                 }
             });
@@ -106,9 +119,7 @@ public class ToolBudgetService {
      *         or the feature is switched off
      */
     public ToolBudget forProcess(
-            ThinkProcessDocument process,
-            @Nullable String projectId,
-            Map<String, Instant> activationRecency) {
+            ThinkProcessDocument process, @Nullable String projectId, Map<String, Instant> activationRecency) {
         if (!properties.isEnabled()) {
             return ToolBudget.UNLIMITED;
         }
@@ -116,13 +127,12 @@ public class ToolBudgetService {
         if (limit.isEmpty()) {
             return ToolBudget.UNLIMITED;
         }
-        int reserved = Math.max(0, properties.getExternalReserve())
-                + Math.max(0, properties.getActivationHeadroom());
+        int reserved = Math.max(0, properties.getExternalReserve()) + Math.max(0, properties.getActivationHeadroom());
         // Demand is read per role: the ordering inside a class should
         // reflect what *this* recipe needs, not what the busiest worker in
-        // the project happens to call.
-        Map<String, Long> demand = toolUsageService.demandByTool(
-                process.getTenantId(), projectId, ToolUsageService.roleOf(process));
+        // the project happens to call. Frozen per process — see
+        // frozenDemand for why the per-turn counters must not re-rank.
+        Map<String, Long> demand = frozenDemand(process, projectId);
         return new ToolBudget(
                 limit.getAsInt(),
                 reserved,
@@ -131,10 +141,41 @@ public class ToolBudgetService {
                 properties.getMaxActivatedTools());
     }
 
+    /**
+     * Demand snapshot, frozen per {@code (tenant, processId, role)} for
+     * the lifetime of the process. The demand counters mutate after every
+     * tool call and only break ties <i>inside</i> a priority class — but
+     * tie-breaking is exactly what decides which families the budget cut
+     * demotes. Re-ranking on every turn flips the demoted set turn over
+     * turn, and each flip reorders the alphabetically sorted
+     * {@code tools} array — a full prefix-cache bust on every call
+     * (see {@code planning/tool-surface-stability.md}, B1).
+     *
+     * <p>Pinning the snapshot keeps the surface stable: the ranking
+     * inputs of the cut are decided once, when the process first builds
+     * its surface. Activation growth still re-fits (live recency, live
+     * limit), and a fresh process re-samples. Config changes don't need
+     * an invalidation — a newly configured tool carries no demand either
+     * way — and the entries die with their process (LRU bounded like
+     * {@link #limitCache}).
+     */
+    private Map<String, Long> frozenDemand(
+            ThinkProcessDocument process, @org.jspecify.annotations.Nullable String projectId) {
+        String role = ToolUsageService.roleOf(process);
+        String key = process.getTenantId() + "|" + process.getId() + "|" + role;
+        Map<String, Long> cached = demandCache.get(key);
+        if (cached != null) return cached;
+        Map<String, Long> fresh = toolUsageService.demandByTool(process.getTenantId(), projectId, role);
+        demandCache.put(key, fresh);
+        return fresh;
+    }
+
     /** Family-level priority overrides from {@code vance.tools.budget.*}. */
     public ToolTriage.Hints familyHints() {
         return new ToolTriage.Hints(
-                Set.of(), Set.of(), Set.of(),
+                Set.of(),
+                Set.of(),
+                Set.of(),
                 toSet(properties.getKeepFamilies()),
                 toSet(properties.getDropFirstFamilies()));
     }
@@ -191,16 +232,11 @@ public class ToolBudgetService {
      */
     private static ScopeView scopeFor(ThinkProcessDocument process) {
         boolean pinned = ChatBehaviorBuilder.readAiConfigScope(process) == AiConfigScope.TENANT;
-        return pinned
-                ? new ScopeView(null, null)
-                : new ScopeView(process.getProjectId(), process.getId());
+        return pinned ? new ScopeView(null, null) : new ScopeView(process.getProjectId(), process.getId());
     }
 
     private OptionalInt resolveChainLimit(
-            ThinkProcessDocument process,
-            ScopeView scope,
-            @Nullable String spec,
-            List<String> fallbacks) {
+            ThinkProcessDocument process, ScopeView scope, @Nullable String spec, List<String> fallbacks) {
         List<String> specs = new ArrayList<>();
         specs.add(spec);
         specs.addAll(fallbacks);
@@ -218,23 +254,28 @@ public class ToolBudgetService {
      * the endpoint taught us at runtime. Either source alone is enough —
      * a learned limit works without catalog metadata, and vice versa.
      */
-    private OptionalInt limitForSpec(
-            ThinkProcessDocument process, ScopeView scope, @Nullable String spec) {
+    private OptionalInt limitForSpec(ThinkProcessDocument process, ScopeView scope, @Nullable String spec) {
         AiModelResolver.Resolved resolved;
         try {
-            resolved = aiModelResolver.resolveOrDefault(
-                    spec, process.getTenantId(), scope.projectId(), scope.processId());
+            resolved =
+                    aiModelResolver.resolveOrDefault(spec, process.getTenantId(), scope.projectId(), scope.processId());
         } catch (RuntimeException e) {
-            log.trace("ToolBudgetService: cannot resolve model spec '{}' for process '{}': {}",
-                    spec, process.getId(), e.toString());
+            log.trace(
+                    "ToolBudgetService: cannot resolve model spec '{}' for process '{}': {}",
+                    spec,
+                    process.getId(),
+                    e.toString());
             return OptionalInt.empty();
         }
         String label = resolved.providerInstance() + ":" + resolved.modelName();
         Integer configured = null;
         try {
             ModelInfo info = modelCatalog.lookupOrDefault(
-                    process.getTenantId(), scope.projectId(),
-                    resolved.providerInstance(), resolved.provider(), resolved.modelName());
+                    process.getTenantId(),
+                    scope.projectId(),
+                    resolved.providerInstance(),
+                    resolved.provider(),
+                    resolved.modelName());
             configured = info.maxTools();
         } catch (RuntimeException e) {
             log.trace("ToolBudgetService: catalog lookup failed for '{}': {}", label, e.toString());
@@ -266,5 +307,6 @@ public class ToolBudgetService {
     private record CachedLimit(OptionalInt limit, long version, Instant readAt) {}
 
     /** Inner settings scopes to read the AI config through — both null = tenant layer only. */
-    private record ScopeView(@Nullable String projectId, @Nullable String processId) {}
+    private record ScopeView(
+            @Nullable String projectId, @Nullable String processId) {}
 }

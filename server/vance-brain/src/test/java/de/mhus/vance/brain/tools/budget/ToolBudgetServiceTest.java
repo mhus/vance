@@ -145,8 +145,7 @@ class ToolBudgetServiceTest {
 
     @Test
     void unresolvableModelSpec_doesNotBreakTheTurn() {
-        when(resolver.resolveOrDefault(any(), any(), any(), any()))
-                .thenThrow(new IllegalStateException("no api key"));
+        when(resolver.resolveOrDefault(any(), any(), any(), any())).thenThrow(new IllegalStateException("no api key"));
 
         assertThat(service.limitFor(process("broken", List.of()))).isEmpty();
     }
@@ -157,8 +156,7 @@ class ToolBudgetServiceTest {
         ThinkProcessDocument p = process("openai:gpt-x", List.of());
         p.setRecipeName("arthur");
         p.setThinkEngine("arthur-engine");
-        when(usage.demandByTool("acme", "proj", "arthur"))
-                .thenReturn(Map.of("doc_read", 7L));
+        when(usage.demandByTool("acme", "proj", "arthur")).thenReturn(Map.of("doc_read", 7L));
 
         ToolBudget budget = service.forProcess(p, "proj", Map.of());
 
@@ -170,12 +168,55 @@ class ToolBudgetServiceTest {
         stubModel("openai:gpt-x", "openai", "gpt-x", 128);
         ThinkProcessDocument p = process("openai:gpt-x", List.of());
         p.setThinkEngine("frankie");
-        when(usage.demandByTool("acme", "proj", "frankie"))
-                .thenReturn(Map.of("file_read", 153L));
+        when(usage.demandByTool("acme", "proj", "frankie")).thenReturn(Map.of("file_read", 153L));
 
         ToolBudget budget = service.forProcess(p, "proj", Map.of());
 
         assertThat(budget.usage()).containsEntry("file_read", 153L);
+    }
+
+    @Test
+    void demandIsFrozenPerProcess_evenWhenTheCountersMove() {
+        // B1: the demand counters mutate after every tool call and only
+        // break ties inside a priority class — but that tie-breaking is
+        // what flips the demoted set turn over turn, reordering the
+        // alphabetically sorted tools array. The snapshot is pinned for
+        // the lifetime of the process.
+        stubModel("openai:gpt-x", "openai", "gpt-x", 128);
+        ThinkProcessDocument p = process("openai:gpt-x", List.of());
+        p.setRecipeName("arthur");
+        when(usage.demandByTool("acme", "proj", "arthur")).thenReturn(Map.of("doc_read", 7L));
+
+        ToolBudget first = service.forProcess(p, "proj", Map.of());
+
+        // Next turn: the same recipe called tools in between — counters
+        // moved. The frozen snapshot must not.
+        when(usage.demandByTool("acme", "proj", "arthur")).thenReturn(Map.of("doc_read", 99L, "doc_write", 5L));
+
+        ToolBudget second = service.forProcess(p, "proj", Map.of());
+
+        assertThat(second.usage()).isEqualTo(first.usage());
+        assertThat(second.usage()).containsEntry("doc_read", 7L);
+    }
+
+    @Test
+    void aFreshProcessSamplesFreshDemand() {
+        // Growth path: a new process re-samples, so long-running demand
+        // still shapes new spawns.
+        stubModel("openai:gpt-x", "openai", "gpt-x", 128);
+        ThinkProcessDocument first = process("openai:gpt-x", List.of());
+        first.setRecipeName("arthur");
+        when(usage.demandByTool("acme", "proj", "arthur")).thenReturn(Map.of("doc_read", 7L));
+        service.forProcess(first, "proj", Map.of());
+
+        ThinkProcessDocument second = process("openai:gpt-x", List.of());
+        second.setId("p-2");
+        second.setRecipeName("arthur");
+        when(usage.demandByTool("acme", "proj", "arthur")).thenReturn(Map.of("doc_read", 42L));
+
+        ToolBudget budget = service.forProcess(second, "proj", Map.of());
+
+        assertThat(budget.usage()).containsEntry("doc_read", 42L);
     }
 
     @Test
@@ -190,8 +231,7 @@ class ToolBudgetServiceTest {
         assertThat(service.limitFor(p)).hasValue(128);
 
         verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), isNull(), isNull());
-        verify(catalog).lookupOrDefault(
-                eq("acme"), isNull(), eq("openai"), eq("openai"), eq("gpt-x"));
+        verify(catalog).lookupOrDefault(eq("acme"), isNull(), eq("openai"), eq("openai"), eq("gpt-x"));
     }
 
     @Test
@@ -246,8 +286,7 @@ class ToolBudgetServiceTest {
 
         service.forProcess(p, "working-project", Map.of());
 
-        verify(resolver).resolveOrDefault(
-                eq("openai:gpt-x"), eq("acme"), eq("home-project"), eq("p-1"));
+        verify(resolver).resolveOrDefault(eq("openai:gpt-x"), eq("acme"), eq("home-project"), eq("p-1"));
     }
 
     @Test
@@ -269,17 +308,29 @@ class ToolBudgetServiceTest {
      * aliases for fallbacks (which pass through verbatim).
      */
     private void stubModel(String spec, String provider, String model, Integer maxTools) {
-        AiModelResolver.Resolved resolved =
-                new AiModelResolver.Resolved(provider, provider, model);
+        AiModelResolver.Resolved resolved = new AiModelResolver.Resolved(provider, provider, model);
         when(resolver.resolveOrDefault(eq(spec), any(), any(), any())).thenReturn(resolved);
         when(catalog.lookupOrDefault(any(), any(), eq(provider), eq(provider), eq(model)))
                 .thenReturn(modelInfo(provider, model, maxTools));
     }
 
     private static ModelInfo modelInfo(String provider, String model, Integer maxTools) {
-        return new ModelInfo(provider, model, 128_000, 8192, ModelSize.LARGE, Set.of(),
-                60, 2, false, null, null,
-                de.mhus.vance.brain.ai.OutputTokenParam.MAX_TOKENS, Set.of(), null, maxTools);
+        return new ModelInfo(
+                provider,
+                model,
+                128_000,
+                8192,
+                ModelSize.LARGE,
+                Set.of(),
+                60,
+                2,
+                false,
+                null,
+                null,
+                de.mhus.vance.brain.ai.OutputTokenParam.MAX_TOKENS,
+                Set.of(),
+                null,
+                maxTools);
     }
 
     private static ThinkProcessDocument process(String modelSpec, List<String> fallbacks) {

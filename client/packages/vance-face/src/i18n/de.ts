@@ -2045,6 +2045,7 @@ export default {
       toolCallSingular: '· {count} Tool-Aufruf',
       toolCallPlural: '· {count} Tool-Aufrufe',
       tokensInOut: '{tokensIn} in / {tokensOut} out',
+      toolsSurface: '· {count} Tools ({kb})',
     },
     cacheStats: {
       loading: 'Cache-Statistik wird geladen…',

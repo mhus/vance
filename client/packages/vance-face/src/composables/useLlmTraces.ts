@@ -18,6 +18,10 @@ export interface LlmTraceTurn {
   elapsedMs: number | null;
   /** Number of tool-call legs in this round-trip. */
   toolCallCount: number;
+  /** Tool schemas in the request's tools array — first row of the turn only. */
+  toolsCount: number | null;
+  /** Estimated serialized size of the tools array in bytes — first row of the turn only. */
+  toolsBytes: number | null;
 }
 
 /**
@@ -128,6 +132,10 @@ function summarise(turnId: string, legs: LlmTraceDto[]): LlmTraceTurn {
   let elapsedMs: number | null = null;
   let toolCallCount = 0;
   let startedAt: string | null = null;
+  // Tool-surface metrics ride on the turn's first row only — one leg
+  // carries them, the summariser lifts whichever does.
+  let toolsCount: number | null = null;
+  let toolsBytes: number | null = null;
 
   for (const leg of legs) {
     if (!startedAt && leg.createdAt) {
@@ -139,6 +147,8 @@ function summarise(turnId: string, legs: LlmTraceDto[]): LlmTraceTurn {
       if (leg.tokensOut != null) tokensOut = leg.tokensOut;
       if (leg.elapsedMs != null) elapsedMs = leg.elapsedMs;
     }
+    if (leg.toolsCount != null) toolsCount = leg.toolsCount;
+    if (leg.toolsBytes != null) toolsBytes = leg.toolsBytes;
     if (leg.direction === 'tool_call') {
       toolCallCount++;
     }
@@ -152,5 +162,7 @@ function summarise(turnId: string, legs: LlmTraceDto[]): LlmTraceTurn {
     tokensOut,
     elapsedMs,
     toolCallCount,
+    toolsCount,
+    toolsBytes,
   };
 }

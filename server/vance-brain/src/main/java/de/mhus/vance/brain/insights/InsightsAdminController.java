@@ -623,6 +623,8 @@ public class InsightsAdminController {
                 .tokensOut(t.getTokensOut())
                 .cacheCreationInputTokens(t.getCacheCreationInputTokens())
                 .cacheReadInputTokens(t.getCacheReadInputTokens())
+                .toolsCount(t.getToolsCount())
+                .toolsBytes(t.getToolsBytes())
                 .elapsedMs(t.getElapsedMs())
                 .createdAt(t.getCreatedAt())
                 .build();

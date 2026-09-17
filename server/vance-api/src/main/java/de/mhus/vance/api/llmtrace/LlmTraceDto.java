@@ -59,7 +59,13 @@ public class LlmTraceDto {
     private @Nullable Integer cacheCreationInputTokens;
     /** Tokens read from the prompt cache (~10% input price). */
     private @Nullable Integer cacheReadInputTokens;
+
     private @Nullable Long elapsedMs;
+
+    /** Tool schemas in the request's {@code tools} array — first row of a turn only. */
+    private @Nullable Integer toolsCount;
+    /** Estimated serialized size of the {@code tools} array in bytes — first row of a turn only. */
+    private @Nullable Integer toolsBytes;
 
     private @Nullable Instant createdAt;
 }

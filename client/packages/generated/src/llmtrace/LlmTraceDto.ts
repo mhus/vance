@@ -24,5 +24,7 @@ export interface LlmTraceDto {
   cacheCreationInputTokens?: number;
   cacheReadInputTokens?: number;
   elapsedMs?: number;
+  toolsCount?: number;
+  toolsBytes?: number;
   createdAt?: Date;
 }

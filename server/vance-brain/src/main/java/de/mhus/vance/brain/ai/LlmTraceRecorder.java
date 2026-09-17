@@ -5,6 +5,7 @@ import de.mhus.vance.shared.llmtrace.LlmTraceDocument;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -70,13 +71,25 @@ public final class LlmTraceRecorder {
             return;
         }
         String turnId = UUID.randomUUID().toString();
+        // The provider serializes the tools array ahead of every message, so
+        // surface drift between turns of one process is the prompt-cache
+        // killer (see planning/tool-surface-stability.md). Count and size
+        // travel on the first row of the turn — one query per process shows
+        // whether the surface moved.
+        Integer toolsCount = null;
+        Integer toolsBytes = null;
+        List<ToolSpecification> specs = request.toolSpecifications();
+        if (specs != null && !specs.isEmpty()) {
+            toolsCount = specs.size();
+            toolsBytes = estimateToolsBytes(specs);
+        }
         try {
             int seq = 0;
             for (ChatMessage msg : safeMessages(request)) {
-                seq = recordRequestMessage(service, process, engineName, turnId, seq, msg);
+                seq = recordRequestMessage(service, process, engineName, turnId, seq, msg, toolsCount, toolsBytes);
             }
             if (response != null) {
-                recordResponse(service, process, engineName, turnId, seq, response, elapsedMs);
+                recordResponse(service, process, engineName, turnId, seq, response, elapsedMs, toolsCount, toolsBytes);
             }
         } catch (RuntimeException e) {
             LOG.warn(
@@ -98,7 +111,10 @@ public final class LlmTraceRecorder {
             String engineName,
             String turnId,
             int seq,
-            ChatMessage msg) {
+            ChatMessage msg,
+            @Nullable Integer toolsCount,
+            @Nullable Integer toolsBytes) {
+        boolean firstRow = seq == 0;
         if (msg instanceof ToolExecutionResultMessage trm) {
             service.record(baseEntry(process, engineName, turnId, seq)
                     .direction(LlmTraceDirection.TOOL_RESULT)
@@ -106,6 +122,8 @@ public final class LlmTraceRecorder {
                     .toolName(trm.toolName())
                     .toolCallId(trm.id())
                     .content(trm.text())
+                    .toolsCount(firstRow ? toolsCount : null)
+                    .toolsBytes(firstRow ? toolsBytes : null)
                     .build());
             return seq + 1;
         }
@@ -115,6 +133,8 @@ public final class LlmTraceRecorder {
                 .direction(LlmTraceDirection.INPUT)
                 .role(roleOf(msg))
                 .content(textOf(msg))
+                .toolsCount(firstRow ? toolsCount : null)
+                .toolsBytes(firstRow ? toolsBytes : null)
                 .build());
         return seq + 1;
     }
@@ -126,7 +146,9 @@ public final class LlmTraceRecorder {
             String turnId,
             int seq,
             ChatResponse response,
-            long elapsedMs) {
+            long elapsedMs,
+            @Nullable Integer toolsCount,
+            @Nullable Integer toolsBytes) {
         AiMessage ai = response.aiMessage();
         TokenUsage usage = response.tokenUsage();
         Integer tokensIn = usage == null ? null : usage.inputTokenCount();
@@ -149,6 +171,8 @@ public final class LlmTraceRecorder {
                 .tokensOut(tokensOut)
                 .cacheCreationInputTokens(cacheCreate)
                 .cacheReadInputTokens(cacheRead)
+                .toolsCount(seq == 0 ? toolsCount : null)
+                .toolsBytes(seq == 0 ? toolsBytes : null)
                 .elapsedMs(elapsedMs)
                 .build());
         seq++;
@@ -216,5 +240,28 @@ public final class LlmTraceRecorder {
 
     private static String safeOrEmpty(@Nullable String s) {
         return s == null ? "" : s;
+    }
+
+    /**
+     * Estimated UTF-8 size of the {@code tools} array: name + description +
+     * parameters {@code toString} per spec, plus small per-field separators.
+     * Not the exact wire encoding — but equal surfaces produce equal
+     * numbers, and it is drift, not absolute size, that busts the prefix
+     * cache.
+     */
+    static int estimateToolsBytes(List<ToolSpecification> specs) {
+        int bytes = 0;
+        for (ToolSpecification spec : specs) {
+            bytes += utf8Length(spec.name()) + 2;
+            bytes += utf8Length(spec.description()) + 2;
+            if (spec.parameters() != null) {
+                bytes += utf8Length(String.valueOf(spec.parameters())) + 2;
+            }
+        }
+        return bytes;
+    }
+
+    private static int utf8Length(@Nullable String s) {
+        return s == null ? 0 : s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
     }
 }

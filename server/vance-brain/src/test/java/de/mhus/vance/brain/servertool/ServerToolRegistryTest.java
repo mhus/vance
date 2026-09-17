@@ -1,7 +1,6 @@
 package de.mhus.vance.brain.servertool;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -40,6 +39,7 @@ class ServerToolRegistryTest {
 
     private ServerToolLoader loader;
     private ToolFactoryRegistry factoryRegistry;
+    private MutableClock clock;
     private ServerToolRegistry registry;
     private RecordingPackFactory packFactory;
 
@@ -47,19 +47,19 @@ class ServerToolRegistryTest {
     void setUp() {
         loader = mock(ServerToolLoader.class);
         factoryRegistry = mock(ToolFactoryRegistry.class);
+        clock = new MutableClock();
         packFactory = new RecordingPackFactory();
         when(factoryRegistry.find(eq("rest_api"))).thenReturn(Optional.of(packFactory));
         when(factoryRegistry.find(eq("doc_lookup"))).thenReturn(Optional.of(new SingletonFactory()));
-        registry = new ServerToolRegistry(loader, factoryRegistry);
+        registry = new ServerToolRegistry(loader, factoryRegistry, clock);
     }
 
     // ─────── Bootstrap ───────
 
     @Test
     void bootstrap_loads_entries_into_scope() {
-        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(
-                singletonConfig("doc_a"),
-                singletonConfig("doc_b")));
+        when(loader.listAll(eq(TENANT), eq(PROJECT)))
+                .thenReturn(List.of(singletonConfig("doc_a"), singletonConfig("doc_b")));
 
         int loaded = registry.bootstrapProject(TENANT, PROJECT);
 
@@ -107,8 +107,8 @@ class ServerToolRegistryTest {
 
     @Test
     void lookup_subtool_returns_correct_pack_member() {
-        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(
-                packConfig("jira", true, Set.of(), "create", "search", "delete")));
+        when(loader.listAll(eq(TENANT), eq(PROJECT)))
+                .thenReturn(List.of(packConfig("jira", true, Set.of(), "create", "search", "delete")));
         registry.bootstrapProject(TENANT, PROJECT);
 
         assertThat(registry.lookup(TENANT, PROJECT, "jira__search"))
@@ -118,8 +118,8 @@ class ServerToolRegistryTest {
 
     @Test
     void lookup_disabled_subtool_returns_empty() {
-        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(
-                packConfig("jira", true, Set.of("delete"), "create", "search", "delete")));
+        when(loader.listAll(eq(TENANT), eq(PROJECT)))
+                .thenReturn(List.of(packConfig("jira", true, Set.of("delete"), "create", "search", "delete")));
         registry.bootstrapProject(TENANT, PROJECT);
 
         assertThat(registry.lookup(TENANT, PROJECT, "jira__delete")).isEmpty();
@@ -149,15 +149,13 @@ class ServerToolRegistryTest {
         when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(live, dead));
         registry.bootstrapProject(TENANT, PROJECT);
 
-        assertThat(registry.listAll(TENANT, PROJECT))
-                .extracting(Tool::name)
-                .containsExactly("jira__create");
+        assertThat(registry.listAll(TENANT, PROJECT)).extracting(Tool::name).containsExactly("jira__create");
     }
 
     @Test
     void listAll_filters_disabled_subtools() {
-        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(
-                packConfig("jira", true, Set.of("delete"), "create", "search", "delete")));
+        when(loader.listAll(eq(TENANT), eq(PROJECT)))
+                .thenReturn(List.of(packConfig("jira", true, Set.of("delete"), "create", "search", "delete")));
         registry.bootstrapProject(TENANT, PROJECT);
 
         assertThat(registry.listAll(TENANT, PROJECT))
@@ -194,8 +192,7 @@ class ServerToolRegistryTest {
 
     @Test
     void findConfig_subtool_resolves_to_pack() {
-        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(
-                packConfig("jira", true, Set.of(), "create")));
+        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(packConfig("jira", true, Set.of(), "create")));
         registry.bootstrapProject(TENANT, PROJECT);
 
         assertThat(registry.findConfig(TENANT, PROJECT, "jira__create"))
@@ -207,11 +204,10 @@ class ServerToolRegistryTest {
 
     @Test
     void refreshOne_replaces_existing_entry() {
-        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(
-                packConfig("jira", true, Set.of(), "create")));
+        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(packConfig("jira", true, Set.of(), "create")));
         registry.bootstrapProject(TENANT, PROJECT);
-        when(loader.load(eq(TENANT), eq(PROJECT), eq("jira"))).thenReturn(Optional.of(
-                packConfig("jira", true, Set.of(), "create", "search")));
+        when(loader.load(eq(TENANT), eq(PROJECT), eq("jira")))
+                .thenReturn(Optional.of(packConfig("jira", true, Set.of(), "create", "search")));
 
         boolean ok = registry.refreshOne(TENANT, PROJECT, "jira");
 
@@ -237,8 +233,8 @@ class ServerToolRegistryTest {
     void refreshOne_parse_error_drops_entry() {
         when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(singletonConfig("doc_a")));
         registry.bootstrapProject(TENANT, PROJECT);
-        when(loader.load(eq(TENANT), eq(PROJECT), eq("doc_a"))).thenThrow(
-                new ServerToolLoader.ServerToolParseException("bad yaml", new RuntimeException()));
+        when(loader.load(eq(TENANT), eq(PROJECT), eq("doc_a")))
+                .thenThrow(new ServerToolLoader.ServerToolParseException("bad yaml", new RuntimeException()));
 
         boolean ok = registry.refreshOne(TENANT, PROJECT, "doc_a");
 
@@ -267,14 +263,15 @@ class ServerToolRegistryTest {
     // ─────── Materialisation ───────
 
     @Test
-    void materialisation_is_lazy_per_call() {
-        // The entry-level cache was intentionally removed: user-scoped
-        // factories (MCP+OAuth) must rebuild on every access so the
-        // current invocation context flows through. Bootstrap stays
-        // lazy — factory.create() is NOT called at bootstrap time;
-        // it fires once per registry access.
-        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(
-                packConfig("jira", true, Set.of(), "create", "search")));
+    void materialisation_is_lazy_and_cached_inside_the_ttl_window() {
+        // Bootstrap stays lazy — factory.create() is NOT called at
+        // bootstrap time. The first access materialises once; every
+        // following tools() call inside the TTL window is served from
+        // the cache, so MCP tools/list and REST spec rebuilds stop
+        // running on every single call (planning/tool-surface-stability
+        // .md, B2).
+        when(loader.listAll(eq(TENANT), eq(PROJECT)))
+                .thenReturn(List.of(packConfig("jira", true, Set.of(), "create", "search")));
         registry.bootstrapProject(TENANT, PROJECT);
 
         assertThat(packFactory.callCount.get())
@@ -285,21 +282,75 @@ class ServerToolRegistryTest {
         registry.lookup(TENANT, PROJECT, "jira__search");
         registry.listAll(TENANT, PROJECT);
 
-        // Three accesses → three materialisations (no entry-level cache).
-        // Inner caches in the factory itself (e.g. McpConnectionPool's
-        // per-(doc,user) connection cache) keep the actual cost low.
-        assertThat(packFactory.callCount.get()).isEqualTo(3);
+        // Three accesses → one wire round-trip.
+        assertThat(packFactory.callCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    void materialisation_cache_is_keyed_by_user_scope() {
+        // Pack factories build over user-scoped connections (OAuth,
+        // MCP session ids) — one user's cache entry is not another's.
+        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(packConfig("jira", true, Set.of(), "create")));
+        registry.bootstrapProject(TENANT, PROJECT);
+
+        registry.listAll(TENANT, PROJECT, userCtx("road.runner"));
+        registry.listAll(TENANT, PROJECT, userCtx("road.runner"));
+        registry.listAll(TENANT, PROJECT, userCtx("marvin"));
+
+        assertThat(packFactory.callCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    void materialisation_past_the_ttl_is_rebuilt() {
+        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(packConfig("jira", true, Set.of(), "create")));
+        registry.bootstrapProject(TENANT, PROJECT);
+        registry.listAll(TENANT, PROJECT);
+        assertThat(packFactory.callCount.get()).isEqualTo(1);
+
+        clock.advance(java.time.Duration.ofSeconds(61));
+        registry.listAll(TENANT, PROJECT);
+
+        assertThat(packFactory.callCount.get()).isEqualTo(2);
+    }
+
+    @Test
+    void a_failed_rebuild_serves_the_cached_list_not_a_smaller_surface() {
+        // The 47k-token turn: a transient pack failure must not silently
+        // drop tools from the surface (B3) — the last good list is served
+        // and the breakage is logged, not enacted.
+        when(loader.listAll(eq(TENANT), eq(PROJECT)))
+                .thenReturn(List.of(packConfig("jira", true, Set.of(), "create", "search")));
+        registry.bootstrapProject(TENANT, PROJECT);
+        registry.listAll(TENANT, PROJECT);
+        int before = packFactory.callCount.get();
+
+        clock.advance(java.time.Duration.ofSeconds(61));
+        packFactory.failNextCreate = true;
+        java.util.List<Tool> after = registry.listAll(TENANT, PROJECT);
+
+        assertThat(after).extracting(Tool::name).containsExactly("jira__create", "jira__search");
+        assertThat(packFactory.callCount.get()).isEqualTo(before + 1);
+    }
+
+    @Test
+    void a_pack_that_never_materialised_is_still_skipped_fail_open() {
+        // Nothing stable to serve yet — the pre-cache per-pack isolation
+        // applies unchanged.
+        packFactory.failNextCreate = true;
+        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(packConfig("jira", true, Set.of(), "create")));
+        registry.bootstrapProject(TENANT, PROJECT);
+
+        assertThat(registry.listAll(TENANT, PROJECT)).isEmpty();
     }
 
     @Test
     void refresh_rebuilds_materialisation_on_next_access() {
-        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(
-                packConfig("jira", true, Set.of(), "create")));
+        when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(packConfig("jira", true, Set.of(), "create")));
         registry.bootstrapProject(TENANT, PROJECT);
         registry.lookup(TENANT, PROJECT, "jira__create"); // builds once
 
-        when(loader.load(eq(TENANT), eq(PROJECT), eq("jira"))).thenReturn(Optional.of(
-                packConfig("jira", true, Set.of(), "create", "search")));
+        when(loader.load(eq(TENANT), eq(PROJECT), eq("jira")))
+                .thenReturn(Optional.of(packConfig("jira", true, Set.of(), "create", "search")));
         registry.refreshOne(TENANT, PROJECT, "jira");
 
         int callsBefore = packFactory.callCount.get();
@@ -310,9 +361,39 @@ class ServerToolRegistryTest {
 
     // ─────── Helpers ───────
 
+    private static ToolInvocationContext userCtx(String userId) {
+        return new ToolInvocationContext(TENANT, PROJECT, null, null, userId, null);
+    }
+
+    /** Controllable time source — advance() expires the TTL window deterministically. */
+    private static final class MutableClock extends java.time.Clock {
+        private volatile java.time.Instant now = java.time.Instant.now();
+
+        void advance(java.time.Duration by) {
+            now = now.plus(by);
+        }
+
+        @Override
+        public java.time.ZoneId getZone() {
+            return java.time.ZoneOffset.UTC;
+        }
+
+        @Override
+        public java.time.Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public java.time.Instant instant() {
+            return now;
+        }
+    }
+
     private static ServerToolConfig singletonConfig(String name) {
         return new ServerToolConfig(
-                name, "doc_lookup", "test " + name,
+                name,
+                "doc_lookup",
+                "test " + name,
                 new LinkedHashMap<>(Map.of("path", "_vance/manuals/" + name + ".md")),
                 new ArrayList<>(),
                 /*enabled*/ true,
@@ -331,7 +412,9 @@ class ServerToolRegistryTest {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("subNames", List.of(subNames));
         return new ServerToolConfig(
-                name, "rest_api", "test pack " + name,
+                name,
+                "rest_api",
+                "test pack " + name,
                 params,
                 new ArrayList<>(),
                 enabled,
@@ -347,7 +430,9 @@ class ServerToolRegistryTest {
 
     private static ServerToolConfig withLabels(ServerToolConfig base, String... labels) {
         return new ServerToolConfig(
-                base.name(), base.type(), base.description(),
+                base.name(),
+                base.type(),
+                base.description(),
                 base.parameters(),
                 new ArrayList<>(List.of(labels)),
                 base.enabled(),
@@ -364,17 +449,30 @@ class ServerToolRegistryTest {
     /** Test factory: fans out the doc into N sub-tools per the {@code subNames} param. */
     private static final class RecordingPackFactory implements ToolFactory {
         final AtomicInteger callCount = new AtomicInteger();
+        /** When set, the next create() throws — simulates a transient pack failure. */
+        volatile boolean failNextCreate;
 
-        @Override public String typeId() { return "rest_api"; }
-        @Override public Map<String, Object> parametersSchema() { return Map.of(); }
+        @Override
+        public String typeId() {
+            return "rest_api";
+        }
+
+        @Override
+        public Map<String, Object> parametersSchema() {
+            return Map.of();
+        }
 
         @Override
         @SuppressWarnings("unchecked")
         public Collection<Tool> create(ServerToolDocument document) {
             callCount.incrementAndGet();
+            if (failNextCreate) {
+                failNextCreate = false;
+                throw new IllegalStateException("spec fetch failed (simulated)");
+            }
             List<String> subNames = (List<String>) document.getParameters().get("subNames");
-            Set<String> packLabels = document.getLabels() == null
-                    ? Set.of() : new LinkedHashSet<>(document.getLabels());
+            Set<String> packLabels =
+                    document.getLabels() == null ? Set.of() : new LinkedHashSet<>(document.getLabels());
             List<Tool> out = new ArrayList<>(subNames.size());
             for (String sub : subNames) {
                 String fullName = document.getName() + ToolFactory.PACK_SEPARATOR + sub;
@@ -386,8 +484,16 @@ class ServerToolRegistryTest {
 
     /** Singleton factory: returns the doc as one tool with no labels. */
     private static final class SingletonFactory implements ToolFactory {
-        @Override public String typeId() { return "doc_lookup"; }
-        @Override public Map<String, Object> parametersSchema() { return Map.of(); }
+        @Override
+        public String typeId() {
+            return "doc_lookup";
+        }
+
+        @Override
+        public Map<String, Object> parametersSchema() {
+            return Map.of();
+        }
+
         @Override
         public Collection<Tool> create(ServerToolDocument document) {
             return List.of(new StubTool(document.getName(), Set.of()));
@@ -397,13 +503,39 @@ class ServerToolRegistryTest {
     private static final class StubTool implements Tool {
         private final String name;
         private final Set<String> labels;
-        StubTool(String name, Set<String> labels) { this.name = name; this.labels = labels; }
-        @Override public String name() { return name; }
-        @Override public String description() { return "stub " + name; }
-        @Override public boolean primary() { return false; }
-        @Override public Set<String> labels() { return labels; }
-        @Override public Map<String, Object> paramsSchema() { return Map.of(); }
-        @Override public Map<String, Object> invoke(Map<String, Object> p, ToolInvocationContext c) {
+
+        StubTool(String name, Set<String> labels) {
+            this.name = name;
+            this.labels = labels;
+        }
+
+        @Override
+        public String name() {
+            return name;
+        }
+
+        @Override
+        public String description() {
+            return "stub " + name;
+        }
+
+        @Override
+        public boolean primary() {
+            return false;
+        }
+
+        @Override
+        public Set<String> labels() {
+            return labels;
+        }
+
+        @Override
+        public Map<String, Object> paramsSchema() {
+            return Map.of();
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> p, ToolInvocationContext c) {
             return Map.of();
         }
     }

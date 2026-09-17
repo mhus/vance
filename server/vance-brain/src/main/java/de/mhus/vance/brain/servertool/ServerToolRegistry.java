@@ -2,9 +2,9 @@ package de.mhus.vance.brain.servertool;
 
 import de.mhus.vance.brain.tools.types.ToolFactory;
 import de.mhus.vance.brain.tools.types.ToolFactoryRegistry;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
-import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -39,15 +38,27 @@ import org.springframework.stereotype.Service;
  * (Schritt C).
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class ServerToolRegistry {
 
     private final ServerToolLoader loader;
     private final ToolFactoryRegistry factoryRegistry;
+    private final java.time.Clock clock;
 
     /** Project scope cache. Key: {@code tenantId|projectId}. */
     private final Map<String, ProjectScope> scopes = new ConcurrentHashMap<>();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ServerToolRegistry(ServerToolLoader loader, ToolFactoryRegistry factoryRegistry) {
+        this(loader, factoryRegistry, java.time.Clock.systemUTC());
+    }
+
+    /** Test seam: a controllable clock for the materialisation TTL. */
+    ServerToolRegistry(ServerToolLoader loader, ToolFactoryRegistry factoryRegistry, java.time.Clock clock) {
+        this.loader = loader;
+        this.factoryRegistry = factoryRegistry;
+        this.clock = clock;
+    }
 
     // ──────────────────── Lifecycle ────────────────────
 
@@ -63,11 +74,10 @@ public class ServerToolRegistry {
         List<ServerToolConfig> entries = loader.listAll(tenantId, projectId);
         Map<String, ResolvedTool> byName = new LinkedHashMap<>();
         for (ServerToolConfig cfg : entries) {
-            byName.put(cfg.name(), new ResolvedTool(cfg, tenantId, projectId));
+            byName.put(cfg.name(), new ResolvedTool(cfg, tenantId, projectId, clock));
         }
         scopes.put(scopeKey(tenantId, projectId), new ProjectScope(byName));
-        log.info("ServerToolRegistry bootstrap '{}/{}' loaded {} entries",
-                tenantId, projectId, byName.size());
+        log.info("ServerToolRegistry bootstrap '{}/{}' loaded {} entries", tenantId, projectId, byName.size());
         return byName.size();
     }
 
@@ -111,8 +121,11 @@ public class ServerToolRegistry {
             try {
                 f.invalidate(cfg.documentId());
             } catch (RuntimeException ex) {
-                log.warn("ServerToolRegistry: factory '{}' invalidate failed for '{}': {}",
-                        cfg.type(), cfg.name(), ex.toString());
+                log.warn(
+                        "ServerToolRegistry: factory '{}' invalidate failed for '{}': {}",
+                        cfg.type(),
+                        cfg.name(),
+                        ex.toString());
             }
         });
     }
@@ -146,8 +159,12 @@ public class ServerToolRegistry {
         try {
             reloaded = loader.load(tenantId, projectId, norm);
         } catch (ServerToolLoader.ServerToolParseException ex) {
-            log.warn("ServerToolRegistry refreshOne parse failed '{}/{}/{}': {}",
-                    tenantId, projectId, norm, ex.getMessage());
+            log.warn(
+                    "ServerToolRegistry refreshOne parse failed '{}/{}/{}': {}",
+                    tenantId,
+                    projectId,
+                    norm,
+                    ex.getMessage());
             scope.entries.remove(norm);
             if (prior != null) invalidateFactory(prior.config);
             invalidateCascadeChildrenIfParent(tenantId, projectId, name);
@@ -159,7 +176,7 @@ public class ServerToolRegistry {
             invalidateCascadeChildrenIfParent(tenantId, projectId, name);
             return false;
         }
-        scope.entries.put(norm, new ResolvedTool(reloaded.get(), tenantId, projectId));
+        scope.entries.put(norm, new ResolvedTool(reloaded.get(), tenantId, projectId, clock));
         invalidateCascadeChildrenIfParent(tenantId, projectId, name);
         return true;
     }
@@ -175,8 +192,7 @@ public class ServerToolRegistry {
      * cannot do alone: it only knows about the doc's own project, not
      * who's reading it.
      */
-    private void invalidateCascadeChildrenIfParent(
-            String tenantId, String projectId, String name) {
+    private void invalidateCascadeChildrenIfParent(String tenantId, String projectId, String name) {
         if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) return;
         String tenantKey = tenantId + "|";
         List<String> stale = new ArrayList<>();
@@ -190,8 +206,7 @@ public class ServerToolRegistry {
             if (removed != null) releaseAll(removed);
         }
         if (!stale.isEmpty()) {
-            log.info("ServerToolRegistry: invalidated {} child scope(s) after _tenant '{}' change",
-                    stale.size(), name);
+            log.info("ServerToolRegistry: invalidated {} child scope(s) after _tenant '{}' change", stale.size(), name);
         }
     }
 
@@ -206,8 +221,7 @@ public class ServerToolRegistry {
      * can decide between "fall through to built-ins" (config absent)
      * versus "tool is explicitly disabled" (config present but disabled).
      */
-    public Optional<ServerToolConfig> findConfig(
-            String tenantId, String projectId, String name) {
+    public Optional<ServerToolConfig> findConfig(String tenantId, String projectId, String name) {
         ProjectScope scope = scopes.get(scopeKey(tenantId, projectId));
         if (scope == null) return Optional.empty();
         ResolvedTool entry = scope.entries.get(packPrefix(name));
@@ -219,14 +233,12 @@ public class ServerToolRegistry {
      * cascade layer carries the pack, when the config is disabled, or
      * when the requested sub-tool is disabled inside an enabled pack.
      */
-    public Optional<de.mhus.vance.toolpack.Tool> lookup(
-            String tenantId, String projectId, String name) {
+    public Optional<de.mhus.vance.toolpack.Tool> lookup(String tenantId, String projectId, String name) {
         return lookup(tenantId, projectId, name, /*ctx*/ null);
     }
 
     public Optional<de.mhus.vance.toolpack.Tool> lookup(
-            String tenantId, String projectId, String name,
-            @Nullable ToolInvocationContext ctx) {
+            String tenantId, String projectId, String name, @Nullable ToolInvocationContext ctx) {
         ProjectScope scope = scopes.get(scopeKey(tenantId, projectId));
         if (scope == null) return Optional.empty();
         ResolvedTool entry = scope.entries.get(packPrefix(name));
@@ -238,10 +250,15 @@ public class ServerToolRegistry {
             // Same isolation rule as listAll: a broken pack must return
             // "not found" rather than propagating up into the engine and
             // killing the turn.
-            log.warn("ServerToolRegistry: lookup '{}' in broken tool '{}' (type={}) "
+            log.warn(
+                    "ServerToolRegistry: lookup '{}' in broken tool '{}' (type={}) "
                             + "in tenant='{}' project='{}': {}",
-                    name, entry.config.name(), entry.config.type(),
-                    tenantId, projectId, ex.toString());
+                    name,
+                    entry.config.name(),
+                    entry.config.type(),
+                    tenantId,
+                    projectId,
+                    ex.toString());
             return Optional.empty();
         }
     }
@@ -256,8 +273,7 @@ public class ServerToolRegistry {
     }
 
     public List<de.mhus.vance.toolpack.Tool> listAll(
-            String tenantId, String projectId,
-            @Nullable ToolInvocationContext ctx) {
+            String tenantId, String projectId, @Nullable ToolInvocationContext ctx) {
         ProjectScope scope = scopes.get(scopeKey(tenantId, projectId));
         if (scope == null) return List.of();
         List<de.mhus.vance.toolpack.Tool> out = new ArrayList<>();
@@ -271,24 +287,25 @@ public class ServerToolRegistry {
                 // must NOT take down the whole project's tool list —
                 // every other tool keeps working and the engine's turn
                 // proceeds. Log loudly so the breakage is visible.
-                log.warn("ServerToolRegistry: skipping broken tool '{}' (type={}) "
-                                + "in tenant='{}' project='{}': {}",
-                        entry.config.name(), entry.config.type(),
-                        tenantId, projectId, ex.toString());
+                log.warn(
+                        "ServerToolRegistry: skipping broken tool '{}' (type={}) " + "in tenant='{}' project='{}': {}",
+                        entry.config.name(),
+                        entry.config.type(),
+                        tenantId,
+                        projectId,
+                        ex.toString());
             }
         }
         return out;
     }
 
     /** Tools in this project's cascade carrying {@code label}. */
-    public List<de.mhus.vance.toolpack.Tool> findByLabel(
-            String tenantId, String projectId, String label) {
+    public List<de.mhus.vance.toolpack.Tool> findByLabel(String tenantId, String projectId, String label) {
         return findByLabel(tenantId, projectId, label, /*ctx*/ null);
     }
 
     public List<de.mhus.vance.toolpack.Tool> findByLabel(
-            String tenantId, String projectId, String label,
-            @Nullable ToolInvocationContext ctx) {
+            String tenantId, String projectId, String label, @Nullable ToolInvocationContext ctx) {
         return listAll(tenantId, projectId, ctx).stream()
                 .filter(t -> t.labels().contains(label))
                 .toList();
@@ -306,6 +323,27 @@ public class ServerToolRegistry {
     }
 
     // ──────────────────── Internals ────────────────────
+
+    /**
+     * Freshness window for a materialised pack list. Within it the
+     * cached list is served as-is; past it the next call re-runs the
+     * factory, and only a create failure falls back to the stale list.
+     * Short enough that an invalidated user-scoped connection (e.g. an
+     * OAuth drop without an event we hear) self-heals quickly, long
+     * enough that the MCP {@code tools/list} / REST rebuild round-trips
+     * stop running on every {@code tools()} call. Surface stability
+     * across turns does not depend on the TTL — the stale-fallback in
+     * {@code ResolvedTool.materializeRaw} covers the gap.
+     */
+    static final java.time.Duration MATERIALIZE_TTL = java.time.Duration.ofSeconds(60);
+
+    /** A materialised pack list plus the moment it was built. */
+    record CachedMaterialization(List<de.mhus.vance.toolpack.Tool> tools, java.time.Instant at) {}
+
+    /** Whether {@code cached} is inside the {@link #MATERIALIZE_TTL} window at {@code now}. */
+    static boolean isFresh(CachedMaterialization cached, java.time.Instant now) {
+        return cached.at().isAfter(now.minus(MATERIALIZE_TTL));
+    }
 
     private static String scopeKey(String tenantId, String projectId) {
         return tenantId + "|" + projectId;
@@ -326,45 +364,94 @@ public class ServerToolRegistry {
     }
 
     /**
-     * Cascade-resolved tool entry. Materialisation is <b>NOT</b> cached
-     * on the entry — every call re-runs {@code factory.create(doc, ctx)}
-     * so that user-scoped state (OAuth tokens, MCP session ids) reflects
-     * the current invocation context, not the first one that materialised.
-     * Heavy work (live MCP {@code tools/list}, REST OpenAPI parsing) is
-     * cached one level down — in the factory's own connection pool — so
-     * the per-request cost is a Map-keyed lookup.
+     * Cascade-resolved tool entry. Materialisation is cached per user
+     * scope for {@link #MATERIALIZE_TTL} — and on a transient failure the
+     * cached list is served even past the TTL.
+     *
+     * <p><b>Why the previous "re-run every call" contract had to go.</b>
+     * Every {@code tools()} call — several per turn — re-ran
+     * {@code factory.create(doc, ctx)}, and each create is a wire
+     * round-trip for MCP packs ({@code tools/list}) and a rebuild for
+     * REST packs. Worse, {@code listAll}'s per-pack fail-open turned any
+     * transient create failure into a silently smaller tool surface:
+     * observed as a 76k-token prompt dropping to 47k between two turns
+     * with byte-identical messages, busting the provider's prefix cache
+     * (see {@code planning/tool-surface-stability.md}, B2/B3).
+     *
+     * <p>The cache keeps the surface stable: fresh while it works, the
+     * last good list when it doesn't. A pack whose <i>invocations</i>
+     * fail still fails cleanly at invoke time — the surface is a
+     * declaration, not a liveness probe. User-scoped state (OAuth tokens,
+     * MCP session ids) stays keyed by {@code ctx.userId()}; the TTL
+     * bounds staleness for anything that invalidates without an event
+     * we hear about. Config changes replace the whole entry
+     * ({@code bootstrapProject}/{@code reloadOneTool} build new
+     * instances), which drops the cache by construction.
      */
     static final class ResolvedTool {
         final ServerToolConfig config;
         final String tenantId;
         final String projectId;
+        /** Time source for the TTL — injectable so tests can expire the window. */
+        final java.time.Clock clock;
 
-        ResolvedTool(ServerToolConfig config, String tenantId, String projectId) {
+        /**
+         * Last materialised list per user scope — packs build their tools
+         * over user-scoped connections, so one user's list is not
+         * another's. Lives and dies with this entry instance.
+         */
+        private final Map<String, CachedMaterialization> materialized = new ConcurrentHashMap<>();
+
+        ResolvedTool(ServerToolConfig config, String tenantId, String projectId, java.time.Clock clock) {
             this.config = config;
             this.tenantId = tenantId;
             this.projectId = projectId;
+            this.clock = clock;
         }
 
         /**
          * Materialised tools without {@code disabledSubTools} filtering.
-         * {@code ctx} threads the calling user/session down into pack
-         * factories that bootstrap user-scoped connections (MCP-server
-         * with OAuth, REST-API with per-user tokens). Re-runs every call
-         * — see class javadoc for the rationale.
+         * Served from the per-user cache while fresh; a create failure
+         * falls back to the last good list so the turn's surface cannot
+         * shrink transitively.
          */
         List<de.mhus.vance.toolpack.Tool> materializeRaw(
-                ToolFactoryRegistry registry,
-                @Nullable ToolInvocationContext ctx) {
-            ToolFactory factory = registry.find(config.type()).orElseThrow(
-                    () -> new IllegalStateException(
-                            "Unknown tool type '" + config.type()
-                                    + "' on server-tool '" + config.name()
-                                    + "' (tenant=" + tenantId
-                                    + ", project=" + projectId + ")"));
+                ToolFactoryRegistry registry, @Nullable ToolInvocationContext ctx) {
+            String scopeKey = ctx == null || ctx.userId() == null ? "" : ctx.userId();
+            CachedMaterialization cached = materialized.get(scopeKey);
+            java.time.Instant now = clock.instant();
+            if (cached != null && isFresh(cached, now)) {
+                return cached.tools();
+            }
+            try {
+                List<de.mhus.vance.toolpack.Tool> fresh = materializeUncached(registry, ctx);
+                materialized.put(scopeKey, new CachedMaterialization(fresh, now));
+                return fresh;
+            } catch (RuntimeException e) {
+                if (cached != null) {
+                    log.warn(
+                            "ServerToolRegistry: materialising '{}' failed — serving the cached {} tool(s), the turn's surface stays stable: {}",
+                            config.name(),
+                            cached.tools().size(),
+                            e.toString());
+                    return cached.tools();
+                }
+                // Never materialised successfully — nothing stable to serve;
+                // listAll's per-pack isolation skips the pack as before.
+                throw e;
+            }
+        }
+
+        private List<de.mhus.vance.toolpack.Tool> materializeUncached(
+                ToolFactoryRegistry registry, @Nullable ToolInvocationContext ctx) {
+            ToolFactory factory = registry.find(config.type())
+                    .orElseThrow(() -> new IllegalStateException("Unknown tool type '" + config.type()
+                            + "' on server-tool '" + config.name()
+                            + "' (tenant=" + tenantId
+                            + ", project=" + projectId + ")"));
             ServerToolDocument transientDoc = config.toTransientDocument(tenantId, projectId);
             return List.copyOf(factory.create(transientDoc, ctx));
         }
-
         /** Convenience overload — no caller context. Kept for admin-side paths. */
         List<de.mhus.vance.toolpack.Tool> materializeRaw(ToolFactoryRegistry registry) {
             return materializeRaw(registry, /*ctx*/ null);
@@ -372,17 +459,16 @@ public class ServerToolRegistry {
 
         /** Materialised tools with disabled sub-tools removed. */
         List<de.mhus.vance.toolpack.Tool> materializeFiltered(
-                ToolFactoryRegistry registry,
-                @Nullable ToolInvocationContext ctx) {
+                ToolFactoryRegistry registry, @Nullable ToolInvocationContext ctx) {
             List<de.mhus.vance.toolpack.Tool> raw = materializeRaw(registry, ctx);
             if (config.disabledSubTools().isEmpty()) return raw;
             String prefix = config.name() + ToolFactory.PACK_SEPARATOR;
-            return raw.stream().filter(t -> {
-                String local = t.name().startsWith(prefix)
-                        ? t.name().substring(prefix.length())
-                        : t.name();
-                return !config.disabledSubTools().contains(local);
-            }).toList();
+            return raw.stream()
+                    .filter(t -> {
+                        String local = t.name().startsWith(prefix) ? t.name().substring(prefix.length()) : t.name();
+                        return !config.disabledSubTools().contains(local);
+                    })
+                    .toList();
         }
 
         List<de.mhus.vance.toolpack.Tool> materializeFiltered(ToolFactoryRegistry registry) {
@@ -390,15 +476,11 @@ public class ServerToolRegistry {
         }
 
         Optional<de.mhus.vance.toolpack.Tool> pickSubTool(
-                String requestedName,
-                ToolFactoryRegistry registry,
-                @Nullable ToolInvocationContext ctx) {
+                String requestedName, ToolFactoryRegistry registry, @Nullable ToolInvocationContext ctx) {
             for (de.mhus.vance.toolpack.Tool t : materializeRaw(registry, ctx)) {
                 if (!t.name().equals(requestedName)) continue;
                 String prefix = config.name() + ToolFactory.PACK_SEPARATOR;
-                String local = t.name().startsWith(prefix)
-                        ? t.name().substring(prefix.length())
-                        : t.name();
+                String local = t.name().startsWith(prefix) ? t.name().substring(prefix.length()) : t.name();
                 if (config.disabledSubTools().contains(local)) {
                     return Optional.empty();
                 }
@@ -407,8 +489,7 @@ public class ServerToolRegistry {
             return Optional.empty();
         }
 
-        Optional<de.mhus.vance.toolpack.Tool> pickSubTool(
-                String requestedName, ToolFactoryRegistry registry) {
+        Optional<de.mhus.vance.toolpack.Tool> pickSubTool(String requestedName, ToolFactoryRegistry registry) {
             return pickSubTool(requestedName, registry, /*ctx*/ null);
         }
     }

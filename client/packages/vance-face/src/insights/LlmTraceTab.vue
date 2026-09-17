@@ -145,6 +145,14 @@ function legBadge(leg: LlmTraceDto): { label: string; cls: string } {
               }) }}
             </span>
             <span v-if="turn.elapsedMs != null">{{ fmtMs(turn.elapsedMs) }}</span>
+            <span v-if="turn.toolsCount != null" class="turn-tools">
+              {{ $t('insights.llmTrace.toolsSurface', {
+                count: turn.toolsCount,
+                kb: (turn.toolsBytes ?? 0) >= 1000
+                  ? `${((turn.toolsBytes ?? 0) / 1000).toFixed(1)}kB`
+                  : `${turn.toolsBytes ?? 0}B`,
+              }) }}
+            </span>
             <span v-if="turn.toolCallCount > 0" class="turn-tools">
               {{
                 turn.toolCallCount === 1

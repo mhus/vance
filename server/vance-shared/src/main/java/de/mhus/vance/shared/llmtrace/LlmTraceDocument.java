@@ -34,12 +34,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "llm_traces")
 @CompoundIndexes({
-        @CompoundIndex(
-                name = "tenant_process_createdAt_idx",
-                def = "{ 'tenantId': 1, 'processId': 1, 'createdAt': 1 }"),
-        @CompoundIndex(
-                name = "tenant_session_createdAt_idx",
-                def = "{ 'tenantId': 1, 'sessionId': 1, 'createdAt': 1 }")
+    @CompoundIndex(name = "tenant_process_createdAt_idx", def = "{ 'tenantId': 1, 'processId': 1, 'createdAt': 1 }"),
+    @CompoundIndex(name = "tenant_session_createdAt_idx", def = "{ 'tenantId': 1, 'sessionId': 1, 'createdAt': 1 }")
 })
 @Data
 @Builder
@@ -130,6 +126,22 @@ public class LlmTraceDocument {
     /** Wall-clock the underlying LLM call took, in milliseconds. */
     private @Nullable Long elapsedMs;
 
+    /**
+     * Number of tool schemas this round-trip carried in its {@code tools}
+     * array. Set on the first row of a turn only; {@code null} on the other
+     * legs. The provider serializes the array ahead of every message, so
+     * count and size moving between turns of one process is the prompt-
+     * cache-killer signature (see {@code planning/tool-surface-stability.md}).
+     */
+    private @Nullable Integer toolsCount;
+
+    /**
+     * Estimated serialized size of the {@code tools} array — sum of UTF-8
+     * length over name + description + parameters toString, so equal
+     * surfaces produce equal numbers. Same placement rule as
+     * {@link #toolsCount}.
+     */
+    private @Nullable Integer toolsBytes;
     /**
      * Insertion timestamp. TTL-indexed: MongoDB drops the row 90 days
      * after this. (Spring's {@code expireAfter} on @Indexed accepts

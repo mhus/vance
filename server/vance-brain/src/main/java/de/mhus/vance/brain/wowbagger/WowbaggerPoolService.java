@@ -427,7 +427,7 @@ public class WowbaggerPoolService {
                 marker.setStartRecord(handle.live.getPointer());
                 marker.setRecordCount(0);
                 marker.setAttempts(handle.live.getChunkRetries());
-                marker.setLastError(truncate(e.toString(), 300));
+                marker.setLastError(describeError(e));
                 handle.live.getFailedChunks().add(marker);
                 handle.live.setFailureCount(handle.live.getFailureCount() + 1);
                 persist(process, handle.live);
@@ -506,7 +506,7 @@ public class WowbaggerPoolService {
             } catch (RuntimeException e) {
                 synchronized (handle.lock) {
                     chunk.setAttempts(chunk.getAttempts() + 1);
-                    chunk.setLastError(truncate(e.toString(), 300));
+                    chunk.setLastError(describeError(e));
                     if (chunk.getAttempts() > handle.live.getChunkRetries()) {
                         failed = true;
                     } else {
@@ -1190,5 +1190,27 @@ public class WowbaggerPoolService {
 
     static String truncate(String s, int max) {
         return s.length() <= max ? s : s.substring(0, max) + "…";
+    }
+
+    /**
+     * Error text for the ledger/wakeups: the exception plus its deepest
+     * cause — the chain wrapper ("All N chat-model chain entries
+     * exhausted") alone hides the real reason (a provider 400 body,
+     * "source lost" etc.), and the agent must diagnose from the message.
+     */
+    static String describeError(Throwable e) {
+        StringBuilder sb = new StringBuilder(truncate(e.toString(), 300));
+        Throwable deepest = e.getCause();
+        Throwable cause = deepest;
+        while (cause != null) {
+            deepest = cause;
+            cause = cause.getCause();
+        }
+        if (deepest != null
+                && deepest.getMessage() != null
+                && !deepest.getMessage().isBlank()) {
+            sb.append(" — root cause: ").append(truncate(deepest.getMessage(), 300));
+        }
+        return sb.toString();
     }
 }

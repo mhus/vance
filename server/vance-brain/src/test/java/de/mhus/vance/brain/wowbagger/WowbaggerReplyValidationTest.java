@@ -164,6 +164,28 @@ class WowbaggerReplyValidationTest {
     }
 
     @Test
+    void describeErrorSurfacesTheDeepestCause() {
+        // Live-run lesson: "All 1 chat-model chain entries exhausted" alone
+        // read as "provider down" — the real cause (a provider 400: max_tokens
+        // clamped to the context window) was three causes down. The ledger
+        // must show it.
+        RuntimeException root = new RuntimeException(
+                "This model's maximum context length is 512000 tokens. However, you requested 512000 output tokens");
+        RuntimeException chain = new RuntimeException("All 1 chat-model chain entries exhausted", root);
+        var llm = new de.mhus.vance.brain.ai.light.LightLlmException("LLM call failed", chain);
+
+        String described = WowbaggerPoolService.describeError(llm);
+        assertThat(described)
+                .contains("LightLlmException")
+                .contains("root cause")
+                .contains("maximum context length is 512000")
+                .doesNotContain("entries exhausted — root cause: All");
+        // No cause chain → no invented root cause.
+        assertThat(WowbaggerPoolService.describeError(new RuntimeException("source lost")))
+                .isEqualTo("java.lang.RuntimeException: source lost");
+    }
+
+    @Test
     void normalizeNeverInventsState() {
         // A pre-pivot persisted map (missing retryQueue/finished) loads
         // tolerantly — the Zaphod lesson.

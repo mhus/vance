@@ -14,10 +14,11 @@ engine: jeltz
 internal: true
 params:
   model: default:fast
-  # Output cap deliberately not pinning the provider default (4096 was
-  # silently truncating JSONL chunk replies — one line per record must
-  # never be cut off; let the model's own limit apply, benjy convention).
-  maxTokens: 2000000
+  # Output cap: large enough that a chunk's one-line-per-record reply is
+  # never truncated (4096 was), but far below any model's CONTEXT window —
+  # the coding-proxy clamps max_tokens to the context length and then
+  # rejects input+output > context with a 400 (2000000 killed every call).
+  maxTokens: 32768
   temperature: 0.1
 promptPrefix: |
   You are a Wowbagger worker. You receive a task instruction and a block

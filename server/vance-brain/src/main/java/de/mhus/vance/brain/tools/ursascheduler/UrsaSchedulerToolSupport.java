@@ -174,6 +174,11 @@ class UrsaSchedulerToolSupport {
      * persisted document.
      */
     DocumentDocument upsert(String tenantId, String projectId, String name, String yaml, @Nullable String createdBy) {
+        // Persisted scheduler documents carry their kind ($meta.kind:
+        // vance-scheduler) so they stay typed on the document layer —
+        // listable by kind, rendered with the scheduler form view, and
+        // covered by the UrsaSchedulerKindHandler validation.
+        String stamped = UrsaSchedulerLoader.ensureKindMeta(yaml);
         String path = pathFor(name);
         Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
@@ -181,7 +186,7 @@ class UrsaSchedulerToolSupport {
                     existing.get().getId(),
                     /*newTitle*/ null,
                     /*newTags*/ null,
-                    /*newInlineText*/ yaml,
+                    /*newInlineText*/ stamped,
                     /*newPath*/ null,
                     adminSystemActor(tenantId, projectId, createdBy));
         }
@@ -191,7 +196,7 @@ class UrsaSchedulerToolSupport {
                 path,
                 /*title*/ "Scheduler: " + name,
                 /*tags*/ null,
-                yaml,
+                stamped,
                 createdBy,
                 adminSystemActor(tenantId, projectId, createdBy));
     }

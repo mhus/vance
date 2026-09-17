@@ -1,0 +1,125 @@
+title:       { de: "Scheduler",  en: "Scheduler" }
+description: { de: "Zeitgesteuertes Feuern eines Recipes: Zeitplan, Zeitzone und Prompt",
+               en: "Time-driven recipe firing: schedule, timezone and prompt" }
+icon: clock
+tags: [automation, scheduler]
+
+# The loader reads exactly this folder, so the template pins it — a
+# scheduler definition anywhere else is inert (kind and location are
+# independent; see workflows §2.5 for the same rule).
+folder: _vance/scheduler
+
+name:
+  mode: free
+  default: "my-scheduler"
+
+fields:
+
+  # ─── What happens ────────────────────────────────────────────────
+
+  - name: description
+    type: string
+    required: true
+    label: { de: "Was der Scheduler tut",
+             en: "What the scheduler does" }
+    help:  { de: "Ein Satz — erscheint in der Scheduler-Liste und im Web-Editor",
+             en: "One sentence — shows up in the scheduler list and web editor" }
+
+  - name: recipe
+    type: string
+    defaultValue: "default"
+    label: { de: "Recipe",
+             en: "Recipe" }
+    help:  { de: "Welches Recipe jeder Lauf spawnt. `default` (ford) ist der Generalist; `analyze` für Recherche, `marvin` für mehrstufige Arbeit.",
+             en: "Which recipe each run spawns. `default` (ford) is the generalist; `analyze` for research, `marvin` for multi-stage work." }
+
+  - name: message
+    type: string
+    label: { de: "Prompt pro Lauf",
+             en: "Prompt per run" }
+    help:  { de: "Was der Agent pro Lauf tun soll (initialMessage), einzeilig. Leer = Recipe-Default.",
+             en: "What the agent should do on each run (initialMessage), one line. Empty = recipe default." }
+    label: { de: "Prompt pro Lauf",
+             en: "Prompt per run" }
+    help:  { de: "Was der Agent pro Lauf tun soll (initialMessage), einzeilig. Leer = Recipe-Default.",
+             en: "What the agent should do on each run (initialMessage), one line. Empty = recipe default." }
+
+  # ─── When it fires ──────────────────────────────────────────────
+  # No conditional fields in v1 — the fields of the chosen cadence are
+  # used, the rest ignored.
+
+  - name: cadence
+    type: select
+    required: true
+    defaultValue: "daily"
+    choices:
+      - value: hourly
+        label: { de: "Stündlich", en: "Hourly" }
+      - value: daily
+        label: { de: "Täglich", en: "Daily" }
+      - value: weekly
+        label: { de: "Wöchentlich", en: "Weekly" }
+      - value: monthly
+        label: { de: "Monatlich", en: "Monthly" }
+      - value: once
+        label: { de: "Einmalig", en: "Once" }
+    label: { de: "Zeitplan",
+             en: "Schedule" }
+    help:  { de: "Stündlich = alle N Stunden · Täglich = jeden Tag zur Uhrzeit · Wöchentlich = Wochentage + Uhrzeit · Monatlich = Tag des Monats + Uhrzeit · Einmalig = konkreter Zeitpunkt.",
+             en: "Hourly = every N hours · Daily = every day at a time · Weekly = weekdays + time · Monthly = day of month + time · Once = a concrete point in time." }
+
+  - name: hour
+    type: integer
+    integerMin: 0
+    integerMax: 23
+    defaultValue: "8"
+    label: { de: "Stunde", en: "Hour" }
+    help:  { de: "Uhrzeit-Teil der Zeitzone unten, nicht UTC.", en: "Time-of-day part in the timezone below, not UTC." }
+
+  - name: minute
+    type: integer
+    integerMin: 0
+    integerMax: 59
+    defaultValue: "0"
+    label: { de: "Minute", en: "Minute" }
+
+  - name: everyHours
+    type: integer
+    integerMin: 1
+    integerMax: 24
+    defaultValue: "2"
+    label: { de: "Interval (Stunden) — bei 'Stündlich'",
+             en: "Interval (hours) — for 'Hourly'" }
+
+  - name: weekdays
+    type: string
+    defaultValue: "MON-FRI"
+    label: { de: "Wochentage — bei 'Wöchentlich'",
+             en: "Weekdays — for 'Weekly'" }
+    help:  { de: "Quartz-Namen, Komma oder Bindestrich. Beispiele: MON-FRI, MON,WED,FRI, SAT,SUN.",
+             en: "Quartz names, comma or dash separated. Examples: MON-FRI, MON,WED,FRI, SAT,SUN." }
+
+  - name: monthDay
+    type: integer
+    integerMin: 1
+    integerMax: 31
+    defaultValue: "1"
+    label: { de: "Tag des Monats — bei 'Monatlich'",
+             en: "Day of month — for 'Monthly'" }
+    help:  { de: "Monate ohne den Tag (Februar, 31er) überspringen den Lauf still.",
+             en: "Months lacking the day (February, 31st) silently skip the run." }
+
+  - name: onceAt
+    type: string
+    label: { de: "Zeitpunkt (ISO) — bei 'Einmalig'",
+             en: "Point in time (ISO) — for 'Once'" }
+    help:  { de: "Beispiel: 2026-05-14T08:00:00 — interpretiert in der Zeitzone unten. Nach dem Feuern landet das Doc im Papierkorb.",
+             en: "Example: 2026-05-14T08:00:00 — interpreted in the timezone below. After firing, the doc is moved to the trash." }
+
+  - name: timezone
+    type: string
+    defaultValue: "Europe/Berlin"
+    label: { de: "Zeitzone (IANA)",
+             en: "Timezone (IANA)" }
+    help:  { de: "z.B. Europe/Berlin, America/New_York. Fehlt sie, gilt UTC.",
+             en: "e.g. Europe/Berlin, America/New_York. When absent, UTC applies." }

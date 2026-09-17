@@ -1,0 +1,29 @@
+$meta:
+  kind: vance-scheduler
+
+description: |
+  {{ description }}
+
+timezone: "{{ timezone | default('Europe/Berlin') }}"
+
+{% if cadence == 'hourly' %}
+# Fires every {{ everyHours | default('2') }} hour(s) at :{{ minute | default('0') }}.
+cron: "0 {{ minute | default('0') }} */{{ everyHours | default('2') }} * * *"
+{% elseif cadence == 'weekly' %}
+# Fires on {{ weekdays | default('MON-FRI') }} at {{ hour | default('8') }}:{{ minute | default('0') }}.
+cron: "0 {{ minute | default('0') }} {{ hour | default('8') }} ? * {{ weekdays | default('MON-FRI') }}"
+{% elseif cadence == 'monthly' %}
+# Fires on day {{ monthDay | default('1') }} of each month at {{ hour | default('8') }}:{{ minute | default('0') }}.
+cron: "0 {{ minute | default('0') }} {{ hour | default('8') }} {{ monthDay | default('1') }} * ?"
+{% elseif cadence == 'once' %}
+# Fires once at {{ onceAt }} — after that this document is moved to the trash.
+at: "{{ onceAt }}"
+{% else %}
+# Fires daily at {{ hour | default('8') }}:{{ minute | default('0') }}.
+cron: "0 {{ minute | default('0') }} {{ hour | default('8') }} * * *"
+{% endif %}
+
+recipe: {{ recipe | default('default') }}
+{% if message %}initialMessage: |
+  {{ message }}
+{% endif %}

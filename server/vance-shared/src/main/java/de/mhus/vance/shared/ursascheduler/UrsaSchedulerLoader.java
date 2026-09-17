@@ -52,6 +52,20 @@ public class UrsaSchedulerLoader {
     /** File suffix kept on the document path; the scheduler name itself does not carry it. */
     public static final String SCHEDULER_PATH_SUFFIX = ".yaml";
 
+    /**
+     * Document kind of a scheduler definition — second member of the
+     * {@code vance-*} kind family after {@code vance-workflow}. Stamped by
+     * {@link #ensureKindMeta} at every scheduler write path
+     * ({@code scheduler_set} tool, REST {@code PUT /scheduler/{name}}) and
+     * validated by {@link UrsaSchedulerKindHandler} wherever such a document
+     * lives — kind and location are independent, only a document under
+     * {@link #SCHEDULER_PATH_PREFIX} is also <em>active</em>.
+     */
+    public static final String KIND = "vance-scheduler";
+
+    /** Reserved document-header key the {@code $meta} block is read from. */
+    private static final String META_KEY = "$meta";
+
     private final DocumentService documentService;
 
     /**
@@ -142,6 +156,21 @@ public class UrsaSchedulerLoader {
      * @throws SchedulerParseException with a field-level error message
      */
     public ResolvedUrsaScheduler validateYaml(String name, String yaml) {
+        return parseValidated(name, yaml);
+    }
+
+    /**
+     * Static validation entry point — parses {@code yaml} as the scheduler
+     * {@code name} and throws on the first structural problem. Static (not
+     * the instance bean) on purpose, mirroring {@code
+     * MagratheaWorkflowLoader.parseYaml}: the {@link UrsaSchedulerKindHandler}
+     * must stay able to validate a {@code vance-scheduler} document even
+     * in a context where the loader bean is absent, and the parse itself
+     * never touches {@code documentService}.
+     *
+     * @throws SchedulerParseException with a field-level error message
+     */
+    public static ResolvedUrsaScheduler parseValidated(String name, String yaml) {
         String norm = normalizedName(name);
         try {
             return parse(norm, syntheticHit(norm, yaml));
@@ -181,6 +210,45 @@ public class UrsaSchedulerLoader {
         boolean hasExplicit = existing instanceof String s && !s.isBlank();
         if (hasExplicit) return yaml;
         spec.put("timezone", timezone.trim());
+        return new Yaml().dump(spec);
+    }
+
+    /**
+     * Returns {@code yaml} with {@code $meta.kind: vance-scheduler} set.
+     * Called at every scheduler write path ({@code scheduler_set} tool, REST
+     * {@code PUT /scheduler/{name}}) so persisted scheduler documents are
+     * typed: {@code DocumentDocument.kind} is indexed and listable, the
+     * web UI renders the scheduler form view for them, and the
+     * {@link UrsaSchedulerKindHandler} attaches its validation.
+     *
+     * <p>Same typed SnakeYAML map round-trip as
+     * {@link #applyDefaultTimezone}: a present {@code $meta} map keeps its
+     * other entries (e.g. {@code privileged}), the kind value itself is only
+     * written when missing or different. YAML that doesn't parse to a
+     * top-level map is returned verbatim — the caller's normal validation
+     * then surfaces the real parse error. The scheduler parser ignores the
+     * {@code $meta} key, so a stamped body parses exactly like before.
+     */
+    public static String ensureKindMeta(String yaml) {
+        if (yaml == null || yaml.isBlank()) return yaml;
+        Object parsed;
+        try {
+            parsed = new Yaml().load(yaml);
+        } catch (RuntimeException e) {
+            return yaml;
+        }
+        if (!(parsed instanceof Map<?, ?> rawMap)) return yaml;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> spec = new LinkedHashMap<>((Map<String, Object>) rawMap);
+        Object metaRaw = spec.get(META_KEY);
+        if (!(metaRaw instanceof Map)) {
+            metaRaw = new LinkedHashMap<String, Object>();
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> meta = new LinkedHashMap<>((Map<String, Object>) metaRaw);
+        if (KIND.equals(meta.get("kind"))) return yaml;
+        meta.put("kind", KIND);
+        spec.put(META_KEY, meta);
         return new Yaml().dump(spec);
     }
 

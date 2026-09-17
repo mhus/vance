@@ -238,7 +238,7 @@ const kindAllowed = computed(() => KIND_ALLOWED_MIMES.has(createMime.value));
 const KIND_CREATE_OPTIONS = [
   'list', 'checklist', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet',
   'slides', 'diagram', 'calendar', 'timeline', 'application', 'data', 'records', 'schema',
-  'compose', 'vance-workflow', 'qrcode',
+  'compose', 'vance-workflow', 'vance-scheduler', 'qrcode',
 ] as const;
 
 // Human-facing labels where the raw kind id would be unclear. The id stays
@@ -246,6 +246,7 @@ const KIND_CREATE_OPTIONS = [
 const KIND_LABELS: Record<string, string> = {
   compose: 'Workspace Compose',
   'vance-workflow': 'Workflow (Magrathea)',
+  'vance-scheduler': 'Scheduler (Ursa)',
   qrcode: 'QR Code',
 };
 
@@ -253,7 +254,7 @@ const KIND_LABELS: Record<string, string> = {
 // markdown / JSON branch, and the server-side parser reads YAML. Picking
 // one switches the mime instead of producing a document that is the
 // right kind in the wrong format.
-const YAML_ONLY_KINDS = new Set<string>(['compose', 'vance-workflow']);
+const YAML_ONLY_KINDS = new Set<string>(['compose', 'vance-workflow', 'vance-scheduler']);
 
 function isYamlMime(mime: string): boolean {
   return mime === 'application/yaml'
@@ -376,6 +377,21 @@ function buildKindStub(kind: string, mime: string): string {
         + '  failed:\n'
         + '    type: terminal\n'
         + '    outcome: failure\n';
+    }
+  }
+  if (kind === 'vance-scheduler') {
+    // Ursa scheduler definition (YAML). Smallest body the loader accepts:
+    // description, one trigger, one target. The stub mirrors what the
+    // scheduler_set tool writes — including the $meta kind the write
+    // paths stamp.
+    if (isYaml) {
+      return '$meta:\n  kind: vance-scheduler\n'
+        + 'description: What this scheduler does.\n'
+        + 'cron: "0 0 8 * * *"\n'
+        + 'timezone: "Europe/Berlin"\n'
+        + 'recipe: "default"\n'
+        + 'initialMessage: |\n'
+        + '  What the agent should do on each run.\n';
     }
   }
   if (kind === 'qrcode') {

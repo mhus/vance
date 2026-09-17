@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 
 import de.mhus.vance.api.ursascheduler.OverlapPolicy;
 import de.mhus.vance.shared.document.DocumentService;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.Yaml;
 
@@ -17,8 +18,7 @@ import org.yaml.snakeyaml.Yaml;
  */
 class UrsaSchedulerLoaderTest {
 
-    private final UrsaSchedulerLoader loader =
-            new UrsaSchedulerLoader(mock(DocumentService.class));
+    private final UrsaSchedulerLoader loader = new UrsaSchedulerLoader(mock(DocumentService.class));
 
     @SuppressWarnings("unchecked")
     private static Object tzOf(String yaml) {
@@ -69,6 +69,63 @@ class UrsaSchedulerLoaderTest {
         assertThat(loader.applyDefaultTimezone(broken, "Asia/Kolkata")).isEqualTo(broken);
     }
 
+    // ──── $meta.kind stamping (vance-scheduler document kind) ────
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> loadAsMap(String yaml) {
+        return (Map<String, Object>) new Yaml().load(yaml);
+    }
+
+    @Test
+    void ensureKindMeta_stampsKind_whenMetaAbsent() {
+        String yaml = "description: d\ncron: '0 0 8 * * *'\nrecipe: report\n";
+
+        Map<String, Object> out = loadAsMap(UrsaSchedulerLoader.ensureKindMeta(yaml));
+
+        Map<String, Object> meta = (Map<String, Object>) out.get("$meta");
+        assertThat(meta).containsEntry("kind", "vance-scheduler");
+        // Scheduler fields survive the round-trip.
+        assertThat(out).containsEntry("recipe", "report");
+    }
+
+    @Test
+    void ensureKindMeta_preservesExistingMetaEntries() {
+        String yaml = "$meta:\n  privileged: true\ndescription: d\ncron: '0 0 8 * * *'\nrecipe: report\n";
+
+        Map<String, Object> out = loadAsMap(UrsaSchedulerLoader.ensureKindMeta(yaml));
+
+        Map<String, Object> meta = (Map<String, Object>) out.get("$meta");
+        assertThat(meta).containsEntry("kind", "vance-scheduler");
+        assertThat(meta).containsEntry("privileged", true);
+    }
+
+    @Test
+    void ensureKindMeta_returnsVerbatim_whenKindAlreadySet() {
+        String yaml = "$meta:\n  kind: vance-scheduler\ndescription: d\ncron: '0 0 8 * * *'\nrecipe: report\n";
+
+        assertThat(UrsaSchedulerLoader.ensureKindMeta(yaml)).isEqualTo(yaml);
+    }
+
+    @Test
+    void ensureKindMeta_returnsVerbatim_whenYamlIsNotAMap() {
+        String notMap = "- just\n- a list\n";
+
+        assertThat(UrsaSchedulerLoader.ensureKindMeta(notMap)).isEqualTo(notMap);
+        assertThat(UrsaSchedulerLoader.ensureKindMeta("description: [unterminated"))
+                .isEqualTo("description: [unterminated");
+    }
+
+    @Test
+    void parseValidated_acceptsStampedBody() {
+        // The stamped $meta block must not break the scheduler parse — the
+        // parser ignores the reserved header key.
+        String stamped = UrsaSchedulerLoader.ensureKindMeta("description: d\ncron: '0 0 8 * * *'\nrecipe: report\n");
+
+        ResolvedUrsaScheduler r = UrsaSchedulerLoader.parseValidated("s", stamped);
+
+        assertThat(r.recipe()).isEqualTo("report");
+    }
+
     // ──── overlap-policy vs trigger-type validation (code-review-2) ────
 
     @Test
@@ -82,8 +139,7 @@ class UrsaSchedulerLoaderTest {
 
     @Test
     void validate_rejectsCancelPreviousOverlap_forWorkflowTrigger() {
-        String yaml =
-                "description: d\ncron: '0 0 * * * *'\nworkflow: myflow\noverlap: cancelPrevious\n";
+        String yaml = "description: d\ncron: '0 0 * * * *'\nworkflow: myflow\noverlap: cancelPrevious\n";
 
         assertThatThrownBy(() -> loader.validateYaml("s", yaml))
                 .isInstanceOf(UrsaSchedulerLoader.SchedulerParseException.class)

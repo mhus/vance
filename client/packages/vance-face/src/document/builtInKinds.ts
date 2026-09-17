@@ -17,6 +17,7 @@
 
 import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
+import { parseSchedulerDoc, serializeSchedulerDoc, type SchedulerDoc } from '@/kindViews/schedulerFormCodec';
 import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
@@ -109,6 +110,21 @@ export function registerBuiltInKinds(): void {
     ),
   });
 
+  // ── Ursa scheduler: form view over the definition ────────────────
+  // Model = the whole YAML map (schedulerFormCodec): the form owns the
+  // fields it renders and every other key ($meta, params, tags, lockMode,
+  // …) survives each round-trip. A cron the form cannot express degrades
+  // to the raw-expression input instead of misrepresenting it.
+  registerKind<SchedulerDoc>({
+    id: 'vance-scheduler',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-scheduler',
+    parse: parseSchedulerDoc,
+    serialize: serializeSchedulerDoc,
+    tabLabelKey: 'documents.schedulerView.tabLabel',
+    view: defineAsyncComponent(
+      () => import('@/kindViews/SchedulerFormView.vue'),
+    ),
+  });
   // ── Age: locked-state view for encrypted documents ────────────
   // An age-encrypted document renders here while no imported key fits
   // (AgeDocumentView = explanation + unlock form + cipher preview). Once

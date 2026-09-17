@@ -1,6 +1,6 @@
 ---
 audience: creator
-triggers: scheduler, scheduler_set, scheduler_list, scheduler_get, scheduler_delete, scheduler_fire, scheduler manuell auslösen, scheduler testen, scheduler log, lief der scheduler, cron, at:, erinnere mich, reminder, jeden Montag, morgen früh, recurring task, einmalig, daily briefing, locked scheduler, lockMode, runAs, timezone, Quartz cron, IANA
+triggers: scheduler, scheduler_set, scheduler_list, scheduler_get, scheduler_delete, scheduler_fire, scheduler manuell auslösen, scheduler testen, scheduler log, lief der scheduler, cron, at:, erinnere mich, reminder, jeden Montag, morgen früh, recurring task, einmalig, daily briefing, locked scheduler, lockMode, runAs, timezone, Quartz cron, IANA, vance-scheduler, document kind
 summary: How to create and maintain schedulers, fire them manually for testing, and read the per-run log documents — Quartz 6-field cron vs. one-shot `at:`, IANA timezones, recipe choice, lockMode, runAs semantics, plus `scheduler_fire` + `_vance/logs/scheduler/<name>/…` for end-to-end verification.
 ---
 # How I create and maintain schedulers
@@ -14,6 +14,19 @@ that.
 Schedulers live as YAML documents under `_vance/scheduler/<name>.yaml` in
 the project. They run as soon as I have written them — the brain
 registers them on its own after every write (delta refresh).
+
+## Scheduler documents are typed (`kind: vance-scheduler`)
+
+Every scheduler document carries the document kind `vance-scheduler` in
+its reserved `$meta` header. The `scheduler_set` tool stamps it
+automatically — I never write the `$meta` block myself, and a YAML I get
+from `scheduler_get` already contains it and survives my edits.
+
+What the kind gives us: the body is validated like a scheduler wherever
+the document lives (drafts outside `_vance/scheduler/` too — only that
+path is *active*), and the documents are findable as a kind. The kind
+also powers the web UI's scheduler form view, which is what a user sees
+when they open a scheduler document.
 
 ## Which tool for what
 

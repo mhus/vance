@@ -10,8 +10,9 @@ import org.springframework.stereotype.Service;
 /**
  * {@link KindHandler} for the {@code vance-workflow} kind — a Magrathea
  * workflow definition. First member of the {@code vance-*} kind family that
- * types Vance's own configuration documents (later: {@code vance-recipe},
- * {@code vance-scheduler}, …).
+ * types Vance's own configuration documents (continued by
+ * {@code vance-scheduler} — {@code de.mhus.vance.shared.ursascheduler.UrsaSchedulerKindHandler};
+ * later: {@code vance-recipe}, …).
  *
  * <p><b>Kind and location are independent.</b> A document carrying this kind
  * is a workflow definition wherever it lives; only a document under

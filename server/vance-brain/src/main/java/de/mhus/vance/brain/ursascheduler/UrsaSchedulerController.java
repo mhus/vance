@@ -111,6 +111,11 @@ public class UrsaSchedulerController {
         if (yaml == null || yaml.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'yaml' must be a non-empty string");
         }
+        // Same write-time kind stamp as the scheduler_set tool: persisted
+        // scheduler documents carry $meta.kind: vance-scheduler so they stay
+        // typed on the document layer (kind-indexed, form view, KindHandler
+        // validation).
+        yaml = UrsaSchedulerLoader.ensureKindMeta(yaml);
         try {
             loader.validateYaml(norm, yaml);
         } catch (UrsaSchedulerLoader.SchedulerParseException ex) {

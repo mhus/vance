@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { UsageBucketDto } from '@vance/generated';
 
 /**
@@ -7,7 +8,7 @@ import type { UsageBucketDto } from '@vance/generated';
  * {@link UsageBucketDto} shape (one row per key × currency), so they
  * share this renderer instead of four near-identical tables.
  */
-defineProps<{
+const props = defineProps<{
   /** Column header for the key column, e.g. "Engine". */
   label: string;
   /** Rows as returned by the report endpoint, already sorted. */
@@ -19,6 +20,15 @@ defineProps<{
   /** Cost formatter — renders "n/a" for rows without a currency. */
   fmtCost: (n: number, currency: string) => string;
 }>();
+
+/**
+ * Cache columns only appear when the window actually holds cached volume —
+ * a provider without prompt caching would otherwise show two permanent zero
+ * columns that read as broken data rather as "not applicable".
+ */
+const showCache = computed(
+  () => props.rows.some((r) => r.cacheReadTokens > 0 || r.cacheWriteTokens > 0),
+);
 </script>
 
 <template>
@@ -28,6 +38,8 @@ defineProps<{
         <th>{{ label }}</th>
         <th class="num">{{ $t('insights.usageTable.calls') }}</th>
         <th class="num">{{ $t('insights.usageTable.tokensIn') }}</th>
+        <th v-if="showCache" class="num">{{ $t('insights.usageTable.cacheRead') }}</th>
+        <th v-if="showCache" class="num">{{ $t('insights.usageTable.cacheWrite') }}</th>
         <th class="num">{{ $t('insights.usageTable.tokensOut') }}</th>
         <th class="num">{{ $t('insights.usageTable.cost') }}</th>
       </tr>
@@ -37,6 +49,8 @@ defineProps<{
         <td>{{ row.key || '—' }}</td>
         <td class="num">{{ row.calls }}</td>
         <td class="num">{{ fmtTokens(row.tokensIn) }}</td>
+        <td v-if="showCache" class="num">{{ fmtTokens(row.cacheReadTokens) }}</td>
+        <td v-if="showCache" class="num">{{ fmtTokens(row.cacheWriteTokens) }}</td>
         <td class="num">{{ fmtTokens(row.tokensOut) }}</td>
         <td class="num">{{ fmtCost(row.costTotal, row.currency) }}</td>
       </tr>

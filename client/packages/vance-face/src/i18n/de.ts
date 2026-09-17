@@ -1578,6 +1578,8 @@ export default {
       chartTitle: 'Tokens & Kosten über Zeit',
       input: 'Eingabe',
       output: 'Ausgabe',
+      cacheRead: 'Aus Cache gelesen',
+      cacheWrite: 'In Cache geschrieben',
       cost: 'Kosten',
       coveragePartial:
         'Deckt {pct}% von {calls} Aufrufen ab — {unpriced} liefen auf einem Modell ohne Preis im '
@@ -1609,6 +1611,7 @@ export default {
       recipe: 'Recipe',
       noRecipeData: 'Keine Recipe-Daten in diesem Fenster.',
       seriesTokens: 'Tokens (rein+raus)',
+      seriesCacheRead: 'Cache gelesen',
       seriesCost: 'Kosten ({currency})',
       axisCost: 'Kosten',
       axisTokens: 'Tokens',
@@ -1645,6 +1648,8 @@ export default {
     usageTable: {
       calls: 'Aufrufe',
       tokensIn: 'Tokens rein',
+      cacheRead: 'Cache gelesen',
+      cacheWrite: 'Cache geschrieben',
       tokensOut: 'Tokens raus',
       cost: 'Kosten',
     },

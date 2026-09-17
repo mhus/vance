@@ -131,6 +131,25 @@ function renderChart(): void {
     }),
   }));
 
+  // Prompt-cache reads are a separate, translucent bar — distinct from the
+  // uncached in+out volume, never folded into it. Providers without caching
+  // never trigger the series, so the legend stays clean.
+  const cacheSeries = report.buckets.some((b) => b.cacheReadTokens > 0)
+    ? [
+        {
+          name: t('insights.usage.seriesCacheRead'),
+          type: 'bar' as const,
+          yAxisIndex: 1,
+          itemStyle: { color: '#38bdf8', opacity: 0.5 },
+          data: allTimes.map((t) => [
+            t,
+            report.buckets
+              .filter((b) => keyOf(b.bucketStart) === t)
+              .reduce((acc, b) => acc + b.cacheReadTokens, 0),
+          ]),
+        },
+      ]
+    : [];
   chartInstance.value.setOption(
     {
       grid: { top: 32, left: 60, right: 60, bottom: 60 },
@@ -147,7 +166,7 @@ function renderChart(): void {
         },
       ],
       dataZoom: [{ type: 'inside' }, { type: 'slider', height: 20, bottom: 10 }],
-      series: [...costSeries, tokenSeries],
+      series: [...costSeries, tokenSeries, ...cacheSeries],
     },
     true,
   );
@@ -171,12 +190,26 @@ function fmtCost(n: number, currency: string): string {
   return `${fixed} ${currency}`;
 }
 
-const totals = computed<{ tokensIn: number; tokensOut: number; byCurrency: Map<string, number> }>(() => {
-  const out = { tokensIn: 0, tokensOut: 0, byCurrency: new Map<string, number>() };
+const totals = computed<{
+  tokensIn: number;
+  tokensOut: number;
+  cacheRead: number;
+  cacheWrite: number;
+  byCurrency: Map<string, number>;
+}>(() => {
+  const out = {
+    tokensIn: 0,
+    tokensOut: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    byCurrency: new Map<string, number>(),
+  };
   if (!summary.value) return out;
   for (const b of summary.value.buckets) {
     out.tokensIn += b.tokensIn;
     out.tokensOut += b.tokensOut;
+    out.cacheRead += b.cacheReadTokens;
+    out.cacheWrite += b.cacheWriteTokens;
     if (b.currency) {
       out.byCurrency.set(b.currency, (out.byCurrency.get(b.currency) || 0) + b.costTotal);
     }
@@ -272,6 +305,14 @@ const detailHorizon = computed<string | null>(() => {
           <div>
             <span class="muted">{{ $t('insights.usage.output') }}</span>
             <strong>{{ fmtTokens(totals.tokensOut) }}</strong>
+          </div>
+          <div v-if="totals.cacheRead > 0">
+            <span class="muted">{{ $t('insights.usage.cacheRead') }}</span>
+            <strong>{{ fmtTokens(totals.cacheRead) }}</strong>
+          </div>
+          <div v-if="totals.cacheWrite > 0">
+            <span class="muted">{{ $t('insights.usage.cacheWrite') }}</span>
+            <strong>{{ fmtTokens(totals.cacheWrite) }}</strong>
           </div>
           <div v-for="[cur, sum] in totals.byCurrency" :key="cur">
             <span class="muted">{{ $t('insights.usage.cost') }}</span>

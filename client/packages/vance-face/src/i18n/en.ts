@@ -1575,6 +1575,8 @@ export default {
       chartTitle: 'Tokens & Cost over time',
       input: 'Input',
       output: 'Output',
+      cacheRead: 'Cached read',
+      cacheWrite: 'Cached write',
       cost: 'Cost',
       coveragePartial:
         'Covers {pct}% of {calls} calls — {unpriced} ran on a model with no price in the catalog '
@@ -1606,6 +1608,7 @@ export default {
       recipe: 'Recipe',
       noRecipeData: 'No recipe data in this window.',
       seriesTokens: 'Tokens (in+out)',
+      seriesCacheRead: 'Cache read',
       seriesCost: 'Cost ({currency})',
       axisCost: 'Cost',
       axisTokens: 'Tokens',
@@ -1642,6 +1645,8 @@ export default {
     usageTable: {
       calls: 'Calls',
       tokensIn: 'Tokens in',
+      cacheRead: 'Cache read',
+      cacheWrite: 'Cache write',
       tokensOut: 'Tokens out',
       cost: 'Cost',
     },

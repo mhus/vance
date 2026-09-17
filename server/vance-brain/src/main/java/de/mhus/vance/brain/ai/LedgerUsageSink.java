@@ -42,6 +42,7 @@ public class LedgerUsageSink implements UsageSink {
                     .tokensOut(m.tokensOut())
                     .cacheReadTokens(m.cacheReadTokens())
                     .cacheWriteTokens(m.cacheWriteTokens())
+                    .implicitCacheReadTokens(m.implicitCacheReadTokens())
                     .images(m.images())
                     .imageCost(m.imageCost())
                     .priceInputPerMTok(p == null ? null : p.inputPerMTok())
@@ -57,8 +58,11 @@ public class LedgerUsageSink implements UsageSink {
             // Belt and braces — LlmUsageService already swallows its own
             // failures, but a sink that throws would surface inside a chat
             // turn, which is exactly what must not happen.
-            log.warn("Usage sink failed tenant='{}' caller='{}': {}",
-                    attribution.tenantId(), attribution.caller(), e.toString());
+            log.warn(
+                    "Usage sink failed tenant='{}' caller='{}': {}",
+                    attribution.tenantId(),
+                    attribution.caller(),
+                    e.toString());
         }
     }
 }

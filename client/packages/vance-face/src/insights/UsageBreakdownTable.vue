@@ -29,6 +29,15 @@ const props = defineProps<{
 const showCache = computed(
   () => props.rows.some((r) => r.cacheReadTokens > 0 || r.cacheWriteTokens > 0),
 );
+/**
+ * The estimated-implicit column appears only next to reported cache
+ * volume or when implicit volume exists — a provider that meters its
+ * cache honestly never produces it.
+ */
+const showImplicitCache = computed(
+  () =>
+    showCache.value || props.rows.some((r) => (r.implicitCacheReadTokens ?? 0) > 0),
+);
 </script>
 
 <template>
@@ -39,6 +48,7 @@ const showCache = computed(
         <th class="num">{{ $t('insights.usageTable.calls') }}</th>
         <th class="num">{{ $t('insights.usageTable.tokensIn') }}</th>
         <th v-if="showCache" class="num">{{ $t('insights.usageTable.cacheRead') }}</th>
+        <th v-if="showImplicitCache" class="num">{{ $t('insights.usageTable.implicitCacheRead') }}</th>
         <th v-if="showCache" class="num">{{ $t('insights.usageTable.cacheWrite') }}</th>
         <th class="num">{{ $t('insights.usageTable.tokensOut') }}</th>
         <th class="num">{{ $t('insights.usageTable.cost') }}</th>
@@ -50,6 +60,7 @@ const showCache = computed(
         <td class="num">{{ row.calls }}</td>
         <td class="num">{{ fmtTokens(row.tokensIn) }}</td>
         <td v-if="showCache" class="num">{{ fmtTokens(row.cacheReadTokens) }}</td>
+        <td v-if="showImplicitCache" class="num">≈ {{ fmtTokens(row.implicitCacheReadTokens ?? 0) }}</td>
         <td v-if="showCache" class="num">{{ fmtTokens(row.cacheWriteTokens) }}</td>
         <td class="num">{{ fmtTokens(row.tokensOut) }}</td>
         <td class="num">{{ fmtCost(row.costTotal, row.currency) }}</td>

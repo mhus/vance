@@ -38,6 +38,14 @@ public record UsageMeasurement(
         int tokensOut,
         int cacheReadTokens,
         int cacheWriteTokens,
+        /**
+         * Estimated tokens the provider served from a cache it did not
+         * itemize — see {@link ImplicitCacheEstimator}. Informational
+         * only: carries no cost (the provider billed the reported
+         * tokens, which is the tail), and never mixes with the
+         * provider-measured {@link #cacheReadTokens}.
+         */
+        int implicitCacheReadTokens,
         /** Generated images, {@link UsageKind#IMAGE} only. */
         int images,
         /** Flat amount for an image call, {@link UsageKind#IMAGE} only. */
@@ -55,31 +63,47 @@ public record UsageMeasurement(
             int tokensOut,
             int cacheReadTokens,
             int cacheWriteTokens,
+            int implicitCacheReadTokens,
             long durationMs) {
-        return of(model, providerInstance, UsageOutcome.SUCCESS, attempt,
-                tokensIn, tokensOut, cacheReadTokens, cacheWriteTokens, durationMs);
+        return of(
+                model,
+                providerInstance,
+                UsageOutcome.SUCCESS,
+                attempt,
+                tokensIn,
+                tokensOut,
+                cacheReadTokens,
+                cacheWriteTokens,
+                implicitCacheReadTokens,
+                durationMs);
     }
 
     /** Chat attempt that raised. Token counts are whatever the provider reported. */
     public static UsageMeasurement chatFailed(
-            ModelInfo model,
-            String providerInstance,
-            int attempt,
-            int tokensIn,
-            int tokensOut,
-            long durationMs) {
-        return of(model, providerInstance, UsageOutcome.FAILED, attempt,
-                tokensIn, tokensOut, 0, 0, durationMs);
+            ModelInfo model, String providerInstance, int attempt, int tokensIn, int tokensOut, long durationMs) {
+        return of(model, providerInstance, UsageOutcome.FAILED, attempt, tokensIn, tokensOut, 0, 0, 0, durationMs);
     }
 
     /** Embedding batch — one row per batch, not per chunk. */
-    public static UsageMeasurement embedding(
-            ModelInfo model, String providerInstance, int tokensIn, long durationMs) {
+    public static UsageMeasurement embedding(ModelInfo model, String providerInstance, int tokensIn, long durationMs) {
         return new UsageMeasurement(
-                providerInstance, model.provider(), model.modelName(), model.pricing(),
+                providerInstance,
+                model.provider(),
+                model.modelName(),
+                model.pricing(),
                 model.contextWindowTokens() > 0 ? model.contextWindowTokens() : null,
-                UsageKind.EMBEDDING, UsageOutcome.SUCCESS, 1,
-                tokensIn, 0, 0, 0, 0, null, null, durationMs);
+                UsageKind.EMBEDDING,
+                UsageOutcome.SUCCESS,
+                1,
+                tokensIn,
+                0,
+                0,
+                0,
+                0,
+                0,
+                null,
+                null,
+                durationMs);
     }
 
     /** One generated image, priced per image rather than per token. */
@@ -92,9 +116,23 @@ public record UsageMeasurement(
             UsageOutcome outcome,
             long durationMs) {
         return new UsageMeasurement(
-                providerInstance, providerType, providerModel, null, null,
-                UsageKind.IMAGE, outcome, 1,
-                0, 0, 0, 0, 1, cost, currency, durationMs);
+                providerInstance,
+                providerType,
+                providerModel,
+                null,
+                null,
+                UsageKind.IMAGE,
+                outcome,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                cost,
+                currency,
+                durationMs);
     }
 
     private static UsageMeasurement of(
@@ -106,13 +144,26 @@ public record UsageMeasurement(
             int tokensOut,
             int cacheReadTokens,
             int cacheWriteTokens,
+            int implicitCacheReadTokens,
             long durationMs) {
         return new UsageMeasurement(
-                providerInstance, model.provider(), model.modelName(), model.pricing(),
+                providerInstance,
+                model.provider(),
+                model.modelName(),
+                model.pricing(),
                 model.contextWindowTokens() > 0 ? model.contextWindowTokens() : null,
-                UsageKind.CHAT, outcome, attempt,
-                tokensIn, tokensOut, cacheReadTokens, cacheWriteTokens,
-                0, null, null, durationMs);
+                UsageKind.CHAT,
+                outcome,
+                attempt,
+                tokensIn,
+                tokensOut,
+                cacheReadTokens,
+                cacheWriteTokens,
+                implicitCacheReadTokens,
+                0,
+                null,
+                null,
+                durationMs);
     }
 
     /**
@@ -138,8 +189,6 @@ public record UsageMeasurement(
      */
     public boolean isEmpty() {
         if (outcome == UsageOutcome.FAILED) return false;
-        return tokensIn <= 0 && tokensOut <= 0
-                && cacheReadTokens <= 0 && cacheWriteTokens <= 0
-                && images <= 0;
+        return tokensIn <= 0 && tokensOut <= 0 && cacheReadTokens <= 0 && cacheWriteTokens <= 0 && images <= 0;
     }
 }

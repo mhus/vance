@@ -45,15 +45,11 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "llm_usage_records")
 @CompoundIndexes({
-        @CompoundIndex(
-                name = "tenant_createdAt_idx",
-                def = "{ 'tenantId': 1, 'createdAt': 1 }"),
-        @CompoundIndex(
-                name = "tenant_project_createdAt_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'createdAt': 1 }"),
-        @CompoundIndex(
-                name = "tenant_providerModel_createdAt_idx",
-                def = "{ 'tenantId': 1, 'providerModel': 1, 'createdAt': 1 }")
+    @CompoundIndex(name = "tenant_createdAt_idx", def = "{ 'tenantId': 1, 'createdAt': 1 }"),
+    @CompoundIndex(name = "tenant_project_createdAt_idx", def = "{ 'tenantId': 1, 'projectId': 1, 'createdAt': 1 }"),
+    @CompoundIndex(
+            name = "tenant_providerModel_createdAt_idx",
+            def = "{ 'tenantId': 1, 'providerModel': 1, 'createdAt': 1 }")
 })
 @Data
 @Builder
@@ -107,6 +103,12 @@ public class LlmUsageDocument {
     private int tokensOut;
     private int cacheReadTokens;
     private int cacheWriteTokens;
+    /**
+     * Estimated tokens the provider served from a cache it did not itemize
+     * (see {@code ImplicitCacheEstimator}) — informational, no cost
+     * attached, never mixed into {@link #cacheReadTokens}.
+     */
+    private int implicitCacheReadTokens;
 
     // ── Rate snapshot (per million tokens, currency below) ────────
     private @Nullable Double priceInputPerMTok;

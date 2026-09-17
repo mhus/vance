@@ -3,7 +3,9 @@ package de.mhus.vance.brain.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.shared.llmusage.CallAttribution;
+import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -108,6 +110,39 @@ class CacheAwareUsageChatModelTest {
         assertThat(m.cacheWriteTokens()).isZero();
     }
 
+    @Test
+    void accountingDetectsImplicitCacheFromTheBilledTail() {
+        // The tail-billing gateway shape: a huge request (system prompt,
+        // tool schemas) reports a small input token count with no cache
+        // counters anywhere. The savings must land in the estimate field,
+        // separately from the measured cache reads.
+        RecordingSink sink = new RecordingSink();
+        String bigSystem = "The quick brown fox jumps over the lazy dog. ".repeat(400);
+        ChatRequest bigRequest = ChatRequest.builder()
+                .messages(SystemMessage.from(bigSystem), UserMessage.from("hi"))
+                .toolSpecifications(ToolSpecification.builder()
+                        .name("tool_a")
+                        .description("Does a thing. ".repeat(120))
+                        .build())
+                .build();
+        ChatModel stack = new UsageAccountingChatModel(
+                new CacheAwareUsageChatModel(new FakeChatModel(req -> response(new TokenUsage(300, 50)))),
+                ATTRIBUTION,
+                pricedModel(),
+                "cortecs",
+                sink);
+
+        stack.chat(bigRequest);
+
+        assertThat(sink.calls).hasSize(1);
+        UsageMeasurement m = sink.calls.get(0);
+        assertThat(m.tokensIn()).isEqualTo(300);
+        assertThat(m.cacheReadTokens()).isZero(); // nothing measured
+        // The request carried far more than the 300 reported tokens:
+        // 18k chars of system + ~1.5k chars of tool schema ≈ 4.9k tokens,
+        // minus the reported 300 → the gap is the estimate.
+        assertThat(m.implicitCacheReadTokens()).isGreaterThan(1_000).isLessThan(6_000);
+    }
     // ──────────────────── helpers ────────────────────
 
     private static final CallAttribution ATTRIBUTION =

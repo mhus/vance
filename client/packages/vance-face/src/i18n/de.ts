@@ -1583,6 +1583,7 @@ export default {
       input: 'Eingabe',
       output: 'Ausgabe',
       cacheRead: 'Aus Cache gelesen',
+      implicitCacheRead: 'Aus Cache (geschätzt)',
       cacheWrite: 'In Cache geschrieben',
       cost: 'Kosten',
       coveragePartial:
@@ -1653,6 +1654,7 @@ export default {
       calls: 'Aufrufe',
       tokensIn: 'Tokens rein',
       cacheRead: 'Cache gelesen',
+      implicitCacheRead: 'Cache gelesen (geschätzt)',
       cacheWrite: 'Cache geschrieben',
       tokensOut: 'Tokens raus',
       cost: 'Kosten',

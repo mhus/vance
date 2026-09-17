@@ -1580,6 +1580,7 @@ export default {
       input: 'Input',
       output: 'Output',
       cacheRead: 'Cached read',
+      implicitCacheRead: 'From cache (est.)',
       cacheWrite: 'Cached write',
       cost: 'Cost',
       coveragePartial:
@@ -1650,6 +1651,7 @@ export default {
       calls: 'Calls',
       tokensIn: 'Tokens in',
       cacheRead: 'Cache read',
+      implicitCacheRead: 'Cache read (est.)',
       cacheWrite: 'Cache write',
       tokensOut: 'Tokens out',
       cost: 'Cost',

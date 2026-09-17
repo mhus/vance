@@ -160,6 +160,7 @@ public class LlmUsageReportService {
                 "tokensIn",
                 "tokensOut",
                 "cacheReadTokens",
+                "implicitCacheReadTokens",
                 "cacheWriteTokens",
                 "images",
                 "costInputMicros",
@@ -185,6 +186,7 @@ public class LlmUsageReportService {
                 .tokensIn(asLong(doc.get("tokensIn")))
                 .tokensOut(asLong(doc.get("tokensOut")))
                 .cacheReadTokens(asLong(doc.get("cacheReadTokens")))
+                .implicitCacheReadTokens(asLong(doc.get("implicitCacheReadTokens")))
                 .cacheWriteTokens(asLong(doc.get("cacheWriteTokens")))
                 .images(asLong(doc.get("images")))
                 // Stored as integer micro-units, reported as an amount. The

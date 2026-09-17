@@ -34,8 +34,7 @@ import org.slf4j.LoggerFactory;
  */
 public class UsageAccountingChatModel implements ChatModel {
 
-    private static final Logger LOG =
-            LoggerFactory.getLogger(UsageAccountingChatModel.class);
+    private static final Logger LOG = LoggerFactory.getLogger(UsageAccountingChatModel.class);
 
     private final ChatModel delegate;
     private final CallAttribution attribution;
@@ -74,15 +73,12 @@ public class UsageAccountingChatModel implements ChatModel {
             // The vendor may well have billed the prompt before failing.
             // Booked as FAILED so the report can show it next to the amount
             // instead of adding it in.
-            book(UsageAccounting.failed(
-                    modelInfo, providerInstance, attempt,
-                    System.currentTimeMillis() - started));
+            book(UsageAccounting.failed(modelInfo, providerInstance, attempt, System.currentTimeMillis() - started));
             throw e;
         }
         TokenUsage usage = response == null ? null : response.tokenUsage();
         book(UsageAccounting.succeeded(
-                modelInfo, providerInstance, attempt, usage,
-                System.currentTimeMillis() - started));
+                modelInfo, providerInstance, attempt, usage, request, System.currentTimeMillis() - started));
         return response;
     }
 
@@ -91,8 +87,7 @@ public class UsageAccountingChatModel implements ChatModel {
         try {
             sink.onCall(attribution, measurement);
         } catch (RuntimeException e) {
-            LOG.warn("Usage accounting threw — ignoring (model='{}'): {}",
-                    modelInfo.modelName(), e.toString());
+            LOG.warn("Usage accounting threw — ignoring (model='{}'): {}", modelInfo.modelName(), e.toString());
         }
     }
 }

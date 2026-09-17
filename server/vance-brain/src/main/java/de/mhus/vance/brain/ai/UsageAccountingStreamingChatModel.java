@@ -22,8 +22,7 @@ import org.slf4j.LoggerFactory;
  */
 public class UsageAccountingStreamingChatModel implements StreamingChatModel {
 
-    private static final Logger LOG =
-            LoggerFactory.getLogger(UsageAccountingStreamingChatModel.class);
+    private static final Logger LOG = LoggerFactory.getLogger(UsageAccountingStreamingChatModel.class);
 
     private final StreamingChatModel delegate;
     private final CallAttribution attribution;
@@ -58,16 +57,14 @@ public class UsageAccountingStreamingChatModel implements StreamingChatModel {
             public void onCompleteResponse(ChatResponse complete) {
                 TokenUsage usage = complete == null ? null : complete.tokenUsage();
                 book(UsageAccounting.succeeded(
-                        modelInfo, providerInstance, attempt, usage,
-                        System.currentTimeMillis() - started));
+                        modelInfo, providerInstance, attempt, usage, request, System.currentTimeMillis() - started));
                 super.onCompleteResponse(complete);
             }
 
             @Override
             public void onError(Throwable error) {
                 book(UsageAccounting.failed(
-                        modelInfo, providerInstance, attempt,
-                        System.currentTimeMillis() - started));
+                        modelInfo, providerInstance, attempt, System.currentTimeMillis() - started));
                 super.onError(error);
             }
         });
@@ -78,8 +75,7 @@ public class UsageAccountingStreamingChatModel implements StreamingChatModel {
         try {
             sink.onCall(attribution, measurement);
         } catch (RuntimeException e) {
-            LOG.warn("Usage accounting threw — ignoring (model='{}'): {}",
-                    modelInfo.modelName(), e.toString());
+            LOG.warn("Usage accounting threw — ignoring (model='{}'): {}", modelInfo.modelName(), e.toString());
         }
     }
 }

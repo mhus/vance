@@ -66,12 +66,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "llm_usage_daily")
 @CompoundIndexes({
-        @CompoundIndex(
-                name = "usage_daily_tenant_day_idx",
-                def = "{ 'tenantId': 1, 'day': 1 }"),
-        @CompoundIndex(
-                name = "usage_daily_tenant_project_day_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'day': 1 }")
+    @CompoundIndex(name = "usage_daily_tenant_day_idx", def = "{ 'tenantId': 1, 'day': 1 }"),
+    @CompoundIndex(name = "usage_daily_tenant_project_day_idx", def = "{ 'tenantId': 1, 'projectId': 1, 'day': 1 }")
 })
 @Data
 @Builder
@@ -116,6 +112,13 @@ public class LlmUsageDailyDocument {
     private long tokensIn;
     private long tokensOut;
     private long cacheReadTokens;
+    /**
+     * Estimated tokens served from a provider cache that reported no
+     * cache counters (see {@code ImplicitCacheEstimator}) — informational,
+     * carries no cost component, never mixed into {@link #cacheReadTokens}.
+     */
+    private long implicitCacheReadTokens;
+
     private long cacheWriteTokens;
     private long images;
 
@@ -194,13 +197,20 @@ public class LlmUsageDailyDocument {
             String providerModel,
             String currency,
             UsageKind kind) {
-        String material = tenantId + '\0'
-                + day + '\0'
-                + projectId + '\0'
-                + caller + '\0'
-                + recipeName + '\0'
-                + providerModel + '\0'
-                + currency + '\0'
+        String material = tenantId
+                + '\0'
+                + day
+                + '\0'
+                + projectId
+                + '\0'
+                + caller
+                + '\0'
+                + recipeName
+                + '\0'
+                + providerModel
+                + '\0'
+                + currency
+                + '\0'
                 + kind.name();
         return ID_PREFIX + sha256Hex(material).substring(0, ID_HEX_LENGTH);
     }

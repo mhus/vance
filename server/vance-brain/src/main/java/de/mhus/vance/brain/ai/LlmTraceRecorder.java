@@ -212,7 +212,8 @@ public final class LlmTraceRecorder {
         return m.getClass().getSimpleName();
     }
 
-    private static String textOf(ChatMessage m) {
+    /** Text of a request message for volume purposes — shared with {@link ImplicitCacheEstimator}. */
+    static String textOf(ChatMessage m) {
         if (m instanceof SystemMessage s) return safeOrEmpty(s.text());
         if (m instanceof UserMessage u) {
             try {

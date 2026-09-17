@@ -1,17 +1,17 @@
 package de.mhus.vance.brain.rag;
 
+import de.mhus.vance.brain.ai.UsageMeasurement;
 import de.mhus.vance.brain.ai.embedding.EmbeddingConfig;
 import de.mhus.vance.brain.ai.embedding.EmbeddingModelService;
+import de.mhus.vance.shared.llmusage.CallAttribution;
+import de.mhus.vance.shared.llmusage.LlmUsageService;
+import de.mhus.vance.shared.llmusage.UsageKind;
+import de.mhus.vance.shared.llmusage.UsageOutcome;
 import de.mhus.vance.shared.rag.RagBackend;
 import de.mhus.vance.shared.rag.RagBackend.SearchHit;
 import de.mhus.vance.shared.rag.RagCatalogService;
 import de.mhus.vance.shared.rag.RagChunkDocument;
 import de.mhus.vance.shared.rag.RagDocument;
-import de.mhus.vance.brain.ai.UsageMeasurement;
-import de.mhus.vance.shared.llmusage.CallAttribution;
-import de.mhus.vance.shared.llmusage.LlmUsageService;
-import de.mhus.vance.shared.llmusage.UsageKind;
-import de.mhus.vance.shared.llmusage.UsageOutcome;
 import de.mhus.vance.shared.settings.SettingService;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -113,17 +113,23 @@ public class RagService {
             int chunkSize,
             int chunkOverlap) {
         EmbeddingConfig config = resolveEmbeddingConfig(tenantId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Cannot create RAG: embedding is disabled for tenant '"
-                                + tenantId + "' (setting '" + SETTING_EMBED_PROVIDER
-                                + "' = '" + PROVIDER_NONE + "'). Pick 'embedded', "
-                                + "'gemini' or 'openai' first."));
+                .orElseThrow(() -> new IllegalStateException("Cannot create RAG: embedding is disabled for tenant '"
+                        + tenantId + "' (setting '" + SETTING_EMBED_PROVIDER
+                        + "' = '" + PROVIDER_NONE + "'). Pick 'embedded', "
+                        + "'gemini' or 'openai' first."));
         EmbeddingModel model = embeddingModelService.createEmbeddingModel(config);
         int dim = probeDimension(model);
         return catalog.create(
-                tenantId, projectId, name, title, description,
-                config.provider(), config.modelName(), dim,
-                chunkSize, chunkOverlap);
+                tenantId,
+                projectId,
+                name,
+                title,
+                description,
+                config.provider(),
+                config.modelName(),
+                dim,
+                chunkSize,
+                chunkOverlap);
     }
 
     /**
@@ -170,14 +176,12 @@ public class RagService {
      * {@link #removeBySource} first to avoid duplication.
      */
     public IngestResult addText(
-            String ragId, @Nullable String sourceRef, String text,
-            @Nullable Map<String, Object> metadata) {
+            String ragId, @Nullable String sourceRef, String text, @Nullable Map<String, Object> metadata) {
         if (text == null || text.isBlank()) {
             return new IngestResult(0);
         }
-        RagDocument rag = catalog.findById(ragId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "RAG not found: " + ragId));
+        RagDocument rag =
+                catalog.findById(ragId).orElseThrow(() -> new IllegalArgumentException("RAG not found: " + ragId));
         EmbeddingModel model = modelFor(rag);
 
         List<String> pieces = chunk(text, rag.getChunkSize(), rag.getChunkOverlap());
@@ -194,12 +198,10 @@ public class RagService {
         List<Embedding> embeddings = response.content();
         if (embeddings.size() != pieces.size()) {
             throw new IllegalStateException(
-                    "Embedding count mismatch: expected " + pieces.size()
-                            + " got " + embeddings.size());
+                    "Embedding count mismatch: expected " + pieces.size() + " got " + embeddings.size());
         }
 
-        Map<String, Object> baseMeta = metadata == null
-                ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
+        Map<String, Object> baseMeta = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
         List<RagChunkDocument> docs = new ArrayList<>(pieces.size());
         for (int i = 0; i < pieces.size(); i++) {
             docs.add(RagChunkDocument.builder()
@@ -215,15 +217,18 @@ public class RagService {
         }
         backend.addChunks(docs);
         catalog.refreshChunkCount(rag);
-        log.info("RAG ingest tenant='{}' rag='{}' source='{}' chunks={}",
-                rag.getTenantId(), rag.getName(), sourceRef, docs.size());
+        log.info(
+                "RAG ingest tenant='{}' rag='{}' source='{}' chunks={}",
+                rag.getTenantId(),
+                rag.getName(),
+                sourceRef,
+                docs.size());
         return new IngestResult(docs.size());
     }
 
     public long removeBySource(String ragId, String sourceRef) {
-        RagDocument rag = catalog.findById(ragId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "RAG not found: " + ragId));
+        RagDocument rag =
+                catalog.findById(ragId).orElseThrow(() -> new IllegalArgumentException("RAG not found: " + ragId));
         long n = backend.deleteBySource(rag.getTenantId(), rag.getId(), sourceRef);
         catalog.refreshChunkCount(rag);
         return n;
@@ -232,9 +237,8 @@ public class RagService {
     // ──────────────────── Query ────────────────────
 
     public List<SearchHit> query(String ragId, String queryText, int topK) {
-        RagDocument rag = catalog.findById(ragId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "RAG not found: " + ragId));
+        RagDocument rag =
+                catalog.findById(ragId).orElseThrow(() -> new IllegalArgumentException("RAG not found: " + ragId));
         if (queryText == null || queryText.isBlank()) {
             return List.of();
         }
@@ -260,19 +264,29 @@ public class RagService {
      * catalog an embedding dimension is the follow-up; a made-up rate in the
      * wrong place would be worse than a visible gap.
      */
-    private void bookEmbedding(
-            RagDocument rag, @Nullable TokenUsage usage, long durationMs) {
-        int tokensIn = usage == null || usage.inputTokenCount() == null
-                ? 0 : Math.max(0, usage.inputTokenCount());
+    private void bookEmbedding(RagDocument rag, @Nullable TokenUsage usage, long durationMs) {
+        int tokensIn = usage == null || usage.inputTokenCount() == null ? 0 : Math.max(0, usage.inputTokenCount());
         if (tokensIn <= 0) return;
         usageSink.onCall(
-                CallAttribution.ofService(
-                        rag.getTenantId(), rag.getProjectId(), LlmUsageService.CALLER_RAG),
+                CallAttribution.ofService(rag.getTenantId(), rag.getProjectId(), LlmUsageService.CALLER_RAG),
                 new UsageMeasurement(
-                        rag.getEmbeddingProvider(), rag.getEmbeddingProvider(),
-                        rag.getEmbeddingModel(), /*pricing*/ null, /*contextWindow*/ null,
-                        UsageKind.EMBEDDING, UsageOutcome.SUCCESS, 1,
-                        tokensIn, 0, 0, 0, 0, null, null, durationMs));
+                        rag.getEmbeddingProvider(),
+                        rag.getEmbeddingProvider(),
+                        rag.getEmbeddingModel(), /*pricing*/
+                        null, /*contextWindow*/
+                        null,
+                        UsageKind.EMBEDDING,
+                        UsageOutcome.SUCCESS,
+                        1,
+                        tokensIn,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        null,
+                        null,
+                        durationMs));
     }
 
     private EmbeddingModel modelFor(RagDocument rag) {
@@ -282,12 +296,11 @@ public class RagService {
         // created with a working provider — so leftover RAGs cannot
         // silently keep calling external APIs after RAG was switched off.
         if (!isEmbeddingEnabled(rag.getTenantId(), rag.getProjectId())) {
-            throw new IllegalStateException(
-                    "Embedding is disabled for tenant '" + rag.getTenantId()
-                            + "'/project '" + rag.getProjectId() + "' (setting '"
-                            + SETTING_EMBED_PROVIDER + "' = '" + PROVIDER_NONE
-                            + "') — refusing embed/query against RAG '"
-                            + rag.getName() + "'.");
+            throw new IllegalStateException("Embedding is disabled for tenant '" + rag.getTenantId()
+                    + "'/project '" + rag.getProjectId() + "' (setting '"
+                    + SETTING_EMBED_PROVIDER + "' = '" + PROVIDER_NONE
+                    + "') — refusing embed/query against RAG '"
+                    + rag.getName() + "'.");
         }
         // RAG-level operation has no process scope — read from the
         // _vance/project layer of the project cascade.
@@ -296,10 +309,9 @@ public class RagService {
             apiKey = settingService.getDecryptedPasswordCascade(
                     rag.getTenantId(), /*projectId*/ null, /*processId*/ null, SETTING_EMBED_API_KEY);
             if (apiKey == null || apiKey.isBlank()) {
-                throw new IllegalStateException(
-                        "No API key for embedding provider '" + rag.getEmbeddingProvider()
-                                + "' (tenant='" + rag.getTenantId()
-                                + "', setting='" + SETTING_EMBED_API_KEY + "')");
+                throw new IllegalStateException("No API key for embedding provider '" + rag.getEmbeddingProvider()
+                        + "' (tenant='" + rag.getTenantId()
+                        + "', setting='" + SETTING_EMBED_API_KEY + "')");
             }
         } else {
             apiKey = "";
@@ -307,7 +319,9 @@ public class RagService {
         String baseUrl = settingService.getStringValueCascade(
                 rag.getTenantId(), /*projectId*/ null, /*processId*/ null, SETTING_EMBED_BASE_URL);
         return embeddingModelService.createEmbeddingModel(new EmbeddingConfig(
-                rag.getEmbeddingProvider(), rag.getEmbeddingModel(), apiKey,
+                rag.getEmbeddingProvider(),
+                rag.getEmbeddingModel(),
+                apiKey,
                 StringUtils.isBlank(baseUrl) ? null : baseUrl));
     }
 
@@ -330,23 +344,21 @@ public class RagService {
             apiKey = settingService.getDecryptedPasswordCascade(
                     tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_API_KEY);
             if (apiKey == null || apiKey.isBlank()) {
-                throw new IllegalStateException(
-                        "No API key for embedding provider '" + provider
-                                + "' (tenant='" + tenantId
-                                + "', setting='" + SETTING_EMBED_API_KEY + "')");
+                throw new IllegalStateException("No API key for embedding provider '" + provider
+                        + "' (tenant='" + tenantId
+                        + "', setting='" + SETTING_EMBED_API_KEY + "')");
             }
         } else {
             apiKey = "";
         }
         String baseUrl = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_BASE_URL);
-        return Optional.of(new EmbeddingConfig(provider, model, apiKey,
-                StringUtils.isBlank(baseUrl) ? null : baseUrl));
+        return Optional.of(new EmbeddingConfig(provider, model, apiKey, StringUtils.isBlank(baseUrl) ? null : baseUrl));
     }
 
     private String resolveProviderName(String tenantId, @Nullable String projectId) {
-        String provider = settingService.getStringValueCascade(
-                tenantId, projectId, /*processId*/ null, SETTING_EMBED_PROVIDER);
+        String provider =
+                settingService.getStringValueCascade(tenantId, projectId, /*processId*/ null, SETTING_EMBED_PROVIDER);
         return (provider == null || provider.isBlank()) ? DEFAULT_EMBED_PROVIDER : provider;
     }
 

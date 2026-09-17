@@ -95,8 +95,7 @@ public class LlmUsageService {
             RetentionSettingCache retentionCache,
             @Value("${vance.usage.retention-days:0}") int defaultDailyRetentionDays,
             @Value("${vance.usage.detail-retention-days:60}") int defaultDetailRetentionDays,
-            @Value("${vance.usage.detail-retention-days-failed:14}")
-                    int defaultDetailRetentionDaysFailed) {
+            @Value("${vance.usage.detail-retention-days-failed:14}") int defaultDetailRetentionDaysFailed) {
         this.mongoTemplate = mongoTemplate;
         this.retentionCache = retentionCache;
         this.defaultDailyRetentionDays = clamp(defaultDailyRetentionDays);
@@ -117,14 +116,20 @@ public class LlmUsageService {
         try {
             incrementDaily(write, costs);
         } catch (RuntimeException e) {
-            log.warn("LlmUsage daily bucket failed tenant='{}' caller='{}': {}",
-                    write.attribution().tenantId(), write.attribution().caller(), e.toString());
+            log.warn(
+                    "LlmUsage daily bucket failed tenant='{}' caller='{}': {}",
+                    write.attribution().tenantId(),
+                    write.attribution().caller(),
+                    e.toString());
         }
         try {
             writeDetail(write, costs);
         } catch (RuntimeException e) {
-            log.warn("LlmUsage detail row failed tenant='{}' process='{}': {}",
-                    write.attribution().tenantId(), write.attribution().processId(), e.toString());
+            log.warn(
+                    "LlmUsage detail row failed tenant='{}' process='{}': {}",
+                    write.attribution().tenantId(),
+                    write.attribution().processId(),
+                    e.toString());
         }
     }
 
@@ -164,8 +169,10 @@ public class LlmUsageService {
         // otherwise every increment would push it out and a busy day would
         // never age out.
         if (retentionDays > 0) {
-            update.setOnInsert("expiresAt", LlmUsageDailyDocument.dayStart(day)
-                    .plusSeconds(Duration.ofDays(retentionDays).toSeconds()));
+            update.setOnInsert(
+                    "expiresAt",
+                    LlmUsageDailyDocument.dayStart(day)
+                            .plusSeconds(Duration.ofDays(retentionDays).toSeconds()));
         }
 
         // Amounts go in as integer micro-units. The $inc that lands here runs
@@ -181,7 +188,7 @@ public class LlmUsageService {
                     .inc("tokensIn", w.tokensIn())
                     .inc("tokensOut", w.tokensOut())
                     .inc("cacheReadTokens", w.cacheReadTokens())
-                    .inc("cacheWriteTokens", w.cacheWriteTokens())
+                    .inc("implicitCacheReadTokens", w.implicitCacheReadTokens())
                     .inc("images", w.images())
                     .inc("costInputMicros", toMicros(costs.input()))
                     .inc("costOutputMicros", toMicros(costs.output()))
@@ -191,8 +198,10 @@ public class LlmUsageService {
                     // otherwise costTotal and the four components disagree by a
                     // micro-unit now and then, and a report that shows both
                     // would be visibly inconsistent.
-                    .inc("costTotalMicros",
-                            toMicros(costs.input()) + toMicros(costs.output())
+                    .inc(
+                            "costTotalMicros",
+                            toMicros(costs.input())
+                                    + toMicros(costs.output())
                                     + toMicros(costs.cacheRead())
                                     + toMicros(costs.cacheWrite()));
             if (w.unmeasured()) {
@@ -264,12 +273,10 @@ public class LlmUsageService {
 
     private void writeDetail(UsageWrite w, Costs costs) {
         CallAttribution a = w.attribution();
-        String setting = w.outcome() == UsageOutcome.FAILED
-                ? SETTING_DETAIL_RETENTION_FAILED
-                : SETTING_DETAIL_RETENTION;
-        int fallback = w.outcome() == UsageOutcome.FAILED
-                ? defaultDetailRetentionDaysFailed
-                : defaultDetailRetentionDays;
+        String setting =
+                w.outcome() == UsageOutcome.FAILED ? SETTING_DETAIL_RETENTION_FAILED : SETTING_DETAIL_RETENTION;
+        int fallback =
+                w.outcome() == UsageOutcome.FAILED ? defaultDetailRetentionDaysFailed : defaultDetailRetentionDays;
         int retentionDays = retentionDays(a, setting, fallback);
         // Tri-state: the detail level may be switched off. It is diagnostics,
         // and the day bucket already carries the money.
@@ -279,8 +286,8 @@ public class LlmUsageService {
 
         LlmUsageDocument doc = build(w, costs);
         if (retentionDays > 0) {
-            doc.setExpiresAt(w.createdAt()
-                    .plusSeconds(Duration.ofDays(retentionDays).toSeconds()));
+            doc.setExpiresAt(
+                    w.createdAt().plusSeconds(Duration.ofDays(retentionDays).toSeconds()));
         }
         mongoTemplate.insert(doc);
     }
@@ -303,6 +310,7 @@ public class LlmUsageService {
                 .tokensOut(w.tokensOut())
                 .cacheReadTokens(w.cacheReadTokens())
                 .cacheWriteTokens(w.cacheWriteTokens())
+                .implicitCacheReadTokens(w.implicitCacheReadTokens())
                 .priceInputPerMTok(w.priceInputPerMTok())
                 .priceOutputPerMTok(w.priceOutputPerMTok())
                 .priceCacheReadPerMTok(w.priceCacheReadPerMTok())
@@ -418,6 +426,14 @@ public class LlmUsageService {
             int tokensOut,
             int cacheReadTokens,
             int cacheWriteTokens,
+            /**
+             * Estimated tokens the provider served from a cache it did not
+             * itemize — see {@code ImplicitCacheEstimator}. Informational
+             * only: carries no cost (the provider billed the reported
+             * tokens, which is the tail), and never mixed into the
+             * provider-measured {@link #cacheReadTokens}.
+             */
+            int implicitCacheReadTokens,
             /** Generated images; {@link UsageKind#IMAGE} only. */
             int images,
             /** Flat amount for an image call; {@link UsageKind#IMAGE} only. */

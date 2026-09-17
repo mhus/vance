@@ -46,6 +46,13 @@ public class UsageBucketDto {
     private long tokensIn;
     private long tokensOut;
     private long cacheReadTokens;
+    /**
+     * Estimated tokens the provider served from a cache it did not itemize
+     * (billed input far below the request volume, no cache counters) —
+     * clearly an estimate, separate from {@link #cacheReadTokens}.
+     */
+    private long implicitCacheReadTokens;
+
     private long cacheWriteTokens;
 
     private double costInput;

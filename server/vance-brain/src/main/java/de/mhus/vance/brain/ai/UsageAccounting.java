@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.output.TokenUsage;
 import org.jspecify.annotations.Nullable;
 
@@ -34,6 +35,7 @@ final class UsageAccounting {
             String providerInstance,
             int attempt,
             @Nullable TokenUsage usage,
+            @Nullable ChatRequest request,
             long durationMs) {
         int in = nonNegative(usage == null ? null : usage.inputTokenCount());
         int out = nonNegative(usage == null ? null : usage.outputTokenCount());
@@ -43,8 +45,13 @@ final class UsageAccounting {
             cacheRead = (int) Math.max(0, cau.cacheReadInputTokens());
             cacheWrite = (int) Math.max(0, cau.cacheCreationInputTokens());
         }
+        // Cache savings the provider reported nowhere: billed tail far below the
+        // request's actual volume, no cache counters of its own. Informational
+        // only — the cost estimate stays on the reported tokens, which is what
+        // was billed. Estimate field, never mixed into the measured cacheRead.
+        int implicitCache = ImplicitCacheEstimator.estimate(request, usage);
         return UsageMeasurement.chat(
-                model, providerInstance, attempt, in, out, cacheRead, cacheWrite, durationMs);
+                model, providerInstance, attempt, in, out, cacheRead, cacheWrite, implicitCache, durationMs);
     }
 
     /**
@@ -52,8 +59,7 @@ final class UsageAccounting {
      * counts: the point of the row is that an attempt happened and probably
      * cost something the provider will not tell us about.
      */
-    static UsageMeasurement failed(
-            ModelInfo model, String providerInstance, int attempt, long durationMs) {
+    static UsageMeasurement failed(ModelInfo model, String providerInstance, int attempt, long durationMs) {
         return UsageMeasurement.chatFailed(model, providerInstance, attempt, 0, 0, durationMs);
     }
 

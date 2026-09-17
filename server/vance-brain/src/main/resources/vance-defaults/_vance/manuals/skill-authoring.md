@@ -1,6 +1,6 @@
 ---
 triggers: write a skill, create a skill, author a skill, SKILL.md, skill frontmatter, lifecycle sticky, lifecycle shot, prompt macro, slash command with arguments, skill arguments, args.text, skill triggers, /skill, one-shot skill, run a skill in a separate agent, skill without chat history, spawn a worker for a skill, Skill schreiben, Skill anlegen, Skill mit Argumenten, eigenen Befehl anlegen
-summary: How to write a skill — the SKILL.md frontmatter, the three lifecycles (sticky mode / one-shot / shot prompt-macro), running a skill in a fresh worker via run.target: spawn, invocation arguments via arguments: + {{ args }}, and which of body / action:/ activate: fires when.
+summary: How to write a skill — the SKILL.md frontmatter, the three lifecycles (sticky mode / one-shot / shot prompt-macro), running a skill in a fresh worker via run.target: spawn, invocation arguments via arguments: + {{ args }}, and which of body / action:/ activate: fires when — and from which surface (user /skill vs agent skill_activate + skill_fire).
 ---
 # Writing a skill
 
@@ -48,6 +48,9 @@ with a concrete failure scenario. Skip style nits.
 `/skill code-review src/main/java` → the body renders with
 `args.text = "src/main/java"`, fires one turn, and the skill is gone.
 
+Note for the agent surface: `skill_activate` on a shot skill only runs its
+`activate:` commands — the body fires when the agent calls `skill_fire`.
+
 ## Arguments
 
 `/skill <name> <rest of the line>` hands the trailing text to the skill.
@@ -85,7 +88,7 @@ of them.
 | Ingredient | When it fires | Where it lands |
 |---|---|---|
 | **body** | every turn while sticky — or **once** as the turn-prompt when `lifecycle: shot` | system prompt / user turn |
-| **`action:`** | once, on a fresh explicit activation | fires one LLM turn |
+| **`action:`** | once, on a fresh activation from the **user surface** (`/skill`) or on the **worker side** of a spawn skill; never from the agent or the auto-trigger — the agent fires it explicitly via `skill_fire` after `skill_activate` | fires one LLM turn |
 | **`activate:` / `deactivate:`** | once, on activation / on clear | engine commands, no model, no tokens |
 
 Order on activation: `activate:` commands first (they set state), then the
@@ -118,9 +121,12 @@ users type — trigger matching is language-dependent, unlike prompts.
 
 An auto-triggered skill activates **one-shot** for the running turn, and
 its turn-prompt is deliberately **not** fired (a turn is already in
-flight). Consequence: a `lifecycle: shot` skill whose only effect is a
-body does nothing on the trigger path — give it `activate:` commands, make
-it `sticky`, or expect explicit invocation only.
+flight). The same is true for the agent path: `skill_activate` never
+fires a turn-prompt — the agent schedules one explicitly with
+`skill_fire`. Consequence: a `lifecycle: shot` skill whose only effect
+is a body does nothing on the trigger path *and* nothing on a bare agent
+activation — give it `activate:` commands, make it `sticky`, or expect
+explicit invocation only.
 
 ## Running in a fresh worker (`run.target: spawn`)
 
@@ -151,7 +157,9 @@ Rules that bite:
   not its task — without `action:` it would start and idle.
 - **Not combinable with `lifecycle: shot`** — shot means "registers
   nowhere", spawn means "registers sticky in the child".
-- **Triggers never spawn.** Only explicit `/skill <name>` does.
+- **Triggers never spawn.** Only the explicit paths do — `/skill <name>`
+  from the user, `skill_activate` from the agent. Guard scripts don't
+  spawn either.
 - **Same session**, so project memory still applies — only the chat
   history is left behind. That is usually what you want.
 

@@ -24,28 +24,34 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
- * Out-of-band skill control for think-processes — activate, clear,
- * clear-all, list. These calls mutate the persisted {@code activeSkills}
+ * Out-of-band skill control for think-processes — activate, fire, clear,
+ * clear-all, list. Activation calls mutate the persisted {@code activeSkills}
  * on the process document; the next chat-turn the user (or Arthur)
  * initiates picks the new skill set up automatically because Ford reads
  * {@code activeSkills} fresh on every turn.
  *
- * <p><b>Exception — the turn-prompt.</b> A skill can fire one LLM turn
- * on a <em>fresh explicit</em> activation: the prompt is appended to the
- * process's pending queue plus a scheduled lane turn (never inline —
- * {@link #fireAction}). Two sources, in this precedence:
+ * <p><b>Who is activating matters — {@link ActivationRoute}.</b> Whether a
+ * fresh activation fires the skill's {@code action:} turn, and whether it
+ * may start a worker for a {@code run.target: spawn} skill, is a property
+ * of the caller, not of the skill: the user surface activates <em>and</em>
+ * kicks off; the agent tool only switches instructions on and fires via
+ * {@link #fire} when it wants the kick-off — a scheduled turn mid-flight
+ * would only duplicate the work the agent is already doing; the implicit
+ * routes (auto-trigger, guard scripts) neither fire nor spawn. Re-activating
+ * an already-active skill does not re-fire.
+ *
+ * <p><b>The turn-prompt.</b> What a fire produces, in this precedence:
  * <ol>
  *   <li>{@code action:} — the explicit initial prompt.</li>
- *   <li>For {@link SkillLifecycle#SHOT} only: the skill <b>body</b>.
- *       A shot skill never registers in {@code activeSkills}, so it can
- *       never contribute to a system prompt — its body <em>is</em> the
- *       turn. That makes a shot skill with a body a prompt macro; a shot
- *       skill with an empty body and {@code activate:} commands stays
- *       the pure configuration macro it always was.</li>
+ *   <li>For {@link SkillLifecycle#SHOT} only: the skill <b>body</b>. A shot
+ *       skill never registers in {@code activeSkills}, so it can never
+ *       contribute to a system prompt — its body <em>is</em> the turn. That
+ *       makes a shot skill with a body a prompt macro; a shot skill with an
+ *       empty body and {@code activate:} commands stays the pure
+ *       configuration macro it always was.</li>
  * </ol>
- * Re-activating an already-active skill does not re-fire, and the
- * auto-trigger path suppresses it (its in-flight turn already covers the
- * work).
+ * The prompt is appended to the process's pending queue plus a scheduled
+ * lane turn (never inline — {@link #fireAction}), so no lane re-entrancy.
  *
  * <p><b>Invocation arguments.</b> {@code /skill <name> <rest…>} carries
  * the trailing text into {@link #activate}. Exactly one side consumes it:
@@ -60,12 +66,13 @@ import org.springframework.stereotype.Service;
  * tasks, where inheriting the chat history biases the verdict). Such an
  * activation registers nothing on the calling process: {@link SkillSpawnRunner}
  * creates the child and the very same {@code activate} runs again on the
- * child's lane, where the skill is an ordinary sticky one. See
+ * child's lane, with route {@link ActivationRoute#WORKER}, where the skill
+ * is an ordinary sticky one. See
  * {@code specification/public/skills.md} §2c.
  *
  * <p>Recipe-bound skills (those activated by the spawning recipe with
  * {@code fromRecipe=true}) cannot be cleared by the user when the
- * recipe is locked — see {@code specification/skills.md} §7a.
+ * recipe is locked — see {@code specification/public/skills.md} §7a.
  */
 @Service
 @RequiredArgsConstructor
@@ -84,19 +91,19 @@ public class SkillSteerProcessor {
     private final SkillSpawnRunner skillSpawnRunner;
 
     /**
-     * Explicit activation ({@code /skill <name>} / {@code process-skill}
-     * ACTIVATE). Fires the skill's {@code action:} turn on a fresh
-     * activation — there is no in-flight turn to cover the work, so the
-     * skill kicks it off itself.
+     * Explicit activation, user route ({@code /skill <name>} /
+     * {@code process-skill} ACTIVATE): a fresh activation fires the skill's
+     * {@code action:} turn — there is no in-flight turn to cover the work,
+     * so the skill kicks it off itself.
      */
     public ActivationResult activate(ThinkProcessDocument process, String skillName, boolean oneShot) {
-        return activate(process, skillName, oneShot, /*runAction*/ true, null, null);
+        return activate(process, skillName, oneShot, ActivationRoute.USER, null, null);
     }
 
     /**
-     * Explicit activation with the invocation's trailing text. See
-     * {@link #activate(ThinkProcessDocument, String, boolean, boolean,
-     * String, String)}.
+     * Explicit activation with the invocation's trailing text, user route.
+     * See {@link #activate(ThinkProcessDocument, String, boolean,
+     * ActivationRoute, String, String)}.
      */
     public ActivationResult activate(
             ThinkProcessDocument process,
@@ -104,27 +111,22 @@ public class SkillSteerProcessor {
             boolean oneShot,
             @Nullable String rawArgs,
             @Nullable String senderUserId) {
-        return activate(process, skillName, oneShot, /*runAction*/ true, rawArgs, senderUserId);
+        return activate(process, skillName, oneShot, ActivationRoute.USER, rawArgs, senderUserId);
     }
 
     /**
-     * @param runAction whether a fresh activation fires the skill's
-     *   {@code action:} turn. The auto-trigger path
-     *   ({@link SkillTriggerMatcher}) passes {@code false}: it activates
-     *   the skill <em>during</em> an already-running turn, which injects
-     *   the body and covers the work this turn — a scheduled action turn
-     *   would only duplicate it.
-     */
-    public ActivationResult activate(
-            ThinkProcessDocument process, String skillName, boolean oneShot, boolean runAction) {
-        return activate(process, skillName, oneShot, runAction, null, null);
-    }
-
-    /**
+     * The activation funnel — one shared gate sequence, one behavior matrix.
+     * Every route resolves through the same cascade, enforces the recipe
+     * {@code allowedSkills} lock, refuses disabled skills, validates declared
+     * arguments up front and treats re-activation idempotently. What differs
+     * is named by {@link ActivationRoute}: whether a fresh activation fires
+     * the skill's {@code action:} turn, and whether a
+     * {@code run.target: spawn} skill may start its worker from here.
+     *
      * @param rawArgs the invocation's trailing text, unparsed. Bound into
-     *   the skill's template when it declares {@code arguments:};
-     *   otherwise injected as a plain user message so it still reaches the
-     *   model. {@code null} / blank when the invocation carried none.
+     *   the skill's template when it declares {@code arguments:}; otherwise
+     *   injected as a plain user message so it still reaches the model.
+     *   {@code null} / blank when the invocation carried none.
      * @param senderUserId identity stamped on that fallback user message —
      *   the requesting user, so the turn reads as theirs. Falls back to
      *   {@link #ACTION_SENDER} when unknown (system-driven activation).
@@ -133,27 +135,9 @@ public class SkillSteerProcessor {
             ThinkProcessDocument process,
             String skillName,
             boolean oneShot,
-            boolean runAction,
+            ActivationRoute route,
             @Nullable String rawArgs,
             @Nullable String senderUserId) {
-        return activate(process, skillName, oneShot, runAction, rawArgs, senderUserId, /*allowSpawn*/ true);
-    }
-
-    /**
-     * @param allowSpawn whether a {@code run.target: spawn} skill may
-     *   spawn from here. {@code false} on the child-side activation the
-     *   spawn itself schedules — otherwise the child would spawn a
-     *   grandchild, and so on. This is the recursion guard for
-     *   {@code planning/skill-spawn-target.md} §2.7.
-     */
-    private ActivationResult activate(
-            ThinkProcessDocument process,
-            String skillName,
-            boolean oneShot,
-            boolean runAction,
-            @Nullable String rawArgs,
-            @Nullable String senderUserId,
-            boolean allowSpawn) {
         if (skillName == null || skillName.isBlank()) {
             throw new IllegalArgumentException("skillName is required for activate");
         }
@@ -183,8 +167,22 @@ public class SkillSteerProcessor {
         // carries the skill is the worker itself being re-invoked (the
         // public entry point allows spawning), and it has nothing to spawn
         // — pinned by SkillSteerProcessorSpawnTest.
-        if (skill.run().spawns() && allowSpawn && !isActive(process, skillName)) {
-            return spawnAndActivate(process, skill, oneShot, runAction, rawArgs, args, senderUserId);
+        if (skill.run().spawns() && !isActive(process, skillName)) {
+            if (route.allowSpawn()) {
+                return spawnAndActivate(process, skill, oneShot, rawArgs, args, senderUserId);
+            }
+            if (!route.registerInlineWhenSpawnBlocked()) {
+                log.debug(
+                        "Skill activate id='{}' name='{}' run=spawn suppressed — route '{}' "
+                                + "starts no worker and registers nothing here",
+                        process.getId(),
+                        skill.name(),
+                        route);
+                return new ActivationResult(skill, false, mutableActive(process));
+            }
+            // WORKER: fall through — this process *is* the worker, the spawn
+            // branch must not re-enter (no grandchild); the skill registers
+            // inline below, pinned by SkillSteerProcessorSpawnTest.
         }
 
         if (skill.lifecycle() == SkillLifecycle.SHOT) {
@@ -199,7 +197,7 @@ public class SkillSteerProcessor {
                     process.getId(),
                     skill.name(),
                     skill.activate().size());
-            if (runAction) {
+            if (route.fireActionTurn()) {
                 fireAction(process, skill, args);
                 injectUnconsumedArgs(process, skill, args, senderUserId);
             }
@@ -230,7 +228,7 @@ public class SkillSteerProcessor {
                 persist(process, active);
             }
             log.debug("Skill activate id='{}' name='{}' (already active)", process.getId(), skillName);
-            if (runAction) {
+            if (route.fireActionTurn()) {
                 injectUnconsumedArgs(process, skill, args, senderUserId);
             }
             return new ActivationResult(skill, false, active);
@@ -254,7 +252,7 @@ public class SkillSteerProcessor {
         // Fire the activate sequence only on a fresh activation — an
         // already-active skill (handled above) must not re-fire.
         skillCommandRunner.run(process, skill.activate(), "activate", skill.name());
-        if (runAction) {
+        if (route.fireActionTurn()) {
             fireAction(process, skill, args);
             injectUnconsumedArgs(process, skill, args, senderUserId);
         }
@@ -268,11 +266,11 @@ public class SkillSteerProcessor {
      * has nothing to clear afterwards. The worker reports back through
      * the regular parent-notification path when it terminates.
      *
-     * <p>Suppressed on the auto-trigger path ({@code runAction == false}):
-     * that activation happens inside an in-flight turn, and starting a
-     * worker as a side effect of a keyword match would be both expensive
-     * and surprising. The explicit {@code /skill} route is the only way
-     * in — {@code SkillLoader} warns about triggers on a spawn skill.
+     * <p>Suppressed on the implicit routes ({@link ActivationRoute#IMPLICIT}):
+     * those activations happen inside an in-flight turn, and starting a
+     * worker as a side effect of a keyword match or a guard script would
+     * be both expensive and surprising — {@code SkillLoader} warns about
+     * triggers on a spawn skill.
      *
      * @param oneShot the caller's {@code --once}, passed on: {@code run}
      *   decides the <em>place</em>, {@code --once} the <em>duration</em>,
@@ -288,22 +286,13 @@ public class SkillSteerProcessor {
             ThinkProcessDocument process,
             ResolvedSkill skill,
             boolean oneShot,
-            boolean runAction,
             @Nullable String rawArgs,
             @Nullable String args,
             @Nullable String senderUserId) {
-        if (!runAction) {
-            log.debug(
-                    "Skill activate id='{}' name='{}' run=spawn suppressed — " + "auto-trigger path does not spawn",
-                    process.getId(),
-                    skill.name());
-            return new ActivationResult(skill, false, mutableActive(process));
-        }
         String childId = skillSpawnRunner.spawn(
                 process,
                 skill,
-                child -> activate(
-                        child, skill.name(), oneShot, /*runAction*/ true, rawArgs, senderUserId, /*allowSpawn*/ false));
+                child -> activate(child, skill.name(), oneShot, ActivationRoute.WORKER, rawArgs, senderUserId));
         log.info(
                 "Skill activate id='{}' name='{}' run=spawn recipe='{}' → child id='{}'" + " (caller unchanged{})",
                 process.getId(),
@@ -321,21 +310,25 @@ public class SkillSteerProcessor {
     }
 
     /**
-     * If the skill carries an {@code action:} prompt, fire it as one LLM
-     * turn — appended to the process's own pending queue plus a scheduled
-     * lane turn, never run inline. This mirrors the completion guard's
-     * injection path and sidesteps lane re-entrancy: skill activation
-     * already runs on the process lane (see {@code ProcessSkillHandler} and
-     * {@code SkillTriggerMatcher}), so a synchronous turn here would
-     * re-enter it. The injected message is stamped with {@link #ACTION_SENDER}
-     * so it reads as system-injected in history. Fires <b>after</b> the
+     * If the skill carries a turn-prompt ({@code action:}, or the body
+     * for a {@link SkillLifecycle#SHOT} skill), fire it as one LLM turn —
+     * appended to the process's own pending queue plus a scheduled lane
+     * turn, never run inline. This mirrors the completion guard's injection
+     * path and sidesteps lane re-entrancy: skill activation and fire both
+     * run on the process lane (see {@code ProcessSkillHandler},
+     * {@code SkillTriggerMatcher} and {@code SkillFireTool}), so a
+     * synchronous turn here would re-enter it. The injected message is
+     * stamped with {@link #ACTION_SENDER} so it reads as system-injected in
+     * history. In the activation funnel this fires <b>after</b> the
      * {@code activate:} sequence so the turn observes the freshly-set state.
-     * No-op when {@code action:} is absent/blank.
+     *
+     * @return whether a prompt was actually scheduled — {@code false} when
+     *   the skill carries no turn-prompt or the rendered prompt is blank
      */
-    private void fireAction(ThinkProcessDocument process, ResolvedSkill skill, @Nullable String rawArgs) {
+    private boolean fireAction(ThinkProcessDocument process, ResolvedSkill skill, @Nullable String rawArgs) {
         String template = turnPromptTemplate(skill);
         if (template == null) {
-            return;
+            return false;
         }
         String prompt;
         try {
@@ -349,7 +342,7 @@ public class SkillSteerProcessor {
             prompt = template;
         }
         if (prompt == null || prompt.isBlank()) {
-            return;
+            return false;
         }
         SteerMessage.UserChatInput injected =
                 new SteerMessage.UserChatInput(Instant.now(), null, ACTION_SENDER, prompt);
@@ -360,6 +353,107 @@ public class SkillSteerProcessor {
                 process.getId(),
                 skill.name(),
                 prompt.length());
+        return true;
+    }
+
+    /**
+     * Result of a {@link #fire} call — facts, not prose: the tool composes
+     * the sentence the model reads. Never-active and spawn cases are
+     * outcomes, not errors, mirroring {@code skill_clear}'s honesty rule.
+     */
+    public record FireResult(ResolvedSkill skill, Outcome outcome) {
+
+        /** Why the fire did (or did not) schedule a turn. */
+        public enum Outcome {
+            /** The turn-prompt was scheduled; it runs after the current turn. */
+            FIRED,
+            /** The skill is not active in this process — activate it first. */
+            NOT_ACTIVE,
+            /** Neither an {@code action:} nor a shot body — nothing to fire. */
+            NO_TURN_PROMPT,
+            /** {@code run.target: spawn} skill — its work happens in a fresh worker. */
+            SPAWN_SKILL
+        }
+    }
+
+    /**
+     * Fires a skill's turn-prompt without activating anything — the agent
+     * twin of the user surface's auto-fire on fresh activation
+     * ({@link ActivationRoute#USER} vs {@link ActivationRoute#AGENT}). For
+     * the agent, {@code skill_activate} only switches instructions on; this
+     * is the explicit kick-off. Same gates as activation: recipe
+     * {@code allowedSkills} lock, disabled refusal, argument validation.
+     * Never runs {@code activate:} — command sequences belong to
+     * activation, and re-running idempotent setters on a fire would blur
+     * the two planes.
+     *
+     * <p>Sticky skills must already be active (the fire renders with the
+     * invocation's args, falling back to the args the skill was activated
+     * with); a {@link SkillLifecycle#SHOT} skill fires directly — that is
+     * the prompt-macro execution path. Nothing is registered, so there is
+     * nothing to clear afterwards.
+     *
+     * @param rawArgs optional trailing text for this fire — bound into the
+     *   template when the skill declares {@code arguments:}; otherwise
+     *   injected as a user message alongside the turn, the same rule the
+     *   activation path applies
+     * @param senderUserId identity stamped on that fallback user message
+     */
+    public FireResult fire(
+            ThinkProcessDocument process, String skillName, @Nullable String rawArgs, @Nullable String senderUserId) {
+        if (skillName == null || skillName.isBlank()) {
+            throw new IllegalArgumentException("skillName is required for fire");
+        }
+        java.util.Set<String> whitelist = process.getAllowedSkillsOverride();
+        if (whitelist != null && !whitelist.contains(skillName)) {
+            throw new SkillNotAllowedByRecipeException(skillName, process.getRecipeName());
+        }
+        ResolvedSkill skill = skillResolver
+                .resolve(scopeFor(process), skillName)
+                .orElseThrow(() -> new UnknownSkillException(skillName));
+        if (!skill.enabled()) {
+            throw new DisabledSkillException(skill.name());
+        }
+        String args = rawArgs == null || rawArgs.isBlank() ? null : rawArgs.strip();
+        if (skill.run().spawns()) {
+            // Its action: belongs to the worker (mandatory there, §2c); the
+            // caller has nothing to fire and nothing registered.
+            return new FireResult(skill, FireResult.Outcome.SPAWN_SKILL);
+        }
+        if (skill.lifecycle() == SkillLifecycle.SHOT) {
+            // Same up-front validation as activation: a missing required
+            // argument must fail the fire, not surface as an empty
+            // placeholder in the rendered turn-prompt.
+            SkillArgumentBinder.bind(skill, args);
+            boolean fired = fireAction(process, skill, args);
+            if (fired) {
+                injectUnconsumedArgs(process, skill, args, senderUserId);
+            }
+            return new FireResult(skill, fired ? FireResult.Outcome.FIRED : FireResult.Outcome.NO_TURN_PROMPT);
+        }
+
+        ActiveSkillRefEmbedded ref = process.getActiveSkills() == null
+                ? null
+                : process.getActiveSkills().stream()
+                        .filter(a -> skillName.equals(a.getName()))
+                        .findFirst()
+                        .orElse(null);
+        if (ref == null) {
+            return new FireResult(skill, FireResult.Outcome.NOT_ACTIVE);
+        }
+        // A fire without its own args re-renders with the activation's —
+        // the stored args are part of the skill's configuration.
+        String effectiveArgs = args != null ? args : ref.getArgs();
+        // Same up-front validation as activation — here against the args
+        // that will actually render (the stored ones when the fire carries
+        // none), so a sticky fire without arguments does not trip over
+        // required declarations the activation already satisfied.
+        SkillArgumentBinder.bind(skill, effectiveArgs);
+        boolean fired = fireAction(process, skill, effectiveArgs);
+        if (fired) {
+            injectUnconsumedArgs(process, skill, args, senderUserId);
+        }
+        return new FireResult(skill, fired ? FireResult.Outcome.FIRED : FireResult.Outcome.NO_TURN_PROMPT);
     }
 
     /**

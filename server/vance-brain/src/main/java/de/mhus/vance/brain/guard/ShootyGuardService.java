@@ -20,6 +20,7 @@ import de.mhus.vance.brain.script.ScriptRequest;
 import de.mhus.vance.brain.script.VanceScriptApi.ScriptGuardApi;
 import de.mhus.vance.brain.script.VanceScriptApi.ScriptGuardScratchApi;
 import de.mhus.vance.brain.script.VanceScriptApi.ScriptHostException;
+import de.mhus.vance.brain.skill.ActivationRoute;
 import de.mhus.vance.brain.skill.SkillSteerProcessor;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -617,7 +618,8 @@ public class ShootyGuardService {
         if (skills == null) {
             throw new ScriptHostException("vance.guard.activateSkill: skill subsystem unavailable", null);
         }
-        return skills.activate(process, skillName, /*oneShot*/ false, /*runAction*/ false, args, sessionOwner(process))
+        return skills.activate(
+                        process, skillName, /*oneShot*/ false, ActivationRoute.IMPLICIT, args, sessionOwner(process))
                 .newlyActivated();
     }
 

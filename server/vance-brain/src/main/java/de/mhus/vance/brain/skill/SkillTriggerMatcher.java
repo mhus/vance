@@ -6,7 +6,6 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -72,8 +71,7 @@ public class SkillTriggerMatcher {
      *
      * @return names of skills that were freshly activated by this call
      */
-    public List<String> detectAndActivate(
-            ThinkProcessDocument process, @Nullable String userText) {
+    public List<String> detectAndActivate(ThinkProcessDocument process, @Nullable String userText) {
         if (userText == null || userText.isBlank()) return List.of();
 
         SkillScopeContext scope = scopeFor(process);
@@ -92,25 +90,28 @@ public class SkillTriggerMatcher {
             if (!anyTriggerMatches(skill, lowered)) continue;
 
             try {
-                // runAction=false: this fires during an already-running turn
-                // (the body injection covers the work this turn), so a skill's
-                // action: turn would only duplicate it. See fireAction.
+                // Route IMPLICIT: this fires during an already-running turn
+                // (the body injection covers the work this turn), so a
+                // skill's action: turn would only duplicate it — and no
+                // implicit route may start a worker either. See
+                // ActivationRoute.
                 skillSteerProcessor.activate(
-                        process, skill.name(), /*oneShot*/ true, /*runAction*/ false);
+                        process, skill.name(), /*oneShot*/ true, ActivationRoute.IMPLICIT, null, null);
                 activated.add(skill.name());
-                log.info("Skill auto-trigger id='{}' skill='{}' (one-shot)",
-                        process.getId(), skill.name());
+                log.info("Skill auto-trigger id='{}' skill='{}' (one-shot)", process.getId(), skill.name());
             } catch (RuntimeException e) {
                 // Whitelist/unknown/etc. — don't fail the turn over a trigger miss.
-                log.warn("Skill auto-trigger activation failed id='{}' skill='{}': {}",
-                        process.getId(), skill.name(), e.toString());
+                log.warn(
+                        "Skill auto-trigger activation failed id='{}' skill='{}': {}",
+                        process.getId(),
+                        skill.name(),
+                        e.toString());
             }
         }
         return activated;
     }
 
-    private boolean anyTriggerMatches(
-            ResolvedSkill skill, String loweredText) {
+    private boolean anyTriggerMatches(ResolvedSkill skill, String loweredText) {
         for (ResolvedSkill.Trigger trigger : skill.triggers()) {
             if (trigger == null || trigger.type() == null) continue;
             switch (trigger.type()) {
@@ -135,8 +136,7 @@ public class SkillTriggerMatcher {
             try {
                 return Pattern.compile(p, Pattern.CASE_INSENSITIVE);
             } catch (PatternSyntaxException e) {
-                log.warn("Skill '{}' has invalid trigger pattern '{}': {}",
-                        skillName, p, e.getDescription());
+                log.warn("Skill '{}' has invalid trigger pattern '{}': {}", skillName, p, e.getDescription());
                 // Sentinel for "never matches" — null in cache wouldn't survive computeIfAbsent.
                 return INVALID_PATTERN;
             }
@@ -173,8 +173,7 @@ public class SkillTriggerMatcher {
      * keywords ({@code "draft"}) is on the skill author — use
      * specific phrases when narrow targeting matters.
      */
-    private static boolean matchesKeywords(
-            List<String> keywords, String loweredText) {
+    private static boolean matchesKeywords(List<String> keywords, String loweredText) {
         if (keywords == null || keywords.isEmpty()) return false;
         if (loweredText == null || loweredText.isEmpty()) return false;
         for (String kw : keywords) {
@@ -195,16 +194,13 @@ public class SkillTriggerMatcher {
     }
 
     private SkillScopeContext scopeFor(ThinkProcessDocument process) {
-        SessionDocument session = sessionService.findBySessionId(process.getSessionId())
-                .orElse(null);
-        String userId = session != null && !session.getUserId().isBlank()
-                ? session.getUserId() : null;
-        String projectId = session != null && !session.getProjectId().isBlank()
-                ? session.getProjectId() : null;
+        SessionDocument session =
+                sessionService.findBySessionId(process.getSessionId()).orElse(null);
+        String userId = session != null && !session.getUserId().isBlank() ? session.getUserId() : null;
+        String projectId = session != null && !session.getProjectId().isBlank() ? session.getProjectId() : null;
         return SkillScopeContext.of(process.getTenantId(), userId, projectId);
     }
 
     /** Sentinel for patterns that failed to compile — caches the failure. */
-    private static final Pattern INVALID_PATTERN =
-            Pattern.compile("(?!)");  // matches nothing
+    private static final Pattern INVALID_PATTERN = Pattern.compile("(?!)"); // matches nothing
 }

@@ -35,38 +35,75 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class SkillSteerProcessorSpawnTest {
 
-    @Mock private ThinkProcessService thinkProcessService;
-    @Mock private SessionService sessionService;
-    @Mock private SkillResolver skillResolver;
-    @Mock private SkillCommandRunner skillCommandRunner;
-    @Mock private ProcessEventEmitter eventEmitter;
-    @Mock private SkillSpawnRunner skillSpawnRunner;
+    @Mock
+    private ThinkProcessService thinkProcessService;
 
-    @Captor private ArgumentCaptor<List<ActiveSkillRefEmbedded>> skillsCaptor;
-    @Captor private ArgumentCaptor<PendingMessageDocument> pendingCaptor;
+    @Mock
+    private SessionService sessionService;
+
+    @Mock
+    private SkillResolver skillResolver;
+
+    @Mock
+    private SkillCommandRunner skillCommandRunner;
+
+    @Mock
+    private ProcessEventEmitter eventEmitter;
+
+    @Mock
+    private SkillSpawnRunner skillSpawnRunner;
+
+    @Captor
+    private ArgumentCaptor<List<ActiveSkillRefEmbedded>> skillsCaptor;
+
+    @Captor
+    private ArgumentCaptor<PendingMessageDocument> pendingCaptor;
 
     private SkillSteerProcessor processor;
 
     @BeforeEach
     void setUp() {
         processor = new SkillSteerProcessor(
-                thinkProcessService, sessionService, skillResolver, skillCommandRunner,
-                eventEmitter, new PromptTemplateRenderer(), skillSpawnRunner);
+                thinkProcessService,
+                sessionService,
+                skillResolver,
+                skillCommandRunner,
+                eventEmitter,
+                new PromptTemplateRenderer(),
+                skillSpawnRunner);
     }
 
     private ThinkProcessDocument process(String id, List<ActiveSkillRefEmbedded> active) {
         return ThinkProcessDocument.builder()
-                .id(id).tenantId("acme").projectId("proj").sessionId("s1")
+                .id(id)
+                .tenantId("acme")
+                .projectId("proj")
+                .sessionId("s1")
                 .activeSkills(active)
                 .build();
     }
 
     private ResolvedSkill spawnSkill(String name, String action, boolean consumesArgs) {
         return new ResolvedSkill(
-                name, name, "desc", "1.0.0",
-                List.of(), "Review methodology.", List.of(), List.of(), List.of(), List.of(),
-                List.of(), true, SkillScope.VANCE, List.of(), List.of(),
-                SkillLifecycle.STICKY, consumesArgs, List.of(), action,
+                name,
+                name,
+                "desc",
+                "1.0.0",
+                List.of(),
+                "Review methodology.",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                true,
+                SkillScope.VANCE,
+                List.of(),
+                List.of(),
+                SkillLifecycle.STICKY,
+                consumesArgs,
+                List.of(),
+                action,
                 new SkillRun(SkillRun.Target.SPAWN, "code-review", "none"));
     }
 
@@ -87,8 +124,7 @@ class SkillSteerProcessorSpawnTest {
         spawnYields(process("c1", List.of()));
         ThinkProcessDocument parent = process("p1", List.of());
 
-        SkillSteerProcessor.ActivationResult result =
-                processor.activate(parent, "code-review", false);
+        SkillSteerProcessor.ActivationResult result = processor.activate(parent, "code-review", false);
 
         assertThat(result.activeAfter()).isEmpty();
         verify(thinkProcessService, never()).replaceActiveSkills(eq("p1"), any());
@@ -117,14 +153,12 @@ class SkillSteerProcessorSpawnTest {
 
     @Test
     void activate_spawnSkill_argsReachTheChildSoTheStickyBodyCanRenderThem() {
-        ResolvedSkill skill = spawnSkill(
-                "code-review", "Review {{ args.text }} now.", /*consumesArgs*/ true);
+        ResolvedSkill skill = spawnSkill("code-review", "Review {{ args.text }} now.", /*consumesArgs*/ true);
         when(skillResolver.resolve(any(), eq("code-review"))).thenReturn(Optional.of(skill));
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
         spawnYields(process("c1", List.of()));
 
-        processor.activate(process("p1", List.of()), "code-review", false,
-                "src/main/java", "u1");
+        processor.activate(process("p1", List.of()), "code-review", false, "src/main/java", "u1");
 
         // On the ref, so every later turn re-binds them for the body …
         verify(thinkProcessService).replaceActiveSkills(eq("c1"), skillsCaptor.capture());
@@ -134,8 +168,7 @@ class SkillSteerProcessorSpawnTest {
                 .isEqualTo("src/main/java");
         // … and rendered into the kick-off turn.
         verify(thinkProcessService).appendPending(eq("c1"), pendingCaptor.capture());
-        assertThat(pendingCaptor.getValue().getContent())
-                .isEqualTo("Review src/main/java now.");
+        assertThat(pendingCaptor.getValue().getContent()).isEqualTo("Review src/main/java now.");
     }
 
     @Test
@@ -178,11 +211,11 @@ class SkillSteerProcessorSpawnTest {
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
         ThinkProcessDocument parent = process("p1", List.of());
 
-        // runAction=false is the auto-trigger path: a turn is already in
+        // Route IMPLICIT (auto-trigger / guard): a turn is already in
         // flight, and starting a worker from a keyword match would be both
-        // expensive and surprising.
+        // expensive and surprising — a quiet no-op, no registration.
         SkillSteerProcessor.ActivationResult result =
-                processor.activate(parent, "code-review", false, /*runAction*/ false);
+                processor.activate(parent, "code-review", false, ActivationRoute.IMPLICIT, null, null);
 
         verify(skillSpawnRunner, never()).spawn(any(), any(), any());
         assertThat(result.newlyActivated()).isFalse();
@@ -195,7 +228,10 @@ class SkillSteerProcessorSpawnTest {
         when(skillResolver.resolve(any(), eq("code-review"))).thenReturn(Optional.of(skill));
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
         ActiveSkillRefEmbedded existing = ActiveSkillRefEmbedded.builder()
-                .name("code-review").oneShot(false).fromRecipe(false).build();
+                .name("code-review")
+                .oneShot(false)
+                .fromRecipe(false)
+                .build();
 
         // This is the worker itself being re-invoked: it already carries
         // the skill, so there is nothing to spawn.

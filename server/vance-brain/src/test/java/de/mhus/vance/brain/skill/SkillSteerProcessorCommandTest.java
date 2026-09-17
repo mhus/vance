@@ -223,14 +223,15 @@ class SkillSteerProcessorCommandTest {
     }
 
     @Test
-    void activate_withRunActionFalse_suppressesActionTurn() {
+    void activate_implicitRoute_neverFiresTheActionTurn() {
         List<EngineCommand> activate = List.of(EngineCommand.parse("echo go"));
         ResolvedSkill withAction = skill("s", SkillLifecycle.STICKY, activate, List.of(), "Review the current diff.");
         when(skillResolver.resolve(any(), eq("s"))).thenReturn(Optional.of(withAction));
         ThinkProcessDocument p = process(List.of());
 
-        // auto-trigger path — activation during an in-flight turn
-        processor.activate(p, "s", true, /*runAction*/ false);
+        // implicit route (auto-trigger / guard) — activation during an
+        // in-flight turn
+        processor.activate(p, "s", true, ActivationRoute.IMPLICIT, null, null);
 
         verify(skillCommandRunner).run(eq(p), eq(activate), eq("activate"), eq("s"));
         verify(thinkProcessService, never()).appendPending(anyString(), any());

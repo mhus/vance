@@ -167,9 +167,11 @@ persistence — "save this as a chart doc" — takes the stored form via
   raw JSON/YAML at `.json`/`.yaml`; the fence is inline-chat only.
 - **Raw ECharts options.** `dataset.source`, bare `series[].type`
   without `name` and `data` — the codec rejects them. Use the Vance
-  schema above. The codec error tells you the expected shape. On axes
-  the failure is worse than a rejection: `xAxis.name`, `axisLabel`,
-  `data` are dropped **silently** (see the closed axis-key list above).
+  schema above. The codec error tells you the expected shape — for an
+  unknown `chartType` it names the valid values, for a bad `series` the
+  point shape. On axes the failure is worse than a rejection: `xAxis.name`,
+  `axisLabel`, `data` are dropped **silently** (see the closed axis-key
+  list above).
   Symptom: the chart renders but has no axis titles.
 
 - **`min` on a bar chart.** Bars encode magnitude by length, so the

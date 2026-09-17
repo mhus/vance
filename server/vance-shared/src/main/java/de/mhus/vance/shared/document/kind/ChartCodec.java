@@ -35,8 +35,7 @@ import tools.jackson.databind.ObjectMapper;
 public final class ChartCodec {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final TypeReference<LinkedHashMap<String, Object>> JSON_MAP =
-            new TypeReference<>() {};
+    private static final TypeReference<LinkedHashMap<String, Object>> JSON_MAP = new TypeReference<>() {};
 
     private ChartCodec() {
         // utility class
@@ -115,12 +114,8 @@ public final class ChartCodec {
         // Axes are silently dropped for pie / donut (no axis semantics)
         // — keeping them around would round-trip noise the spec calls
         // out as "ignored" in §2.5.
-        ChartAxis xAxis = type.isNamedValueShaped()
-                ? null
-                : promoteAxis(obj.get("xAxis"), AxisType.CATEGORY);
-        ChartAxis yAxis = type.isNamedValueShaped()
-                ? null
-                : promoteAxis(obj.get("yAxis"), AxisType.VALUE);
+        ChartAxis xAxis = type.isNamedValueShaped() ? null : promoteAxis(obj.get("xAxis"), AxisType.CATEGORY);
+        ChartAxis yAxis = type.isNamedValueShaped() ? null : promoteAxis(obj.get("yAxis"), AxisType.VALUE);
 
         List<ChartSeries> series = promoteSeries(obj.get("series"), type);
         Map<String, Object> override = promoteOverride(obj.get("echartsOptionOverride"));
@@ -133,9 +128,7 @@ public final class ChartCodec {
         extra.remove("series");
         extra.remove("echartsOptionOverride");
 
-        return new ChartDocument(
-                kind.isEmpty() ? "chart" : kind,
-                header, xAxis, yAxis, series, override, extra);
+        return new ChartDocument(kind.isEmpty() ? "chart" : kind, header, xAxis, yAxis, series, override, extra);
     }
 
     private static ChartHeader promoteHeader(@Nullable Object raw) {
@@ -148,7 +141,7 @@ public final class ChartCodec {
         }
         ChartType type = ChartType.fromWire(typeStr);
         if (type == null) {
-            throw new KindCodecException("Unknown chartType: " + typeStr);
+            throw new KindCodecException("Unknown chartType: " + typeStr + " (valid: " + ChartType.wireList() + ")");
         }
         String title = (map.get("title") instanceof String s1) ? s1 : null;
         String subtitle = (map.get("subtitle") instanceof String s2) ? s2 : null;
@@ -216,8 +209,7 @@ public final class ChartCodec {
         // editor's parse-error alert (or the chat's render-error path)
         // can show the user what to fix.
         if (out.isEmpty() && !list.isEmpty()) {
-            throw new KindCodecException(
-                    "No valid series in `series` (input had " + list.size() + " entries). "
+            throw new KindCodecException("No valid series in `series` (input had " + list.size() + " entries). "
                     + "Each series needs `name` (string) and `data` (non-empty array of points "
                     + "matching chartType `" + type.wire() + "`, e.g. " + sampleShape(type)
                     + "). Vance charts use this schema directly — do not use raw ECharts "
@@ -260,8 +252,12 @@ public final class ChartCodec {
             return switch (type) {
                 case LINE, BAR, AREA, SCATTER -> map.containsKey("x") && map.containsKey("y");
                 case PIE, DONUT -> map.containsKey("name") && map.containsKey("value");
-                case CANDLESTICK -> map.containsKey("t") && map.containsKey("o")
-                        && map.containsKey("h") && map.containsKey("l") && map.containsKey("c");
+                case CANDLESTICK ->
+                    map.containsKey("t")
+                            && map.containsKey("o")
+                            && map.containsKey("h")
+                            && map.containsKey("l")
+                            && map.containsKey("c");
                 case HEATMAP -> map.containsKey("x") && map.containsKey("y") && map.containsKey("v");
             };
         }

@@ -57,9 +57,7 @@ class ChartCodecTest {
 
         ChartDocument doc = ChartCodec.parse(body, "application/json");
 
-        assertThat(doc.series().get(0).data())
-                .hasSize(2)
-                .allMatch(p -> p instanceof List<?>);
+        assertThat(doc.series().get(0).data()).hasSize(2).allMatch(p -> p instanceof List<?>);
     }
 
     @Test
@@ -195,7 +193,8 @@ class ChartCodecTest {
                 """;
         assertThatThrownBy(() -> ChartCodec.parse(body, "application/json"))
                 .isInstanceOf(KindCodecException.class)
-                .hasMessageContaining("Unknown chartType");
+                .hasMessageContaining("Unknown chartType: donutbar")
+                .hasMessageContaining("(valid: line, bar, area, scatter, pie, donut, candlestick, heatmap)");
     }
 
     @Test
@@ -305,9 +304,7 @@ class ChartCodecTest {
                 new ChartHeader(ChartType.LINE, "Title", null, true, false, false),
                 ChartAxis.defaultX(),
                 ChartAxis.defaultY(),
-                List.of(new ChartSeries("Web", null,
-                        List.of(Map.of("x", "a", "y", 1)),
-                        Map.of())),
+                List.of(new ChartSeries("Web", null, List.of(Map.of("x", "a", "y", 1)), Map.of())),
                 null,
                 Map.of());
 
@@ -328,10 +325,11 @@ class ChartCodecTest {
         ChartDocument doc = new ChartDocument(
                 "chart",
                 ChartHeader.of(ChartType.PIE),
-                null, null,
-                List.of(new ChartSeries("S", null,
-                        List.of(Map.of("name", "A", "value", 1)), Map.of())),
-                null, Map.of());
+                null,
+                null,
+                List.of(new ChartSeries("S", null, List.of(Map.of("name", "A", "value", 1)), Map.of())),
+                null,
+                Map.of());
 
         String json = ChartCodec.serialize(doc, "application/json");
 
@@ -344,20 +342,22 @@ class ChartCodecTest {
         ChartDocument legendOn = new ChartDocument(
                 "chart",
                 new ChartHeader(ChartType.BAR, null, null, true, false, false),
-                ChartAxis.defaultX(), ChartAxis.defaultY(),
+                ChartAxis.defaultX(),
+                ChartAxis.defaultY(),
                 List.of(new ChartSeries("S", null, List.of(Map.of("x", "a", "y", 1)), Map.of())),
-                null, Map.of());
+                null,
+                Map.of());
         ChartDocument legendOff = new ChartDocument(
                 "chart",
                 new ChartHeader(ChartType.BAR, null, null, false, false, false),
-                ChartAxis.defaultX(), ChartAxis.defaultY(),
+                ChartAxis.defaultX(),
+                ChartAxis.defaultY(),
                 List.of(new ChartSeries("S", null, List.of(Map.of("x", "a", "y", 1)), Map.of())),
-                null, Map.of());
+                null,
+                Map.of());
 
-        assertThat(ChartCodec.serialize(legendOn, "application/json"))
-                .doesNotContain("\"legend\"");
-        assertThat(ChartCodec.serialize(legendOff, "application/json"))
-                .contains("\"legend\" : false");
+        assertThat(ChartCodec.serialize(legendOn, "application/json")).doesNotContain("\"legend\"");
+        assertThat(ChartCodec.serialize(legendOff, "application/json")).contains("\"legend\" : false");
     }
 
     @Test
@@ -365,10 +365,11 @@ class ChartCodecTest {
         ChartDocument doc = new ChartDocument(
                 "chart",
                 ChartHeader.of(ChartType.LINE),
-                ChartAxis.defaultX(), ChartAxis.defaultY(),
-                List.of(new ChartSeries("Web", null,
-                        List.of(Map.of("x", "a", "y", 1)), Map.of())),
-                null, Map.of());
+                ChartAxis.defaultX(),
+                ChartAxis.defaultY(),
+                List.of(new ChartSeries("Web", null, List.of(Map.of("x", "a", "y", 1)), Map.of())),
+                null,
+                Map.of());
 
         String yaml = ChartCodec.serialize(doc, "application/yaml");
 
@@ -463,9 +464,7 @@ class ChartCodecTest {
                 """;
 
         ChartDocument doc = ChartCodec.parse(body, "application/json");
-        assertThat(doc.echartsOptionOverride())
-                .isNotNull()
-                .containsEntry("backgroundColor", "#fff");
+        assertThat(doc.echartsOptionOverride()).isNotNull().containsEntry("backgroundColor", "#fff");
     }
 
     @Test

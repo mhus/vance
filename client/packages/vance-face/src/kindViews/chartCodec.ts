@@ -253,7 +253,11 @@ function promoteHeader(raw: unknown): ChartHeader {
   }
   const type = typeRaw.trim().toLowerCase() as ChartType;
   if (!CHART_TYPES.has(type)) {
-    throw new ChartCodecError(`Unknown chartType: ${typeRaw}`);
+    // Valid-list must mirror the Java codec's message exactly — the error
+    // is LLM-facing on retry and parity is asserted in the error tests.
+    throw new ChartCodecError(
+      `Unknown chartType: ${typeRaw} (valid: ${[...CHART_TYPES].join(', ')})`,
+    );
   }
   const title = typeof raw.title === 'string' ? raw.title : undefined;
   const subtitle = typeof raw.subtitle === 'string' ? raw.subtitle : undefined;

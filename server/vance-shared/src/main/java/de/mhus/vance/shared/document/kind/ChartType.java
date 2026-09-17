@@ -57,4 +57,19 @@ public enum ChartType {
     public boolean isNamedValueShaped() {
         return this == PIE || this == DONUT;
     }
+
+    /**
+     * Comma-separated wire names of all chart types, in enum order
+     * ({@code "line, bar, …"}) — embedded in the codec's unknown-
+     * chartType error so the LLM (and the user) sees the closed list
+     * on the first failed attempt instead of guessing on retry.
+     */
+    public static String wireList() {
+        StringBuilder sb = new StringBuilder();
+        for (ChartType t : values()) {
+            if (!sb.isEmpty()) sb.append(", ");
+            sb.append(t.wire);
+        }
+        return sb.toString();
+    }
 }

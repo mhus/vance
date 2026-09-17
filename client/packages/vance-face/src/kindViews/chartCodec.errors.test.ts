@@ -101,3 +101,25 @@ describe('parseChart — axis keys are a closed list', () => {
     expect(doc.series.map((s) => s.name)).toEqual(['Group A', 'Group B']);
   });
 });
+
+describe('parseChart — unknown chartType names the valid list', () => {
+  it('rejects doughnut (Chart.js vocabulary) with the closed type list in the message', () => {
+    // The message is LLM-facing on retry: without the valid list the model
+    // guesses again instead of switching to `donut`. Must match the Java
+    // codec's message exactly.
+    const body = [
+      '$meta:',
+      '  kind: chart',
+      'chart:',
+      '  chartType: doughnut',
+      'series:',
+      '  - name: Share',
+      '    data:',
+      '      - { name: A, value: 1 }',
+    ].join('\n');
+
+    expect(() => parseChart(body, YAML)).toThrow(
+      "Unknown chartType: doughnut (valid: line, bar, area, scatter, pie, donut, candlestick, heatmap)",
+    );
+  });
+});

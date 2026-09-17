@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -760,6 +761,96 @@ public class WowbaggerPoolService {
             }
         }
         return sb.length() > 0 ? sb.toString() : "run";
+    }
+
+    /**
+     * Preflight for {@code wowbagger_check}: everything the agent wants to
+     * verify BEFORE starting — source readable in the run root, every record
+     * valid against the input contract (JSONL: one object per line), record
+     * count, structure completeness, worker model + approval. Read-only:
+     * no persist, no worker call; the source is streamed, not loaded.
+     */
+    public Map<String, Object> preflight(ThinkProcessDocument process, WowbaggerState state) {
+        Map<String, Object> report = new LinkedHashMap<>();
+        List<String> problems = new ArrayList<>();
+        if (state.getTask() == null || state.getTask().isBlank()) {
+            problems.add("task is not set");
+        }
+        long records = -1;
+        long invalid = 0;
+        List<String> invalidSamples = new ArrayList<>();
+        List<String> sampleRecords = new ArrayList<>();
+        if (state.getSourcePath() == null || state.getSourcePath().isBlank()) {
+            problems.add("source is not set");
+        } else {
+            try {
+                Path source = resolveSource(process, state);
+                if (!java.nio.file.Files.exists(source)) {
+                    problems.add("source not found in the run root: " + state.getSourcePath() + " (resolved: " + source
+                            + ")");
+                } else {
+                    boolean jsonl = FORMAT_JSONL.equals(firstNonBlank(state.getInputFormat(), FORMAT_LINES));
+                    records = 0;
+                    try (java.io.BufferedReader reader = java.nio.file.Files.newBufferedReader(source)) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            records++;
+                            if (jsonl) {
+                                boolean valid;
+                                try {
+                                    objectMapper.readValue(line, Map.class);
+                                    valid = true;
+                                } catch (tools.jackson.core.JacksonException e) {
+                                    valid = false;
+                                }
+                                if (!valid) {
+                                    invalid++;
+                                    if (invalidSamples.size() < 5) {
+                                        invalidSamples.add("record " + (records - 1) + ": " + truncate(line, 120));
+                                    }
+                                }
+                            }
+                            if (sampleRecords.size() < 2 && !line.isBlank()) {
+                                sampleRecords.add(truncate(line, 200));
+                            }
+                        }
+                    }
+                    if (jsonl && invalid > 0) {
+                        problems.add(invalid + " of " + records
+                                + " records are not JSON objects (inputFormat jsonl requires exactly one"
+                                + " record per line)");
+                    }
+                }
+            } catch (IOException | RuntimeException e) {
+                problems.add("source unreadable: " + describeError(e));
+            }
+        }
+        String model = null;
+        Boolean approved = null;
+        try {
+            model = resolveWorkerModel(process, state);
+            approved = modelApproved(model, allowedModels(process));
+            if (!approved) {
+                problems.add("worker model '" + model + "' is not approved (setting " + ALLOWED_MODELS_KEY + ")");
+            }
+        } catch (RuntimeException e) {
+            problems.add("worker model resolution failed: " + describeError(e));
+        }
+        report.put("ready", problems.isEmpty());
+        report.put("problems", problems);
+        report.put("recordsTotal", records);
+        report.put("invalidRecords", invalid);
+        report.put("invalidSamples", invalidSamples);
+        report.put("sampleRecords", sampleRecords);
+        report.put("inputFormat", firstNonBlank(state.getInputFormat(), FORMAT_LINES));
+        report.put("workerModel", model);
+        report.put("modelApproved", approved);
+        report.put(
+                "chunksTotal",
+                records >= 0 && state.getChunkSize() > 0
+                        ? (int) ((records + state.getChunkSize() - 1) / state.getChunkSize())
+                        : null);
+        return report;
     }
 
     /**

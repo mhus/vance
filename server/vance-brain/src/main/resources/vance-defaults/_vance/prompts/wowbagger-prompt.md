@@ -34,11 +34,16 @@ in parallel — you never process records yourself.
    warning: a source inside a temp RootDir dies with its creator
    process, and a long run then grinds into "source lost". Move the
    source into a named RootDir first.
-4. Call `wowbagger_start`. The pool rotates chunks through parallel
+4. Call `wowbagger_check` — the zero-cost preflight: every record against
+   the input contract, record/chunk counts, structure completeness, worker
+   model + approval. Fix everything it reports before starting; it is the
+   difference between catching a broken conversion script here and
+   watching chunks fail one by one.
+5. Call `wowbagger_start`. The pool rotates chunks through parallel
    worker threads; every finished chunk is published as a document
    immediately — that publish is the commit, so a crash mid-run loses
    nothing.
-5. The pool wakes you up on progress (every N records), on failures,
+6. The pool wakes you up on progress (every N records), on failures,
    and at completion. Each wakeup shows up in your conversation with a
    `[pool]` status note plus a status block injected by the engine.
 
@@ -57,6 +62,8 @@ in parallel — you never process records yourself.
   then scale.
 - `wowbagger_stop` — stop the rotation. State, pointer and published
   chunks survive; a later `wowbagger_start` resumes exactly there.
+- `wowbagger_check` — the zero-cost preflight (source contract, counts,
+  structure, model approval) — run it after configuring, before starting.
 - `wowbagger_status` — the full structure as JSON, when the injected
   status block is not enough.
 

@@ -417,6 +417,42 @@ class WowbaggerPoolServiceTest {
     }
 
     @Test
+    void preflightReportsReadyWithCountsAndSamples() {
+        Map<String, Object> report = pool.preflight(process, persistedState());
+        assertThat(report.get("ready")).isEqualTo(true);
+        assertThat(report.get("problems")).isEqualTo(List.of());
+        assertThat(report.get("recordsTotal")).isEqualTo(5L);
+        assertThat(report.get("invalidRecords")).isEqualTo(0L);
+        assertThat(report.get("chunksTotal")).isEqualTo(3);
+        assertThat((java.util.List<?>) report.get("sampleRecords")).hasSize(2);
+        assertThat(report.get("workerModel")).isEqualTo("openai:deepseek-v4-flash-0731");
+        assertThat(report.get("modelApproved")).isEqualTo(true);
+    }
+
+    @Test
+    void preflightNamesBrokenJsonlRecordsAndMissingSource() throws IOException {
+        // Broken conversion script: the preflight names the bad records.
+        Files.write(
+                tempDir.resolve("input.txt"), List.of("{\"id\":1}", "broken", "also broken"), StandardCharsets.UTF_8);
+        WowbaggerState s = persistedState();
+        s.setInputFormat("jsonl");
+        Map<String, Object> report = pool.preflight(process, s);
+        assertThat(report.get("ready")).isEqualTo(false);
+        assertThat((java.util.List<?>) report.get("problems"))
+                .anyMatch(p -> p.toString().contains("2 of 3 records are not JSON objects"));
+        assertThat((java.util.List<?>) report.get("invalidSamples"))
+                .hasSize(2)
+                .allSatisfy(sample -> assertThat(sample.toString()).contains("broken"));
+
+        // Missing source is a named problem, not an exception.
+        s.setSourcePath("does-not-exist.jsonl");
+        report = pool.preflight(process, s);
+        assertThat(report.get("ready")).isEqualTo(false);
+        assertThat((java.util.List<?>) report.get("problems"))
+                .anyMatch(p -> p.toString().contains("source not found"));
+    }
+
+    @Test
     void tempRootDirSourceProducesAWarning() {
         // Live-run lesson: a source in a temp RootDir dies with its creator
         // process — configure must surface that BEFORE the run burns hours.

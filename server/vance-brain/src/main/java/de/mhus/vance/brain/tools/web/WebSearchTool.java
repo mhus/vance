@@ -190,8 +190,7 @@ public class WebSearchTool implements Tool {
             Instant firedAt,
             long durationMs) {
         Object hitsRaw = result.get("results");
-        List<Map<String, Object>> hits =
-                (hitsRaw instanceof List<?> l) ? (List<Map<String, Object>>) hitsRaw : List.of();
+        List<Map<String, Object>> hits = (hitsRaw instanceof List<?>) ? (List<Map<String, Object>>) hitsRaw : List.of();
         Object countObj = result.get("count");
         int count = countObj instanceof Number n ? n.intValue() : hits.size();
         String correlationId = WebToolLogService.SearchOutcome.mintCorrelationId();

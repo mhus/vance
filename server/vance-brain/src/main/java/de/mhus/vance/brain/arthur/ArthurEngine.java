@@ -2932,7 +2932,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
     private static String renderStaticForLlm(SteerMessage m) {
         return switch (m) {
-            case SteerMessage.UserChatInput uci -> null; // already in chat history
+            case SteerMessage.UserChatInput _ -> null; // already in chat history
             case SteerMessage.ProcessEvent pe -> {
                 // Should never hit this branch — the instance overload
                 // above handles ProcessEvent. Keep for type-completeness.

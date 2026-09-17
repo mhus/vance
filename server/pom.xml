@@ -481,6 +481,34 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-pmd-plugin</artifactId>
                 <version>3.28.0</version>
+                <dependencies>
+                    <!-- Override the plugin's built-in PMD 7.17.0. 7.19.0 handles
+                         the bogus FIELD type-annotation that javac 25 emits for
+                         annotated record constructor parameters (JDK-8372382,
+                         PMD #6256): 7.17 crashed its lazy signature parser on
+                         every affected class and silently skipped its analysis
+                         ("Parsing failed in ParseLock#doParse() of LazyMethodType"). -->
+                    <dependency>
+                        <groupId>net.sourceforge.pmd</groupId>
+                        <artifactId>pmd-core</artifactId>
+                        <version>7.19.0</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>net.sourceforge.pmd</groupId>
+                        <artifactId>pmd-java</artifactId>
+                        <version>7.19.0</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>net.sourceforge.pmd</groupId>
+                        <artifactId>pmd-javascript</artifactId>
+                        <version>7.19.0</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>net.sourceforge.pmd</groupId>
+                        <artifactId>pmd-jsp</artifactId>
+                        <version>7.19.0</version>
+                    </dependency>
+                </dependencies>
                 <configuration>
                     <rulesets>
                         <ruleset>${project.basedir}/../pmd-ruleset.xml</ruleset>

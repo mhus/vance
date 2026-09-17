@@ -47,8 +47,7 @@ final class AgentOutcomeRefiner {
     /** How many re-asks a step allows before the mis-shaped answer is an error. */
     static final int DEFAULT_MAX_CORRECTIONS = 2;
 
-    private AgentOutcomeRefiner() {
-    }
+    private AgentOutcomeRefiner() {}
 
     // ──────────────────── spec ────────────────────
 
@@ -57,26 +56,20 @@ final class AgentOutcomeRefiner {
         int maxCorrections();
     }
 
-    record Decide(List<String> options, int maxCorrections) implements Judgement {
-    }
+    record Decide(List<String> options, int maxCorrections) implements Judgement {}
 
-    record Band(@Nullable Double atLeast, boolean isDefault, String outcome) {
-    }
+    record Band(@Nullable Double atLeast, boolean isDefault, String outcome) {}
 
-    record Score(List<Band> bands, int maxCorrections) implements Judgement {
-    }
+    record Score(List<Band> bands, int maxCorrections) implements Judgement {}
 
     /** The refined reading of an answer. */
-    sealed interface Result permits Decided, NeedsCorrection {
-    }
+    sealed interface Result permits Decided, NeedsCorrection {}
 
     /** The answer was readable: route on {@code outcome}, store {@code output}. */
-    record Decided(String outcome, @Nullable JsonNode output) implements Result {
-    }
+    record Decided(String outcome, @Nullable JsonNode output) implements Result {}
 
     /** The answer did not fit; {@code hint} says what was expected. */
-    record NeedsCorrection(String hint) implements Result {
-    }
+    record NeedsCorrection(String hint) implements Result {}
 
     // ──────────────────── reading the spec ────────────────────
 
@@ -90,9 +83,8 @@ final class AgentOutcomeRefiner {
         Object decide = state.specField("decide");
         Object score = state.specField("score");
         if (decide != null && score != null) {
-            throw new IllegalArgumentException(
-                    "agent_task '" + state.name() + "' declares both decide: and score:"
-                            + " — a step yields one judgement, not two");
+            throw new IllegalArgumentException("agent_task '" + state.name() + "' declares both decide: and score:"
+                    + " — a step yields one judgement, not two");
         }
         if (decide != null) return Optional.of(readDecide(state.name(), decide));
         if (score != null) return Optional.of(readScore(state.name(), score));
@@ -102,8 +94,7 @@ final class AgentOutcomeRefiner {
     @SuppressWarnings("unchecked")
     private static Decide readDecide(String stateName, Object raw) {
         if (!(raw instanceof Map<?, ?> map)) {
-            throw new IllegalArgumentException(
-                    "agent_task '" + stateName + "' decide: must be a map");
+            throw new IllegalArgumentException("agent_task '" + stateName + "' decide: must be a map");
         }
         Map<String, Object> m = (Map<String, Object>) map;
         List<String> options = stringList(m.get("options"));
@@ -117,20 +108,17 @@ final class AgentOutcomeRefiner {
     @SuppressWarnings("unchecked")
     private static Score readScore(String stateName, Object raw) {
         if (!(raw instanceof Map<?, ?> map)) {
-            throw new IllegalArgumentException(
-                    "agent_task '" + stateName + "' score: must be a map");
+            throw new IllegalArgumentException("agent_task '" + stateName + "' score: must be a map");
         }
         Map<String, Object> m = (Map<String, Object>) map;
         Object bandsRaw = m.get("bands");
         if (!(bandsRaw instanceof List<?> list) || list.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "agent_task '" + stateName + "' score: needs a non-empty bands: list");
+            throw new IllegalArgumentException("agent_task '" + stateName + "' score: needs a non-empty bands: list");
         }
         List<Band> bands = new ArrayList<>(list.size());
         for (Object entry : list) {
             if (!(entry instanceof Map<?, ?> b)) {
-                throw new IllegalArgumentException(
-                        "agent_task '" + stateName + "' score.bands entries must be maps");
+                throw new IllegalArgumentException("agent_task '" + stateName + "' score.bands entries must be maps");
             }
             Map<String, Object> bm = (Map<String, Object>) b;
             String outcome = bm.get("outcome") instanceof String s && !s.isBlank() ? s : null;
@@ -141,15 +129,13 @@ final class AgentOutcomeRefiner {
             boolean isDefault = Boolean.TRUE.equals(bm.get("default"));
             Double atLeast = bm.get("atLeast") instanceof Number n ? n.doubleValue() : null;
             if (!isDefault && atLeast == null) {
-                throw new IllegalArgumentException(
-                        "agent_task '" + stateName + "' score.bands entry '" + outcome
-                                + "' needs atLeast: or default: true");
+                throw new IllegalArgumentException("agent_task '" + stateName + "' score.bands entry '" + outcome
+                        + "' needs atLeast: or default: true");
             }
             if (atLeast != null && (atLeast < 0.0 || atLeast > 1.0)) {
-                throw new IllegalArgumentException(
-                        "agent_task '" + stateName + "' score.bands entry '" + outcome
-                                + "' has atLeast: " + atLeast + " outside the fixed 0.0–1.0"
-                                + " scale — it could never match");
+                throw new IllegalArgumentException("agent_task '" + stateName + "' score.bands entry '" + outcome
+                        + "' has atLeast: " + atLeast + " outside the fixed 0.0–1.0"
+                        + " scale — it could never match");
             }
             bands.add(new Band(atLeast, isDefault, outcome));
         }
@@ -176,19 +162,17 @@ final class AgentOutcomeRefiner {
             Band band = bands.get(i);
             if (band.isDefault()) {
                 if (i != bands.size() - 1) {
-                    throw new IllegalArgumentException(
-                            "agent_task '" + stateName + "' score.bands: the default band '"
-                                    + band.outcome() + "' must be last — bands after it can"
-                                    + " never be reached");
+                    throw new IllegalArgumentException("agent_task '" + stateName + "' score.bands: the default band '"
+                            + band.outcome() + "' must be last — bands after it can"
+                            + " never be reached");
                 }
                 continue;
             }
             if (previous != null && band.atLeast() >= previous) {
-                throw new IllegalArgumentException(
-                        "agent_task '" + stateName + "' score.bands: '" + band.outcome()
-                                + "' has atLeast: " + band.atLeast() + " at or above the band"
-                                + " before it (" + previous + ") — bands are matched top-down,"
-                                + " so they have to descend");
+                throw new IllegalArgumentException("agent_task '" + stateName + "' score.bands: '" + band.outcome()
+                        + "' has atLeast: " + band.atLeast() + " at or above the band"
+                        + " before it (" + previous + ") — bands are matched top-down,"
+                        + " so they have to descend");
             }
             previous = band.atLeast();
         }
@@ -286,16 +270,14 @@ final class AgentOutcomeRefiner {
         }
         JsonNode scoreNode = node.get("score");
         if (scoreNode == null || !scoreNode.isNumber()) {
-            return new NeedsCorrection(expectation(spec)
-                    + " The object had no numeric 'score' field.");
+            return new NeedsCorrection(expectation(spec) + " The object had no numeric 'score' field.");
         }
         double score = scoreNode.doubleValue();
         if (score < 0.0 || score > 1.0) {
             // The fixed scale is what makes thresholds portable; a value
             // outside it means the model used a different one, and mapping
             // it anyway would silently mean something else.
-            return new NeedsCorrection(expectation(spec)
-                    + " The score was " + score + ", outside 0.0–1.0.");
+            return new NeedsCorrection(expectation(spec) + " The score was " + score + ", outside 0.0–1.0.");
         }
         // Top-down, first match wins. That the order is meaningful is
         // enforced at load — see requireBandOrder.
@@ -314,10 +296,8 @@ final class AgentOutcomeRefiner {
     /** What the model should have produced — used as the re-ask. */
     static String expectation(Judgement spec) {
         return switch (spec) {
-            case Decide d -> "Answer with exactly one of these words: "
-                    + String.join(", ", d.options()) + ".";
-            case Score s -> "Answer with a JSON object containing a 'score' "
-                    + "field between 0.0 and 1.0.";
+            case Decide d -> "Answer with exactly one of these words: " + String.join(", ", d.options()) + ".";
+            case Score _ -> "Answer with a JSON object containing a 'score' " + "field between 0.0 and 1.0.";
         };
     }
 }

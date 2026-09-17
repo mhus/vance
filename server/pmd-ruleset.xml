@@ -90,6 +90,15 @@
     <exclude name="UseLocaleWithCaseConversions"/>
     <!-- 1: toLowerCase-then-equalsIgnoreCase micro style -->
     <exclude name="UnnecessaryCaseChange"/>
+    <!-- 920: NEW with PMD 7.19.0 — the rule moved here from design.xml (which
+         this ruleset never referenced), so it never ran before. Its new
+         default flags catch (RuntimeException) too, but that is a deliberate
+         pattern at every engine/pool boundary (turn loops, worker threads:
+         contain, log, wakeup, keep the loop alive). When adopting it later,
+         configure typesThatShouldNotBeCaught without RuntimeException — the
+         remaining ~108 catch (Exception) sites are the real cleanup
+         candidates, measured 2026-09-17 over vance-brain main. -->
+    <exclude name="AvoidCatchingGenericException"/>
   </rule>
 
   <rule ref="category/java/multithreading.xml">

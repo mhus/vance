@@ -341,7 +341,7 @@ public class PhaseOutputParser {
         for (Object e : list) {
             if (!(e instanceof Map<?, ?> m)) continue;
             Object tool = m.get("tool");
-            if (!(tool instanceof String t)) tool = m.get("toolName");
+            if (!(tool instanceof String)) tool = m.get("toolName");
             if (!(tool instanceof String t2) || t2.isBlank()) continue;
             Object argsRaw = m.get("args");
             if (argsRaw == null) argsRaw = m.get("params");

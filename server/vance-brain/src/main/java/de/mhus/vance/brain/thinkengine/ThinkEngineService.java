@@ -372,7 +372,7 @@ public class ThinkEngineService {
         try {
             resolveForProcess(process).runTurn(process, newContext(process));
         } catch (RuntimeException | Error e) {
-            if (process.getParentProcessId() != null && !ThinkProcessStatus.CLOSED.equals(process.getStatus())) {
+            if (process.getParentProcessId() != null && process.getStatus() != ThinkProcessStatus.CLOSED) {
                 thinkProcessService.closeProcess(process.getId(), CloseReason.INCOMPLETE);
             }
             throw e;

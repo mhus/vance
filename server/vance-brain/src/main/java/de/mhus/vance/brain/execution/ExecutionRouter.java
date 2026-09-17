@@ -42,7 +42,7 @@ public class ExecutionRouter {
             String executionId, String tenantId, @org.jspecify.annotations.Nullable String projectId) {
         ExecutionRegistryEntry entry = require(executionId, tenantId, projectId);
         return switch (entry.owner()) {
-            case ExecutionOwner.Brain brain ->
+            case ExecutionOwner.Brain _ ->
                 ExecStatTool.render(execManager
                         .stat(tenantId, entry.projectId(), executionId)
                         .orElseThrow(() -> new ToolException("Brain-side job vanished: '" + executionId + "'")));
@@ -59,7 +59,7 @@ public class ExecutionRouter {
             String streamName) {
         ExecutionRegistryEntry entry = require(executionId, tenantId, projectId);
         return switch (entry.owner()) {
-            case ExecutionOwner.Brain brain ->
+            case ExecutionOwner.Brain _ ->
                 renderTail(
                         executionId,
                         execManager.tail(
@@ -89,7 +89,7 @@ public class ExecutionRouter {
             String executionId, String tenantId, @org.jspecify.annotations.Nullable String projectId) {
         ExecutionRegistryEntry entry = require(executionId, tenantId, projectId);
         return switch (entry.owner()) {
-            case ExecutionOwner.Brain brain -> {
+            case ExecutionOwner.Brain _ -> {
                 boolean killed = execManager.kill(tenantId, entry.projectId(), executionId);
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("id", executionId);

@@ -116,6 +116,17 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                                 "Acknowledge the accumulated failures: reset the failure counter "
                                         + "to zero (a re-run does this implicitly).")),
                 Map.entry(
+                        "sourceBackupMb",
+                        Map.of(
+                                "type",
+                                "integer",
+                                "description",
+                                "Opt-in source durability for pod switches: when > 0, start() "
+                                        + "copies the source file into a document if it is <= N MB — "
+                                        + "a pod switch then loses nothing and resume restores it. "
+                                        + "0 = off (default, fine for single-pod). Propose it to "
+                                        + "the user once when the run is long-lived; the user decides.")),
+                Map.entry(
                         "maxTokens",
                         Map.of(
                                 "type",
@@ -246,6 +257,14 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                     && booleanParam(params, "resetFailureCount", false)) {
                 s.setFailureCount(0);
                 applied.put("failureCount", 0L);
+            }
+            if (params != null && params.containsKey("sourceBackupMb")) {
+                int v = intParam(params, "sourceBackupMb", s.getSourceBackupMb());
+                if (v < 0) {
+                    throw new ToolException("sourceBackupMb must be >= 0");
+                }
+                s.setSourceBackupMb(v);
+                applied.put("sourceBackupMb", v);
             }
             if (params != null && params.containsKey("maxTokens")) {
                 int v = intParam(params, "maxTokens", 0);

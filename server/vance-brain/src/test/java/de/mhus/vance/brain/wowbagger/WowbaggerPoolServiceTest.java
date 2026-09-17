@@ -453,6 +453,78 @@ class WowbaggerPoolServiceTest {
     }
 
     @Test
+    void sourceBackupCopiesIntoADocumentWhenEnabled() throws IOException {
+        // Opt-in: threshold set -> start() writes the source backup doc.
+        WowbaggerState s = persistedState();
+        s.setSourceBackupMb(10);
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put(
+                WowbaggerPoolService.ENGINE_STATE_KEY,
+                JsonMapper.builder().build().convertValue(s, Map.class));
+        process.setEngineParams(params);
+        stubEchoWorker();
+
+        pool.start(process);
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+
+        verify(documentService, org.mockito.Mockito.atLeastOnce())
+                .createText(
+                        eq(TENANT),
+                        eq(PROJECT),
+                        eq("_wowbagger/proc0001/source.txt"),
+                        any(),
+                        any(),
+                        anyString(),
+                        any(),
+                        any());
+        // The start wakeup carries no unsecured nag when the backup ran.
+        assertThat(pendingNotes("NOT backed up")).isEmpty();
+        pool.stop(PROC_ID);
+    }
+
+    @Test
+    void missingSourceIsRestoredFromTheBackupDocument() throws IOException {
+        // Pod switch: the workspace file is gone, the backup document exists —
+        // start() restores the source into the run root and resumes.
+        WowbaggerState s = persistedState();
+        s.setSourceBackupMb(10);
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put(
+                WowbaggerPoolService.ENGINE_STATE_KEY,
+                JsonMapper.builder().build().convertValue(s, Map.class));
+        process.setEngineParams(params);
+
+        var backupDoc = new DocumentDocument();
+        backupDoc.setId("doc-source-backup");
+        when(documentService.findByPath(TENANT, PROJECT, "_wowbagger/proc0001/source.txt"))
+                .thenReturn(Optional.of(backupDoc));
+        when(documentService.readContent(backupDoc)).thenReturn("r1\nr2\nr3\nr4\nr5\n");
+        java.nio.file.Files.delete(tempDir.resolve("input.txt"));
+        // The restore writes the source back into the run root — the mock
+        // must materialize the file like the real service does.
+        lenient()
+                .when(workspaceService.write(eq(TENANT), eq(PROJECT), anyString(), anyString(), anyString()))
+                .thenAnswer(inv -> {
+                    java.nio.file.Files.write(
+                            tempDir.resolve(inv.getArgument(3, String.class)),
+                            List.of(inv.getArgument(4, String.class).split("\\n")),
+                            StandardCharsets.UTF_8);
+                    return null;
+                });
+        stubEchoWorker();
+
+        pool.start(process);
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+
+        // The source was written back into the run root and the run completed.
+        org.mockito.Mockito.verify(workspaceService)
+                .write(eq(TENANT), eq(PROJECT), eq("data"), eq("input.txt"), eq("r1\nr2\nr3\nr4\nr5\n"));
+        assertThat(persistedState().getRecordsDone()).isEqualTo(5);
+        assertThat(pendingNotes("restored from the backup document")).isNotEmpty();
+        pool.stop(PROC_ID);
+    }
+
+    @Test
     void tempRootDirSourceProducesAWarning() {
         // Live-run lesson: a source in a temp RootDir dies with its creator
         // process — configure must surface that BEFORE the run burns hours.

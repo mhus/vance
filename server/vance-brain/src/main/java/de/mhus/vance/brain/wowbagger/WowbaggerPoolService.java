@@ -187,6 +187,7 @@ public class WowbaggerPoolService {
      */
     public RunView start(ThinkProcessDocument process, boolean force) throws IOException {
         Handle handle = handle(process.getId());
+        String sourceNote;
         synchronized (handle.lock) {
             if (handle.running) {
                 return view(handle);
@@ -211,6 +212,9 @@ public class WowbaggerPoolService {
             } else {
                 reconcileWave(process, state);
             }
+            // Source durability (opt-in): backup when enabled, RESTORE when the
+            // file vanished with a pod — before measuring, so the count is right.
+            sourceNote = secureSource(process, state);
             if (state.getRecordsTotal() < 0 && !isBlank(state.getSourcePath())) {
                 Path source = resolveSource(process, state);
                 state.setRecordsTotal(countLines(source));
@@ -242,7 +246,7 @@ public class WowbaggerPoolService {
         Thread runner = new Thread(() -> runLoop(process), "wowbagger-runner-" + process.getId());
         runner.setDaemon(true);
         runner.start();
-        wakeup(process, "pool started — " + describe(handle));
+        wakeup(process, "pool started — " + describe(handle) + (sourceNote == null ? "" : " | " + sourceNote));
         return view(handle);
     }
 
@@ -763,6 +767,92 @@ public class WowbaggerPoolService {
         return sb.length() > 0 ? sb.toString() : "run";
     }
 
+    /** Convention path of the source backup document (mirrors the chunk docs). */
+    static String sourceDocPath(String processId, @Nullable String format) {
+        String suffix = FORMAT_JSONL.equals(firstNonBlank(format, FORMAT_JSONL)) ? ".jsonl" : ".txt";
+        return RUN_FOLDER_PREFIX + "/" + processId + "/source" + suffix;
+    }
+
+    /**
+     * Source durability for pod switches (opt-in, § source backup):
+     * <ul>
+     *   <li>{@code sourceBackupMb > 0} and the file fits → copy it into the
+     *       document {@code _wowbagger/<run>/source.*} (overwritten every start,
+     *       never stale). One write per start, not per chunk.</li>
+     *   <li>File missing but the backup document exists → RESTORE from the
+     *       document into the run root (always — playing back an existing
+     *       backup is right regardless of the flag) and resume seamlessly.</li>
+     *   <li>Neither → the unsecured note for the start wakeup: the agent
+     *       proposes once, the user decides (single-pod = off is fine).</li>
+     * </ul>
+     * Returns the note for the start wakeup, or {@code null} when secure.
+     */
+    private @org.jspecify.annotations.Nullable String secureSource(ThinkProcessDocument process, WowbaggerState state)
+            throws IOException {
+        if (state.getSourcePath() == null || state.getSourcePath().isBlank()) {
+            return null;
+        }
+        Path source = resolveSource(process, state);
+        String docPath = sourceDocPath(process.getId(), inputFormatOf(state));
+        if (java.nio.file.Files.exists(source)) {
+            long bytes = java.nio.file.Files.size(source);
+            long threshold = Math.max(0, state.getSourceBackupMb()) * 1024L * 1024L;
+            if (threshold > 0 && bytes <= threshold) {
+                String content = java.nio.file.Files.readString(source);
+                var actor = de.mhus.vance.shared.permission.WriteActor.SYSTEM;
+                try {
+                    documentService.createText(
+                            process.getTenantId(),
+                            process.getProjectId(),
+                            docPath,
+                            "Wowbagger source backup",
+                            List.of("wowbagger", "source-backup"),
+                            content,
+                            "wowbagger:" + process.getId(),
+                            actor);
+                } catch (DocumentAlreadyExistsException e) {
+                    documentService
+                            .findByPath(process.getTenantId(), process.getProjectId(), docPath)
+                            .ifPresent(doc -> documentService.update(
+                                    doc.getId(), "Wowbagger source backup", null, content, null, actor));
+                }
+                log.info("Wowbagger pool id='{}' source backed up as document ({} bytes)", process.getId(), bytes);
+                return null;
+            }
+            if (threshold > 0) {
+                return "NOTE: the source is NOT backed up — " + (bytes / 1024 / 1024) + " MB exceeds the "
+                        + state.getSourceBackupMb() + " MB threshold. A pod switch loses it; keep it "
+                        + "re-creatable or secure it manually (work_file_to_doc).";
+            }
+            // Opt-out (single pod): no nagging on every start — the agent sees the
+            // state in its status block and proposes once.
+            return null;
+        }
+        // File gone (pod switch): restore from the backup document if present.
+        var backup = documentService.findByPath(process.getTenantId(), process.getProjectId(), docPath);
+        if (backup.isPresent()) {
+            String content = documentService.readContent(backup.get());
+            if (content != null && !content.isBlank()) {
+                workspaceService.write(
+                        process.getTenantId(),
+                        process.getProjectId(),
+                        state.getWorkTargetName(),
+                        state.getSourcePath(),
+                        content);
+                log.info("Wowbagger pool id='{}' source RESTORED from backup document", process.getId());
+                return "source was pod-local and vanished — restored from the backup document, "
+                        + "the run continues seamlessly";
+            }
+        }
+        return "NOTE: the source is NOT backed up and the file is missing — a pod switch has "
+                + "likely lost it. Re-create it (conversion script) or ask the user; without it the "
+                + "run cannot resume.";
+    }
+
+    private static String inputFormatOf(WowbaggerState state) {
+        return firstNonBlank(state.getInputFormat(), FORMAT_LINES);
+    }
+
     /**
      * Preflight for {@code wowbagger_check}: everything the agent wants to
      * verify BEFORE starting — source readable in the run root, every record
@@ -842,7 +932,19 @@ public class WowbaggerPoolService {
         report.put("invalidRecords", invalid);
         report.put("invalidSamples", invalidSamples);
         report.put("sampleRecords", sampleRecords);
-        report.put("inputFormat", firstNonBlank(state.getInputFormat(), FORMAT_LINES));
+        report.put("inputFormat", inputFormatOf(state));
+        // Source durability: backed up, enabled-but-too-large, or off.
+        String backupDoc = sourceDocPath(process.getId(), inputFormatOf(state));
+        boolean backedUp = documentService
+                .findByPath(process.getTenantId(), process.getProjectId(), backupDoc)
+                .isPresent();
+        report.put(
+                "sourceBackup",
+                backedUp
+                        ? "document (" + backupDoc + ")"
+                        : state.getSourceBackupMb() > 0
+                                ? "enabled but no backup yet (threshold " + state.getSourceBackupMb() + " MB)"
+                                : "off (sourceBackupMb=0 — pod-local only)");
         report.put("workerModel", model);
         report.put("modelApproved", approved);
         report.put(

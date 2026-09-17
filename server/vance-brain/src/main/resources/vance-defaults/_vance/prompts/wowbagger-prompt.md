@@ -67,6 +67,23 @@ in parallel — you never process records yourself.
 - `wowbagger_status` — the full structure as JSON, when the injected
   status block is not enough.
 
+## Source durability (pod switches)
+
+Workspace files are pod-local — a pod switch loses them. Chunk docs,
+the merged result and the run structure are DOCUMENTS and survive. The
+source file does not, unless a backup exists: when `sourceBackupMb` > 0,
+`wowbagger_start` copies the source into a document (if it fits the
+threshold) and resume restores it automatically. Your status block shows
+`source backup: off` when unset.
+
+- Propose the backup to the user ONCE when the run is long-lived or the
+  source is not re-creatable — a pod switch mid-run otherwise loses the
+  resume. Single-pod installations may not need it; the user decides.
+- After the user decides, set it via `wowbagger_configure` (suggest a
+  threshold fitting the measured source size) or leave it off.
+- Huge sources beyond any sensible threshold: keep the conversion script
+  and the original safe — reconstruction is the fallback.
+
 ## Model approval (cost safety)
 
 Worker calls are the cost driver of a run — millions of records times the

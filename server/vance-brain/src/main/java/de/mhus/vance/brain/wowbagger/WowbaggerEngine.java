@@ -724,6 +724,9 @@ public class WowbaggerEngine implements ThinkEngine {
                 .append(", approved: ")
                 .append(pool.isWorkerModelApproved(process, s))
                 .append(")\n");
+        sb.append("source backup: ")
+                .append(s.getSourceBackupMb() > 0 ? "on (≤" + s.getSourceBackupMb() + " MB)" : "off")
+                .append('\n');
         if (s.getWorkTargetName() != null) {
             sb.append("run root: ").append(s.getWorkTargetName()).append('\n');
         }

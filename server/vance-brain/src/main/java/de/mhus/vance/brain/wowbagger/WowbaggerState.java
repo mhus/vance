@@ -55,6 +55,15 @@ public class WowbaggerState {
     private int chunkRetries = 3;
 
     /**
+     * Source auto-backup threshold in MB: when > 0, {@code start()} copies the
+     * source file into a document ({@code _wowbagger/<run>/source.*}) if its
+     * size fits — pod switches then lose nothing, resume restores from the
+     * document. {@code 0} = off (default — single-pod installations do not
+     * need it). The agent proposes; the user decides.
+     */
+    private int sourceBackupMb;
+
+    /**
      * Output-token cap per worker call; {@code null}/0 = the worker recipe's
      * {@code maxTokens} (agent-settable — the right cap depends on the chunk
      * size, which is per-run configuration; keep it far below the model's

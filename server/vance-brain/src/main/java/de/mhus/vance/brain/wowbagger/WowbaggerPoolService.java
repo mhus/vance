@@ -81,6 +81,10 @@ public class WowbaggerPoolService {
      * scope, so the agent cannot approve a model for itself via a process setting.
      */
     public static final String ALLOWED_MODELS_KEY = "wowbagger.allowed-models";
+    /** Prefix of the run's auto-assigned persistent RootDir (§ run root). */
+    private static final String RUN_DIR_PREFIX = "wowbagger-";
+
+    private static final int RUN_DIR_ID_CHARS = 8;
 
     private static final String OUTCOME_FAILED = "failed";
     private static final long TICK_MS = 500;
@@ -174,6 +178,7 @@ public class WowbaggerPoolService {
                 return view(handle);
             }
             WowbaggerState state = loadState(process);
+            ensureWorkRoot(process, state);
             reconcileWave(process, state);
             if (state.getRecordsTotal() < 0 && !isBlank(state.getSourcePath())) {
                 Path source = resolveSource(process, state);
@@ -657,6 +662,75 @@ public class WowbaggerPoolService {
     }
 
     /**
+     * The run's persistent RootDir — source and results live here (§ run
+     * root). Resolution order:
+     * <ol>
+     *   <li>{@code state.workTargetName} set and still present → use it
+     *       (restart/resume keeps the same dir);</li>
+     *   <li>process-wide WORK target already names a RootDir → adopt it
+     *       (an explicit pin wins over auto-creation);</li>
+     *   <li>else create {@code wowbagger-<processId prefix>} (adopted when a
+     *       previous run created it). Persistent — {@code deleteOnCreatorClose}
+     *       stays {@code false}, a long run survives agent turns, restarts
+     *       and process closes.</li>
+     * </ol>
+     * Idempotent; safe to call from configure and start alike.
+     */
+    public String ensureWorkRoot(ThinkProcessDocument process, WowbaggerState state) {
+        String tenantId = process.getTenantId();
+        String projectId = process.getProjectId();
+        String named = state.getWorkTargetName();
+        if (named != null
+                && !named.isBlank()
+                && workspaceService.getRootDir(tenantId, projectId, named).isPresent()) {
+            return named;
+        }
+        String wanted = named != null && !named.isBlank()
+                ? named
+                : workTargetService.current(process).kind() == WorkTargetKind.WORK
+                        ? nullIfBlank(workTargetService.current(process).targetName())
+                        : null;
+        if (wanted == null) {
+            wanted = RUN_DIR_PREFIX + safeIdPart(process.getId(), RUN_DIR_ID_CHARS);
+        }
+        if (workspaceService.getRootDir(tenantId, projectId, wanted).isPresent()) {
+            state.setWorkTargetName(wanted);
+            return wanted; // adopt: previous run with this id or the pinned root
+        }
+        de.mhus.vance.shared.workspace.RootDirHandle handle =
+                workspaceService.createRootDir(de.mhus.vance.shared.workspace.RootDirSpec.builder()
+                        .tenantId(tenantId)
+                        .projectId(projectId)
+                        .type(de.mhus.vance.shared.workspace.EphemeralHandler.TYPE)
+                        .creatorProcessId(process.getId())
+                        .creatorEngine("wowbagger")
+                        .labelHint(wanted)
+                        .deleteOnCreatorClose(false)
+                        .build());
+        state.setWorkTargetName(handle.getDirName());
+        log.info("Wowbagger pool id='{}' created run RootDir '{}'", process.getId(), handle.getDirName());
+        return handle.getDirName();
+    }
+
+    private static @Nullable String nullIfBlank(@Nullable String s) {
+        return s == null || s.isBlank() ? null : s;
+    }
+
+    /** Process ids are hex; keep it label-safe regardless. */
+    private static String safeIdPart(String id, int maxChars) {
+        StringBuilder sb = new StringBuilder(maxChars);
+        for (char c : id.toCharArray()) {
+            if (sb.length() >= maxChars) {
+                break;
+            }
+            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+                sb.append(c);
+            }
+        }
+        return sb.length() > 0 ? sb.toString() : "run";
+    }
+
+    /**
      * Ephemeral-source warnings for {@code wowbagger_configure} (live-run
      * lesson: a source inside a temp RootDir dies with its creator — a
      * multi-hour run then grinds into "source lost"). Read-only: unlike
@@ -995,7 +1069,10 @@ public class WowbaggerPoolService {
     }
 
     private Path resolveSource(ThinkProcessDocument process, WowbaggerState state) throws IOException {
-        String dirName = resolveWorkDirName(process);
+        String dirName = nullIfBlank(state.getWorkTargetName());
+        if (dirName == null) {
+            dirName = resolveWorkDirName(process);
+        }
         if (dirName == null) {
             throw new IOException("work target is not WORK");
         }
@@ -1046,6 +1123,17 @@ public class WowbaggerPoolService {
                 .orElse(null);
         Map<String, Object> p =
                 params == null ? new java.util.LinkedHashMap<>() : new java.util.LinkedHashMap<>(params);
+        // Hard-pin the process-wide WORK target to the run root while its
+        // name is still blank: the agent's file_* tools then default into
+        // the same root the pool reads. An explicit named pin and a CLIENT
+        // target (foot session — direct client file access, the run root is
+        // addressed via the tools' dirName param) stay untouched.
+        if (nullIfBlank(state.getWorkTargetName()) != null) {
+            WorkTarget current = workTargetService.current(process);
+            if (current.kind() == WorkTargetKind.WORK && nullIfBlank(current.targetName()) == null) {
+                p.put(WorkTarget.KEY, new WorkTarget(WorkTargetKind.WORK, state.getWorkTargetName()).toMap());
+            }
+        }
         p.put(ENGINE_STATE_KEY, objectMapper.convertValue(state, Map.class));
         thinkProcessService.replaceEngineParams(process.getId(), p);
     }

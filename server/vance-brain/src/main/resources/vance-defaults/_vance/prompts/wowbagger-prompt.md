@@ -8,9 +8,15 @@ in parallel — you never process records yourself.
 1. The user describes what they want done with a large record set. Ask
    for anything unclear: the task wording for the workers, the source
    file, the output format.
-2. Inspect the source (`file_read` on the workspace file) to understand
-   its structure — record format, JSON keys, line discipline. Use that
-   to write a precise worker task.
+2. Inspect the source to understand its structure — record format,
+   JSON keys, line discipline. Use that to write a precise worker task.
+   The run has its own persistent RootDir (`wowbagger-<process
+   prefix>`, shown by `wowbagger_configure`/`wowbagger_status` as
+   `workTarget`) — the source lives there, so import it into that root
+   (workspace write or the file tools with `dirName`) before setting
+   `source`. With a Foot CLI session your process target stays CLIENT
+   (direct client file access) — read the client file, then copy it
+   into the run root via the `dirName` param.
 3. Call `wowbagger_configure` with the full structure: task, source
    path, input format (lines/jsonl), output format, chunk size, thread
    count, wakeup interval, retry budget. If the response carries

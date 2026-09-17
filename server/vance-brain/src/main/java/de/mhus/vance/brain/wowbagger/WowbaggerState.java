@@ -68,6 +68,14 @@ public class WowbaggerState {
     private @Nullable String resolvedWorkerModel;
 
     /**
+     * The run's persistent RootDir ({@code wowbagger-<processId-prefix>} by
+     * default) — source and results live here, decoupled from the process-wide
+     * workTarget. Auto-assigned on first configure/start, adopted on resume.
+     * {@code null} only before the first run setup.
+     */
+    private @Nullable String workTargetName;
+
+    /**
      * Heartbeat wakeup while the run is grinding: an agent check-in when
      * nothing else produced news for this long ({@code 0} = off, e.g. 1800 = 30 min).
      */

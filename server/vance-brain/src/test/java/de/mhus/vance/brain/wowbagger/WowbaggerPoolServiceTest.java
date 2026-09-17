@@ -104,6 +104,15 @@ class WowbaggerPoolServiceTest {
                 .when(aiModelResolver.resolveOrDefault(eq("default:spec-fast"), eq(TENANT), eq(PROJECT), eq(PROC_ID)))
                 .thenReturn(new de.mhus.vance.brain.ai.AiModelResolver.Resolved(
                         "openai", "openai", "deepseek-v4-flash-0731", false));
+        lenient()
+                .when(workspaceService.createRootDir(
+                        org.mockito.ArgumentMatchers.any(de.mhus.vance.shared.workspace.RootDirSpec.class)))
+                .thenAnswer(inv -> {
+                    de.mhus.vance.shared.workspace.RootDirSpec spec = inv.getArgument(0);
+                    var handle = mock(de.mhus.vance.shared.workspace.RootDirHandle.class);
+                    lenient().when(handle.getDirName()).thenReturn(spec.getLabelHint());
+                    return handle;
+                });
         // Operator allowlist: the cheap fast tier is approved.
         lenient()
                 .when(settingService.getStringValue(
@@ -139,7 +148,7 @@ class WowbaggerPoolServiceTest {
 
         lenient().when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.WORK, "data"));
         lenient()
-                .when(workspaceService.resolve(eq(TENANT), eq(PROJECT), eq("data"), anyString()))
+                .when(workspaceService.resolve(eq(TENANT), eq(PROJECT), anyString(), anyString()))
                 .thenAnswer(inv -> tempDir.resolve(inv.getArgument(3, String.class)));
         lenient().when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(process));
         lenient()
@@ -304,8 +313,12 @@ class WowbaggerPoolServiceTest {
         // process — configure must surface that BEFORE the run burns hours.
         when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.WORK, null));
         when(workspaceService.getWorkingDir(TENANT, PROJECT, PROC_ID)).thenReturn(Optional.empty());
+        // A legacy structure without workTargetName still resolves into the
+        // process-temp path — the warning is the safety net for that.
+        WowbaggerState legacy = persistedState();
+        legacy.setWorkTargetName(null);
 
-        assertThat(pool.sourceRootWarnings(process, persistedState()))
+        assertThat(pool.sourceRootWarnings(process, legacy))
                 .singleElement()
                 .asString()
                 .contains("process-temp RootDir");
@@ -313,6 +326,50 @@ class WowbaggerPoolServiceTest {
         // A named, persistent RootDir produces no warning.
         when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.WORK, "data"));
         assertThat(pool.sourceRootWarnings(process, persistedState())).isEmpty();
+    }
+
+    @Test
+    void ensureWorkRootCreatesAdoptsAndPinsTheRunRoot() throws IOException {
+        // No explicit target -> a persistent run root wowbagger-<id prefix> is
+        // created, stored in the structure AND pinned as the process-wide
+        // WORK target (the blank-targetName case is the tmp-RootDir trap).
+        when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.WORK, null));
+        when(workspaceService.getRootDir(eq(TENANT), eq(PROJECT), anyString())).thenReturn(Optional.empty());
+
+        WowbaggerState s = persistedState();
+        String runRoot = pool.ensureWorkRoot(process, s);
+
+        assertThat(runRoot).isEqualTo("wowbagger-" + PROC_ID.substring(0, 8));
+        // the structure field is set by the call; the caller persists it
+        assertThat(s.getWorkTargetName()).isEqualTo(runRoot);
+
+        // start() pins the run root as the process-wide target and resolves
+        // the source through it.
+        stubEchoWorker();
+        pool.start(process);
+        assertThat(process.getEngineParams().get(de.mhus.vance.shared.worktarget.WorkTarget.KEY))
+                .isEqualTo(new de.mhus.vance.shared.worktarget.WorkTarget(
+                                de.mhus.vance.shared.worktarget.WorkTargetKind.WORK, runRoot)
+                        .toMap());
+        assertThat(persistedState().getWorkTargetName()).isEqualTo(runRoot);
+    }
+
+    @Test
+    void clientTargetStaysUntouchedButTheRunRootIsUsedForTheSource() throws IOException {
+        // Foot exception: the process-wide target is CLIENT — it must NOT be
+        // re-pinned, but the pool still reads the source from the run root.
+        when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.CLIENT, null));
+        when(workspaceService.getRootDir(eq(TENANT), eq(PROJECT), anyString())).thenReturn(Optional.empty());
+
+        stubEchoWorker();
+        pool.start(process);
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+
+        assertThat(process.getEngineParams().get(de.mhus.vance.shared.worktarget.WorkTarget.KEY))
+                .isNull(); // untouched — the agent keeps direct client access
+        assertThat(persistedState().getWorkTargetName()).isEqualTo("wowbagger-" + PROC_ID.substring(0, 8));
+        // The source window was read through the run root (rotation completed).
+        assertThat(persistedState().getRecordsDone()).isEqualTo(5);
     }
 
     @Test

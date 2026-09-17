@@ -150,6 +150,9 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
         if (!s.getRetryQueue().isEmpty()) {
             msg.append("\nRetry queue: ").append(s.getRetryQueue().size()).append(" chunk(s) pending");
         }
+        if (s.getWorkTargetName() != null) {
+            msg.append("\nRun root: ").append(s.getWorkTargetName());
+        }
         if (s.getOutputDocPath() != null) {
             msg.append("\nResult: ").append(s.getOutputDocPath());
         }
@@ -163,6 +166,7 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
         value.put("threadsDesired", s.getThreadsDesired());
         value.put("task", s.getTask());
         value.put("source", s.getSourcePath());
+        value.put("workTarget", s.getWorkTargetName());
         value.put("inputFormat", s.getInputFormat());
         value.put("outputFormat", s.getOutputFormat());
         value.put("chunkSize", s.getChunkSize());

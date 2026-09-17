@@ -59,6 +59,7 @@ public class WowbaggerStatusTool extends WowbaggerBaseTool {
         out.put("threadsDesired", s.getThreadsDesired());
         out.put("task", s.getTask());
         out.put("source", s.getSourcePath());
+        out.put("workTarget", s.getWorkTargetName());
         out.put("inputFormat", s.getInputFormat());
         out.put("outputFormat", s.getOutputFormat());
         out.put("outputDoc", s.getOutputDocPath());

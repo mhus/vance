@@ -141,7 +141,9 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
         return "Set Wowbagger's run structure (task, source, formats, chunk size, "
                 + "wakeup intervals, retries, failure cooldown). Only while the pool is "
                 + "stopped. Analyze the source first (read the first lines) before "
-                + "setting inputFormat/task. resetFailureCount acknowledges failures.";
+                + "setting inputFormat/task. resetFailureCount acknowledges failures. "
+                + "The response carries the run's RootDir (workTarget) — import the "
+                + "source into that root so the run survives restarts.";
     }
 
     @Override
@@ -253,10 +255,12 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
             persistReflection(process, s);
             throw e;
         }
+        String workRoot = pool.ensureWorkRoot(process, s);
         persistReflection(process, s);
         List<String> warnings = pool.sourceRootWarnings(process, s);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("applied", applied);
+        out.put("workTarget", workRoot);
         out.put("warnings", warnings);
         return out;
     }

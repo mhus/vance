@@ -376,6 +376,47 @@ class WowbaggerPoolServiceTest {
     }
 
     @Test
+    void jsonlInputWithBrokenRecordsFailsTheChunkWithoutWorkerCalls() throws IOException {
+        // Canonical-JSONL contract: a broken conversion script must surface at
+        // claim time — the chunk fails with a named record, no provider call.
+        Files.write(tempDir.resolve("input.txt"), List.of("not json at all", "also not json"), StandardCharsets.UTF_8);
+        WowbaggerState s0 = persistedState();
+        s0.setInputFormat("jsonl");
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put(
+                WowbaggerPoolService.ENGINE_STATE_KEY,
+                JsonMapper.builder().build().convertValue(s0, Map.class));
+        process.setEngineParams(params);
+
+        stubEchoWorker(); // must never be reached
+        pool.start(process);
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+
+        WowbaggerState s = persistedState();
+        assertThat(s.getRecordsDone()).isZero();
+        assertThat(s.getFailedChunks()).hasSize(1);
+        assertThat(s.getFailedChunks().getFirst().getLastError())
+                .contains("record 0 is not a JSON object")
+                .contains("not json at all");
+        // Deterministic input failure: not a single LLM call was made.
+        verify(lightLlmService, org.mockito.Mockito.never())
+                .callWithUsage(any(de.mhus.vance.brain.ai.light.LightLlmRequest.class));
+        pool.stop(PROC_ID);
+    }
+
+    @Test
+    void linesInputSkipsJsonValidation() throws IOException {
+        // inputFormat lines (the default when unset): free-form text lines
+        // pass through verbatim — no JSON contract on the input side.
+        assertThat(persistedState().getInputFormat()).isEqualTo("lines");
+        stubEchoWorker();
+        pool.start(process);
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        assertThat(persistedState().getRecordsDone()).isEqualTo(5);
+        pool.stop(PROC_ID);
+    }
+
+    @Test
     void tempRootDirSourceProducesAWarning() {
         // Live-run lesson: a source in a temp RootDir dies with its creator
         // process — configure must surface that BEFORE the run burns hours.

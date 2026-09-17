@@ -523,6 +523,7 @@ public class WowbaggerPoolService {
         boolean failed = false;
         while (true) {
             try {
+                validateInputRecords(objectMapper, handle.live, claim.records(), chunk);
                 List<String> reply = callWorker(process, handle.live, claim.records());
                 publishChunk(process, handle.live, chunk, reply);
                 synchronized (handle.lock) {
@@ -965,6 +966,32 @@ public class WowbaggerPoolService {
         }
         return validateWorkerReply(
                 answered.text(), records.size(), FORMAT_JSONL.equals(outputFormat(state)), objectMapper);
+    }
+
+    /**
+     * Input contract of the canonical-JSONL model: when the structure declares
+     * {@code inputFormat: jsonl}, every claimed record must be exactly one
+     * JSON object per line. Validated BEFORE the worker call — a broken
+     * conversion script surfaces at claim time as a chunk failure, without
+     * burning provider calls on deterministic garbage.
+     */
+    static void validateInputRecords(
+            ObjectMapper om, WowbaggerState state, List<String> records, WowbaggerState.WaveChunk chunk)
+            throws WorkerReplyException {
+        if (!FORMAT_JSONL.equals(firstNonBlank(state.getInputFormat(), FORMAT_LINES))) {
+            return;
+        }
+        for (int i = 0; i < records.size(); i++) {
+            try {
+                om.readValue(records.get(i), Map.class);
+            } catch (tools.jackson.core.JacksonException e) {
+                throw new WorkerReplyException(
+                        "chunk #" + chunk.getIndex() + " record " + (chunk.getStartRecord() + i)
+                                + " is not a JSON object (inputFormat jsonl = exactly one"
+                                + " record per line): " + truncate(records.get(i), 120),
+                        e);
+            }
+        }
     }
 
     /** Validates a worker reply: one output line per record; JSONL per line an object. */

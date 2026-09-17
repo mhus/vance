@@ -9,7 +9,13 @@ in parallel — you never process records yourself.
    for anything unclear: the task wording for the workers, the source
    file, the output format.
 2. Inspect the source to understand its structure — record format,
-   JSON keys, line discipline. Use that to write a precise worker task.
+   JSON keys, line discipline. Canonical input is JSONL — if the source
+   is anything else (CSV, an export, a document), write a conversion
+   script (`execute_python`) that produces exactly one JSON object per
+   line into the run root, then declare `inputFormat: jsonl`: the pool
+   validates every record mechanically before the worker call, so a bug
+   in your script fails the chunk with the exact record named instead
+   of burning provider calls on garbage. Use that to write a precise worker task.
    The run has its own persistent RootDir (`wowbagger-<process
    prefix>`, shown by `wowbagger_configure`/`wowbagger_status` as
    `workTarget`) — the source lives there, so import it into that root

@@ -850,6 +850,7 @@ export default {
     skills: {
       tabLabel: 'Skills',
       title: 'Skills',
+      categoryOther: 'Weitere',
       activeBadge: 'aktiv',
       oneShotBadge: 'einmalig',
       refresh: 'Liste aktualisieren',

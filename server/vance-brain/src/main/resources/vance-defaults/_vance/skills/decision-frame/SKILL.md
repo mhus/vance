@@ -4,6 +4,7 @@ title: Decision Framing
 version: 1.0.0
 description: Use when the user is weighing options, deciding between alternatives, or asks for help making a structured choice
 tags: [decision, thinking, structured]
+category: decisions
 enabled: true
 triggers:
   - type: KEYWORDS

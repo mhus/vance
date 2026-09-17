@@ -16,6 +16,7 @@ import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.skill.ResolvedSkill;
+import de.mhus.vance.brain.skill.SkillCategoriesService;
 import de.mhus.vance.brain.skill.SkillSteerProcessor;
 import de.mhus.vance.brain.skill.UnknownSkillException;
 import de.mhus.vance.brain.ws.ConnectionContext;
@@ -58,6 +59,7 @@ public class ProcessSkillHandler implements WsHandler {
     private final WebSocketSender sender;
     private final ThinkProcessService thinkProcessService;
     private final SkillSteerProcessor skillSteerProcessor;
+    private final SkillCategoriesService skillCategoriesService;
     private final RequestAuthority authority;
     private final LaneScheduler laneScheduler;
 
@@ -203,7 +205,9 @@ public class ProcessSkillHandler implements WsHandler {
             for (ResolvedSkill skill : skillSteerProcessor.listAvailable(process)) {
                 available.add(toSummary(skill));
             }
-            responseBuilder.availableSkills(available);
+            SkillCategoriesService.Arrangement arranged =
+                    skillCategoriesService.arrange(process.getTenantId(), process.getProjectId(), available);
+            responseBuilder.availableSkills(arranged.skills()).categories(arranged.categories());
         }
 
         try {
@@ -255,6 +259,7 @@ public class ProcessSkillHandler implements WsHandler {
                 .version(skill.version())
                 .tags(skill.tags())
                 .triggers(toTriggerDtos(skill.triggers()))
+                .category(skill.category())
                 .lifecycle(skill.lifecycle().name().toLowerCase())
                 .tools(skill.tools())
                 .manualPaths(skill.manualPaths())

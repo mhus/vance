@@ -15,6 +15,7 @@ export interface SkillSummaryDto {
   description: string;
   version: string;
   tags: string[];
+  category?: string;
   triggers: SkillTriggerDto[];
   lifecycle: string;
   tools: string[];

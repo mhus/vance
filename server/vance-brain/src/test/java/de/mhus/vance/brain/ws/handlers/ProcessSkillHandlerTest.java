@@ -11,6 +11,7 @@ import de.mhus.vance.api.skills.SkillTriggerType;
 import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.skill.SkillLifecycle;
+import de.mhus.vance.brain.skill.SkillRun;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import java.time.Instant;
 import java.util.List;
@@ -73,6 +74,7 @@ class ProcessSkillHandlerTest {
                         List.of(new ResolvedSkill.Script.ScriptParam("fix", "boolean", "Apply fixes", false)),
                         "return 'ok'")),
                 List.of("code"),
+                "coding",
                 true,
                 SkillScope.PROJECT,
                 List.of(EngineCommand.parse("guard script _vance/guards/review.js")),
@@ -82,11 +84,13 @@ class ProcessSkillHandlerTest {
                 List.of(
                         new ResolvedSkill.Argument("language", "string", "Language to review", false),
                         new ResolvedSkill.Argument("focus", "string", "Focus area", true)),
-                null);
+                null,
+                SkillRun.INLINE);
 
         SkillSummaryDto dto = ProcessSkillHandler.toSummary(skill);
 
         assertThat(dto.getName()).isEqualTo("code-review");
+        assertThat(dto.getCategory()).isEqualTo("coding");
         assertThat(dto.isEnabled()).isTrue();
         assertThat(dto.getSource()).isEqualTo(SkillScope.PROJECT);
         assertThat(dto.getTriggers()).hasSize(2);

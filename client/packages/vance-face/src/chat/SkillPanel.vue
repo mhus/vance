@@ -7,9 +7,11 @@ import type {
   ActiveSkillRefDto,
   ProcessSkillRequest,
   ProcessSkillResponse,
+  SkillCategoryDto,
   SkillSummaryDto,
 } from '@vance/generated';
 import { VAlert, VBadge, VButton, VEmptyState, VModal } from '@components/index';
+import { groupCategorized } from '@/util/categoryGroups';
 
 interface Props {
   /** Live socket — the listing is a read-only {@code process-skill} LIST round-trip. */
@@ -32,9 +34,11 @@ const emit = defineEmits<{
   (e: 'promptReady', prompt: string): void;
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const available = ref<SkillSummaryDto[]>([]);
+/** Category metadata from the LIST reply — order + localised labels (skills.md §4f). */
+const categories = ref<SkillCategoryDto[]>([]);
 const active = ref<ActiveSkillRefDto[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -62,6 +66,7 @@ async function refresh(): Promise<void> {
       { processName: props.sessionKey, command: ProcessSkillCommand.LIST, oneShot: false },
     );
     available.value = reply.availableSkills ?? [];
+    categories.value = reply.categories ?? [];
     active.value = reply.activeSkills ?? [];
     loaded.value = true;
   } catch (err) {
@@ -107,9 +112,24 @@ const rows = computed(() => {
       });
     }
   }
-  out.sort((a, b) => a.summary.title.localeCompare(b.summary.title));
+  // No local sort: the server order is category-group-then-title
+  // (SkillCategoriesService) and grouping trusts it (skills.md §4f).
   return out;
 });
+
+/**
+ * Rows grouped by category for the panel rendering: first-occurrence
+ * order over the server-sorted list (skills.md §4f). The category key
+ * lives on the summary; the synthetic active-but-unlisted rows carry
+ * none and land in the trailing "no category" group.
+ */
+const groups = computed(() => groupCategorized(
+  rows.value,
+  (row) => row.summary.category,
+  categories.value,
+  locale.value,
+  t('chat.skills.categoryOther'),
+));
 
 function play(name: string): void {
   // Trailing space: invite skill arguments without a second click.
@@ -207,9 +227,19 @@ watch(() => props.sessionKey, refresh);
     />
 
     <div v-else class="flex flex-col gap-1.5">
-      <div
-        v-for="row in rows"
-        :key="row.summary.name"
+      <template
+        v-for="group in groups"
+        :key="group.key ?? '__other__'"
+      >
+        <div
+          v-if="group.label"
+          class="text-xs font-semibold uppercase tracking-wide opacity-60 px-1 pt-2"
+        >
+          {{ group.label }}
+        </div>
+        <div
+          v-for="row in group.items"
+          :key="row.summary.name"
         class="bg-base-200 rounded px-2.5 py-2 text-left text-sm"
         :class="{ 'opacity-50': !row.summary.enabled }"
       >
@@ -265,6 +295,7 @@ watch(() => props.sessionKey, refresh);
           </VButton>
         </div>
       </div>
+      </template>
     </div>
 
     <VModal

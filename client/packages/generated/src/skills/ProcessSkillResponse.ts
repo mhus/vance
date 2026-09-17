@@ -5,11 +5,13 @@
 
 import { ActiveSkillRefDto } from './ActiveSkillRefDto';
 import { SkillSummaryDto } from './SkillSummaryDto';
+import { SkillCategoryDto } from './SkillCategoryDto';
 
 export interface ProcessSkillResponse {
   processName: string;
   activeSkills: ActiveSkillRefDto[];
   availableSkills: SkillSummaryDto[];
+  categories: SkillCategoryDto[];
   newlyActivated: boolean;
   lifecycle: string;
 }

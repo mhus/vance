@@ -9,6 +9,7 @@ description: |
   so it never activates on its own — call it explicitly with
   /skill design-blueprint. Copy the folder and adapt it for a house style.
 tags: [design, landing-page, css, example]
+category: design
 enabled: true
 action: |
   The design-blueprint skill is now active. Apply its workflow and style

@@ -26,6 +26,13 @@ public record ResolvedSkill(
         List<ReferenceDoc> referenceDocs,
         List<Script> scripts,
         List<String> tags,
+        /**
+         * Picker grouping key of the SKILL.md {@code category:} frontmatter
+         * (skills.md §2, §4f) — normalised (trim, lower-case), display-only
+         * metadata: activation, trigger and tool logic never read it.
+         * {@code null} means "no category".
+         */
+        @Nullable String category,
         boolean enabled,
         SkillScope source,
         /** Engine commands fired on activation — see planning/engine-commands.md §4. */
@@ -71,6 +78,54 @@ public record ResolvedSkill(
 
     /**
      * Backward-compatible constructor for call sites that predate the
+     * {@code category:} field — everything lands uncategorised.
+     */
+    public ResolvedSkill(
+            String name,
+            String title,
+            String description,
+            String version,
+            List<Trigger> triggers,
+            @Nullable String promptExtension,
+            List<String> tools,
+            List<String> manualPaths,
+            List<ReferenceDoc> referenceDocs,
+            List<Script> scripts,
+            List<String> tags,
+            boolean enabled,
+            SkillScope source,
+            List<EngineCommand> activate,
+            List<EngineCommand> deactivate,
+            SkillLifecycle lifecycle,
+            boolean consumesArgs,
+            List<Argument> arguments,
+            @Nullable String action,
+            SkillRun run) {
+        this(
+                name,
+                title,
+                description,
+                version,
+                triggers,
+                promptExtension,
+                tools,
+                manualPaths,
+                referenceDocs,
+                scripts,
+                tags,
+                null,
+                enabled,
+                source,
+                activate,
+                deactivate,
+                lifecycle,
+                consumesArgs,
+                arguments,
+                action,
+                run);
+    }
+    /**
+     * Backward-compatible constructor for call sites that predate the
      * {@code run:} block — everything acts inline.
      */
     public ResolvedSkill(
@@ -93,9 +148,27 @@ public record ResolvedSkill(
             boolean consumesArgs,
             List<Argument> arguments,
             @Nullable String action) {
-        this(name, title, description, version, triggers, promptExtension,
-                tools, manualPaths, referenceDocs, scripts, tags, enabled, source,
-                activate, deactivate, lifecycle, consumesArgs, arguments, action,
+        this(
+                name,
+                title,
+                description,
+                version,
+                triggers,
+                promptExtension,
+                tools,
+                manualPaths,
+                referenceDocs,
+                scripts,
+                tags,
+                null,
+                enabled,
+                source,
+                activate,
+                deactivate,
+                lifecycle,
+                consumesArgs,
+                arguments,
+                action,
                 SkillRun.INLINE);
     }
 
@@ -118,10 +191,26 @@ public record ResolvedSkill(
             List<String> tags,
             boolean enabled,
             SkillScope source) {
-        this(name, title, description, version, triggers, promptExtension,
-                tools, manualPaths, referenceDocs, scripts, tags, enabled, source,
-                List.of(), List.of(), SkillLifecycle.STICKY,
-                /*consumesArgs*/ false, List.of(), null);
+        this(
+                name,
+                title,
+                description,
+                version,
+                triggers,
+                promptExtension,
+                tools,
+                manualPaths,
+                referenceDocs,
+                scripts,
+                tags,
+                enabled,
+                source,
+                List.of(),
+                List.of(),
+                SkillLifecycle.STICKY,
+                /*consumesArgs*/ false,
+                List.of(),
+                null);
     }
 
     /**
@@ -132,24 +221,15 @@ public record ResolvedSkill(
      * {@link Script.ScriptParam} so authors only learn one schema.
      */
     public record Argument(
-            String name,
-            String type,
-            @Nullable String description,
-            boolean required) {
-    }
+            String name, String type, @Nullable String description, boolean required) {}
 
-    public record Trigger(
-            SkillTriggerType type,
-            @Nullable String pattern,
-            List<String> keywords) {
-    }
+    public record Trigger(SkillTriggerType type, @Nullable String pattern, List<String> keywords) {}
 
     public record ReferenceDoc(
             String title,
             String content,
             SkillReferenceDocLoadMode loadMode,
-            @Nullable String summary) {
-    }
+            @Nullable String summary) {}
 
     /**
      * A skill-bound script — declared in the SKILL.md frontmatter,
@@ -161,11 +241,7 @@ public record ResolvedSkill(
      * active turn's tool-loop when the skill is active.
      */
     public record Script(
-            String name,
-            ScriptTarget target,
-            @Nullable String description,
-            List<ScriptParam> params,
-            String body) {
+            String name, ScriptTarget target, @Nullable String description, List<ScriptParam> params, String body) {
 
         /**
          * One declared input parameter of a {@link Script}. Rendered
@@ -175,10 +251,6 @@ public record ResolvedSkill(
          * list keeps the free-form v1 behaviour.
          */
         public record ScriptParam(
-                String name,
-                String type,
-                @Nullable String description,
-                boolean required) {
-        }
+                String name, String type, @Nullable String description, boolean required) {}
     }
 }

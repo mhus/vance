@@ -134,8 +134,7 @@ public class SkillLoader {
         }
 
         // 2. PROJECT → VANCE → RESOURCE via DocumentService cascade.
-        String effectiveProjectId =
-                (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
+        String effectiveProjectId = effectiveProjectId(projectId);
         Optional<LookupResult> hit = documentService.lookupCascade(tenantId, effectiveProjectId, entryPath);
         if (hit.isEmpty()) return Optional.empty();
         LookupResult result = hit.get();
@@ -231,6 +230,15 @@ public class SkillLoader {
         return SKILL_PATH_PREFIX + stem + "/" + SKILL_ENTRY_FILE;
     }
 
+    /**
+     * Package-private: shared with {@link SkillCategoriesService} so the
+     * category document resolves through the same effective project as the
+     * skills it orders.
+     */
+    static String effectiveProjectId(@Nullable String projectId) {
+        return (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
+    }
+
     private static String siblingPathFor(String stem, String relativePath) {
         return SKILL_PATH_PREFIX + stem + "/" + relativePath;
     }
@@ -314,6 +322,7 @@ public class SkillLoader {
         List<String> tools = stringList(spec.get("tools"), stem, "tools");
         List<String> manualPaths = parseManualPaths(spec.get("manualPaths"), stem);
         List<String> tags = stringList(spec.get("tags"), stem, "tags");
+        String category = parseCategory(spec.get("category"), stem);
         boolean enabled = !(spec.get("enabled") instanceof Boolean b) || b;
         String promptExtension = fm.body.isBlank() ? null : fm.body.strip();
         List<ResolvedSkill.ReferenceDoc> refDocs =
@@ -352,6 +361,7 @@ public class SkillLoader {
                 refDocs,
                 scripts,
                 tags,
+                category,
                 enabled,
                 scope,
                 activate,
@@ -571,6 +581,27 @@ public class SkillLoader {
                 throw new IllegalStateException(
                         "skill '" + stem + "': unknown lifecycle '" + s + "' (expected sticky|shot)");
         };
+    }
+
+    /**
+     * Parses the optional {@code category:} picker-group key.
+     *
+     * <p>Hand-written YAML on both sides — the skill field and the ids in
+     * {@code _vance/config/skill_categories.yaml} — so the value is
+     * normalised (trim, lower-case) instead of rejected; it only ever
+     * matches the equally normalised ids of the category document.
+     * Blank means "no category" (null). A non-string value is a
+     * malformed field and fails the skill load, same as every other
+     * type guard — a number here is a typo an author wants to hear
+     * about, not a silently ignored key.
+     */
+    private static String parseCategory(Object raw, String stem) {
+        if (raw == null) return null;
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("skill '" + stem + "': 'category' must be a string");
+        }
+        String normalized = s.trim().toLowerCase(Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized;
     }
 
     /**

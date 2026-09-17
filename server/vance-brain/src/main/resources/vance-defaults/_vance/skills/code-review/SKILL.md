@@ -4,6 +4,7 @@ title: Code Review
 version: 1.0.0
 description: Review the current code changes for correctness, security and quality — kicks off immediately on activation
 tags: [code, review, quality]
+category: coding
 enabled: true
 triggers:
   - type: KEYWORDS

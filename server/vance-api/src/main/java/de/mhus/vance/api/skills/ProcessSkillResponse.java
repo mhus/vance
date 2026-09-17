@@ -37,6 +37,16 @@ public class ProcessSkillResponse {
     private List<SkillSummaryDto> availableSkills = new ArrayList<>();
 
     /**
+     * Category metadata from {@code _vance/config/skill_categories.yaml},
+     * populated for {@link ProcessSkillCommand#LIST} responses. Order and
+     * labels for grouped rendering of {@link #availableSkills} — the same
+     * sort-help contract as the recipe picker's category document
+     * (recipes.md §6e): absent when no tier carries the document, in
+     * which case clients render unlabelled groups from the skills' own
+     * {@code category} values. Other commands omit it.
+     */
+    private List<SkillCategoryDto> categories;
+    /**
      * Populated for {@link ProcessSkillCommand#ACTIVATE} responses:
      * {@code true} when this call activated the skill freshly (firing its
      * {@code action:} turn), {@code false} when it was already active

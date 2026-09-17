@@ -1,0 +1,27 @@
+# Skill-picker category groups: order and localised labels.
+#
+# A sort help, not a registry — same contract as the recipe picker's
+# recipe_categories.yaml (specification/public/skills.md §4f):
+#   - neither complete: a skill `category:` not named here still
+#     appears, appended after the documented categories (alphabetical);
+#   - nor mandatory: without this document the skill panel shows plain
+#     title order without group headers;
+#   - fail-open: a malformed document is ignored with a warning.
+#
+# Cascade: <project>/_vance/config/skill_categories.yaml
+#         → _vance tenant document → this bundled default.
+# A tier that overrides replaces the whole document — re-declare the
+# titles you want to keep.
+categories:
+  - id: coding
+    title:
+      en: Coding
+      de: Programmierung
+  - id: decisions
+    title:
+      en: Decisions
+      de: Entscheidungen
+  - id: design
+    title:
+      en: Design
+      de: Design

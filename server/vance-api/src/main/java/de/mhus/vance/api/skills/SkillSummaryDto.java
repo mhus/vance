@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Read-only view of a skill for chat / picker UIs. Carries what the
@@ -35,6 +36,16 @@ public class SkillSummaryDto {
 
     @Builder.Default
     private List<String> tags = new ArrayList<>();
+
+    /**
+     * Picker grouping key — the normalised {@code category:} frontmatter
+     * field (skills.md §2, §4f). Display-only metadata like {@code title}:
+     * activation, trigger and tool logic never read it. Group order and
+     * localised labels come from {@code _vance/config/skill_categories.yaml},
+     * shipped with the LIST response (see {@code ProcessSkillResponse#getCategories()}).
+     * {@code null} means "no category" — those skills sort last.
+     */
+    private @Nullable String category;
 
     /**
      * Auto-activation configuration, shown so a user can see what a

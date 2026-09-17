@@ -34,6 +34,10 @@ params:
   # live status block (structure, run state, threads, failures) into
   # every turn — the agent always knows where the run stands.
   promptDocument: _vance/prompts/wowbagger-prompt.md
+  # Manuals for the agent's own work: conversion scripts (python.md),
+  # settings tools (the allowlist), workspace/file tooling.
+  manualPaths:
+    - _vance/manuals/
   # Worker calls are NOT made by this recipe: the pool calls the
   # internal wowbagger-worker profile (jeltz/LightLm, fast tier) —
   # bulk throughput never touches the agent's model tier.

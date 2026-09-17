@@ -206,14 +206,6 @@ const totals = computed<{
     cacheWrite: 0,
     byCurrency: new Map<string, number>(),
   };
-}>(() => {
-  const out = {
-    tokensIn: 0,
-    tokensOut: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    byCurrency: new Map<string, number>(),
-  };
   if (!summary.value) return out;
   for (const b of summary.value.buckets) {
     out.tokensIn += b.tokensIn;

@@ -116,6 +116,16 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                                 "Acknowledge the accumulated failures: reset the failure counter "
                                         + "to zero (a re-run does this implicitly).")),
                 Map.entry(
+                        "maxTokens",
+                        Map.of(
+                                "type",
+                                "integer",
+                                "description",
+                                "Output-token cap per worker call (null/0 = the worker "
+                                        + "recipe default). Scale with chunkSize and output "
+                                        + "size, but keep it far below the model's context "
+                                        + "window — gateways clamp max_tokens to it.")),
+                Map.entry(
                         "workerRecipe",
                         Map.of(
                                 "type",
@@ -236,6 +246,11 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                     && booleanParam(params, "resetFailureCount", false)) {
                 s.setFailureCount(0);
                 applied.put("failureCount", 0L);
+            }
+            if (params != null && params.containsKey("maxTokens")) {
+                int v = intParam(params, "maxTokens", 0);
+                s.setMaxTokens(v > 0 ? v : null);
+                applied.put("maxTokens", s.getMaxTokens() == null ? "(recipe default)" : s.getMaxTokens());
             }
             if (params != null && params.containsKey("workerRecipe")) {
                 String v = stringParam(params, "workerRecipe", false);

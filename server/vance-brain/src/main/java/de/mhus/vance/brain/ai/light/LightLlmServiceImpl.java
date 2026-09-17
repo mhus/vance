@@ -352,6 +352,12 @@ public class LightLlmServiceImpl implements LightLlmService {
         options.setProjectId(req.getProjectId());
         applySamplingParams(options, params);
         applyThinkingParam(options, params);
+        // Caller-side output-cap override (request > recipe), mirroring
+        // effectiveMaxAttempts: recipes are profiles, callers may pin the
+        // call shape they configure per run.
+        if (req.getMaxTokens() != null && req.getMaxTokens() > 0) {
+            options.setMaxTokens(req.getMaxTokens());
+        }
         // Light calls don't persist to LlmTraceService — the writer hook is
         // the audit emitter. The usage ledger is no longer written here: the
         // accounting decorator inside the provider books every attempt,

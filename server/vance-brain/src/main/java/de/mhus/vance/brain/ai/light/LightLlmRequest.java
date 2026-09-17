@@ -35,7 +35,8 @@ public class LightLlmRequest {
      * render context — caller-supplied keys win on conflict.
      * {@code null} means "no extra vars".
      */
-    @Nullable Map<String, Object> pebbleVars;
+    @Nullable
+    Map<String, Object> pebbleVars;
 
     /**
      * JSON-Schema-light map describing the expected reply shape.
@@ -43,24 +44,39 @@ public class LightLlmRequest {
      * by {@link LightLlmService#call}. {@code null} means "no schema
      * validation" (callForJson then simply parses to a Map).
      */
-    @Nullable Map<String, Object> schema;
+    @Nullable
+    Map<String, Object> schema;
 
     /**
      * Override the recipe's {@code params.maxAttempts} or the global
      * default. {@code null} means "use recipe / global default".
      */
-    @Nullable Integer maxAttempts;
+    @Nullable
+    Integer maxAttempts;
+
+    /**
+     * Override the recipe's {@code params.maxTokens} (the output-token cap
+     * for this call). {@code null} or {@code <= 0} means "recipe default".
+     * Same precedence pattern as {@link #maxAttempts}: the recipe is the
+     * config profile, the caller may pin the call shape it knows better —
+     * e.g. a bulk engine whose chunk size (and therefore reply size) is
+     * per-run configuration.
+     */
+    @Nullable
+    Integer maxTokens;
 
     /** Required. Tenant scope for setting cascades + API-key lookup. */
     String tenantId;
 
     /** Optional. Project scope for setting cascades. */
-    @Nullable String projectId;
+    @Nullable
+    String projectId;
 
     /**
      * Optional. Innermost setting-cascade scope. Light-LLM calls
      * typically run from a tool invoked by a process, so passing the
      * caller's processId lets per-process setting overrides apply.
      */
-    @Nullable String processId;
+    @Nullable
+    String processId;
 }

@@ -224,6 +224,7 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
         value.put("recordsTotal", s.getRecordsTotal());
         value.put("chunksTotal", s.getChunksTotal());
         value.put("workerRecipe", s.getWorkerRecipe() == null ? "wowbagger-worker" : s.getWorkerRecipe());
+        value.put("maxTokens", s.getMaxTokens());
         value.put("resolvedWorkerModel", s.getResolvedWorkerModel());
         value.put("modelApproved", pool.isWorkerModelApproved(process, s));
         value.put("wakeEveryRecords", s.getWakeEveryRecords());

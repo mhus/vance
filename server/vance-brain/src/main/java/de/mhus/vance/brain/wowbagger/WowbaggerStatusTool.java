@@ -75,6 +75,7 @@ public class WowbaggerStatusTool extends WowbaggerBaseTool {
         out.put("failureCooldownSeconds", s.getFailureCooldownSeconds());
         out.put("failureCount", s.getFailureCount());
         out.put("workerRecipe", s.getWorkerRecipe() == null ? "wowbagger-worker" : s.getWorkerRecipe());
+        out.put("maxTokens", s.getMaxTokens());
         out.put("resolvedWorkerModel", s.getResolvedWorkerModel());
         out.put("modelApproved", pool.isWorkerModelApproved(process, s));
         out.put("finished", s.isFinished());

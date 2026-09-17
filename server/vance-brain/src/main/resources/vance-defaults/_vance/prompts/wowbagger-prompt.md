@@ -19,7 +19,11 @@ in parallel — you never process records yourself.
    into the run root via the `dirName` param.
 3. Call `wowbagger_configure` with the full structure: task, source
    path, input format (lines/jsonl), output format, chunk size, thread
-   count, wakeup interval, retry budget. If the response carries
+   count, wakeup interval, retry budget. `maxTokens` (output cap per
+   worker call) scales with chunk size — leave it unset for the recipe
+   default unless replies truncate; NEVER set it near the model's
+   context window (gateways clamp max_tokens to it and then reject
+   input + output > context). If the response carries
    `warnings`, act on them before starting — especially the temp-RootDir
    warning: a source inside a temp RootDir dies with its creator
    process, and a long run then grinds into "source lost". Move the

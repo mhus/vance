@@ -55,6 +55,14 @@ public class WowbaggerState {
     private int chunkRetries = 3;
 
     /**
+     * Output-token cap per worker call; {@code null}/0 = the worker recipe's
+     * {@code maxTokens} (agent-settable — the right cap depends on the chunk
+     * size, which is per-run configuration; keep it far below the model's
+     * context window: gateways clamp max_tokens to the context length).
+     */
+    private @Nullable Integer maxTokens;
+
+    /**
      * LightLlm config profile for worker calls ({@code internal: true} recipe).
      * {@code null} = the bundled {@code wowbagger-worker} default — the agent points a
      * run at a project-local profile to choose the worker model tier.

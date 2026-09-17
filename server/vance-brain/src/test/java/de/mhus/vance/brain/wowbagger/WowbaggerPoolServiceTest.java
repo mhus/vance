@@ -308,6 +308,27 @@ class WowbaggerPoolServiceTest {
     }
 
     @Test
+    void maxTokensOverrideFlowsIntoTheWorkerCall() throws Exception {
+        stubEchoWorker();
+        WowbaggerState s = persistedState();
+        s.setMaxTokens(12345);
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put(
+                WowbaggerPoolService.ENGINE_STATE_KEY,
+                JsonMapper.builder().build().convertValue(s, Map.class));
+        process.setEngineParams(params);
+
+        pool.start(process);
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(de.mhus.vance.brain.ai.light.LightLlmRequest.class);
+        verify(lightLlmService, org.mockito.Mockito.atLeastOnce()).call(captor.capture());
+        assertThat(captor.getAllValues())
+                .allSatisfy(req -> assertThat(req.getMaxTokens()).isEqualTo(12345));
+        pool.stop(PROC_ID);
+    }
+
+    @Test
     void tempRootDirSourceProducesAWarning() {
         // Live-run lesson: a source in a temp RootDir dies with its creator
         // process — configure must surface that BEFORE the run burns hours.

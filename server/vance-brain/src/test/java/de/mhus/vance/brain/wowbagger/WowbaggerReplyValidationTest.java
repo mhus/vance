@@ -121,6 +121,7 @@ class WowbaggerReplyValidationTest {
                         "threadsDesired",
                         "wakeEveryRecords",
                         "chunkRetries",
+                        "maxTokens",
                         "workerRecipe",
                         "pointer",
                         "recordsTotal",

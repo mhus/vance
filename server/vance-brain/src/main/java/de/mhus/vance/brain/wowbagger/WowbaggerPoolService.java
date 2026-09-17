@@ -909,6 +909,7 @@ public class WowbaggerPoolService {
         state.getCounters().setWorkerCalls(state.getCounters().getWorkerCalls() + 1);
         String reply = lightLlmService.call(LightLlmRequest.builder()
                 .recipeName(firstNonBlank(state.getWorkerRecipe(), DEFAULT_WORKER_RECIPE))
+                .maxTokens(state.getMaxTokens() != null && state.getMaxTokens() > 0 ? state.getMaxTokens() : null)
                 .userPrompt(prompt.toString())
                 .tenantId(process.getTenantId())
                 .projectId(process.getProjectId())

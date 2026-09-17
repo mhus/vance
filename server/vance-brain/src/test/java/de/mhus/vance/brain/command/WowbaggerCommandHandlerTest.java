@@ -108,6 +108,28 @@ class WowbaggerCommandHandlerTest {
     }
 
     @Test
+    void stateIsTheOneLinerGlance() {
+        WowbaggerState s = configuredState();
+        s.setThreadsDesired(5);
+        s.setFailureCount(0);
+        s.getFailedChunks().clear();
+        when(pool.structure("proc1")).thenReturn(s);
+        when(pool.isRunning("proc1")).thenReturn(true);
+        lenient().when(pool.isWorkerModelApproved(any(), any())).thenReturn(true);
+
+        EngineCommandResult result = handler.handle(process, new EngineCommand("wowbagger", Map.of("text", "state")));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.OK);
+        assertThat(result.message()).isEqualTo("600/9500 processed (6%), 5 threads, running");
+
+        // With failures the glance counts them; idle shows 0 threads.
+        s.getFailedChunks().add(configuredState().getFailedChunks().getFirst());
+        when(pool.isRunning("proc1")).thenReturn(false);
+        result = handler.handle(process, new EngineCommand("wowbagger", Map.of("text", "state")));
+        assertThat(result.message()).isEqualTo("600/9500 processed (6%), 0 threads, 1 failed chunk(s), idle");
+    }
+
+    @Test
     void foreignEngineIsADefinedError() {
         process.setThinkEngine("ford");
         EngineCommandResult result = handler.handle(process, new EngineCommand("wowbagger", Map.of()));

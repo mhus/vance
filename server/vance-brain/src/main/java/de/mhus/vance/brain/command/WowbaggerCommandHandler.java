@@ -23,6 +23,9 @@ import org.springframework.stereotype.Component;
  *       run state (idle/running/finished, threads), task and source, progress
  *       (pointer/records/percent), worker model + approval, wakeup intervals,
  *       failure ledger with per-chunk reasons, and the result doc path.</li>
+ *   <li>{@code //wowbagger state} — the one-liner glance:
+ *       {@code 100/20000 processed (1%), 4 threads, running} — for quick
+ *       status checks where the detail view is noise.</li>
  * </ul>
  *
  * <p>{@link #runsOnLane()} is {@code false} (Zaphod argument): a diagnostic
@@ -42,6 +45,7 @@ import org.springframework.stereotype.Component;
 public class WowbaggerCommandHandler implements EngineCommandHandler {
 
     private static final String SUB_INFO = "info";
+    private static final String SUB_STATE = "state";
     private static final int TASK_PREVIEW_CHARS = 160;
     private static final int ERROR_PREVIEW_CHARS = 200;
     private static final int FAILED_CHUNK_LIMIT = 5;
@@ -67,12 +71,57 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
         }
         String[] tokens = splitFirstToken(argText(command));
         String sub = tokens[0].isEmpty() ? SUB_INFO : tokens[0].toLowerCase(Locale.ROOT);
-        if (!SUB_INFO.equals(sub)) {
-            return EngineCommandResult.error("Unknown subcommand '" + sub + "' — known: " + SUB_INFO);
+        if (!SUB_INFO.equals(sub) && !SUB_STATE.equals(sub)) {
+            return EngineCommandResult.error(
+                    "Unknown subcommand '" + sub + "' — known: " + SUB_INFO + ", " + SUB_STATE);
         }
         WowbaggerState state = pool.structure(process.getId());
         boolean running = pool.isRunning(process.getId());
+        if (SUB_STATE.equals(sub)) {
+            return EngineCommandResult.ok(renderState(state, running), stateValue(state, running));
+        }
         return EngineCommandResult.ok(renderInfo(process, state, running), infoValue(process, state, running));
+    }
+
+    // ──────────────────── state (one-liner) ────────────────────
+
+    /**
+     * The glance view: progress, threads, run state — failures only when
+     * there are any. One line, no detail noise.
+     */
+    private String renderState(WowbaggerState s, boolean running) {
+        StringBuilder msg = new StringBuilder();
+        if (s.getRecordsTotal() >= 0) {
+            msg.append(s.getRecordsDone())
+                    .append('/')
+                    .append(s.getRecordsTotal())
+                    .append(" processed (")
+                    .append(percent(s))
+                    .append(")");
+        } else {
+            msg.append("no source measured yet");
+        }
+        msg.append(", ")
+                .append(running ? Math.max(0, s.getThreadsDesired()) : 0)
+                .append(" threads");
+        if (!s.getFailedChunks().isEmpty()) {
+            msg.append(", ").append(s.getFailedChunks().size()).append(" failed chunk(s)");
+        }
+        msg.append(", ").append(s.isFinished() ? "finished" : running ? "running" : "idle");
+        return msg.toString();
+    }
+
+    private Map<String, Object> stateValue(WowbaggerState s, boolean running) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("recordsDone", s.getRecordsDone());
+        value.put("recordsTotal", s.getRecordsTotal());
+        value.put("percent", s.getRecordsTotal() > 0 ? percent(s) : null);
+        value.put("threads", running ? Math.max(0, s.getThreadsDesired()) : 0);
+        value.put("failedChunks", s.getFailedChunks().size());
+        value.put("failureCount", s.getFailureCount());
+        value.put("running", running);
+        value.put("finished", s.isFinished());
+        return value;
     }
 
     // ──────────────────── info ────────────────────

@@ -657,6 +657,42 @@ public class WowbaggerPoolService {
     }
 
     /**
+     * Ephemeral-source warnings for {@code wowbagger_configure} (live-run
+     * lesson: a source inside a temp RootDir dies with its creator — a
+     * multi-hour run then grinds into "source lost"). Read-only: unlike
+     * {@link #resolveWorkDirName} this never CREATES a temp RootDir.
+     */
+    public List<String> sourceRootWarnings(ThinkProcessDocument process, WowbaggerState state) {
+        if (state.getSourcePath() == null || state.getSourcePath().isBlank()) {
+            return List.of();
+        }
+        WorkTarget target = workTargetService.current(process);
+        if (target.kind() != WorkTargetKind.WORK) {
+            return List.of();
+        }
+        String dirName = target.targetName();
+        if (dirName == null) {
+            dirName = workspaceService
+                    .getWorkingDir(process.getTenantId(), process.getProjectId(), process.getId())
+                    .orElse(null);
+            if (dirName == null) {
+                return List.of("the source resolves into a process-temp RootDir — it dies with"
+                        + " the process (no resume after close, and a brain restart may dispose it)."
+                        + " For long runs use a named RootDir (workTarget targetName) and put the"
+                        + " source there.");
+            }
+        }
+        final String resolvedDir = dirName;
+        return workspaceService
+                .getRootDir(process.getTenantId(), process.getProjectId(), resolvedDir)
+                .filter(h -> h.deleteOnCreatorClose() || h.creatorProcessId() != null)
+                .map(h -> List.of("the source lives in the temp RootDir '" + resolvedDir + "' (creator '"
+                        + h.creatorProcessId() + "', deleteOnCreatorClose) — it dies when its creator"
+                        + " closes. For long runs move the source into a named RootDir."))
+                .orElse(List.of());
+    }
+
+    /**
      * Heartbeat: while the run is grinding, wake the agent for a check-in
      * when nothing else produced news for {@code wakeEverySeconds}. Progress
      * and failure wakeups refresh the base, so a chatty run never heartbeats

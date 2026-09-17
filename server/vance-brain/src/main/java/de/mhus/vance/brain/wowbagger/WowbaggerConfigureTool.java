@@ -5,6 +5,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -253,7 +254,11 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
             throw e;
         }
         persistReflection(process, s);
-        return Map.of("applied", applied);
+        List<String> warnings = pool.sourceRootWarnings(process, s);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("applied", applied);
+        out.put("warnings", warnings);
+        return out;
     }
 
     private void persistReflection(ThinkProcessDocument process, WowbaggerState s) {

@@ -56,6 +56,8 @@ class WowbaggerPoolServiceTest {
     Path tempDir;
 
     private ThinkProcessService thinkProcessService;
+    private WorkspaceService workspaceService;
+    private WorkTargetService workTargetService;
     private LightLlmService lightLlmService;
     private DocumentService documentService;
     private ThinkProcessDocument process;
@@ -69,8 +71,8 @@ class WowbaggerPoolServiceTest {
         thinkProcessService = mock(ThinkProcessService.class);
         lightLlmService = mock(LightLlmService.class);
         documentService = mock(DocumentService.class);
-        WorkspaceService workspaceService = mock(WorkspaceService.class);
-        WorkTargetService workTargetService = mock(WorkTargetService.class);
+        workspaceService = mock(WorkspaceService.class);
+        workTargetService = mock(WorkTargetService.class);
         ChatMessageService chatLog = mock(ChatMessageService.class);
         MetricService metricService = new MetricService(new SimpleMeterRegistry());
         ObjectMapper om = JsonMapper.builder().build();
@@ -294,6 +296,23 @@ class WowbaggerPoolServiceTest {
         // The default setUp allowlist (*deepseek*) covers the resolved model.
         assertThat(persistedState().getResolvedWorkerModel()).isEqualTo("openai:deepseek-v4-flash-0731");
         assertThat(pool.isWorkerModelApproved(process, persistedState())).isTrue();
+    }
+
+    @Test
+    void tempRootDirSourceProducesAWarning() {
+        // Live-run lesson: a source in a temp RootDir dies with its creator
+        // process — configure must surface that BEFORE the run burns hours.
+        when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.WORK, null));
+        when(workspaceService.getWorkingDir(TENANT, PROJECT, PROC_ID)).thenReturn(Optional.empty());
+
+        assertThat(pool.sourceRootWarnings(process, persistedState()))
+                .singleElement()
+                .asString()
+                .contains("process-temp RootDir");
+
+        // A named, persistent RootDir produces no warning.
+        when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.WORK, "data"));
+        assertThat(pool.sourceRootWarnings(process, persistedState())).isEmpty();
     }
 
     @Test

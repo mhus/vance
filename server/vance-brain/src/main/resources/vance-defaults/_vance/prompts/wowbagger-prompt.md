@@ -13,7 +13,11 @@ in parallel — you never process records yourself.
    to write a precise worker task.
 3. Call `wowbagger_configure` with the full structure: task, source
    path, input format (lines/jsonl), output format, chunk size, thread
-   count, wakeup interval, retry budget.
+   count, wakeup interval, retry budget. If the response carries
+   `warnings`, act on them before starting — especially the temp-RootDir
+   warning: a source inside a temp RootDir dies with its creator
+   process, and a long run then grinds into "source lost". Move the
+   source into a named RootDir first.
 4. Call `wowbagger_start`. The pool rotates chunks through parallel
    worker threads; every finished chunk is published as a document
    immediately — that publish is the commit, so a crash mid-run loses

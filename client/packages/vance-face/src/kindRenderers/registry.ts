@@ -163,6 +163,30 @@ export const kindRegistry: Record<string, KindRenderer> = {
 };
 
 /**
+ * Fence-language aliases — dialect / tool names that route to an
+ * existing kind's renderer instead of falling back to a plain code
+ * block. Keys are lowercase; values must be real {@link kindRegistry}
+ * entries (one hop, no alias-to-alias chains).
+ *
+ * `mermaid` → `diagram`: the Vance kind fence is named after the kind
+ * (`diagram`, not the tool — the bistromath spec pins that naming rule),
+ * but every LLM's training data says ```mermaid, and GitHub / GitLab /
+ * Obsidian / Notion all render that fence natively (the very industry
+ * alignment the diagram spec cites as its rationale). Aliasing on the
+ * renderer side makes the fallback fail-safe: a model that ignores the
+ * how_do_i hard-rule and emits a ```mermaid fence still gets a rendered
+ * diagram instead of plain text. Authoring guidance stays `diagram`.
+ */
+const kindAliases: Record<string, string> = {
+  mermaid: 'diagram',
+};
+
+/** Resolve aliases to their canonical kind. Unknown kinds pass through. */
+function canonicalKind(kind: string): string {
+  return kindAliases[kind] ?? kind;
+}
+
+/**
  * Look up a renderer for the given kind + channel combination. Returns
  * `null` when no entry exists or the entry does not provide an adapter
  * for this channel (e.g. `pdf` has no `inline`).
@@ -172,7 +196,7 @@ export function resolveRenderer(
   channel: RenderChannel,
 ): KindRenderer | null {
   if (!kind) return null;
-  const entry = kindRegistry[kind.toLowerCase()];
+  const entry = kindRegistry[canonicalKind(kind.toLowerCase())];
   if (!entry) return null;
   if (channel === 'inline' && !entry.inline) return null;
   if (channel === 'embedded' && !entry.embedded) return null;
@@ -182,19 +206,19 @@ export function resolveRenderer(
 /** True when *any* renderer exists for the kind (either channel). */
 export function hasRenderer(kind: string | undefined | null): boolean {
   if (!kind) return false;
-  return kind.toLowerCase() in kindRegistry;
+  return canonicalKind(kind.toLowerCase()) in kindRegistry;
 }
 
 /** Display label for an unknown kind — used by fallback cards. */
 export function kindLabel(kind: string | undefined | null): string {
   if (!kind) return 'Document';
-  const entry = kindRegistry[kind.toLowerCase()];
+  const entry = kindRegistry[canonicalKind(kind.toLowerCase())];
   return entry?.label ?? kind;
 }
 
 /** Display icon for an unknown kind — used by fallback cards. */
 export function kindIcon(kind: string | undefined | null): string {
   if (!kind) return '📄';
-  const entry = kindRegistry[kind.toLowerCase()];
+  const entry = kindRegistry[canonicalKind(kind.toLowerCase())];
   return entry?.icon ?? '📄';
 }

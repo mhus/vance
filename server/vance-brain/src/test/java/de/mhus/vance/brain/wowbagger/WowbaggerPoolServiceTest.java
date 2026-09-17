@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,6 +65,7 @@ class WowbaggerPoolServiceTest {
     private WowbaggerPoolService pool;
     private de.mhus.vance.shared.settings.SettingService settingService;
     private final Map<String, DocumentDocument> docsByPath = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, AtomicInteger> callCounter = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, String> docContents = new java.util.concurrent.ConcurrentHashMap<>();
 
     @BeforeEach
@@ -181,6 +183,28 @@ class WowbaggerPoolServiceTest {
                 .when(documentService.readContent(any()))
                 .thenAnswer(inv -> docContents.get(
                         inv.getArgument(0, DocumentDocument.class).getId()));
+    }
+
+    /** Echo answer matching the record count of the request — the worker contract. */
+    private Object echoAnswerFor(LightLlmRequest req, String tag) {
+        int marker = req.getUserPrompt().indexOf("in order)\n");
+        int count = marker < 0
+                ? 1
+                : (int) req.getUserPrompt()
+                        .substring(marker + "in order)\n".length())
+                        .lines()
+                        .count();
+        StringBuilder reply = new StringBuilder();
+        for (int i = 0; i < Math.max(count, 1); i++) {
+            if (i > 0) {
+                reply.append('\n');
+            }
+            reply.append(tag).append(i);
+        }
+        return new de.mhus.vance.brain.ai.light.LightLlmTextAnswer(
+                reply.toString(),
+                "openai:deepseek-v4-flash-0731",
+                new de.mhus.vance.brain.ai.light.LightLlmJsonAnswer.Usage(100, 200));
     }
 
     private void stubEchoWorker() {
@@ -631,6 +655,134 @@ class WowbaggerPoolServiceTest {
 
         waitFor(20_000, () -> !pool.isRunning(PROC_ID));
         assertThat(pendingNotes("heartbeat")).isNotEmpty();
+    }
+
+    @Test
+    void threadReductionMidRunRetiresBusyWorkersInsteadOfKillingThem() throws Exception {
+        // Regression shape of the first live run: the surplus-kill used
+        // Thread.interrupt(), which poisons every subsequent MongoDB operation
+        // on the interrupted thread ("Interrupted waiting for lock") — the
+        // worker died mid-chunk and its claim was lost from the wave. Now a
+        // reduction only sets the retire flag: the busy worker finishes its
+        // current chunk, commits, and exits cleanly at the next loop top.
+        List<String> records = new ArrayList<>();
+        for (int i = 1; i <= 20; i++) {
+            records.add("r" + i);
+        }
+        Files.write(tempDir.resolve("input.txt"), records, StandardCharsets.UTF_8);
+        WowbaggerState s = persistedState();
+        s.setChunkSize(2);
+        s.setThreadsDesired(2);
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put(
+                WowbaggerPoolService.ENGINE_STATE_KEY,
+                JsonMapper.builder().build().convertValue(s, Map.class));
+        process.setEngineParams(params);
+
+        AtomicInteger call = new AtomicInteger();
+        when(lightLlmService.callWithUsage(any(LightLlmRequest.class))).thenAnswer(inv -> {
+            Thread.sleep(25); // keep chunks in flight while the reduction lands
+            if (call.incrementAndGet() == 5) {
+                // Reduce while at least one other worker holds a chunk in the wave.
+                WowbaggerState live = pool.structure(PROC_ID);
+                live.setThreadsDesired(1);
+                pool.persistStructure(process, live);
+            }
+            return echoAnswerFor(inv.getArgument(0, LightLlmRequest.class), "out-");
+        });
+
+        pool.start(process);
+
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        WowbaggerState end = persistedState();
+        assertThat(end.isFinished()).as("state=%s", end).isTrue();
+        assertThat(end.getRecordsDone()).isEqualTo(20);
+        assertThat(end.getWave()).isEmpty();
+        assertThat(end.getFailedChunks()).isEmpty();
+    }
+
+    @Test
+    void orphanedWaveChunkIsRequeuedWhenItsWorkerDies() throws Exception {
+        // A worker dying mid-chunk (crash outside the per-chunk failure
+        // handling — an Error, not a RuntimeException) leaves its claim in
+        // the wave with no worker left. The runner tick must requeue it, so
+        // a respawned worker finishes the chunk and the run still completes.
+        List<String> records = new ArrayList<>();
+        for (int i = 1; i <= 6; i++) {
+            records.add("r" + i);
+        }
+        Files.write(tempDir.resolve("input.txt"), records, StandardCharsets.UTF_8);
+        WowbaggerState s = persistedState();
+        s.setChunkSize(2);
+        s.setThreadsDesired(1); // one worker → the crash leaves nobody behind
+        s.setChunkRetries(3);
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put(
+                WowbaggerPoolService.ENGINE_STATE_KEY,
+                JsonMapper.builder().build().convertValue(s, Map.class));
+        process.setEngineParams(params);
+
+        AtomicInteger call = new AtomicInteger();
+        when(lightLlmService.callWithUsage(any(LightLlmRequest.class))).thenAnswer(inv -> {
+            if (call.incrementAndGet() == 3) {
+                // Escapes workerLoop's RuntimeException handling — a hard crash.
+                throw new LinkageError("simulated worker death");
+            }
+            return echoAnswerFor(inv.getArgument(0, LightLlmRequest.class), "out-");
+        });
+
+        pool.start(process);
+
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        WowbaggerState end = persistedState();
+        assertThat(end.isFinished()).as("state=%s", end).isTrue();
+        // Chunks 0 and 1 committed directly; the orphaned chunk 2 was requeued
+        // with its attempt counted, then finished by the respawned worker.
+        assertThat(end.getRecordsDone()).isEqualTo(6);
+        assertThat(end.getWave()).isEmpty();
+        assertThat(end.getRetryQueue()).isEmpty();
+        assertThat(end.getFailedChunks()).isEmpty();
+        assertThat(end.getFailureCount()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void orphanedWaveChunkWithExhaustedBudgetLandsInTheFailureLedger() throws Exception {
+        // Same worker death, but the chunk has no retry budget left: the
+        // reconcile must park it for the agent instead of requeueing forever.
+        List<String> records = new ArrayList<>();
+        for (int i = 1; i <= 6; i++) {
+            records.add("r" + i);
+        }
+        Files.write(tempDir.resolve("input.txt"), records, StandardCharsets.UTF_8);
+        WowbaggerState s = persistedState();
+        s.setChunkSize(2);
+        s.setThreadsDesired(1);
+        s.setChunkRetries(0);
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put(
+                WowbaggerPoolService.ENGINE_STATE_KEY,
+                JsonMapper.builder().build().convertValue(s, Map.class));
+        process.setEngineParams(params);
+
+        when(lightLlmService.callWithUsage(any(LightLlmRequest.class))).thenAnswer(inv -> {
+            AtomicInteger calls = callCounter.computeIfAbsent("budget", k -> new AtomicInteger());
+            if (calls.incrementAndGet() == 3) {
+                throw new LinkageError("simulated worker death");
+            }
+            return echoAnswerFor(inv.getArgument(0, LightLlmRequest.class), "out-");
+        });
+
+        pool.start(process);
+
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        WowbaggerState end = persistedState();
+        assertThat(end.isFinished()).as("state=%s", end).isTrue();
+        // Chunks 0 and 1 committed; the orphaned chunk 2 failed into the ledger.
+        assertThat(end.getRecordsDone()).isEqualTo(4);
+        assertThat(end.getFailedChunks()).hasSize(1);
+        assertThat(end.getFailedChunks().get(0).getIndex()).isEqualTo(2);
+        assertThat(end.getRetryQueue()).isEmpty();
+        assertThat(end.getWave()).isEmpty();
     }
 
     @Test

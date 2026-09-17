@@ -121,7 +121,29 @@ public class WowbaggerPoolService {
         volatile boolean forceRun;
 
         final AtomicLong sequence = new AtomicLong();
-        final List<Thread> workers = new ArrayList<>();
+        final List<Worker> workers = new ArrayList<>();
+
+        /**
+         * A pool worker thread. Retirement is cooperative: a busy worker is
+         * NEVER interrupted — {@code Thread.interrupt()} poisons every
+         * subsequent MongoDB operation on that thread ("Interrupted waiting
+         * for lock"), so an interrupted worker dies mid-chunk with its claim
+         * stuck in the wave. Instead, a surplus or stopped worker sees
+         * {@link #retire} at the next loop top, finishes nothing further, and
+         * exits cleanly.
+         */
+        static final class Worker {
+            final Thread thread;
+            volatile boolean retire;
+
+            Worker(Thread thread) {
+                this.thread = thread;
+            }
+
+            boolean isAlive() {
+                return thread.isAlive();
+            }
+        }
 
         Handle(String processId) {
             this.processId = processId;
@@ -222,7 +244,7 @@ public class WowbaggerPoolService {
                         (int) ((state.getRecordsTotal() + state.getChunkSize() - 1) / state.getChunkSize()));
             }
             if (isBlank(state.getOutputDocPath())) {
-                state.setOutputDocPath(defaultResultPath(process));
+                state.setOutputDocPath(defaultResultPath(process, state.getOutputFormat()));
             }
             state.setFinished(false);
             handle.live = state;
@@ -250,7 +272,14 @@ public class WowbaggerPoolService {
         return view(handle);
     }
 
-    /** Stops the pool; threads drain their current chunk, then die. */
+    /**
+     * Stops the pool. Workers drain their current chunk (the in-flight worker
+     * call is already paid for — its chunk commits), see {@code stopRequested}
+     * at the next loop top and exit. No {@code interrupt()}: an interrupted
+     * thread poisons every subsequent MongoDB operation on it
+     * ("Interrupted waiting for lock"), so interrupting a busy worker would
+     * kill the chunk it is holding instead of draining it.
+     */
     public RunView stop(String processId) {
         Handle handle = runs.get(processId);
         if (handle == null) {
@@ -259,9 +288,6 @@ public class WowbaggerPoolService {
         synchronized (handle.lock) {
             handle.stopRequested = true;
             handle.running = false;
-            for (Thread w : handle.workers) {
-                w.interrupt();
-            }
         }
         return view(handle);
     }
@@ -376,10 +402,12 @@ public class WowbaggerPoolService {
                             !pointerAtEnd(state) || !state.getRetryQueue().isEmpty();
                 }
                 syncThreads(process, handle, state, workRemaining);
+                reconcileOrphanedWave(process, handle, state);
                 boolean drained;
                 synchronized (handle.lock) {
                     drained = pointerAtEnd(state)
                             && state.getRetryQueue().isEmpty()
+                            && state.getWave().isEmpty()
                             && activeWorkers(handle) == 0
                             && state.getRecordsTotal() >= 0;
                 }
@@ -406,24 +434,35 @@ public class WowbaggerPoolService {
         return state.getPointer() >= state.getRecordsTotal();
     }
 
-    /** Applies {@code threadsDesired}: spawns missing workers, interrupts surplus ones.
-     * Spawns only while work remains — a drained pool must not respawn zombies
-     * (they would keep the runner's drained check forever at active > 0). */
+    /**
+     * Applies {@code threadsDesired}: spawns missing workers, retires surplus
+     * ones. Spawns only while work remains — a drained pool must not respawn
+     * zombies (they would keep the runner's drained check forever at
+     * active > 0). Surplus workers are RETIRED, never interrupted: an
+     * interrupt poisons the thread's subsequent MongoDB operations, so it
+     * would die mid-chunk with its claim stuck in the wave (this is exactly
+     * how the first live run lost its last two chunks). A retired worker
+     * finishes its current chunk, sees {@code Worker#retire} at the next loop
+     * top and exits.
+     */
     private void syncThreads(ThinkProcessDocument process, Handle handle, WowbaggerState state, boolean workRemaining) {
         synchronized (handle.lock) {
             handle.workers.removeIf(w -> !w.isAlive());
             handle.threadsActive = handle.workers.size();
             int desired = workRemaining ? Math.max(0, state.getThreadsDesired()) : 0;
             while (handle.workers.size() < desired) {
-                Thread worker =
-                        new Thread(() -> workerLoop(process), "wowbagger-worker-" + handle.sequence.incrementAndGet());
-                worker.setDaemon(true);
+                final Handle.Worker[] holder = new Handle.Worker[1];
+                Thread thread = new Thread(
+                        () -> workerLoop(process, holder[0]), "wowbagger-worker-" + handle.sequence.incrementAndGet());
+                Handle.Worker worker = new Handle.Worker(thread);
+                holder[0] = worker;
+                thread.setDaemon(true);
                 handle.workers.add(worker);
-                worker.start();
+                thread.start();
             }
-            while (handle.workers.size() > desired) {
-                Thread surplus = handle.workers.remove(handle.workers.size() - 1);
-                surplus.interrupt();
+            // Retire from the end — the oldest workers keep their claims.
+            for (int i = handle.workers.size() - 1; i >= desired; i--) {
+                handle.workers.get(i).retire = true;
             }
         }
     }
@@ -434,14 +473,55 @@ public class WowbaggerPoolService {
     }
 
     /**
-     * One worker thread: rotates chunks until the stop flag or the interrupt
-     * (resize/suspend) arrives or the source is drained — the thread then dies
-     * by itself; the runner respawns it while desired > 0 and records remain.
+     * Self-heal for crashed workers: chunks claimed into the wave whose
+     * worker died (claim happened, commit never did) are requeued once no
+     * worker is left to finish them — the next tick sees work remaining,
+     * respawns workers and the chunks get another attempt. A chunk that has
+     * burned its retry budget too many times lands in the failure ledger for
+     * the agent instead, so a poison chunk cannot loop forever.
      */
-    private void workerLoop(ThinkProcessDocument process) {
+    private void reconcileOrphanedWave(ThinkProcessDocument process, Handle handle, WowbaggerState state) {
+        synchronized (handle.lock) {
+            if (state.getWave().isEmpty() || activeWorkers(handle) > 0) {
+                return;
+            }
+            boolean wake;
+            for (WowbaggerState.WaveChunk chunk : state.getWave()) {
+                chunk.setAttempts(chunk.getAttempts() + 1);
+                chunk.setLastError("worker lost before commit — requeued by the pool");
+                if (chunk.getAttempts() > Math.max(0, state.getChunkRetries())) {
+                    state.getFailedChunks().add(chunk);
+                    state.getCounters().setFailures(state.getCounters().getFailures() + 1);
+                    metricService
+                            .counter(METRIC_CHUNKS, "outcome", OUTCOME_FAILED)
+                            .increment();
+                } else {
+                    state.getRetryQueue().add(chunk);
+                }
+            }
+            state.setWave(new ArrayList<>());
+            state.setFailureCount(state.getFailureCount() + 1);
+            persist(process, state);
+            wake = failureWakeupDue(handle);
+            if (wake) {
+                wakeup(
+                        process,
+                        "orphaned chunk(s) requeued after a worker died — " + state.getFailureCount()
+                                + " failure(s) since your last ack");
+            }
+        }
+    }
+
+    /**
+     * One worker thread: rotates chunks until the stop flag or its retire flag
+     * (thread-count reduction) arrives or the source is drained — the thread
+     * then dies by itself; the runner respawns it while desired > 0 and
+     * records remain.
+     */
+    private void workerLoop(ThinkProcessDocument process, Handle.Worker self) {
         Handle handle = handle(process.getId());
         try {
-            while (!handle.stopRequested && !Thread.currentThread().isInterrupted()) {
+            while (!handle.stopRequested && !self.retire) {
                 Claim claim;
                 synchronized (handle.lock) {
                     claim = claimNext(process, handle.live);
@@ -455,16 +535,14 @@ public class WowbaggerPoolService {
                 }
             }
         } catch (RuntimeException e) {
+            // The chunk this worker was holding (if any) stays in the wave —
+            // the runner tick requeues wave orphans once no worker is left
+            // (see reconcileOrphanedWave). No phantom marker here: the crash
+            // did not necessarily happen on a chunk at all (it may have hit
+            // the post-commit persist, when the chunk is already done).
             log.warn("Wowbagger worker id='{}' crashed: {}", process.getId(), e.toString(), e);
             boolean wake;
             synchronized (handle.lock) {
-                WowbaggerState.WaveChunk marker = new WowbaggerState.WaveChunk();
-                marker.setIndex((int) (handle.live.getPointer() / Math.max(1, handle.live.getChunkSize())));
-                marker.setStartRecord(handle.live.getPointer());
-                marker.setRecordCount(0);
-                marker.setAttempts(handle.live.getChunkRetries());
-                marker.setLastError(describeError(e));
-                handle.live.getFailedChunks().add(marker);
                 handle.live.setFailureCount(handle.live.getFailureCount() + 1);
                 persist(process, handle.live);
                 wake = failureWakeupDue(handle);
@@ -1094,7 +1172,7 @@ public class WowbaggerPoolService {
                         e.toString());
             }
         }
-        String path = firstNonBlank(state.getOutputDocPath(), defaultResultPath(process));
+        String path = firstNonBlank(state.getOutputDocPath(), defaultResultPath(process, outputFormat(state)));
         String existing = documentService
                 .findByPath(process.getTenantId(), process.getProjectId(), path)
                 .map(DocumentDocument::getId)
@@ -1264,8 +1342,14 @@ public class WowbaggerPoolService {
         return "Chunk " + String.format("%06d", chunk.getIndex());
     }
 
-    String defaultResultPath(ThinkProcessDocument process) {
-        return RUN_FOLDER_PREFIX + "/" + process.getId() + "/result";
+    /**
+     * Default result document path, format-suffixed like the chunk docs
+     * ({@code result.jsonl} / {@code result.txt}) so the run folder is
+     * self-describing and the merge target matches the chunk naming.
+     */
+    String defaultResultPath(ThinkProcessDocument process, @Nullable String format) {
+        String suffix = FORMAT_JSONL.equals(firstNonBlank(format, FORMAT_JSONL)) ? ".jsonl" : ".txt";
+        return RUN_FOLDER_PREFIX + "/" + process.getId() + "/result" + suffix;
     }
 
     /**

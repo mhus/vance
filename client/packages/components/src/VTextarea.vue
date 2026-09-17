@@ -81,6 +81,16 @@ watch(
   { flush: 'post' },
 );
 onMounted(() => void nextTick(fitHeight));
+
+defineExpose({
+  /**
+   * The underlying `<textarea>` element. Lets hosts reach the native
+   * caret/selection APIs (`selectionStart`, `setSelectionRange`, …) —
+   * e.g. the chat composer's ArrowUp input-history overlay needs to know
+   * whether the caret sits in the first line before stealing the key.
+   */
+  fieldRef,
+});
 </script>
 
 <template>

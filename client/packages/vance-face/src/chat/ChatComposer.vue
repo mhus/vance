@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   type BrainWsApi,
@@ -43,6 +43,7 @@ import {
 import { VAlert, VButton, VDropdown, VRange, VTextarea } from '@components/index';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 import { matchTalkCommand, stripCommandTail } from './talkCommands';
+import { caretInFirstLine, pushHistoryEntry } from './composerHistory';
 
 /**
  * Mirrors {@code ChatApp.MediationState}. Non-null while the bound
@@ -217,6 +218,120 @@ function writeDraft(value: string): void {
     else window.sessionStorage.removeItem(key);
   } catch { /* quota / disabled — silently skip */ }
 }
+
+// ──────────────── Input history (ArrowUp overlay) ────────────────
+//
+// Terminal-style: ArrowUp with the caret in the first composer line opens
+// an overlay above the input listing what this user has sent in this chat,
+// newest at the bottom. Plain Enter inserts the selected entry into the
+// prompt (no send — the user may still edit), ESC / ArrowDown past the
+// newest entry / any other key / an outside click closes it. Entries hold
+// the user's raw text, captured before auto-AI rewriting — the history is
+// what was typed, not what went onto the wire.
+
+const HISTORY_STORAGE_PREFIX = 'vance.chat.composerHistory:';
+
+function historyStorageKey(): string | null {
+  return props.draftKey ? `${HISTORY_STORAGE_PREFIX}${props.draftKey}` : null;
+}
+
+/** Persisted per chat via localStorage (a history should outlive reloads, so
+ * sessionStorage is too short-lived). Without a {@code draftKey} the history
+ * stays in-memory only — the host opted out of persistence entirely. */
+function readHistory(): string[] {
+  const key = historyStorageKey();
+  if (!key) return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((e): e is string => typeof e === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function writeHistory(entries: string[]): void {
+  const key = historyStorageKey();
+  if (!key) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(entries));
+  } catch { /* quota / disabled — silently skip */ }
+}
+
+function recordHistoryEntry(text: string): void {
+  historyEntries.value = pushHistoryEntry(historyEntries.value, text);
+  writeHistory(historyEntries.value);
+}
+
+const historyEntries = ref<string[]>(readHistory());
+const historyOpen = ref(false);
+/** Selected overlay entry — index into {@link historyEntries} (0 = oldest). */
+const historyIndex = ref(0);
+const historyListRef = ref<HTMLElement | null>(null);
+const composerFieldRef = ref<InstanceType<typeof VTextarea> | null>(null);
+
+function composerTextarea(): HTMLTextAreaElement | null {
+  return composerFieldRef.value?.fieldRef ?? null;
+}
+
+function openHistory(): void {
+  if (historyEntries.value.length === 0) return;
+  historyOpen.value = true;
+  historyIndex.value = historyEntries.value.length - 1;
+  scrollHistorySelectionIntoView();
+}
+
+function closeHistory(): void {
+  historyOpen.value = false;
+}
+
+function moveHistorySelection(delta: number): void {
+  const next = historyIndex.value + delta;
+  if (next < 0 || next >= historyEntries.value.length) return;
+  historyIndex.value = next;
+  scrollHistorySelectionIntoView();
+}
+
+/** Replace the prompt with the picked entry and place the caret at its end. */
+function acceptHistoryEntry(index: number): void {
+  const entry = historyEntries.value[index];
+  if (entry === undefined) return;
+  composerText.value = entry;
+  closeHistory();
+  void nextTick(() => {
+    const el = composerTextarea();
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  });
+}
+
+/** Keep the selected entry in view — it can sit outside the overlay's
+ * scroll window after opening or a jump; {@code block: 'nearest'} scrolls
+ * the minimum needed. Runs after the DOM (re-)rendered the selection. */
+function scrollHistorySelectionIntoView(): void {
+  void nextTick(() => {
+    historyListRef.value
+      ?.querySelector<HTMLElement>('[data-history-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+/** Any pointerdown outside the overlay list closes it — clicking elsewhere
+ * in the composer (e.g. the send button) proceeds with its normal action. */
+function onHistoryGlobalPointerDown(event: PointerEvent): void {
+  const list = historyListRef.value;
+  if (list && event.target instanceof Node && !list.contains(event.target)) {
+    closeHistory();
+  }
+}
+
+watch(historyOpen, (open) => {
+  if (open) document.addEventListener('pointerdown', onHistoryGlobalPointerDown, true);
+  else document.removeEventListener('pointerdown', onHistoryGlobalPointerDown, true);
+});
 
 const composerText = ref(readDraft());
 /**
@@ -801,6 +916,10 @@ async function send(): Promise<void> {
   const filesSnapshot = selectedFiles.value.slice();
   const docsSnapshot = selectedDocs.value.slice();
 
+  // Input history — record the user's raw text before any interception
+  // branch clears the composer, terminal-style. Failed sends stay in the
+  // history too: re-picking the prompt with ArrowUp is the retry path.
+  if (text) recordHistoryEntry(text);
   // While bound to a worker via Eddie's MEDIATE handover, the user can
   // type {@code /hub} to bounce back to Eddie. We intercept it here
   // so the brain's MediationEndHandler picks up the control frame
@@ -1044,6 +1163,51 @@ function onComposerFocusOut(event: FocusEvent): void {
 }
 
 function onComposerKeydown(event: KeyboardEvent): void {
+  // Input-history overlay: while open, arrows browse, plain Enter inserts
+  // the picked entry, ESC closes. Any other key closes the overlay and
+  // falls through — the user never has to dismiss it before typing or
+  // sending.
+  if (historyOpen.value) {
+    const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+    if (event.key === 'ArrowUp' && plain) {
+      event.preventDefault();
+      moveHistorySelection(-1);
+      return;
+    }
+    if (event.key === 'ArrowDown' && plain) {
+      event.preventDefault();
+      if (historyIndex.value >= historyEntries.value.length - 1) {
+        closeHistory();
+      } else {
+        moveHistorySelection(1);
+      }
+      return;
+    }
+    if (event.key === 'Enter' && plain) {
+      event.preventDefault();
+      acceptHistoryEntry(historyIndex.value);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeHistory();
+      return;
+    }
+    closeHistory();
+    // fall through: the key still does its normal thing
+  }
+  // ArrowUp opens the overlay when the caret sits in the first composer
+  // line — there is no line above it, so claiming the key loses nothing.
+  if (event.key === 'ArrowUp'
+      && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+      && historyEntries.value.length > 0) {
+    const el = composerTextarea();
+    if (el && caretInFirstLine(el.value, el.selectionStart)) {
+      event.preventDefault();
+      openHistory();
+      return;
+    }
+  }
   // F4 — toggle auto-AI mode (see planning/multi-user-sessions.md §6).
   // Universal across browsers and platforms, no modifier needed, no
   // conflict with text-editing shortcuts.
@@ -1214,6 +1378,10 @@ onBeforeUnmount(() => {
     micRestartTimer = null;
   }
   clearTalkIdle();
+  // History-overlay global listener — the watch only fires on state
+  // changes, so an overlay that is still open at teardown needs an
+  // explicit removal here.
+  document.removeEventListener('pointerdown', onHistoryGlobalPointerDown, true);
   if (recognition && speechRecording.value) {
     try { recognition.stop(); } catch { /* already stopped */ }
   }
@@ -1302,8 +1470,36 @@ onBeforeUnmount(() => {
              bg-base-100 shadow-sm transition-shadow
              focus-within:border-primary focus-within:shadow-md"
     >
+      <!-- Input-history overlay (ArrowUp): newest entry at the bottom,
+           nearest to the input. Anchored to the composer card like the
+           compact tools popup. mousedown.prevent keeps the caret in the
+           textarea; the click handler then accepts the entry. -->
+      <div
+        v-if="historyOpen"
+        ref="historyListRef"
+        class="absolute left-0 right-0 bottom-full mb-2 z-40
+               max-h-72 overflow-y-auto py-1 rounded-xl
+               border border-base-300 bg-base-100 shadow-lg"
+      >
+        <div class="sticky top-0 z-10 bg-base-100 px-3 pt-1 pb-1 text-xs opacity-60 flex justify-between gap-2">
+          <span>{{ $t('chat.historyTitle') }}</span>
+          <span class="whitespace-nowrap">{{ $t('chat.historyHint') }}</span>
+        </div>
+        <button
+          v-for="(entry, idx) in historyEntries"
+          :key="idx"
+          type="button"
+          class="block w-full text-left px-3 py-1 text-sm font-mono whitespace-nowrap truncate hover:bg-base-200"
+          :class="idx === historyIndex ? 'bg-primary/10' : ''"
+          :title="entry"
+          :data-history-selected="idx === historyIndex ? 'true' : 'false'"
+          @mousedown.prevent
+          @click="acceptHistoryEntry(idx)"
+        >{{ entry }}</button>
+      </div>
       <div class="px-3 pt-1" @focusin="onComposerFocusIn" @focusout="onComposerFocusOut">
         <VTextarea
+          ref="composerFieldRef"
           v-model="composerText"
           :placeholder="composerPlaceholder"
           :rows="multiline ? 2 : 1"

@@ -587,6 +587,8 @@ export default {
     pauseTooltip: 'Pause the chat (and all workers in this session)',
     multilineToggleSingle: 'Switch to single-line input',
     multilineToggleMulti: 'Switch to multi-line input',
+    historyTitle: 'Input history',
+    historyHint: '↑/↓ browse · ⏎ insert · Esc close',
     failedToOpen: 'Failed to open WebSocket.',
     failedToResume: 'Failed to resume session.',
     failedToSend: 'Failed to send.',

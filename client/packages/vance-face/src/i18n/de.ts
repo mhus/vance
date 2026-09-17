@@ -587,6 +587,8 @@ export default {
     pauseTooltip: 'Den Chat pausieren (und alle Worker dieser Session)',
     multilineToggleSingle: 'Auf einzeilige Eingabe wechseln',
     multilineToggleMulti: 'Auf mehrzeilige Eingabe wechseln',
+    historyTitle: 'Eingabe-Verlauf',
+    historyHint: '↑/↓ wählen · ⏎ übernehmen · Esc schließen',
     failedToOpen: 'WebSocket-Verbindung konnte nicht geöffnet werden.',
     failedToResume: 'Session konnte nicht fortgesetzt werden.',
     failedToSend: 'Senden fehlgeschlagen.',

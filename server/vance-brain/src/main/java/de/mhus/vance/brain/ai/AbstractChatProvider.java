@@ -46,8 +46,7 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class AbstractChatProvider implements AiModelProvider {
 
-    private static final Logger TEMPLATE_LOG =
-            LoggerFactory.getLogger(AbstractChatProvider.class);
+    private static final Logger TEMPLATE_LOG = LoggerFactory.getLogger(AbstractChatProvider.class);
 
     protected final ModelCatalog modelCatalog;
     protected final LlmResponseSanitizer responseSanitizer;
@@ -80,17 +79,14 @@ public abstract class AbstractChatProvider implements AiModelProvider {
      * every attempt on the wire exactly once.
      */
     @Override
-    public final AiChat createChat(
-            AiChatConfig config, AiChatOptions options, CallAttribution attribution) {
+    public final AiChat createChat(AiChatConfig config, AiChatOptions options, CallAttribution attribution) {
         String wireName = getType().wireName();
         if (!wireName.equals(config.provider())) {
             throw new AiChatException(
-                    getClass().getSimpleName()
-                            + " received config for provider '" + config.provider() + "'");
+                    getClass().getSimpleName() + " received config for provider '" + config.provider() + "'");
         }
         ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                options.getTenantId(), options.getProjectId(),
-                config.providerInstance(), wireName, config.modelName());
+                options.getTenantId(), options.getProjectId(), config.providerInstance(), wireName, config.modelName());
         AiChatOptions gated = applyOptionGates(options, modelInfo);
         // Ensure an output-token cap is always present. When neither the
         // caller nor the recipe set maxTokens, fall back to the model's
@@ -103,18 +99,21 @@ public abstract class AbstractChatProvider implements AiModelProvider {
                         .maxTokens(modelInfo.effectiveMaxOutputTokens(null))
                         .build();
         effective = stripUnsupportedParams(effective, modelInfo);
-        MessageParser parser = messageParserRegistry
-                .get(modelInfo.messageParser())
-                .orElse(null);
+        MessageParser parser =
+                messageParserRegistry.get(modelInfo.messageParser()).orElse(null);
         if (parser == null && modelInfo.messageParser() != null) {
-            TEMPLATE_LOG.warn("Model '{}': messageParser='{}' has no registered bean — "
-                            + "passing responses through unchanged",
-                    modelInfo.modelName(), modelInfo.messageParser());
+            TEMPLATE_LOG.warn(
+                    "Model '{}': messageParser='{}' has no registered bean — " + "passing responses through unchanged",
+                    modelInfo.modelName(),
+                    modelInfo.messageParser());
         }
         try {
             BuiltChat built = withAccounting(
-                    mergeSystemMessages(buildModels(config, effective, modelInfo), modelInfo),
-                    attribution, modelInfo, config.providerInstance(), usageSink);
+                    withCacheAwareUsage(mergeSystemMessages(buildModels(config, effective, modelInfo), modelInfo)),
+                    attribution,
+                    modelInfo,
+                    config.providerInstance(),
+                    usageSink);
             return new StandardAiChat(
                     config.fullName(),
                     getType(),
@@ -130,10 +129,8 @@ public abstract class AbstractChatProvider implements AiModelProvider {
             // verbatim so call sites see the precise failure cause.
             throw e;
         } catch (RuntimeException e) {
-            TEMPLATE_LOG.debug("Provider '{}' failed for '{}': {}",
-                    wireName, config.fullName(), e.toString());
-            throw new AiChatException(
-                    "Failed to build " + wireName + " chat for " + config.fullName(), e);
+            TEMPLATE_LOG.debug("Provider '{}' failed for '{}': {}", wireName, config.fullName(), e.toString());
+            throw new AiChatException("Failed to build " + wireName + " chat for " + config.fullName(), e);
         }
     }
 
@@ -155,15 +152,35 @@ public abstract class AbstractChatProvider implements AiModelProvider {
             String providerInstance,
             UsageSink sink) {
         return new BuiltChat(
-                new UsageAccountingChatModel(
-                        built.sync(), attribution, modelInfo, providerInstance, sink),
+                new UsageAccountingChatModel(built.sync(), attribution, modelInfo, providerInstance, sink),
                 built.streaming() == null
                         ? null
                         : new UsageAccountingStreamingChatModel(
-                                built.streaming(), attribution, modelInfo,
-                                providerInstance, sink));
+                                built.streaming(), attribution, modelInfo, providerInstance, sink));
     }
 
+    /**
+     * Wraps the built pair so prompt-cache counters survive into the layers
+     * above. langchain4j's OpenAI and Gemini usage classes carry cached
+     * tokens in provider-specific fields that no {@code instanceof
+     * CacheAwareTokenUsage} check sees — this decorator normalizes them
+     * innermost, below accounting, so the ledger, the trace log and the
+     * progress feed all read the same adjusted numbers.
+     *
+     * <p>Applied unconditionally and a no-op per response:
+     * {@link CacheAwareTokenUsageAdapter} leaves usages untouched that
+     * carry nothing cached — including the Anthropic wire, which already
+     * speaks the marker interface, and every backend whose usage class has
+     * no cache fields at all (Ollama, LM Studio, …).
+     *
+     * @see CacheAwareUsageChatModel
+     * @see CacheAwareTokenUsageAdapter
+     */
+    static BuiltChat withCacheAwareUsage(BuiltChat built) {
+        return new BuiltChat(
+                new CacheAwareUsageChatModel(built.sync()),
+                built.streaming() == null ? null : new CacheAwareUsageStreamingChatModel(built.streaming()));
+    }
     /**
      * Wraps the built pair so consecutive system messages are collapsed
      * before they go on the wire — for models whose catalog entry asks
@@ -186,9 +203,7 @@ public abstract class AbstractChatProvider implements AiModelProvider {
         }
         return new BuiltChat(
                 new SystemMessageMergingChatModel(built.sync()),
-                built.streaming() == null
-                        ? null
-                        : new SystemMessageMergingStreamingChatModel(built.streaming()));
+                built.streaming() == null ? null : new SystemMessageMergingStreamingChatModel(built.streaming()));
     }
 
     /**
@@ -203,8 +218,7 @@ public abstract class AbstractChatProvider implements AiModelProvider {
      * field is a fact about the model, and the same model can arrive
      * through more than one backend.
      */
-    static AiChatOptions stripUnsupportedParams(
-            AiChatOptions options, ModelInfo modelInfo) {
+    static AiChatOptions stripUnsupportedParams(AiChatOptions options, ModelInfo modelInfo) {
         Set<SamplingParam> unsupported = modelInfo.unsupportedParams();
         if (unsupported.isEmpty()) {
             return options;
@@ -212,29 +226,31 @@ public abstract class AbstractChatProvider implements AiModelProvider {
         AiChatOptions.AiChatOptionsBuilder builder = options.toBuilder();
         List<String> dropped = new ArrayList<>(unsupported.size());
         for (SamplingParam param : unsupported) {
-            boolean wasSet = switch (param) {
-                case TEMPERATURE -> clear(options.getTemperature(), builder::temperature);
-                case TOP_P -> clear(options.getTopP(), builder::topP);
-                case TOP_K -> clear(options.getTopK(), builder::topK);
-                case FREQUENCY_PENALTY ->
-                        clear(options.getFrequencyPenalty(), builder::frequencyPenalty);
-                case PRESENCE_PENALTY ->
-                        clear(options.getPresencePenalty(), builder::presencePenalty);
-                case SEED -> clear(options.getSeed(), builder::seed);
-                case STOP_SEQUENCES -> {
-                    List<String> stops = options.getStopSequences();
-                    boolean present = stops != null && !stops.isEmpty();
-                    builder.stopSequences(null);
-                    yield present;
-                }
-            };
+            boolean wasSet =
+                    switch (param) {
+                        case TEMPERATURE -> clear(options.getTemperature(), builder::temperature);
+                        case TOP_P -> clear(options.getTopP(), builder::topP);
+                        case TOP_K -> clear(options.getTopK(), builder::topK);
+                        case FREQUENCY_PENALTY -> clear(options.getFrequencyPenalty(), builder::frequencyPenalty);
+                        case PRESENCE_PENALTY -> clear(options.getPresencePenalty(), builder::presencePenalty);
+                        case SEED -> clear(options.getSeed(), builder::seed);
+                        case STOP_SEQUENCES -> {
+                            List<String> stops = options.getStopSequences();
+                            boolean present = stops != null && !stops.isEmpty();
+                            builder.stopSequences(null);
+                            yield present;
+                        }
+                    };
             if (wasSet) {
                 dropped.add(param.wireName());
             }
         }
         if (!dropped.isEmpty()) {
-            TEMPLATE_LOG.debug("Model '{}/{}' does not accept {} — dropped from this call",
-                    modelInfo.provider(), modelInfo.modelName(), dropped);
+            TEMPLATE_LOG.debug(
+                    "Model '{}/{}' does not accept {} — dropped from this call",
+                    modelInfo.provider(),
+                    modelInfo.modelName(),
+                    dropped);
         }
         return builder.build();
     }
@@ -251,10 +267,7 @@ public abstract class AbstractChatProvider implements AiModelProvider {
      * so subclasses can throw {@link RuntimeException} and the
      * template wraps it into {@link AiChatException}.
      */
-    protected abstract BuiltChat buildModels(
-            AiChatConfig config,
-            AiChatOptions effective,
-            ModelInfo modelInfo);
+    protected abstract BuiltChat buildModels(AiChatConfig config, AiChatOptions effective, ModelInfo modelInfo);
 
     /**
      * Optional hook for provider-specific option transformation

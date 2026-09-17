@@ -165,6 +165,11 @@ class WowbaggerPoolServiceTest {
                         anyString(), anyString(), anyString(), any(), any(), anyString(), any(), any()))
                 .thenAnswer(inv -> {
                     String path = inv.getArgument(2, String.class);
+                    if (docsByPath.containsKey(path)) {
+                        // Mirror the real service: the path is taken (force
+                        // overwrites via update, resumes adopt).
+                        throw new DocumentService.DocumentAlreadyExistsException("Document already exists: " + path);
+                    }
                     DocumentDocument doc = new DocumentDocument();
                     doc.setId("doc-" + path);
                     doc.setPath(path);
@@ -180,7 +185,7 @@ class WowbaggerPoolServiceTest {
 
     private void stubEchoWorker() {
         AtomicInteger call = new AtomicInteger();
-        when(lightLlmService.call(any(LightLlmRequest.class))).thenAnswer(inv -> {
+        when(lightLlmService.callWithUsage(any(LightLlmRequest.class))).thenAnswer(inv -> {
             LightLlmRequest req = inv.getArgument(0);
             String prompt = req.getUserPrompt();
             int marker = prompt.indexOf("in order)\n");
@@ -196,7 +201,10 @@ class WowbaggerPoolServiceTest {
                 }
                 reply.append("out-").append(call.incrementAndGet());
             }
-            return reply.toString();
+            return new de.mhus.vance.brain.ai.light.LightLlmTextAnswer(
+                    reply.toString(),
+                    "openai:deepseek-v4-flash-0731",
+                    new de.mhus.vance.brain.ai.light.LightLlmJsonAnswer.Usage(100, 200));
         });
     }
 
@@ -230,7 +238,7 @@ class WowbaggerPoolServiceTest {
 
     @Test
     void exhaustedRetriesLandInTheFailureLedgerWithCooldownWakeups() throws IOException {
-        when(lightLlmService.call(any(LightLlmRequest.class)))
+        when(lightLlmService.callWithUsage(any(LightLlmRequest.class)))
                 .thenThrow(new de.mhus.vance.brain.ai.light.LightLlmException("provider down"));
 
         pool.start(process);
@@ -251,7 +259,7 @@ class WowbaggerPoolServiceTest {
 
     @Test
     void reRunFailedRequeuesWithFreshBudgetAndResetsTheCounter() throws IOException {
-        when(lightLlmService.call(any(LightLlmRequest.class)))
+        when(lightLlmService.callWithUsage(any(LightLlmRequest.class)))
                 .thenThrow(new de.mhus.vance.brain.ai.light.LightLlmException("provider down"));
         pool.start(process);
         waitFor(20_000, () -> !pool.isRunning(PROC_ID));
@@ -322,9 +330,48 @@ class WowbaggerPoolServiceTest {
         waitFor(20_000, () -> !pool.isRunning(PROC_ID));
 
         var captor = org.mockito.ArgumentCaptor.forClass(de.mhus.vance.brain.ai.light.LightLlmRequest.class);
-        verify(lightLlmService, org.mockito.Mockito.atLeastOnce()).call(captor.capture());
+        verify(lightLlmService, org.mockito.Mockito.atLeastOnce()).callWithUsage(captor.capture());
         assertThat(captor.getAllValues())
                 .allSatisfy(req -> assertThat(req.getMaxTokens()).isEqualTo(12345));
+        pool.stop(PROC_ID);
+    }
+
+    @Test
+    void tokenCountersAccumulateAcrossWorkerCalls() throws IOException {
+        stubEchoWorker();
+        pool.start(process);
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+
+        WowbaggerState s = persistedState();
+        // 3 chunks x (100 in / 200 out) tokens per answered call.
+        assertThat(s.getCounters().getTokensIn()).isEqualTo(300);
+        assertThat(s.getCounters().getTokensOut()).isEqualTo(600);
+        assertThat(s.getCounters().getWorkerCalls()).isEqualTo(3);
+        pool.stop(PROC_ID);
+    }
+
+    @Test
+    void forceReRunResetsAndOverwritesPublishedChunks() throws IOException {
+        stubEchoWorker();
+        pool.start(process);
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        assertThat(persistedState().getRecordsDone()).isEqualTo(5);
+        assertThat(persistedState().getCounters().getTokensIn()).isEqualTo(300);
+
+        // Force: pointer/done/counters reset, published chunk docs overwritten.
+        pool.start(process, true);
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+
+        WowbaggerState s = persistedState();
+        assertThat(s.getRecordsDone()).isEqualTo(5);
+        assertThat(s.getPointer()).isEqualTo(5);
+        assertThat(s.getFailureCount()).isZero();
+        // Counters were reset, then 3 fresh calls re-accumulated.
+        assertThat(s.getCounters().getTokensIn()).isEqualTo(300);
+        assertThat(s.getCounters().getWorkerCalls()).isEqualTo(3);
+        // 3 chunk docs OVERWRITTEN on the second pass (createText threw, update
+        // ran) + the merged result doc refreshed once = 4 updates total.
+        verify(documentService, org.mockito.Mockito.times(4)).update(any(), any(), any(), any(), any(), any());
         pool.stop(PROC_ID);
     }
 
@@ -400,7 +447,7 @@ class WowbaggerPoolServiceTest {
         // progress wakeups off, the runner's 1s tick must fire a heartbeat
         // while chunk 3 is still in flight (the drained check would end the run).
         AtomicInteger slow = new AtomicInteger();
-        when(lightLlmService.call(any(LightLlmRequest.class))).thenAnswer(inv -> {
+        when(lightLlmService.callWithUsage(any(LightLlmRequest.class))).thenAnswer(inv -> {
             Thread.sleep(350);
             LightLlmRequest req = inv.getArgument(0);
             int count = (int) req.getUserPrompt()
@@ -414,7 +461,10 @@ class WowbaggerPoolServiceTest {
                 }
                 reply.append("out-").append(slow.incrementAndGet());
             }
-            return reply.toString();
+            return new de.mhus.vance.brain.ai.light.LightLlmTextAnswer(
+                    reply.toString(),
+                    "openai:deepseek-v4-flash-0731",
+                    new de.mhus.vance.brain.ai.light.LightLlmJsonAnswer.Usage(100, 200));
         });
 
         WowbaggerState s = persistedState();

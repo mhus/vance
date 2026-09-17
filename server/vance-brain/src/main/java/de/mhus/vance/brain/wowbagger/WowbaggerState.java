@@ -158,5 +158,11 @@ public class WowbaggerState {
         private long failures;
 
         private long controllerTokens;
+
+        /** Input tokens of answered worker calls — the run's cost report. */
+        private long tokensIn;
+
+        /** Output tokens of answered worker calls. */
+        private long tokensOut;
     }
 }

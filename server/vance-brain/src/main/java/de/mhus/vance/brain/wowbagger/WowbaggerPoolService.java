@@ -116,6 +116,8 @@ public class WowbaggerPoolService {
         volatile long lastWakeupAtMs;
         /** Last failure wakeup — the failure-cooldown base. */
         volatile long lastFailureWakeupAtMs;
+        /** Force re-run: workers overwrite published chunk docs instead of adopting. */
+        volatile boolean forceRun;
 
         final AtomicLong sequence = new AtomicLong();
         final List<Thread> workers = new ArrayList<>();
@@ -172,6 +174,17 @@ public class WowbaggerPoolService {
      * source once and spawns the runner. Sends the start wakeup.
      */
     public RunView start(ThinkProcessDocument process) throws IOException {
+        return start(process, false);
+    }
+
+    /**
+     * {@code force} re-processes the WHOLE source from record 0: pointer,
+     * done counters, wave and failure ledger are reset, published chunk docs
+     * are overwritten as chunks re-commit. For re-runs with a changed task
+     * or worker model; the targeted-repair variant stays
+     * {@code wowbagger_start reRunFailed}.
+     */
+    public RunView start(ThinkProcessDocument process, boolean force) throws IOException {
         Handle handle = handle(process.getId());
         synchronized (handle.lock) {
             if (handle.running) {
@@ -179,7 +192,24 @@ public class WowbaggerPoolService {
             }
             WowbaggerState state = loadState(process);
             ensureWorkRoot(process, state);
-            reconcileWave(process, state);
+            if (force) {
+                state.setPointer(0);
+                state.setRecordsDone(0);
+                state.setRecordsTotal(-1); // re-measure — the source may have changed
+                state.setChunksTotal(-1);
+                state.getWave().clear();
+                state.getRetryQueue().clear();
+                state.getFailedChunks().clear();
+                state.setFailureCount(0);
+                state.getCounters().setWorkerCalls(0);
+                state.getCounters().setRetries(0);
+                state.getCounters().setFailures(0);
+                state.getCounters().setTokensIn(0);
+                state.getCounters().setTokensOut(0);
+                log.info("Wowbagger pool id='{}' force re-run — full restart from record 0", process.getId());
+            } else {
+                reconcileWave(process, state);
+            }
             if (state.getRecordsTotal() < 0 && !isBlank(state.getSourcePath())) {
                 Path source = resolveSource(process, state);
                 state.setRecordsTotal(countLines(source));
@@ -193,6 +223,7 @@ public class WowbaggerPoolService {
             handle.live = state;
             handle.stopRequested = false;
             handle.runError = null;
+            handle.forceRun = force;
             // Cost gate (§ Model approval): the worker model must be on the
             // operator's allowlist before a single record is processed — and
             // before `running` flips true, so a refusal leaves the pool idle.
@@ -823,6 +854,7 @@ public class WowbaggerPoolService {
      * structure finished and sends the finish wakeup.
      */
     private void finish(ThinkProcessDocument process, Handle handle, WowbaggerState state) {
+        handle.forceRun = false;
         synchronized (handle.lock) {
             if (!state.isFinished()) {
                 mergeResults(process, state);
@@ -835,7 +867,9 @@ public class WowbaggerPoolService {
                 process,
                 "run finished — " + state.getRecordsDone() + " of " + state.getRecordsTotal()
                         + " records committed, " + state.getCounters().getFailures()
-                        + " failed chunk(s), merged result at `"
+                        + " failed chunk(s), " + state.getCounters().getTokensIn() + " in / "
+                        + state.getCounters().getTokensOut() + " out tokens across "
+                        + state.getCounters().getWorkerCalls() + " worker calls, merged result at `"
                         + state.getOutputDocPath() + "`");
     }
 
@@ -907,15 +941,30 @@ public class WowbaggerPoolService {
                 .append(String.join("\n", records));
         metricService.counter(METRIC_LLM_CALLS).increment();
         state.getCounters().setWorkerCalls(state.getCounters().getWorkerCalls() + 1);
-        String reply = lightLlmService.call(LightLlmRequest.builder()
-                .recipeName(firstNonBlank(state.getWorkerRecipe(), DEFAULT_WORKER_RECIPE))
-                .maxTokens(state.getMaxTokens() != null && state.getMaxTokens() > 0 ? state.getMaxTokens() : null)
-                .userPrompt(prompt.toString())
-                .tenantId(process.getTenantId())
-                .projectId(process.getProjectId())
-                .processId(process.getId())
-                .build());
-        return validateWorkerReply(reply, records.size(), FORMAT_JSONL.equals(outputFormat(state)), objectMapper);
+        de.mhus.vance.brain.ai.light.LightLlmTextAnswer answered =
+                lightLlmService.callWithUsage(LightLlmRequest.builder()
+                        .recipeName(firstNonBlank(state.getWorkerRecipe(), DEFAULT_WORKER_RECIPE))
+                        .maxTokens(
+                                state.getMaxTokens() != null && state.getMaxTokens() > 0 ? state.getMaxTokens() : null)
+                        .userPrompt(prompt.toString())
+                        .tenantId(process.getTenantId())
+                        .projectId(process.getProjectId())
+                        .processId(process.getId())
+                        .build());
+        if (answered.usage() != null) {
+            if (answered.usage().inputTokens() != null) {
+                state.getCounters()
+                        .setTokensIn(state.getCounters().getTokensIn()
+                                + answered.usage().inputTokens());
+            }
+            if (answered.usage().outputTokens() != null) {
+                state.getCounters()
+                        .setTokensOut(state.getCounters().getTokensOut()
+                                + answered.usage().outputTokens());
+            }
+        }
+        return validateWorkerReply(
+                answered.text(), records.size(), FORMAT_JSONL.equals(outputFormat(state)), objectMapper);
     }
 
     /** Validates a worker reply: one output line per record; JSONL per line an object. */
@@ -964,7 +1013,25 @@ public class WowbaggerPoolService {
                     "wowbagger:" + process.getId(),
                     de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         } catch (DocumentAlreadyExistsException e) {
-            log.debug("Wowbagger pool id='{}' adopting existing chunk doc '{}'", process.getId(), path);
+            if (handle(process.getId()).forceRun) {
+                // Force re-run: the published doc holds the OLD result — overwrite.
+                documentService
+                        .findByPath(process.getTenantId(), process.getProjectId(), path)
+                        .ifPresentOrElse(
+                                doc -> documentService.update(
+                                        doc.getId(),
+                                        chunkTitle(chunk),
+                                        null,
+                                        content,
+                                        null,
+                                        de.mhus.vance.shared.permission.WriteActor.SYSTEM),
+                                () -> log.warn(
+                                        "Wowbagger pool id='{}' force overwrite: chunk doc '{}' vanished",
+                                        process.getId(),
+                                        path));
+            } else {
+                log.debug("Wowbagger pool id='{}' adopting existing chunk doc '{}'", process.getId(), path);
+            }
         }
     }
 

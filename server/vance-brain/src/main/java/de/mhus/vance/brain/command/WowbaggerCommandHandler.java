@@ -172,6 +172,13 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
                 .append("s, failure cooldown ")
                 .append(Math.max(0, s.getFailureCooldownSeconds()))
                 .append("s");
+        msg.append("\nCost: ")
+                .append(s.getCounters().getTokensIn())
+                .append(" in / ")
+                .append(s.getCounters().getTokensOut())
+                .append(" out tokens across ")
+                .append(s.getCounters().getWorkerCalls())
+                .append(" worker calls");
         msg.append("\nFailures: ")
                 .append(s.getFailedChunks().size())
                 .append(" failed chunk(s), ")
@@ -231,6 +238,9 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
         value.put("wakeEverySeconds", s.getWakeEverySeconds());
         value.put("failureCooldownSeconds", s.getFailureCooldownSeconds());
         value.put("failureCount", s.getFailureCount());
+        value.put("workerCalls", s.getCounters().getWorkerCalls());
+        value.put("tokensIn", s.getCounters().getTokensIn());
+        value.put("tokensOut", s.getCounters().getTokensOut());
         List<Map<String, Object>> failed = new ArrayList<>();
         for (WowbaggerState.WaveChunk fc : s.getFailedChunks()) {
             Map<String, Object> entry = new LinkedHashMap<>();

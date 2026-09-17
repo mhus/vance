@@ -69,6 +69,9 @@ public class WowbaggerStatusTool extends WowbaggerBaseTool {
         out.put("recordsTotal", s.getRecordsTotal());
         out.put("chunksTotal", s.getChunksTotal());
         out.put("retries", s.getCounters().getRetries());
+        out.put("workerCalls", s.getCounters().getWorkerCalls());
+        out.put("tokensIn", s.getCounters().getTokensIn());
+        out.put("tokensOut", s.getCounters().getTokensOut());
         out.put("failedChunks", s.getFailedChunks());
         out.put("wakeEveryRecords", s.getWakeEveryRecords());
         out.put("wakeEverySeconds", s.getWakeEverySeconds());

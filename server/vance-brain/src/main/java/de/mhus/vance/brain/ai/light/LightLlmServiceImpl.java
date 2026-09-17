@@ -84,12 +84,17 @@ public class LightLlmServiceImpl implements LightLlmService {
 
     @Override
     public String call(LightLlmRequest req) {
+        return callWithUsage(req).text();
+    }
+
+    @Override
+    public LightLlmTextAnswer callWithUsage(LightLlmRequest req) {
         long startNanos = System.nanoTime();
         String recipeName = req == null ? "unknown" : nullToUnknown(req.getRecipeName());
         String outcome = OUTCOME_LLM_ERROR;
         try {
             checkEnabled(req);
-            String result = doCall(req);
+            LightLlmTextAnswer result = doCall(req);
             outcome = OUTCOME_SUCCESS;
             return result;
         } catch (LightLlmException e) {
@@ -126,22 +131,24 @@ public class LightLlmServiceImpl implements LightLlmService {
         }
     }
 
-    private String doCall(LightLlmRequest req) {
+    private LightLlmTextAnswer doCall(LightLlmRequest req) {
         validateRequest(req);
         ResolvedRecipe recipe = resolveInternalRecipe(req);
         String systemPrompt = renderSystemPrompt(recipe, req);
-        ChatModel chatModel = buildChatModel(recipe, req);
+        BuiltChat built = buildChat(recipe, req);
 
         ChatResponse response;
         try {
-            response = chatModel.chat(ChatRequest.builder()
-                    .messages(List.of(SystemMessage.from(systemPrompt), UserMessage.from(req.getUserPrompt())))
-                    .build());
+            response = built.model()
+                    .chat(ChatRequest.builder()
+                            .messages(List.of(SystemMessage.from(systemPrompt), UserMessage.from(req.getUserPrompt())))
+                            .build());
         } catch (RuntimeException e) {
             throw new LightLlmException("LLM call failed: " + e.getMessage(), e);
         }
         AiMessage reply = response.aiMessage();
-        return reply != null && reply.text() != null ? reply.text() : "";
+        String text = reply != null && reply.text() != null ? reply.text() : "";
+        return new LightLlmTextAnswer(text, built.modelName(), built.lastUsage().get());
     }
 
     private LightLlmJsonAnswer doCallForJson(LightLlmRequest req) {
@@ -314,10 +321,6 @@ public class LightLlmServiceImpl implements LightLlmService {
             String reported = answered.get();
             return reported != null ? reported : primaryName;
         }
-    }
-
-    private ChatModel buildChatModel(ResolvedRecipe recipe, LightLlmRequest req) {
-        return buildChat(recipe, req).model();
     }
 
     private BuiltChat buildChat(ResolvedRecipe recipe, LightLlmRequest req) {

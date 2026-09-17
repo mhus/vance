@@ -31,6 +31,14 @@ public interface LightLlmService {
     String call(LightLlmRequest request);
 
     /**
+     * Raw single-shot call with cost telemetry: the reply text, the model
+     * that actually answered (fallbacks name themselves) and its token
+     * usage. Same path as {@link #call} — the plain call simply discards
+     * the metadata. For engines that meter per-call cost (bulk workers).
+     */
+    LightLlmTextAnswer callWithUsage(LightLlmRequest request);
+
+    /**
      * Schema-validated single-shot call. Returns the parsed JSON
      * object (as {@code Map<String, Object>}).
      *

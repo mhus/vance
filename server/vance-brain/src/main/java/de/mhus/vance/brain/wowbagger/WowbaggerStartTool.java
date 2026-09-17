@@ -31,7 +31,15 @@ public class WowbaggerStartTool extends WowbaggerBaseTool {
                                     "boolean",
                                     "description",
                                     "Re-queue the failed chunks before starting (retryFailed). Ignored "
-                                            + "when there are none.")),
+                                            + "when there are none."),
+                            "force",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Re-process the WHOLE source from record 0, overwriting "
+                                            + "published chunk docs (task/model changed). Mutually "
+                                            + "exclusive with reRunFailed.")),
             "required", java.util.List.of());
 
     @Override
@@ -71,12 +79,17 @@ public class WowbaggerStartTool extends WowbaggerBaseTool {
             throw new ToolException("cannot start — the structure is incomplete:\n" + problems);
         }
         boolean reRunFailed = booleanParam(params, "reRunFailed", false);
+        boolean force = booleanParam(params, "force", false);
+        if (reRunFailed && force) {
+            throw new ToolException("reRunFailed and force are mutually exclusive — reRunFailed repairs the "
+                    + "failure ledger, force re-processes the whole source from record 0");
+        }
         WowbaggerPoolService.RunView view;
         try {
             if (reRunFailed) {
                 view = pool.reRunFailed(process);
             } else {
-                view = pool.start(process);
+                view = pool.start(process, force);
             }
         } catch (java.io.IOException e) {
             throw new ToolException("cannot start: " + e.getMessage(), e);

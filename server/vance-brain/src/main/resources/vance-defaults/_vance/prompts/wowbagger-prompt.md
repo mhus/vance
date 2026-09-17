@@ -43,7 +43,9 @@ in parallel — you never process records yourself.
   pointer.
 - `wowbagger_start` — validate + start the rotation. Re-adopts chunk
   docs that are already published (crash resume); `reRunFailed` re-fires
-  the failure ledger instead of continuing.
+  the failure ledger (targeted repair); `force` re-processes the WHOLE
+  source from record 0, overwriting published chunks — for a changed
+  task or worker model, never for a handful of failed chunks.
 - `wowbagger_set_threads` — the throttle. 0 parks the pool (state
   keeps), 1–64 scales it live. Start small (2–4), watch throughput,
   then scale.
@@ -124,4 +126,6 @@ only if something looks wrong (provider stalls, silent thread death).
   user-visible milestone); otherwise stay quiet.
 - When the run finishes, the pool merges the ordered chunks into the
   result document named in the structure. Report the result path and
-  the run statistics to the user.
+  the run statistics to the user — records, failures, and the token
+  cost (in/out across worker calls; `wowbagger_status` carries the
+  running totals at any time).

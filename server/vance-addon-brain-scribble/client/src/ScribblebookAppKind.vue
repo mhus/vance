@@ -229,30 +229,45 @@ async function rebuild(): Promise<void> {
 function toggleEnabled(): void {
   const next = !activeEnabled.value;
   activeEnabled.value = next;
+  setLocalFlag(activePath.value, { enabled: next });
   editorRef.value?.applyFlag({ enabled: next });
 }
 
 /**
  * Only one sheet per book carries the default flag — setting a new one
- * clears the old (plan §2.2, client-side). A stale second default is
- * cosmetic: the start pick tolerates it, scan order wins.
+ * clears the old (plan §2.2, client-side). The scan mirror in `pages` is
+ * stale after the first star (it dates from the last scan), so the local
+ * entries are written along: the next toggle sees the previous default,
+ * and the menu/star visuals stay true without a re-scan. A stale second
+ * default from a lost race is cosmetic — the start pick tolerates it.
  */
 async function toggleDefault(): Promise<void> {
   const next = !activeDefault.value;
-  if (next) await clearOtherDefault();
+  if (next) {
+    const prev = pages.value.find((p) => p.defaultSheet && p.path !== activePath.value);
+    if (prev) {
+      await clearDefaultFlag(prev.path);
+      setLocalFlag(prev.path, { defaultSheet: false });
+    }
+  }
   activeDefault.value = next;
+  setLocalFlag(activePath.value, { defaultSheet: next });
   editorRef.value?.applyFlag({ defaultSheet: next });
 }
 
-async function clearOtherDefault(): Promise<void> {
-  const prev = pages.value.find((p) => p.defaultSheet && p.path !== activePath.value);
-  if (!prev) return;
+async function clearDefaultFlag(path: string): Promise<void> {
   try {
-    const prevSheet = await getSheet(props.document.projectId, prev.path);
-    await putSheet(props.document.projectId, prev.path, { ...prevSheet.sheet, defaultSheet: false });
+    const prevSheet = await getSheet(props.document.projectId, path);
+    await putSheet(props.document.projectId, path, { ...prevSheet.sheet, defaultSheet: false });
   } catch {
     /* keep going — see toggleDefault */
   }
+}
+
+function setLocalFlag(path: string | null, patch: { enabled?: boolean; defaultSheet?: boolean }): void {
+  if (!path) return;
+  const page = view.value?.pages.find((p) => p.path === path);
+  if (page) Object.assign(page, patch);
 }
 // ── Live document updates (documents channel) ─────────────────
 // A sheet is a document, so remote saves fire `documents.changed`. Reload

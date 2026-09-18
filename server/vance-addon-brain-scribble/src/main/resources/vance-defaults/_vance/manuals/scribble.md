@@ -60,5 +60,5 @@ ordered array; erasing removes strokes, it never edits points in place.
 The web editor (tablet: Safari or the Facelift shell) is the authoring
 surface; it saves debounced as a whole sheet over the addon REST API.
 Standalone sheets are editable directly — there is no read-only view of a
-scribble. A multi-sheet notebook container (`app: scribblebook`) follows in
-a later PR.
+scribble. Several sheets grouped as a notebook live in an `app: scribblebook`
+container (see `manual_read('app-scribblebook')`).

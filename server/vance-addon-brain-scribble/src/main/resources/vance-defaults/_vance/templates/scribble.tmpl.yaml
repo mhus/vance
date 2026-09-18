@@ -1,0 +1,6 @@
+$meta:
+  kind: scribble
+title: "{{ title }}"
+scribble:
+  size: {w: 1240, h: 1754}    # A4 portrait @150dpi — strokes carry [[x, y, pressure]]
+  strokes: []

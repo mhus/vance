@@ -1,0 +1,15 @@
+title:       { de: "Handschrift-Blatt", en: "Handwriting sheet" }
+description: { de: "Ein Blatt für die Handschrift mit dem Stift — Notizen, Skizzen, Kritzeleien. Öffnet direkt den Zeichen-Editor.",
+               en: "A sheet for handwriting with the stylus — notes, sketches, scribbles. Opens the pen editor right away." }
+icon: pencil
+tags: [scribble, note]
+
+name:
+  mode: free
+  default: "notiz-{{ date }}"
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel", en: "Title" }

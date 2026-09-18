@@ -1,0 +1,22 @@
+title:       { de: "Notizbuch", en: "Notebook" }
+description: { de: "Ein neues Scribblebook — Sammlung handschriftlicher Blätter. Blätter fügst du danach im Editor hinzu.",
+               en: "A new scribblebook — a collection of handwritten sheets. Add sheets afterwards in the editor." }
+icon: pencil
+tags: [app, scribble]
+
+# `app:` routes this template through ScribblebookApplication.create — the same
+# entry point scribblebook_app_create uses — so the surface way and the tool way
+# produce the same folder. The folder is chosen by the user; sheets
+# (*.scribble.yaml) are added by the pen editor / scribblebook_page_create
+# afterwards.
+app: scribblebook
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel",        en: "Title" }
+  - name: description
+    type: textarea
+    rows: 2
+    label: { de: "Beschreibung", en: "Description" }

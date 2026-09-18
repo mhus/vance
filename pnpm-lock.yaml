@@ -949,6 +949,40 @@ importers:
         specifier: ^3.3.11
         version: 3.3.11(@typescript/typescript6@6.0.2)
 
+  server/vance-addon-brain-scribble/client:
+    dependencies:
+      '@vance/components':
+        specifier: workspace:*
+        version: link:../../../client/packages/components
+      '@vance/kind-registry':
+        specifier: workspace:*
+        version: link:../../../client/packages/kind-registry
+      '@vance/shared':
+        specifier: workspace:*
+        version: link:../../../client/packages/shared
+      perfect-freehand:
+        specifier: ^1.2.3
+        version: 1.2.3
+    devDependencies:
+      '@module-federation/vite':
+        specifier: 1.20.1
+        version: 1.20.1(@typescript/typescript6@6.0.2)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue-tsc@3.3.11(@typescript/typescript6@6.0.2))
+      '@vitejs/plugin-vue':
+        specifier: ^6.0.8
+        version: 6.0.8(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.42(@typescript/typescript6@6.0.2))
+      vite:
+        specifier: ^8.3.0
+        version: 8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0)
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@26.5.1)(happy-dom@20.11.6)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))
+      vue:
+        specifier: ^3.5.42
+        version: 3.5.42(@typescript/typescript6@6.0.2)
+      vue-tsc:
+        specifier: ^3.3.11
+        version: 3.3.11(@typescript/typescript6@6.0.2)
+
   server/vance-addon-brain-simpleauth/client:
     dependencies:
       '@vance/components':
@@ -5281,6 +5315,9 @@ packages:
 
   perfect-debounce@2.1.0:
     resolution: {integrity: sha512-LjgdTytVFXeUgtHZr9WYViYSM/g8MkcTPYDlPa3cDqMirHjKiSZPYd6DoL7pK8AJQr+uWkQvCjHNdiMqsrJs+g==}
+
+  perfect-freehand@1.2.3:
+    resolution: {integrity: sha512-bHZSfqDHGNlPpgH2yxXgPHlQSPpEbo+qg7li0M78J9vNAi2yjwLeA4x79BEQhX44lEWpCLSFCeRZwpw0niiXPA==}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -11076,6 +11113,8 @@ snapshots:
   pend@1.2.0: {}
 
   perfect-debounce@2.1.0: {}
+
+  perfect-freehand@1.2.3: {}
 
   picocolors@1.1.1: {}
 

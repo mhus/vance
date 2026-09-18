@@ -1,0 +1,12 @@
+id: scribble
+version: "@project.version@"
+
+# Document-kind ids this addon's ./register expose contributes. The Web-UI
+# reads these to decide WHICH remote to fetch when a document of that kind
+# is opened -- a load trigger, not a copy of the matching rule (matches()
+# still decides once loaded). Quoted because a bare application:<x> is one
+# (see above). The application:scribblebook container kind ships with the app
+# surface in the same bundle.
+kinds:
+  - "scribble"
+  - "application:scribblebook"

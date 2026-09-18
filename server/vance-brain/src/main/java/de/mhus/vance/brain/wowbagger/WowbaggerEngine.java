@@ -236,26 +236,7 @@ public class WowbaggerEngine implements ThinkEngine {
         boolean interruptForcePause = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
-            StringBuilder userTextForTriggers = new StringBuilder();
-            List<SteerMessage> extras = new ArrayList<>();
-            for (SteerMessage m : inbox) {
-                if (m instanceof SteerMessage.UserChatInput uci
-                        && uci.content() != null
-                        && !uci.content().isBlank()) {
-                    chatLog.append(ChatMessageDocument.builder()
-                            .tenantId(process.getTenantId())
-                            .sessionId(process.getSessionId())
-                            .thinkProcessId(process.getId())
-                            .role(ChatRole.USER)
-                            .content(uci.content())
-                            .build());
-                    if (userTextForTriggers.length() > 0) userTextForTriggers.append('\n');
-                    userTextForTriggers.append(uci.content());
-                } else if (!(m instanceof SteerMessage.UserChatInput)) {
-                    extras.add(m);
-                }
-            }
-            // No skill trigger matching — Wowbagger carries no skills (§4a.1).
+            List<SteerMessage> extras = splitInbox(chatLog, process, inbox);
 
             de.mhus.vance.brain.ai.EngineChatFactory.EngineChatBundle chatBundle =
                     engineChatFactory.forProcess(process, ctx, NAME);
@@ -303,10 +284,11 @@ public class WowbaggerEngine implements ThinkEngine {
             awaitingUserInput = outcome.awaitingUserInput();
             String finalText = outcome.finalText();
 
-            // The pool wakeup text lands in the chat history when the pool
-            // writes it; a UserChatInput from the pool would double it. Only
-            // turns WITHOUT pool notes (real user turns) carry the reply to
-            // the reply-channel — wakeups stay notes.
+            // Pool wakeups land in the chat history exactly once — the pool's
+            // own "[pool]" note (the drained UserChatInput is skipped in
+            // splitInbox). The reply channel is NOT gated on wakeup turns:
+            // an agent woken by "run finished" answering with the result
+            // pointer is exactly the reply the user wants surfaced.
             if (recoveredFromMaxIter && process.getParentProcessId() != null) {
                 finalText = "⚠️ TASK FAILED — this worker was force-stopped after "
                         + "hitting its hard limit of " + maxIters + " processing "
@@ -349,6 +331,42 @@ public class WowbaggerEngine implements ThinkEngine {
                 thinkProcessService.updateStatus(process.getId(), exitStatus);
             }
         }
+    }
+
+    /**
+     * Splits the drained inbox for the turn (package-private for testing):
+     * real user input is appended to the chat log — the engine owns that
+     * append, the WS steer path only queues — and non-UCI items
+     * (ProcessEvent, ToolResult, …) become turn-local extras. Pool wakeups
+     * are SKIPPED: the pool already wrote its "[pool]" note to the history
+     * itself, and the pending copy carries
+     * {@link WowbaggerPoolService#WAKEUP_SENDER} as the wake trigger only —
+     * appending it again as a USER message would show every wakeup twice in
+     * the transcript and mislabel pool output as the user's. Wowbagger
+     * carries no skills (§4a.1), so no trigger text is collected.
+     */
+    static List<SteerMessage> splitInbox(
+            ChatMessageService chatLog, ThinkProcessDocument process, List<SteerMessage> inbox) {
+        List<SteerMessage> extras = new ArrayList<>();
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci) {
+                if (WowbaggerPoolService.WAKEUP_SENDER.equals(uci.fromUser())) {
+                    continue;
+                }
+                if (uci.content() != null && !uci.content().isBlank()) {
+                    chatLog.append(ChatMessageDocument.builder()
+                            .tenantId(process.getTenantId())
+                            .sessionId(process.getSessionId())
+                            .thinkProcessId(process.getId())
+                            .role(ChatRole.USER)
+                            .content(uci.content())
+                            .build());
+                }
+            } else {
+                extras.add(m);
+            }
+        }
+        return extras;
     }
 
     private static @Nullable Instant lastUserInputAt(List<SteerMessage> inbox) {
@@ -612,11 +630,9 @@ public class WowbaggerEngine implements ThinkEngine {
                 process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {
             messages.add(SystemMessage.from("[Conversation summary from earlier turns]\n" + m.getContent()));
         }
-        de.mhus.vance.brain.context.PromptDateContextResolver.class.cast(null); // not resolved via injector
-        // Date + client-env + scratchpad blocks (Ford behavior, unchanged):
-        // these resolvers reached Ford as constructor services; here the
-        // guardService alone is injected on top of Ford's set — keep the
-        // dynamic blocks via the same instances Wowbagger injected above.
+        // Date + client-env + scratchpad blocks (Ford behavior, unchanged) —
+        // the same contributors Ford injects as constructor services, here
+        // injected on this engine directly.
         appendDynamicBlocks(messages, process, modelInfo);
         for (ChatMessageDocument msg : historyStrengthFilter.filter(
                 chatLog.activeHistory(process.getTenantId(), process.getSessionId(), process.getId()))) {

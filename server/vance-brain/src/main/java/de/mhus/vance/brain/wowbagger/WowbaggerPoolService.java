@@ -82,6 +82,13 @@ public class WowbaggerPoolService {
      * scope, so the agent cannot approve a model for itself via a process setting.
      */
     public static final String ALLOWED_MODELS_KEY = "wowbagger.allowed-models";
+    /**
+     * Sender identity the pool stamps on its wakeup pending messages. The
+     * engine recognises wakeups by this sender and keeps them out of the
+     * chat-log append — the pool writes its note to the history itself
+     * (see {@link #wakeup}), so the drained copy must not double it.
+     */
+    public static final String WAKEUP_SENDER = "wowbagger-pool";
     /** Prefix of the run's auto-assigned persistent RootDir (§ run root). */
     private static final String RUN_DIR_PREFIX = "wowbagger-";
 
@@ -569,7 +576,14 @@ public class WowbaggerPoolService {
             WowbaggerState.WaveChunk requeued = state.getRetryQueue().removeFirst();
             List<String> records = readWindow(process, state, requeued.getStartRecord(), requeued.getRecordCount());
             if (records.isEmpty()) {
-                return null; // source shrank — park as failed, agent decides
+                // Source shrank below the chunk window — park it in the
+                // failure ledger so the agent gets the decision the comment
+                // always promised. Silently dropping the chunk here would let
+                // the run finish with the chunk as an unexplained merge gap.
+                requeued.setLastError("source shrank below the chunk window — its records are no longer readable");
+                state.getFailedChunks().add(requeued);
+                state.setFailureCount(state.getFailureCount() + 1);
+                return null;
             }
             state.getWave().add(requeued);
             return new Claim(requeued, records);
@@ -1365,11 +1379,32 @@ public class WowbaggerPoolService {
         }
     }
 
+    /**
+     * Sets {@code threadsDesired} and persists in one step under the handle
+     * lock — the tool-side throttle knob must not mutate the live state
+     * outside the pool's lock contract ("every mutation under the handle
+     * lock", class javadoc). Mirrors {@link #persistStructure}: the given
+     * state becomes the live instance.
+     */
+    public void setThreadsDesired(ThinkProcessDocument process, WowbaggerState state, int threads) {
+        Handle handle = handle(process.getId());
+        synchronized (handle.lock) {
+            state.setThreadsDesired(threads);
+            handle.live = state;
+            persist(process, state);
+        }
+    }
+
     // ──────────────────── Wakeups ────────────────────
 
     /**
      * Wakes the agent: a chat-history note (the vermerk, visible even before
-     * the agent turn) plus a pending message that auto-wakes the agent's lane.
+     * the agent turn) plus a pending message that auto-wakes the agent's
+     * lane. The pending copy is only the <b>trigger</b> — it carries
+     * {@link #WAKEUP_SENDER}, and the engine skips its chat-log append for
+     * that sender because the note above is already the history copy; both
+     * halves together would otherwise show every wakeup twice in the
+     * transcript and the LLM history.
      */
     private void wakeup(ThinkProcessDocument process, String note) {
         handle(process.getId()).lastWakeupAtMs = System.currentTimeMillis();
@@ -1390,7 +1425,7 @@ public class WowbaggerPoolService {
         try {
             PendingMessageDocument message = new PendingMessageDocument();
             message.setContent("[pool] " + note);
-            message.setFromUser("wowbagger-pool");
+            message.setFromUser(WAKEUP_SENDER);
             thinkProcessService.appendPending(process.getId(), message, "");
         } catch (RuntimeException e) {
             log.warn("Wowbagger pool id='{}' wakeup failed: {}", process.getId(), e.toString());

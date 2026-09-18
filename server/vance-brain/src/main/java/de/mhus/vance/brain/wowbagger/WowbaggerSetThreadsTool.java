@@ -63,14 +63,13 @@ public class WowbaggerSetThreadsTool extends WowbaggerBaseTool {
             throw new ToolException("'threads' must be between 0 and 64");
         }
         WowbaggerState s = pool.structure(process.getId());
-        s.setThreadsDesired(threads);
         if (threads == 0) {
             pool.stop(process.getId());
-            pool.persistStructure(process, s);
+            pool.setThreadsDesired(process, s, 0);
             return Map.of("threadsDesired", 0, "state", "pool parked — structure intact");
         }
         // Persist the desire first, then start — the runner syncs to it.
-        pool.persistStructure(process, s);
+        pool.setThreadsDesired(process, s, threads);
         WowbaggerPoolService.RunView view;
         try {
             view = pool.start(process);

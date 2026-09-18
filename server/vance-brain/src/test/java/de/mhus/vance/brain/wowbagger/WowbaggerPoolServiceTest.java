@@ -798,6 +798,45 @@ class WowbaggerPoolServiceTest {
         verify(documentService, org.mockito.Mockito.never()).update(anyString(), any(), any(), any(), any(), any());
     }
 
+    @Test
+    void retryChunkBeyondTheEofIsParkedAsFailedNotSilentlyDropped() throws IOException {
+        stubEchoWorker();
+        // A parked run whose source shrank while it was away: the retry
+        // chunk's window lies beyond the EOF. Its records are unreadable —
+        // the chunk must land in the failure ledger for the agent, not
+        // vanish as an unexplained merge gap (Code-Review 15, L1).
+        WowbaggerState state = persistedState();
+        state.setRecordsTotal(5);
+        state.setPointer(5);
+        state.setRecordsDone(5);
+        state.setThreadsDesired(1);
+        WowbaggerState.WaveChunk orphan = new WowbaggerState.WaveChunk();
+        orphan.setIndex(9);
+        orphan.setStartRecord(50);
+        orphan.setRecordCount(2);
+        orphan.setAttempts(1);
+        state.getRetryQueue().add(orphan);
+        java.util.Map<String, Object> params = new java.util.LinkedHashMap<>(process.getEngineParams());
+        params.put(
+                WowbaggerPoolService.ENGINE_STATE_KEY,
+                JsonMapper.builder().build().convertValue(state, java.util.Map.class));
+        process.setEngineParams(params);
+
+        pool.start(process);
+
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+        WowbaggerState s = persistedState();
+        assertThat(s.getFailedChunks()).hasSize(1);
+        assertThat(s.getFailedChunks().get(0).getStartRecord()).isEqualTo(50);
+        assertThat(s.getFailedChunks().get(0).getLastError()).contains("source shrank");
+        assertThat(s.getFailureCount()).isEqualTo(1);
+        // The readable records were already committed — the run finishes and
+        // hands the unreadable chunk to the agent as a decision.
+        assertThat(s.isFinished()).isTrue();
+        assertThat(s.getRecordsDone()).isEqualTo(5);
+        // No provider call was burned on an unreadable window.
+        verify(lightLlmService, org.mockito.Mockito.never()).callWithUsage(any(LightLlmRequest.class));
+    }
     /** All wakeup notes sent so far (pending messages) containing the needle. */
     private List<String> pendingNotes(String needle) {
         List<String> out = new java.util.ArrayList<>();

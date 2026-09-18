@@ -180,9 +180,13 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) throws ToolException {
         ThinkProcessDocument process = process(thinkProcessService, ctx);
-        WowbaggerPoolService.RunView view = pool.stop(process.getId());
-        if (view.running()) {
-            throw new ToolException("the pool is still draining — wait for the stop and re-configure");
+        // Refuse — do NOT silently park. The pool.stop() here used to make
+        // the "is it running" check below it unreachable (stop() flips
+        // running synchronously), so every configure quietly killed a
+        // running rotation, right down to a bare resetFailureCount.
+        if (pool.isRunning(process.getId())) {
+            throw new ToolException("the pool is running — park it first (wowbagger_stop or "
+                    + "wowbagger_set_threads 0) and re-configure; structure changes mid-run would race the workers");
         }
         WowbaggerState s = pool.structure(process.getId());
         Map<String, Object> applied = new LinkedHashMap<>();

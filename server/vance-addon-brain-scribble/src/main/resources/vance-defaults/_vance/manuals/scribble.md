@@ -54,6 +54,13 @@ ordered array; erasing removes strokes, it never edits points in place.
   points) by index, and ink that runs off the sheet raster.
 - Handwriting text is **not searchable yet** — an OCR pass that extracts
   text into a parallel Markdown file is a later, separate feature.
+- `scribble_sheet_image` renders the sheet to PNG and attaches it to your
+  next turn, so a vision-capable model can look at the handwriting. Optional
+  `dpi` (default 150, capped at 600) for fine writing and `region`
+  `{x, y, w, h}` in sheet coordinates to crop. The tool checks the current
+  model's vision capability and answers with a clear reason instead of
+  rendering when it cannot be seen. Only pen strokes render; a blank sheet
+  is reported, not delivered as an image.
 
 ## Editing
 

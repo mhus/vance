@@ -60,10 +60,7 @@ class ModelCatalogTest {
         assertThat(info.defaultMaxOutputTokens()).isEqualTo(8192);
         assertThat(info.size()).isEqualTo(ModelSize.LARGE);
         assertThat(info.capabilities())
-                .containsExactlyInAnyOrder(
-                        ModelCapability.VISION,
-                        ModelCapability.PDF,
-                        ModelCapability.THINKING);
+                .containsExactlyInAnyOrder(ModelCapability.VISION, ModelCapability.PDF, ModelCapability.THINKING);
     }
 
     @Test
@@ -91,29 +88,34 @@ class ModelCatalogTest {
      */
     @Test
     void bundled_providerSidecars_declareTheirWireType() {
-        for (String instance : new String[]{
-                "anthropic", "openai", "openai-experimental", "gemini",
-                "ollama", "lmstudio", "cortecs"}) {
+        for (String instance :
+                new String[] {"anthropic", "openai", "openai-experimental", "gemini", "ollama", "lmstudio", "cortecs"
+                }) {
             assertThat(catalog.lookupProvider(null, null, instance))
                     .as("bundled _provider.yaml for instance '%s'", instance)
-                    .hasValueSatisfying(spec -> assertThat(spec.get("wireType"))
-                            .isInstanceOf(String.class));
+                    .hasValueSatisfying(spec -> assertThat(spec.get("wireType")).isInstanceOf(String.class));
         }
     }
 
     /**
-     * `cortecs` ships as a sidecar only — no model documents. It is the
+     * `cortecs` ships as a sidecar plus exactly one hand-written image
+     * model doc (flux-2-klein-4b — invisible to discovery because Cortecs'
+     * /v1/models does not list image models). No *chat* model documents:
+     * those come from discovery, not from the bundled layer. It is the
      * bundled example of "gateway on a foreign wire": a separate instance
      * of the openai protocol, so its key and endpoint stay separate from
      * the real OpenAI ones.
      */
     @Test
-    void bundled_cortecs_isAnOpenAiWireInstanceWithoutModels() {
+    void bundled_cortecs_isAnOpenAiWireInstanceWithoutChatModels() {
         assertThat(catalog.lookupProvider(null, null, "cortecs"))
                 .hasValueSatisfying(spec -> assertThat(spec.get("wireType")).isEqualTo("openai"));
         assertThat(catalog.listAll(null, null))
-                .as("cortecs serves a catalogue we do not curate — models come from discovery")
+                .as("cortecs serves a catalogue we do not curate — chat models come from discovery")
                 .noneMatch(m -> "cortecs".equals(m.provider()));
+        assertThat(catalog.listAllImages(null, null))
+                .as("the one hand-written image model: not in /v1/models, so discovery cannot see it")
+                .anyMatch(m -> "cortecs".equals(m.provider()) && "flux-2-klein-4b".equals(m.modelName()));
     }
 
     @Test
@@ -154,8 +156,7 @@ class ModelCatalogTest {
                 """);
         catalog.refresh();
 
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, PROJECT, "openai", "gpt-4o-acme");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "gpt-4o-acme");
 
         assertThat(info.contextWindowTokens()).isEqualTo(128_000);
         assertThat(info.defaultMaxOutputTokens()).isEqualTo(4096);
@@ -174,17 +175,13 @@ class ModelCatalogTest {
                 """);
         catalog.refresh();
 
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
 
         assertThat(info.defaultMaxOutputTokens()).isEqualTo(4096);
         assertThat(info.contextWindowTokens()).isEqualTo(200_000);
         assertThat(info.size()).isEqualTo(ModelSize.LARGE);
         assertThat(info.capabilities())
-                .containsExactlyInAnyOrder(
-                        ModelCapability.VISION,
-                        ModelCapability.PDF,
-                        ModelCapability.THINKING);
+                .containsExactlyInAnyOrder(ModelCapability.VISION, ModelCapability.PDF, ModelCapability.THINKING);
     }
 
     // ──── Three-layer merge (project beats tenant beats bundled) ───────
@@ -199,12 +196,11 @@ class ModelCatalogTest {
                 """);
         catalog.refresh();
 
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
 
-        assertThat(info.contextWindowTokens()).isEqualTo(100_000);   // project
-        assertThat(info.defaultMaxOutputTokens()).isEqualTo(4096);   // tenant
-        assertThat(info.size()).isEqualTo(ModelSize.LARGE);          // bundled
+        assertThat(info.contextWindowTokens()).isEqualTo(100_000); // project
+        assertThat(info.defaultMaxOutputTokens()).isEqualTo(4096); // tenant
+        assertThat(info.size()).isEqualTo(ModelSize.LARGE); // bundled
     }
 
     // ──── Capabilities list — replace, not concat ──────────────────────
@@ -218,8 +214,7 @@ class ModelCatalogTest {
                 """);
         catalog.refresh();
 
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
 
         assertThat(info.capabilities()).containsExactly(ModelCapability.VISION);
     }
@@ -230,21 +225,17 @@ class ModelCatalogTest {
     void systemTenant_overrides_bundled_for_all_tenants() {
         // System TENANT _vance, tenant-scope project _tenant — the global
         // maintainer layer that sits above every tenant's own overrides.
-        stubModelDoc(ModelCatalog.SYSTEM_TENANT,
-                VANCE_TENANT_PROJECT,
-                "anthropic/claude-sonnet-4-5.yaml", """
+        stubModelDoc(ModelCatalog.SYSTEM_TENANT, VANCE_TENANT_PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
                 defaultMaxOutputTokens: 999
                 """);
         catalog.refresh();
 
         // Tenant A sees the global override.
-        ModelInfo info = catalog.lookupOrDefault(
-                "tenant-a", null, "anthropic", "claude-sonnet-4-5");
+        ModelInfo info = catalog.lookupOrDefault("tenant-a", null, "anthropic", "claude-sonnet-4-5");
         assertThat(info.defaultMaxOutputTokens()).isEqualTo(999);
 
         // Tenant B sees the same global override.
-        ModelInfo infoB = catalog.lookupOrDefault(
-                "tenant-b", null, "anthropic", "claude-sonnet-4-5");
+        ModelInfo infoB = catalog.lookupOrDefault("tenant-b", null, "anthropic", "claude-sonnet-4-5");
         assertThat(infoB.defaultMaxOutputTokens()).isEqualTo(999);
     }
 
@@ -253,16 +244,14 @@ class ModelCatalogTest {
     @Test
     void namedInstance_withOwnSection_winsOverProtocolFallback() {
         // Tenant declares an instance "deepseek-direct" with its own metadata.
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "deepseek-direct/deepseek-v4-flash.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "deepseek-direct/deepseek-v4-flash.yaml", """
                 contextWindowTokens: 1048576
                 defaultMaxOutputTokens: 8192
                 size: SMALL
                 """);
         catalog.refresh();
 
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "deepseek-direct", "openai", "deepseek-v4-flash");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "deepseek-direct", "openai", "deepseek-v4-flash");
 
         assertThat(info.contextWindowTokens()).isEqualTo(1_048_576);
         assertThat(info.size()).isEqualTo(ModelSize.SMALL);
@@ -272,8 +261,7 @@ class ModelCatalogTest {
     void namedInstance_missingSection_fallsBackToProtocolType() {
         // No per-instance YAML — the lookup falls back to the protocol
         // type (openai) and finds the bundled entry for gpt-4o-mini.
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "my-openai-route", "openai", "gpt-4o-mini");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "my-openai-route", "openai", "gpt-4o-mini");
 
         assertThat(info.contextWindowTokens()).isEqualTo(128_000);
         assertThat(info.size()).isEqualTo(ModelSize.SMALL);
@@ -281,8 +269,7 @@ class ModelCatalogTest {
 
     @Test
     void namedInstance_unknownEverywhere_returnsConservativeFallback() {
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "exotic-instance", "openai", "fictional-model");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "exotic-instance", "openai", "fictional-model");
 
         assertThat(info.contextWindowTokens()).isEqualTo(8192);
         assertThat(info.provider()).isEqualTo("exotic-instance");
@@ -308,30 +295,44 @@ class ModelCatalogTest {
 
     @Test
     void image_lookup_returns_bundled_gpt_image_1() {
-        ImageModelInfo info = catalog
-                .lookupImage(null, null, "openai", "gpt-image-1")
-                .orElseThrow();
+        ImageModelInfo info =
+                catalog.lookupImage(null, null, "openai", "gpt-image-1").orElseThrow();
 
         assertThat(info.provider()).isEqualTo("openai");
         assertThat(info.modelName()).isEqualTo("gpt-image-1");
         assertThat(info.maxPromptChars()).isEqualTo(4000);
         assertThat(info.timeoutSeconds()).isEqualTo(360);
-        assertThat(info.supportedAspectRatios())
-                .containsExactlyInAnyOrder("1:1", "16:9", "9:16", "4:3", "3:4");
+        assertThat(info.supportedAspectRatios()).containsExactlyInAnyOrder("1:1", "16:9", "9:16", "4:3", "3:4");
         assertThat(info.costFor("standard")).isEqualTo(0.04);
         assertThat(info.costFor("hd")).isEqualTo(0.08);
     }
 
     @Test
     void image_lookup_returns_bundled_gemini_flash_image() {
-        ImageModelInfo info = catalog
-                .lookupImage(null, null, "gemini", "gemini-2.5-flash-image")
+        ImageModelInfo info = catalog.lookupImage(null, null, "gemini", "gemini-2.5-flash-image")
                 .orElseThrow();
 
         assertThat(info.timeoutSeconds()).isEqualTo(90);
         assertThat(info.maxPromptChars()).isEqualTo(480);
         // $0.039 per image per Google's published rate (1290 output tokens).
         assertThat(info.costFor("standard")).isEqualTo(0.039);
+        assertThat(info.costFor("hd")).isNull();
+    }
+
+    @Test
+    void image_lookup_returns_bundled_cortecs_flux_klein() {
+        ImageModelInfo info =
+                catalog.lookupImage(null, null, "cortecs", "flux-2-klein-4b").orElseThrow();
+
+        assertThat(info.provider()).isEqualTo("cortecs");
+        assertThat(info.modelName()).isEqualTo("flux-2-klein-4b");
+        assertThat(info.timeoutSeconds()).isEqualTo(90);
+        assertThat(info.maxPromptChars()).isEqualTo(2000);
+        // The OpenAiImageProvider size mapping is the source of the
+        // ratio list — anything beyond these five would surface as
+        // `size: auto`, which the FLUX endpoint has not been verified for.
+        assertThat(info.supportedAspectRatios()).containsExactlyInAnyOrder("1:1", "16:9", "9:16", "4:3", "3:4");
+        assertThat(info.costFor("standard")).isEqualTo(0.014);
         assertThat(info.costFor("hd")).isNull();
     }
 
@@ -343,11 +344,9 @@ class ModelCatalogTest {
      */
     @Test
     void image_lookup_covers_the_whole_gemini_3_image_family() {
-        List<String> proTier = List.of(
-                "gemini-3-pro-image", "gemini-3-pro-image-preview", "nano-banana-pro-preview");
+        List<String> proTier = List.of("gemini-3-pro-image", "gemini-3-pro-image-preview", "nano-banana-pro-preview");
         for (String model : proTier) {
-            ImageModelInfo info = catalog
-                    .lookupImage(null, null, "gemini", model)
+            ImageModelInfo info = catalog.lookupImage(null, null, "gemini", model)
                     .orElseThrow(() -> new AssertionError("not an image model: " + model));
             assertThat(info.costFor("standard")).as(model).isEqualTo(0.134);
             assertThat(info.timeoutSeconds()).as(model).isEqualTo(360);
@@ -355,11 +354,9 @@ class ModelCatalogTest {
             assertThat(info.supportedAspectRatios()).as(model).contains("21:9", "4:5", "1:1");
         }
 
-        List<String> flashTier = List.of(
-                "gemini-3.1-flash-image", "gemini-3.1-flash-image-preview");
+        List<String> flashTier = List.of("gemini-3.1-flash-image", "gemini-3.1-flash-image-preview");
         for (String model : flashTier) {
-            ImageModelInfo info = catalog
-                    .lookupImage(null, null, "gemini", model)
+            ImageModelInfo info = catalog.lookupImage(null, null, "gemini", model)
                     .orElseThrow(() -> new AssertionError("not an image model: " + model));
             assertThat(info.costFor("standard")).as(model).isEqualTo(0.067);
             assertThat(info.timeoutSeconds()).as(model).isEqualTo(180);
@@ -371,7 +368,8 @@ class ModelCatalogTest {
         // The mirror image of the bug that motivated these entries: a
         // kind:image model must not show up in the chat-model picker.
         assertThat(catalog.lookup(null, null, "gemini", "gemini-3-pro-image")).isEmpty();
-        assertThat(catalog.lookup(null, null, "gemini", "gemini-3.1-flash-image")).isEmpty();
+        assertThat(catalog.lookup(null, null, "gemini", "gemini-3.1-flash-image"))
+                .isEmpty();
     }
 
     @Test
@@ -402,8 +400,7 @@ class ModelCatalogTest {
         List<ModelInfo> chats = catalog.listAll(null, null);
 
         assertThat(chats).noneMatch(m -> "gpt-image-1".equals(m.modelName()));
-        assertThat(chats).noneMatch(m ->
-                "gemini-2.5-flash-image".equals(m.modelName()));
+        assertThat(chats).noneMatch(m -> "gemini-2.5-flash-image".equals(m.modelName()));
         assertThat(chats).anyMatch(m -> "claude-sonnet-4-5".equals(m.modelName()));
     }
 
@@ -413,10 +410,8 @@ class ModelCatalogTest {
 
         assertThat(images).isNotEmpty();
         assertThat(images).anyMatch(m -> "gpt-image-1".equals(m.modelName()));
-        assertThat(images).anyMatch(m ->
-                "gemini-2.5-flash-image".equals(m.modelName()));
-        assertThat(images).anyMatch(m ->
-                "imagen-3.0-generate-002".equals(m.modelName()));
+        assertThat(images).anyMatch(m -> "gemini-2.5-flash-image".equals(m.modelName()));
+        assertThat(images).anyMatch(m -> "imagen-3.0-generate-002".equals(m.modelName()));
     }
 
     // ──── Pricing block parsing ────────────────────────────────────────
@@ -440,12 +435,9 @@ class ModelCatalogTest {
      */
     @Test
     void bundled_cortecs_workhorses_are_priced() {
-        for (String model : List.of("kimi-k3", "deepseek-v4-pro", "deepseek-v4-flash-0731",
-                "glm-5", "glm-5.1")) {
+        for (String model : List.of("kimi-k3", "deepseek-v4-pro", "deepseek-v4-flash-0731", "glm-5", "glm-5.1")) {
             ModelInfo info = catalog.lookupOrDefault("openai", model);
-            assertThat(info.pricing())
-                    .as("pricing for %s", model)
-                    .isNotNull();
+            assertThat(info.pricing()).as("pricing for %s", model).isNotNull();
             assertThat(info.pricing().currency()).isEqualTo("EUR");
             assertThat(info.pricing().inputPerMTok()).isGreaterThan(0.0);
             assertThat(info.pricing().outputPerMTok()).isGreaterThan(0.0);
@@ -522,8 +514,7 @@ class ModelCatalogTest {
         // gpt-5.6-sol.yaml carries no outputTokenParam — the bundled
         // "gpt-5*" quirk rule supplies it.
         ModelInfo info = catalog.lookupOrDefault("openai", "gpt-5.6-sol");
-        assertThat(info.outputTokenParam())
-                .isEqualTo(OutputTokenParam.MAX_COMPLETION_TOKENS);
+        assertThat(info.outputTokenParam()).isEqualTo(OutputTokenParam.MAX_COMPLETION_TOKENS);
     }
 
     @Test
@@ -531,8 +522,7 @@ class ModelCatalogTest {
         // No YAML for this one at all — the family pattern still holds,
         // otherwise a not-yet-catalogued gpt-5 variant would 400.
         ModelInfo info = catalog.lookupOrDefault("openai", "gpt-5.9-ghost");
-        assertThat(info.outputTokenParam())
-                .isEqualTo(OutputTokenParam.MAX_COMPLETION_TOKENS);
+        assertThat(info.outputTokenParam()).isEqualTo(OutputTokenParam.MAX_COMPLETION_TOKENS);
     }
 
     @Test
@@ -594,8 +584,7 @@ class ModelCatalogTest {
     @Test
     void refresh_picks_up_newly_added_override_doc() {
         // Round 1: no overrides → bundled value.
-        ModelInfo before = catalog.lookupOrDefault(
-                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+        ModelInfo before = catalog.lookupOrDefault(TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
         assertThat(before.contextWindowTokens()).isEqualTo(200_000);
 
         // Round 2: add an override and re-refresh.
@@ -604,8 +593,7 @@ class ModelCatalogTest {
                 """);
         catalog.refresh();
 
-        ModelInfo after = catalog.lookupOrDefault(
-                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+        ModelInfo after = catalog.lookupOrDefault(TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
         assertThat(after.contextWindowTokens()).isEqualTo(50_000);
     }
 
@@ -630,7 +618,7 @@ class ModelCatalogTest {
 
         var provider = catalog.lookupProvider(TENANT, null, "openai").orElseThrow();
         assertThat(provider.get("baseUrl")).isEqualTo("https://vllm.internal/v1");
-        assertThat(provider.get("wireType")).isEqualTo("openai");   // inherited
+        assertThat(provider.get("wireType")).isEqualTo("openai"); // inherited
     }
 
     // ──── Auto layer (_vance/model-auto/**) ────────────────────────────
@@ -639,16 +627,14 @@ class ModelCatalogTest {
     void auto_doc_is_visible_in_lookup_without_manual() {
         // Discovery wrote a doc with just existence + context-window;
         // no manual override at this scope.
-        stubAutoModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/gpt-5-turbo.yaml", """
+        stubAutoModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/gpt-5-turbo.yaml", """
                 contextWindowTokens: 400000
                 kind: chat
                 discoveredBy: discovery-job
                 """);
         catalog.refresh();
 
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "openai", "gpt-5-turbo");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "openai", "gpt-5-turbo");
         assertThat(info.contextWindowTokens()).isEqualTo(400_000);
     }
 
@@ -656,18 +642,15 @@ class ModelCatalogTest {
     void manual_beats_auto_at_same_scope() {
         // Discovery says context-window=200000; operator manually pinned
         // it to 500000 in the manual layer. Manual wins.
-        stubAutoModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/gpt-5.yaml", """
+        stubAutoModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/gpt-5.yaml", """
                 contextWindowTokens: 200000
                 """);
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/gpt-5.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/gpt-5.yaml", """
                 contextWindowTokens: 500000
                 """);
         catalog.refresh();
 
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "openai", "gpt-5");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "openai", "gpt-5");
         assertThat(info.contextWindowTokens()).isEqualTo(500_000);
     }
 
@@ -675,13 +658,11 @@ class ModelCatalogTest {
     void auto_and_manual_merge_per_field_within_one_scope() {
         // Discovery writes only contextWindowTokens; pricing is in the
         // manual layer at the same scope. Final view has both.
-        stubAutoModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/new-model.yaml", """
+        stubAutoModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/new-model.yaml", """
                 contextWindowTokens: 128000
                 kind: chat
                 """);
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/new-model.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/new-model.yaml", """
                 size: SMALL
                 pricing:
                   currency: USD
@@ -690,12 +671,11 @@ class ModelCatalogTest {
                 """);
         catalog.refresh();
 
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "openai", "new-model");
-        assertThat(info.contextWindowTokens()).isEqualTo(128_000);     // auto
-        assertThat(info.size()).isEqualTo(ModelSize.SMALL);            // manual
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "openai", "new-model");
+        assertThat(info.contextWindowTokens()).isEqualTo(128_000); // auto
+        assertThat(info.size()).isEqualTo(ModelSize.SMALL); // manual
         assertThat(info.pricing()).isNotNull();
-        assertThat(info.pricing().inputPerMTok()).isEqualTo(1.0);      // manual
+        assertThat(info.pricing().inputPerMTok()).isEqualTo(1.0); // manual
     }
 
     @Test
@@ -704,18 +684,15 @@ class ModelCatalogTest {
         // kind. Bundled claude-sonnet-4-5 has contextWindow=200000;
         // tenant-manual sets it to 100000; project-auto sets to 50000.
         // Lookup at (tenant, project): project-auto wins.
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "anthropic/claude-sonnet-4-5.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
                 contextWindowTokens: 100000
                 """);
-        stubAutoModelDoc(TENANT, PROJECT,
-                "anthropic/claude-sonnet-4-5.yaml", """
+        stubAutoModelDoc(TENANT, PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
                 contextWindowTokens: 50000
                 """);
         catalog.refresh();
 
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
         assertThat(info.contextWindowTokens()).isEqualTo(50_000);
     }
 
@@ -724,34 +701,32 @@ class ModelCatalogTest {
     @Test
     void boolean_field_accepts_integer_one_as_true() {
         // LLM occasionally writes `stripThinkTags: 1` instead of `true`.
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/llm-quirk-model.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/llm-quirk-model.yaml", """
                 contextWindowTokens: 1000
                 stripThinkTags: 1
                 """);
         catalog.refresh();
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "openai", "llm-quirk-model");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "openai", "llm-quirk-model");
         assertThat(info.stripThinkTags()).isTrue();
     }
 
     @Test
     void boolean_field_accepts_yes_no_on_off() {
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/llm-bool-yes.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/llm-bool-yes.yaml", """
                 contextWindowTokens: 1000
                 stripThinkTags: yes
                 """);
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/llm-bool-off.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/llm-bool-off.yaml", """
                 contextWindowTokens: 1000
                 stripThinkTags: off
                 """);
         catalog.refresh();
         assertThat(catalog.lookupOrDefault(TENANT, null, "openai", "llm-bool-yes")
-                .stripThinkTags()).isTrue();
+                        .stripThinkTags())
+                .isTrue();
         assertThat(catalog.lookupOrDefault(TENANT, null, "openai", "llm-bool-off")
-                .stripThinkTags()).isFalse();
+                        .stripThinkTags())
+                .isFalse();
     }
 
     @Test
@@ -759,45 +734,38 @@ class ModelCatalogTest {
         // YAML quotes the value because `200_000` would otherwise parse
         // as a string anyway; LLMs do this when reading a number off a
         // page that included thousand separators.
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/llm-int.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/llm-int.yaml", """
                 contextWindowTokens: "200_000"
                 """);
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/llm-int-comma.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/llm-int-comma.yaml", """
                 contextWindowTokens: "200,000"
                 """);
         catalog.refresh();
-        assertThat(catalog.lookupOrDefault(TENANT, null, "openai", "llm-int")
-                .contextWindowTokens()).isEqualTo(200_000);
+        assertThat(catalog.lookupOrDefault(TENANT, null, "openai", "llm-int").contextWindowTokens())
+                .isEqualTo(200_000);
         assertThat(catalog.lookupOrDefault(TENANT, null, "openai", "llm-int-comma")
-                .contextWindowTokens()).isEqualTo(200_000);
+                        .contextWindowTokens())
+                .isEqualTo(200_000);
     }
 
     @Test
     void capabilities_accept_comma_separated_string() {
         // LLM forgets the `[ ]` and writes a bare string.
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/llm-caps.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/llm-caps.yaml", """
                 contextWindowTokens: 1000
                 capabilities: vision, pdf, thinking
                 """);
         catalog.refresh();
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "openai", "llm-caps");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "openai", "llm-caps");
         assertThat(info.capabilities())
-                .containsExactlyInAnyOrder(
-                        ModelCapability.VISION,
-                        ModelCapability.PDF,
-                        ModelCapability.THINKING);
+                .containsExactlyInAnyOrder(ModelCapability.VISION, ModelCapability.PDF, ModelCapability.THINKING);
     }
 
     @Test
     void pricing_accepts_synonym_field_names() {
         // LLM writes inputPerMillionTokens / outputPerMillionTokens —
         // the spelling-out variant. We translate to the canonical form.
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/llm-pricing-syn.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/llm-pricing-syn.yaml", """
                 contextWindowTokens: 1000
                 pricing:
                   currency: USD
@@ -816,8 +784,7 @@ class ModelCatalogTest {
     void pricing_accepts_currency_symbol_and_thousands_separators() {
         // LLM copies the price as written on a vendor's pricing page,
         // currency symbol attached. We strip it before parsing.
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/llm-pricing-fmt.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/llm-pricing-fmt.yaml", """
                 contextWindowTokens: 1000
                 pricing:
                   currency: USD
@@ -837,16 +804,14 @@ class ModelCatalogTest {
         // LLM adds explanatory fields not in the schema — should be
         // ignored (with a WARN that the test doesn't assert on, but the
         // model itself must still load with its valid fields applied).
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/llm-extra-fields.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/llm-extra-fields.yaml", """
                 contextWindowTokens: 50000
                 size: SMALL
                 notes: "added 2026-06 from vendor pricing page"
                 source: "https://openai.com/pricing"
                 """);
         catalog.refresh();
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "openai", "llm-extra-fields");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "openai", "llm-extra-fields");
         assertThat(info.contextWindowTokens()).isEqualTo(50_000);
         assertThat(info.size()).isEqualTo(ModelSize.SMALL);
     }
@@ -855,16 +820,14 @@ class ModelCatalogTest {
     void unknown_pricing_fields_are_reported_but_dont_break_other_overrides() {
         // Pricing block typed wrong → entire pricing dropped; the
         // contextWindow override still applies.
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/llm-bad-pricing.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/llm-bad-pricing.yaml", """
                 contextWindowTokens: 50000
                 pricing:
                   priceIn: 1.0
                   priceOut: 2.0
                 """);
         catalog.refresh();
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "openai", "llm-bad-pricing");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "openai", "llm-bad-pricing");
         assertThat(info.contextWindowTokens()).isEqualTo(50_000);
         assertThat(info.pricing()).isNull();
     }
@@ -873,15 +836,12 @@ class ModelCatalogTest {
     void broken_yaml_in_one_file_does_not_kill_other_overrides() {
         // First doc has invalid YAML; second doc is fine. Catalog must
         // skip the bad one and load the good one without aborting refresh.
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/broken.yaml", "this is not: : valid yaml :::");
-        stubModelDoc(TENANT, VANCE_TENANT_PROJECT,
-                "openai/sound-model.yaml", """
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/broken.yaml", "this is not: : valid yaml :::");
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "openai/sound-model.yaml", """
                 contextWindowTokens: 64000
                 """);
         catalog.refresh();
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, null, "openai", "sound-model");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, null, "openai", "sound-model");
         assertThat(info.contextWindowTokens()).isEqualTo(64_000);
     }
 
@@ -907,8 +867,7 @@ class ModelCatalogTest {
 
     @Test
     void providerWithoutACap_leavesMaxToolsUnset() {
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "anthropic", "claude-sonnet-4-5");
 
         assertThat(info.maxTools()).isNull();
     }
@@ -946,8 +905,7 @@ class ModelCatalogTest {
         // fallback path used to build a ModelInfo with "no known limit"
         // even though _vance/model/openai/_provider.yaml states 128. The
         // budget then went in blind and the endpoint answered 400.
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, PROJECT, "openai", "gpt-does-not-exist-yet");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "gpt-does-not-exist-yet");
 
         assertThat(info.maxTools()).isEqualTo(128);
     }
@@ -958,15 +916,13 @@ class ModelCatalogTest {
         // openai one says so explicitly: a gateway configured as
         // `ai.provider.my-gateway.type=openai` is a different endpoint and
         // may enforce a different number, or none.
-        ModelInfo info = catalog.lookupOrDefault(
-                TENANT, PROJECT, "my-gateway", "openai", "some-model");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "my-gateway", "openai", "some-model");
 
         assertThat(info.maxTools()).isNull();
     }
 
     private void stubModelDoc(String tenantId, String projectId, String relPath, String yamlBody) {
-        stubDocAtPrefix(ModelCatalog.MODEL_PATH_PREFIX,
-                tenantId, projectId, relPath, yamlBody);
+        stubDocAtPrefix(ModelCatalog.MODEL_PATH_PREFIX, tenantId, projectId, relPath, yamlBody);
     }
 
     /**
@@ -974,15 +930,12 @@ class ModelCatalogTest {
      * shape as {@link #stubModelDoc} but the document path lives under
      * {@code _vance/model-auto/}.
      */
-    private void stubAutoModelDoc(
-            String tenantId, String projectId, String relPath, String yamlBody) {
-        stubDocAtPrefix(ModelCatalog.AUTO_MODEL_PATH_PREFIX,
-                tenantId, projectId, relPath, yamlBody);
+    private void stubAutoModelDoc(String tenantId, String projectId, String relPath, String yamlBody) {
+        stubDocAtPrefix(ModelCatalog.AUTO_MODEL_PATH_PREFIX, tenantId, projectId, relPath, yamlBody);
     }
 
     private void stubDocAtPrefix(
-            String pathPrefix, String tenantId, String projectId,
-            String relPath, String yamlBody) {
+            String pathPrefix, String tenantId, String projectId, String relPath, String yamlBody) {
         DocumentDocument doc = mock(DocumentDocument.class);
         lenient().when(doc.getTenantId()).thenReturn(tenantId);
         lenient().when(doc.getProjectId()).thenReturn(projectId);
@@ -1056,8 +1009,7 @@ class ModelCatalogTest {
         ModelInfo info = catalog.lookupOrDefault("openai-experimental", "gpt-5.6-sol");
 
         assertThat(info.reasoningEffortWhenOff())
-                .as("gpt-5* quirk rule must supply the off-value even under "
-                        + "openai-experimental")
+                .as("gpt-5* quirk rule must supply the off-value even under " + "openai-experimental")
                 .isEqualTo("none");
     }
 }

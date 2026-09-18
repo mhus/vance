@@ -51,16 +51,6 @@ function syncHistoryState(): void {
   canRedo.value = history.canRedo;
 }
 
-watch(
-  () => props.sheet,
-  (s) => {
-    strokes.value = [...(s?.strokes ?? [])];
-    history.reset();
-    syncHistoryState();
-    renderBase();
-  },
-  { immediate: true },
-);
 
 const sheetW = computed(() => props.sheet.sizeW || 1240);
 const sheetH = computed(() => props.sheet.sizeH || 1754);
@@ -110,6 +100,23 @@ const liveCanvas = ref<HTMLCanvasElement | null>(null);
 let dpr = 1;
 let resizeObserver: ResizeObserver | null = null;
 let didFit = false;
+
+// Sheet (re)load. Declared AFTER the canvas refs on purpose: the immediate
+// run happens during setup() and reaches renderBase() — reading baseCanvas
+// before its const declaration is a temporal-dead-zone ReferenceError, the
+// exact crash this watch produced when it lived above the refs. Here the
+// refs exist (still null pre-mount), so the first render no-ops and the
+// mounted resize() does the real first paint.
+watch(
+  () => props.sheet,
+  (s) => {
+    strokes.value = [...(s?.strokes ?? [])];
+    history.reset();
+    syncHistoryState();
+    renderBase();
+  },
+  { immediate: true },
+);
 
 function ctxOf(cv: HTMLCanvasElement): CanvasRenderingContext2D {
   const ctx = cv.getContext('2d');

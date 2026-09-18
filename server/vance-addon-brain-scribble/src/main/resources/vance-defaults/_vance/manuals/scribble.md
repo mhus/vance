@@ -70,6 +70,15 @@ ordered array; erasing removes strokes, it never edits points in place.
   notebook — one page per **enabled** sheet, in scan order, next to the
   manifest (`<folder>/<folder>.pdf`). Disabled sheets are skipped and listed.
   Both are regenerated export artifacts; a re-run overwrites.
+- Drawing: shapes and diagram ink are the agent's surface on a sheet.
+  `scribble_shape_add(path, shape, x, y, x2, y2?, color?, width?)` draws
+  `rectangle`, `triangle`, `ellipse`, `circle` (x,y=center, x2=radius),
+  `line` or `arrow` — coordinates in sheet units (A4 = 1240x1754, origin
+  top-left, y grows down), all points must be on the raster. A house outline
+  is a `triangle` roof on a `rectangle`. `scribble_stroke_add(path, points)`
+  covers freeform diagram ink as a polyline; `scribble_stroke_delete(path,
+  index)` removes a stroke again. Handwriting itself stays the user's —
+  never fake script.
 
 ## Editing
 

@@ -25,6 +25,10 @@ description: |
   resize and re-run failed chunks at any point; the agent wakes up on
   progress, failures and completion.
 engine: wowbagger
+# Chat look for sessions on this recipe: warm sand transcript with a mosaic
+# meander frieze (_vance/chat-themes/wowbagger.css). Pure UI metadata —
+# never read by spawn or engine logic. See specification/public/chat-themes.md.
+webTheme: wowbagger
 params:
   model: default:ford,default:analyze
   # Safety-net cap for the agent's tool loop (Ford-style natural stop).

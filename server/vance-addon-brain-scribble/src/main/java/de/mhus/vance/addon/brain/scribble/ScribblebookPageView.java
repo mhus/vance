@@ -10,4 +10,6 @@ public record ScribblebookPageView(
         String path,
         String relativePath,
         String title,
-        @Nullable String description) {}
+        @Nullable String description,
+        boolean enabled,
+        boolean defaultSheet) {}

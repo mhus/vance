@@ -139,4 +139,35 @@ class ScribbleCodecTest {
                 .isInstanceOf(KindCodecException.class);
         assertThatThrownBy(() -> ScribbleCodec.parse("x", "text/markdown")).isInstanceOf(KindCodecException.class);
     }
+
+    @Test
+    void flags_serializeOnlyOnDeviation_andRoundTrip() {
+        // Ordinary sheet: neither flag appears on disk.
+        ScribbleSheet plain = sample();
+        String plainYaml = ScribbleCodec.serialize(plain, YAML);
+        assertThat(plainYaml).doesNotContain("enabled").doesNotContain("default");
+        assertThat(ScribbleCodec.parse(plainYaml, YAML).enabled()).isTrue();
+        assertThat(ScribbleCodec.parse(plainYaml, YAML).defaultSheet()).isFalse();
+
+        // Deviations serialize and round-trip in both mimes.
+        ScribbleSheet flagged = sample().withEnabled(false).withDefaultSheet(true);
+        for (String mime : new String[] {YAML, JSON}) {
+            String body = ScribbleCodec.serialize(flagged, mime);
+            ScribbleSheet back = ScribbleCodec.parse(body, mime);
+            assertThat(back.enabled()).as(mime).isFalse();
+            assertThat(back.defaultSheet()).as(mime).isTrue();
+            if (YAML.equals(mime)) {
+                assertThat(body).contains("enabled: false").contains("default: true");
+            }
+        }
+    }
+
+    @Test
+    void flagParsing_isLenientAboutJunkValues() {
+        String body = "$meta:\n  kind: scribble\ntitle: T\nenabled: not-a-boolean\ndefault: 42\n";
+        ScribbleSheet sheet = ScribbleCodec.parse(body, YAML);
+        // Junk keeps the safe defaults: enabled stays on, default stays off.
+        assertThat(sheet.enabled()).isTrue();
+        assertThat(sheet.defaultSheet()).isFalse();
+    }
 }

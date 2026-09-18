@@ -10,4 +10,6 @@ export interface ScribbleSheetDto {
   sizeW: number;
   sizeH: number;
   strokes: ScribbleStrokeDto[];
+  enabled: boolean;
+  defaultSheet: boolean;
 }

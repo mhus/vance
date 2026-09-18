@@ -61,6 +61,15 @@ const saveLabel = computed(() =>
       ? t('scribble.state.unsaved')
       : t('scribble.state.saved'));
 
+// The editor instance — flag toggles go through its applyFlag() so they
+// ride the same debounced save as strokes (one writer, no PUT race).
+const editorRef = ref<{ applyFlag: (patch: { enabled?: boolean; defaultSheet?: boolean }) => void } | null>(null);
+
+// Local mirror of the active sheet's book flags for the header toggles:
+// instant visuals, authoritative save via the editor.
+const activeEnabled = ref(true);
+const activeDefault = ref(false);
+
 // Bind the chat to the open sheet instead of the app manifest — the app's
 // promptInject phrases "the sheet the user currently has open", and this
 // binding is what makes that sentence true. appDocId = this app tab's own
@@ -108,12 +117,14 @@ async function refreshScan(select?: string): Promise<void> {
   error.value = null;
   try {
     view.value = await scanScribblebook(props.document.projectId, folder.value);
-    // A sheet the URL asks for wins over the landing page — that is what
-    // makes a deep link a deep link. An unknown handle falls through to
-    // the default instead of showing nothing.
+    // Pick order: an explicit selection (add/rebuild) > the sheet the URL
+    // asks for (deep link) > the manifest's landing page > the sheet the
+    // user marked as the book's default > the first sheet. An unknown
+    // handle falls through instead of showing nothing.
     const target = select
       ?? pathForHandle(appEntry.entry.value)
       ?? view.value.landingPagePath
+      ?? view.value.pages.find((p) => p.defaultSheet)?.path
       ?? (view.value.pages.length > 0 ? view.value.pages[0].path : null);
     if (target) await openSheet(target, 'replace');
     else {
@@ -142,6 +153,8 @@ async function openSheet(
   if (history !== 'none') appEntry.report(handleForPath(path), history);
   try {
     sheet.value = await getSheet(props.document.projectId, path);
+    activeEnabled.value = sheet.value.sheet.enabled ?? true;
+    activeDefault.value = sheet.value.sheet.defaultSheet ?? false;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   }
@@ -210,6 +223,37 @@ async function rebuild(): Promise<void> {
   }
 }
 
+
+// ── Book flags of the active sheet ──────────────────────────────
+
+function toggleEnabled(): void {
+  const next = !activeEnabled.value;
+  activeEnabled.value = next;
+  editorRef.value?.applyFlag({ enabled: next });
+}
+
+/**
+ * Only one sheet per book carries the default flag — setting a new one
+ * clears the old (plan §2.2, client-side). A stale second default is
+ * cosmetic: the start pick tolerates it, scan order wins.
+ */
+async function toggleDefault(): Promise<void> {
+  const next = !activeDefault.value;
+  if (next) await clearOtherDefault();
+  activeDefault.value = next;
+  editorRef.value?.applyFlag({ defaultSheet: next });
+}
+
+async function clearOtherDefault(): Promise<void> {
+  const prev = pages.value.find((p) => p.defaultSheet && p.path !== activePath.value);
+  if (!prev) return;
+  try {
+    const prevSheet = await getSheet(props.document.projectId, prev.path);
+    await putSheet(props.document.projectId, prev.path, { ...prevSheet.sheet, defaultSheet: false });
+  } catch {
+    /* keep going — see toggleDefault */
+  }
+}
 // ── Live document updates (documents channel) ─────────────────
 // A sheet is a document, so remote saves fire `documents.changed`. Reload
 // the active sheet when it changes elsewhere. Own echoes are skipped via a
@@ -225,6 +269,8 @@ useDocumentPrefixReaction({
     if (saveState.value !== 'saved' || pending) return; // don't drop local edits
     try {
       sheet.value = await getSheet(props.document.projectId, ap);
+      activeEnabled.value = sheet.value.sheet.enabled ?? true;
+      activeDefault.value = sheet.value.sheet.defaultSheet ?? false;
     } catch {
       /* transient — next change or reconnect retries */
     }
@@ -253,10 +299,10 @@ onBeforeUnmount(() => {
             v-for="p in pages"
             :key="p.id"
             class="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100"
-            :class="{ 'font-semibold': p.path === activePath }"
+            :class="{ 'font-semibold': p.path === activePath, 'opacity-50': !p.enabled }"
             @click="openSheet(p.path)"
           >
-            {{ p.title }}
+            {{ p.defaultSheet ? '★ ' : '' }}{{ p.title }}
           </button>
           <div v-if="pages.length === 0" class="px-3 py-2 text-sm opacity-60">
             {{ t('scribble.book.noSheets') }}
@@ -265,6 +311,26 @@ onBeforeUnmount(() => {
       </div>
       <VButton size="sm" variant="ghost" @click="addSheet">+ {{ t('scribble.book.addSheet') }}</VButton>
       <VButton size="sm" variant="ghost" @click="rebuild">↻ {{ t('scribble.book.rebuildIndex') }}</VButton>
+      <VButton
+        size="sm"
+        variant="ghost"
+        :class="activeEnabled ? '' : 'opacity-50'"
+        :title="t('scribble.book.toggleEnabled')"
+        :aria-label="t('scribble.book.toggleEnabled')"
+        @click="toggleEnabled"
+      >
+        {{ activeEnabled ? '⏻' : '⏼' }}
+      </VButton>
+      <VButton
+        size="sm"
+        variant="ghost"
+        :class="activeDefault ? 'text-amber-500' : 'text-slate-300'"
+        :title="t('scribble.book.toggleDefault')"
+        :aria-label="t('scribble.book.toggleDefault')"
+        @click="toggleDefault"
+      >
+        {{ activeDefault ? '★' : '☆' }}
+      </VButton>
       <span class="ml-auto flex items-center gap-1.5 text-xs text-slate-500">
         <span
           class="inline-block h-2 w-2 rounded-full"
@@ -282,6 +348,7 @@ onBeforeUnmount(() => {
 
     <div class="min-h-0 flex-1">
       <ScribbleEditor
+        ref="editorRef"
         v-if="sheet"
         :key="activePath ?? ''"
         :sheet="sheet.sheet"

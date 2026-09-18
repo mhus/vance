@@ -44,6 +44,8 @@ export default {
       rebuildIndex: 'Index neu bauen',
       empty: 'Dieses Notizbuch ist leer — lege das erste Blatt an und schreib los.',
       pick: 'Wähle ein Blatt aus dem Menü oben.',
+      toggleEnabled: 'Blatt im Heft-Export berücksichtigen',
+      toggleDefault: 'Blatt beim Öffnen des Hefts zuerst anzeigen',
     },
   },
 };

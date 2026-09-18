@@ -9,4 +9,10 @@ import org.jspecify.annotations.Nullable;
  * (flat {@code sizeW}/{@code sizeH}) and the ordered strokes.
  */
 @GenerateTypeScript("scribble")
-public record ScribbleSheetDto(@Nullable String title, int sizeW, int sizeH, List<ScribbleStrokeDto> strokes) {}
+public record ScribbleSheetDto(
+        @Nullable String title,
+        int sizeW,
+        int sizeH,
+        List<ScribbleStrokeDto> strokes,
+        boolean enabled,
+        boolean defaultSheet) {}

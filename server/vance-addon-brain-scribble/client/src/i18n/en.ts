@@ -54,6 +54,8 @@ export default {
       rebuildIndex: 'Rebuild index',
       empty: 'This notebook is empty — add the first sheet and start writing.',
       pick: 'Pick a sheet from the menu above.',
+      toggleEnabled: 'Include this sheet in the book export',
+      toggleDefault: 'Open this sheet first when the book opens',
     },
   },
 };

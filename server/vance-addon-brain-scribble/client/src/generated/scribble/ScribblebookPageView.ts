@@ -9,4 +9,6 @@ export interface ScribblebookPageView {
   relativePath: string;
   title: string;
   description?: string;
+  enabled: boolean;
+  defaultSheet: boolean;
 }

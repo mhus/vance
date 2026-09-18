@@ -99,7 +99,14 @@ public class ScribbleController {
 
         List<ScribblebookPageView> pages = new ArrayList<>();
         for (ScribblebookFolderReader.Page p : scan.pages()) {
-            pages.add(new ScribblebookPageView(p.doc().getId(), p.doc().getPath(), p.relativePath(), p.title(), null));
+            pages.add(new ScribblebookPageView(
+                    p.doc().getId(),
+                    p.doc().getPath(),
+                    p.relativePath(),
+                    p.title(),
+                    null,
+                    p.enabled(),
+                    p.defaultSheet()));
         }
 
         String landingPath = null;
@@ -136,7 +143,8 @@ public class ScribbleController {
         String rel = stored.getPath().startsWith(normalised + "/")
                 ? stored.getPath().substring(normalised.length() + 1)
                 : stored.getPath();
-        return new ScribblebookPageView(stored.getId(), stored.getPath(), rel, title != null ? title : slug, null);
+        return new ScribblebookPageView(
+                stored.getId(), stored.getPath(), rel, title != null ? title : slug, null, true, false);
     }
 
     @PostMapping("/brain/{tenant}/addon/scribble/rebuild")

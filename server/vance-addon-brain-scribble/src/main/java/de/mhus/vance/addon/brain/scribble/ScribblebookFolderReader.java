@@ -1,5 +1,6 @@
 package de.mhus.vance.addon.brain.scribble;
 
+import de.mhus.vance.addon.brain.scribble.model.ScribbleSheet;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.kind.ApplicationCodec;
@@ -33,8 +34,9 @@ public class ScribblebookFolderReader {
         this.documentService = documentService;
     }
 
-    /** One sheet inside the scribblebook. */
-    public record Page(DocumentDocument doc, String relativePath, String title) {}
+    /** One sheet inside the scribblebook, with its book-level flags. */
+    public record Page(
+            DocumentDocument doc, String relativePath, String title, boolean enabled, boolean defaultSheet) {}
 
     public record Scan(
             String folder,
@@ -63,11 +65,29 @@ public class ScribblebookFolderReader {
             String leaf = rel.contains("/") ? rel.substring(rel.lastIndexOf('/') + 1) : rel;
             if (leaf.startsWith("_")) continue;
             String title = doc.getTitle() != null && !doc.getTitle().isBlank() ? doc.getTitle() : stem(leaf);
-            pages.add(new Page(doc, rel, title));
+            ScribbleSheet sheet = readSheetFlags(doc);
+            pages.add(new Page(doc, rel, title, sheet.enabled(), sheet.defaultSheet()));
         }
         pages.sort(Comparator.comparing(p -> p.title().toLowerCase(Locale.ROOT)));
 
         return new Scan(normalized, manifest.get(), config, landingPage, pages);
+    }
+
+    // ── Flag reads ─────────────────────────────────────────────────
+
+    // The flags live in the sheet body, so a scan parses every sheet in
+    // the folder. A notebook holds tens of sheets, not thousands — and
+    // the scan already walks them for title/ordering; an unparseable body
+    // keeps the lenient defaults instead of failing the whole scan.
+
+    private ScribbleSheet readSheetFlags(DocumentDocument doc) {
+        try (InputStream in = documentService.loadContent(doc)) {
+            String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            String mime = ScribbleCodec.supports(doc.getMimeType()) ? doc.getMimeType() : "application/yaml";
+            return ScribbleCodec.parse(body, mime);
+        } catch (IOException | RuntimeException e) {
+            return ScribbleSheet.empty(doc.getTitle());
+        }
     }
 
     private ApplicationDocument parseManifest(DocumentDocument manifest) {

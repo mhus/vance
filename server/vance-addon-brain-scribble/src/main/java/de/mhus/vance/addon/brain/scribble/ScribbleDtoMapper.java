@@ -27,7 +27,7 @@ public final class ScribbleDtoMapper {
         List<ScribbleStrokeDto> strokes = new ArrayList<>();
         for (ScribbleStroke stroke : sheet.strokes()) strokes.add(strokeToDto(stroke));
         return new ScribbleSheetDto(
-                sheet.title(), sheet.size().w(), sheet.size().h(), strokes);
+                sheet.title(), sheet.size().w(), sheet.size().h(), strokes, sheet.enabled(), sheet.defaultSheet());
     }
 
     private static ScribbleStrokeDto strokeToDto(ScribbleStroke stroke) {
@@ -50,7 +50,12 @@ public final class ScribbleDtoMapper {
             }
         }
         ScribbleSize size = new ScribbleSize(dto.sizeW(), dto.sizeH());
-        return new ScribbleSheet(dto.title(), size.isPositive() ? size : ScribbleSize.a4Portrait(), strokes);
+        return new ScribbleSheet(
+                dto.title(),
+                size.isPositive() ? size : ScribbleSize.a4Portrait(),
+                strokes,
+                dto.enabled(),
+                dto.defaultSheet());
     }
 
     private static Map<String, Object> strokeToMap(ScribbleStrokeDto s) {

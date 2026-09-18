@@ -51,6 +51,14 @@ function syncHistoryState(): void {
   canRedo.value = history.canRedo;
 }
 
+// ── Book-level flags ───────────────────────────────────────────
+// `enabled` keeps the sheet in the book PDF export, `defaultSheet` marks
+// the sheet a scribblebook opens first. Declared before the sheet watch
+// (it resets them on reload) and before the canvas refs — see the TDZ
+// comment there. Toggled from the host header via applyFlag(), so the
+// change rides the same debounced save as strokes.
+const enabled = ref(true);
+const defaultSheet = ref(false);
 
 const sheetW = computed(() => props.sheet.sizeW || 1240);
 const sheetH = computed(() => props.sheet.sizeH || 1754);
@@ -81,8 +89,23 @@ function emitChange(): void {
     sizeW: sheetW.value,
     sizeH: sheetH.value,
     strokes: strokes.value,
+    enabled: enabled.value,
+    defaultSheet: defaultSheet.value,
   });
 }
+
+/**
+ * Host-side flag toggle (scribblebook header). Merges into the local
+ * sheet state and emits — the debounced save path carries it to the server
+ * exactly like a stroke, so there is no second writer to race with.
+ */
+function applyFlag(patch: { enabled?: boolean; defaultSheet?: boolean }): void {
+  if (patch.enabled !== undefined) enabled.value = patch.enabled;
+  if (patch.defaultSheet !== undefined) defaultSheet.value = patch.defaultSheet;
+  emitChange();
+}
+
+defineExpose({ applyFlag });
 
 // ── Viewport ───────────────────────────────────────────────────
 // screen = sheetPoint * scale + offset — pure view state, never stored.
@@ -112,6 +135,8 @@ watch(
   () => props.sheet,
   (s) => {
     strokes.value = [...(s?.strokes ?? [])];
+    enabled.value = s?.enabled ?? true;
+    defaultSheet.value = s?.defaultSheet ?? false;
     history.reset();
     syncHistoryState();
     renderBase();

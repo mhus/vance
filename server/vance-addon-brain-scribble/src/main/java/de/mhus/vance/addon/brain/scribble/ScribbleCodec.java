@@ -111,7 +111,12 @@ public final class ScribbleCodec {
             ScribbleStroke stroke = strokeFromMap(raw);
             if (stroke != null) strokes.add(stroke);
         }
-        return new ScribbleSheet(title, size, strokes);
+        // Book-level flags, lenient like everything here: a missing or
+        // non-boolean `enabled` stays true (every ordinary sheet is on), a
+        // missing `default` stays false. Explicit values win.
+        boolean enabled = !(top.get("enabled") instanceof Boolean b) || b;
+        boolean defaultSheet = top.get("default") instanceof Boolean d && d;
+        return new ScribbleSheet(title, size, strokes, enabled, defaultSheet);
     }
 
     /** The raw {@code scribble.strokes} entries of an unwrapped body map. */
@@ -146,6 +151,9 @@ public final class ScribbleCodec {
     private static Map<String, Object> buildBody(ScribbleSheet sheet) {
         Map<String, Object> body = new LinkedHashMap<>();
         if (sheet.title() != null) body.put("title", sheet.title());
+        // Flags serialize only on deviation — ordinary sheets never carry them.
+        if (!sheet.enabled()) body.put("enabled", false);
+        if (sheet.defaultSheet()) body.put("default", true);
 
         FlowMap size = new FlowMap();
         size.put("w", sheet.size().w());

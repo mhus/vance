@@ -587,8 +587,8 @@ onBeforeUnmount(() => {
     @keydown="onKeydown"
     @contextmenu.prevent
   >
-    <canvas ref="baseCanvas" class="absolute inset-0"></canvas>
-    <canvas ref="liveCanvas" class="absolute inset-0"></canvas>
+    <canvas ref="baseCanvas" class="no-print absolute inset-0"></canvas>
+    <canvas ref="liveCanvas" class="no-print absolute inset-0"></canvas>
     <!-- Paper body: the screen canvases hold the zoomed viewport raster,
          useless on paper. This one is invisible on screen and gets the full
          sheet rendered 1:1 on beforeprint; print.css switches it on and

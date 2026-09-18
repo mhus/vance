@@ -290,6 +290,12 @@ function beginPinch(): void {
 
 function onPointerDown(ev: PointerEvent): void {
   if (!props.editable) return;
+  // The toolbar is a CHILD of the surface: its pointerdown bubbles here.
+  // Handling it would start ink on the toolbar and — worse —
+  // setPointerCapture would steal the click from the button, killing
+  // every toolbar control. Only pointers that start on a canvas (or the
+  // bare surface) become gestures.
+  if (ev.target !== ev.currentTarget && !(ev.target instanceof HTMLCanvasElement)) return;
   if (ev.button !== 0 && ev.button !== 1) return;
   ev.preventDefault();
   container.value?.setPointerCapture(ev.pointerId);

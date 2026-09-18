@@ -19,6 +19,12 @@
     </properties>
 
     <dependencies>
+        <!-- PDF export: one PNG page per sheet (managed version from the
+             parent — same PDFBox line the brain uses for PdfFileContent). -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+        </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-api</artifactId>

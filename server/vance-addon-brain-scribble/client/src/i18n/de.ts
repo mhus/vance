@@ -46,6 +46,11 @@ export default {
       pick: 'Wähle ein Blatt aus dem Menü oben.',
       toggleEnabled: 'Blatt im Heft-Export berücksichtigen',
       toggleDefault: 'Blatt beim Öffnen des Hefts zuerst anzeigen',
+      ocr: 'Aktuelles Blatt per KI transkribieren (als Markdown daneben)',
+      ocrDone: 'Transkription gespeichert:',
+      pdf: 'Heft als PDF exportieren (nur aktivierte Blätter)',
+      pdfDone: 'PDF gespeichert: {path} ({count} Seiten)',
+      pdfSkipped: 'übersprungen',
     },
   },
 };

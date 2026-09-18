@@ -52,8 +52,12 @@ ordered array; erasing removes strokes, it never edits points in place.
   so prefer `title` and `kind_validate` for structure questions.
 - `kind_validate` reports strokes that would be dropped on save (no usable
   points) by index, and ink that runs off the sheet raster.
-- Handwriting text is **not searchable yet** — an OCR pass that extracts
-  text into a parallel Markdown file is a later, separate feature.
+- Handwriting is readable: `scribble_ocr(path)` transcribes it to Markdown
+  with a vision model and stores it in the **same file every time**,
+  `<name>.scribble.md` next to the sheet (machine-owned, a re-run
+  overwrites). Read the transcript with `doc_read`. The recipe
+  (`scribble-ocr`) names the model — it must be vision-capable, a
+  missing capability fails the call with the model's name.
 - `scribble_sheet_image` renders the sheet to PNG and attaches it to your
   next turn, so a vision-capable model can look at the handwriting. Optional
   `dpi` (default 150, capped at 600) for fine writing and `region`
@@ -61,6 +65,11 @@ ordered array; erasing removes strokes, it never edits points in place.
   model's vision capability and answers with a clear reason instead of
   rendering when it cannot be seen. Only pen strokes render; a blank sheet
   is reported, not delivered as an image.
+- PDF export: `scribble_sheet_pdf(path)` writes a one-page PDF next to the
+  sheet (`<name>.scribble.pdf`); `scribble_book_pdf(folder)` bundles the whole
+  notebook — one page per **enabled** sheet, in scan order, next to the
+  manifest (`<folder>/<folder>.pdf`). Disabled sheets are skipped and listed.
+  Both are regenerated export artifacts; a re-run overwrites.
 
 ## Editing
 

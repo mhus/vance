@@ -6,7 +6,9 @@ import InputDialog from './InputDialog.vue';
 import { useT } from './i18n';
 import {
   createScribblePage,
+  exportBookPdf,
   getSheet,
+  ocrSheet,
   putSheet,
   rebuildScribblebook,
   scanScribblebook,
@@ -269,6 +271,48 @@ function setLocalFlag(path: string | null, patch: { enabled?: boolean; defaultSh
   const page = view.value?.pages.find((p) => p.path === path);
   if (page) Object.assign(page, patch);
 }
+
+// ── OCR + PDF export (server-side, via the addon REST) ──────────
+// Both run while the button spins — OCR takes seconds (vision model), the
+// PDF assembly is fast. The flush first makes sure the export/OCR sees
+// the strokes on disk, not the ones still in the debounce.
+
+const busy = ref<'ocr' | 'pdf' | null>(null);
+const notice = ref<string | null>(null);
+
+async function runOcr(): Promise<void> {
+  if (!activePath.value || busy.value) return;
+  busy.value = 'ocr';
+  error.value = null;
+  notice.value = null;
+  try {
+    await flushPending();
+    const res = await ocrSheet(props.document.projectId, activePath.value);
+    notice.value = t('scribble.book.ocrDone') + ' ' + res.mdPath;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    busy.value = null;
+  }
+}
+
+async function runBookPdf(): Promise<void> {
+  if (!folder.value || busy.value) return;
+  busy.value = 'pdf';
+  error.value = null;
+  notice.value = null;
+  try {
+    await flushPending();
+    const res = await exportBookPdf(props.document.projectId, folder.value);
+    notice.value =
+      t('scribble.book.pdfDone', { path: res.pdfPath, count: res.pageCount })
+      + (res.skippedSheets.length > 0 ? ' — ' + t('scribble.book.pdfSkipped') + ': ' + res.skippedSheets.join(', ') : '');
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    busy.value = null;
+  }
+}
 // ── Live document updates (documents channel) ─────────────────
 // A sheet is a document, so remote saves fire `documents.changed`. Reload
 // the active sheet when it changes elsewhere. Own echoes are skipped via a
@@ -346,6 +390,26 @@ onBeforeUnmount(() => {
       >
         {{ activeDefault ? '★' : '☆' }}
       </VButton>
+      <VButton
+        size="sm"
+        variant="ghost"
+        :disabled="busy !== null"
+        :title="t('scribble.book.ocr')"
+        :aria-label="t('scribble.book.ocr')"
+        @click="runOcr"
+      >
+        {{ busy === 'ocr' ? '…' : '📝' }}
+      </VButton>
+      <VButton
+        size="sm"
+        variant="ghost"
+        :disabled="busy !== null"
+        :title="t('scribble.book.pdf')"
+        :aria-label="t('scribble.book.pdf')"
+        @click="runBookPdf"
+      >
+        {{ busy === 'pdf' ? '…' : '⤓' }}
+      </VButton>
       <span class="ml-auto flex items-center gap-1.5 text-xs text-slate-500">
         <span
           class="inline-block h-2 w-2 rounded-full"
@@ -360,6 +424,7 @@ onBeforeUnmount(() => {
     </div>
 
     <VAlert v-if="error" variant="error" class="no-print">{{ error }}</VAlert>
+    <VAlert v-if="notice" variant="success" class="no-print">{{ notice }}</VAlert>
 
     <div class="min-h-0 flex-1">
       <ScribbleEditor

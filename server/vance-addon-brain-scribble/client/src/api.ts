@@ -4,6 +4,8 @@ import type { ScribblebookPageView } from './generated/scribble/ScribblebookPage
 import type { ScribblebookRebuildResponse } from './generated/scribble/ScribblebookRebuildResponse';
 import type { ScribblebookView } from './generated/scribble/ScribblebookView';
 import type { ScribbleCreateSheetRequest } from './generated/scribble/ScribbleCreateSheetRequest';
+import type { ScribbleOcrResponse } from './generated/scribble/ScribbleOcrResponse';
+import type { ScribblePdfResponse } from './generated/scribble/ScribblePdfResponse';
 import type { ScribbleSheetDto } from './generated/scribble/ScribbleSheetDto';
 import type { ScribbleSheetView } from './generated/scribble/ScribbleSheetView';
 
@@ -76,5 +78,29 @@ export async function rebuildScribblebook(
   return brainFetch<ScribblebookRebuildResponse>(
     'POST',
     `addon/scribble/rebuild?${qs({ projectId, folder })}`,
+  );
+}
+
+// ── OCR + PDF export ─────────────────────────────────────────────
+
+/** Runs a vision transcription; resolves when the sheet is transcribed. */
+export async function ocrSheet(projectId: string, path: string): Promise<ScribbleOcrResponse> {
+  return brainFetch<ScribbleOcrResponse>(
+    'POST',
+    `addon/scribble/ocr?${qs({ projectId, path })}`,
+  );
+}
+
+export async function exportSheetPdf(projectId: string, path: string): Promise<ScribblePdfResponse> {
+  return brainFetch<ScribblePdfResponse>(
+    'POST',
+    `addon/scribble/pdf?${qs({ projectId, path })}`,
+  );
+}
+
+export async function exportBookPdf(projectId: string, folder: string): Promise<ScribblePdfResponse> {
+  return brainFetch<ScribblePdfResponse>(
+    'POST',
+    `addon/scribble/bookpdf?${qs({ projectId, folder })}`,
   );
 }

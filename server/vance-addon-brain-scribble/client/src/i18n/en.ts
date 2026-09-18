@@ -56,6 +56,11 @@ export default {
       pick: 'Pick a sheet from the menu above.',
       toggleEnabled: 'Include this sheet in the book export',
       toggleDefault: 'Open this sheet first when the book opens',
+      ocr: 'Transcribe the current sheet with AI (Markdown next to it)',
+      ocrDone: 'Transcription stored:',
+      pdf: 'Export the book as PDF (enabled sheets only)',
+      pdfDone: 'PDF stored: {path} ({count} pages)',
+      pdfSkipped: 'skipped',
     },
   },
 };

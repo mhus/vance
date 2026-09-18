@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { VAlert, useDocumentPrefixReaction } from '@vance/components';
+import { VAlert, VButton, useDocumentPrefixReaction } from '@vance/components';
 import ScribbleEditor from './ScribbleEditor.vue';
-import { getSheet, putSheet } from './api';
+import { exportSheetPdf, getSheet, ocrSheet, putSheet } from './api';
 import { useT } from './i18n';
 import type { ScribbleSheetDto } from './generated/scribble/ScribbleSheetDto';
 import type { ScribbleSheetView } from './generated/scribble/ScribbleSheetView';
@@ -142,11 +142,50 @@ const saveLabel = computed(() =>
     : saveState.value === 'dirty'
       ? t('scribble.state.unsaved')
       : t('scribble.state.saved'));
+// ── OCR + PDF export of this single sheet ───────────────────────
+// Same pattern as the book header: flush first, then the server does the
+// work while the button spins.
+const busy = ref<'ocr' | 'pdf' | null>(null);
+const notice = ref<string | null>(null);
+
+async function runOcr(): Promise<void> {
+  if (busy.value) return;
+  busy.value = 'ocr';
+  error.value = null;
+  notice.value = null;
+  try {
+    await flush();
+    const res = await ocrSheet(props.document.projectId, props.document.path);
+    notice.value = t('scribble.book.ocrDone') + ' ' + res.mdPath;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    busy.value = null;
+  }
+}
+
+async function runPdf(): Promise<void> {
+  if (busy.value) return;
+  busy.value = 'pdf';
+  error.value = null;
+  notice.value = null;
+  try {
+    await flush();
+    const res = await exportSheetPdf(props.document.projectId, props.document.path);
+    notice.value = t('scribble.book.pdfDone', { path: res.pdfPath, count: res.pageCount });
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    busy.value = null;
+  }
+}
+
 </script>
 
 <template>
   <div class="flex h-full w-full flex-col">
     <VAlert v-if="error" variant="error">{{ error }}</VAlert>
+    <VAlert v-else-if="notice" variant="success">{{ notice }}</VAlert>
     <div v-else-if="loading || !view" class="p-4 text-sm opacity-60">
       {{ t('scribble.common.loading') }}
     </div>
@@ -161,6 +200,26 @@ const saveLabel = computed(() =>
           }"
         ></span>
         <span>{{ saveLabel }}</span>
+        <VButton
+          size="sm"
+          variant="ghost"
+          :disabled="busy !== null"
+          :title="t('scribble.book.ocr')"
+          :aria-label="t('scribble.book.ocr')"
+          @click="runOcr"
+        >
+          {{ busy === 'ocr' ? '…' : '📝' }}
+        </VButton>
+        <VButton
+          size="sm"
+          variant="ghost"
+          :disabled="busy !== null"
+          :title="t('scribble.book.pdf')"
+          :aria-label="t('scribble.book.pdf')"
+          @click="runPdf"
+        >
+          {{ busy === 'pdf' ? '…' : '⤓' }}
+        </VButton>
       </div>
       <div class="min-h-0 flex-1">
         <ScribbleEditor :sheet="view.sheet" :editable="true" @change="onEditorChange" />

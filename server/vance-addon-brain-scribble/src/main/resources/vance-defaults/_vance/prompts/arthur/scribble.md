@@ -7,7 +7,10 @@
   right away. There are **no stroke tools** (handwriting is user input, not
   LLM output), but if your model has vision you *can look at the ink*:
   **`scribble_sheet_image(path, dpi?, region?)`** renders the sheet and
-  attaches it to your next turn. Structure checks:
+  attaches it to your next turn. To **make handwriting text**:
+  **`scribble_ocr(path)`** stores the transcript as `<name>.scribble.md`
+  next to the sheet — read it from there. **Exports**:
+  `scribble_sheet_pdf(path)` / `scribble_book_pdf(folder)`. Structure checks:
   `scribble_validate(path)`; titles for content questions.
 
   For **several sheets grouped** as a notebook use `app: scribblebook`

@@ -45,6 +45,8 @@ public class ScribbleController {
     private final ScribblebookFolderReader folderReader;
     private final DocumentService documentService;
     private final RequestAuthority authority;
+    private final ScribbleOcrService ocrService;
+    private final ScribblePdfService pdfService;
 
     // ── Sheet (kind: scribble) ────────────────────────────────────
 
@@ -164,6 +166,43 @@ public class ScribbleController {
                 index != null ? index.path() : "",
                 index != null ? index.markdownLink() : null,
                 pageCount);
+    }
+
+    // ── OCR + PDF export ─────────────────────────────────────────
+
+    @PostMapping("/brain/{tenant}/addon/scribble/ocr")
+    public ScribbleOcrResponse ocr(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        DocumentDocument doc = requireScribble(tenant, projectId, path);
+        ScribbleOcrService.OcrResult result = ocrService.transcribe(tenant, projectId, doc, currentUser(request));
+        return new ScribbleOcrResponse(result.mdPath(), result.markdown().length());
+    }
+
+    @PostMapping("/brain/{tenant}/addon/scribble/pdf")
+    public ScribblePdfResponse sheetPdf(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String path,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        DocumentDocument doc = requireScribble(tenant, projectId, path);
+        ScribblePdfService.SheetExport export = pdfService.exportSheet(tenant, projectId, doc, currentUser(request));
+        return new ScribblePdfResponse(export.pdfPath(), 1, List.of());
+    }
+
+    @PostMapping("/brain/{tenant}/addon/scribble/bookpdf")
+    public ScribblePdfResponse bookPdf(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        ScribblePdfService.BookExport export = pdfService.exportBook(tenant, projectId, folder, currentUser(request));
+        return new ScribblePdfResponse(export.pdfPath(), export.pageCount(), export.skipped());
     }
 
     // ── Helpers ───────────────────────────────────────────────────

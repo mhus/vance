@@ -65,7 +65,18 @@ public final class ScribbleRenderer {
      * @throws IllegalArgumentException if the region does not intersect the
      *                                  sheet raster
      */
-    public static byte[] renderPng(ScribbleSheet sheet, int dpi, @Nullable Region region) throws IOException {
+    /**
+     * Renders the sheet (or a region of it) as a buffered image — the PDF
+     * path consumes this directly (no PNG encode/decode round-trip);
+     * {@link #renderPng} wraps it with PNG encoding for the wire.
+     *
+     * @param sheet  the parsed sheet model
+     * @param dpi    target resolution; {@code 150} renders 1:1 in sheet units
+     * @param region crop in sheet coordinates, {@code null} for the full sheet
+     * @throws IllegalArgumentException if the region does not intersect the
+     *                                  sheet raster
+     */
+    public static BufferedImage renderImage(ScribbleSheet sheet, int dpi, @Nullable Region region) {
         ScribbleSize size =
                 sheet.size() != null && sheet.size().isPositive() ? sheet.size() : ScribbleSize.a4Portrait();
         if (dpi <= 0) throw new IllegalArgumentException("dpi must be positive: " + dpi);
@@ -90,6 +101,15 @@ public final class ScribbleRenderer {
             g.dispose();
         }
 
+        return image;
+    }
+
+    /**
+     * Renders the sheet (or a region of it) to PNG bytes — the wire format
+     * of the vision tool and the OCR input.
+     */
+    public static byte[] renderPng(ScribbleSheet sheet, int dpi, @Nullable Region region) throws IOException {
+        BufferedImage image = renderImage(sheet, dpi, region);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         if (!ImageIO.write(image, "png", out)) {
             throw new IOException("No PNG encoder available");

@@ -1,0 +1,40 @@
+description: |
+  Internal LightLlmService config profile used by the scribble addon's
+  OCR path (ScribbleOcrService): transcribing a rendered handwriting
+  sheet to Markdown. The caller attaches the sheet PNG as an image
+  block — the recipe's model MUST be VISION-capable, the service
+  fails fast otherwise. Point params.model at a vision model per
+  tenant/project if the default is not one.
+
+  NOT spawnable — marked `internal: true` so the standard recipe
+  selector skips it.
+
+  Pebble variables:
+    sheetTitle — display title of the transcribed sheet
+
+  Output: Markdown transcription of the handwriting, nothing else.
+engine: jeltz
+internal: true
+params:
+  model: default:analyze
+  maxAttempts: 2
+  temperature: 0.1
+promptPrefix: |
+  You are a handwriting transcription assistant. The image attached to
+  the user message shows one handwriting sheet ("{{ sheetTitle }}").
+  Transcribe its handwritten content to Markdown.
+
+  Rules:
+  - Transcribe the language that is written, exactly as written —
+    including its script (Latin, Cyrillic, …) and its language. Do NOT
+    translate and do NOT follow the language of this prompt.
+  - Preserve the visible structure: headings as headings, lists as
+    lists, tables as tables — best effort by what is visibly laid out.
+  - Read only what is actually written. Never invent, complete or
+    summarize. If a word is illegible, write your best single guess.
+  - Ignore drawings, doodles and margin marks that carry no text.
+  - No commentary, no preamble, no closing remark — the Markdown body
+    is the entire answer.
+tags:
+  - internal
+  - scribble-ocr

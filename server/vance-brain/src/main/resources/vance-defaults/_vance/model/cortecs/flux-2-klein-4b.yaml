@@ -1,0 +1,25 @@
+# FLUX.2 [klein] 4B served by the Cortecs gateway on the OpenAI
+# images wire (/v1/images/generations, b64_json response).
+#
+# Hand-written here, not discovery-owned: Cortecs' /v1/models does not
+# list image models, so ModelDiscoveryService can never observe it —
+# this is the documented exception to the "no model documents in this
+# directory" rule in _provider.yaml.
+#
+# Dispatches through OpenAiImageProvider (the cortecs sidecar declares
+# wireType: openai). A tenant needs the ai.provider.cortecs.apiKey and
+# ai.provider.cortecs.baseUrl settings; without the baseUrl override
+# the provider would POST to OpenAI proper. The provider's size mapping
+# sends 1024x1024 / 1536x1024 / 1024x1536 — all three verified against
+# the endpoint (2-3 s per image, quality param tolerated).
+kind: image
+timeoutSeconds: 90
+supportedAspectRatios:
+- '1:1'
+- '16:9'
+- '9:16'
+- '4:3'
+- '3:4'
+costPerImage:
+  standard: 0.014
+maxPromptChars: 2000

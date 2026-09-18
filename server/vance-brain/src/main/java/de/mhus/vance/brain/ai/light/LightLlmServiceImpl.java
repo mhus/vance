@@ -7,6 +7,8 @@ import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ChatBehavior;
 import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
+import de.mhus.vance.brain.ai.ModelCapability;
+import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.brain.recipe.RecipeLoader;
@@ -17,13 +19,16 @@ import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.util.JsonSchemaLight;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ImageContent;
 import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,6 +86,7 @@ public class LightLlmServiceImpl implements LightLlmService {
     private final ObjectMapper objectMapper;
     private final MetricService metricService;
     private final de.mhus.vance.shared.audit.AuditService auditService;
+    private final ModelCatalog modelCatalog;
 
     @Override
     public String call(LightLlmRequest req) {
@@ -136,12 +142,13 @@ public class LightLlmServiceImpl implements LightLlmService {
         ResolvedRecipe recipe = resolveInternalRecipe(req);
         String systemPrompt = renderSystemPrompt(recipe, req);
         BuiltChat built = buildChat(recipe, req);
+        UserMessage userMessage = buildUserMessage(req, built);
 
         ChatResponse response;
         try {
             response = built.model()
                     .chat(ChatRequest.builder()
-                            .messages(List.of(SystemMessage.from(systemPrompt), UserMessage.from(req.getUserPrompt())))
+                            .messages(List.of(SystemMessage.from(systemPrompt), userMessage))
                             .build());
         } catch (RuntimeException e) {
             throw new LightLlmException("LLM call failed: " + e.getMessage(), e);
@@ -161,7 +168,7 @@ public class LightLlmServiceImpl implements LightLlmService {
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(systemPrompt));
-        messages.add(UserMessage.from(req.getUserPrompt()));
+        messages.add(buildUserMessage(req, built));
 
         String lastError = null;
         Object lastInvalid = null;
@@ -313,6 +320,7 @@ public class LightLlmServiceImpl implements LightLlmService {
     private record BuiltChat(
             ChatModel model,
             String primaryName,
+            AiChatConfig primaryConfig,
             AtomicReference<String> answered,
             AtomicReference<LightLlmJsonAnswer.Usage> lastUsage) {
 
@@ -407,7 +415,43 @@ public class LightLlmServiceImpl implements LightLlmService {
                 CallAttribution.light(req.getTenantId(), req.getProjectId(), req.getProcessId(), recipe.name());
         AiChat chat = aiModelService.createChat(behavior, options, attribution);
         AiChatConfig asked = entries.get(0).config();
-        return new BuiltChat(chat.chatModel(), asked.providerInstance() + ":" + asked.modelName(), answered, usage);
+        return new BuiltChat(
+                chat.chatModel(), asked.providerInstance() + ":" + asked.modelName(), asked, answered, usage);
+    }
+
+    /**
+     * The user message: plain text by default; with an image on the request,
+     * an {@code ImageContent} block lands before the text. Gated on the
+     * primary model's VISION capability — the same fail-fast contract as the
+     * chat attachment path ({@code StandardAiChat.toContentBlock}): sending a
+     * non-vision model an image is wasted tokens at best, a hard error at
+     * worst. Schema-retry corrections are text-only by design.
+     */
+    private UserMessage buildUserMessage(LightLlmRequest req, BuiltChat built) {
+        if (req.getImageData() == null) {
+            return UserMessage.from(req.getUserPrompt());
+        }
+        if (req.getImageData().length == 0) {
+            throw new LightLlmException("imageData is empty");
+        }
+        AiChatConfig primary = built.primaryConfig();
+        if (!modelCatalog
+                .lookupOrDefault(
+                        req.getTenantId(),
+                        req.getProjectId(),
+                        primary.providerInstance(),
+                        primary.provider(),
+                        primary.modelName())
+                .capabilities()
+                .contains(ModelCapability.VISION)) {
+            throw new LightLlmException(
+                    "Model '" + built.primaryName() + "' has no VISION capability — cannot send an image");
+        }
+        String mime = req.getImageMime() == null || req.getImageMime().isBlank()
+                ? "image/png"
+                : req.getImageMime().trim();
+        String base64 = Base64.getEncoder().encodeToString(req.getImageData());
+        return UserMessage.from(List.of(ImageContent.from(base64, mime), TextContent.from(req.getUserPrompt())));
     }
 
     // ──────────────────── Param helpers ────────────────────

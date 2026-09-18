@@ -13,12 +13,10 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.brain.ai.AiChat;
-import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ChatBehavior;
-import de.mhus.vance.brain.ai.OutputTokenParam;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.RecipeSource;
@@ -53,6 +51,7 @@ class LightLlmServiceImplTest {
     private AiModelResolver aiModelResolver;
     private AiModelService aiModelService;
     private ScriptedChatModel chatModel;
+    private de.mhus.vance.brain.ai.ModelCatalog modelCatalog;
     private LightLlmServiceImpl service;
 
     @BeforeEach
@@ -65,14 +64,15 @@ class LightLlmServiceImplTest {
         // Real MetricService backed by an in-memory registry — keeps
         // the impl exercised without per-test mock setup. Mocking it
         // would only hide drift between method shapes.
-        MetricService metricService = new MetricService(
-                new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+        MetricService metricService = new MetricService(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
 
         chatModel = new ScriptedChatModel();
         AiChat scriptedChat = mock(AiChat.class);
         when(scriptedChat.chatModel()).thenReturn(chatModel);
-        when(aiModelService.createChat(any(ChatBehavior.class), any(AiChatOptions.class),
-                any(de.mhus.vance.shared.llmusage.CallAttribution.class)))
+        when(aiModelService.createChat(
+                        any(ChatBehavior.class),
+                        any(AiChatOptions.class),
+                        any(de.mhus.vance.shared.llmusage.CallAttribution.class)))
                 .thenReturn(scriptedChat);
         when(aiModelResolver.resolveOrDefault(any(), any(), any(), any()))
                 .thenReturn(AiModelResolver.Resolved.direct("openai", "gpt-4o-mini"));
@@ -82,13 +82,18 @@ class LightLlmServiceImplTest {
                 .thenAnswer(inv -> inv.getArgument(4));
         when(templateRenderer.render(any(), any())).thenReturn("rendered system prompt");
 
+        modelCatalog = org.mockito.Mockito.mock(de.mhus.vance.brain.ai.ModelCatalog.class);
         service = new LightLlmServiceImpl(
-                recipeLoader, templateRenderer, settingService,
-                aiModelResolver, aiModelService, JsonMapper.builder().build(),
+                recipeLoader,
+                templateRenderer,
+                settingService,
+                aiModelResolver,
+                aiModelService,
+                JsonMapper.builder().build(),
                 metricService,
-                org.mockito.Mockito.mock(de.mhus.vance.shared.audit.AuditService.class));
+                org.mockito.Mockito.mock(de.mhus.vance.shared.audit.AuditService.class),
+                modelCatalog);
     }
-
 
     // ──────────────────── extractJson static helper ────────────────────
 
@@ -114,10 +119,8 @@ class LightLlmServiceImplTest {
 
     @Test
     void call_throws_whenRecipeNameMissing() {
-        LightLlmRequest req = LightLlmRequest.builder()
-                .userPrompt("hello")
-                .tenantId(TENANT)
-                .build();
+        LightLlmRequest req =
+                LightLlmRequest.builder().userPrompt("hello").tenantId(TENANT).build();
         assertThatThrownBy(() -> service.call(req))
                 .isInstanceOf(LightLlmException.class)
                 .hasMessageContaining("recipeName");
@@ -169,8 +172,7 @@ class LightLlmServiceImplTest {
 
     @Test
     void call_throws_whenRecipeHasNoPromptPrefix() {
-        when(recipeLoader.load(any(), any(), any()))
-                .thenReturn(Optional.of(stubRecipeWithoutPrompt("how-do-i")));
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipeWithoutPrompt("how-do-i")));
         LightLlmRequest req = baseRequest();
         assertThatThrownBy(() -> service.call(req))
                 .isInstanceOf(LightLlmException.class)
@@ -181,8 +183,7 @@ class LightLlmServiceImplTest {
 
     @Test
     void call_returnsRawLlmText_whenRecipeIsInternal() {
-        when(recipeLoader.load(any(), any(), any()))
-                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
         chatModel.script(List.of("the answer is 42"));
         LightLlmRequest req = baseRequest();
         String text = service.call(req);
@@ -194,8 +195,7 @@ class LightLlmServiceImplTest {
 
     @Test
     void callForJson_returnsMap_onFirstValidReply() {
-        when(recipeLoader.load(any(), any(), any()))
-                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
         chatModel.script(List.of("{\"loaded\": {\"name\": \"x\"}}"));
 
         Map<String, Object> result = service.callForJson(jsonRequest());
@@ -205,8 +205,7 @@ class LightLlmServiceImplTest {
 
     @Test
     void callForJsonWithModel_namesTheResolvedModel_notTheRecipesAlias() {
-        when(recipeLoader.load(any(), any(), any()))
-                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
         chatModel.script(List.of("{\"loaded\": {\"name\": \"x\"}}"));
 
         LightLlmJsonAnswer answer = service.callForJsonWithModel(jsonRequest());
@@ -221,11 +220,8 @@ class LightLlmServiceImplTest {
     void callForJson_delegatesToTheModelAwarePath_andDropsTheMetadata() {
         // One implementation, two shapes — so the plain path cannot drift
         // into answering something different from the annotated one.
-        when(recipeLoader.load(any(), any(), any()))
-                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
-        chatModel.script(List.of(
-                "{\"loaded\": {\"name\": \"x\"}}",
-                "{\"loaded\": {\"name\": \"x\"}}"));
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        chatModel.script(List.of("{\"loaded\": {\"name\": \"x\"}}", "{\"loaded\": {\"name\": \"x\"}}"));
 
         assertThat(service.callForJson(jsonRequest()))
                 .isEqualTo(service.callForJsonWithModel(jsonRequest()).json());
@@ -233,11 +229,8 @@ class LightLlmServiceImplTest {
 
     @Test
     void callForJson_succeedsOnSecondAttempt_afterInvalidJson() {
-        when(recipeLoader.load(any(), any(), any()))
-                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
-        chatModel.script(List.of(
-                "this isn't json at all, sorry",
-                "{\"hint\": \"no match\"}"));
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        chatModel.script(List.of("this isn't json at all, sorry", "{\"hint\": \"no match\"}"));
 
         Map<String, Object> result = service.callForJson(jsonRequest());
         assertThat(result).containsEntry("hint", "no match");
@@ -246,8 +239,7 @@ class LightLlmServiceImplTest {
 
     @Test
     void callForJson_throwsSchemaValidationException_afterMaxAttempts() {
-        when(recipeLoader.load(any(), any(), any()))
-                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
         chatModel.script(List.of("not json", "still not json", "nope"));
 
         LightLlmRequest req = LightLlmRequest.builder()
@@ -265,8 +257,7 @@ class LightLlmServiceImplTest {
 
     @Test
     void callForJson_extractsJson_fromMarkdownFencedReply() {
-        when(recipeLoader.load(any(), any(), any()))
-                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
         chatModel.script(List.of("```json\n{\"answer\": 42}\n```"));
 
         Map<String, Object> result = service.callForJson(jsonRequest());
@@ -275,17 +266,12 @@ class LightLlmServiceImplTest {
 
     @Test
     void callForJson_validatesAgainstSchema_andRejectsMissingRequired() {
-        when(recipeLoader.load(any(), any(), any()))
-                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
         // First reply: valid JSON but missing required 'loaded' property
         // Second reply: contains 'loaded' → schema-valid
-        chatModel.script(List.of(
-                "{\"unrelated\": 1}",
-                "{\"loaded\": \"x\"}"));
+        chatModel.script(List.of("{\"unrelated\": 1}", "{\"loaded\": \"x\"}"));
 
-        Map<String, Object> schema = Map.of(
-                "type", "object",
-                "required", List.of("loaded"));
+        Map<String, Object> schema = Map.of("type", "object", "required", List.of("loaded"));
 
         LightLlmRequest req = LightLlmRequest.builder()
                 .recipeName("how-do-i")
@@ -303,17 +289,18 @@ class LightLlmServiceImplTest {
     void callForJson_doesNotInvokeLlm_whenRecipeMissing() {
         when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.callForJson(jsonRequest()))
-                .isInstanceOf(LightLlmException.class);
+        assertThatThrownBy(() -> service.callForJson(jsonRequest())).isInstanceOf(LightLlmException.class);
         assertThat(chatModel.invocations).isZero();
-        verify(aiModelService, never()).createChat(any(ChatBehavior.class), any(AiChatOptions.class),
-                any(de.mhus.vance.shared.llmusage.CallAttribution.class));
+        verify(aiModelService, never())
+                .createChat(
+                        any(ChatBehavior.class),
+                        any(AiChatOptions.class),
+                        any(de.mhus.vance.shared.llmusage.CallAttribution.class));
     }
 
     @Test
     void call_throws_whenMasterSwitchDisabled() {
-        when(settingService.getBooleanValueCascade(
-                any(), any(), any(), eq("lightllm.enabled"), anyBoolean()))
+        when(settingService.getBooleanValueCascade(any(), any(), any(), eq("lightllm.enabled"), anyBoolean()))
                 .thenReturn(false);
         assertThatThrownBy(() -> service.call(baseRequest()))
                 .isInstanceOf(LightLlmException.class)
@@ -323,26 +310,78 @@ class LightLlmServiceImplTest {
 
     @Test
     void callForJson_propagatesLlmProviderError() {
-        when(recipeLoader.load(any(), any(), any()))
-                .thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
         chatModel.failNext(new RuntimeException("provider 5xx"));
 
         assertThatThrownBy(() -> service.callForJson(jsonRequest()))
                 .isInstanceOf(LightLlmException.class)
                 .hasMessageContaining("LLM call failed");
         verify(aiModelService, times(1))
-                .createChat(any(ChatBehavior.class), any(AiChatOptions.class),
+                .createChat(
+                        any(ChatBehavior.class),
+                        any(AiChatOptions.class),
                         any(de.mhus.vance.shared.llmusage.CallAttribution.class));
+    }
+
+    // ──────────────────── Vision gate ────────────────────
+
+    private static de.mhus.vance.brain.ai.ModelInfo modelWith(
+            java.util.Set<de.mhus.vance.brain.ai.ModelCapability> caps) {
+        return new de.mhus.vance.brain.ai.ModelInfo(
+                "openai",
+                "gpt-4o-mini",
+                8192,
+                4096,
+                de.mhus.vance.brain.ai.ModelSize.LARGE,
+                caps,
+                de.mhus.vance.brain.ai.ModelInfo.DEFAULT_TIMEOUT_SECONDS,
+                de.mhus.vance.brain.ai.ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
+                /*stripThinkTags*/ false,
+                /*messageParser*/ null,
+                /*pricing*/ null,
+                de.mhus.vance.brain.ai.OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(),
+                /*reasoningEffortWhenOff*/ null);
+    }
+
+    @Test
+    void imageRequest_failsFast_whenModelHasNoVision() {
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any())).thenReturn(modelWith(java.util.Set.of()));
+        LightLlmRequest req = baseRequestBuilder()
+                .imageData(new byte[] {1, 2, 3})
+                .imageMime("image/png")
+                .build();
+        assertThatThrownBy(() -> service.call(req))
+                .isInstanceOf(LightLlmException.class)
+                .hasMessageContaining("VISION");
+    }
+
+    @Test
+    void imageRequest_callsThrough_whenModelHasVision() {
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
+                .thenReturn(modelWith(java.util.Set.of(de.mhus.vance.brain.ai.ModelCapability.VISION)));
+        chatModel.script(List.of("vision answer"));
+        LightLlmRequest req = baseRequestBuilder()
+                .imageData(new byte[] {1, 2, 3})
+                .imageMime("image/png")
+                .build();
+        String answer = service.call(req);
+        assertThat(answer).isEqualTo("vision answer");
     }
 
     // ──────────────────── Helpers ────────────────────
 
     private static LightLlmRequest baseRequest() {
+        return baseRequestBuilder().build();
+    }
+
+    private static LightLlmRequest.LightLlmRequestBuilder baseRequestBuilder() {
         return LightLlmRequest.builder()
                 .recipeName("how-do-i")
                 .userPrompt("test prompt")
-                .tenantId(TENANT)
-                .build();
+                .tenantId(TENANT);
     }
 
     private static LightLlmRequest jsonRequest() {
@@ -362,17 +401,21 @@ class LightLlmServiceImplTest {
                 "system prompt template {{ intent }}",
                 PromptMode.APPEND,
                 null,
-                List.of(), List.of(), List.of(),
-                Map.of(), Map.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                Map.of(),
+                Map.of(),
                 List.of(),
                 null,
                 List.of(),
-                false,        // locked
-                internal,     // internal
-                false,        // listed
-                null,         // title
+                false, // locked
+                internal, // internal
+                false, // listed
+                null, // title
                 List.of(),
-                List.of(), RecipeSource.PROJECT);
+                List.of(),
+                RecipeSource.PROJECT);
     }
 
     private static ResolvedRecipe stubRecipeWithoutPrompt(String name) {
@@ -381,20 +424,24 @@ class LightLlmServiceImplTest {
                 "stub recipe " + name,
                 "ford",
                 Map.of("model", "default:fast"),
-                null,         // promptPrefix missing
+                null, // promptPrefix missing
                 PromptMode.APPEND,
                 null,
-                List.of(), List.of(), List.of(),
-                Map.of(), Map.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                Map.of(),
+                Map.of(),
                 List.of(),
                 null,
                 List.of(),
                 false,
-                true,         // internal
-                false,        // listed
-                null,         // title
+                true, // internal
+                false, // listed
+                null, // title
                 List.of(),
-                List.of(), RecipeSource.PROJECT);
+                List.of(),
+                RecipeSource.PROJECT);
     }
 
     private static final class ScriptedChatModel implements ChatModel {

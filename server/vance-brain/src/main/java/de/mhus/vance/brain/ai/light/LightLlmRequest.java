@@ -79,4 +79,19 @@ public class LightLlmRequest {
      */
     @Nullable
     String processId;
+
+    /**
+     * Optional. A single image sent with the user message as a real
+     * {@code ImageContent} block before the text — the vision path (e.g.
+     * scribble OCR transcribing handwriting from a rendered sheet). The
+     * recipe's model must carry the VISION capability; the call fails
+     * fast otherwise. Only the initial user message carries the image,
+     * schema-retry corrections stay text-only.
+     */
+    @Nullable
+    byte[] imageData;
+
+    /** MIME type of {@link #imageData}; required when an image is set. */
+    @Nullable
+    String imageMime;
 }

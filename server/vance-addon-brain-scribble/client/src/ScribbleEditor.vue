@@ -97,6 +97,7 @@ const zoomPct = computed(() => Math.round(viewport.scale * 100));
 const container = ref<HTMLElement | null>(null);
 const baseCanvas = ref<HTMLCanvasElement | null>(null);
 const liveCanvas = ref<HTMLCanvasElement | null>(null);
+const printCanvas = ref<HTMLCanvasElement | null>(null);
 let dpr = 1;
 let resizeObserver: ResizeObserver | null = null;
 let didFit = false;
@@ -177,6 +178,26 @@ function clearLive(): void {
   if (!cv) return;
   const { w, h } = cssSize(cv);
   ctxOf(cv).clearRect(0, 0, w, h);
+}
+
+/** beforeprint: the screen canvases hold the zoomed, clipped viewport —
+ *  worthless on paper. Re-render the full sheet 1:1 into the print-only
+ *  canvas; CSS scales it to page width, the intrinsic buffer ratio keeps
+ *  the A4 shape, so one sheet lands on one page. */
+function renderPrintSheet(): void {
+  const cv = printCanvas.value;
+  if (!cv) return;
+  cv.width = sheetW.value;
+  cv.height = sheetH.value;
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  for (const s of strokes.value) {
+    ctx.fillStyle = paletteColor(s.color);
+    ctx.fill(strokePath(s));
+  }
 }
 
 // ── Input: drawing, erasing, pan/pinch ─────────────────────────
@@ -543,9 +564,11 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(resize);
   if (container.value) resizeObserver.observe(container.value);
   resize();
+  window.addEventListener('beforeprint', renderPrintSheet);
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('beforeprint', renderPrintSheet);
   resizeObserver?.disconnect();
   resizeObserver = null;
 });
@@ -566,10 +589,15 @@ onBeforeUnmount(() => {
   >
     <canvas ref="baseCanvas" class="absolute inset-0"></canvas>
     <canvas ref="liveCanvas" class="absolute inset-0"></canvas>
+    <!-- Paper body: the screen canvases hold the zoomed viewport raster,
+         useless on paper. This one is invisible on screen and gets the full
+         sheet rendered 1:1 on beforeprint; print.css switches it on and
+         the width below scales it onto the page. -->
+    <canvas ref="printCanvas" class="print-only scribble-print-sheet"></canvas>
 
     <div
       v-if="editable && strokes.length === 0"
-      class="pointer-events-none absolute inset-0 flex items-center justify-center"
+      class="no-print pointer-events-none absolute inset-0 flex items-center justify-center"
     >
       <p class="max-w-xs text-center text-sm text-slate-400">
         {{ t('scribble.editor.emptyHint') }}
@@ -578,7 +606,7 @@ onBeforeUnmount(() => {
 
     <div
       v-if="editable"
-      class="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-slate-200 bg-white/95 p-1 shadow-sm"
+      class="no-print absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-slate-200 bg-white/95 p-1 shadow-sm"
     >
       <button
         v-for="size in sizeOptions"
@@ -674,3 +702,13 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* On paper the print-only canvas takes the full page width; the intrinsic
+   1240×1754 buffer keeps the A4 aspect ratio, so a sheet fits one page. */
+.scribble-print-sheet {
+  width: 100%;
+  height: auto;
+  background: #ffffff;
+}
+</style>

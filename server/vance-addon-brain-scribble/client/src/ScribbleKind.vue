@@ -151,7 +151,7 @@ const saveLabel = computed(() =>
       {{ t('scribble.common.loading') }}
     </div>
     <template v-else>
-      <div class="flex items-center justify-end gap-2 px-3 py-1 text-xs text-slate-500">
+      <div class="no-print flex items-center justify-end gap-2 px-3 py-1 text-xs text-slate-500">
         <span
           class="inline-block h-2 w-2 rounded-full"
           :class="{

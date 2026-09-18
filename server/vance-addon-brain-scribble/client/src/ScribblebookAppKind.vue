@@ -240,7 +240,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex h-full w-full flex-col">
-    <div class="flex items-center gap-2 border-b border-slate-200 p-2">
+    <div class="no-print flex items-center gap-2 border-b border-slate-200 p-2">
       <div class="relative">
         <VButton size="sm" @click="menuOpen = !menuOpen">
           ☰ {{ activeTitle }} ▾
@@ -278,7 +278,7 @@ onBeforeUnmount(() => {
       </span>
     </div>
 
-    <VAlert v-if="error" variant="error">{{ error }}</VAlert>
+    <VAlert v-if="error" variant="error" class="no-print">{{ error }}</VAlert>
 
     <div class="min-h-0 flex-1">
       <ScribbleEditor

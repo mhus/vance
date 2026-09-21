@@ -42,7 +42,7 @@
     "@floating-ui/dom": "^1.6.13",
     "tiptap-extension-global-drag-handle": "^0.1.16",
     "tippy.js": "^6.3.7",
-    "js-yaml": "^5.4.1",
+    "js-yaml": "^5.4.2",
     "lowlight": "^3.1.0",
     "highlight.js": "^11.12.0"
   },
@@ -50,7 +50,7 @@
     "vue": "^3.5.0"
   },
   "devDependencies": {
-    "vitest": "^5.0.0",
-    "vue": "^3.5.42"
+    "vitest": "^5.0.1",
+    "vue": "^3.5.43"
   }
 }

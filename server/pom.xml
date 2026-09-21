@@ -60,16 +60,16 @@
         <lombok.version>1.18.48</lombok.version>
         <spring.boot.version>4.1.1</spring.boot.version>
         <langchain4j.version>1.20.0</langchain4j.version>
-        <langgraph4j.version>1.8.27</langgraph4j.version>
+        <langgraph4j.version>1.9.0</langgraph4j.version>
         <picocli.version>4.7.7</picocli.version>
         <jspecify.version>1.0.1</jspecify.version>
         <jjwt.version>0.13.0</jjwt.version>
         <console-master.version>1.0.0-SNAPSHOT</console-master.version>
-        <jline.version>4.4.3</jline.version>
+        <jline.version>4.4.5</jline.version>
         <lanterna.version>3.1.5</lanterna.version>
         <graaljs.version>25.3.4.1</graaljs.version>
         <jgit.version>7.8.0.202609011348-r</jgit.version>
-        <anthropic.sdk.version>2.62.0</anthropic.sdk.version>
+        <anthropic.sdk.version>2.63.0</anthropic.sdk.version>
         <!-- swagger-parser 2.x supports both OpenAPI 3.x and Swagger 2.x. Used by
              RestApiToolPackFactory to materialise REST-API packs into Vance Tools. -->
         <swagger.parser.version>2.1.48</swagger.parser.version>
@@ -492,22 +492,22 @@
                     <dependency>
                         <groupId>net.sourceforge.pmd</groupId>
                         <artifactId>pmd-core</artifactId>
-                        <version>7.19.0</version>
+                        <version>7.27.0</version>
                     </dependency>
                     <dependency>
                         <groupId>net.sourceforge.pmd</groupId>
                         <artifactId>pmd-java</artifactId>
-                        <version>7.19.0</version>
+                        <version>7.27.0</version>
                     </dependency>
                     <dependency>
                         <groupId>net.sourceforge.pmd</groupId>
                         <artifactId>pmd-javascript</artifactId>
-                        <version>7.19.0</version>
+                        <version>7.27.0</version>
                     </dependency>
                     <dependency>
                         <groupId>net.sourceforge.pmd</groupId>
                         <artifactId>pmd-jsp</artifactId>
-                        <version>7.19.0</version>
+                        <version>7.27.0</version>
                     </dependency>
                 </dependencies>
                 <configuration>

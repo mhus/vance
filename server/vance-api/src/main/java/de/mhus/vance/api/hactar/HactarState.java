@@ -86,6 +86,40 @@ public class HactarState {
     private @Nullable String failureReason;
 
     /**
+     *
+     * /**
+     * Session-mode spawn form (planning/hactar-agent-identity.md §3, F1).
+     * {@code true} = chat form: spawned WITHOUT a {@code scriptRef}, the
+     * agent identity is the process' purpose and the process SURVIVES run
+     * terminals (re-arm). {@code false} = worker form: spawned WITH a
+     * {@code scriptRef} — the process ends with the script's terminal
+     * transition, exactly like the headless path; the identity is only
+     * a mid-run steer luxury. Legacy states deserialize to {@code false}
+     * — which is the worker/headless semantics they were built under.
+     */
+    private boolean chatIdentity;
+
+    /**
+     * Wall-clock epoch ms when the current/last run was kicked by
+     * {@code HactarRunService}. {@link Long} (not {@code long}) so legacy
+     * persisted states without the key deserialize as {@code null}
+     * instead of crashing the tolerant load (Zaphod Jackson-3 lesson).
+     * {@code null} when no run was ever kicked.
+     */
+    private @Nullable Long runStartedAtMs;
+
+    /**
+     * Capped tail of the script's console output ({@code console.log}/
+     * {@code console.error}) of the current/last run — captured by the
+     * script executor and attached to the result (or the failure
+     * exception). The visibility surface behind the operator's
+     * "what did the script print?": terminal wakeup note, status block,
+     * {@code //hactar}. {@code null} when the run printed nothing or
+     * never reached EXECUTING.
+     */
+    private @Nullable String consoleTail;
+
+    /**
      * Idempotency guard for the REPLY-channel emit-path
      * ({@code HactarEngine.emitFinalReply}). Queued runTurn tasks
      * after closeProcess can re-enter the terminal branch; without
@@ -109,9 +143,11 @@ public class HactarState {
         /** Short keyword: {@code syntax}, {@code invalid_header},
          *  {@code missing_required_tool}, {@code logic}, ... */
         private @Nullable String code;
+
         private @Nullable String message;
         /** 1-based, {@code null} when not pinned. */
         private @Nullable Integer line;
+
         private @Nullable Integer column;
     }
 }

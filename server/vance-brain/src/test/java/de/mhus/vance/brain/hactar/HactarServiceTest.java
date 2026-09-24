@@ -84,8 +84,7 @@ class HactarServiceTest {
                 (function() { return 42; })();
                 """;
 
-        ValidationResult r = service.validate(req(code,
-                Set.of("imap_fetch", "mail_mark_read", "mail_move")));
+        ValidationResult r = service.validate(req(code, Set.of("imap_fetch", "mail_mark_read", "mail_move")));
 
         assertThat(r.ok()).isTrue();
         assertThat(r.issues()).isEmpty();
@@ -131,9 +130,8 @@ class HactarServiceTest {
         ValidationResult r = service.validate(req(code));
 
         assertThat(r.ok()).isFalse();
-        assertThat(r.issues()).anyMatch(i ->
-                i.code().equals("invalid_header")
-                        && i.message().contains("@timeout"));
+        assertThat(r.issues())
+                .anyMatch(i -> i.code().equals("invalid_header") && i.message().contains("@timeout"));
     }
 
     @Test
@@ -150,10 +148,10 @@ class HactarServiceTest {
 
         assertThat(r.ok()).isFalse();
         assertThat(r.issues())
-                .anyMatch(i -> i.code().equals("missing_required_tool")
-                        && i.message().contains("mail_send"))
-                .noneMatch(i -> i.code().equals("missing_required_tool")
-                        && i.message().contains("mail_fetch"));
+                .anyMatch(i ->
+                        i.code().equals("missing_required_tool") && i.message().contains("mail_send"))
+                .noneMatch(i ->
+                        i.code().equals("missing_required_tool") && i.message().contains("mail_fetch"));
     }
 
     @Test
@@ -168,28 +166,24 @@ class HactarServiceTest {
         ValidationResult r = service.validate(req(code, Set.of()));
 
         assertThat(r.ok()).isFalse();
-        assertThat(r.issues()).extracting(ValidationIssue::code)
-                .contains("syntax", "missing_required_tool");
+        assertThat(r.issues()).extracting(ValidationIssue::code).contains("syntax", "missing_required_tool");
     }
 
     @Test
     void validate_rejectsUnsupportedLanguage() {
-        assertThatThrownBy(() -> service.validate(new ValidationRequest(
-                "print('hi')", "py", "x.py", null, TENANT, null, null)))
+        assertThatThrownBy(() ->
+                        service.validate(new ValidationRequest("print('hi')", "py", "x.py", null, TENANT, null, null)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("py");
     }
 
     @Test
     void validate_rejectsBlankFields() {
-        assertThatThrownBy(() -> new ValidationRequest(
-                "code", "", "name", null, TENANT, null, null))
+        assertThatThrownBy(() -> new ValidationRequest("code", "", "name", null, TENANT, null, null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ValidationRequest(
-                null, "js", "name", null, TENANT, null, null))
+        assertThatThrownBy(() -> new ValidationRequest(null, "js", "name", null, TENANT, null, null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ValidationRequest(
-                "code", "js", "name", null, "", null, null))
+        assertThatThrownBy(() -> new ValidationRequest("code", "js", "name", null, "", null, null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -206,9 +200,7 @@ class HactarServiceTest {
 
     @Test
     void deepValidate_mapsOkReplyToOkResult() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "ok", true,
-                "issues", List.of()));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("ok", true, "issues", List.of()));
 
         ValidationResult r = service.deepValidate(req("var x = 1;"));
 
@@ -219,19 +211,22 @@ class HactarServiceTest {
 
     @Test
     void deepValidate_mapsIssueListToValidationIssues() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "ok", false,
-                "issues", List.of(
-                        Map.of(
-                                "severity", "ERROR",
-                                "code", "logic",
-                                "message", "Loop condition wrong.",
-                                "line", 12,
-                                "column", 9),
-                        Map.of(
-                                "severity", "WARN",
-                                "code", "api_misuse",
-                                "message", "Snake-case mismatch."))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "ok",
+                        false,
+                        "issues",
+                        List.of(
+                                Map.of(
+                                        "severity", "ERROR",
+                                        "code", "logic",
+                                        "message", "Loop condition wrong.",
+                                        "line", 12,
+                                        "column", 9),
+                                Map.of(
+                                        "severity", "WARN",
+                                        "code", "api_misuse",
+                                        "message", "Snake-case mismatch."))));
 
         ValidationResult r = service.deepValidate(req("var x = 1;"));
 
@@ -248,9 +243,8 @@ class HactarServiceTest {
 
     @Test
     void deepValidate_acceptsBareStringIssues() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "ok", false,
-                "issues", List.of("Off-by-one in the array index calc.")));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("ok", false, "issues", List.of("Off-by-one in the array index calc.")));
 
         ValidationResult r = service.deepValidate(req("var x = 1;"));
 
@@ -264,11 +258,14 @@ class HactarServiceTest {
 
     @Test
     void deepValidate_treatsUnknownSeverityAsError() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "ok", false,
-                "issues", List.of(Map.of(
-                        "severity", "FATAL",  // not a Severity enum value
-                        "message", "Bad."))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "ok",
+                        false,
+                        "issues",
+                        List.of(Map.of(
+                                "severity", "FATAL", // not a Severity enum value
+                                "message", "Bad."))));
 
         ValidationResult r = service.deepValidate(req("var x = 1;"));
 
@@ -279,8 +276,7 @@ class HactarServiceTest {
 
     @Test
     void deepValidate_returnsOkWhenReplyHasNoIssuesKey() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "ok", true));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("ok", true));
 
         ValidationResult r = service.deepValidate(req("var x = 1;"));
 
@@ -290,11 +286,14 @@ class HactarServiceTest {
 
     @Test
     void deepValidate_skipsBlankMessageIssues() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "ok", false,
-                "issues", List.of(
-                        Map.of("severity", "ERROR", "message", ""),
-                        Map.of("severity", "ERROR", "message", "Real problem."))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "ok",
+                        false,
+                        "issues",
+                        List.of(
+                                Map.of("severity", "ERROR", "message", ""),
+                                Map.of("severity", "ERROR", "message", "Real problem."))));
 
         ValidationResult r = service.deepValidate(req("var x = 1;"));
 
@@ -309,7 +308,61 @@ class HactarServiceTest {
     }
 
     private static ValidationRequest req(String code, Set<String> allowed) {
-        return new ValidationRequest(
-                code, "js", "test.js", allowed, TENANT, "proj-1", null);
+        return new ValidationRequest(code, "js", "test.js", allowed, TENANT, "proj-1", null);
+    }
+
+    // ──────────────────── Vance-surface check (live finding 4) ────────────────────
+
+    private static final String BASE_HEADER = """
+            /**
+             * @description test
+             * @server
+             * @version 1.0.0
+             */
+            """;
+
+    @Test
+    void validate_unknownVanceMemberCall_isAnError() {
+        String code = BASE_HEADER + "vance.bogus(1000);\n";
+        var result = service.validate(
+                new HactarService.ValidationRequest(code, "js", "test.js", null, "acme", "proj-1", "proc-1"));
+        assertThat(result.ok()).as("unknown member call must fail the gate").isFalse();
+        assertThat(result.issues())
+                .anyMatch(i -> "unknown_vance_member".equals(i.code())
+                        && i.message().contains("vance.bogus")
+                        && i.severity() == HactarService.Severity.ERROR);
+    }
+
+    @Test
+    void validate_unknownVanceMemberRead_isAWarn() {
+        String code = BASE_HEADER + "let x = vance.doesNotExist;\n";
+        var result = service.validate(
+                new HactarService.ValidationRequest(code, "js", "test.js", null, "acme", "proj-1", "proc-1"));
+        // WARN does not fail the gate but is reported.
+        assertThat(result.issues())
+                .anyMatch(i -> "unknown_vance_member".equals(i.code()) && i.severity() == HactarService.Severity.WARN);
+    }
+
+    @Test
+    void validate_knownVanceMemberProducesNoSurfaceIssue() {
+        String code = BASE_HEADER + "vance.log.info('hi');\n" + "vance.sleep(10);\n" + "vance.process.progress('x');\n";
+        var result = service.validate(
+                new HactarService.ValidationRequest(code, "js", "test.js", null, "acme", "proj-1", "proc-1"));
+        assertThat(result.issues()).noneMatch(i -> "unknown_vance_member".equals(i.code()));
+    }
+
+    @Test
+    void validate_unknownMemberInCommentIsNotFlagged() {
+        String code = """
+                /**
+                 * @description mentions vance.sleep(1000) in prose but never calls it
+                 * @server
+                 * @version 1.0.0
+                 */
+                let a = 1; // vance.bogus(2)
+                """;
+        var result = service.validate(
+                new HactarService.ValidationRequest(code, "js", "test.js", null, "acme", "proj-1", "proc-1"));
+        assertThat(result.issues()).noneMatch(i -> "unknown_vance_member".equals(i.code()));
     }
 }

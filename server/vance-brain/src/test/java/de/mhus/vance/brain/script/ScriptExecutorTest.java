@@ -8,13 +8,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.tools.ContextToolsApi;
-import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.brain.tools.ToolDispatcher;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.ToolSource;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.RecordingPermissionResolver;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -55,12 +55,12 @@ class ScriptExecutorTest {
             when(src.find(eq(t.name()), any())).thenReturn(Optional.of(t));
         }
         ToolDispatcher dispatcher = new ToolDispatcher(
-                List.of(src), new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
+                List.of(src),
+                new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
                 mock(de.mhus.vance.shared.team.TeamService.class));
-        ToolInvocationContext ctx = new ToolInvocationContext(
-                "acme", "proj-1", "sess-1", "proc-1", "alice");
+        ToolInvocationContext ctx = new ToolInvocationContext("acme", "proj-1", "sess-1", "proc-1", "alice");
         return new ContextToolsApi(dispatcher, ctx, allowed);
     }
 
@@ -86,6 +86,87 @@ class ScriptExecutorTest {
         assertThat(eval("'hello';").value()).isEqualTo("hello");
     }
 
+    // ------------------------------------------------------------------
+    // Console capture (visibility for callers: agent identity, run panel)
+    // ------------------------------------------------------------------
+
+    @Test
+    void run_capturesConsoleLog() {
+        ScriptResult result = eval("console.log('hello world'); 'done';");
+
+        assertThat(result.value()).isEqualTo("done");
+        assertThat(result.consoleOutput()).contains("hello world");
+    }
+
+    @Test
+    void run_capturesConsoleErrorTogetherWithLog() {
+        ScriptResult result = eval("console.log('out line'); console.error('err line'); 1;");
+
+        assertThat(result.consoleOutput()).contains("out line").contains("err line");
+    }
+
+    @Test
+    void run_consoleOutputIsEmptyWhenNothingPrinted() {
+        assertThat(eval("7;").consoleOutput()).isEmpty();
+    }
+
+    @Test
+    void run_consoleOutputTravelsIntoFailureException() {
+        assertThatThrownBy(() -> eval("console.log('about to die'); throw new Error('boom');"))
+                .isInstanceOf(ScriptExecutionException.class)
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).consoleOutput())
+                        .contains("about to die"));
+    }
+
+    @Test
+    void run_consoleLineTap_receivesLinesLive() {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        ScriptRequest req = new ScriptRequest(
+                "js",
+                "console.log('first'); console.log('second'); 'done';",
+                "test",
+                unrestrictedTools(),
+                Duration.ofSeconds(5),
+                Map.of(),
+                null,
+                de.mhus.vance.brain.action.ScopeLevel.PROCESS_SCOPED,
+                null,
+                null,
+                null,
+                null,
+                null,
+                lines::add);
+        ScriptResult result = executor.run(req);
+
+        assertThat(result.value()).isEqualTo("done");
+        // Lines are \n-terminated events (the consumer decides whether to strip).
+        assertThat(lines).containsExactly("first\n", "second\n");
+    }
+
+    @Test
+    void run_capturesVanceLogTee() {
+        // vance.log.* goes to SLF4J by default — the executor's default
+        // tee routes it into the same capture as console.* so caller
+        // surfaces see both channels.
+        ScriptResult result = eval("vance.log.info('hello from vance.log'); 1;");
+
+        assertThat(result.consoleOutput()).contains("[info] hello from vance.log");
+    }
+
+    @Test
+    void run_consoleCaptureKeepsTailOnOverflow() {
+        StringBuilder code = new StringBuilder();
+        for (int i = 0; i < 20000; i++) {
+            code.append("console.log('line-").append(i).append("');\n");
+        }
+        ScriptResult result = eval(code.toString());
+
+        // The capture is capped (64 KB): the beginning is gone, the end stays.
+        assertThat(result.consoleOutput()).contains("line-19999");
+        assertThat(result.consoleOutput()).doesNotContain("line-0\nline-1");
+        assertThat(result.consoleOutput().length()).isLessThanOrEqualTo(64 * 1024 + 100);
+    }
+
     @Test
     void run_returnsNullForVoidScript() {
         assertThat(eval("var x = 1;").value()).isNull();
@@ -105,7 +186,8 @@ class ScriptExecutorTest {
     @Test
     void run_returnsMappedObject() {
         @SuppressWarnings("unchecked")
-        Map<String, Object> value = (Map<String, Object>) eval("({a: 1, b: 'x'});").value();
+        Map<String, Object> value =
+                (Map<String, Object>) eval("({a: 1, b: 'x'});").value();
         assertThat(value).containsEntry("a", 1L).containsEntry("b", "x");
     }
 
@@ -122,14 +204,12 @@ class ScriptExecutorTest {
 
     @Test
     void run_deniesJavaTypeAccess() {
-        assertThatThrownBy(() -> eval("Java.type('java.lang.System');"))
-                .isInstanceOf(ScriptExecutionException.class);
+        assertThatThrownBy(() -> eval("Java.type('java.lang.System');")).isInstanceOf(ScriptExecutionException.class);
     }
 
     @Test
     void run_deniesProcessExec() {
-        assertThatThrownBy(() ->
-                eval("Java.type('java.lang.Runtime').getRuntime().exec('echo');"))
+        assertThatThrownBy(() -> eval("Java.type('java.lang.Runtime').getRuntime().exec('echo');"))
                 .isInstanceOf(ScriptExecutionException.class);
     }
 
@@ -145,12 +225,8 @@ class ScriptExecutorTest {
 
     @Test
     void run_aborts_onWallClockTimeout() {
-        ScriptRequest req = new ScriptRequest(
-                "js",
-                "while (true) {}",
-                "test",
-                unrestrictedTools(),
-                Duration.ofMillis(200));
+        ScriptRequest req =
+                new ScriptRequest("js", "while (true) {}", "test", unrestrictedTools(), Duration.ofMillis(200));
         assertThatThrownBy(() -> executor.run(req))
                 .isInstanceOf(ScriptExecutionException.class)
                 .satisfies(t -> assertThat(((ScriptExecutionException) t).errorClass())
@@ -178,10 +254,26 @@ class ScriptExecutorTest {
     @Test
     void vanceTools_call_dispatchesToToolDispatcher() {
         Tool sumTool = new Tool() {
-            @Override public String name() { return "sum_two"; }
-            @Override public String description() { return ""; }
-            @Override public boolean primary() { return true; }
-            @Override public Map<String, Object> paramsSchema() { return Map.of(); }
+            @Override
+            public String name() {
+                return "sum_two";
+            }
+
+            @Override
+            public String description() {
+                return "";
+            }
+
+            @Override
+            public boolean primary() {
+                return true;
+            }
+
+            @Override
+            public Map<String, Object> paramsSchema() {
+                return Map.of();
+            }
+
             @Override
             public Map<String, Object> invoke(Map<String, Object> p, ToolInvocationContext ctx) {
                 long a = ((Number) p.get("a")).longValue();
@@ -189,16 +281,14 @@ class ScriptExecutorTest {
                 return Map.of("sum", a + b);
             }
         };
-        Object value = eval(
-                "vance.tools.call('sum_two', {a: 3, b: 4}).sum;",
-                unrestrictedTools(sumTool)).value();
+        Object value = eval("vance.tools.call('sum_two', {a: 3, b: 4}).sum;", unrestrictedTools(sumTool))
+                .value();
         assertThat(value).isEqualTo(7L);
     }
 
     @Test
     void vanceTools_call_unknownTool_throwsInJs_andCanBeCaught() {
-        String code =
-                "try { vance.tools.call('nope', {}); 'no-throw'; } catch (e) { 'caught'; }";
+        String code = "try { vance.tools.call('nope', {}); 'no-throw'; } catch (e) { 'caught'; }";
         assertThat(eval(code).value()).isEqualTo("caught");
     }
 
@@ -213,8 +303,7 @@ class ScriptExecutorTest {
                 .isEqualTo(true);
 
         // "blocked" is not in the allow-set — must throw
-        String code = "try { vance.tools.call('blocked', {}); 'no-throw'; } "
-                + "catch (e) { 'caught'; }";
+        String code = "try { vance.tools.call('blocked', {}); 'no-throw'; } " + "catch (e) { 'caught'; }";
         assertThat(eval(code, restricted).value()).isEqualTo("caught");
     }
 
@@ -257,27 +346,58 @@ class ScriptExecutorTest {
     @Test
     void run_javaException_inHostMethod_isMappedToJsError() {
         Tool boom = new Tool() {
-            @Override public String name() { return "boom"; }
-            @Override public String description() { return ""; }
-            @Override public boolean primary() { return true; }
-            @Override public Map<String, Object> paramsSchema() { return Map.of(); }
+            @Override
+            public String name() {
+                return "boom";
+            }
+
+            @Override
+            public String description() {
+                return "";
+            }
+
+            @Override
+            public boolean primary() {
+                return true;
+            }
+
+            @Override
+            public Map<String, Object> paramsSchema() {
+                return Map.of();
+            }
+
             @Override
             public Map<String, Object> invoke(Map<String, Object> p, ToolInvocationContext ctx) {
                 throw new ToolException("synthetic failure");
             }
         };
-        String code =
-                "try { vance.tools.call('boom', {}); 'no-throw'; } catch (e) { e.message; }";
+        String code = "try { vance.tools.call('boom', {}); 'no-throw'; } catch (e) { e.message; }";
         Object value = eval(code, unrestrictedTools(boom)).value();
         assertThat(value).asString().contains("synthetic failure");
     }
 
     private static Tool simpleTool(String name, Map<String, Object> result) {
         return new Tool() {
-            @Override public String name() { return name; }
-            @Override public String description() { return ""; }
-            @Override public boolean primary() { return true; }
-            @Override public Map<String, Object> paramsSchema() { return Map.of(); }
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public String description() {
+                return "";
+            }
+
+            @Override
+            public boolean primary() {
+                return true;
+            }
+
+            @Override
+            public Map<String, Object> paramsSchema() {
+                return Map.of();
+            }
+
             @Override
             public Map<String, Object> invoke(Map<String, Object> p, ToolInvocationContext ctx) {
                 return result;
@@ -315,13 +435,11 @@ class ScriptExecutorTest {
 
     @Test
     void rejectedPromise_surfacesAsGuestException() {
-        assertThatThrownBy(() -> eval(
-                "(async () => { throw new Error('async-boom'); })();"))
+        assertThatThrownBy(() -> eval("(async () => { throw new Error('async-boom'); })();"))
                 .isInstanceOf(ScriptExecutionException.class)
                 .satisfies(t -> {
                     ScriptExecutionException ex = (ScriptExecutionException) t;
-                    assertThat(ex.errorClass())
-                            .isEqualTo(ScriptExecutionException.ErrorClass.GUEST_EXCEPTION);
+                    assertThat(ex.errorClass()).isEqualTo(ScriptExecutionException.ErrorClass.GUEST_EXCEPTION);
                     assertThat(ex.getMessage()).contains("async-boom");
                 });
     }

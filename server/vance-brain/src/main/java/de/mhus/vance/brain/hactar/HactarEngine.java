@@ -16,35 +16,55 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
 /**
- * Hactar v2 — pure script-execution engine. Loads a script body
- * from a project document, runs minimal validation (parse + header
- * + tool-allowlist), optionally runs an LLM deep-validate gate,
- * and executes the script via {@code ScriptExecutor}. There is
- * no LLM-authoring — script generation moved to
- * {@code SlartibartfastEngine} with {@code OutputSchemaType.SCRIPT_JS}.
+ * Hactar v2.1 — the script-execution engine with a dual identity
+ * (planning/hactar-agent-identity.md).
  *
- * <p>State persists on {@code engineParams.deepThoughtState}; each
- * {@code runTurn} performs <em>one</em> phase, then yields and
- * schedules the next turn. The state machine:
+ * <p><b>Headless mode</b> (default, {@code engineParams.sessionMode} unset or
+ * false): the pure executor of v2, unchanged and byte-identical in
+ * behavior — a single-phase-per-turn state machine
  *
  * <pre>
  *   READY → LOADING → [VALIDATING] → EXECUTING → DONE
  *               │           │            │
  *               └───────────┴────────────┴→ FAILED
- *             (any failure is terminal — no recovery loop)
  * </pre>
  *
- * <p>VALIDATING is opt-in via {@code engineParams.validateBeforeRun}.
- * See {@code planning/script-architect-executor-split.md} §5.2.
+ * <p>driven synchronously by {@code runTurn}. All existing callers (recipes
+ * {@code hactar}/{@code hactar-run}/{@code slart-and-run}, scheduler,
+ * Slart-self-execute, Cortex) see zero behavior change.
+ *
+ * <p><b>Session mode</b> ({@code sessionMode: true}): the phase machine moves
+ * to the background ({@link HactarRunService}) and the engine becomes a
+ * Ford-adapted chat identity ({@link HactarSessionLoop}) — the Wowbagger
+ * pattern: the mechanic works, the agent steers and reports. Mid-run steers
+ * are answered from the live run state; a chat identity can be told "run
+ * this script", "show me the script", "adjust the script so that …" (the
+ * last one via a Slart {@code mode=Update} spawn — the agent is the operator,
+ * never the author).
+ *
+ * <p><b>Spawn forms</b> (F1, decided): a session-mode spawn WITH
+ * {@code scriptRef} is the worker form — auto-kick, mid-run steerable, but
+ * the process ENDS at the run's terminal transition exactly like the
+ * headless path. A spawn WITHOUT {@code scriptRef} is the chat form — the
+ * identity is the process' purpose; the process survives run terminals
+ * (re-arm, Ford-parallel). The form is persisted as
+ * {@link HactarState#isChatIdentity()}.
+ *
+ * <p><b>Lazy identity</b>: session mode without traffic makes zero LLM calls.
+ * Scheduler and worker spawns stay free even with {@code sessionMode: true}.
+ *
+ * <p>State persists on {@code engineParams.deepThoughtState} (legacy key kept
+ * for Mongo backwards-compatibility); the codec lives in
+ * {@link HactarStateStore}, shared by the engine lane and the run runner.
  */
 @Component
 @RequiredArgsConstructor
@@ -52,7 +72,10 @@ import tools.jackson.databind.ObjectMapper;
 public class HactarEngine implements ThinkEngine {
 
     public static final String NAME = "hactar";
-    public static final String VERSION = "2.0.0";
+    public static final String VERSION = "2.1.0";
+
+    /** The role the {@code hactar_*} self-steering tools gate on. */
+    public static final String ROLE = "hactar";
 
     /** Set on {@code engineParams[STATE_KEY]} as the persisted
      *  {@link HactarState} for this process. Legacy name kept for
@@ -60,7 +83,8 @@ public class HactarEngine implements ThinkEngine {
     public static final String STATE_KEY = "deepThoughtState";
 
     /** {@code engineParams[SCRIPT_REF_KEY]} — project document path
-     *  to the script. <b>Required.</b> */
+     *  to the script. Required for the headless and worker form; may be
+     *  absent in the chat form (the agent sets it via {@code hactar_start}). */
     public static final String SCRIPT_REF_KEY = "scriptRef";
 
     /** {@code engineParams[LANGUAGE_KEY]} — script language. v1
@@ -73,11 +97,15 @@ public class HactarEngine implements ThinkEngine {
      *  {@link HactarService#deepValidate} before EXECUTING. */
     public static final String VALIDATE_BEFORE_RUN_KEY = "validateBeforeRun";
 
+    /** {@code engineParams[SESSION_MODE_KEY]} — boolean, default false.
+     *  Switches the engine to the reactive identity (see class javadoc).
+     *  Never changes the phase machine's behavior — only who drives it. */
+    public static final String SESSION_MODE_KEY = "sessionMode";
+
     /** Re-export of {@link LoadingPhase#SCRIPT_ALLOWED_TOOLS_KEY}
      *  so external callers (recipes, Cortex controller) discover
      *  the engine-param surface through the engine class. */
-    public static final String SCRIPT_ALLOWED_TOOLS_KEY =
-            LoadingPhase.SCRIPT_ALLOWED_TOOLS_KEY;
+    public static final String SCRIPT_ALLOWED_TOOLS_KEY = LoadingPhase.SCRIPT_ALLOWED_TOOLS_KEY;
 
     /** Re-export of {@link ExecutingPhase#SCRIPT_PARAMS_KEY}. */
     public static final String SCRIPT_PARAMS_KEY = ExecutingPhase.SCRIPT_PARAMS_KEY;
@@ -87,10 +115,12 @@ public class HactarEngine implements ThinkEngine {
 
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
-    private final ObjectMapper objectMapper;
     private final LoadingPhase loadingPhase;
     private final ValidatingPhase validatingPhase;
     private final ExecutingPhase executingPhase;
+    private final HactarStateStore stateStore;
+    private final HactarRunService runService;
+    private final HactarSessionLoop sessionLoop;
     /**
      * Appends one ASSISTANT chat-message at terminal transitions so
      * {@code process_history_text(name=<hactar-process>)} returns the
@@ -99,6 +129,8 @@ public class HactarEngine implements ThinkEngine {
      * orchestrator lookups land on a {@code messageCount=0} response.
      */
     private final de.mhus.vance.shared.chat.ChatMessageService chatMessageService;
+
+    private final tools.jackson.databind.ObjectMapper objectMapper;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -114,11 +146,14 @@ public class HactarEngine implements ThinkEngine {
 
     @Override
     public String description() {
-        return "Pure script-execution engine. Loads a JavaScript "
-                + "orchestrator from a project document, validates "
-                + "(parse + header + tool-allowlist; optional LLM "
-                + "deep-review), and runs it in a sandboxed GraalJS "
-                + "context. Authoring moved to Slartibartfast.";
+        return "Script-execution engine with a dual identity: headless it loads a "
+                + "JavaScript orchestrator from a project document, validates "
+                + "(parse + header + tool-allowlist; optional LLM deep-review) "
+                + "and runs it in a sandboxed GraalJS context — zero LLM calls. "
+                + "In session mode a Ford-style chat agent operates the same phase "
+                + "machine: it starts and stops runs, reports mid-run progress, and "
+                + "routes script changes to Slartibartfast (never authoring them "
+                + "itself).";
     }
 
     @Override
@@ -128,11 +163,18 @@ public class HactarEngine implements ThinkEngine {
 
     @Override
     public Set<String> allowedTools() {
-        // Engine's own LLM tool surface is empty — Hactar makes no
-        // LLM calls. The executed script's tool surface comes from
-        // engineParams.scriptAllowedTools and is built inside
+        // Engine's own LLM tool surface is unrestricted (Ford default) — the
+        // headless phase machine makes no LLM calls, and the session identity
+        // carries the full operator pool. The executed script's tool surface
+        // comes from engineParams.scriptAllowedTools and is built inside
         // ExecutingPhase.
         return Set.of();
+    }
+
+    /** The hactar_* tools gate on this role — invisible to other engines. */
+    @Override
+    public Set<String> roles() {
+        return Set.of(ROLE);
     }
 
     @Override
@@ -154,38 +196,108 @@ public class HactarEngine implements ThinkEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (sessionMode(process)) {
+            startSessionMode(process);
+            return;
+        }
         HactarState state = buildInitialState(process);
-        persistState(process, state);
-        log.info("Hactar.start tenant='{}' session='{}' id='{}' "
-                        + "scriptRef='{}' language={} validateBeforeRun={}",
-                process.getTenantId(), process.getSessionId(), process.getId(),
-                state.getScriptRef(), state.getLanguage(),
+        stateStore.persist(process, state);
+        log.info(
+                "Hactar.start tenant='{}' session='{}' id='{}' " + "scriptRef='{}' language={} validateBeforeRun={}",
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId(),
+                state.getScriptRef(),
+                state.getLanguage(),
                 state.isValidateBeforeRun());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
 
+    /**
+     * Session-mode start. Spawn form (F1): WITH {@code scriptRef} the worker
+     * form auto-kicks the run in the background (mid-run steerable, terminal
+     * closes the process like the headless path); WITHOUT it the chat form
+     * waits — Ford semantics, no greeting turn, the spawn steer or the
+     * user's first message drives the first turn.
+     */
+    private void startSessionMode(ThinkProcessDocument process) {
+        HactarState state = buildInitialSessionState(process);
+        String scriptRef = process.getEngineParams() == null
+                ? null
+                : stringParam(process.getEngineParams().get(SCRIPT_REF_KEY));
+        boolean workerForm = scriptRef != null;
+        state.setScriptRef(scriptRef);
+        state.setChatIdentity(!workerForm);
+        stateStore.persist(process, state);
+        log.info(
+                "Hactar.start session tenant='{}' session='{}' id='{}' form={} scriptRef='{}'",
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId(),
+                workerForm ? "worker" : "chat",
+                scriptRef);
+        if (workerForm) {
+            // Auto-kick: the run service owns the phases from here on; the
+            // engine lane stays free for mid-run steers.
+            runService.start(process, state);
+        }
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+    }
+
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.debug("Hactar.resume id='{}'", process.getId());
+        if (sessionMode(process)) {
+            HactarState state = stateStore.load(process);
+            if (!runService.isRunning(process.getId())
+                    && (state.getStatus() == HactarStatus.LOADING
+                            || state.getStatus() == HactarStatus.VALIDATING
+                            || state.getStatus() == HactarStatus.EXECUTING)) {
+                // The state claims a mid-run phase but no live handle exists:
+                // a Brain restart killed the runner. Terminal per the
+                // no-recovery contract — the agent reports and offers a
+                // fresh kick.
+                runService.failOrphanedRun(process, state);
+            }
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+            return;
+        }
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
 
     @Override
     public void suspend(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (sessionMode(process)) {
+            // A background script keeps running while the process is
+            // SUSPENDED — the script is server-side work, the suspend only
+            // parks the conversational lane (HactarRunService javadoc).
+            // Contrast with Wowbagger, which parks its pool: a Hactar run
+            // is not chunk-resumable, interrupting it would lose work.
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.SUSPENDED);
+            return;
+        }
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.SUSPENDED);
     }
 
     @Override
-    public void steer(ThinkProcessDocument process, ThinkEngineContext ctx,
-            SteerMessage message) {
+    public void steer(ThinkProcessDocument process, ThinkEngineContext ctx, SteerMessage message) {
+        if (sessionMode(process)) {
+            sessionLoop.turnFor(process, ctx, List.of(message));
+            return;
+        }
         eventEmitter.scheduleTurn(process.getId());
     }
 
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Hactar.stop id='{}'", process.getId());
+        if (sessionMode(process)) {
+            // F1: session/process close is a STOP — a live run is hard-cancelled,
+            // not drain-waited.
+            runService.stop(process.getId());
+        }
         thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
@@ -193,7 +305,51 @@ public class HactarEngine implements ThinkEngine {
 
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        HactarState state = loadState(process);
+        if (sessionMode(process)) {
+            runTurnSessionMode(process, ctx);
+            return;
+        }
+        runTurnHeadless(process, ctx);
+    }
+
+    /**
+     * Session-mode turn: the terminal handling of the WORKER form happens
+     * here (the run service cannot emit the reply or close the process —
+     * both need the engine context). The chat form always goes to the agent
+     * loop; the run service's wakeup note is in the history and the drained
+     * pending copy drives the report turn.
+     */
+    private void runTurnSessionMode(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        HactarState state = stateStore.load(process);
+        if (!state.isChatIdentity()
+                && (state.getStatus() == HactarStatus.DONE || state.getStatus() == HactarStatus.FAILED)) {
+            // Worker form at the run's terminal: the "[run]" history note is
+            // already written by the run service — no second one (unlike the
+            // headless path). Reply + close, no agent turn.
+            for (SteerMessage ignored : ctx.drainPending()) {
+                // hygiene — the wakeup copy is only the trigger
+            }
+            ProcessEventType eventType =
+                    state.getStatus() == HactarStatus.DONE ? ProcessEventType.DONE : ProcessEventType.FAILED;
+            emitFinalReply(process, ctx, state, eventType);
+            thinkProcessService.closeProcess(
+                    process.getId(), state.getStatus() == HactarStatus.DONE ? CloseReason.DONE : CloseReason.STALE);
+            return;
+        }
+        while (true) {
+            List<SteerMessage> drained = ctx.drainPending();
+            if (drained.isEmpty()) {
+                return;
+            }
+            sessionLoop.turnFor(process, ctx, drained);
+        }
+    }
+
+    /**
+     * Headless turn — the v2 single-phase-per-turn machine, unchanged.
+     */
+    private void runTurnHeadless(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        HactarState state = stateStore.load(process);
 
         // Terminal-status short-circuit — queued runTurns must not
         // re-fire DONE/FAILED transitions.
@@ -213,9 +369,9 @@ public class HactarEngine implements ThinkEngine {
                 // questions). Drained for hygiene only.
             }
 
-            HactarStatus next = dispatch(process, ctx, state);
+            HactarStatus next = dispatch(process, state);
             state.setStatus(next);
-            persistState(process, state);
+            stateStore.persist(process, state);
 
             if (next == HactarStatus.DONE) {
                 persistTerminalOutcomeToChatHistory(process, state, next);
@@ -230,11 +386,10 @@ public class HactarEngine implements ThinkEngine {
                 thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
             }
         } catch (RuntimeException e) {
-            log.warn("Hactar runTurn failed id='{}': {}",
-                    process.getId(), e.toString(), e);
+            log.warn("Hactar runTurn failed id='{}': {}", process.getId(), e.toString(), e);
             state.setStatus(HactarStatus.FAILED);
             state.setFailureReason("runTurn threw: " + e.getMessage());
-            persistState(process, state);
+            stateStore.persist(process, state);
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
         }
@@ -245,15 +400,12 @@ public class HactarEngine implements ThinkEngine {
      * the current status. Phase methods mutate {@code state} and
      * return the next status.
      */
-    private HactarStatus dispatch(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            HactarState state) {
+    private HactarStatus dispatch(ThinkProcessDocument process, HactarState state) {
         return switch (state.getStatus()) {
             case READY -> HactarStatus.LOADING;
-            case LOADING -> loadingPhase.execute(state, process, ctx);
-            case VALIDATING -> validatingPhase.execute(state, process, ctx);
-            case EXECUTING -> executingPhase.execute(state, process, ctx);
+            case LOADING -> loadingPhase.execute(state, process);
+            case VALIDATING -> validatingPhase.execute(state, process);
+            case EXECUTING -> executingPhase.execute(state, process);
             case DONE -> HactarStatus.DONE;
             case FAILED -> HactarStatus.FAILED;
         };
@@ -272,12 +424,8 @@ public class HactarEngine implements ThinkEngine {
      * push. See {@code planning/process-engine-reply-channel.md} §4.8.
      */
     private void emitFinalReply(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            HactarState state,
-            ProcessEventType eventType) {
-        if (process.getParentProcessId() == null
-                || process.getParentProcessId().isBlank()) {
+            ThinkProcessDocument process, ThinkEngineContext ctx, HactarState state, ProcessEventType eventType) {
+        if (process.getParentProcessId() == null || process.getParentProcessId().isBlank()) {
             return;
         }
         if (state.isReplyEmitted()) {
@@ -291,29 +439,27 @@ public class HactarEngine implements ThinkEngine {
             }
             ctx.emitReply(body, /*inResponseToAt*/ null, report.payload());
             state.setReplyEmitted(true);
-            persistState(process, state);
+            stateStore.persist(process, state);
         } catch (RuntimeException e) {
-            log.warn("Hactar id='{}' emitFinalReply failed: {}",
-                    process.getId(), e.toString());
+            log.warn("Hactar id='{}' emitFinalReply failed: {}", process.getId(), e.toString());
         }
     }
 
     // ──────────────────── summarizeForParent ────────────────────
 
     @Override
-    public ParentReport summarizeForParent(
-            ThinkProcessDocument process, ProcessEventType eventType) {
+    public ParentReport summarizeForParent(ThinkProcessDocument process, ProcessEventType eventType) {
         HactarState state;
         try {
-            state = loadState(process);
+            state = stateStore.load(process);
         } catch (RuntimeException e) {
-            return ParentReport.of("Hactar process " + process.getId()
-                    + " status=" + eventType.name().toLowerCase());
+            return ParentReport.of("Hactar process " + process.getId() + " status="
+                    + eventType.name().toLowerCase());
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("eventType", eventType.name());
-        payload.put("status", state.getStatus() == null
-                ? null : state.getStatus().name());
+        payload.put(
+                "status", state.getStatus() == null ? null : state.getStatus().name());
         payload.put("scriptRef", state.getScriptRef());
         payload.put("validationIssues", state.getValidationIssues().size());
         payload.put("executionDurationMs", state.getExecutionDurationMs());
@@ -332,8 +478,7 @@ public class HactarEngine implements ThinkEngine {
         if (state.getStatus() == HactarStatus.FAILED) {
             return new ParentReport(
                     "Hactar failed: "
-                            + (state.getFailureReason() == null
-                                    ? "unknown reason" : state.getFailureReason()),
+                            + (state.getFailureReason() == null ? "unknown reason" : state.getFailureReason()),
                     payload);
         }
         return new ParentReport(
@@ -344,7 +489,8 @@ public class HactarEngine implements ThinkEngine {
 
     /**
      * Persists a terminal-transition summary as an ASSISTANT chat
-     * message on the Hactar process. Mirrors the body the
+     * message on the Hactar process (headless path — the session-mode
+     * run service writes its own "[run]" note). Mirrors the body the
      * {@code summarizeForParent} report would carry so a lookup via
      * {@code process_history_text(name=<hactar-process>)} returns the
      * same information the parent (Slart, Arthur, …) sees through
@@ -356,9 +502,7 @@ public class HactarEngine implements ThinkEngine {
      * still completes.
      */
     private void persistTerminalOutcomeToChatHistory(
-            ThinkProcessDocument process,
-            HactarState state,
-            HactarStatus terminal) {
+            ThinkProcessDocument process, HactarState state, HactarStatus terminal) {
         if (chatMessageService == null) {
             return; // unit-test wiring may stub this out
         }
@@ -370,24 +514,23 @@ public class HactarEngine implements ThinkEngine {
                         + renderExecutionValue(state.getExecutionResult());
             } else {
                 body = "Hactar failed: "
-                        + (state.getFailureReason() == null
-                                ? "unknown reason" : state.getFailureReason());
+                        + (state.getFailureReason() == null ? "unknown reason" : state.getFailureReason());
                 if (state.getExecutionErrorClass() != null) {
                     body += "\n\n(errorClass=" + state.getExecutionErrorClass() + ")";
                 }
             }
-            chatMessageService.append(
-                    de.mhus.vance.shared.chat.ChatMessageDocument.builder()
-                            .tenantId(process.getTenantId())
-                            .sessionId(process.getSessionId())
-                            .thinkProcessId(process.getId())
-                            .role(de.mhus.vance.api.chat.ChatRole.ASSISTANT)
-                            .content(body)
-                            .build());
+            chatMessageService.append(de.mhus.vance.shared.chat.ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(de.mhus.vance.api.chat.ChatRole.ASSISTANT)
+                    .content(body)
+                    .build());
         } catch (RuntimeException e) {
             log.warn(
                     "Hactar id='{}' failed to persist terminal outcome to chat history: {}",
-                    process.getId(), e.toString());
+                    process.getId(),
+                    e.toString());
         }
     }
 
@@ -402,26 +545,23 @@ public class HactarEngine implements ThinkEngine {
         }
     }
 
-    // ──────────────────── State construction + persistence ────────────────────
+    // ──────────────────── State construction ────────────────────
 
     HactarState buildInitialState(ThinkProcessDocument process) {
-        Map<String, Object> p = process.getEngineParams() == null
-                ? new LinkedHashMap<>() : process.getEngineParams();
+        Map<String, Object> p = process.getEngineParams() == null ? new LinkedHashMap<>() : process.getEngineParams();
 
         String scriptRef = stringParam(p.get(SCRIPT_REF_KEY));
         if (scriptRef == null || scriptRef.isBlank()) {
-            throw new IllegalStateException(
-                    "Hactar.start requires engineParams['scriptRef'] — "
-                            + "no script reference is set (id='"
-                            + process.getId() + "')");
+            throw new IllegalStateException("Hactar.start requires engineParams['scriptRef'] — "
+                    + "no script reference is set (id='"
+                    + process.getId() + "')");
         }
 
         String language = stringParam(p.get(LANGUAGE_KEY));
         if (language == null || language.isBlank()) language = "js";
         if (!"js".equals(language)) {
             throw new IllegalStateException(
-                    "Hactar v2 supports only language='js' — got '"
-                            + language + "' (id='" + process.getId() + "')");
+                    "Hactar v2 supports only language='js' — got '" + language + "' (id='" + process.getId() + "')");
         }
 
         boolean validateBeforeRun = parseBoolean(p.get(VALIDATE_BEFORE_RUN_KEY), false);
@@ -434,22 +574,35 @@ public class HactarEngine implements ThinkEngine {
                 .build();
     }
 
-    HactarState loadState(ThinkProcessDocument process) {
-        Map<String, Object> p = process.getEngineParams();
-        if (p == null) return HactarState.builder().build();
-        Object raw = p.get(STATE_KEY);
-        if (raw == null) return HactarState.builder().build();
-        return objectMapper.convertValue(raw, HactarState.class);
+    /**
+     * Session-mode variant: {@code scriptRef} may be absent (chat form — the
+     * agent sets it via {@code hactar_start}); the language gate stays
+     * fail-closed.
+     */
+    HactarState buildInitialSessionState(ThinkProcessDocument process) {
+        Map<String, Object> p = process.getEngineParams() == null ? new LinkedHashMap<>() : process.getEngineParams();
+
+        String language = stringParam(p.get(LANGUAGE_KEY));
+        if (language == null || language.isBlank()) language = "js";
+        if (!"js".equals(language)) {
+            throw new IllegalStateException(
+                    "Hactar v2 supports only language='js' — got '" + language + "' (id='" + process.getId() + "')");
+        }
+
+        boolean validateBeforeRun = parseBoolean(p.get(VALIDATE_BEFORE_RUN_KEY), false);
+
+        return HactarState.builder()
+                .language(language)
+                .validateBeforeRun(validateBeforeRun)
+                .status(HactarStatus.READY)
+                .build();
     }
 
-    @SuppressWarnings("unchecked")
-    void persistState(ThinkProcessDocument process, HactarState state) {
-        Map<String, Object> p = process.getEngineParams() == null
-                ? new LinkedHashMap<>() : process.getEngineParams();
-        Map<String, Object> serialized = objectMapper.convertValue(state, Map.class);
-        p.put(STATE_KEY, serialized);
-        process.setEngineParams(p);
-        thinkProcessService.replaceEngineParams(process.getId(), p);
+    static boolean sessionMode(ThinkProcessDocument process) {
+        Map<String, Object> p = process.getEngineParams();
+        Object raw = p == null ? null : p.get(SESSION_MODE_KEY);
+        if (raw instanceof Boolean b) return b;
+        return raw instanceof String s && Boolean.parseBoolean(s.trim());
     }
 
     // ──────────────────── Param-read helpers ────────────────────

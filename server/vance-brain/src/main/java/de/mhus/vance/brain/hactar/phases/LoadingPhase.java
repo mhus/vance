@@ -5,7 +5,6 @@ import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.brain.hactar.HactarArgsResolver;
 import de.mhus.vance.brain.hactar.HactarService;
 import de.mhus.vance.brain.hactar.HactarService.ValidationRequest;
-import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -56,7 +55,7 @@ public class LoadingPhase {
     private final HactarService hactarService;
     private final HactarArgsResolver argsResolver;
 
-    public HactarStatus execute(HactarState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
+    public HactarStatus execute(HactarState state, ThinkProcessDocument process) {
         String path = state.getScriptRef();
         if (path == null || path.isBlank()) {
             state.setFailureReason(

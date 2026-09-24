@@ -38,7 +38,8 @@ public record ScriptRequest(
         @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
         @Nullable String documentBasePath,
         VanceScriptApi.@Nullable ScriptGuardApi guardApi,
-        @Nullable ScriptWorkflowRun workflowRun) {
+        @Nullable ScriptWorkflowRun workflowRun,
+        java.util.function.@Nullable Consumer<String> consoleLineConsumer) {
 
     public ScriptRequest {
         if (!"js".equals(language)) {
@@ -63,6 +64,42 @@ public record ScriptRequest(
         if (scopeLevel == null) {
             throw new IllegalArgumentException("scopeLevel must not be null");
         }
+    }
+
+    /**
+     * Historical 13-arg shape — every caller except Hactar's
+     * ExecutingPhase; {@code consoleLineConsumer} stays null (no live
+     * console tap).
+     */
+    public ScriptRequest(
+            String language,
+            String code,
+            @Nullable String sourceName,
+            ContextToolsApi tools,
+            Duration timeout,
+            Map<String, @Nullable Object> bindings,
+            @Nullable String recipeName,
+            ScopeLevel scopeLevel,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable String documentBasePath,
+            VanceScriptApi.@Nullable ScriptGuardApi guardApi,
+            @Nullable ScriptWorkflowRun workflowRun) {
+        this(
+                language,
+                code,
+                sourceName,
+                tools,
+                timeout,
+                bindings,
+                recipeName,
+                scopeLevel,
+                progressEmitter,
+                notificationEmitter,
+                documentBasePath,
+                guardApi,
+                workflowRun,
+                null);
     }
 
     /**
@@ -277,7 +314,8 @@ public record ScriptRequest(
                 notificationEmitter,
                 dir,
                 guardApi,
-                workflowRun);
+                workflowRun,
+                consoleLineConsumer);
     }
 
     /**
@@ -300,7 +338,8 @@ public record ScriptRequest(
                 notificationEmitter,
                 documentBasePath,
                 guardApi,
-                run);
+                run,
+                consoleLineConsumer);
     }
 
     /**
@@ -323,6 +362,7 @@ public record ScriptRequest(
                 notificationEmitter,
                 documentBasePath,
                 api,
-                workflowRun);
+                workflowRun,
+                consoleLineConsumer);
     }
 }

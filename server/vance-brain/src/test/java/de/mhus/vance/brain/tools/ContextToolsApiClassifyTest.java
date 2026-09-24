@@ -1,8 +1,5 @@
 package de.mhus.vance.brain.tools;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -12,6 +9,8 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.budget.ToolBudget;
 import de.mhus.vance.brain.tools.budget.ToolTriage;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,13 +29,13 @@ import org.junit.jupiter.api.Test;
 class ContextToolsApiClassifyTest {
 
     private final ToolDispatcher dispatcher = mock(ToolDispatcher.class);
-    private final ToolInvocationContext ctx = new ToolInvocationContext(
-            "tenant", "project", "session", "process", "user");
+    private final ToolInvocationContext ctx =
+            new ToolInvocationContext("tenant", "project", "session", "process", "user");
 
     @Test
     void emptyBase_returnsEmptyClassification() {
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of(), RecipeResolver.ToolFilter.EMPTY, Set.of());
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of(), RecipeResolver.ToolFilter.EMPTY, Set.of());
 
         assertThat(c.allowed()).isEmpty();
         assertThat(c.primary()).isEmpty();
@@ -50,10 +49,7 @@ class ContextToolsApiClassifyTest {
         stubResolve("deferred_tool", true);
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
-                Set.of("primary_tool", "deferred_tool"),
-                RecipeResolver.ToolFilter.EMPTY,
-                Set.of());
+                dispatcher, ctx, Set.of("primary_tool", "deferred_tool"), RecipeResolver.ToolFilter.EMPTY, Set.of());
 
         assertThat(c.primary()).containsExactly("primary_tool");
         assertThat(c.deferred()).containsExactly("deferred_tool");
@@ -64,11 +60,9 @@ class ContextToolsApiClassifyTest {
         stubResolve("kit_install", true); // defaults to deferred
         stubResolve("doc_read", false);
 
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of(), List.of("kit_install"), List.of());
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
-                Set.of("kit_install", "doc_read"), filter, Set.of());
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(List.of(), List.of("kit_install"), List.of());
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("kit_install", "doc_read"), filter, Set.of());
 
         assertThat(c.primary()).containsExactlyInAnyOrder("kit_install", "doc_read");
         assertThat(c.deferred()).isEmpty();
@@ -79,11 +73,9 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false);
         stubResolve("doc_list", false);
 
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of(), List.of(), List.of("doc_read"));
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
-                Set.of("doc_read", "doc_list"), filter, Set.of());
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(List.of(), List.of(), List.of("doc_read"));
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("doc_read", "doc_list"), filter, Set.of());
 
         assertThat(c.primary()).containsExactly("doc_list");
         assertThat(c.deferred()).containsExactly("doc_read");
@@ -94,11 +86,9 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_edit", false);
         stubResolve("doc_read", false);
 
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of("doc_edit"), List.of(), List.of());
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
-                Set.of("doc_edit", "doc_read"), filter, Set.of());
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(List.of("doc_edit"), List.of(), List.of());
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("doc_edit", "doc_read"), filter, Set.of());
 
         assertThat(c.allowed()).containsExactly("doc_read");
         assertThat(c.primary()).containsExactly("doc_read");
@@ -110,10 +100,8 @@ class ContextToolsApiClassifyTest {
         stubResolve("foo", false);
         // Explicit allowedToolsAdd wins so a recipe can defer a label
         // cluster (@side-effect) but still promote one tool by name.
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of(), List.of("foo"), List.of("foo"));
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("foo"), filter, Set.of());
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(List.of(), List.of("foo"), List.of("foo"));
+        ContextToolsApi.Classification c = ContextToolsApi.classify(dispatcher, ctx, Set.of("foo"), filter, Set.of());
 
         assertThat(c.primary()).containsExactly("foo");
         assertThat(c.deferred()).isEmpty();
@@ -125,7 +113,8 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false);
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
+                dispatcher,
+                ctx,
                 Set.of("kit_install", "doc_read"),
                 RecipeResolver.ToolFilter.EMPTY,
                 // Activations referencing tools not in the deferred bucket
@@ -141,11 +130,11 @@ class ContextToolsApiClassifyTest {
         stubResolve("zeta", false);
         stubResolve("alpha", false);
         stubResolve("mu", true);
-        when(dispatcher.resolveAll(any())).thenReturn(List.of(
-                resolved("zeta"), resolved("alpha"), resolved("mu")));
+        when(dispatcher.resolveAll(any())).thenReturn(List.of(resolved("zeta"), resolved("alpha"), resolved("mu")));
 
         ContextToolsApi api = new ContextToolsApi(
-                dispatcher, ctx,
+                dispatcher,
+                ctx,
                 /*allowed*/ Set.of("zeta", "alpha", "mu"),
                 /*primary*/ Set.of("zeta", "alpha"),
                 /*deferred*/ Set.of("mu"),
@@ -153,8 +142,7 @@ class ContextToolsApiClassifyTest {
                 ToolInvocationListener.NOOP);
 
         List<de.mhus.vance.api.tools.ToolSpec> visible = api.listPrimary();
-        assertThat(visible).extracting("name")
-                .containsExactly("alpha", "mu", "zeta");
+        assertThat(visible).extracting("name").containsExactly("alpha", "mu", "zeta");
     }
 
     @Test
@@ -163,7 +151,8 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false, Set.of()); // unrestricted
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
+                dispatcher,
+                ctx,
                 Set.of("client_file_read", "doc_read"),
                 RecipeResolver.ToolFilter.EMPTY,
                 Set.of(),
@@ -178,11 +167,7 @@ class ContextToolsApiClassifyTest {
         stubResolve("client_file_read", false, Set.of("user", "mobile"));
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
-                Set.of("client_file_read"),
-                RecipeResolver.ToolFilter.EMPTY,
-                Set.of(),
-                "user");
+                dispatcher, ctx, Set.of("client_file_read"), RecipeResolver.ToolFilter.EMPTY, Set.of(), "user");
 
         assertThat(c.primary()).containsExactly("client_file_read");
     }
@@ -192,11 +177,7 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false, Set.of());
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
-                Set.of("doc_read"),
-                RecipeResolver.ToolFilter.EMPTY,
-                Set.of(),
-                "eddie");
+                dispatcher, ctx, Set.of("doc_read"), RecipeResolver.ToolFilter.EMPTY, Set.of(), "eddie");
 
         assertThat(c.primary()).containsExactly("doc_read");
     }
@@ -208,10 +189,7 @@ class ContextToolsApiClassifyTest {
         stubResolve("client_file_read", false, Set.of("user", "mobile"));
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
-                Set.of("client_file_read"),
-                RecipeResolver.ToolFilter.EMPTY,
-                Set.of());
+                dispatcher, ctx, Set.of("client_file_read"), RecipeResolver.ToolFilter.EMPTY, Set.of());
 
         assertThat(c.primary()).containsExactly("client_file_read");
     }
@@ -223,8 +201,7 @@ class ContextToolsApiClassifyTest {
         // Extending the floor is a policy decision, not a drive-by edit:
         // every member is force-primary for every engine and cannot be
         // configured away. Change this list only deliberately.
-        assertThat(ContextToolsApi.MANDATORY_TOOLS)
-                .containsExactlyInAnyOrder("tool_list", "tool_description");
+        assertThat(ContextToolsApi.MANDATORY_TOOLS).containsExactlyInAnyOrder("tool_list", "tool_description");
     }
 
     @Test
@@ -233,11 +210,10 @@ class ContextToolsApiClassifyTest {
         stubResolve("tool_description", false);
         stubResolve("doc_read", false);
 
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of("tool_list", "tool_description"), List.of(), List.of());
+        RecipeResolver.ToolFilter filter =
+                new RecipeResolver.ToolFilter(List.of("tool_list", "tool_description"), List.of(), List.of());
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
-                Set.of("tool_list", "tool_description", "doc_read"), filter, Set.of());
+                dispatcher, ctx, Set.of("tool_list", "tool_description", "doc_read"), filter, Set.of());
 
         assertThat(c.allowed()).contains("tool_list", "tool_description");
         assertThat(c.primary()).contains("tool_list", "tool_description");
@@ -248,11 +224,10 @@ class ContextToolsApiClassifyTest {
         stubResolve("tool_list", true); // even a deferred default is overridden
         stubResolve("tool_description", false);
 
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of(), List.of(), List.of("tool_list", "tool_description"));
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
-                Set.of("tool_list", "tool_description"), filter, Set.of());
+        RecipeResolver.ToolFilter filter =
+                new RecipeResolver.ToolFilter(List.of(), List.of(), List.of("tool_list", "tool_description"));
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("tool_list", "tool_description"), filter, Set.of());
 
         assertThat(c.primary()).containsExactlyInAnyOrder("tool_list", "tool_description");
         assertThat(c.deferred()).isEmpty();
@@ -268,11 +243,9 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_write", false);
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_write"),
-                RecipeResolver.ToolFilter.EMPTY, Set.of());
+                dispatcher, ctx, Set.of("doc_write"), RecipeResolver.ToolFilter.EMPTY, Set.of());
 
-        assertThat(c.allowed()).containsExactlyInAnyOrder(
-                "doc_write", "tool_list", "tool_description");
+        assertThat(c.allowed()).containsExactlyInAnyOrder("doc_write", "tool_list", "tool_description");
         assertThat(c.primary()).contains("tool_list", "tool_description");
     }
 
@@ -286,8 +259,7 @@ class ContextToolsApiClassifyTest {
         when(dispatcher.resolve(eq("tool_description"), any())).thenReturn(Optional.empty());
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_write"),
-                RecipeResolver.ToolFilter.EMPTY, Set.of());
+                dispatcher, ctx, Set.of("doc_write"), RecipeResolver.ToolFilter.EMPTY, Set.of());
 
         assertThat(c.allowed()).containsExactly("doc_write");
     }
@@ -300,7 +272,8 @@ class ContextToolsApiClassifyTest {
         stubResolve("tool_description", false, Set.of("user"));
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
+                dispatcher,
+                ctx,
                 Set.of("tool_list", "tool_description"),
                 RecipeResolver.ToolFilter.EMPTY,
                 Set.of(),
@@ -320,10 +293,10 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false);
         stubResolve("chrome__navigate_page", true);
 
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of(), List.of("chrome__navigate_page"), List.of());
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
+        RecipeResolver.ToolFilter filter =
+                new RecipeResolver.ToolFilter(List.of(), List.of("chrome__navigate_page"), List.of());
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
 
         assertThat(c.allowed()).contains("chrome__navigate_page");
         assertThat(c.deferred()).containsExactly("chrome__navigate_page");
@@ -335,10 +308,10 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false);
         stubResolve("chrome__take_snapshot", false);
 
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of(), List.of("chrome__take_snapshot"), List.of());
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
+        RecipeResolver.ToolFilter filter =
+                new RecipeResolver.ToolFilter(List.of(), List.of("chrome__take_snapshot"), List.of());
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
 
         assertThat(c.primary()).contains("chrome__take_snapshot");
     }
@@ -349,10 +322,9 @@ class ContextToolsApiClassifyTest {
         // not enter the allow-set, or the manifest builder hard-fails.
         stubResolve("doc_read", false);
 
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of(), List.of("chrome__gone"), List.of());
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(List.of(), List.of("chrome__gone"), List.of());
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
 
         assertThat(c.allowed()).doesNotContain("chrome__gone");
     }
@@ -364,8 +336,8 @@ class ContextToolsApiClassifyTest {
 
         RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
                 List.of("chrome__navigate_page"), List.of("chrome__navigate_page"), List.of());
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
 
         assertThat(c.allowed()).doesNotContain("chrome__navigate_page");
     }
@@ -378,10 +350,10 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false, Set.of());
         stubResolve("chrome__navigate_page", true, Set.of("user"));
 
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of(), List.of("chrome__navigate_page"), List.of());
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_read"), filter, Set.of(), "eddie");
+        RecipeResolver.ToolFilter filter =
+                new RecipeResolver.ToolFilter(List.of(), List.of("chrome__navigate_page"), List.of());
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("doc_read"), filter, Set.of(), "eddie");
 
         assertThat(c.allowed()).doesNotContain("chrome__navigate_page");
     }
@@ -392,10 +364,10 @@ class ContextToolsApiClassifyTest {
         // an already-allowed deferred tool must keep working.
         stubResolve("kit_install", true);
 
-        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of(), List.of("kit_install"), List.of("kit_install"));
-        ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("kit_install"), filter, Set.of());
+        RecipeResolver.ToolFilter filter =
+                new RecipeResolver.ToolFilter(List.of(), List.of("kit_install"), List.of("kit_install"));
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("kit_install"), filter, Set.of());
 
         assertThat(c.primary()).containsExactly("kit_install");
         assertThat(c.deferred()).isEmpty();
@@ -414,14 +386,17 @@ class ContextToolsApiClassifyTest {
         // 4 slots for classified tools; the floor takes 2, doc_read fits,
         // the 2-tool pack does not.
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
-                Set.of("tool_list", "tool_description", "doc_read",
-                        "slack_rest__a", "slack_rest__b"),
-                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
-                new ToolBudget(5, 1), null);
+                dispatcher,
+                ctx,
+                Set.of("tool_list", "tool_description", "doc_read", "slack_rest__a", "slack_rest__b"),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                null,
+                null,
+                new ToolBudget(5, 1),
+                null);
 
-        assertThat(c.primary()).containsExactlyInAnyOrder(
-                "tool_list", "tool_description", "doc_read");
+        assertThat(c.primary()).containsExactlyInAnyOrder("tool_list", "tool_description", "doc_read");
         assertThat(c.deferred()).containsExactlyInAnyOrder("slack_rest__a", "slack_rest__b");
         // Demotion never narrows what the engine may invoke — the tools
         // stay reachable via tool_list / a direct call.
@@ -434,9 +409,15 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_write", false);
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_read", "doc_write"),
-                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
-                new ToolBudget(50, 1), null);
+                dispatcher,
+                ctx,
+                Set.of("doc_read", "doc_write"),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                null,
+                null,
+                new ToolBudget(50, 1),
+                null);
 
         assertThat(c.primary()).containsExactlyInAnyOrder("doc_read", "doc_write");
         assertThat(c.deferred()).isEmpty();
@@ -450,13 +431,54 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_write", false);
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
+                dispatcher,
+                ctx,
                 Set.of("tool_list", "tool_description", "doc_read", "doc_write"),
-                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
-                new ToolBudget(2, 0), null);
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                null,
+                null,
+                new ToolBudget(2, 0),
+                null);
 
         assertThat(c.primary()).containsExactlyInAnyOrder("tool_list", "tool_description");
         assertThat(c.deferred()).contains("doc_read", "doc_write");
+    }
+
+    @Test
+    void unrestrictedEngine_neverSeesRoleGatedTools() {
+        // §7b regression: default-empty or foreign roles mean the engine
+        // sees NO role-gated tool — on the unrestricted path too. Before
+        // the fix, the empty-base fast path returned an "unrestricted"
+        // marker classification whose per-tool primary() fallback skipped
+        // the role gate entirely (observed live: a Hactar operator
+        // invoked cross_process_create, role-gated on trillian-user, and
+        // the spawn lacked the params that tool cannot even carry).
+        when(dispatcher.resolvePrimary(any()))
+                .thenReturn(List.of(resolved("plain_tool"), resolvedRoleGated("role_tool", "other-engine")));
+        when(dispatcher.resolveAll(any()))
+                .thenReturn(List.of(resolved("plain_tool"), resolvedRoleGated("role_tool", "other-engine")));
+        stubResolve("plain_tool", false);
+
+        // Engine carries a role, but not the required one.
+        ContextToolsApi.Classification foreign = ContextToolsApi.classify(
+                dispatcher,
+                ctx,
+                Set.of(),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                null,
+                Set.of("my-engine"),
+                null,
+                null);
+        assertThat(foreign.allowed()).containsExactly("plain_tool");
+        assertThat(foreign.primary()).containsExactly("plain_tool");
+
+        // Engine carries no roles at all — still nothing role-gated.
+        ContextToolsApi.Classification roleless = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of(), RecipeResolver.ToolFilter.EMPTY, Set.of(), null, Set.of(), null, null);
+        assertThat(roleless.allowed()).containsExactly("plain_tool");
+        assertThat(roleless.primary()).containsExactly("plain_tool");
     }
 
     @Test
@@ -467,12 +489,17 @@ class ContextToolsApiClassifyTest {
         // The recipe says the connector matters here and doc_* does not —
         // the derived order (built-ins over packs) is overruled.
         RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
-                List.of(), List.of(), List.of(),
-                List.of("slack_rest__a"), List.of("doc_read"));
+                List.of(), List.of(), List.of(), List.of("slack_rest__a"), List.of("doc_read"));
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_read", "slack_rest__a"),
-                filter, Set.of(), null, null,
-                new ToolBudget(1, 0), null);
+                dispatcher,
+                ctx,
+                Set.of("doc_read", "slack_rest__a"),
+                filter,
+                Set.of(),
+                null,
+                null,
+                new ToolBudget(1, 0),
+                null);
 
         assertThat(c.primary()).containsExactly("slack_rest__a");
         assertThat(c.deferred()).containsExactly("doc_read");
@@ -484,36 +511,61 @@ class ContextToolsApiClassifyTest {
         stubResolve("slack_rest__a", true);
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_read", "slack_rest__a"),
+                dispatcher,
+                ctx,
+                Set.of("doc_read", "slack_rest__a"),
                 RecipeResolver.ToolFilter.EMPTY,
-                Set.of("slack_rest__a"), null, null,
-                new ToolBudget(1, 0), null);
+                Set.of("slack_rest__a"),
+                null,
+                null,
+                new ToolBudget(1, 0),
+                null);
 
         assertThat(c.activatedDeferred()).containsExactly("slack_rest__a");
         assertThat(c.primary()).isEmpty();
     }
 
     @Test
-    void budget_onUnrestrictedEngine_onlyMaterialisesWhenItOverflows() {
-        // Ford-style: no allow-set, no filter. The cheap path (empty
-        // classification, per-tool primary()) must survive an ample budget.
-        // Two different families, so the "whole family or nothing" rule
-        // still leaves exactly one survivor at a limit of one.
-        when(dispatcher.resolvePrimary(any())).thenReturn(List.of(
-                resolved("doc_read"), resolved("whoami")));
-        when(dispatcher.resolveAll(any())).thenReturn(List.of(
-                resolved("doc_read"), resolved("whoami")));
+    void budget_onUnrestrictedEngine_materialisesTheGatedUniverse() {
+        // Ford-style: no allow-set, no filter. The unrestricted base is
+        // materialised (role-gated) up front — the old "cheap path"
+        // returned an empty marker classification and delegated to
+        // per-tool primary() WITHOUT the engine-role gate, leaking every
+        // role-gated tool to unrestricted engines (§7b; observed live
+        // when a Hactar operator invoked cross_process_create). The
+        // marker is gone: an ample budget simply returns everything
+        // primary. Two different families, so the "whole family or
+        // nothing" rule still leaves exactly one survivor at a limit
+        // of one.
+        when(dispatcher.resolvePrimary(any())).thenReturn(List.of(resolved("doc_read"), resolved("whoami")));
+        when(dispatcher.resolveAll(any())).thenReturn(List.of(resolved("doc_read"), resolved("whoami")));
+        stubResolve("doc_read", false);
+        stubResolve("whoami", false);
 
         ContextToolsApi.Classification ample = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of(), RecipeResolver.ToolFilter.EMPTY,
-                Set.of(), null, null, new ToolBudget(50, 1), null);
+                dispatcher,
+                ctx,
+                Set.of(),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                null,
+                null,
+                new ToolBudget(50, 1),
+                null);
 
-        assertThat(ample.primary()).isEmpty();
+        assertThat(ample.primary()).containsExactlyInAnyOrder("doc_read", "whoami");
         assertThat(ample.deferred()).isEmpty();
 
         ContextToolsApi.Classification tight = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of(), RecipeResolver.ToolFilter.EMPTY,
-                Set.of(), null, null, new ToolBudget(1, 0), null);
+                dispatcher,
+                ctx,
+                Set.of(),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                null,
+                null,
+                new ToolBudget(1, 0),
+                null);
 
         assertThat(tight.primary()).hasSize(1);
         assertThat(tight.deferred()).hasSize(1);
@@ -527,17 +579,13 @@ class ContextToolsApiClassifyTest {
         // *normal* shape for such a recipe — not an edge case. Ignoring the
         // hints here would silently discard the author's only statement
         // about what to give up, on the widest surface there is.
-        when(dispatcher.resolvePrimary(any())).thenReturn(List.of(
-                resolved("doc_read"), resolved("slack_rest__a")));
-        when(dispatcher.resolveAll(any())).thenReturn(List.of(
-                resolved("doc_read"), resolved("slack_rest__a")));
+        when(dispatcher.resolvePrimary(any())).thenReturn(List.of(resolved("doc_read"), resolved("slack_rest__a")));
+        when(dispatcher.resolveAll(any())).thenReturn(List.of(resolved("doc_read"), resolved("slack_rest__a")));
 
         RecipeResolver.ToolFilter rankingOnly = new RecipeResolver.ToolFilter(
-                List.of(), List.of(), List.of(),
-                List.of("slack_rest__a"), List.of("doc_read"));
+                List.of(), List.of(), List.of(), List.of("slack_rest__a"), List.of("doc_read"));
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of(), rankingOnly,
-                Set.of(), null, null, new ToolBudget(1, 0), null);
+                dispatcher, ctx, Set.of(), rankingOnly, Set.of(), null, null, new ToolBudget(1, 0), null);
 
         // Without the hints the derived order (built-in over pack) would
         // have kept doc_read instead.
@@ -550,9 +598,15 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false);
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_read"),
-                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
-                ToolBudget.UNLIMITED, null);
+                dispatcher,
+                ctx,
+                Set.of("doc_read"),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                null,
+                null,
+                ToolBudget.UNLIMITED,
+                null);
 
         assertThat(c.primary()).containsExactly("doc_read");
     }
@@ -562,12 +616,18 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false);
         stubResolve("gmail_rest__a", false);
 
-        ToolTriage.Hints familyHints = new ToolTriage.Hints(
-                Set.of(), Set.of(), Set.of(), Set.of("gmail_rest"), Set.of("doc"));
+        ToolTriage.Hints familyHints =
+                new ToolTriage.Hints(Set.of(), Set.of(), Set.of(), Set.of("gmail_rest"), Set.of("doc"));
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx, Set.of("doc_read", "gmail_rest__a"),
-                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
-                new ToolBudget(1, 0), familyHints);
+                dispatcher,
+                ctx,
+                Set.of("doc_read", "gmail_rest__a"),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                null,
+                null,
+                new ToolBudget(1, 0),
+                familyHints);
 
         assertThat(c.primary()).containsExactly("gmail_rest__a");
     }
@@ -583,16 +643,17 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false);
         stubResolve("doc_write", false);
         stubResolve("skill_alpha", false);
-        when(dispatcher.resolveAll(any())).thenReturn(List.of(
-                resolved("doc_read"), resolved("doc_write"), resolved("skill_alpha")));
+        when(dispatcher.resolveAll(any()))
+                .thenReturn(List.of(resolved("doc_read"), resolved("doc_write"), resolved("skill_alpha")));
 
         ContextToolsApi base = new ContextToolsApi(
-                dispatcher, ctx,
-                /*allowed*/ Set.of("doc_read", "doc_write"),
-                /*primary*/ Set.of("doc_read", "doc_write"),
-                /*deferred*/ Set.of(),
-                /*activatedDeferred*/ Set.of(),
-                ToolInvocationListener.NOOP)
+                        dispatcher,
+                        ctx,
+                        /*allowed*/ Set.of("doc_read", "doc_write"),
+                        /*primary*/ Set.of("doc_read", "doc_write"),
+                        /*deferred*/ Set.of(),
+                        /*activatedDeferred*/ Set.of(),
+                        ToolInvocationListener.NOOP)
                 .withBudget(new ToolBudget(2, 0), null);
 
         ContextToolsApi withSkill = base.withAdditional(Set.of("skill_alpha"));
@@ -610,8 +671,12 @@ class ContextToolsApiClassifyTest {
         stubResolve("skill_alpha", false);
 
         ContextToolsApi base = new ContextToolsApi(
-                dispatcher, ctx,
-                Set.of("doc_read"), Set.of("doc_read"), Set.of(), Set.of(),
+                dispatcher,
+                ctx,
+                Set.of("doc_read"),
+                Set.of("doc_read"),
+                Set.of(),
+                Set.of(),
                 ToolInvocationListener.NOOP);
 
         ContextToolsApi withSkill = base.withAdditional(Set.of("skill_alpha"));
@@ -625,9 +690,13 @@ class ContextToolsApiClassifyTest {
         stubResolve("skill_alpha", false);
 
         ContextToolsApi base = new ContextToolsApi(
-                dispatcher, ctx,
-                Set.of("doc_read"), Set.of("doc_read"), Set.of(), Set.of(),
-                ToolInvocationListener.NOOP)
+                        dispatcher,
+                        ctx,
+                        Set.of("doc_read"),
+                        Set.of("doc_read"),
+                        Set.of(),
+                        Set.of(),
+                        ToolInvocationListener.NOOP)
                 .withBudget(new ToolBudget(50, 1), null);
 
         ContextToolsApi withSkill = base.withAdditional(Set.of("skill_alpha"));
@@ -642,9 +711,13 @@ class ContextToolsApiClassifyTest {
         stubResolve("skill_alpha", false);
 
         ContextToolsApi base = new ContextToolsApi(
-                dispatcher, ctx,
-                Set.of("doc_read"), Set.of("doc_read"), Set.of(), Set.of(),
-                ToolInvocationListener.NOOP)
+                        dispatcher,
+                        ctx,
+                        Set.of("doc_read"),
+                        Set.of("doc_read"),
+                        Set.of(),
+                        Set.of(),
+                        ToolInvocationListener.NOOP)
                 .withBudget(ToolBudget.UNLIMITED, null);
 
         assertThat(base.withAdditional(Set.of("skill_alpha")).primary())
@@ -664,10 +737,15 @@ class ContextToolsApiClassifyTest {
         stubResolve("always_deferred", true);
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
+                dispatcher,
+                ctx,
                 Set.of("doc_read", "gmail_rest__a", "always_deferred"),
-                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
-                new ToolBudget(1, 0), null);
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                null,
+                null,
+                new ToolBudget(1, 0),
+                null);
 
         assertThat(c.demoted()).containsExactly("gmail_rest__a");
         assertThat(c.deferred()).contains("always_deferred", "gmail_rest__a");
@@ -678,23 +756,31 @@ class ContextToolsApiClassifyTest {
         stubResolve("doc_read", false);
         stubResolve("gmail_rest__a", false);
         stubResolve("always_deferred", true);
-        when(dispatcher.resolveAll(any())).thenReturn(List.of(
-                resolved("doc_read"), resolved("gmail_rest__a"),
-                resolved("always_deferred", true)));
+        when(dispatcher.resolveAll(any()))
+                .thenReturn(
+                        List.of(resolved("doc_read"), resolved("gmail_rest__a"), resolved("always_deferred", true)));
 
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                dispatcher, ctx,
+                dispatcher,
+                ctx,
                 Set.of("doc_read", "gmail_rest__a", "always_deferred"),
-                RecipeResolver.ToolFilter.EMPTY, Set.of(), null, null,
-                new ToolBudget(1, 0), null);
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                null,
+                null,
+                new ToolBudget(1, 0),
+                null);
         ContextToolsApi api = new ContextToolsApi(
-                dispatcher, ctx, c.allowed(), c.primary(), c.deferred(), c.activatedDeferred(),
-                ToolInvocationListener.NOOP)
+                        dispatcher,
+                        ctx,
+                        c.allowed(),
+                        c.primary(),
+                        c.deferred(),
+                        c.activatedDeferred(),
+                        ToolInvocationListener.NOOP)
                 .withBudget(new ToolBudget(1, 0), null, c.demoted());
 
-        assertThat(api.discoveryBlockMarkdown())
-                .contains("always_deferred")
-                .doesNotContain("gmail_rest__a");
+        assertThat(api.discoveryBlockMarkdown()).contains("always_deferred").doesNotContain("gmail_rest__a");
         // Nothing disappears — it just moves to the dynamic message.
         assertThat(api.demotedDiscoveryBlockMarkdown())
                 .contains("gmail_rest__a")
@@ -707,8 +793,12 @@ class ContextToolsApiClassifyTest {
         when(dispatcher.resolveAll(any())).thenReturn(List.of(resolved("deferred_tool", true)));
 
         ContextToolsApi api = new ContextToolsApi(
-                dispatcher, ctx,
-                Set.of("deferred_tool"), Set.of(), Set.of("deferred_tool"), Set.of(),
+                dispatcher,
+                ctx,
+                Set.of("deferred_tool"),
+                Set.of(),
+                Set.of("deferred_tool"),
+                Set.of(),
                 ToolInvocationListener.NOOP);
 
         assertThat(api.discoveryBlockMarkdown()).contains("deferred_tool");
@@ -721,16 +811,16 @@ class ContextToolsApiClassifyTest {
         // block at once, and the triage counts it twice.
         stubResolve("doc_read", false);
         stubResolve("skill_alpha", true);
-        when(dispatcher.resolveAll(any())).thenReturn(List.of(
-                resolved("doc_read"), resolved("skill_alpha", true)));
+        when(dispatcher.resolveAll(any())).thenReturn(List.of(resolved("doc_read"), resolved("skill_alpha", true)));
 
         ContextToolsApi base = new ContextToolsApi(
-                dispatcher, ctx,
-                /*allowed*/ Set.of("doc_read", "skill_alpha"),
-                /*primary*/ Set.of("doc_read"),
-                /*deferred*/ Set.of("skill_alpha"),
-                /*activatedDeferred*/ Set.of("skill_alpha"),
-                ToolInvocationListener.NOOP)
+                        dispatcher,
+                        ctx,
+                        /*allowed*/ Set.of("doc_read", "skill_alpha"),
+                        /*primary*/ Set.of("doc_read"),
+                        /*deferred*/ Set.of("skill_alpha"),
+                        /*activatedDeferred*/ Set.of("skill_alpha"),
+                        ToolInvocationListener.NOOP)
                 .withBudget(new ToolBudget(50, 1), null);
 
         ContextToolsApi withSkill = base.withAdditional(Set.of("skill_alpha"));
@@ -745,12 +835,63 @@ class ContextToolsApiClassifyTest {
     }
 
     private void stubResolve(String name, boolean deferred, Set<String> allowedProfiles) {
-        when(dispatcher.resolve(eq(name), any()))
-                .thenReturn(Optional.of(resolved(name, deferred, allowedProfiles)));
+        when(dispatcher.resolve(eq(name), any())).thenReturn(Optional.of(resolved(name, deferred, allowedProfiles)));
     }
 
     private static ToolDispatcher.Resolved resolved(String name) {
         return resolved(name, false, Set.of());
+    }
+
+    /** A primary tool that additionally requires an engine role. */
+    private static ToolDispatcher.Resolved resolvedRoleGated(String name, String role) {
+        Tool t = new Tool() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public String description() {
+                return "stub " + name;
+            }
+
+            @Override
+            public boolean primary() {
+                return true;
+            }
+
+            @Override
+            public Set<String> requiresEngineRoles() {
+                return Set.of(role);
+            }
+
+            @Override
+            public Map<String, Object> paramsSchema() {
+                return Map.of();
+            }
+
+            @Override
+            public Map<String, Object> invoke(Map<String, Object> p, ToolInvocationContext c) {
+                return Map.of();
+            }
+        };
+        ToolSource src = new ToolSource() {
+            @Override
+            public String sourceId() {
+                return "test";
+            }
+
+            @Override
+            public List<Tool> tools(ToolInvocationContext c) {
+                return List.of(t);
+            }
+
+            @Override
+            public Optional<Tool> find(String name, ToolInvocationContext c) {
+                return name.equals(t.name()) ? Optional.of(t) : Optional.empty();
+            }
+        };
+        return new ToolDispatcher.Resolved(t, src);
     }
 
     private static ToolDispatcher.Resolved resolved(String name, boolean deferred) {
@@ -759,20 +900,54 @@ class ContextToolsApiClassifyTest {
 
     private static ToolDispatcher.Resolved resolved(String name, boolean deferred, Set<String> allowedProfiles) {
         Tool t = new Tool() {
-            @Override public String name() { return name; }
-            @Override public String description() { return "stub " + name; }
-            @Override public boolean primary() { return true; }
-            @Override public boolean deferred() { return deferred; }
-            @Override public Set<String> allowedForProfile() { return allowedProfiles; }
-            @Override public Map<String, Object> paramsSchema() { return Map.of(); }
-            @Override public Map<String, Object> invoke(Map<String, Object> p, ToolInvocationContext c) {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public String description() {
+                return "stub " + name;
+            }
+
+            @Override
+            public boolean primary() {
+                return true;
+            }
+
+            @Override
+            public boolean deferred() {
+                return deferred;
+            }
+
+            @Override
+            public Set<String> allowedForProfile() {
+                return allowedProfiles;
+            }
+
+            @Override
+            public Map<String, Object> paramsSchema() {
+                return Map.of();
+            }
+
+            @Override
+            public Map<String, Object> invoke(Map<String, Object> p, ToolInvocationContext c) {
                 return Map.of();
             }
         };
         ToolSource src = new ToolSource() {
-            @Override public String sourceId() { return "stub"; }
-            @Override public List<Tool> tools(ToolInvocationContext c) { return List.of(t); }
-            @Override public Optional<Tool> find(String n, ToolInvocationContext c) {
+            @Override
+            public String sourceId() {
+                return "stub";
+            }
+
+            @Override
+            public List<Tool> tools(ToolInvocationContext c) {
+                return List.of(t);
+            }
+
+            @Override
+            public Optional<Tool> find(String n, ToolInvocationContext c) {
                 return n.equals(name) ? Optional.of(t) : Optional.empty();
             }
         };

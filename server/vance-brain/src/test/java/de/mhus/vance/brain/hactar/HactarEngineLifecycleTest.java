@@ -40,6 +40,9 @@ class HactarEngineLifecycleTest {
     private LoadingPhase loadingPhase;
     private ValidatingPhase validatingPhase;
     private ExecutingPhase executingPhase;
+    private HactarStateStore stateStore;
+    private HactarRunService runService;
+    private HactarSessionLoop sessionLoop;
     private HactarEngine engine;
     private ThinkProcessDocument process;
     private ThinkEngineContext ctx;
@@ -51,14 +54,21 @@ class HactarEngineLifecycleTest {
         loadingPhase = mock(LoadingPhase.class);
         validatingPhase = mock(ValidatingPhase.class);
         executingPhase = mock(ExecutingPhase.class);
+        stateStore =
+                new HactarStateStore(thinkProcessService, JsonMapper.builder().build());
+        runService = mock(HactarRunService.class);
+        sessionLoop = mock(HactarSessionLoop.class);
         engine = new HactarEngine(
                 thinkProcessService,
                 eventEmitter,
-                JsonMapper.builder().build(),
                 loadingPhase,
                 validatingPhase,
                 executingPhase,
-                mock(de.mhus.vance.shared.chat.ChatMessageService.class));
+                stateStore,
+                runService,
+                sessionLoop,
+                mock(de.mhus.vance.shared.chat.ChatMessageService.class),
+                JsonMapper.builder().build());
 
         process = new ThinkProcessDocument();
         process.setId("proc-1");
@@ -102,8 +112,7 @@ class HactarEngineLifecycleTest {
 
     @Test
     void buildInitialState_defaultsLanguageAndValidateBeforeRun() {
-        process.setEngineParams(Map.of(
-                HactarEngine.SCRIPT_REF_KEY, "scripts/mailbot.js"));
+        process.setEngineParams(Map.of(HactarEngine.SCRIPT_REF_KEY, "scripts/mailbot.js"));
 
         HactarState state = engine.buildInitialState(process);
 
@@ -115,9 +124,8 @@ class HactarEngineLifecycleTest {
 
     @Test
     void buildInitialState_readsValidateBeforeRunTrue() {
-        process.setEngineParams(Map.of(
-                HactarEngine.SCRIPT_REF_KEY, "scripts/mailbot.js",
-                HactarEngine.VALIDATE_BEFORE_RUN_KEY, true));
+        process.setEngineParams(
+                Map.of(HactarEngine.SCRIPT_REF_KEY, "scripts/mailbot.js", HactarEngine.VALIDATE_BEFORE_RUN_KEY, true));
 
         HactarState state = engine.buildInitialState(process);
 
@@ -137,8 +145,7 @@ class HactarEngineLifecycleTest {
 
         assertThat(loadedState().getStatus()).isEqualTo(HactarStatus.LOADING);
         org.mockito.Mockito.verify(eventEmitter).scheduleTurn("proc-1");
-        org.mockito.Mockito.verify(thinkProcessService)
-                .updateStatus("proc-1", ThinkProcessStatus.IDLE);
+        org.mockito.Mockito.verify(thinkProcessService).updateStatus("proc-1", ThinkProcessStatus.IDLE);
     }
 
     @Test
@@ -147,13 +154,12 @@ class HactarEngineLifecycleTest {
                 .status(HactarStatus.LOADING)
                 .scriptRef("scripts/x.js")
                 .build());
-        when(loadingPhase.execute(any(), any(), any()))
-                .thenReturn(HactarStatus.EXECUTING);
+        when(loadingPhase.execute(any(), any())).thenReturn(HactarStatus.EXECUTING);
 
         engine.runTurn(process, ctx);
 
         assertThat(loadedState().getStatus()).isEqualTo(HactarStatus.EXECUTING);
-        org.mockito.Mockito.verify(loadingPhase).execute(any(), eq(process), eq(ctx));
+        org.mockito.Mockito.verify(loadingPhase).execute(any(), eq(process));
     }
 
     @Test
@@ -164,13 +170,12 @@ class HactarEngineLifecycleTest {
                 .scriptBody("var x = 1;")
                 .validateBeforeRun(true)
                 .build());
-        when(validatingPhase.execute(any(), any(), any()))
-                .thenReturn(HactarStatus.EXECUTING);
+        when(validatingPhase.execute(any(), any())).thenReturn(HactarStatus.EXECUTING);
 
         engine.runTurn(process, ctx);
 
         assertThat(loadedState().getStatus()).isEqualTo(HactarStatus.EXECUTING);
-        org.mockito.Mockito.verify(validatingPhase).execute(any(), eq(process), eq(ctx));
+        org.mockito.Mockito.verify(validatingPhase).execute(any(), eq(process));
     }
 
     @Test
@@ -180,16 +185,13 @@ class HactarEngineLifecycleTest {
                 .scriptRef("scripts/x.js")
                 .scriptBody("var x = 1;")
                 .build());
-        when(executingPhase.execute(any(), any(), any()))
-                .thenReturn(HactarStatus.DONE);
+        when(executingPhase.execute(any(), any())).thenReturn(HactarStatus.DONE);
 
         engine.runTurn(process, ctx);
 
         assertThat(loadedState().getStatus()).isEqualTo(HactarStatus.DONE);
-        org.mockito.Mockito.verify(thinkProcessService)
-                .closeProcess("proc-1", CloseReason.DONE);
-        org.mockito.Mockito.verify(eventEmitter, org.mockito.Mockito.never())
-                .scheduleTurn(any());
+        org.mockito.Mockito.verify(thinkProcessService).closeProcess("proc-1", CloseReason.DONE);
+        org.mockito.Mockito.verify(eventEmitter, org.mockito.Mockito.never()).scheduleTurn(any());
     }
 
     @Test
@@ -198,20 +200,18 @@ class HactarEngineLifecycleTest {
                 .status(HactarStatus.LOADING)
                 .scriptRef("scripts/missing.js")
                 .build());
-        when(loadingPhase.execute(any(), any(), any()))
-                .thenAnswer(invocation -> {
-                    HactarState s = invocation.getArgument(0);
-                    s.setFailureReason("Script document not found");
-                    return HactarStatus.FAILED;
-                });
+        when(loadingPhase.execute(any(), any())).thenAnswer(invocation -> {
+            HactarState s = invocation.getArgument(0);
+            s.setFailureReason("Script document not found");
+            return HactarStatus.FAILED;
+        });
 
         engine.runTurn(process, ctx);
 
         HactarState saved = loadedState();
         assertThat(saved.getStatus()).isEqualTo(HactarStatus.FAILED);
         assertThat(saved.getFailureReason()).contains("not found");
-        org.mockito.Mockito.verify(thinkProcessService)
-                .closeProcess("proc-1", CloseReason.STALE);
+        org.mockito.Mockito.verify(thinkProcessService).closeProcess("proc-1", CloseReason.STALE);
     }
 
     @Test
@@ -224,8 +224,7 @@ class HactarEngineLifecycleTest {
 
         engine.runTurn(process, ctx);
 
-        org.mockito.Mockito.verify(thinkProcessService)
-                .closeProcess("proc-1", CloseReason.DONE);
+        org.mockito.Mockito.verify(thinkProcessService).closeProcess("proc-1", CloseReason.DONE);
         org.mockito.Mockito.verifyNoInteractions(loadingPhase, validatingPhase, executingPhase);
     }
 
@@ -235,8 +234,7 @@ class HactarEngineLifecycleTest {
                 .status(HactarStatus.LOADING)
                 .scriptRef("scripts/x.js")
                 .build());
-        when(loadingPhase.execute(any(), any(), any()))
-                .thenThrow(new RuntimeException("boom"));
+        when(loadingPhase.execute(any(), any())).thenThrow(new RuntimeException("boom"));
 
         assertThatThrownBy(() -> engine.runTurn(process, ctx))
                 .isInstanceOf(RuntimeException.class)
@@ -245,28 +243,140 @@ class HactarEngineLifecycleTest {
         HactarState saved = loadedState();
         assertThat(saved.getStatus()).isEqualTo(HactarStatus.FAILED);
         assertThat(saved.getFailureReason()).contains("runTurn threw").contains("boom");
-        org.mockito.Mockito.verify(thinkProcessService)
-                .closeProcess("proc-1", CloseReason.STALE);
+        org.mockito.Mockito.verify(thinkProcessService).closeProcess("proc-1", CloseReason.STALE);
+    }
+
+    // ──────────────────── Session mode ────────────────────
+
+    @Test
+    void start_sessionChatForm_persistsIdentityAndWaits() {
+        process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, true)));
+
+        engine.start(process, ctx);
+
+        HactarState state = loadedState();
+        assertThat(state.isChatIdentity()).isTrue();
+        assertThat(state.getStatus()).isEqualTo(HactarStatus.READY);
+        assertThat(state.getScriptRef()).isNull();
+        // No auto-kick, no scheduled turn — the identity waits (lazy).
+        org.mockito.Mockito.verifyNoInteractions(runService);
+        org.mockito.Mockito.verify(eventEmitter, org.mockito.Mockito.never()).scheduleTurn(any());
+    }
+
+    @Test
+    void start_sessionWorkerForm_autoKicksRun() {
+        process.setEngineParams(new LinkedHashMap<>(
+                Map.of(HactarEngine.SESSION_MODE_KEY, true, HactarEngine.SCRIPT_REF_KEY, "scripts/x.js")));
+
+        engine.start(process, ctx);
+
+        HactarState state = loadedState();
+        assertThat(state.isChatIdentity()).isFalse();
+        assertThat(state.getScriptRef()).isEqualTo("scripts/x.js");
+        org.mockito.Mockito.verify(runService).start(org.mockito.ArgumentMatchers.eq(process), any());
+    }
+
+    @Test
+    void runTurn_sessionWorkerFormTerminal_emitsReplyAndCloses() {
+        process.setEngineParams(new LinkedHashMap<>(
+                Map.of(HactarEngine.SESSION_MODE_KEY, true, HactarEngine.SCRIPT_REF_KEY, "scripts/x.js")));
+        process.setParentProcessId("parent-1");
+        seedState(HactarState.builder()
+                .status(HactarStatus.DONE)
+                .scriptRef("scripts/x.js")
+                .chatIdentity(false)
+                .executionResult(Map.of("done", true))
+                .executionDurationMs(7)
+                .build());
+        when(ctx.drainPending()).thenReturn(List.of());
+
+        engine.runTurn(process, ctx);
+
+        // Worker form at terminal: reply + close, no agent turn.
+        org.mockito.Mockito.verify(ctx).emitReply(any(), any(), any());
+        org.mockito.Mockito.verify(thinkProcessService).closeProcess("proc-1", CloseReason.DONE);
+        org.mockito.Mockito.verifyNoInteractions(sessionLoop);
+    }
+
+    @Test
+    void runTurn_sessionChatFormTerminal_goesToAgentLoop() {
+        process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, true)));
+        seedState(HactarState.builder()
+                .status(HactarStatus.DONE)
+                .scriptRef("scripts/x.js")
+                .chatIdentity(true)
+                .build());
+        when(ctx.drainPending()).thenReturn(List.of()).thenReturn(List.of());
+
+        engine.runTurn(process, ctx);
+
+        // Chat form: the terminal wakeup drives the agent report turn — the
+        // process stays open (re-arm, F1), no closeProcess.
+        org.mockito.Mockito.verify(thinkProcessService, org.mockito.Mockito.never())
+                .closeProcess(any(), any());
+    }
+
+    @Test
+    void stop_sessionMode_cancelsLiveRunBeforeClose() {
+        process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, true)));
+
+        engine.stop(process, ctx);
+
+        org.mockito.Mockito.verify(runService).stop("proc-1");
+        org.mockito.Mockito.verify(thinkProcessService).closeProcess("proc-1", CloseReason.STOPPED);
+    }
+
+    @Test
+    void resume_sessionModeOrphanedMidRun_marksFailed() {
+        process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, true)));
+        seedState(HactarState.builder()
+                .status(HactarStatus.EXECUTING)
+                .scriptRef("scripts/x.js")
+                .chatIdentity(true)
+                .build());
+        when(runService.isRunning("proc-1")).thenReturn(false);
+
+        engine.resume(process, ctx);
+
+        // The engine DETECTS the orphan (mid-run state, no live handle) and
+        // hands it to the run service — the mocked service records the call;
+        // the persistence itself is covered by HactarRunServiceTest.
+        org.mockito.Mockito.verify(runService)
+                .failOrphanedRun(org.mockito.ArgumentMatchers.eq(process), any(HactarState.class));
+    }
+
+    @Test
+    void sessionMode_paramParsingAcceptsStringAndBoolean() {
+        assertThat(HactarEngine.sessionMode(process)).isFalse();
+        process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, "true")));
+        assertThat(HactarEngine.sessionMode(process)).isTrue();
+        process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, true)));
+        assertThat(HactarEngine.sessionMode(process)).isTrue();
+        process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, "nope")));
+        assertThat(HactarEngine.sessionMode(process)).isFalse();
     }
 
     // ──────────────────── helpers ────────────────────
 
     @SuppressWarnings("unchecked")
     private void seedState(HactarState state) {
-        Map<String, Object> p = new LinkedHashMap<>();
-        Map<String, Object> serialized = JsonMapper.builder().build()
-                .convertValue(state, Map.class);
+        // Merge into the existing engine params — the session tests set
+        // sessionMode/scriptRef params BEFORE seeding, and a fresh map
+        // would wipe them (the engine then routes to the headless path).
+        Map<String, Object> p = process.getEngineParams() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(process.getEngineParams());
+        Map<String, Object> serialized = JsonMapper.builder().build().convertValue(state, Map.class);
         p.put(HactarEngine.STATE_KEY, serialized);
         process.setEngineParams(p);
     }
 
     private HactarState loadedState() {
-        ArgumentCaptor<Map<String, Object>> captor =
-                ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
         org.mockito.Mockito.verify(thinkProcessService, org.mockito.Mockito.atLeastOnce())
                 .replaceEngineParams(eq("proc-1"), captor.capture());
-        Map<String, Object> latest = captor.getAllValues().get(
-                captor.getAllValues().size() - 1);
+        Map<String, Object> latest =
+                captor.getAllValues().get(captor.getAllValues().size() - 1);
         Object raw = latest.get(HactarEngine.STATE_KEY);
         return JsonMapper.builder().build().convertValue(raw, HactarState.class);
     }

@@ -68,6 +68,12 @@ public final class VanceScriptApi {
         else ACTIVE_LOG_TEE.set(tee);
     }
 
+    /** The currently active tee — lets a caller (the script executor's
+     *  default tee) detect an existing one instead of clobbering it. */
+    public static @Nullable BiConsumer<String, String> activeLogTee() {
+        return ACTIVE_LOG_TEE.get();
+    }
+
     public static void clearActiveLogTee() {
         ACTIVE_LOG_TEE.remove();
     }
@@ -106,6 +112,30 @@ public final class VanceScriptApi {
 
     @HostAccess.Export
     public final ScriptLog log;
+
+    /**
+     * Sleeps the script for {@code millis} milliseconds. The natural
+     * primitive a script reaches for is {@code vance.sleep(ms)} — the
+     * GraalJS sandbox has no {@code setTimeout} (no event loop, top-level
+     * code runs to completion), and a naive busy-wait would burn the
+     * statement limit. Interruptible by design: a runner stop (hactar_stop,
+     * timeout watchdog) interrupts the eval thread, {@link Thread#sleep}
+     * raises immediately and the executor maps it to CANCELLED.
+     *
+     * <p>Negative/zero input returns immediately.
+     */
+    @HostAccess.Export
+    public void sleep(long millis) {
+        if (millis <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("sleep interrupted", e);
+        }
+    }
 
     @HostAccess.Export
     public final ScriptProcessApi process;

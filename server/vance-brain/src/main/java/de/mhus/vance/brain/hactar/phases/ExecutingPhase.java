@@ -11,7 +11,6 @@ import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
 import de.mhus.vance.brain.script.ScriptResult;
-import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -63,16 +62,13 @@ public class ExecutingPhase {
     private final ProgressEmitter progressEmitter;
     private final NotificationService notificationService;
     private final SessionService sessionService;
+    private final de.mhus.vance.brain.hactar.HactarProgressRing progressRing;
+    private final de.mhus.vance.brain.hactar.HactarConsoleLog consoleLog;
 
-    public HactarStatus execute(
-            HactarState state,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    public HactarStatus execute(HactarState state, ThinkProcessDocument process) {
         String code = state.getScriptBody();
         if (code == null || code.isBlank()) {
-            state.setFailureReason(
-                    "EXECUTING entered with empty scriptBody — "
-                            + "LOADING must run first");
+            state.setFailureReason("EXECUTING entered with empty scriptBody — " + "LOADING must run first");
             return HactarStatus.FAILED;
         }
 
@@ -83,24 +79,20 @@ public class ExecutingPhase {
         // the think-process belongs to. Without this, IMAP/OAuth tools
         // bound to per-user credentials silently see an empty resolver
         // substitution and fail with cryptic provider errors.
-        String sessionOwner = process.getSessionId() == null ? null
-                : sessionService.findBySessionId(process.getSessionId())
+        String sessionOwner = process.getSessionId() == null
+                ? null
+                : sessionService
+                        .findBySessionId(process.getSessionId())
                         .map(SessionDocument::getUserId)
                         .orElse(null);
         ToolInvocationContext scope = new ToolInvocationContext(
-                process.getTenantId(),
-                process.getProjectId(),
-                process.getSessionId(),
-                process.getId(),
-                sessionOwner);
+                process.getTenantId(), process.getProjectId(), process.getSessionId(), process.getId(), sessionOwner);
         Set<String> scriptTools = LoadingPhase.scriptAllowedTools(process);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope, scriptTools);
 
         Map<String, @Nullable Object> bindings = scriptParamsBindings(process);
         Duration timeout = executionTimeout(process);
-        String sourceName = state.getScriptRef() == null
-                ? "hactar:" + process.getId()
-                : state.getScriptRef();
+        String sourceName = state.getScriptRef() == null ? "hactar:" + process.getId() : state.getScriptRef();
 
         // vance.process.progress(...) — emits live status pings on the
         // Hactar process so the user sees iteration progress without
@@ -110,58 +102,93 @@ public class ExecutingPhase {
         // explicitly, so it must pass the NORMAL progress-level filter
         // by default. Payload Map flattens into the status `detail`
         // field as a compact "k=v, k=v" string.
-        BiConsumer<String, @Nullable Map<String, Object>> progressBridge =
-                (message, payload) -> {
-                    StatusPayload.StatusPayloadBuilder builder =
-                            StatusPayload.builder()
-                                    .tag(StatusTag.SCRIPT_PROGRESS)
-                                    .text(message);
-                    if (payload != null && !payload.isEmpty()) {
-                        builder.detail(formatPayload(payload));
-                    }
-                    progressEmitter.emitStatus(process, builder.build());
-                };
+        BiConsumer<String, @Nullable Map<String, Object>> progressBridge = (message, payload) -> {
+            StatusPayload.StatusPayloadBuilder builder =
+                    StatusPayload.builder().tag(StatusTag.SCRIPT_PROGRESS).text(message);
+            if (payload != null && !payload.isEmpty()) {
+                builder.detail(formatPayload(payload));
+            }
+            progressEmitter.emitStatus(process, builder.build());
+            // Ring copy (F3): both modes get a readable tail for
+            // mid-run Meldung turns and //hactar — see
+            // HactarProgressRing for why this is in-memory only.
+            progressRing.record(process.getId(), message, payload);
+        };
 
         // vance.process.notify(...) — fires a NOTIFY frame so the user's
         // client beeps / shows a toast / fires a system notification.
         // Wired to NotificationService, which routes session-bound and
         // drops on the floor when no client is connected (spec §4).
         BiConsumer<String, @Nullable NotificationSeverity> notificationBridge =
-                (message, severity) ->
-                        notificationService.publish(process, message, severity);
+                (message, severity) -> notificationService.publish(process, message, severity);
 
         try {
-            ScriptResult result = scriptExecutor.run(
-                    new ScriptRequest(
-                            state.getLanguage() == null ? "js" : state.getLanguage(),
-                            code, sourceName,
-                            tools, timeout, bindings, process.getRecipeName(),
-                            de.mhus.vance.brain.action.ScopeLevel.PROCESS_SCOPED,
-                            progressBridge, notificationBridge));
+            // Live console tap (Live-Fund 5): every console/vance.log line
+            // lands in the in-memory HactarConsoleLog as it happens, so
+            // mid-run Meldung turns and //hactar see the CURRENT output —
+            // the persisted consoleTail only exists at the terminal.
+            java.util.function.Consumer<String> consoleLineTap = line -> consoleLog.record(process.getId(), line);
+            ScriptResult result = scriptExecutor.run(new ScriptRequest(
+                    state.getLanguage() == null ? "js" : state.getLanguage(),
+                    code,
+                    sourceName,
+                    tools,
+                    timeout,
+                    bindings,
+                    process.getRecipeName(),
+                    de.mhus.vance.brain.action.ScopeLevel.PROCESS_SCOPED,
+                    progressBridge,
+                    notificationBridge,
+                    /*documentBasePath*/ null,
+                    /*guardApi*/ null,
+                    /*workflowRun*/ null,
+                    consoleLineTap));
             state.setExecutionResult(result.value());
             state.setExecutionDurationMs(result.duration().toMillis());
             state.setExecutionError(null);
             state.setExecutionErrorClass(null);
-            log.info("Hactar.runExecuting id='{}' OK — duration={}ms, valueClass={}",
-                    process.getId(), result.duration().toMillis(),
-                    result.value() == null ? "null"
-                            : result.value().getClass().getSimpleName());
+            state.setConsoleTail(persistConsoleTail(result.consoleOutput()));
+            log.info(
+                    "Hactar.runExecuting id='{}' OK — duration={}ms, valueClass={}",
+                    process.getId(),
+                    result.duration().toMillis(),
+                    result.value() == null ? "null" : result.value().getClass().getSimpleName());
             return HactarStatus.DONE;
         } catch (ScriptExecutionException e) {
             state.setExecutionError(e.getMessage());
             state.setExecutionErrorClass(e.errorClass().name());
             state.setExecutionResult(null);
-            state.setFailureReason("Script execution failed ("
-                    + e.errorClass().name() + "): " + e.getMessage());
-            log.warn("Hactar.runExecuting id='{}' FAIL class={} msg={}",
-                    process.getId(), e.errorClass(), e.getMessage());
+            state.setConsoleTail(persistConsoleTail(e.consoleOutput()));
+            state.setFailureReason("Script execution failed (" + e.errorClass().name() + "): " + e.getMessage());
+            log.warn(
+                    "Hactar.runExecuting id='{}' FAIL class={} msg={}",
+                    process.getId(),
+                    e.errorClass(),
+                    e.getMessage());
             return HactarStatus.FAILED;
         }
     }
 
+    /**
+     * Caps the console tail for PERSISTENCE — the executor captures up
+     * to 64 KB in memory, but the state rides on engineParams and is
+     * re-rendered into prompts; 8 KB of tail is ample for a readable
+     * excerpt. {@code null} when nothing was printed (keeps the state
+     * lean — no empty string on old states either).
+     */
+    private static @Nullable String persistConsoleTail(@Nullable String consoleOutput) {
+        if (consoleOutput == null || consoleOutput.isBlank()) {
+            return null;
+        }
+        String tail = consoleOutput.strip();
+        if (tail.length() <= 8192) {
+            return tail;
+        }
+        return tail.substring(tail.length() - 8192);
+    }
+
     @SuppressWarnings("unchecked")
-    private static Map<String, @Nullable Object> scriptParamsBindings(
-            ThinkProcessDocument process) {
+    private static Map<String, @Nullable Object> scriptParamsBindings(ThinkProcessDocument process) {
         Map<String, Object> p = process.getEngineParams();
         Object raw = p == null ? null : p.get(SCRIPT_PARAMS_KEY);
         if (!(raw instanceof Map<?, ?> map)) {

@@ -1388,34 +1388,33 @@ public final class ContextToolsApi implements ToolBus {
         Set<String> remove = filter == null ? Set.of() : Set.copyOf(filter.remove());
         Set<String> add = filter == null ? Set.of() : Set.copyOf(filter.add());
         Set<String> defer = filter == null ? Set.of() : Set.copyOf(filter.defer());
-        boolean filterEmpty = remove.isEmpty() && add.isEmpty() && defer.isEmpty();
+
+        // Engine-role gate FIRST — before every unrestricted early path
+        // (empty base + empty filter, budget fallback, per-tool
+        // primary()). Role visibility belongs to the engine identity, not
+        // to the classification mode — an engine that declares no
+        // allowedTools() restriction (the Ford default) must still not
+        // see another engine's role-gated tools on the unrestricted fast
+        // path (think-engines.md §7b: default-empty roles mean the engine
+        // cannot see ANY tool with a requiresEngineRoles gate; observed
+        // live when a Hactar operator invoked cross_process_create).
+        Set<String> effectiveRoles = engineRoles == null ? Set.of() : engineRoles;
 
         if (base == null || base.isEmpty()) {
-            if (filterEmpty) {
-                // No engine restriction and no per-turn overlay — caller
-                // falls back to per-tool primary() via visibleResolved.
-                // With a budget in play the surface still has to fit, so
-                // materialise the same set the fallback would produce —
-                // but only when it actually overflows, so an unrestricted
-                // engine under a comfortable limit keeps the cheap path.
-                Classification unrestricted = new Classification(Set.of(), Set.of(), Set.of(), Set.of());
-                if (budget == null || !budget.hasLimit()) {
-                    return unrestricted;
-                }
-                // filter is visibility-empty here, but may still carry
-                // keep/dropFirst — those are ranking-only and have to
-                // survive into the triage.
-                return budgetUnrestricted(
-                        dispatcher, ctx, filter, activatedDeferred, budget, familyHints, unrestricted);
-            }
-            // Engine doesn't restrict, but the recipe carries a filter.
-            // Expand the base to every dispatchable tool so add/remove/defer
-            // can operate. Without this expansion, allowedToolsAdd in a
-            // Ford-style recipe would collapse to "ONLY the added tools",
-            // hiding workspace_*, tool_list, tool_description, etc.
+            // Unrestricted engine: expand the base to the FULL
+            // dispatchable universe, ROLE-GATED. The old fast path
+            // returned an empty "unrestricted" classification for an
+            // empty filter and let visibleResolved/budgetUnrestricted
+            // re-resolve per-tool primary() WITHOUT the gate — the §7b
+            // leak. Materialising here costs one resolveAll pass per
+            // turn (map lookups) and keeps every downstream path
+            // (filter add/remove/defer, profile, budget) on the single
+            // gated base.
             Set<String> all = new java.util.LinkedHashSet<>();
             for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
-                all.add(r.tool().name());
+                if (rolesPermit(r, effectiveRoles)) {
+                    all.add(r.tool().name());
+                }
             }
             base = all;
         }
@@ -1446,7 +1445,8 @@ public final class ContextToolsApi implements ToolBus {
         // is carried by the engine. The default-empty engineRoles set
         // intentionally hides every role-gated tool.
         Set<String> roleFiltered = new LinkedHashSet<>(pool);
-        Set<String> effectiveRoles = engineRoles == null ? Set.of() : engineRoles;
+        // effectiveRoles was resolved at the top of classify (the early
+        // gate already applied it to unrestricted bases).
         roleFiltered.removeIf(name -> {
             Set<String> required = dispatcher
                     .resolve(name, ctx)
@@ -1556,40 +1556,10 @@ public final class ContextToolsApi implements ToolBus {
      * author made about what to give up first — on the engines with the
      * widest surface, which are exactly the ones the cut hits.
      */
-    private static Classification budgetUnrestricted(
-            ToolDispatcher dispatcher,
-            ToolInvocationContext ctx,
-            de.mhus.vance.brain.recipe.RecipeResolver.@org.jspecify.annotations.Nullable ToolFilter filter,
-            @org.jspecify.annotations.Nullable Set<String> activatedDeferred,
-            ToolBudget budget,
-            ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints,
-            Classification unrestricted) {
-        Set<String> primary = new LinkedHashSet<>();
-        for (ToolDispatcher.Resolved r : dispatcher.resolvePrimary(ctx)) {
-            primary.add(r.tool().name());
-        }
-        Set<String> all = new LinkedHashSet<>();
-        for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
-            all.add(r.tool().name());
-        }
-        Set<String> deferred = new LinkedHashSet<>(all);
-        deferred.removeAll(primary);
-        Set<String> activated = activatedDeferred == null
-                ? Set.of()
-                : activatedDeferred.stream()
-                        .filter(deferred::contains)
-                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        if (primary.size() + activated.size() <= budget.effectiveLimit()) {
-            return unrestricted;
-        }
-        Set<String> floor = new LinkedHashSet<>(MANDATORY_TOOLS);
-        floor.retainAll(primary);
-        ToolTriage.Result triaged = ToolTriage.apply(primary, activated, floor, hintsFrom(filter, familyHints), budget);
-        Set<String> demotedToDeferred = new LinkedHashSet<>(triaged.demoted());
-        demotedToDeferred.retainAll(primary);
-        deferred.addAll(demotedToDeferred);
-        logDemotion(ctx, triaged, primary.size() + activated.size(), budget);
-        return new Classification(all, triaged.primary(), deferred, triaged.activated(), demotedToDeferred);
+    /** Every required role of the resolved tool is carried by the engine. */
+    private static boolean rolesPermit(ToolDispatcher.Resolved r, Set<String> effectiveRoles) {
+        Set<String> required = r.tool().requiresEngineRoles();
+        return required == null || required.isEmpty() || effectiveRoles.containsAll(required);
     }
 
     /**

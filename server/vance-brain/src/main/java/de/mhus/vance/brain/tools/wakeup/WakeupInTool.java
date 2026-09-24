@@ -27,27 +27,34 @@ public class WakeupInTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "seconds", Map.of(
-                            "type", "integer",
-                            "description",
-                            "Delay until the wakeup fires. Must be positive. "
-                                    + "Wall-clock seconds — the timer keeps running while the "
-                                    + "process is paused, but a wakeup that fires against a "
-                                    + "paused/suspended/closed process is dropped, not queued. "
-                                    + "Schedule a new one after resuming."),
-                    "label", Map.of(
-                            "type", "string",
-                            "description",
-                            "Short human-readable hint shown in logs and on the inbox event. "
-                                    + "Include enough context to recognise what the wakeup is about "
-                                    + "(e.g. 'check long-build #j-abc')."),
-                    "payload", Map.of(
-                            "type", "object",
-                            "description",
-                            "Optional structured data echoed back on the wakeup event. "
-                                    + "Use to carry job ids, target document refs, or whatever "
-                                    + "state the follow-up turn needs.")),
+            "properties",
+                    Map.of(
+                            "seconds",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Delay until the wakeup fires. Must be positive. "
+                                                    + "Wall-clock seconds — the timer keeps running while the "
+                                                    + "process is paused, but a wakeup that fires against a "
+                                                    + "paused/suspended/closed process is dropped, not queued. "
+                                                    + "Schedule a new one after resuming."),
+                            "label",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Short human-readable hint shown in logs and on the inbox event. "
+                                                    + "Include enough context to recognise what the wakeup is about "
+                                                    + "(e.g. 'check long-build #j-abc')."),
+                            "payload",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Optional structured data echoed back on the wakeup event. "
+                                                    + "Use to carry job ids, target document refs, or whatever "
+                                                    + "state the follow-up turn needs.")),
             "required", List.of("seconds", "label"));
 
     private final WakeupRegistry wakeupRegistry;
@@ -59,10 +66,13 @@ public class WakeupInTool implements Tool {
 
     @Override
     public String description() {
-        return "Schedule a self-wakeup. After 'seconds' the calling process "
-                + "receives a SCHEDULED_WAKEUP event in its inbox with the "
-                + "given label and optional payload. Returns a correlationId "
-                + "you can pass to wakeup_cancel to revoke before it fires. "
+        return "A timer for your own process. Schedule a self-wakeup: after "
+                + "'seconds' the calling process receives a SCHEDULED_WAKEUP "
+                + "event in its inbox with the given label and optional "
+                + "payload. Use it to check back on long-running work "
+                + "('look again in 60 seconds') instead of asking the user "
+                + "to ping you. Returns a correlationId you can pass to "
+                + "wakeup_cancel to revoke before it fires. "
                 + "\n"
                 + "Heartbeat pattern for long-running exec jobs: pair with "
                 + "work_exec_run(deadlineSeconds=N) and work_exec_check. On each wakeup, "
@@ -102,12 +112,10 @@ public class WakeupInTool implements Tool {
             throw new ToolException("'label' is required");
         }
         @SuppressWarnings("unchecked")
-        Map<String, Object> payload = params != null && params.get("payload") instanceof Map<?, ?> raw
-                ? (Map<String, Object>) raw
-                : null;
+        Map<String, Object> payload =
+                params != null && params.get("payload") instanceof Map<?, ?> raw ? (Map<String, Object>) raw : null;
 
-        String correlationId = wakeupRegistry.schedule(
-                processId, Duration.ofSeconds(seconds), label, payload);
+        String correlationId = wakeupRegistry.schedule(processId, Duration.ofSeconds(seconds), label, payload);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("correlationId", correlationId);
         out.put("seconds", seconds);

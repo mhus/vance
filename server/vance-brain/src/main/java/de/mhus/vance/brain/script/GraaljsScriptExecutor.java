@@ -11,6 +11,7 @@ import de.mhus.vance.shared.workspace.NodeHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.core.SecretResolver;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -53,6 +54,9 @@ import org.springframework.stereotype.Service;
 @Service
 @Slf4j
 public class GraaljsScriptExecutor implements ScriptExecutor {
+
+    /** Cap of the per-run console capture (tail bytes). */
+    private static final int CONSOLE_CAPTURE_BYTES = 64 * 1024;
 
     private static final long DEFAULT_STATEMENT_LIMIT = 1_000_000L;
     /** Default wall-clock when no other source (header, caller,
@@ -102,7 +106,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             @Autowired(required = false) @Nullable LightLlmService lightLlmService,
             @Autowired(required = false) @Nullable SettingService settingService,
             @Autowired(required = false)
-            de.mhus.vance.brain.permission.@Nullable SecurityContextFactory securityContextFactory) {
+                    de.mhus.vance.brain.permission.@Nullable SecurityContextFactory securityContextFactory) {
         this.engine = engine;
         this.hostAccess = hostAccess;
         this.props = props;
@@ -125,8 +129,16 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             @Nullable DocumentService documentService,
             @Nullable LightLlmService lightLlmService,
             @Nullable SettingService settingService) {
-        this(engine, hostAccess, props, workspaceService, spawnToolRegistry,
-                documentService, lightLlmService, settingService, null);
+        this(
+                engine,
+                hostAccess,
+                props,
+                workspaceService,
+                spawnToolRegistry,
+                documentService,
+                lightLlmService,
+                settingService,
+                null);
     }
 
     /** Seven-arg backwards-compat constructor — pre-SettingService.
@@ -139,8 +151,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             @Nullable SpawnToolRegistry spawnToolRegistry,
             @Nullable DocumentService documentService,
             @Nullable LightLlmService lightLlmService) {
-        this(engine, hostAccess, props, workspaceService, spawnToolRegistry,
-                documentService, lightLlmService, null);
+        this(engine, hostAccess, props, workspaceService, spawnToolRegistry, documentService, lightLlmService, null);
     }
 
     /** Six-arg backwards-compat constructor — pre-LightLlmService.
@@ -152,8 +163,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             @Nullable WorkspaceService workspaceService,
             @Nullable SpawnToolRegistry spawnToolRegistry,
             @Nullable DocumentService documentService) {
-        this(engine, hostAccess, props, workspaceService, spawnToolRegistry,
-                documentService, null, null);
+        this(engine, hostAccess, props, workspaceService, spawnToolRegistry, documentService, null, null);
     }
 
     /** Five-arg backwards-compat constructor — pre-DocumentService.
@@ -180,8 +190,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
 
     /** Three-arg constructor for tests that don't need the require
      *  pathway (workspaceService=null). */
-    public GraaljsScriptExecutor(
-            Engine engine, HostAccess hostAccess, ScriptEngineProperties props) {
+    public GraaljsScriptExecutor(Engine engine, HostAccess hostAccess, ScriptEngineProperties props) {
         this(engine, hostAccess, props, null, null, null);
     }
 
@@ -198,9 +207,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
      *  {@code GraaljsScriptExecutorRequireTest} don't need to change.
      *  Auto-builds a HostAccess. */
     public GraaljsScriptExecutor(
-            Engine engine,
-            ScriptEngineProperties props,
-            @Nullable WorkspaceService workspaceService) {
+            Engine engine, ScriptEngineProperties props, @Nullable WorkspaceService workspaceService) {
         this(engine, defaultHostAccess(), props, workspaceService, null, null);
     }
 
@@ -227,8 +234,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     @Override
     public ScriptResult run(ScriptRequest request) {
         Instant start = Instant.now();
-        String sourceName = request.sourceName() == null
-                ? "<run>" : request.sourceName();
+        String sourceName = request.sourceName() == null ? "<run>" : request.sourceName();
 
         // ── Phase 1: parse the optional first-block JSDoc header.
         // INVALID_HEADER bubbles up — caller fails-fast before
@@ -241,17 +247,21 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         // [settings.min, settings.max].
         Duration effectiveTimeout = clampDuration(
                 header.timeout() != null ? header.timeout() : request.timeout(),
-                props.getTimeout(), sourceName, "@timeout");
+                props.getTimeout(),
+                sourceName,
+                "@timeout");
         long effectiveStatements = clampStatements(
                 header.statementLimit() != null
                         ? header.statementLimit()
                         : props.getStatements().getDefault(),
-                props.getStatements(), sourceName);
+                props.getStatements(),
+                sourceName);
         long effectiveMaxResultNodes = clampResultNodes(
                 header.maxResultNodes() != null
                         ? header.maxResultNodes()
                         : props.getResult().getDefault(),
-                props.getResult(), sourceName);
+                props.getResult(),
+                sourceName);
         int resultMaxDepth = props.getResult().getMaxDepth();
 
         // ── Phase 3: capability check — @requiresTools must all be in
@@ -263,29 +273,33 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         // ── Phase 4: optional @allowTools narrows the effective tool
         // set (header can only restrict, never expand). The intersection
         // is computed in ContextToolsApi when buildVanceApi is called.
-        ContextToolsApi effectiveTools = narrowAllowedTools(
-                request.tools(), header.allowTools());
+        ContextToolsApi effectiveTools = narrowAllowedTools(request.tools(), header.allowTools());
 
-        Set<String> deniedToolNames =
-                request.scopeLevel() == ScopeLevel.TRIGGER_SCOPED && spawnToolRegistry != null
-                        ? spawnToolRegistry.spawnToolNames()
-                        : Set.of();
+        Set<String> deniedToolNames = request.scopeLevel() == ScopeLevel.TRIGGER_SCOPED && spawnToolRegistry != null
+                ? spawnToolRegistry.spawnToolNames()
+                : Set.of();
         // vance.params is sourced from the conventional `args` binding:
         // Hactar's ExecutingPhase wraps scriptParams as `args` for the
         // legacy top-level-variable contract; we additionally expose the
         // same map under the namespaced `vance.params.*` surface that
         // Slart-generated scripts and skill scripts reach for.
         @SuppressWarnings("unchecked")
-        Map<String, Object> paramsForApi = request.bindings().get("args")
-                instanceof Map<?, ?> argsMap
-                        ? (Map<String, Object>) argsMap
-                        : Map.of();
+        Map<String, Object> paramsForApi =
+                request.bindings().get("args") instanceof Map<?, ?> argsMap ? (Map<String, Object>) argsMap : Map.of();
         VanceScriptApi api = new VanceScriptApi(
-                effectiveTools, request.recipeName(), deniedToolNames,
-                documentService, request.progressEmitter(),
-                request.notificationEmitter(), paramsForApi,
-                lightLlmService, settingService, request.documentBasePath(),
-                securityContextFactory, secretResolver, request.guardApi(),
+                effectiveTools,
+                request.recipeName(),
+                deniedToolNames,
+                documentService,
+                request.progressEmitter(),
+                request.notificationEmitter(),
+                paramsForApi,
+                lightLlmService,
+                settingService,
+                request.documentBasePath(),
+                securityContextFactory,
+                secretResolver,
+                request.guardApi(),
                 new ScriptWorkflowHost(workflowProjector, request.workflowRun()));
         // Resource bounds enforceable on GraalVM CE / HotSpot:
         //   - statementLimit bounds the *number* of statements executed, and
@@ -309,11 +323,18 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         // packages, and configure the Context with a sandboxed
         // FileSystem that only allows reads under <root>/node_modules/.
         // Else: legacy IOAccess.NONE — require() is undefined.
-        @Nullable Path requireRoot = resolveRequireRoot(
-                request, header, sourceName);
+        @Nullable Path requireRoot = resolveRequireRoot(request, header, sourceName);
         if (requireRoot != null) {
             enforceRequires(requireRoot, header.requires(), sourceName);
         }
+
+        // Console capture — without explicit out/err streams GraalJS
+        // routes console.log to the JVM stdout (the container log),
+        // invisible to every caller surface (Hactar's identity, run
+        // panel, forensics). One shared capped buffer keeps out and err
+        // in chronological order; the tail is attached to the result
+        // (and to the exception when the script dies).
+        ConsoleCapture console = new ConsoleCapture(CONSOLE_CAPTURE_BYTES, request.consoleLineConsumer());
 
         Context.Builder ctxBuilder = Context.newBuilder("js")
                 .engine(engine)
@@ -324,6 +345,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 .allowHostClassLoading(false)
                 .allowHostClassLookup(name -> false)
                 .allowEnvironmentAccess(EnvironmentAccess.NONE)
+                .out(console)
+                .err(console)
                 .resourceLimits(limits);
 
         if (requireRoot == null) {
@@ -362,6 +385,20 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         // child thread inherits the sink at creation).
         Set<String> pulledSecrets = ConcurrentHashMap.newKeySet();
         VanceScriptApi.setActiveSecretTee(pulledSecrets);
+
+        // Default `vance.log.*` tee: without one, the structured script
+        // logger writes to SLF4J only — invisible to every caller surface
+        // (the same gap the console capture closes for console.*). When the
+        // caller already installed its own tee (Script Cortex), leave it
+        // alone and remember to NOT clear it in the finally block.
+        boolean installedLogTee = false;
+        if (VanceScriptApi.activeLogTee() == null) {
+            VanceScriptApi.setActiveLogTee((stream, line) -> {
+                byte[] frame = ("[" + stream + "] " + line + "\n").getBytes(StandardCharsets.UTF_8);
+                console.write(frame, 0, frame.length);
+            });
+            installedLogTee = true;
+        }
         try {
             ctx.getBindings("js").putMember("vance", api);
             // Tool-supplied bindings become top-level variables in the
@@ -372,8 +409,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             }
             Source source = Source.newBuilder("js", request.code(), sourceName).buildLiteral();
 
-            Future<@Nullable Object> future = watchdog.submit(() -> resolveResult(
-                    ctx.eval(source), effectiveMaxResultNodes, resultMaxDepth));
+            Future<@Nullable Object> future =
+                    watchdog.submit(() -> resolveResult(ctx.eval(source), effectiveMaxResultNodes, resultMaxDepth));
             try {
                 Object value = future.get(effectiveTimeout.toMillis(), TimeUnit.MILLISECONDS);
                 if (value instanceof String s) {
@@ -381,14 +418,15 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                     // LLM-facing output). Object-graph returns are not deep-masked.
                     value = SecretMasker.mask(s, pulledSecrets);
                 }
-                return new ScriptResult(value, Duration.between(start, Instant.now()));
+                return new ScriptResult(value, Duration.between(start, Instant.now()), console.tail());
             } catch (TimeoutException e) {
                 future.cancel(true);
                 ctx.close(true);
                 throw new ScriptExecutionException(
                         ScriptExecutionException.ErrorClass.TIMEOUT,
                         "Script timed out after " + effectiveTimeout.toMillis() + "ms",
-                        e);
+                        e,
+                        console.tail());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 future.cancel(true);
@@ -396,11 +434,15 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 throw new ScriptExecutionException(
                         ScriptExecutionException.ErrorClass.CANCELLED,
                         "Script execution interrupted",
-                        e);
+                        e,
+                        console.tail());
             } catch (ExecutionException e) {
-                throw mapEvalFailure(e.getCause() == null ? e : e.getCause());
+                throw mapEvalFailure(e.getCause() == null ? e : e.getCause()).withConsoleOutput(console.tail());
             }
         } finally {
+            if (installedLogTee) {
+                VanceScriptApi.clearActiveLogTee();
+            }
             VanceScriptApi.clearActiveSecretTee();
             watchdog.shutdownNow();
             try {
@@ -419,58 +461,68 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     private static Duration clampDuration(
             @Nullable Duration requested,
             ScriptEngineProperties.TimeoutLimits props,
-            String sourceName, String tagName) {
+            String sourceName,
+            String tagName) {
         Duration value = requested == null ? props.getDefault() : requested;
         if (value.compareTo(props.getMax()) > 0) {
-            log.warn("Script [{}] {} value {} exceeds vance.script.timeout.max "
-                            + "({}), clamping",
-                    sourceName, tagName, value, props.getMax());
+            log.warn(
+                    "Script [{}] {} value {} exceeds vance.script.timeout.max " + "({}), clamping",
+                    sourceName,
+                    tagName,
+                    value,
+                    props.getMax());
             value = props.getMax();
         }
         if (value.compareTo(props.getMin()) < 0) {
-            log.warn("Script [{}] {} value {} below vance.script.timeout.min "
-                            + "({}), clamping up",
-                    sourceName, tagName, value, props.getMin());
+            log.warn(
+                    "Script [{}] {} value {} below vance.script.timeout.min " + "({}), clamping up",
+                    sourceName,
+                    tagName,
+                    value,
+                    props.getMin());
             value = props.getMin();
         }
         return value;
     }
 
     private static long clampStatements(
-            long requested,
-            ScriptEngineProperties.StatementLimits props,
-            String sourceName) {
+            long requested, ScriptEngineProperties.StatementLimits props, String sourceName) {
         long value = requested;
         if (value > props.getMax()) {
-            log.warn("Script [{}] @statements {} exceeds "
-                            + "vance.script.statements.max ({}), clamping",
-                    sourceName, value, props.getMax());
+            log.warn(
+                    "Script [{}] @statements {} exceeds " + "vance.script.statements.max ({}), clamping",
+                    sourceName,
+                    value,
+                    props.getMax());
             value = props.getMax();
         }
         if (value < props.getMin()) {
-            log.warn("Script [{}] @statements {} below "
-                            + "vance.script.statements.min ({}), clamping up",
-                    sourceName, value, props.getMin());
+            log.warn(
+                    "Script [{}] @statements {} below " + "vance.script.statements.min ({}), clamping up",
+                    sourceName,
+                    value,
+                    props.getMin());
             value = props.getMin();
         }
         return value;
     }
 
-    private static long clampResultNodes(
-            long requested,
-            ScriptEngineProperties.ResultLimits props,
-            String sourceName) {
+    private static long clampResultNodes(long requested, ScriptEngineProperties.ResultLimits props, String sourceName) {
         long value = requested;
         if (value > props.getMax()) {
-            log.warn("Script [{}] @maxResultNodes {} exceeds "
-                            + "vance.script.result.max ({}), clamping",
-                    sourceName, value, props.getMax());
+            log.warn(
+                    "Script [{}] @maxResultNodes {} exceeds " + "vance.script.result.max ({}), clamping",
+                    sourceName,
+                    value,
+                    props.getMax());
             value = props.getMax();
         }
         if (value < props.getMin()) {
-            log.warn("Script [{}] @maxResultNodes {} below "
-                            + "vance.script.result.min ({}), clamping up",
-                    sourceName, value, props.getMin());
+            log.warn(
+                    "Script [{}] @maxResultNodes {} below " + "vance.script.result.min ({}), clamping up",
+                    sourceName,
+                    value,
+                    props.getMin());
             value = props.getMin();
         }
         return value;
@@ -487,8 +539,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
      * per name. Cheap: tool names are short, requires-lists are tiny
      * in practice.
      */
-    private static void enforceRequiresTools(
-            ScriptHeader header, ContextToolsApi tools, String sourceName) {
+    private static void enforceRequiresTools(ScriptHeader header, ContextToolsApi tools, String sourceName) {
         Set<String> missing = new LinkedHashSet<>();
         for (String required : header.requiresTools()) {
             if (!tools.isAllowed(required)) {
@@ -512,8 +563,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
      * header's allow). A header can only restrict — it can never
      * widen the caller's scope.
      */
-    private static ContextToolsApi narrowAllowedTools(
-            ContextToolsApi caller, Set<String> headerAllow) {
+    private static ContextToolsApi narrowAllowedTools(ContextToolsApi caller, Set<String> headerAllow) {
         if (headerAllow == null || headerAllow.isEmpty()) {
             return caller;
         }
@@ -537,10 +587,9 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
      * {@code MISSING_CAPABILITY} so the caller fails-fast before
      * the Context is even built.
      */
-    private @Nullable Path resolveRequireRoot(
-            ScriptRequest request, ScriptHeader header, String sourceName) {
-        boolean needsRequire = header.workspaceRoot() != null
-                || !header.requires().isEmpty();
+    private @Nullable Path resolveRequireRoot(ScriptRequest request, ScriptHeader header, String sourceName) {
+        boolean needsRequire =
+                header.workspaceRoot() != null || !header.requires().isEmpty();
         if (!needsRequire) return null;
 
         if (!props.getRequire().isEnabled()) {
@@ -559,8 +608,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
 
         String tenantId = request.tools().scope().tenantId();
         String projectId = request.tools().scope().projectId();
-        if (tenantId == null || tenantId.isBlank()
-                || projectId == null || projectId.isBlank()) {
+        if (tenantId == null || tenantId.isBlank() || projectId == null || projectId.isBlank()) {
             throw new ScriptExecutionException(
                     ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
                     "[" + sourceName + "] @workspaceRoot/@requires require a "
@@ -583,13 +631,12 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         return handle.getPath().toAbsolutePath().normalize();
     }
 
-    private @Nullable RootDirHandle findNodeRootDirByLabel(
-            String tenantId, String projectId, String label) {
+    private @Nullable RootDirHandle findNodeRootDirByLabel(String tenantId, String projectId, String label) {
         if (workspaceService == null) return null;
         for (RootDirHandle h : workspaceService.listRootDirs(tenantId, projectId)) {
             if (!NodeHandler.TYPE.equals(h.getType())) continue;
-            String existingLabel = h.getDescriptor() == null
-                    ? null : h.getDescriptor().getLabel();
+            String existingLabel =
+                    h.getDescriptor() == null ? null : h.getDescriptor().getLabel();
             if (label.equals(existingLabel)) return h;
         }
         return null;
@@ -603,8 +650,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
      * destined to throw {@code ReferenceError: require is not defined}
      * or {@code MODULE_NOT_FOUND} at runtime.
      */
-    private static void enforceRequires(
-            Path root, Set<String> requires, String sourceName) {
+    private static void enforceRequires(Path root, Set<String> requires, String sourceName) {
         if (requires == null || requires.isEmpty()) return;
         Path nodeModules = root.resolve(NodeHandler.NODE_MODULES_DIR);
         if (!Files.isDirectory(nodeModules)) {
@@ -619,8 +665,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             if (!Files.isRegularFile(pkgJson)) {
                 throw new ScriptExecutionException(
                         ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
-                        "[" + sourceName + "] @requires '" + pkg
-                                + "' not installed (looked for " + pkgJson + ")");
+                        "[" + sourceName + "] @requires '" + pkg + "' not installed (looked for " + pkgJson + ")");
             }
         }
     }
@@ -635,13 +680,11 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
      * implementation tried to open a file for write.
      */
     private static IOAccess buildSandboxedIo(Path workspaceRoot) {
-        FileSystem readOnly = FileSystem.newReadOnlyFileSystem(
-                FileSystem.newDefaultFileSystem());
+        FileSystem readOnly = FileSystem.newReadOnlyFileSystem(FileSystem.newDefaultFileSystem());
         FileSystem deny = FileSystem.newDenyIOFileSystem();
         Path absRoot = workspaceRoot.toAbsolutePath().normalize();
         FileSystem composite = FileSystem.newCompositeFileSystem(
-                deny,
-                FileSystem.Selector.of(readOnly, path -> isUnderRoot(path, absRoot)));
+                deny, FileSystem.Selector.of(readOnly, path -> isUnderRoot(path, absRoot)));
         return IOAccess.newBuilder().fileSystem(composite).build();
     }
 
@@ -661,8 +704,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         if (normalized.startsWith(absRoot)) return true;
         String pathStr = stripPrivatePrefix(normalized.toString());
         String rootStr = stripPrivatePrefix(absRoot.toString());
-        return pathStr.equals(rootStr)
-                || pathStr.startsWith(rootStr + java.io.File.separator);
+        return pathStr.equals(rootStr) || pathStr.startsWith(rootStr + java.io.File.separator);
     }
 
     private static String stripPrivatePrefix(String s) {
@@ -685,20 +727,14 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             }
             if (pe.isCancelled()) {
                 return new ScriptExecutionException(
-                        ScriptExecutionException.ErrorClass.CANCELLED,
-                        "Script cancelled: " + pe.getMessage(),
-                        pe);
+                        ScriptExecutionException.ErrorClass.CANCELLED, "Script cancelled: " + pe.getMessage(), pe);
             }
             if (pe.isHostException()) {
                 return new ScriptExecutionException(
-                        ScriptExecutionException.ErrorClass.HOST_EXCEPTION,
-                        "Host call failed: " + pe.getMessage(),
-                        pe);
+                        ScriptExecutionException.ErrorClass.HOST_EXCEPTION, "Host call failed: " + pe.getMessage(), pe);
             }
             return new ScriptExecutionException(
-                    ScriptExecutionException.ErrorClass.GUEST_EXCEPTION,
-                    "Script raised: " + pe.getMessage(),
-                    pe);
+                    ScriptExecutionException.ErrorClass.GUEST_EXCEPTION, "Script raised: " + pe.getMessage(), pe);
         }
         return new ScriptExecutionException(
                 ScriptExecutionException.ErrorClass.HOST_EXCEPTION,
@@ -753,9 +789,9 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         if (value == null || value.isNull() || !value.canInvokeMember("then")) {
             return value;
         }
-        Value[] fulfilled = { null };
-        Value[] rejected = { null };
-        boolean[] done = { false };
+        Value[] fulfilled = {null};
+        Value[] rejected = {null};
+        boolean[] done = {false};
         ProxyExecutable onFulfilled = args -> {
             fulfilled[0] = args.length > 0 ? args[0] : null;
             done[0] = true;
@@ -777,12 +813,9 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                             + "operation (setTimeout, fetch, …)?");
         }
         if (rejected[0] != null) {
-            String message = rejected[0].isString()
-                    ? rejected[0].asString()
-                    : rejected[0].toString();
+            String message = rejected[0].isString() ? rejected[0].asString() : rejected[0].toString();
             throw new ScriptExecutionException(
-                    ScriptExecutionException.ErrorClass.GUEST_EXCEPTION,
-                    "Promise rejected: " + message);
+                    ScriptExecutionException.ErrorClass.GUEST_EXCEPTION, "Promise rejected: " + message);
         }
         // Recurse: an async function that returns another Promise
         // chains down. The marshaller would otherwise see Promise<Promise<X>>.

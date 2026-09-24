@@ -30,19 +30,43 @@ public class ScriptExecutionException extends RuntimeException {
     }
 
     private final ErrorClass errorClass;
+    /** Capped tail of the script's console output at the point of
+     *  failure (see {@code ConsoleCapture}) — null when the failure
+     *  happened before the context was built (pre-eval validation)
+     *  or nothing was printed. Lets failure surfaces show what the
+     *  script said before it died. */
+    private final String consoleOutput;
 
     public ScriptExecutionException(ErrorClass errorClass, String message, Throwable cause) {
-        super(message, cause);
-        this.errorClass = errorClass;
+        this(errorClass, message, cause, null);
     }
 
     /** Convenience for fail-fast paths that have no underlying cause
      *  (e.g. pre-eval validation, malformed header). */
     public ScriptExecutionException(ErrorClass errorClass, String message) {
-        this(errorClass, message, null);
+        this(errorClass, message, null, null);
+    }
+
+    public ScriptExecutionException(ErrorClass errorClass, String message, Throwable cause, String consoleOutput) {
+        super(message, cause);
+        this.errorClass = errorClass;
+        this.consoleOutput = consoleOutput;
     }
 
     public ErrorClass errorClass() {
         return errorClass;
+    }
+
+    public String consoleOutput() {
+        return consoleOutput == null ? "" : consoleOutput;
+    }
+
+    /**
+     * Returns a copy carrying the console output — used by the executor
+     * at its single eval-failure mapping point, where the capture exists
+     * but the classification is already done.
+     */
+    public ScriptExecutionException withConsoleOutput(String output) {
+        return new ScriptExecutionException(errorClass, getMessage(), getCause(), output);
     }
 }

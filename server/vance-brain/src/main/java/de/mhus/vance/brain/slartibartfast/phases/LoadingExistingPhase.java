@@ -72,10 +72,7 @@ public class LoadingExistingPhase {
 
     private final DocumentService documentService;
 
-    public void execute(
-            ArchitectState state,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
+    public void execute(ArchitectState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
 
         if (state.getMode() == de.mhus.vance.api.slartibartfast.ArchitectMode.UPDATE) {
             executeUpdate(state, process);
@@ -91,45 +88,41 @@ public class LoadingExistingPhase {
      * already pinned the {@code outputSchemaType} and the
      * artefact body is opaque text to LOADING_EXISTING.
      */
-    private void executeUpdate(
-            ArchitectState state, ThinkProcessDocument process) {
+    private void executeUpdate(ArchitectState state, ThinkProcessDocument process) {
         String path = state.getExistingScriptRef();
         if (path == null || path.isBlank()) {
             state.setFailureReason("LOADING_EXISTING entered in UPDATE "
                     + "mode without existingScriptRef — "
                     + "SlartibartfastEngine.validateModeInputs should "
                     + "have caught this");
-            appendFailedIteration(state, "<missing ref>",
-                    "FAILED — no existingScriptRef");
+            appendFailedIteration(state, "<missing ref>", "FAILED — no existingScriptRef");
             return;
         }
 
-        Optional<DocumentDocument> doc = documentService.findByPath(
-                process.getTenantId(), process.getProjectId(), path);
+        Optional<DocumentDocument> doc =
+                documentService.findByPath(process.getTenantId(), process.getProjectId(), path);
         if (doc.isEmpty()) {
             state.setFailureReason("Existing artefact not found at "
                     + path + " — check that existingScriptRef is a "
                     + "valid document path in the current project.");
-            appendFailedIteration(state, path,
-                    "FAILED — document not found");
+            appendFailedIteration(state, path, "FAILED — document not found");
             return;
         }
         String content = documentService.readContent(doc.get());
         if (content == null || content.isBlank()) {
-            state.setFailureReason("Existing artefact at " + path
-                    + " is empty — nothing to update.");
-            appendFailedIteration(state, path,
-                    "FAILED — empty document");
+            state.setFailureReason("Existing artefact at " + path + " is empty — nothing to update.");
+            appendFailedIteration(state, path, "FAILED — empty document");
             return;
         }
 
         state.setExistingScriptCode(content);
-        log.info("Slartibartfast id='{}' LOADING_EXISTING (UPDATE) "
-                        + "loaded {} chars from '{}'",
-                process.getId(), content.length(), path);
+        log.info(
+                "Slartibartfast id='{}' LOADING_EXISTING (UPDATE) " + "loaded {} chars from '{}'",
+                process.getId(),
+                content.length(),
+                path);
 
-        appendPassedIteration(state, path,
-                "loaded " + content.length() + " chars (UPDATE)");
+        appendPassedIteration(state, path, "loaded " + content.length() + " chars (UPDATE)");
     }
 
     /**
@@ -137,34 +130,41 @@ public class LoadingExistingPhase {
      * YAML-parses it, and detects the schema from the
      * {@code engine:} field. Pinned schema goes to the state.
      */
-    private void executeEdit(
-            ArchitectState state, ThinkProcessDocument process) {
+    private void executeEdit(ArchitectState state, ThinkProcessDocument process) {
         String name = state.getTargetRecipeName();
         if (name == null || name.isBlank()) {
-            state.setFailureReason("LOADING_EXISTING entered without "
-                    + "targetRecipeName — FRAMING must set it for EDIT mode");
-            appendFailedIteration(state, "<missing name>",
-                    "FAILED — no targetRecipeName");
+            state.setFailureReason(
+                    "LOADING_EXISTING entered without " + "targetRecipeName — FRAMING must set it for EDIT mode");
+            appendFailedIteration(state, "<missing name>", "FAILED — no targetRecipeName");
             return;
         }
 
         String path = USER_PREFIX + name + ".yaml";
 
-        Optional<DocumentDocument> doc = documentService.findByPath(
-                process.getTenantId(), process.getProjectId(), path);
+        Optional<DocumentDocument> doc =
+                documentService.findByPath(process.getTenantId(), process.getProjectId(), path);
         if (doc.isEmpty()) {
+            // Schema-aware hint: an EDIT run with outputSchemaType=SCRIPT_JS
+            // is almost always a mode confusion — the caller (e.g. Hactar's
+            // operator identity) wants to CHANGE A SCRIPT, but FRAMING
+            // derived EDIT from a name in the task text. Scripts are never
+            // recipes; the correct call is UPDATE with the script's
+            // document path (observed live: the caller then misdiagnosed
+            // this failure as a path problem and burned another spawn).
+            String hint = de.mhus.vance.api.slartibartfast.OutputSchemaType.SCRIPT_JS == state.getOutputSchemaType()
+                    ? "Scripts are not recipes — to change a script spawn with mode=Update "
+                            + "and existingScriptRef=<the script's document path>."
+                    : "Did you mean to CREATE this recipe?";
             state.setFailureReason("Recipe '" + name + "' not found at "
                     + path + " — only user-namespace recipes are editable. "
-                    + "Did you mean to CREATE this recipe?");
-            appendFailedIteration(state, path,
-                    "FAILED — document not found");
+                    + hint);
+            appendFailedIteration(state, path, "FAILED — document not found");
             return;
         }
 
         String yaml = documentService.readContent(doc.get());
         if (yaml.isBlank()) {
-            state.setFailureReason("Existing recipe '" + name
-                    + "' at " + path + " is empty");
+            state.setFailureReason("Existing recipe '" + name + "' at " + path + " is empty");
             appendFailedIteration(state, path, "FAILED — empty document");
             return;
         }
@@ -173,33 +173,27 @@ public class LoadingExistingPhase {
         try {
             Object parsed = new Yaml().load(yaml);
             if (!(parsed instanceof Map<?, ?> m)) {
-                state.setFailureReason("Existing recipe '" + name
-                        + "' top-level YAML is not a map");
-                appendFailedIteration(state, path,
-                        "FAILED — top-level not a map");
+                state.setFailureReason("Existing recipe '" + name + "' top-level YAML is not a map");
+                appendFailedIteration(state, path, "FAILED — top-level not a map");
                 return;
             }
             recipeMap = toStringMap(m);
         } catch (RuntimeException e) {
-            state.setFailureReason("Existing recipe '" + name
-                    + "' yaml parse error: " + e.getMessage());
-            appendFailedIteration(state, path,
-                    "FAILED — yaml parse: " + e.getMessage());
+            state.setFailureReason("Existing recipe '" + name + "' yaml parse error: " + e.getMessage());
+            appendFailedIteration(state, path, "FAILED — yaml parse: " + e.getMessage());
             return;
         }
 
         Object engineRaw = recipeMap.get("engine");
         if (!(engineRaw instanceof String engineName) || engineName.isBlank()) {
-            state.setFailureReason("Existing recipe '" + name
-                    + "' missing top-level 'engine' field");
-            appendFailedIteration(state, path,
-                    "FAILED — no engine field");
+            state.setFailureReason("Existing recipe '" + name + "' missing top-level 'engine' field");
+            appendFailedIteration(state, path, "FAILED — no engine field");
             return;
         }
 
         OutputSchemaType detected;
         switch (engineName.trim().toLowerCase()) {
-            case "vogon"  -> detected = OutputSchemaType.VOGON_PLAN;
+            case "vogon" -> detected = OutputSchemaType.VOGON_PLAN;
             case "marvin" -> detected = OutputSchemaType.MARVIN_RECIPE;
             case "zaphod" -> detected = OutputSchemaType.ZAPHOD_RECIPE;
             default -> {
@@ -207,8 +201,7 @@ public class LoadingExistingPhase {
                         + "recipes (vogon/marvin/zaphod). Recipe '" + name
                         + "' has engine='" + engineName + "' — edit "
                         + "directly in the document editor.");
-                appendFailedIteration(state, path,
-                        "FAILED — engine='" + engineName + "' not editable");
+                appendFailedIteration(state, path, "FAILED — engine='" + engineName + "' not editable");
                 return;
             }
         }
@@ -217,35 +210,34 @@ public class LoadingExistingPhase {
         state.setExistingRecipeMap(recipeMap);
         state.setOutputSchemaType(detected);
 
-        log.info("Slartibartfast id='{}' LOADING_EXISTING loaded '{}' "
-                        + "({} chars, engine={}, schema={})",
-                process.getId(), path, yaml.length(), engineName, detected);
+        log.info(
+                "Slartibartfast id='{}' LOADING_EXISTING loaded '{}' " + "({} chars, engine={}, schema={})",
+                process.getId(),
+                path,
+                yaml.length(),
+                engineName,
+                detected);
 
-        appendPassedIteration(state, path,
-                "loaded engine=" + engineName + ", schema=" + detected
-                        + ", " + yaml.length() + " chars");
+        appendPassedIteration(
+                state, path, "loaded engine=" + engineName + ", schema=" + detected + ", " + yaml.length() + " chars");
     }
 
     // ──────────────────── helpers ────────────────────
 
-    private static void appendPassedIteration(
-            ArchitectState state, String input, String output) {
-        appendIteration(state, input, output,
-                PhaseIteration.IterationOutcome.PASSED);
+    private static void appendPassedIteration(ArchitectState state, String input, String output) {
+        appendIteration(state, input, output, PhaseIteration.IterationOutcome.PASSED);
     }
 
-    private static void appendFailedIteration(
-            ArchitectState state, String input, String output) {
-        appendIteration(state, input, output,
-                PhaseIteration.IterationOutcome.FAILED);
+    private static void appendFailedIteration(ArchitectState state, String input, String output) {
+        appendIteration(state, input, output, PhaseIteration.IterationOutcome.FAILED);
     }
 
     private static void appendIteration(
-            ArchitectState state, String input, String output,
-            PhaseIteration.IterationOutcome outcome) {
+            ArchitectState state, String input, String output, PhaseIteration.IterationOutcome outcome) {
         int attempt = (int) state.getIterations().stream()
-                .filter(it -> it.getPhase() == ArchitectStatus.LOADING_EXISTING)
-                .count() + 1;
+                        .filter(it -> it.getPhase() == ArchitectStatus.LOADING_EXISTING)
+                        .count()
+                + 1;
         List<PhaseIteration> log = new ArrayList<>(state.getIterations());
         log.add(PhaseIteration.builder()
                 .iteration(attempt)

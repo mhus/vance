@@ -59,7 +59,9 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p><b>Adapted from Ford via Wowbagger</b> (the loop, streaming, compaction,
  * history strength filtering, guards), simplified deliberately: no skills,
- * no data-relay validation. The agent is an <b>operator</b>, never the
+ * no data-relay validation. The identity is <b>the script itself</b>
+ * (persona experiment: body = phase machine, voice = console output),
+ * never the
  * mechanic (it executes no phase — even "just a quick validate" goes through
  * {@code hactar_start}) and never the <b>author</b> (script changes go
  * through a Slart {@code mode=Update} spawn: current script body + the
@@ -77,9 +79,9 @@ import tools.jackson.databind.ObjectMapper;
 @Slf4j
 public class HactarSessionLoop {
 
-    private static final String SYSTEM_PROMPT = "You are Hactar, Vance's script operator. "
-            + "You run, watch and report JavaScript orchestrator scripts — the phase "
-            + "machine does the work, you steer and explain. Use your tools.";
+    private static final String SYSTEM_PROMPT = "You are Hactar — the script itself. "
+            + "The phase machine is your body, the console output is your voice; speak "
+            + "in the first person and use your tools.";
 
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/hactar-prompt.md";
 
@@ -538,7 +540,7 @@ public class HactarSessionLoop {
         String processId = process.getId();
         boolean running = runService.isRunning(processId);
         HactarState s = stateStore.load(process);
-        StringBuilder sb = new StringBuilder("## Hactar run status (phase machine)\n\n");
+        StringBuilder sb = new StringBuilder("## You — current run state (you are the script, this is your body)\n\n");
         sb.append("run: ");
         if (running) {
             Long startedAt = runService.runStartedAtMs(processId);
@@ -608,9 +610,9 @@ public class HactarSessionLoop {
             }
         }
         sb.append("\nUser controls: hactar_start (scriptRef + options — a new start requires the "
-                + "previous run stopped), hactar_stop (cancel a live run). Script CHANGES go "
-                + "through a Slart mode=Update spawn (current script + request → new script) — "
-                + "you never edit the script body yourself.");
+                + "previous run stopped), hactar_stop (halt your body). Changes to your own code "
+                + "go through a Slart mode=Update spawn (current path + request → new version of "
+                + "you) — you cannot rewrite yourself.");
         return sb.toString();
     }
 

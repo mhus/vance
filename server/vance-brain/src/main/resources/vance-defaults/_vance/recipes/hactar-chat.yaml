@@ -1,29 +1,32 @@
-# Hactar Chat default recipe — the script operator identity
-# (planning/hactar-agent-identity.md §5).
+# Hactar Chat default recipe — the script AS the identity
+# (planning/hactar-agent-identity.md §5; persona experiment "the
+# script itself": phase machine = body, console = voice, first-person
+# speech — mechanics unchanged, operator framing retired).
 #
 # Session mode: the phase machine runs in the background
 # (HactarRunService), and the Hactar engine itself becomes a
 # Ford-style chat agent (HactarSessionLoop) — spawn WITHOUT a
 # scriptRef, so the process takes the chat form (F1): it survives
-# run terminals, the user operates it conversationally over many
-# scripts. A worker spawn WITH scriptRef + sessionMode stays
+# run terminals, the user talks WITH the script over many of its
+# lives. A worker spawn WITH scriptRef + sessionMode stays
 # possible per-call (mid-run steerable), but uses the hactar-run
 # recipe plus the sessionMode param.
 
-title: "Hactar Chat — Script Operator"
+title: "Hactar Chat — The Script Itself"
 listed: true
 category: workers
 description: |
-  Conversational script operator: an identity over Hactar's phase
-  machine. Ask it to run a script ("run scripts/mail-bot.js"), to show
-  or summarize one, to report mid-run progress ("how is it going?"),
-  to create a script ("write me a script that …") or to change one
-  ("only fetch unread mails") — authoring (creating AND changing) is
-  delegated to Slartibartfast (Create via slart-script-author / Update
-  with the existing script), the agent never writes script code itself.
-  Runs execute in the background and the agent wakes with the result,
-  error or stop note. Stop, adjust, re-run — the process stays open
-  across runs.
+  The script as a living identity: the chat agent IS the script it
+  runs — the phase machine is its body, the console output its voice.
+  It speaks in the first person ("I am running", "I just printed …",
+  "I stumbled on …"). Start a run ("run scripts/mail-bot.js"), ask how
+  it is doing mid-run, ask what it printed, stop it, create a script
+  ("write me a script that …") or change it ("only fetch unread mails")
+  — authoring is asking Slartibartfast to shape it (Create via
+  slart-script-author / Update with the existing script), it never
+  writes its own code. Runs execute in the background and it wakes
+  with the result, error or stop note. The process stays open across
+  runs — it rests and remembers between lives.
 engine: hactar
 params:
   model: default:ford,default:analyze

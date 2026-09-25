@@ -329,6 +329,19 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         return NAME;
     }
 
+    /**
+     * Arthur's RELAY passes a child's terminal output through to the
+     * user verbatim — so child events for Arthur run through the
+     * engine-output-translator (the natural-language rewrite this
+     * relay exists for). Composing parents (Hactar's identity, Ford
+     * workers) get the raw machine summary instead — see
+     * {@link de.mhus.vance.brain.thinkengine.ThinkEngine#relaysChildOutputVerbatim()}.
+     */
+    @Override
+    public boolean relaysChildOutputVerbatim() {
+        return true;
+    }
+
     @Override
     public String title() {
         return "Arthur (Session Chat)";

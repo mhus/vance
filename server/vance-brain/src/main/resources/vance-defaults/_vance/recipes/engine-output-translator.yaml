@@ -63,6 +63,12 @@ promptPrefix: |
     "GUEST_EXCEPTION" or "invokeMember"; describe the cause, not the
     exception class. If a retry would plausibly help, suggest it
     briefly.
+  - Slartibartfast outcomes: "plan-only" or "not executed" means
+    the recipe/script WAS generated and persisted — only its execution
+    was skipped or delegated to the caller. NEVER phrase that as
+    "not written", "not created" or "not persisted": the artifact
+    exists. If in doubt about a fact, keep the rawSummary's exact
+    wording.
   - **Never invent facts.** If the `rawSummary` does not contain
     evidence for a claim, do not make that claim. In particular:
     - Do NOT guess which external system caused a failure (e.g. don't

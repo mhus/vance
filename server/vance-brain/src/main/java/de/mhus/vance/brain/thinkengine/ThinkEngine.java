@@ -3,9 +3,8 @@ package de.mhus.vance.brain.thinkengine;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.toolpack.ToolException;
 import java.util.Optional;
 import java.util.Set;
 import org.slf4j.LoggerFactory;
@@ -190,6 +189,33 @@ public interface ThinkEngine {
         return true;
     }
 
+    /**
+     * Whether THIS engine relays a child's terminal output VERBATIM to
+     * a human — the deciding half of whether the engine-output-
+     * translator runs for a child event ({@link ParentNotificationListener}):
+     * translation exists so a relayed child report reads like a
+     * natural answer, and it is built for exactly that case.
+     *
+     * <p>{@code false} (default) — the parent composes its own reply
+     * from the event (LLM agents: Hactar's session identity, Ford
+     * workers, Zaphod heads, the Wowbagger operator) or consumes the
+     * structured payload (deterministic orchestrators: Vogon, Marvin).
+     * For those the RAW technical summary is strictly better: the
+     * translator is a lossy fast-tier rewrite that may drop or even
+     * misstate machine facts (observed live, Live-Fund 8: Slart
+     * persisted a script, the translator turned "plan-only —
+     * generated and persisted, not executed" into "the script was not
+     * written", the composing parent believed it and re-spawned the
+     * author seven times).
+     *
+     * <p>{@code true} — engines whose RELAY passes child output
+     * through to the user unchanged (Arthur's RELAY, Eddie's
+     * RELAY/RELAY_INBOX). Only they get the translated text.
+     */
+    default boolean relaysChildOutputVerbatim() {
+        return false;
+    }
+
     // ─── Lifecycle ──────────────────────────────────────────────────────
 
     /** First entry — engine initialises its state, writes greeting / plans task-tree. */
@@ -233,10 +259,12 @@ public interface ThinkEngine {
                 steer(process, context, msg);
             }
         }
-        LoggerFactory.getLogger(ThinkEngine.class).warn(
-                "Default runTurn hit the {}-pass drain ceiling for process id='{}' — "
-                        + "yielding the lane; a steer path is likely re-enqueuing every pass",
-                maxPasses, process.getId());
+        LoggerFactory.getLogger(ThinkEngine.class)
+                .warn(
+                        "Default runTurn hit the {}-pass drain ceiling for process id='{}' — "
+                                + "yielding the lane; a steer path is likely re-enqueuing every pass",
+                        maxPasses,
+                        process.getId());
     }
 
     /** Final stop. Process becomes {@code STOPPED}. */
@@ -263,10 +291,8 @@ public interface ThinkEngine {
      * that here — the listener will just skip emitting if there's
      * no parent.
      */
-    default ParentReport summarizeForParent(
-            ThinkProcessDocument process, ProcessEventType eventType) {
-        return ParentReport.of(
-                "Child process " + process.getId()
-                        + " status=" + eventType.name().toLowerCase());
+    default ParentReport summarizeForParent(ThinkProcessDocument process, ProcessEventType eventType) {
+        return ParentReport.of("Child process " + process.getId() + " status="
+                + eventType.name().toLowerCase());
     }
 }

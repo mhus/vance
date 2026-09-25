@@ -335,6 +335,17 @@ public class EddieEngine extends StructuredActionEngine {
         return NAME;
     }
 
+    /**
+     * Eddie's RELAY / RELAY_INBOX pass a child's terminal output
+     * through to the user verbatim — the user-hub twin of Arthur's
+     * RELAY, so child events run through the engine-output-translator.
+     * See {@link de.mhus.vance.brain.thinkengine.ThinkEngine#relaysChildOutputVerbatim()}.
+     */
+    @Override
+    public boolean relaysChildOutputVerbatim() {
+        return true;
+    }
+
     @Override
     public String title() {
         return "Eddie (Personal Hub)";

@@ -55,6 +55,7 @@ public class ParentNotificationListener {
      * would close the bean-graph cycle.
      */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+
     private final StopInitiatorRegistry stopInitiatorRegistry;
     private final ChatMessageService chatMessageService;
     /**
@@ -68,8 +69,7 @@ public class ParentNotificationListener {
      * depends on RecipeResolver / model layers that reach this
      * listener indirectly).
      */
-    private final ObjectProvider<de.mhus.vance.brain.ai.light.LightLlmService>
-            lightLlmServiceProvider;
+    private final ObjectProvider<de.mhus.vance.brain.ai.light.LightLlmService> lightLlmServiceProvider;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -95,17 +95,21 @@ public class ParentNotificationListener {
         // {@code _user_<login>}) try a cross-pod push that has nowhere
         // to land and the parent never gets woken.
         if (thinkProcessService.findWorkerLink(parentId, event.processId()).isPresent()) {
-            log.debug("Parent {} watches child {} via Working WS — "
-                            + "engine-bind notification suppressed (event={})",
-                    parentId, event.processId(), eventType);
+            log.debug(
+                    "Parent {} watches child {} via Working WS — " + "engine-bind notification suppressed (event={})",
+                    parentId,
+                    event.processId(),
+                    eventType);
             return;
         }
         // Parent-initiated stops loop right back to the caller — suppress.
         if (eventType == ProcessEventType.STOPPED) {
             String initiator = stopInitiatorRegistry.consume(event.processId()).orElse(null);
             if (initiator != null && initiator.equals(parentId)) {
-                log.debug("Parent {} stopped child {} itself — suppressing STOPPED notification",
-                        parentId, event.processId());
+                log.debug(
+                        "Parent {} stopped child {} itself — suppressing STOPPED notification",
+                        parentId,
+                        event.processId());
                 return;
             }
         }
@@ -121,17 +125,25 @@ public class ParentNotificationListener {
         // already has it as input.
         boolean translated = false;
         String summaryForParent = report.humanSummary();
-        if (shouldTranslateEngineOutput(event.processId(), eventType)) {
-            String translation = translateEngineOutput(
-                    event.processId(), eventType, report.humanSummary());
+        // Live-Fund 8: the translator is for parents that RELAY the child
+        // report verbatim to a human (Arthur's RELAY, Eddie's
+        // RELAY_INBOX). Composing parents — LLM agents like Hactar's
+        // session identity, Ford workers — and payload-consuming
+        // orchestrators (Vogon, Marvin) get the RAW machine summary:
+        // the fast-tier rewrite is lossy and can misstate machine
+        // facts (observed live: Slart persisted a script, the
+        // translator rendered "the script was not written", the
+        // composing parent believed it and re-spawned the author
+        // seven times).
+        if (parentRelaysChildOutputVerbatim(parentId) && shouldTranslateEngineOutput(event.processId(), eventType)) {
+            String translation = translateEngineOutput(event.processId(), eventType, report.humanSummary());
             if (translation != null && !translation.isBlank()) {
                 summaryForParent = translation;
                 translated = true;
             }
         }
-        String enrichedSummary = translated
-                ? summaryForParent
-                : enrichWithLastReply(event.processId(), summaryForParent);
+        String enrichedSummary =
+                translated ? summaryForParent : enrichWithLastReply(event.processId(), summaryForParent);
         // Attribution: which user-input turn was the worker responding
         // to when it produced this event? Lets the parent engine (e.g.
         // Arthur) distinguish a fresh reply from a stale one — without
@@ -140,15 +152,9 @@ public class ParentNotificationListener {
         // See planning/arthur-process-event-attribution.md.
         Instant inResponseToAt = findLastUserInputAt(event.processId());
         boolean queued = eventEmitter.notifyParent(
-                parentId,
-                event.processId(),
-                eventType,
-                enrichedSummary,
-                report.payload(),
-                inResponseToAt);
+                parentId, event.processId(), eventType, enrichedSummary, report.payload(), inResponseToAt);
         if (queued) {
-            log.info("Parent notify queued parent='{}' child='{}' event={}",
-                    parentId, event.processId(), eventType);
+            log.info("Parent notify queued parent='{}' child='{}' event={}", parentId, event.processId(), eventType);
         }
     }
 
@@ -158,23 +164,21 @@ public class ParentNotificationListener {
      * process row is gone — never let a hook failure swallow the
      * parent-notification.
      */
-    private ParentReport buildReport(
-            String childProcessId,
-            ProcessEventType eventType,
-            ThinkProcessStatus newStatus) {
-        Optional<ThinkProcessDocument> processOpt =
-                thinkProcessService.findById(childProcessId);
+    private ParentReport buildReport(String childProcessId, ProcessEventType eventType, ThinkProcessStatus newStatus) {
+        Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(childProcessId);
         if (processOpt.isEmpty()) {
             return ParentReport.of(genericSummary(childProcessId, newStatus));
         }
         ThinkProcessDocument process = processOpt.get();
         try {
-            ThinkEngine engine = thinkEngineServiceProvider.getObject()
-                    .resolveForProcess(process);
+            ThinkEngine engine = thinkEngineServiceProvider.getObject().resolveForProcess(process);
             return engine.summarizeForParent(process, eventType);
         } catch (RuntimeException e) {
-            log.warn("summarizeForParent failed for child='{}' engine='{}': {}",
-                    childProcessId, process.getThinkEngine(), e.toString());
+            log.warn(
+                    "summarizeForParent failed for child='{}' engine='{}': {}",
+                    childProcessId,
+                    process.getThinkEngine(),
+                    e.toString());
             return ParentReport.of(genericSummary(childProcessId, newStatus));
         }
     }
@@ -189,15 +193,14 @@ public class ParentNotificationListener {
      * replying), the engine summary is returned untouched.
      */
     private String enrichWithLastReply(String childProcessId, String engineSummary) {
-        Optional<ThinkProcessDocument> processOpt =
-                thinkProcessService.findById(childProcessId);
+        Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(childProcessId);
         if (processOpt.isEmpty()) {
             return engineSummary;
         }
         ThinkProcessDocument process = processOpt.get();
         try {
-            List<ChatMessageDocument> history = chatMessageService.activeHistory(
-                    process.getTenantId(), process.getSessionId(), process.getId());
+            List<ChatMessageDocument> history =
+                    chatMessageService.activeHistory(process.getTenantId(), process.getSessionId(), process.getId());
             ChatMessageDocument lastAssistant = null;
             for (int i = history.size() - 1; i >= 0; i--) {
                 ChatMessageDocument m = history.get(i);
@@ -217,8 +220,7 @@ public class ParentNotificationListener {
                     + lastAssistant.getContent()
                     + "\n--- END CHILD REPLY ---";
         } catch (RuntimeException e) {
-            log.warn("enrichWithLastReply failed for child='{}': {}",
-                    childProcessId, e.toString());
+            log.warn("enrichWithLastReply failed for child='{}': {}", childProcessId, e.toString());
             return engineSummary;
         }
     }
@@ -232,24 +234,41 @@ public class ParentNotificationListener {
      * out of scope here — parking events don't need a human reply
      * (Arthur's Auto-WAIT short-circuits them entirely).
      */
-    private boolean shouldTranslateEngineOutput(
-            String childProcessId, ProcessEventType eventType) {
-        if (eventType != ProcessEventType.DONE
-                && eventType != ProcessEventType.FAILED) {
+    /**
+     * Whether the PARENT engine relays a child's terminal output
+     * verbatim to a human — the only case the engine-output-translator
+     * exists for (a relayed report must read like a natural answer).
+     * Falls back to {@code true} (translate) when the parent or its
+     * engine cannot be resolved, preserving the pre-gate behavior for
+     * unknown parents instead of silently changing them.
+     */
+    private boolean parentRelaysChildOutputVerbatim(String parentProcessId) {
+        Optional<ThinkProcessDocument> parentOpt = thinkProcessService.findById(parentProcessId);
+        if (parentOpt.isEmpty()) {
+            return true;
+        }
+        try {
+            ThinkEngine engine = thinkEngineServiceProvider.getObject().resolveForProcess(parentOpt.get());
+            return engine.relaysChildOutputVerbatim();
+        } catch (RuntimeException e) {
+            log.warn("relaysChildOutputVerbatim probe failed for parent='{}': {}", parentProcessId, e.toString());
+            return true;
+        }
+    }
+
+    private boolean shouldTranslateEngineOutput(String childProcessId, ProcessEventType eventType) {
+        if (eventType != ProcessEventType.DONE && eventType != ProcessEventType.FAILED) {
             return false;
         }
-        Optional<ThinkProcessDocument> processOpt =
-                thinkProcessService.findById(childProcessId);
+        Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(childProcessId);
         if (processOpt.isEmpty()) {
             return false;
         }
         try {
-            ThinkEngine engine = thinkEngineServiceProvider.getObject()
-                    .resolveForProcess(processOpt.get());
+            ThinkEngine engine = thinkEngineServiceProvider.getObject().resolveForProcess(processOpt.get());
             return !engine.producesUserFacingOutput();
         } catch (RuntimeException e) {
-            log.warn("producesUserFacingOutput probe failed for child='{}': {}",
-                    childProcessId, e.toString());
+            log.warn("producesUserFacingOutput probe failed for child='{}': {}", childProcessId, e.toString());
             return false;
         }
     }
@@ -263,36 +282,30 @@ public class ParentNotificationListener {
      * notification).
      */
     private @Nullable String translateEngineOutput(
-            String childProcessId,
-            ProcessEventType eventType,
-            String rawSummary) {
-        Optional<ThinkProcessDocument> processOpt =
-                thinkProcessService.findById(childProcessId);
+            String childProcessId, ProcessEventType eventType, String rawSummary) {
+        Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(childProcessId);
         if (processOpt.isEmpty()) {
             return null;
         }
         ThinkProcessDocument child = processOpt.get();
-        de.mhus.vance.brain.ai.light.LightLlmService service =
-                lightLlmServiceProvider.getIfAvailable();
+        de.mhus.vance.brain.ai.light.LightLlmService service = lightLlmServiceProvider.getIfAvailable();
         if (service == null) {
             return null;
         }
         java.util.Map<String, Object> vars = new java.util.LinkedHashMap<>();
         vars.put("userGoal", child.getGoal() == null ? "" : child.getGoal());
         vars.put("eventType", eventType.name());
-        vars.put("engineName", child.getThinkEngine() == null
-                ? "unknown" : child.getThinkEngine());
+        vars.put("engineName", child.getThinkEngine() == null ? "unknown" : child.getThinkEngine());
         vars.put("rawSummary", rawSummary == null ? "" : rawSummary);
         try {
-            String reply = service.call(
-                    de.mhus.vance.brain.ai.light.LightLlmRequest.builder()
-                            .recipeName("engine-output-translator")
-                            .userPrompt("Translate the engine output above.")
-                            .pebbleVars(vars)
-                            .tenantId(child.getTenantId())
-                            .projectId(child.getProjectId())
-                            .processId(child.getId())
-                            .build());
+            String reply = service.call(de.mhus.vance.brain.ai.light.LightLlmRequest.builder()
+                    .recipeName("engine-output-translator")
+                    .userPrompt("Translate the engine output above.")
+                    .pebbleVars(vars)
+                    .tenantId(child.getTenantId())
+                    .projectId(child.getProjectId())
+                    .processId(child.getId())
+                    .build());
             if (reply == null || reply.isBlank()) {
                 return null;
             }
@@ -300,7 +313,10 @@ public class ParentNotificationListener {
         } catch (RuntimeException e) {
             log.warn(
                     "engine-output-translator failed for child='{}' engine='{}' event={}: {}",
-                    child.getId(), child.getThinkEngine(), eventType, e.toString());
+                    child.getId(),
+                    child.getThinkEngine(),
+                    eventType,
+                    e.toString());
             return null;
         }
     }
@@ -319,15 +335,14 @@ public class ParentNotificationListener {
      * notification.
      */
     private @Nullable Instant findLastUserInputAt(String childProcessId) {
-        Optional<ThinkProcessDocument> processOpt =
-                thinkProcessService.findById(childProcessId);
+        Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(childProcessId);
         if (processOpt.isEmpty()) {
             return null;
         }
         ThinkProcessDocument process = processOpt.get();
         try {
-            List<ChatMessageDocument> history = chatMessageService.activeHistory(
-                    process.getTenantId(), process.getSessionId(), process.getId());
+            List<ChatMessageDocument> history =
+                    chatMessageService.activeHistory(process.getTenantId(), process.getSessionId(), process.getId());
             for (int i = history.size() - 1; i >= 0; i--) {
                 ChatMessageDocument m = history.get(i);
                 if (m.getRole() == ChatRole.USER && m.getCreatedAt() != null) {
@@ -336,8 +351,7 @@ public class ParentNotificationListener {
             }
             return null;
         } catch (RuntimeException e) {
-            log.warn("findLastUserInputAt failed for child='{}': {}",
-                    childProcessId, e.toString());
+            log.warn("findLastUserInputAt failed for child='{}': {}", childProcessId, e.toString());
             return null;
         }
     }
@@ -357,7 +371,8 @@ public class ParentNotificationListener {
     }
 
     private ProcessEventType mapClosedToEventType(String processId) {
-        CloseReason reason = thinkProcessService.findById(processId)
+        CloseReason reason = thinkProcessService
+                .findById(processId)
                 .map(ThinkProcessDocument::getCloseReason)
                 .orElse(null);
         if (reason == null) {

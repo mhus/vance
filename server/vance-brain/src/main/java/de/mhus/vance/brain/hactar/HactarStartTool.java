@@ -51,7 +51,15 @@ public class HactarStartTool extends HactarBaseTool {
                 + "(document path; optional when the state already carries one), "
                 + "validateBeforeRun (deep LLM review before execution), timeout (seconds or "
                 + "'30s'/'5m'/'1h'), scriptParams (bindings as vance.params.*), "
-                + "scriptAllowedTools (tools the script may call).";
+                + "scriptAllowedTools (tools the script may call). Sandbox budgets: "
+                + "the run is capped by a statement limit (default 1,000,000 executed "
+                + "statements; script header @statementLimit > recipe > settings default) "
+                + "and a wall-clock timeout (header @timeout > this timeout param > "
+                + "settings default). Estimate the statement cost BEFORE starting: a "
+                + "loop over N items burns several statements per item, so millions of "
+                + "items cannot fit the statement budget no matter the algorithm — "
+                + "negotiate a smaller size with the user instead of running into "
+                + "RESOURCE_EXHAUSTED.";
     }
 
     @Override

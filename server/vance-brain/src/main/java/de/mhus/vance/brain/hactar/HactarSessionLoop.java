@@ -631,7 +631,33 @@ public class HactarSessionLoop {
         return trimmed.length() > RESULT_PREVIEW_CHARS ? trimmed.substring(0, RESULT_PREVIEW_CHARS) + "…" : trimmed;
     }
 
-    private @Nullable String renderForLlm(SteerMessage m) {
+    /**
+     * Renders one payload value for the {@code <process-event>} machine-facts
+     * block: scalars verbatim, lists of scalars comma-joined. Anything
+     * nested (maps, lists of objects) is skipped — the block is for the
+     * engine-verified handles (recipePath, outputPaths), not a generic
+     * JSON dump.
+     */
+    private static @Nullable String renderPayloadValue(@Nullable Object value) {
+        if (value == null) return null;
+        if (value instanceof String s) {
+            return s.isBlank() ? null : s;
+        }
+        if (value instanceof Number || value instanceof Boolean) {
+            return String.valueOf(value);
+        }
+        if (value instanceof java.util.Collection<?> c) {
+            java.util.List<String> items = new ArrayList<>();
+            for (Object item : c) {
+                if (item instanceof String s && !s.isBlank()) items.add(s);
+                else if (item instanceof Number || item instanceof Boolean) items.add(String.valueOf(item));
+            }
+            return items.isEmpty() ? null : String.join(", ", items);
+        }
+        return null;
+    }
+
+    static @Nullable String renderForLlm(SteerMessage m) {
         if (m instanceof SteerMessage.UserChatInput) {
             return null;
         }
@@ -640,8 +666,33 @@ public class HactarSessionLoop {
             sb.append("<process-event type=\"")
                     .append(pe.type().name().toLowerCase(Locale.ROOT))
                     .append("\">");
+            // Machine facts FIRST, the child's human summary second
+            // (Live-Fund 8): the summary is the child LLM's own
+            // description of what it did and can be plain wrong —
+            // observed live: the child persisted a script (engine log)
+            // while its summary claimed "only the plan exists", and the
+            // parent believed the summary and re-spawned seven times.
+            // The payload carries the engine-verified truth
+            // (recipePath, outputPaths, …) and must never be dropped.
+            if (pe.payload() != null && !pe.payload().isEmpty()) {
+                sb.append("machine facts:\n");
+                for (Map.Entry<String, Object> e : pe.payload().entrySet()) {
+                    String rendered = renderPayloadValue(e.getValue());
+                    if (rendered != null) {
+                        sb.append("  ")
+                                .append(e.getKey())
+                                .append(": ")
+                                .append(escapeText(rendered))
+                                .append('\n');
+                    }
+                }
+            }
             if (pe.humanSummary() != null) {
-                sb.append(escapeText(pe.humanSummary()));
+                if (pe.humanSummary().isBlank()) {
+                    sb.append("report: (none)\n");
+                } else {
+                    sb.append("report: ").append(escapeText(pe.humanSummary())).append('\n');
+                }
             }
             sb.append("</process-event>");
             return sb.toString();

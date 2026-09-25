@@ -337,6 +337,19 @@ public class HactarEngine implements ThinkEngine {
             return;
         }
         while (true) {
+            // Cooperative halt-check BEFORE draining (the pause contract,
+            // Arthur parity — see SessionLifecycleService: the halt flag
+            // goes out before the pause lane task, so a drain-loop still
+            // holding the lane must yield HERE). Draining first (the Ford
+            // shape this loop was adapted from) eats queued user messages
+            // into a turn that immediately parks — "no answer surfaced",
+            // and the messages' only trace is the chat log (observed
+            // live: pause during a slow in-flight turn swallowed two
+            // queued user messages).
+            if (thinkProcessService.isHaltRequested(process.getId())) {
+                log.info("Hactar id='{}' runTurn — halt requested, yielding (inbox left queued)", process.getId());
+                return;
+            }
             List<SteerMessage> drained = ctx.drainPending();
             if (drained.isEmpty()) {
                 return;

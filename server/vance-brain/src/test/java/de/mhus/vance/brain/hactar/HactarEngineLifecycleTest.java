@@ -317,6 +317,27 @@ class HactarEngineLifecycleTest {
     }
 
     @Test
+    void runTurn_sessionMode_haltRequested_yieldsWithoutDraining() {
+        process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, true)));
+        seedState(HactarState.builder()
+                .status(HactarStatus.DONE)
+                .scriptRef("scripts/x.js")
+                .chatIdentity(true)
+                .build());
+        // Pause contract (Arthur parity): the halt flag goes out before the
+        // pause lane task, so a drain-loop still holding the lane must bail
+        // BEFORE consuming the inbox — queued user messages stay queued for
+        // the resume turn instead of being eaten by a parked turn that never
+        // answers.
+        when(thinkProcessService.isHaltRequested("proc-1")).thenReturn(true);
+
+        engine.runTurn(process, ctx);
+
+        org.mockito.Mockito.verify(ctx, org.mockito.Mockito.never()).drainPending();
+        org.mockito.Mockito.verifyNoInteractions(sessionLoop);
+    }
+
+    @Test
     void stop_sessionMode_cancelsLiveRunBeforeClose() {
         process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, true)));
 

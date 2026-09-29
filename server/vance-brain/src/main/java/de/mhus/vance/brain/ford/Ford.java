@@ -276,6 +276,17 @@ public class Ford implements ThinkEngine {
         base.add("research_rich");
         base.add("research_providers");
         base.add("memory_search");
+        // Settings read — same rationale as Frankie's baseline: the
+        // read-side counterpart of the creator's `@settings` family,
+        // for workers and analysis recipes instead of setup agents.
+        // Deferred (name + hint via tool_list, schema on demand) and
+        // permission-gated per call (READ on the target project's setting
+        // resource; ADMIN for an explicit `_tenant` read). Lets a Ford
+        // agent answer runtime-config questions — which layer holds
+        // `ai.alias.default.code`, whether a provider apiKey is set, or a
+        // HIDDEN value a tool call needs — without bouncing to the
+        // operator. setting_set stays creator-domain (`@settings`).
+        base.add("setting_get");
         // Generic file/exec dispatch layer (BaseEngineTools.WORK_TARGET)
         // — 12 primary wrappers + 2 meta tools + 24 deferred backends.
         // Recipes pick the active target via params.workTarget and

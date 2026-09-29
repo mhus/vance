@@ -59,6 +59,10 @@ class SettingGetToolTest {
     void metadata_isDeferredWithSettingsLabel() {
         assertThat(tool.name()).isEqualTo("setting_get");
         assertThat(tool.primary()).isFalse();
+        // classify() buckets by deferred(), never primary() — primary()==false
+        // alone would put the schema in every admitting manifest.
+        assertThat(tool.deferred()).isTrue();
+        assertThat(tool.searchHint()).isNotBlank();
         assertThat(tool.labels()).contains("settings");
     }
 

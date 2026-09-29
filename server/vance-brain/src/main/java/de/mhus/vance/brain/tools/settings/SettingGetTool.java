@@ -104,6 +104,21 @@ public class SettingGetTool implements Tool {
         return Set.of("admin", "settings");
     }
 
+    // A lookup, not a per-turn verb: the schema would sit in every
+    // manifest of every recipe that admits the `settings` family, though
+    // the call happens a handful of times per task. Deferred keeps it at
+    // one hint line — classify() reads deferred(), never primary(), so
+    // primary()==false alone would NOT have been enough.
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "read one setting through the cascade; which layer holds it";
+    }
+
     @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;

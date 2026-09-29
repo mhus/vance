@@ -199,6 +199,25 @@ public class FrankieEngine implements ThinkEngine {
         base.add("scratchpad_get");
         base.add("scratchpad_list");
         base.add("scratchpad_delete");
+        // Settings read — the read-side counterpart of the creator's
+        // `@settings` family, for workers instead of setup agents. Named
+        // here for the same reason as the scratchpad: computeAllowed is
+        // (engineDefault ∪ recipe.add) ∖ recipe.remove, so a tool missing
+        // from this non-empty baseline is excluded outright, not merely
+        // undiscovered. setting_get is deferred (name + hint via tool_list,
+        // schema on demand) and permission-gated per call (READ on the
+        // target project's setting resource; ADMIN for an explicit
+        // `_tenant` read), so the manifest cost is one hint line. A worker
+        // needs it to answer runtime-config questions on its own — which
+        // layer holds `ai.alias.default.code`, whether a provider apiKey is
+        // set, or a HIDDEN value for a tool call that needs it — instead of
+        // bouncing the question back to the operator.
+        base.add("setting_get");
+        // Project memory lookup — parity with Ford's baseline: a worker
+        // answering "what did we decide about X" searches the project's
+        // RAG memory instead of asking the operator. One schema entry,
+        // read-only, its own primary flag decides the bucket.
+        base.add("memory_search");
         // Generic work-target file/exec wrappers + work_target_get/set.
         // The 12 file_*/exec_* tools dispatch to client_* or work_*
         // backends per the per-process WorkTarget; see

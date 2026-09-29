@@ -27,17 +27,39 @@ engine: frankie
 # practice for Y in language Z", etc. Frankie's engine baseline
 # does not include these (other recipes may not need them).
 #
-# Document-mutation tools — needed when the caller wants Frankie to
-# refactor or rewrite a MongoDB-stored document (project notes, specs,
-# recipes, the user's docs in /documents/...). Without them the worker
-# falls back to file_*/work_file_* which look at the workspace
-# filesystem and can't find documents. Read-only doc_* tools are
-# already on the engine baseline.
+# Document tools — needed when the caller wants Frankie to refactor or
+# rewrite a MongoDB-stored document (project notes, specs, recipes, the
+# user's docs in /documents/...). Without them the worker falls back to
+# file_*/work_file_* which look at the workspace filesystem and can't
+# find documents. The READ side is not on Frankie's engine baseline
+# (that comment was true for Ford, not here): doc_read/doc_read_lines
+# carry the contentHash the write tools demand — the hash protocol below
+# breaks without them, and the mutation tools above would edit blind.
+# Same read set as Ford's baseline so both engines share one
+# definition of "document read side".
 allowedToolsAdd:
   - research_investigate
   - research_search
   - web_search
   - web_fetch
+  # Document read side — locating and reading documents before the
+  # mutation tools below touch them (see the comment block). The
+  # workflow core lands in the manifest; the navigation long tail
+  # (summary/folders/tags/refs) sits in allowedToolsDefer below.
+  # NOTE the classify order: tools admitted only via this add list keep
+  # their own bucket unless listed in defer — so defer wins for them.
+  - doc_read
+  - doc_read_lines
+  - doc_info
+  - doc_summary
+  - doc_list
+  - doc_list_folders
+  - doc_list_in_folder
+  - doc_list_by_tag
+  - doc_find
+  - doc_grep
+  - doc_grep_path
+  - doc_link
   - doc_write
   - doc_edit
   - doc_append
@@ -79,6 +101,15 @@ allowedToolsAdd:
 # tools instead of 50+ and removes the duplicate-tool confusion the
 # Gemini-Flash model showed in live tests.
 allowedToolsDefer:
+  # Document navigation long tail from the read side above — reachable
+  # via tool_list (name + hint), schema on demand; the workflow core
+  # (doc_read / doc_read_lines / doc_info / doc_list / doc_find /
+  # doc_grep / doc_grep_path) stays in the manifest.
+  - doc_summary
+  - doc_list_folders
+  - doc_list_in_folder
+  - doc_list_by_tag
+  - doc_link
   - client_file_read
   - client_file_write
   - client_file_edit

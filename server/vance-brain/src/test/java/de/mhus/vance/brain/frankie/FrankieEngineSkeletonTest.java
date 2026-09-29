@@ -793,6 +793,10 @@ class FrankieEngineSkeletonTest {
                         "work_target_set");
         // Plan-tracking CRUD trio (reduced Plan-Mode variant, §9)
         assertThat(set).contains("todo_create", "todo_update", "todo_remove");
+        // Settings read — deferred, READ-gated per call (see SettingGetTool)
+        assertThat(set).contains("setting_get");
+        // Project memory lookup — read-only RAG search, parity with Ford
+        assertThat(set).contains("memory_search");
     }
 
     // ──────────────────── ScriptedStreamingChatModel ─────────────────────

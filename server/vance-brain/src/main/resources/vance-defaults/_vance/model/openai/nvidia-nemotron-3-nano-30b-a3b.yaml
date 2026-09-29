@@ -1,0 +1,9 @@
+contextWindowTokens: 256000
+defaultMaxOutputTokens: 8192
+size: SMALL
+
+# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-09-29.
+pricing:
+  currency: EUR
+  inputPerMTok: 0.054
+  outputPerMTok: 0.215

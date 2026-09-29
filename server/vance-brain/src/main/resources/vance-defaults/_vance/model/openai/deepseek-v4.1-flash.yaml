@@ -1,0 +1,18 @@
+contextWindowTokens: 1048576
+# Reasoning model — the cap must cover the thinking pass, not just the
+# visible answer (see glm-5.2.yaml for the failure mode).
+defaultMaxOutputTokens: 32768
+size: SMALL
+
+# DeepSeek V4 via strict OpenAI-compatible proxy (Cortecs) reliably
+# answers in prose without the action-tool wrapper. Skip the correction
+# rounds: the StructuredActionEngine wraps that prose straight into an
+# ANSWER action (see answerActionFromText). 0 = no wasted re-prompts.
+actionLoopCorrections: 0
+
+# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-09-29.
+pricing:
+  currency: EUR
+  inputPerMTok: 0.18
+  outputPerMTok: 0.539
+  cacheReadPerMTok: 0.004

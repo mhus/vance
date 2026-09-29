@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.hactar.HactarState;
 import de.mhus.vance.api.hactar.HactarStatus;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.hactar.phases.ExecutingPhase;
 import de.mhus.vance.brain.hactar.phases.LoadingPhase;
 import de.mhus.vance.brain.hactar.phases.ValidatingPhase;
@@ -20,6 +21,7 @@ import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -42,6 +44,7 @@ class HactarRunServiceTest {
     private ChatMessageService chatMessageService;
     private HactarStateStore stateStore;
     private HactarProgressRing progressRing;
+    private HactarConsoleLog consoleLog;
     private LoadingPhase loadingPhase;
     private ValidatingPhase validatingPhase;
     private ExecutingPhase executingPhase;
@@ -59,12 +62,13 @@ class HactarRunServiceTest {
                 thinkProcessService,
                 tools.jackson.databind.json.JsonMapper.builder().build());
         progressRing = new HactarProgressRing();
+        consoleLog = new HactarConsoleLog();
         service = new HactarRunService(
                 thinkProcessService,
                 chatMessageService,
                 stateStore,
                 progressRing,
-                new HactarConsoleLog(),
+                consoleLog,
                 loadingPhase,
                 validatingPhase,
                 executingPhase,
@@ -377,5 +381,35 @@ class HactarRunServiceTest {
         assertThat(progressRing.tail("proc-1", 100)).hasSize(20);
         progressRing.clear("proc-1");
         assertThat(progressRing.tail("proc-1", 100)).isEmpty();
+    }
+
+    // ──────────────────── Eviction (Review-16 M4) ────────────────────
+
+    @Test
+    void closedProcessEvent_evictsInMemoryState() {
+        progressRing.record("proc-1", "halfway", null);
+        consoleLog.record("proc-1", "processing item 3");
+        assertThat(progressRing.tail("proc-1", 10)).isNotEmpty();
+        assertThat(consoleLog.renderTail("proc-1", 10)).isNotEmpty();
+
+        service.onProcessClosed(new ThinkProcessStatusChangedEvent(
+                "proc-1", "acme", "sess-1", null, ThinkProcessStatus.IDLE, ThinkProcessStatus.CLOSED));
+
+        // Every per-process structure is gone — a long-lived pod cannot
+        // accumulate entries for finished scheduler runs.
+        assertThat(progressRing.tail("proc-1", 10)).isEmpty();
+        assertThat(consoleLog.renderTail("proc-1", 10)).isEmpty();
+        assertThat(service.isRunning("proc-1")).isFalse();
+    }
+
+    @Test
+    void nonClosedProcessEvent_doesNotEvict() {
+        progressRing.record("proc-1", "note", null);
+
+        service.onProcessClosed(new ThinkProcessStatusChangedEvent(
+                "proc-1", "acme", "sess-1", null, ThinkProcessStatus.RUNNING, ThinkProcessStatus.IDLE));
+
+        assertThat(progressRing.tail("proc-1", 10)).isNotEmpty();
+        assertThat(consoleLog.renderTail("proc-1", 10)).isEmpty();
     }
 }

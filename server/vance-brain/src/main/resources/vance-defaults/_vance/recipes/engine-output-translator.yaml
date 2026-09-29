@@ -5,9 +5,15 @@ description: |
   …) into a natural-language answer matching the original user goal.
 
   NOT spawnable — marked `internal: true` so the standard recipe
-  selector skips it. Called only when an engine returns
+  selector skips it. Called only when BOTH gates hold: the PARENT
+  engine relays the child output verbatim to a human
+  (`relaysChildOutputVerbatim() == true` — Arthur's RELAY, Eddie's
+  RELAY/RELAY_INBOX) AND the child engine returns
   `producesUserFacingOutput() == false` AND the lifecycle event is
-  DONE or FAILED.
+  DONE or FAILED. Composing parents (LLM agents like Hactar's
+  session identity, Ford workers, orchestrators) get the RAW machine
+  summary — this lossy fast-tier rewrite must not misstate machine
+  facts to a consumer that acts on them.
 
   Pebble variables:
     userGoal      — the goal the spawning user typed (the child

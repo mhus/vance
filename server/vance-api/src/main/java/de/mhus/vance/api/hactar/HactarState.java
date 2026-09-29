@@ -86,8 +86,6 @@ public class HactarState {
     private @Nullable String failureReason;
 
     /**
-     *
-     * /**
      * Session-mode spawn form (planning/hactar-agent-identity.md §3, F1).
      * {@code true} = chat form: spawned WITHOUT a {@code scriptRef}, the
      * agent identity is the process' purpose and the process SURVIVES run

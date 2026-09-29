@@ -83,7 +83,8 @@ public class HactarProgressRing {
         }
     }
 
-    /** Drops the ring (called when a run's process is cleaned up or restarted fresh). */
+    /** Drops the ring — on the next kick (fresh run) and on process close
+     *  (the run service's CLOSED listener evicts all per-process rings). */
     public void clear(String processId) {
         Deque<Entry> ring = rings.remove(processId);
         if (ring != null) {

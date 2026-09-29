@@ -51,6 +51,11 @@ final class ConsoleCapture extends OutputStream {
         buffer[length++] = (byte) b;
         if (lineConsumer != null) {
             if (b == '\n') {
+                // L5 (Review-16): the tap contract is \n-terminated line
+                // events on BOTH write paths (the bulk path always did —
+                // see run_consoleLineTap_receivesLinesLive); the consumer
+                // decides whether to strip.
+                lineScratch.write(b);
                 emitLine(lineScratch.toByteArray());
                 lineScratch.reset();
             } else {
@@ -68,9 +73,18 @@ final class ConsoleCapture extends OutputStream {
         if (clampedLen <= 0) {
             return;
         }
-        ensure(clampedLen);
-        System.arraycopy(src, off, buffer, length, clampedLen);
-        length += clampedLen;
+        if (clampedLen >= cap) {
+            // Oversized single write (Review-16 M2): nothing older
+            // survives it — keep only its own tail (the last cap
+            // bytes). Copying clampedLen into the cap-sized buffer
+            // instead would throw ArrayIndexOutOfBounds.
+            System.arraycopy(src, off + clampedLen - cap, buffer, 0, cap);
+            length = cap;
+        } else {
+            ensure(clampedLen);
+            System.arraycopy(src, off, buffer, length, clampedLen);
+            length += clampedLen;
+        }
         if (lineConsumer != null) {
             for (int i = 0; i < clampedLen; i++) {
                 if (src[off + i] == '\n') {

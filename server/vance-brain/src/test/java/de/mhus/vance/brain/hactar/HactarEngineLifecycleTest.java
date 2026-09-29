@@ -15,9 +15,11 @@ import de.mhus.vance.brain.hactar.phases.ExecutingPhase;
 import de.mhus.vance.brain.hactar.phases.LoadingPhase;
 import de.mhus.vance.brain.hactar.phases.ValidatingPhase;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
+import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -338,6 +340,29 @@ class HactarEngineLifecycleTest {
     }
 
     @Test
+    void runTurn_sessionMode_interruptedTurn_endsPassWithoutRedrain() {
+        process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, true)));
+        seedState(HactarState.builder()
+                .status(HactarStatus.READY)
+                .chatIdentity(true)
+                .build());
+        // Review-16 M3 — the Live-Fund 7 race, back door: the session
+        // loop reports the turn interrupted (pause requested mid-turn),
+        // and a message that arrived during the turn sits in the pending
+        // queue. The engine pass must END here — without the outcome
+        // check, the loop head would re-drain the queued message into a
+        // fresh LLM turn despite the pause.
+        when(ctx.drainPending()).thenReturn(List.of(userInput("hello mid-turn")));
+        when(sessionLoop.turnFor(any(), any(), any()))
+                .thenReturn(new HactarSessionLoop.TurnOutcome("", false, true, true));
+
+        engine.runTurn(process, ctx);
+
+        org.mockito.Mockito.verify(ctx, org.mockito.Mockito.times(1)).drainPending();
+        org.mockito.Mockito.verify(sessionLoop, org.mockito.Mockito.times(1)).turnFor(any(), any(), any());
+    }
+
+    @Test
     void stop_sessionMode_cancelsLiveRunBeforeClose() {
         process.setEngineParams(new LinkedHashMap<>(Map.of(HactarEngine.SESSION_MODE_KEY, true)));
 
@@ -380,6 +405,11 @@ class HactarEngineLifecycleTest {
     // ──────────────────── helpers ────────────────────
 
     @SuppressWarnings("unchecked")
+    private static SteerMessage.UserChatInput userInput(String content) {
+        return new SteerMessage.UserChatInput(
+                Instant.now(), null, "user-1", "User One", content, List.of(), false, null, null, null, null);
+    }
+
     private void seedState(HactarState state) {
         // Merge into the existing engine params — the session tests set
         // sessionMode/scriptRef params BEFORE seeding, and a fresh map

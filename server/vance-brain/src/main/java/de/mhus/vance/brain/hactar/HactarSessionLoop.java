@@ -290,7 +290,14 @@ public class HactarSessionLoop {
             }
             if (thinkProcessService.isHaltRequested(process.getId())) {
                 log.info("Hactar id='{}' tool-loop halt requested — exiting (PAUSED)", process.getId());
-                thinkProcessService.clearHalt(process.getId());
+                // Deliberately NOT clearing the halt flag (Arthur parity,
+                // Review-16 M3): the pause lane task owns the clearing —
+                // SessionLifecycleService.requestPauseOfInterruptible sets
+                // the flag, then queues a PAUSED task that clears it.
+                // Clearing it here would let the engine's drain-loop head
+                // re-drain any message that arrived mid-turn into a fresh
+                // LLM turn despite the pause (the Live-Fund 7 race, back
+                // door).
                 return new ToolLoopResult("", false, true, true);
             }
 
@@ -539,7 +546,12 @@ public class HactarSessionLoop {
     private String statusBlock(ThinkProcessDocument process) {
         String processId = process.getId();
         boolean running = runService.isRunning(processId);
-        HactarState s = stateStore.load(process);
+        // Fresh load (Review-16 L7): the turn's process document may hold
+        // a stale engineParams snapshot — the background runner persists
+        // phase transitions on its own document instance. One findById
+        // per rendered status block keeps the phase current (the same
+        // freshness hactar_status gets via HactarBaseTool.process()).
+        HactarState s = stateStore.load(thinkProcessService.findById(processId).orElse(process));
         StringBuilder sb = new StringBuilder("## You — current run state (you are the script, this is your body)\n\n");
         sb.append("run: ");
         if (running) {

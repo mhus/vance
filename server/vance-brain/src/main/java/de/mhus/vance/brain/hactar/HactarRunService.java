@@ -3,6 +3,7 @@ package de.mhus.vance.brain.hactar;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.hactar.HactarState;
 import de.mhus.vance.api.hactar.HactarStatus;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.hactar.phases.ExecutingPhase;
 import de.mhus.vance.brain.hactar.phases.LoadingPhase;
 import de.mhus.vance.brain.hactar.phases.ValidatingPhase;
@@ -11,6 +12,7 @@ import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -195,6 +197,27 @@ public class HactarRunService {
             runner.interrupt();
         }
         return true;
+    }
+
+    // ──────────────────── Eviction ────────────────────
+
+    /**
+     * Evicts every per-process in-memory structure when the process
+     * closes (Review-16 M4): the runner handle, the progress ring and
+     * the console ring are keyed by processId and were never removed —
+     * short-lived scheduler runs accumulated map entries over a
+     * long-lived pod. Unconditional removal: a miss is a free hash
+     * lookup, so non-Hactar processes cost nothing (no engine lookup,
+     * no DB read).
+     */
+    @org.springframework.context.event.EventListener
+    public void onProcessClosed(ThinkProcessStatusChangedEvent event) {
+        if (event.newStatus() != ThinkProcessStatus.CLOSED) {
+            return;
+        }
+        handles.remove(event.processId());
+        progressRing.clear(event.processId());
+        consoleLog.clear(event.processId());
     }
 
     // ──────────────────── The phase machine ────────────────────

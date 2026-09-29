@@ -354,7 +354,18 @@ public class HactarEngine implements ThinkEngine {
             if (drained.isEmpty()) {
                 return;
             }
-            sessionLoop.turnFor(process, ctx, drained);
+            HactarSessionLoop.TurnOutcome outcome = sessionLoop.turnFor(process, ctx, drained);
+            if (outcome.interrupted()) {
+                // Review-16 M3: an interrupted turn ends THIS pass — no
+                // re-drain. The halt path still carries the flag for the
+                // head check above (the pause lane task clears it); this
+                // outcome check additionally covers the status-exit paths
+                // (SUSPENDED/PAUSED/CLOSED seen mid-turn) where no halt
+                // flag exists — without it, the loop would immediately
+                // drain again and burn a fresh LLM turn on a parked
+                // process.
+                return;
+            }
         }
     }
 

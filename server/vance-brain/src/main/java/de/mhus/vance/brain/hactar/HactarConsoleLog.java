@@ -73,6 +73,21 @@ public class HactarConsoleLog {
         }
     }
 
+    /**
+     * Drops the process' ring entirely (process closed — Review-16 M4:
+     * the run service's CLOSED listener evicts the per-process rings so
+     * short-lived scheduler runs cannot accumulate map entries over a
+     * long-lived pod).
+     */
+    public void clear(String processId) {
+        Ring ring = rings.remove(processId);
+        if (ring != null) {
+            synchronized (ring.lines) {
+                ring.lines.clear();
+            }
+        }
+    }
+
     /** The last {@code max} lines, oldest first — empty when none. */
     public List<Line> tail(String processId, int max) {
         Ring ring = rings.get(processId);

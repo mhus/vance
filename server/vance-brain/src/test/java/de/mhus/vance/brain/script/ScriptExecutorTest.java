@@ -459,4 +459,69 @@ class ScriptExecutorTest {
         assertThat(eval("1 + 2;").value()).isEqualTo(3L);
         assertThat(eval("({a: 1});").value()).isEqualTo(Map.of("a", 1L));
     }
+
+    // ------------------------------------------------------------------
+    // 7.8 Console capture — secret masking (Review-16 H1)
+    //
+    // The capture feeds LLM-facing surfaces (Hactar's prompt status
+    // block, the terminal wakeup note, the run panel) — the same trust
+    // boundary the string return value passes through. A script that
+    // logs a pulled secret must not leak it.
+    // ------------------------------------------------------------------
+
+    private static GraaljsScriptExecutor executorWithSecrets() {
+        GraaljsScriptExecutor withSecrets = new GraaljsScriptExecutor(engine);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                withSecrets, "secretResolver", (de.mhus.vance.toolpack.core.SecretResolver)
+                        (input, ctx) -> "{{secret:smtp-password}}".equals(input) ? "hunter2-super-secret" : input);
+        return withSecrets;
+    }
+
+    @Test
+    void consoleOutput_isSecretMasked() {
+        GraaljsScriptExecutor withSecrets = executorWithSecrets();
+        ScriptResult result = withSecrets.run(new ScriptRequest(
+                "js",
+                "const pw = vance.secret('smtp-password');"
+                        + " console.log('connecting with ' + pw);"
+                        + " 'done ' + pw;",
+                "secret-test",
+                unrestrictedTools(),
+                Duration.ofSeconds(5)));
+        assertThat(result.consoleOutput()).contains("connecting").doesNotContain("hunter2");
+        assertThat(result.consoleOutput()).contains(de.mhus.vance.brain.vault.SecretMasker.MASK);
+        // The string return keeps its established masking contract.
+        assertThat((String) result.value()).doesNotContain("hunter2");
+    }
+
+    @Test
+    void consoleLineTap_isSecretMasked() {
+        GraaljsScriptExecutor withSecrets = executorWithSecrets();
+        java.util.List<String> tapped = new java.util.ArrayList<>();
+        ScriptResult result = withSecrets.run(new ScriptRequest(
+                "js",
+                "const pw = vance.secret('smtp-password'); console.log('pw=' + pw); 'x';",
+                "secret-test",
+                unrestrictedTools(),
+                Duration.ofSeconds(5),
+                Map.of(),
+                null,
+                de.mhus.vance.brain.action.ScopeLevel.PROCESS_SCOPED,
+                null,
+                null,
+                null,
+                null,
+                null,
+                tapped::add));
+        assertThat(tapped).isNotEmpty();
+        assertThat(String.join("\n", tapped)).doesNotContain("hunter2");
+        assertThat(result.consoleOutput()).doesNotContain("hunter2");
+    }
+
+    @Test
+    void consoleOutput_unmaskedWhenNoSecretsPulled() {
+        // No vance.secret pull → nothing in the sink → output unchanged.
+        ScriptResult result = eval("console.log('plain hello'); 1;");
+        assertThat(result.consoleOutput()).contains("plain hello");
+    }
 }

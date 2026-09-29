@@ -334,7 +334,18 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         // panel, forensics). One shared capped buffer keeps out and err
         // in chronological order; the tail is attached to the result
         // (and to the exception when the script dies).
-        ConsoleCapture console = new ConsoleCapture(CONSOLE_CAPTURE_BYTES, request.consoleLineConsumer());
+        //
+        // Secret sink FIRST (Review-16 H1): the capture feeds LLM-facing
+        // surfaces (Hactar's prompt status block, the terminal wakeup
+        // note, the run panel) — the live line tap and every tail
+        // attachment pass through SecretMasker with the same pulled-
+        // secrets set that masks the string return value. A script that
+        // logs a pulled secret must not leak it into the prompt.
+        Set<String> pulledSecrets = ConcurrentHashMap.newKeySet();
+        java.util.function.@Nullable Consumer<String> rawConsoleTap = request.consoleLineConsumer();
+        java.util.function.@Nullable Consumer<String> consoleTap =
+                rawConsoleTap == null ? null : line -> rawConsoleTap.accept(SecretMasker.mask(line, pulledSecrets));
+        ConsoleCapture console = new ConsoleCapture(CONSOLE_CAPTURE_BYTES, consoleTap);
 
         Context.Builder ctxBuilder = Context.newBuilder("js")
                 .engine(engine)
@@ -380,10 +391,9 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             return t;
         });
 
-        // Collect secret values the script pulls via vance.secret(...) so a
-        // string return can be masked (InheritableThreadLocal → the watchdog
-        // child thread inherits the sink at creation).
-        Set<String> pulledSecrets = ConcurrentHashMap.newKeySet();
+        // Secret values the script pulls via vance.secret(...) land in the
+        // sink declared above — InheritableThreadLocal → the watchdog
+        // child thread inherits it at creation.
         VanceScriptApi.setActiveSecretTee(pulledSecrets);
 
         // Default `vance.log.*` tee: without one, the structured script
@@ -418,7 +428,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                     // LLM-facing output). Object-graph returns are not deep-masked.
                     value = SecretMasker.mask(s, pulledSecrets);
                 }
-                return new ScriptResult(value, Duration.between(start, Instant.now()), console.tail());
+                return new ScriptResult(
+                        value, Duration.between(start, Instant.now()), maskedTail(console, pulledSecrets));
             } catch (TimeoutException e) {
                 future.cancel(true);
                 ctx.close(true);
@@ -426,7 +437,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                         ScriptExecutionException.ErrorClass.TIMEOUT,
                         "Script timed out after " + effectiveTimeout.toMillis() + "ms",
                         e,
-                        console.tail());
+                        maskedTail(console, pulledSecrets));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 future.cancel(true);
@@ -435,9 +446,10 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                         ScriptExecutionException.ErrorClass.CANCELLED,
                         "Script execution interrupted",
                         e,
-                        console.tail());
+                        maskedTail(console, pulledSecrets));
             } catch (ExecutionException e) {
-                throw mapEvalFailure(e.getCause() == null ? e : e.getCause()).withConsoleOutput(console.tail());
+                throw mapEvalFailure(e.getCause() == null ? e : e.getCause())
+                        .withConsoleOutput(maskedTail(console, pulledSecrets));
             }
         } finally {
             if (installedLogTee) {
@@ -451,6 +463,18 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 log.debug("ctx.close() raised after run: {}", e.toString());
             }
         }
+    }
+
+    /**
+     * The console tail, masked with the run's pulled secret values (Review-
+     * 16 H1): the capture feeds LLM-facing surfaces (Hactar's prompt status
+     * block, the terminal wakeup note, the run panel) — the same trust
+     * boundary the string return value passes through. Masking happens at
+     * the attachment points (not at capture time) because the pulled-
+     * secrets set grows while the script runs.
+     */
+    private static String maskedTail(ConsoleCapture console, Set<String> pulledSecrets) {
+        return SecretMasker.mask(console.tail(), pulledSecrets);
     }
 
     /**

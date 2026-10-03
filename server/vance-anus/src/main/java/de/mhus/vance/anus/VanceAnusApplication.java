@@ -52,6 +52,7 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 // is Anus's own; AnusExceptionResolver and AuthAspect rely on it being a bean.
 @EnableConfigurationProperties({
     WorkspaceProperties.class,
+    de.mhus.vance.shared.homes.HomesProperties.class,
     AccessProperties.class,
     AnusBrainProperties.class,
     DevModeProperties.class,

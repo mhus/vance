@@ -168,7 +168,7 @@ public class ExecManager {
                 command,
                 jobDir.resolve("stdout.log"),
                 jobDir.resolve("stderr.log"),
-                environmentBuilder.build(options.env()),
+                environmentBuilder.build(tenantId, projectId, options.userId(), options.env()),
                 options.labels());
         Instant deadline = options.deadline();
         if (deadline != null) {

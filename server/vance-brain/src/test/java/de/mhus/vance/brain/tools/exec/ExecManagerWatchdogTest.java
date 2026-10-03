@@ -62,7 +62,13 @@ class ExecManagerWatchdogTest {
         ObjectProvider<EngineMessageRouter> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(router);
 
-        manager = new ExecManager(props, new ExecEnvironmentBuilder(props), workspace, registry, provider);
+        manager = new ExecManager(
+                props,
+                new ExecEnvironmentBuilder(
+                        props, ExecTestHomes.homes(Path.of(props.getBaseDir()).resolve("homes"))),
+                workspace,
+                registry,
+                provider);
         ReflectionTestUtils.setField(manager, "properties", props);
     }
 

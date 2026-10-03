@@ -65,7 +65,13 @@ class ExecManagerPushCompletionTest {
         ObjectProvider<EngineMessageRouter> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(router);
 
-        manager = new ExecManager(props, new ExecEnvironmentBuilder(props), workspace, registry, provider);
+        manager = new ExecManager(
+                props,
+                new ExecEnvironmentBuilder(
+                        props, ExecTestHomes.homes(Path.of(props.getBaseDir()).resolve("homes"))),
+                workspace,
+                registry,
+                provider);
         // ExecJobRenderer + tailFile need ExecProperties via the
         // {@code properties} field; lombok's @RequiredArgsConstructor
         // sets it through the constructor — no reflection needed.

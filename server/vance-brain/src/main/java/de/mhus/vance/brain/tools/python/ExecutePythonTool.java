@@ -46,33 +46,43 @@ public class ExecutePythonTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "code", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Python source. Executed in a fresh "
-                                            + "process with the default Python "
-                                            + "RootDir (`_python`) as working "
-                                            + "directory. stdout / stderr are "
-                                            + "captured and returned."),
-                    "args", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description",
-                                    "Arguments passed to the script. Each item is "
-                                            + "shell-escaped automatically."),
-                    "flags", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Python interpreter flags (e.g. '-O', '-X dev'). "
-                                            + "Appended verbatim before the file path."),
-                    "waitMs", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Wall-clock timeout in milliseconds. Long-"
-                                            + "running scripts return early with "
-                                            + "status=RUNNING and a job id for "
-                                            + "work_exec_status.")),
+            "properties",
+                    Map.of(
+                            "code",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Python source. Executed in a fresh "
+                                                    + "process with the default Python "
+                                                    + "RootDir (`_python`) as working "
+                                                    + "directory. stdout / stderr are "
+                                                    + "captured and returned."),
+                            "args",
+                                    Map.of(
+                                            "type",
+                                            "array",
+                                            "items",
+                                            Map.of("type", "string"),
+                                            "description",
+                                            "Arguments passed to the script. Each item is "
+                                                    + "shell-escaped automatically."),
+                            "flags",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Python interpreter flags (e.g. '-O', '-X dev'). "
+                                                    + "Appended verbatim before the file path."),
+                            "waitMs",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Wall-clock timeout in milliseconds. Long-"
+                                                    + "running scripts return early with "
+                                                    + "status=RUNNING and a job id for "
+                                                    + "work_exec_status.")),
             "required", List.of("code"));
 
     private final WorkspaceService workspaceService;
@@ -142,7 +152,10 @@ public class ExecutePythonTool implements Tool {
         }
 
         RootDirHandle handle = TypedRootDirProvisioner.ensure(
-                workspaceService, ctx, PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL,
+                workspaceService,
+                ctx,
+                PythonHandler.TYPE,
+                PythonHandler.DEFAULT_LABEL,
                 Map.of(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH));
         String dirName = handle.getDirName();
 
@@ -152,8 +165,7 @@ public class ExecutePythonTool implements Tool {
         String fileName = "_inline_" + System.currentTimeMillis() + ".py";
         try {
             Path written = workspaceService.write(tenantId, projectId, dirName, fileName, code);
-            log.debug("execute_python: wrote {} chars to {}/{}",
-                    code.length(), dirName, written.getFileName());
+            log.debug("execute_python: wrote {} chars to {}/{}", code.length(), dirName, written.getFileName());
         } catch (RuntimeException e) {
             throw new ToolException("execute_python: failed to write script: " + e.getMessage(), e);
         }
@@ -173,10 +185,14 @@ public class ExecutePythonTool implements Tool {
                 ExecLabels.KEY_RUN_KIND, ExecLabels.RUN_KIND_SCRIPT);
         try {
             return execManager.submitTrackedAndRender(
-                    tenantId, projectId,
-                    ctx.sessionId(), ctx.processId(),
-                    dirName, cmd.toString(), waitMs,
-                    SubmitOptions.defaults().withLabels(labels));
+                    tenantId,
+                    projectId,
+                    ctx.sessionId(),
+                    ctx.processId(),
+                    dirName,
+                    cmd.toString(),
+                    waitMs,
+                    SubmitOptions.defaults().withLabels(labels).withUser(ctx.userId()));
         } catch (RuntimeException e) {
             throw new ToolException(e.getMessage(), e);
         }
@@ -190,8 +206,7 @@ public class ExecutePythonTool implements Tool {
         return s;
     }
 
-    private static @org.jspecify.annotations.Nullable String stringOrNull(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String stringOrNull(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         return (raw instanceof String s && !s.isBlank()) ? s : null;
     }

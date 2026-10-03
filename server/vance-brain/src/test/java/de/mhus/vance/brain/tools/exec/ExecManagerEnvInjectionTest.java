@@ -46,6 +46,7 @@ class ExecManagerEnvInjectionTest {
     private static final Set<String> SHELL_NATIVE = Set.of("PWD", "SHLVL", "_", "OLDPWD");
 
     private ExecManager manager;
+    private Path homesRoot;
 
     @BeforeEach
     void setUp(@TempDir Path workDir, @TempDir Path execBase) {
@@ -67,7 +68,13 @@ class ExecManagerEnvInjectionTest {
         ObjectProvider<EngineMessageRouter> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(router);
 
-        manager = new ExecManager(props, new ExecEnvironmentBuilder(props), workspace, registry, provider);
+        homesRoot = execBase.resolve("homes");
+        manager = new ExecManager(
+                props,
+                new ExecEnvironmentBuilder(props, ExecTestHomes.homes(homesRoot)),
+                workspace,
+                registry,
+                provider);
     }
 
     @AfterEach
@@ -98,6 +105,18 @@ class ExecManagerEnvInjectionTest {
         Map<String, String> childEnv = parseEnv(job.readStdout());
         assertThat(childEnv).containsEntry("VANCE_TEST_TOKEN", "secret-abc");
         assertOnlyExpected(childEnv, Set.of("VANCE_TEST_TOKEN"));
+    }
+
+    @Test
+    void home_isTheScopedHomeNotTheProcessHome() throws Exception {
+        ExecJob job =
+                manager.submit(TENANT, PROJECT, null, DIR, "echo HOME=${HOME:-<missing>}", SubmitOptions.defaults());
+        manager.waitFor(job, 5_000);
+
+        assertThat(job.isTerminal()).isTrue();
+        // #63: HOME is the project's own directory in the homes tree.
+        assertThat(job.readStdout())
+                .contains("HOME=" + homesRoot.resolve(TENANT).resolve(PROJECT));
     }
 
     @Test

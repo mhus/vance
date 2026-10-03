@@ -20,10 +20,10 @@ import org.springframework.stereotype.Service;
  * <p>Subprocess sees only what we explicitly set — see
  * {@link de.mhus.vance.brain.tools.exec.ExecManager#runJob} for the
  * env-seal mechanism. The {@code VANCE_*} variables drive the
- * {@code vance.py} helper module; {@code PATH} / {@code HOME} /
- * {@code LANG} are filled with safe minimal defaults so common
- * Python subprocess uses (calling out to shell tools, pip caching)
- * keep working.
+ * {@code vance.py} helper module; {@code PATH} / {@code LANG} are filled
+ * with safe minimal defaults so common Python subprocess uses (calling out
+ * to shell tools, pip caching) keep working. {@code HOME} is the scope's own
+ * directory in the homes tree — never the shared process home.
  *
  * <p>Token-life-cycle: bound to the run, not the TTL. The 24h
  * expiry is only a safety net for runs that get orphaned in the
@@ -36,6 +36,7 @@ import org.springframework.stereotype.Service;
 public class ScriptRunEnvironmentBuilder {
 
     private final JwtService jwtService;
+    private final de.mhus.vance.shared.homes.HomesService homes;
 
     /**
      * Brain's local HTTP port. Defaults to 8080 (Spring Boot's default)
@@ -50,16 +51,10 @@ public class ScriptRunEnvironmentBuilder {
      */
     private static final Duration TOKEN_TTL = Duration.ofHours(24);
 
-    public ScriptRunEnvironment build(
-            String tenantId,
-            String projectId,
-            @Nullable String sessionId,
-            String username) {
+    public ScriptRunEnvironment build(String tenantId, String projectId, @Nullable String sessionId, String username) {
         String runId = UUID.randomUUID().toString();
         String token = jwtService.createScriptRunToken(
-                tenantId, username,
-                runId, projectId, sessionId,
-                Instant.now().plus(TOKEN_TTL));
+                tenantId, username, runId, projectId, sessionId, Instant.now().plus(TOKEN_TTL));
 
         Map<String, String> env = new LinkedHashMap<>();
         env.put("VANCE_BRAIN_URL", "http://localhost:" + serverPort + "/brain/" + tenantId);
@@ -74,7 +69,9 @@ public class ScriptRunEnvironmentBuilder {
         // caches and common system-tool calls still function inside
         // the otherwise sealed env.
         env.put("PATH", "/usr/local/bin:/usr/bin:/bin");
-        env.put("HOME", System.getProperty("user.home", "/tmp"));
+        // HOME is the scope's own directory in the homes tree (per project /
+        // tenant / user) — never the shared process home (mhus/vance#63).
+        env.put("HOME", homes.ensure(tenantId, projectId, username).toString());
         env.put("LANG", "C.UTF-8");
         env.put("LC_ALL", "C.UTF-8");
         return new ScriptRunEnvironment(runId, Map.copyOf(env));

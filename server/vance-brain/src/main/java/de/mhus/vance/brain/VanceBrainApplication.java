@@ -1,21 +1,21 @@
 package de.mhus.vance.brain;
 
 import de.mhus.vance.brain.arthur.ArthurProperties;
-import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.bootstrap.BootstrapProperties;
 import de.mhus.vance.brain.bootstrap.InitSettingsProperties;
+import de.mhus.vance.brain.events.StreamingProperties;
+import de.mhus.vance.brain.ford.FordProperties;
 import de.mhus.vance.brain.marvin.MarvinProperties;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.brain.transfer.BrainTransferProperties;
-import de.mhus.vance.brain.ford.FordProperties;
 import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisReactiveAutoConfiguration;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.mongodb.config.EnableMongoAuditing;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -44,33 +44,36 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication(
         scanBasePackages = {"de.mhus.vance.brain", "de.mhus.vance.shared"},
         exclude = {
-                DataRedisAutoConfiguration.class,
-                DataRedisReactiveAutoConfiguration.class,
-                DataRedisRepositoriesAutoConfiguration.class})
+            DataRedisAutoConfiguration.class,
+            DataRedisReactiveAutoConfiguration.class,
+            DataRedisRepositoriesAutoConfiguration.class
+        })
 @EnableMongoRepositories(basePackages = {"de.mhus.vance.shared", "de.mhus.vance.brain"})
 // Drives @CreatedDate / @LastModifiedDate on Mongo documents (e.g.
 // ChatMessageDocument.createdAt). Without this, fields stay null on
 // insert and any sort that relies on them is undefined.
 @EnableMongoAuditing
 @EnableConfigurationProperties({
-        WorkspaceProperties.class,
-        de.mhus.vance.shared.instance.InstanceProperties.class,
-        de.mhus.vance.brain.kit.provisioning.KitProvisioningProperties.class,
-        de.mhus.vance.shared.audit.AuditServiceProperties.class,
-        ExecProperties.class,
-        StreamingProperties.class,
-        BootstrapProperties.class,
-        InitSettingsProperties.class,
-        de.mhus.vance.shared.schema.SchemaMigrationProperties.class,
-        FordProperties.class,
-        ArthurProperties.class,
-        MarvinProperties.class,
-        BrainTransferProperties.class,
-        WorkspaceAccessProperties.class,
-        de.mhus.vance.brain.script.ScriptEngineProperties.class,
-        de.mhus.vance.brain.prak.PrakProperties.class,
-        de.mhus.vance.brain.magrathea.MagratheaProperties.class,
-        de.mhus.vance.brain.tools.budget.ToolBudgetProperties.class})
+    WorkspaceProperties.class,
+    de.mhus.vance.shared.instance.InstanceProperties.class,
+    de.mhus.vance.brain.kit.provisioning.KitProvisioningProperties.class,
+    de.mhus.vance.shared.audit.AuditServiceProperties.class,
+    ExecProperties.class,
+    de.mhus.vance.shared.homes.HomesProperties.class,
+    StreamingProperties.class,
+    BootstrapProperties.class,
+    InitSettingsProperties.class,
+    de.mhus.vance.shared.schema.SchemaMigrationProperties.class,
+    FordProperties.class,
+    ArthurProperties.class,
+    MarvinProperties.class,
+    BrainTransferProperties.class,
+    WorkspaceAccessProperties.class,
+    de.mhus.vance.brain.script.ScriptEngineProperties.class,
+    de.mhus.vance.brain.prak.PrakProperties.class,
+    de.mhus.vance.brain.magrathea.MagratheaProperties.class,
+    de.mhus.vance.brain.tools.budget.ToolBudgetProperties.class
+})
 @EnableScheduling
 @EnableAsync
 public class VanceBrainApplication {

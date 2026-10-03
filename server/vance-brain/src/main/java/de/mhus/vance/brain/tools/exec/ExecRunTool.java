@@ -1,14 +1,14 @@
 package de.mhus.vance.brain.tools.exec;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.execution.ExecutionOwner;
 import de.mhus.vance.brain.execution.ExecutionRegistryEntry;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.brain.execution.ExecutionStatus;
 import de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -25,38 +25,47 @@ public class ExecRunTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "command", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Shell command to run (bash via /bin/sh -c on "
-                                            + "Linux/macOS, cmd.exe /c on Windows). "
-                                            + "Full shell syntax allowed; cwd is the "
-                                            + "named workspace RootDir."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional RootDir name to use as cwd. Defaults "
-                                            + "to the current process's temp RootDir."),
-                    "waitMs", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Milliseconds to wait for completion before "
-                                            + "returning. Default is the server's "
-                                            + "configured wait."),
-                    "deadlineSeconds", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Optional hard-kill deadline (seconds from now). "
-                                            + "If the subprocess is still running when "
-                                            + "the deadline passes, the watchdog kills "
-                                            + "it and pushes EXEC_TIMEOUT to your inbox. "
-                                            + "Distinct from waitMs (which is just how "
-                                            + "long this call blocks): a job can have "
-                                            + "deadlineSeconds=3600 with waitMs=1000 — "
-                                            + "you'll get the jobId back fast and the "
-                                            + "watchdog handles termination. Extend with "
-                                            + "work_exec_check(jobId, ifRunning='extend').")),
+            "properties",
+                    Map.of(
+                            "command",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Shell command to run (bash via /bin/sh -c on "
+                                                    + "Linux/macOS, cmd.exe /c on Windows). "
+                                                    + "Full shell syntax allowed; cwd is the "
+                                                    + "named workspace RootDir."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional RootDir name to use as cwd. Defaults "
+                                                    + "to the current process's temp RootDir."),
+                            "waitMs",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Milliseconds to wait for completion before "
+                                                    + "returning. Default is the server's "
+                                                    + "configured wait."),
+                            "deadlineSeconds",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Optional hard-kill deadline (seconds from now). "
+                                                    + "If the subprocess is still running when "
+                                                    + "the deadline passes, the watchdog kills "
+                                                    + "it and pushes EXEC_TIMEOUT to your inbox. "
+                                                    + "Distinct from waitMs (which is just how "
+                                                    + "long this call blocks): a job can have "
+                                                    + "deadlineSeconds=3600 with waitMs=1000 — "
+                                                    + "you'll get the jobId back fast and the "
+                                                    + "watchdog handles termination. Extend with "
+                                                    + "work_exec_check(jobId, ifRunning='extend').")),
             "required", List.of("command"));
 
     private final ExecManager execManager;
@@ -133,10 +142,10 @@ public class ExecRunTool implements Tool {
                 ExecLabels.KEY_SOURCE, ExecLabels.SOURCE_LLM_TOOL,
                 ExecLabels.KEY_LANGUAGE, ExecLabels.LANG_SHELL,
                 ExecLabels.KEY_RUN_KIND, ExecLabels.RUN_KIND_SHELL);
-        SubmitOptions options = new SubmitOptions(deadline, null, labels);
+        SubmitOptions options = new SubmitOptions(deadline, null, labels, ctx.userId());
         try {
-            ExecJob job = execManager.submit(
-                    ctx.tenantId(), ctx.projectId(), ctx.processId(), dirName, command, options);
+            ExecJob job =
+                    execManager.submit(ctx.tenantId(), ctx.projectId(), ctx.processId(), dirName, command, options);
             registry.register(new ExecutionRegistryEntry(
                     job.id(),
                     ExecutionOwner.Brain.INSTANCE,

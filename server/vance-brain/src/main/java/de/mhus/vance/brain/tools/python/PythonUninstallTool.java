@@ -30,23 +30,29 @@ public class PythonUninstallTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "package", Map.of(
-                            "type", "string",
-                            "description", "Package name to uninstall. Required."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional Python RootDir name. Defaults to the "
-                                            + "current process's working RootDir."),
-                    "flags", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Extra arguments appended verbatim to "
-                                            + "'pip uninstall -y'. Optional."),
-                    "waitMs", Map.of(
-                            "type", "integer",
-                            "description", "Milliseconds to wait before returning early.")),
+            "properties",
+                    Map.of(
+                            "package",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Package name to uninstall. Required."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional Python RootDir name. Defaults to the "
+                                                    + "current process's working RootDir."),
+                            "flags",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Extra arguments appended verbatim to " + "'pip uninstall -y'. Optional."),
+                            "waitMs",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Milliseconds to wait before returning early.")),
             "required", List.of("package"));
 
     private final WorkspaceService workspaceService;
@@ -106,17 +112,18 @@ public class PythonUninstallTool implements Tool {
             ensurePythonType(ctx, dirName);
         } else {
             dirName = TypedRootDirProvisioner.workingDirOfTypeOrProvision(
-                    workspaceService, ctx, PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL,
+                    workspaceService,
+                    ctx,
+                    PythonHandler.TYPE,
+                    PythonHandler.DEFAULT_LABEL,
                     Map.of(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH));
         }
 
-        String pipUninstall = ".venv/bin/python -m pip uninstall -y "
-                + PythonShellEscape.quote(pkg);
+        String pipUninstall = ".venv/bin/python -m pip uninstall -y " + PythonShellEscape.quote(pkg);
         if (StringUtils.isNotBlank(flags)) {
             pipUninstall += " " + flags;
         }
-        String command = pipUninstall
-                + " && .venv/bin/python -m pip freeze > " + PythonHandler.REQUIREMENTS_FILE;
+        String command = pipUninstall + " && .venv/bin/python -m pip freeze > " + PythonHandler.REQUIREMENTS_FILE;
 
         Map<String, String> labels = Map.of(
                 ExecLabels.KEY_SOURCE, ExecLabels.SOURCE_LLM_TOOL,
@@ -124,19 +131,23 @@ public class PythonUninstallTool implements Tool {
                 ExecLabels.KEY_RUN_KIND, ExecLabels.RUN_KIND_UNINSTALL);
         try {
             return execManager.submitTrackedAndRender(
-                    ctx.tenantId(), ctx.projectId(),
-                    ctx.sessionId(), ctx.processId(),
-                    dirName, command, waitMs,
-                    SubmitOptions.defaults().withLabels(labels));
+                    ctx.tenantId(),
+                    ctx.projectId(),
+                    ctx.sessionId(),
+                    ctx.processId(),
+                    dirName,
+                    command,
+                    waitMs,
+                    SubmitOptions.defaults().withLabels(labels).withUser(ctx.userId()));
         } catch (RuntimeException e) {
             throw new ToolException(e.getMessage(), e);
         }
     }
 
     private void ensurePythonType(ToolInvocationContext ctx, String dirName) {
-        RootDirHandle handle = workspaceService.getRootDir(ctx.tenantId(), ctx.projectId(), dirName)
-                .orElseThrow(() -> new ToolException(
-                        "Unknown RootDir: " + dirName));
+        RootDirHandle handle = workspaceService
+                .getRootDir(ctx.tenantId(), ctx.projectId(), dirName)
+                .orElseThrow(() -> new ToolException("Unknown RootDir: " + dirName));
         if (!PythonHandler.TYPE.equals(handle.getType())) {
             throw new ToolException("python_uninstall refused: RootDir '" + dirName
                     + "' has type '" + handle.getType() + "', expected '"

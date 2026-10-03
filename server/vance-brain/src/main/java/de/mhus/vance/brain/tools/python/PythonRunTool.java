@@ -30,33 +30,43 @@ public class PythonRunTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "file", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Python file to execute, path relative to the "
-                                            + "RootDir. Required."),
-                    "args", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description",
-                                    "Arguments passed to the script. Each item is "
-                                            + "shell-escaped automatically."),
-                    "flags", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Python interpreter flags (e.g. '-O', '-X dev'). "
-                                            + "Appended verbatim before the file path."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional Python RootDir. When omitted the "
-                                            + "canonical project Python workspace is used "
-                                            + "and created if needed — no python_create "
-                                            + "call is required first."),
-                    "waitMs", Map.of(
-                            "type", "integer",
-                            "description", "Milliseconds to wait before returning early.")),
+            "properties",
+                    Map.of(
+                            "file",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Python file to execute, path relative to the " + "RootDir. Required."),
+                            "args",
+                                    Map.of(
+                                            "type",
+                                            "array",
+                                            "items",
+                                            Map.of("type", "string"),
+                                            "description",
+                                            "Arguments passed to the script. Each item is "
+                                                    + "shell-escaped automatically."),
+                            "flags",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Python interpreter flags (e.g. '-O', '-X dev'). "
+                                                    + "Appended verbatim before the file path."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional Python RootDir. When omitted the "
+                                                    + "canonical project Python workspace is used "
+                                                    + "and created if needed — no python_create "
+                                                    + "call is required first."),
+                            "waitMs",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Milliseconds to wait before returning early.")),
             "required", List.of("file"));
 
     private final WorkspaceService workspaceService;
@@ -120,7 +130,10 @@ public class PythonRunTool implements Tool {
             ensurePythonType(ctx, dirName);
         } else {
             dirName = TypedRootDirProvisioner.workingDirOfTypeOrProvision(
-                    workspaceService, ctx, PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL,
+                    workspaceService,
+                    ctx,
+                    PythonHandler.TYPE,
+                    PythonHandler.DEFAULT_LABEL,
                     Map.of(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH));
         }
 
@@ -140,19 +153,23 @@ public class PythonRunTool implements Tool {
                 ExecLabels.KEY_DOCUMENT, file);
         try {
             return execManager.submitTrackedAndRender(
-                    ctx.tenantId(), ctx.projectId(),
-                    ctx.sessionId(), ctx.processId(),
-                    dirName, cmd.toString(), waitMs,
-                    SubmitOptions.defaults().withLabels(labels));
+                    ctx.tenantId(),
+                    ctx.projectId(),
+                    ctx.sessionId(),
+                    ctx.processId(),
+                    dirName,
+                    cmd.toString(),
+                    waitMs,
+                    SubmitOptions.defaults().withLabels(labels).withUser(ctx.userId()));
         } catch (RuntimeException e) {
             throw new ToolException(e.getMessage(), e);
         }
     }
 
     private void ensurePythonType(ToolInvocationContext ctx, String dirName) {
-        RootDirHandle handle = workspaceService.getRootDir(ctx.tenantId(), ctx.projectId(), dirName)
-                .orElseThrow(() -> new ToolException(
-                        "Unknown RootDir: " + dirName));
+        RootDirHandle handle = workspaceService
+                .getRootDir(ctx.tenantId(), ctx.projectId(), dirName)
+                .orElseThrow(() -> new ToolException("Unknown RootDir: " + dirName));
         if (!PythonHandler.TYPE.equals(handle.getType())) {
             throw new ToolException("python_run refused: RootDir '" + dirName
                     + "' has type '" + handle.getType() + "', expected '"

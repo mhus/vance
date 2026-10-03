@@ -35,33 +35,44 @@ public class PythonInstallTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "package", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Single package spec for pip (e.g. 'requests', "
-                                            + "'flask==3.0', 'numpy>=2'). Provide this "
-                                            + "OR 'packages'."),
-                    "packages", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description",
-                                    "Multiple package specs installed in one pip call. "
-                                            + "Faster than chaining python_install. "
-                                            + "Provide this OR 'package'."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional Python RootDir name. Defaults to the "
-                                            + "current process's working RootDir."),
-                    "flags", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Extra arguments appended verbatim to 'pip install' "
-                                            + "(e.g. '--upgrade --no-deps'). Optional."),
-                    "waitMs", Map.of(
-                            "type", "integer",
-                            "description", "Milliseconds to wait before returning early.")),
+            "properties",
+                    Map.of(
+                            "package",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Single package spec for pip (e.g. 'requests', "
+                                                    + "'flask==3.0', 'numpy>=2'). Provide this "
+                                                    + "OR 'packages'."),
+                            "packages",
+                                    Map.of(
+                                            "type",
+                                            "array",
+                                            "items",
+                                            Map.of("type", "string"),
+                                            "description",
+                                            "Multiple package specs installed in one pip call. "
+                                                    + "Faster than chaining python_install. "
+                                                    + "Provide this OR 'package'."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional Python RootDir name. Defaults to the "
+                                                    + "current process's working RootDir."),
+                            "flags",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Extra arguments appended verbatim to 'pip install' "
+                                                    + "(e.g. '--upgrade --no-deps'). Optional."),
+                            "waitMs",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Milliseconds to wait before returning early.")),
             "required", List.of());
 
     private final WorkspaceService workspaceService;
@@ -124,7 +135,10 @@ public class PythonInstallTool implements Tool {
             ensurePythonType(ctx, dirName);
         } else {
             dirName = TypedRootDirProvisioner.workingDirOfTypeOrProvision(
-                    workspaceService, ctx, PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL,
+                    workspaceService,
+                    ctx,
+                    PythonHandler.TYPE,
+                    PythonHandler.DEFAULT_LABEL,
                     Map.of(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH));
         }
 
@@ -135,8 +149,7 @@ public class PythonInstallTool implements Tool {
         if (StringUtils.isNotBlank(flags)) {
             pipInstall.append(' ').append(flags);
         }
-        String command = pipInstall
-                + " && .venv/bin/python -m pip freeze > " + PythonHandler.REQUIREMENTS_FILE;
+        String command = pipInstall + " && .venv/bin/python -m pip freeze > " + PythonHandler.REQUIREMENTS_FILE;
 
         Map<String, String> labels = Map.of(
                 ExecLabels.KEY_SOURCE, ExecLabels.SOURCE_LLM_TOOL,
@@ -144,10 +157,14 @@ public class PythonInstallTool implements Tool {
                 ExecLabels.KEY_RUN_KIND, ExecLabels.RUN_KIND_INSTALL);
         try {
             return execManager.submitTrackedAndRender(
-                    ctx.tenantId(), ctx.projectId(),
-                    ctx.sessionId(), ctx.processId(),
-                    dirName, command, waitMs,
-                    SubmitOptions.defaults().withLabels(labels));
+                    ctx.tenantId(),
+                    ctx.projectId(),
+                    ctx.sessionId(),
+                    ctx.processId(),
+                    dirName,
+                    command,
+                    waitMs,
+                    SubmitOptions.defaults().withLabels(labels).withUser(ctx.userId()));
         } catch (RuntimeException e) {
             throw new ToolException(e.getMessage(), e);
         }
@@ -169,16 +186,15 @@ public class PythonInstallTool implements Tool {
         }
         if (out.isEmpty()) {
             throw new ToolException(
-                    "python_install needs 'package' (string) or "
-                            + "'packages' (non-empty list of strings)");
+                    "python_install needs 'package' (string) or " + "'packages' (non-empty list of strings)");
         }
         return out;
     }
 
     private void ensurePythonType(ToolInvocationContext ctx, String dirName) {
-        RootDirHandle handle = workspaceService.getRootDir(ctx.tenantId(), ctx.projectId(), dirName)
-                .orElseThrow(() -> new ToolException(
-                        "Unknown RootDir: " + dirName));
+        RootDirHandle handle = workspaceService
+                .getRootDir(ctx.tenantId(), ctx.projectId(), dirName)
+                .orElseThrow(() -> new ToolException("Unknown RootDir: " + dirName));
         if (!PythonHandler.TYPE.equals(handle.getType())) {
             throw new ToolException("python_install refused: RootDir '" + dirName
                     + "' has type '" + handle.getType() + "', expected '"

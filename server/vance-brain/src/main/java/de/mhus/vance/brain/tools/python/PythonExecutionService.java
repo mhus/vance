@@ -72,8 +72,8 @@ public class PythonExecutionService {
             String code,
             List<String> args,
             @Nullable String flags) {
-        return executeAsync(tenantId, projectId, sessionId, processId,
-                /* username */ null, code, args, flags, Map.of());
+        return executeAsync(
+                tenantId, projectId, sessionId, processId, /* username */ null, code, args, flags, Map.of());
     }
 
     /**
@@ -100,20 +100,18 @@ public class PythonExecutionService {
             @Nullable String flags,
             Map<String, String> labels) {
         RootDirHandle handle = ensureDefaultPythonRootDir(
-                tenantId, projectId,
-                StringUtils.defaultIfBlank(processId,
-                        StringUtils.defaultIfBlank(sessionId, "_cortex")),
+                tenantId,
+                projectId,
+                StringUtils.defaultIfBlank(processId, StringUtils.defaultIfBlank(sessionId, "_cortex")),
                 sessionId);
         String dirName = handle.getDirName();
 
         String fileName = "_inline_" + System.currentTimeMillis() + ".py";
         try {
             Path written = workspaceService.write(tenantId, projectId, dirName, fileName, code);
-            log.debug("PythonExecutionService: wrote {} chars to {}/{}",
-                    code.length(), dirName, written.getFileName());
+            log.debug("PythonExecutionService: wrote {} chars to {}/{}", code.length(), dirName, written.getFileName());
         } catch (RuntimeException e) {
-            throw new RuntimeException(
-                    "Python execute: failed to write script: " + e.getMessage(), e);
+            throw new RuntimeException("Python execute: failed to write script: " + e.getMessage(), e);
         }
 
         // PEP 723 inline-script-metadata — if the file declares
@@ -122,8 +120,7 @@ public class PythonExecutionService {
         // "just hit Run, the venv catches up". When deps are
         // unchanged we skip the install entirely (hash marker check).
         List<String> inlineDeps = PythonInlineMetadata.parseDependencies(code);
-        boolean needsInstall = !inlineDeps.isEmpty()
-                && !installedHashMatches(tenantId, projectId, dirName, inlineDeps);
+        boolean needsInstall = !inlineDeps.isEmpty() && !installedHashMatches(tenantId, projectId, dirName, inlineDeps);
 
         StringBuilder cmd = new StringBuilder();
         if (needsInstall) {
@@ -135,8 +132,10 @@ public class PythonExecutionService {
             // Persist the hash only on a successful pip install — a
             // failed install leaves the marker untouched so the next
             // run retries.
-            cmd.append(" && echo ").append(PythonShellEscape.quote(depsHash))
-                    .append(" > ").append(DEPS_HASH_MARKER);
+            cmd.append(" && echo ")
+                    .append(PythonShellEscape.quote(depsHash))
+                    .append(" > ")
+                    .append(DEPS_HASH_MARKER);
             cmd.append(" && ");
         }
         cmd.append(".venv/bin/python");
@@ -148,7 +147,7 @@ public class PythonExecutionService {
             cmd.append(' ').append(PythonShellEscape.quote(arg));
         }
 
-        SubmitOptions options = SubmitOptions.defaults().withLabels(labels);
+        SubmitOptions options = SubmitOptions.defaults().withLabels(labels).withUser(username);
         if (StringUtils.isNotBlank(username)) {
             de.mhus.vance.brain.access.ScriptRunEnvironmentBuilder.ScriptRunEnvironment scriptEnv =
                     scriptRunEnvironmentBuilder.build(tenantId, projectId, sessionId, username);
@@ -158,16 +157,14 @@ public class PythonExecutionService {
             // Stamp the run id as a label so SCRIPT_RUN-JWT validation can
             // look up the registry entry by the JWT's srid claim.
             Map<String, String> labelsWithRunId = new LinkedHashMap<>(labels);
-            labelsWithRunId.put(
-                    de.mhus.vance.brain.tools.exec.ExecLabels.KEY_RUN_ID, scriptEnv.runId());
+            labelsWithRunId.put(de.mhus.vance.brain.tools.exec.ExecLabels.KEY_RUN_ID, scriptEnv.runId());
             options = SubmitOptions.defaults()
                     .withLabels(labelsWithRunId)
-                    .withEnv(scriptEnv.env());
+                    .withEnv(scriptEnv.env())
+                    .withUser(username);
         }
 
-        return execManager.submitTracked(
-                tenantId, projectId, sessionId, processId, dirName, cmd.toString(),
-                options);
+        return execManager.submitTracked(tenantId, projectId, sessionId, processId, dirName, cmd.toString(), options);
     }
 
     /**
@@ -201,16 +198,14 @@ public class PythonExecutionService {
      * absent marker / mismatch reports "doesn't match" so the install
      * runs.
      */
-    private boolean installedHashMatches(
-            String tenantId, String projectId, String dirName, List<String> deps) {
+    private boolean installedHashMatches(String tenantId, String projectId, String dirName, List<String> deps) {
         try {
             Path marker = workspaceService.resolve(tenantId, projectId, dirName, DEPS_HASH_MARKER);
             if (!Files.isReadable(marker)) return false;
             String stored = Files.readString(marker, StandardCharsets.UTF_8).trim();
             return stored.equals(hashDeps(deps));
         } catch (RuntimeException | java.io.IOException e) {
-            log.debug("PythonExecutionService: deps-hash marker unreadable, will reinstall: {}",
-                    e.toString());
+            log.debug("PythonExecutionService: deps-hash marker unreadable, will reinstall: {}", e.toString());
             return false;
         }
     }
@@ -224,8 +219,13 @@ public class PythonExecutionService {
     private RootDirHandle ensureDefaultPythonRootDir(
             String tenantId, String projectId, String creator, @Nullable String sessionId) {
         return TypedRootDirProvisioner.ensure(
-                workspaceService, tenantId, projectId, creator, sessionId,
-                PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL,
+                workspaceService,
+                tenantId,
+                projectId,
+                creator,
+                sessionId,
+                PythonHandler.TYPE,
+                PythonHandler.DEFAULT_LABEL,
                 Map.of(PythonHandler.META_PYTHON_PATH, PythonHandler.DEFAULT_PYTHON_PATH));
     }
 }

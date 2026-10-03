@@ -1077,7 +1077,7 @@ function fmtDuration(ms: number | null): string {
 
     <!-- Preview mode: binary docs that should NEVER hit the CodeEditor
          (PDF/DOCX/XLSX/archive/audio/video/…). DocumentPreview handles
-         the renderable subset (PDF via pdfjs, DOCX via mammoth, XLSX
+         the renderable subset (PDF via the browser's native viewer, DOCX via mammoth, XLSX
          via SheetJS) and falls back to a "binary file" placeholder for
          the rest. The metadata strip at top gives the user a visible
          confirmation of which file is open and what we know about it

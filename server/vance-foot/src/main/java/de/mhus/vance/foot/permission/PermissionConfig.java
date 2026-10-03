@@ -1,10 +1,10 @@
 package de.mhus.vance.foot.permission;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
-import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * Raw, file-bound shape of {@code ~/.vancetope/permissions.yaml}. Mutable
@@ -23,6 +23,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  *     allow: ["^git( |$)", "^ls( |$)"]
  *   delete:
  *     allow: ["~/projects/scratch/**"]
+ *   exec:
+ *     env:
+ *       allow: ["SSH_AUTH_SOCK"]
  * </pre>
  *
  * <p>The YAML document has a single top-level {@code permissions:} key
@@ -73,6 +76,15 @@ public class PermissionConfig {
     @Data
     public static class Exec {
         private Isolation isolation = new Isolation();
+
+        /**
+         * Names from the foot's own environment that a {@code client_exec_run}
+         * command may inherit on top of the non-secret base (see {@code
+         * ExecEnvPolicy}). This is the user's deliberate widening — every name
+         * listed here becomes readable by the agent. Empty (default) means
+         * nothing beyond the base.
+         */
+        private Env env = new Env();
     }
 
     /**
@@ -87,5 +99,11 @@ public class PermissionConfig {
         private String mode = "none";
         private String workdir = "./";
         private @Nullable String wrapper;
+    }
+
+    /** {@code exec.env.allow} — see {@link Exec#env}. */
+    @Data
+    public static class Env {
+        private List<String> allow = new ArrayList<>();
     }
 }

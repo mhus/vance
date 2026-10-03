@@ -2,6 +2,7 @@ package de.mhus.vance.toolpack.mcp;
 
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.McpJsonRpc;
+import de.mhus.vance.toolpack.exec.ExecEnvPolicy;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -43,9 +44,10 @@ public final class McpStdioTransport implements McpTransport {
      * subprocess so a command can still be located and run. Everything
      * else from the Brain process env (secrets included) is dropped; the
      * pack's explicit {@code env} supplies the rest (code-review Phase 2).
+     * Single source of truth is {@link ExecEnvPolicy#INHERITABLE_NAMES} —
+     * the same base the brain/foot exec surfaces use.
      */
-    private static final Set<String> ENV_PASSTHROUGH = Set.of(
-            "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR", "TMP", "TEMP", "SystemRoot", "USERPROFILE");
+    private static final Set<String> ENV_PASSTHROUGH = ExecEnvPolicy.INHERITABLE_NAMES;
 
     private final McpConfig config;
     private final McpJsonRpc rpc;

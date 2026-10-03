@@ -13,19 +13,17 @@ import org.jspecify.annotations.Nullable;
  * and emits {@code EXEC_TIMEOUT} when reached. {@code null} = no
  * deadline.
  *
- * <p>{@code env}: sealed subprocess environment. {@code null} = inherit
- * the JVM env (legacy behaviour). Non-null wipes inherited vars and
- * installs only these — used by script-execution paths that mustn't
- * leak Brain creds.
+ * <p>{@code env}: extra variables layered on top of the sealed base (see
+ * {@link ExecEnvironmentBuilder}). {@code null} = base only. Used by
+ * script-execution paths that pin their own {@code PATH}/{@code HOME} and
+ * carry a {@code VANCE_TOKEN} — the base itself never contains Brain creds.
  *
  * <p>{@code labels}: per-instance metadata for cross-cutting filters
  * (Cortex doc linkage, language, source). Convention keys live in
  * {@code planning/script-document-api.md} §4.5.
  */
 public record SubmitOptions(
-        @Nullable Instant deadline,
-        @Nullable Map<String, String> env,
-        Map<String, String> labels) {
+        @Nullable Instant deadline, @Nullable Map<String, String> env, Map<String, String> labels) {
 
     public SubmitOptions {
         labels = labels == null ? Map.of() : Map.copyOf(labels);

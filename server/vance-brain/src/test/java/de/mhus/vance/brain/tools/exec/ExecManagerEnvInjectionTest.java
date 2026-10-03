@@ -9,9 +9,12 @@ import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.exec.ExecEnvPolicy;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,10 +24,16 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.ObjectProvider;
 
 /**
- * Integration-style: verifies that {@link SubmitOptions#env()} seals
- * the subprocess environment (only injected vars present, inherited
- * vars stripped) and that the default-null env preserves the legacy
- * inherit behaviour.
+ * Integration-style: verifies that every exec job runs with a <b>sealed</b>
+ * environment — the non-secret allow-list base plus explicitly injected vars,
+ * and nothing else from the Brain JVM. This is the regression for GitHub issue
+ * {@code mhus/vance#62} (an agent-driven command could read the Mongo password
+ * and other secrets from the container environment).
+ *
+ * <p>The leak check is deliberately positive-shaped: the child's variables
+ * must be a subset of the policy base (plus injected names and the few vars a
+ * POSIX shell sets for itself), so a newly added credential variable is caught
+ * without naming it here.
  */
 @DisabledOnOs(OS.WINDOWS)
 class ExecManagerEnvInjectionTest {
@@ -32,6 +41,9 @@ class ExecManagerEnvInjectionTest {
     private static final String TENANT = "t-1";
     private static final String PROJECT = "p-1";
     private static final String DIR = "ws";
+
+    /** Variables a POSIX shell adds to its own environment on startup. */
+    private static final Set<String> SHELL_NATIVE = Set.of("PWD", "SHLVL", "_", "OLDPWD");
 
     private ExecManager manager;
 
@@ -55,7 +67,7 @@ class ExecManagerEnvInjectionTest {
         ObjectProvider<EngineMessageRouter> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(router);
 
-        manager = new ExecManager(props, workspace, registry, provider);
+        manager = new ExecManager(props, new ExecEnvironmentBuilder(props), workspace, registry, provider);
     }
 
     @AfterEach
@@ -64,38 +76,40 @@ class ExecManagerEnvInjectionTest {
     }
 
     @Test
-    void sealedEnv_subprocessSeesOnlyInjectedVars() throws Exception {
-        SubmitOptions options = SubmitOptions.defaults()
-                .withEnv(Map.of("VANCE_TEST_TOKEN", "secret-abc"));
-
-        ExecJob job = manager.submit(
-                TENANT, PROJECT, null, DIR,
-                "echo TOKEN=${VANCE_TEST_TOKEN:-<missing>}; "
-                        + "echo HOME=${HOME:-<missing>}",
-                options);
+    void defaultEnv_subprocessSeesOnlyTheSealedBase() throws Exception {
+        ExecJob job = manager.submit(TENANT, PROJECT, null, DIR, "env", SubmitOptions.defaults());
         manager.waitFor(job, 5_000);
 
         assertThat(job.isTerminal()).isTrue();
-        String out = job.readStdout();
-        // Injected var is present.
-        assertThat(out).contains("TOKEN=secret-abc");
-        // Inherited HOME is stripped — only the shell-default fallback
-        // applies. Note: /bin/sh sets its own PATH default on startup
-        // even when the env is fully cleared, so we can't assert
-        // PATH=<missing> portably; HOME is the clean signal.
-        assertThat(out).contains("HOME=<missing>");
+        Map<String, String> childEnv = parseEnv(job.readStdout());
+        assertThat(childEnv).isNotEmpty();
+        // #62: nothing from the Brain JVM env beyond the non-secret base.
+        assertOnlyExpected(childEnv, Set.of());
     }
 
     @Test
-    void nullEnv_subprocessInheritsJvmEnv() throws Exception {
-        ExecJob job = manager.submit(
-                TENANT, PROJECT, null, DIR,
-                "echo HOME=${HOME:-<missing>}",
-                SubmitOptions.defaults());
+    void extras_subprocessSeesInjectedVarsOnTopOfTheBase() throws Exception {
+        SubmitOptions options = SubmitOptions.defaults().withEnv(Map.of("VANCE_TEST_TOKEN", "secret-abc"));
+
+        ExecJob job = manager.submit(TENANT, PROJECT, null, DIR, "env", options);
         manager.waitFor(job, 5_000);
 
         assertThat(job.isTerminal()).isTrue();
-        assertThat(job.readStdout()).contains("HOME=").doesNotContain("HOME=<missing>");
+        Map<String, String> childEnv = parseEnv(job.readStdout());
+        assertThat(childEnv).containsEntry("VANCE_TEST_TOKEN", "secret-abc");
+        assertOnlyExpected(childEnv, Set.of("VANCE_TEST_TOKEN"));
+    }
+
+    @Test
+    void extras_pinBaseValuesLikePath() throws Exception {
+        // The script path pins its own PATH — an extra must win over the base.
+        SubmitOptions options = SubmitOptions.defaults().withEnv(Map.of("PATH", "/pinned/bin"));
+
+        ExecJob job = manager.submit(TENANT, PROJECT, null, DIR, "echo PATH=${PATH:-<missing>}", options);
+        manager.waitFor(job, 5_000);
+
+        assertThat(job.isTerminal()).isTrue();
+        assertThat(job.readStdout()).contains("PATH=/pinned/bin");
     }
 
     @Test
@@ -105,8 +119,7 @@ class ExecManagerEnvInjectionTest {
                 ExecLabels.KEY_LANGUAGE, ExecLabels.LANG_PYTHON);
         SubmitOptions options = SubmitOptions.defaults().withLabels(labels);
 
-        ExecJob job = manager.submit(
-                TENANT, PROJECT, null, DIR, "true", options);
+        ExecJob job = manager.submit(TENANT, PROJECT, null, DIR, "true", options);
         manager.waitFor(job, 5_000);
 
         assertThat(job.labels())
@@ -114,5 +127,26 @@ class ExecManagerEnvInjectionTest {
                 .containsEntry(ExecLabels.KEY_LANGUAGE, ExecLabels.LANG_PYTHON);
         // Defensive copy — mutating the source map shouldn't affect the job.
         assertThat(job.labels()).isUnmodifiable();
+    }
+
+    private static void assertOnlyExpected(Map<String, String> childEnv, Set<String> injected) {
+        for (String key : childEnv.keySet()) {
+            assertThat(ExecEnvPolicy.INHERITABLE_NAMES.contains(key)
+                            || SHELL_NATIVE.contains(key)
+                            || injected.contains(key))
+                    .as("unexpected variable leaked into the subprocess env: " + key)
+                    .isTrue();
+        }
+    }
+
+    private static Map<String, String> parseEnv(String stdout) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String line : stdout.split("\n")) {
+            int idx = line.indexOf('=');
+            if (idx > 0) {
+                out.put(line.substring(0, idx), line.substring(idx + 1));
+            }
+        }
+        return out;
     }
 }

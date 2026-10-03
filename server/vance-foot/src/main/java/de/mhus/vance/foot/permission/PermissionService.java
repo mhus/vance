@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.permission;
 
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -30,14 +31,17 @@ public class PermissionService {
      * blocking forever on input that will never come.
      */
     private volatile boolean interactive = true;
+
     private volatile boolean sandboxEnabled;
     private volatile PermissionPolicy policy;
     private volatile ExecIsolation isolation = ExecIsolation.DISABLED;
+    private volatile List<String> execEnvAllow = List.of();
 
     public PermissionService(PermissionConfigLoader loader) {
         this.loader = loader;
         reload();
-        log.info("permission sandbox {} at startup (exec isolation {})",
+        log.info(
+                "permission sandbox {} at startup (exec isolation {})",
                 sandboxEnabled ? "ENABLED" : "DISABLED",
                 isolation.enabled() ? "ON" : "off");
     }
@@ -48,6 +52,7 @@ public class PermissionService {
         this.sandboxEnabled = !cliDisabled && Boolean.TRUE.equals(effective.getSandbox());
         this.policy = PermissionPolicy.compile(effective, PermissionConfigLoader.DEFAULT_PATH_DENY);
         this.isolation = resolveIsolation(effective);
+        this.execEnvAllow = resolveEnvAllow(effective);
     }
 
     /**
@@ -75,15 +80,34 @@ public class PermissionService {
                     + "(needs a '{cmd}' placeholder) — isolation DISABLED, commands run unwrapped");
             return ExecIsolation.DISABLED;
         }
-        String workdir = iso.getWorkdir() == null || iso.getWorkdir().isBlank()
-                ? "." : iso.getWorkdir();
+        String workdir = iso.getWorkdir() == null || iso.getWorkdir().isBlank() ? "." : iso.getWorkdir();
         String resolvedWorkdir = PermissionPaths.canonicalize(workdir).toString();
         return new ExecIsolation(true, resolvedWorkdir, wrapper);
+    }
+
+    /**
+     * Resolves {@code exec.env.allow} — names from the foot's own environment
+     * an agent-driven {@code client_exec_run} inherits on top of the non-secret
+     * base. Independent of the sandbox switch (gate and environment are
+     * orthogonal); the list is the only widening, and writing it is a
+     * deliberate user act in {@code permissions.yaml}.
+     */
+    private List<String> resolveEnvAllow(PermissionConfig effective) {
+        PermissionConfig.Exec exec = effective.getExec();
+        if (exec == null || exec.getEnv() == null) {
+            return List.of();
+        }
+        return List.copyOf(exec.getEnv().getAllow());
     }
 
     /** Effective exec-isolation for {@code client_exec_run}. */
     public ExecIsolation isolation() {
         return isolation;
+    }
+
+    /** Extra environment names {@code client_exec_run} may inherit. */
+    public List<String> execEnvAllow() {
+        return execEnvAllow;
     }
 
     public boolean isSandboxEnabled() {

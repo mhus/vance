@@ -13,7 +13,13 @@ import org.jspecify.annotations.Nullable;
  */
 final class ExecJob {
 
-    enum Status { RUNNING, COMPLETED, FAILED, KILLED, ORPHANED }
+    enum Status {
+        RUNNING,
+        COMPLETED,
+        FAILED,
+        KILLED,
+        ORPHANED
+    }
 
     private final String id;
     private final String projectId;
@@ -23,11 +29,11 @@ final class ExecJob {
     private final Path stderrFile;
     private final Instant startedAt;
     /**
-     * Subprocess environment to install. {@code null} = inherit JVM env
-     * (legacy default for {@code work_exec_run} callers). When non-null the
-     * runner wipes inherited vars and installs only these — used by
-     * script-execution paths that need a sealed env (e.g. Python with
-     * {@code VANCE_TOKEN}).
+     * Subprocess environment to install, built by {@link
+     * ExecEnvironmentBuilder} at submit time (sealed base + pass-throughs +
+     * extras). {@code null} only for the non-spawning convenience
+     * constructors used by tests and renderers — the runner installs this
+     * map verbatim and <b>never</b> falls back to inheriting the JVM env.
      */
     private final @Nullable Map<String, String> env;
     /**
@@ -92,35 +98,92 @@ final class ExecJob {
         this.lastOutputAt = this.startedAt;
     }
 
-    String id() { return id; }
-    String projectId() { return projectId; }
-    @Nullable String ownerProcessId() { return ownerProcessId; }
-    String command() { return command; }
-    Path stdoutFile() { return stdoutFile; }
-    Path stderrFile() { return stderrFile; }
-    Instant startedAt() { return startedAt; }
-    @Nullable Map<String, String> env() { return env; }
-    Map<String, String> labels() { return labels; }
+    String id() {
+        return id;
+    }
 
-    @Nullable Instant finishedAt() { return finishedAt; }
-    void finishedAt(Instant t) { this.finishedAt = t; }
+    String projectId() {
+        return projectId;
+    }
 
-    Status status() { return status; }
-    void status(Status s) { this.status = s; }
+    @Nullable
+    String ownerProcessId() {
+        return ownerProcessId;
+    }
 
-    @Nullable Integer exitCode() { return exitCode; }
-    void exitCode(@Nullable Integer c) { this.exitCode = c; }
+    String command() {
+        return command;
+    }
 
-    @Nullable Process process() { return process; }
-    void process(Process p) { this.process = p; }
+    Path stdoutFile() {
+        return stdoutFile;
+    }
+
+    Path stderrFile() {
+        return stderrFile;
+    }
+
+    Instant startedAt() {
+        return startedAt;
+    }
+
+    @Nullable
+    Map<String, String> env() {
+        return env;
+    }
+
+    Map<String, String> labels() {
+        return labels;
+    }
+
+    @Nullable
+    Instant finishedAt() {
+        return finishedAt;
+    }
+
+    void finishedAt(Instant t) {
+        this.finishedAt = t;
+    }
+
+    Status status() {
+        return status;
+    }
+
+    void status(Status s) {
+        this.status = s;
+    }
+
+    @Nullable
+    Integer exitCode() {
+        return exitCode;
+    }
+
+    void exitCode(@Nullable Integer c) {
+        this.exitCode = c;
+    }
+
+    @Nullable
+    Process process() {
+        return process;
+    }
+
+    void process(Process p) {
+        this.process = p;
+    }
 
     void appendStdout(String line) {
-        synchronized (stdout) { stdout.append(line).append('\n'); capBuffer(stdout); }
+        synchronized (stdout) {
+            stdout.append(line).append('\n');
+            capBuffer(stdout);
+        }
         lastOutputAt = Instant.now();
     }
 
     void appendStderr(String line) {
-        synchronized (stderr) { stderr.append(line).append('\n'); capBuffer(stderr); }
+        synchronized (stderr) {
+            stderr.append(line).append('\n');
+            capBuffer(stderr);
+        }
         lastOutputAt = Instant.now();
     }
 
@@ -141,18 +204,25 @@ final class ExecJob {
     }
 
     String readStdout() {
-        synchronized (stdout) { return stdout.toString(); }
+        synchronized (stdout) {
+            return stdout.toString();
+        }
     }
 
     String readStderr() {
-        synchronized (stderr) { return stderr.toString(); }
+        synchronized (stderr) {
+            return stderr.toString();
+        }
     }
 
     boolean isTerminal() {
         return status != Status.RUNNING;
     }
 
-    @Nullable Instant deadline() { return deadline; }
+    @Nullable
+    Instant deadline() {
+        return deadline;
+    }
 
     /**
      * Sets the deadline at submit-time, before the worker is started.

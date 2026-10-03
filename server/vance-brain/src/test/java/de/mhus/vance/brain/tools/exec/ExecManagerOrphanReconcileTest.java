@@ -59,7 +59,7 @@ class ExecManagerOrphanReconcileTest {
         ObjectProvider<EngineMessageRouter> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(router);
 
-        manager = new ExecManager(props, workspace, registry, provider);
+        manager = new ExecManager(props, new ExecEnvironmentBuilder(props), workspace, registry, provider);
     }
 
     @AfterEach
@@ -141,12 +141,10 @@ class ExecManagerOrphanReconcileTest {
         assertThat(reconciled).isEqualTo(1);
         assertThat(job.status()).isEqualTo(ExecJob.Status.ORPHANED);
 
-        verify(registry).updateProgress(
-                eq(job.id()), any(), eq(ExecutionStatus.ORPHANED), any(), any());
+        verify(registry).updateProgress(eq(job.id()), any(), eq(ExecutionStatus.ORPHANED), any(), any());
 
         // Owner is unblocked with EXEC_FINISHED (orphan is not a watchdog kill).
-        ArgumentCaptor<PendingMessageDocument> cap =
-                ArgumentCaptor.forClass(PendingMessageDocument.class);
+        ArgumentCaptor<PendingMessageDocument> cap = ArgumentCaptor.forClass(PendingMessageDocument.class);
         verify(router).dispatch(eq("proc-9"), eq("proc-9"), cap.capture());
         assertThat(cap.getValue().getEventType()).isEqualTo(ProcessEventType.EXEC_FINISHED);
         assertThat(cap.getValue().getPayload()).containsEntry("status", "ORPHANED");
@@ -169,8 +167,13 @@ class ExecManagerOrphanReconcileTest {
     // ──────────────────── helpers ────────────────────
 
     private static ExecJob newJob(String ownerProcessId) {
-        return new ExecJob("job-" + System.nanoTime(), "p-1", ownerProcessId,
-                "sleep 999", Path.of("stdout.log"), Path.of("stderr.log"));
+        return new ExecJob(
+                "job-" + System.nanoTime(),
+                "p-1",
+                ownerProcessId,
+                "sleep 999",
+                Path.of("stdout.log"),
+                Path.of("stderr.log"));
     }
 
     private static Instant farFuture() {
@@ -196,8 +199,7 @@ class ExecManagerOrphanReconcileTest {
     private void inject(String tenant, String project, ExecJob job) {
         Map<String, Map<String, ExecJob>> jobs =
                 (Map<String, Map<String, ExecJob>>) ReflectionTestUtils.getField(manager, "jobs");
-        Map<String, ExecJob> perProject =
-                Collections.synchronizedMap(new LinkedHashMap<>());
+        Map<String, ExecJob> perProject = Collections.synchronizedMap(new LinkedHashMap<>());
         perProject.put(job.id(), job);
         jobs.put(tenant + "/" + project, perProject);
     }

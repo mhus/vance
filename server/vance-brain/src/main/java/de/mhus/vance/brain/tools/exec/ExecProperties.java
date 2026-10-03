@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.tools.exec;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -65,6 +67,13 @@ public class ExecProperties {
     private Isolation isolation = new Isolation();
 
     /**
+     * Subprocess environment policy: the non-secret base plus explicit
+     * pass-throughs. Sealed for every job — see {@code ExecEnvPolicy} in
+     * {@code vance-toolpack} for the rationale.
+     */
+    private Env env = new Env();
+
+    /**
      * {@code mode: custom} wraps the command in {@link #wrapper} (a
      * whitespace-separated argv template with {@code {workdir}} = the job's
      * RootDir cwd and {@code {cmd}} = the command, kept as one argv element).
@@ -74,5 +83,18 @@ public class ExecProperties {
     public static class Isolation {
         private String mode = "none";
         private @Nullable String wrapper;
+    }
+
+    /**
+     * {@code vance.exec.env.allow} — names from the Brain process environment
+     * an exec subprocess may inherit <b>on top of</b> the non-secret base.
+     * This is the deliberate widening for tool credentials that genuinely have
+     * to ride the environment (e.g. {@code GH_TOKEN} for git-over-https); every
+     * name listed here becomes readable by the agent that runs the command.
+     * Empty (default) means nothing beyond the base.
+     */
+    @Data
+    public static class Env {
+        private List<String> allow = new ArrayList<>();
     }
 }

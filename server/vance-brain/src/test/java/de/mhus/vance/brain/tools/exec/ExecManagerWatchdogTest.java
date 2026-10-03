@@ -62,7 +62,7 @@ class ExecManagerWatchdogTest {
         ObjectProvider<EngineMessageRouter> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(router);
 
-        manager = new ExecManager(props, workspace, registry, provider);
+        manager = new ExecManager(props, new ExecEnvironmentBuilder(props), workspace, registry, provider);
         ReflectionTestUtils.setField(manager, "properties", props);
     }
 
@@ -80,8 +80,7 @@ class ExecManagerWatchdogTest {
         });
 
         Instant deadline = Instant.now().plusSeconds(1);
-        ExecJob job = manager.submit(
-                TENANT, PROJECT, OWNER, DIR, "sleep 10", deadline);
+        ExecJob job = manager.submit(TENANT, PROJECT, OWNER, DIR, "sleep 10", deadline);
 
         // Watchdog has 1s; give it generous slack.
         assertThat(fired.await(5, TimeUnit.SECONDS)).isTrue();
@@ -89,8 +88,7 @@ class ExecManagerWatchdogTest {
         assertThat(job.status()).isEqualTo(ExecJob.Status.KILLED);
         assertThat(job.killedByWatchdog()).isTrue();
 
-        ArgumentCaptor<PendingMessageDocument> cap =
-                ArgumentCaptor.forClass(PendingMessageDocument.class);
+        ArgumentCaptor<PendingMessageDocument> cap = ArgumentCaptor.forClass(PendingMessageDocument.class);
         verify(router).dispatch(eq(OWNER), eq(OWNER), cap.capture());
         PendingMessageDocument doc = cap.getValue();
         assertThat(doc.getEventType()).isEqualTo(ProcessEventType.EXEC_TIMEOUT);
@@ -102,13 +100,11 @@ class ExecManagerWatchdogTest {
     @Test
     void extendDeadline_postponesWatchdogKill() throws Exception {
         Instant deadline = Instant.now().plusMillis(500);
-        ExecJob job = manager.submit(
-                TENANT, PROJECT, OWNER, DIR, "sleep 3", deadline);
+        ExecJob job = manager.submit(TENANT, PROJECT, OWNER, DIR, "sleep 3", deadline);
 
         // Push the deadline out before the original watchdog would fire.
         Thread.sleep(200);
-        boolean extended = manager.extendDeadline(
-                TENANT, PROJECT, job.id(), Duration.ofSeconds(5));
+        boolean extended = manager.extendDeadline(TENANT, PROJECT, job.id(), Duration.ofSeconds(5));
         assertThat(extended).isTrue();
 
         // Wait past the original deadline; the job must still be RUNNING.
@@ -125,20 +121,17 @@ class ExecManagerWatchdogTest {
 
     @Test
     void extendDeadline_returnsFalseForTerminalJob() throws Exception {
-        ExecJob job = manager.submit(
-                TENANT, PROJECT, OWNER, DIR, "echo done", (Instant) null);
+        ExecJob job = manager.submit(TENANT, PROJECT, OWNER, DIR, "echo done", (Instant) null);
         manager.waitFor(job, 5_000);
         assertThat(job.isTerminal()).isTrue();
 
-        boolean extended = manager.extendDeadline(
-                TENANT, PROJECT, job.id(), Duration.ofSeconds(10));
+        boolean extended = manager.extendDeadline(TENANT, PROJECT, job.id(), Duration.ofSeconds(10));
         assertThat(extended).isFalse();
     }
 
     @Test
     void extendDeadline_unknownJob_returnsFalse() {
-        boolean extended = manager.extendDeadline(
-                TENANT, PROJECT, "no-such-id", Duration.ofSeconds(10));
+        boolean extended = manager.extendDeadline(TENANT, PROJECT, "no-such-id", Duration.ofSeconds(10));
         assertThat(extended).isFalse();
     }
 
@@ -151,17 +144,14 @@ class ExecManagerWatchdogTest {
         });
 
         Instant deadline = Instant.now().plusSeconds(10); // plenty of slack
-        ExecJob job = manager.submit(
-                TENANT, PROJECT, OWNER, DIR, "echo quick", deadline);
+        ExecJob job = manager.submit(TENANT, PROJECT, OWNER, DIR, "echo quick", deadline);
         manager.waitFor(job, 5_000);
 
         assertThat(fired.await(5, TimeUnit.SECONDS)).isTrue();
 
-        ArgumentCaptor<PendingMessageDocument> cap =
-                ArgumentCaptor.forClass(PendingMessageDocument.class);
+        ArgumentCaptor<PendingMessageDocument> cap = ArgumentCaptor.forClass(PendingMessageDocument.class);
         verify(router).dispatch(eq(OWNER), eq(OWNER), cap.capture());
-        assertThat(cap.getValue().getEventType())
-                .isEqualTo(ProcessEventType.EXEC_FINISHED);
+        assertThat(cap.getValue().getEventType()).isEqualTo(ProcessEventType.EXEC_FINISHED);
         assertThat(job.killedByWatchdog()).isFalse();
     }
 }

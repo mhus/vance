@@ -20,12 +20,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Comparator;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -69,6 +69,7 @@ import org.springframework.stereotype.Service;
 public class ExecManager {
 
     private final ExecProperties properties;
+    private final ExecEnvironmentBuilder environmentBuilder;
     private final WorkspaceService workspaceService;
     private final ExecutionRegistryService registry;
     /**
@@ -91,6 +92,7 @@ public class ExecManager {
      */
     private final ScheduledExecutorService watchdog =
             Executors.newSingleThreadScheduledExecutor(watchdogThreadFactory());
+
     private final Map<String, ScheduledFuture<?>> watchdogFutures = new ConcurrentHashMap<>();
 
     // ──────────────────── Public API ────────────────────
@@ -113,13 +115,8 @@ public class ExecManager {
      * {@code planning/wakeup-and-exec.md} §4.2.
      */
     public ExecJob submit(
-            String tenantId,
-            String projectId,
-            @Nullable String ownerProcessId,
-            String dirName,
-            String command) {
-        return submit(tenantId, projectId, ownerProcessId, dirName, command,
-                SubmitOptions.defaults());
+            String tenantId, String projectId, @Nullable String ownerProcessId, String dirName, String command) {
+        return submit(tenantId, projectId, ownerProcessId, dirName, command, SubmitOptions.defaults());
     }
 
     /**
@@ -132,8 +129,7 @@ public class ExecManager {
             String dirName,
             String command,
             @Nullable Instant deadline) {
-        return submit(tenantId, projectId, ownerProcessId, dirName, command,
-                SubmitOptions.withDeadline(deadline));
+        return submit(tenantId, projectId, ownerProcessId, dirName, command, SubmitOptions.withDeadline(deadline));
     }
 
     /**
@@ -163,14 +159,16 @@ public class ExecManager {
         try {
             Files.createDirectories(jobDir);
         } catch (IOException e) {
-            throw new ExecException(
-                    "Cannot create exec job dir: " + e.getMessage(), e);
+            throw new ExecException("Cannot create exec job dir: " + e.getMessage(), e);
         }
         ExecJob job = new ExecJob(
-                jobId, projectId, ownerProcessId, command,
+                jobId,
+                projectId,
+                ownerProcessId,
+                command,
                 jobDir.resolve("stdout.log"),
                 jobDir.resolve("stderr.log"),
-                options.env(),
+                environmentBuilder.build(options.env()),
                 options.labels());
         Instant deadline = options.deadline();
         if (deadline != null) {
@@ -191,8 +189,7 @@ public class ExecManager {
      * already happened — the caller's {@code work_exec_check} will see
      * the terminal status reflected on the next read).
      */
-    public boolean extendDeadline(
-            String tenantId, String projectId, String jobId, Duration extension) {
+    public boolean extendDeadline(String tenantId, String projectId, String jobId, Duration extension) {
         if (extension == null || extension.isNegative() || extension.isZero()) {
             throw new ExecException("extension must be positive");
         }
@@ -210,10 +207,10 @@ public class ExecManager {
 
     private Path resolveCwd(String tenantId, String projectId, String dirName) {
         try {
-            RootDirHandle handle = workspaceService.getRootDir(tenantId, projectId, dirName)
+            RootDirHandle handle = workspaceService
+                    .getRootDir(tenantId, projectId, dirName)
                     .orElseThrow(() -> new ExecException(
-                            "Unknown workspace RootDir: "
-                                    + tenantId + "/" + projectId + "/" + dirName));
+                            "Unknown workspace RootDir: " + tenantId + "/" + projectId + "/" + dirName));
             return handle.getPath();
         } catch (WorkspaceException e) {
             throw new ExecException(e.getMessage(), e);
@@ -233,21 +230,29 @@ public class ExecManager {
      * as {@code work_exec_run}).
      */
     public Map<String, Object> submitTrackedAndRender(
-            String tenantId, String projectId,
-            @Nullable String sessionId, @Nullable String processId,
-            String dirName, String command, long waitMs) {
-        return submitTrackedAndRender(tenantId, projectId, sessionId, processId,
-                dirName, command, waitMs, SubmitOptions.defaults());
+            String tenantId,
+            String projectId,
+            @Nullable String sessionId,
+            @Nullable String processId,
+            String dirName,
+            String command,
+            long waitMs) {
+        return submitTrackedAndRender(
+                tenantId, projectId, sessionId, processId, dirName, command, waitMs, SubmitOptions.defaults());
     }
 
     /** Full-options variant of {@link #submitTrackedAndRender}. */
     public Map<String, Object> submitTrackedAndRender(
-            String tenantId, String projectId,
-            @Nullable String sessionId, @Nullable String processId,
-            String dirName, String command, long waitMs,
+            String tenantId,
+            String projectId,
+            @Nullable String sessionId,
+            @Nullable String processId,
+            String dirName,
+            String command,
+            long waitMs,
             SubmitOptions options) {
-        return submitTrackedAndRender(tenantId, projectId, sessionId, processId,
-                dirName, command, waitMs, options, null);
+        return submitTrackedAndRender(
+                tenantId, projectId, sessionId, processId, dirName, command, waitMs, options, null);
     }
 
     /**
@@ -256,10 +261,15 @@ public class ExecManager {
      * job id for live progress (e.g. an async compose run's tail) while it runs.
      */
     public Map<String, Object> submitTrackedAndRender(
-            String tenantId, String projectId,
-            @Nullable String sessionId, @Nullable String processId,
-            String dirName, String command, long waitMs,
-            SubmitOptions options, @Nullable Consumer<String> onJobId) {
+            String tenantId,
+            String projectId,
+            @Nullable String sessionId,
+            @Nullable String processId,
+            String dirName,
+            String command,
+            long waitMs,
+            SubmitOptions options,
+            @Nullable Consumer<String> onJobId) {
         ExecJob job = submit(tenantId, projectId, processId, dirName, command, options);
         if (onJobId != null) {
             onJobId.accept(job.id());
@@ -294,18 +304,23 @@ public class ExecManager {
      * wait+render — REST clients can't block.
      */
     public String submitTracked(
-            String tenantId, String projectId,
-            @Nullable String sessionId, @Nullable String processId,
-            String dirName, String command) {
-        return submitTracked(tenantId, projectId, sessionId, processId,
-                dirName, command, SubmitOptions.defaults());
+            String tenantId,
+            String projectId,
+            @Nullable String sessionId,
+            @Nullable String processId,
+            String dirName,
+            String command) {
+        return submitTracked(tenantId, projectId, sessionId, processId, dirName, command, SubmitOptions.defaults());
     }
 
     /** Full-options variant of {@link #submitTracked}. */
     public String submitTracked(
-            String tenantId, String projectId,
-            @Nullable String sessionId, @Nullable String processId,
-            String dirName, String command,
+            String tenantId,
+            String projectId,
+            @Nullable String sessionId,
+            @Nullable String processId,
+            String dirName,
+            String command,
             SubmitOptions options) {
         ExecJob job = submit(tenantId, projectId, processId, dirName, command, options);
         registry.register(new de.mhus.vance.brain.execution.ExecutionRegistryEntry(
@@ -336,10 +351,8 @@ public class ExecManager {
      * {@code exitCode} / {@code durationMs}. Empty when the job id
      * doesn't belong to this project (or has been evicted).
      */
-    public Optional<Map<String, Object>> renderJob(
-            String tenantId, String projectId, String jobId) {
-        return get(tenantId, projectId, jobId)
-                .map(j -> ExecJobRenderer.render(j, properties.getInlineOutputCharCap()));
+    public Optional<Map<String, Object>> renderJob(String tenantId, String projectId, String jobId) {
+        return get(tenantId, projectId, jobId).map(j -> ExecJobRenderer.render(j, properties.getInlineOutputCharCap()));
     }
 
     /** Blocks up to {@code maxMillis} for a RUNNING job to finish. */
@@ -399,11 +412,10 @@ public class ExecManager {
      * persisted log file so callers see the same content {@code tail -n}
      * would on the host. Returns the lines oldest-first (chronological).
      */
-    public List<String> tail(
-            String tenantId, String projectId, String jobId, int n, Stream stream) {
+    public List<String> tail(String tenantId, String projectId, String jobId, int n, Stream stream) {
         if (n <= 0) return List.of();
-        ExecJob job = get(tenantId, projectId, jobId).orElseThrow(() ->
-                new ExecException("Unknown exec job: '" + jobId + "' (not in this project)"));
+        ExecJob job = get(tenantId, projectId, jobId)
+                .orElseThrow(() -> new ExecException("Unknown exec job: '" + jobId + "' (not in this project)"));
         Path file = stream == Stream.STDERR ? job.stderrFile() : job.stdoutFile();
         return tailFile(file, n);
     }
@@ -433,15 +445,17 @@ public class ExecManager {
 
     private static long fileMtime(Path file) {
         try {
-            return Files.isRegularFile(file)
-                    ? Files.getLastModifiedTime(file).toMillis() : 0L;
+            return Files.isRegularFile(file) ? Files.getLastModifiedTime(file).toMillis() : 0L;
         } catch (IOException e) {
             return 0L;
         }
     }
 
     /** Selector for {@link #tail}. */
-    public enum Stream { STDOUT, STDERR }
+    public enum Stream {
+        STDOUT,
+        STDERR
+    }
 
     /** Force-kill a still-running job. Returns {@code false} if already terminal. */
     public boolean kill(String tenantId, String projectId, String jobId) {
@@ -504,29 +518,35 @@ public class ExecManager {
             tree.forEach(ProcessHandle::destroyForcibly);
             return;
         }
-        watchdog.schedule(() -> {
-            for (ProcessHandle h : tree) {
-                if (h.isAlive()) {
-                    h.destroyForcibly();
-                }
-            }
-        }, graceMs, TimeUnit.MILLISECONDS);
+        watchdog.schedule(
+                () -> {
+                    for (ProcessHandle h : tree) {
+                        if (h.isAlive()) {
+                            h.destroyForcibly();
+                        }
+                    }
+                },
+                graceMs,
+                TimeUnit.MILLISECONDS);
     }
 
     // ──────────────────── Runner ────────────────────
 
     private void runJob(ExecJob job, Path cwd) {
         try (BufferedWriter stdoutW = openLog(job.stdoutFile());
-             BufferedWriter stderrW = openLog(job.stderrFile())) {
+                BufferedWriter stderrW = openLog(job.stderrFile())) {
 
             ProcessBuilder pb = new ProcessBuilder(buildArgv(job.command(), cwd));
             pb.directory(cwd.toFile());
             pb.redirectErrorStream(false);
-            Map<String, String> sealedEnv = job.env();
-            if (sealedEnv != null) {
-                Map<String, String> processEnv = pb.environment();
-                processEnv.clear();
-                processEnv.putAll(sealedEnv);
+            // Every job runs sealed: the map was built at submit time by
+            // ExecEnvironmentBuilder. The wipe is unconditional so a null map
+            // can never fall back to inheriting the Brain's environment.
+            Map<String, String> processEnv = pb.environment();
+            processEnv.clear();
+            Map<String, String> jobEnv = job.env();
+            if (jobEnv != null) {
+                processEnv.putAll(jobEnv);
             }
             Process p = pb.start();
             job.process(p);
@@ -552,8 +572,7 @@ public class ExecManager {
             }
         } catch (Exception e) {
             log.warn("Exec job '{}' failed: {}", job.id(), e.toString());
-            job.appendStderr("ERROR: "
-                    + e.getClass().getSimpleName() + ": " + e.getMessage());
+            job.appendStderr("ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             job.status(ExecJob.Status.FAILED);
         } finally {
             job.finishedAt(Instant.now());
@@ -572,8 +591,7 @@ public class ExecManager {
      */
     private void rearmWatchdog(ExecJob job, Instant deadline) {
         long delayMs = Math.max(0, Duration.between(Instant.now(), deadline).toMillis());
-        ScheduledFuture<?> future = watchdog.schedule(
-                () -> fireWatchdog(job), delayMs, TimeUnit.MILLISECONDS);
+        ScheduledFuture<?> future = watchdog.schedule(() -> fireWatchdog(job), delayMs, TimeUnit.MILLISECONDS);
         ScheduledFuture<?> prev = watchdogFutures.put(job.id(), future);
         if (prev != null) {
             prev.cancel(false);
@@ -644,9 +662,7 @@ public class ExecManager {
             return;
         }
         boolean timedOut = job.killedByWatchdog();
-        ProcessEventType eventType = timedOut
-                ? ProcessEventType.EXEC_TIMEOUT
-                : ProcessEventType.EXEC_FINISHED;
+        ProcessEventType eventType = timedOut ? ProcessEventType.EXEC_TIMEOUT : ProcessEventType.EXEC_FINISHED;
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("jobId", job.id());
@@ -659,12 +675,10 @@ public class ExecManager {
                 payload.put("finishedAt", finished.toString());
             }
             payload.put("projectId", job.projectId());
-            payload.put("stdoutTail", tailFile(job.stdoutFile(),
-                    properties.getCompletionTailLines()));
-            payload.put("stderrTail", tailFile(job.stderrFile(),
-                    properties.getCompletionTailLines()));
-            long killedAfterSeconds = Duration.between(job.startedAt(),
-                    finished != null ? finished : Instant.now()).toSeconds();
+            payload.put("stdoutTail", tailFile(job.stdoutFile(), properties.getCompletionTailLines()));
+            payload.put("stderrTail", tailFile(job.stderrFile(), properties.getCompletionTailLines()));
+            long killedAfterSeconds = Duration.between(job.startedAt(), finished != null ? finished : Instant.now())
+                    .toSeconds();
             if (timedOut) {
                 payload.put("killedAfterSeconds", killedAfterSeconds);
             }
@@ -690,26 +704,20 @@ public class ExecManager {
                     .payload(payload)
                     .eventId(java.util.UUID.randomUUID().toString())
                     .build();
-            boolean ok = engineMessageRouterProvider.getObject()
-                    .dispatch(ownerProcessId, ownerProcessId, doc);
+            boolean ok = engineMessageRouterProvider.getObject().dispatch(ownerProcessId, ownerProcessId, doc);
             if (!ok) {
-                log.warn("{} dispatch dropped owner='{}' job='{}'",
-                        eventType, ownerProcessId, job.id());
+                log.warn("{} dispatch dropped owner='{}' job='{}'", eventType, ownerProcessId, job.id());
             }
         } catch (RuntimeException e) {
-            log.warn("{} dispatch failed owner='{}' job='{}': {}",
-                    eventType, ownerProcessId, job.id(), e.toString(), e);
+            log.warn(
+                    "{} dispatch failed owner='{}' job='{}': {}", eventType, ownerProcessId, job.id(), e.toString(), e);
         }
     }
 
     /** Mirror the job's terminal state into the cross-side registry. */
     private void notifyRegistry(ExecJob job) {
         registry.updateProgress(
-                job.id(),
-                job.lastOutputAt(),
-                toRegistryStatus(job.status()),
-                job.exitCode(),
-                job.finishedAt());
+                job.id(), job.lastOutputAt(), toRegistryStatus(job.status()), job.exitCode(), job.finishedAt());
     }
 
     static ExecutionStatus toRegistryStatus(ExecJob.Status s) {
@@ -770,8 +778,10 @@ public class ExecManager {
             if (!job.markOrphanedIfRunning()) {
                 continue;
             }
-            log.warn("Reconciled orphaned exec job '{}' (RUNNING with dead process, "
-                    + "no output for >{}) → ORPHANED", job.id(), ttl);
+            log.warn(
+                    "Reconciled orphaned exec job '{}' (RUNNING with dead process, " + "no output for >{}) → ORPHANED",
+                    job.id(),
+                    ttl);
             notifyRegistry(job);
             cancelWatchdog(job.id());
             pushCompletionIfTracked(job);
@@ -802,8 +812,7 @@ public class ExecManager {
 
     private static Thread pumpVirtual(InputStream in, Consumer<String> sink) {
         return Thread.ofVirtual().unstarted(() -> {
-            try (BufferedReader r = new BufferedReader(
-                    new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = r.readLine()) != null) {
                     sink.accept(line);
@@ -827,15 +836,15 @@ public class ExecManager {
     }
 
     private static BufferedWriter openLog(Path file) throws IOException {
-        return Files.newBufferedWriter(file, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        return Files.newBufferedWriter(
+                file, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     // ──────────────────── Indexing ────────────────────
 
     private void indexJob(String scopeKey, ExecJob job) {
-        Map<String, ExecJob> perProject = jobs.computeIfAbsent(
-                scopeKey, k -> java.util.Collections.synchronizedMap(new LinkedHashMap<>()));
+        Map<String, ExecJob> perProject =
+                jobs.computeIfAbsent(scopeKey, k -> java.util.Collections.synchronizedMap(new LinkedHashMap<>()));
         synchronized (perProject) {
             perProject.put(job.id(), job);
             int cap = properties.getMaxJobsPerProject();
@@ -871,8 +880,11 @@ public class ExecManager {
     }
 
     private Path jobDir(String scopeKey, String jobId) {
-        return Path.of(properties.getBaseDir()).toAbsolutePath().normalize()
-                .resolve(scopeKey).resolve(jobId);
+        return Path.of(properties.getBaseDir())
+                .toAbsolutePath()
+                .normalize()
+                .resolve(scopeKey)
+                .resolve(jobId);
     }
 
     /** Best-effort recursive delete of an evicted job's on-disk log directory. */
@@ -916,13 +928,10 @@ public class ExecManager {
         ExecProperties.Isolation iso = properties.getIsolation();
         if (ExecIsolation.enabled(iso)) {
             List<String> argv = ExecIsolation.wrap(iso.getWrapper(), cwd.toString(), command);
-            log.info("exec isolation: wrapping work_exec command in '{}'",
-                    argv.isEmpty() ? "?" : argv.get(0));
+            log.info("exec isolation: wrapping work_exec command in '{}'", argv.isEmpty() ? "?" : argv.get(0));
             return argv;
         }
-        return isWindows()
-                ? List.of("cmd.exe", "/c", command)
-                : List.of("/bin/sh", "-c", command);
+        return isWindows() ? List.of("cmd.exe", "/c", command) : List.of("/bin/sh", "-c", command);
     }
 
     private static boolean isWindows() {

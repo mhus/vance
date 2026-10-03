@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.tools.exec;
 
+import de.mhus.vance.toolpack.exec.ExecEnvPolicy;
 import jakarta.annotation.PreDestroy;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -64,6 +65,7 @@ public class ClientExecutorService {
      */
     private final ScheduledExecutorService watchdog =
             Executors.newSingleThreadScheduledExecutor(watchdogThreadFactory());
+
     private final Map<String, ScheduledFuture<?>> watchdogFutures = new ConcurrentHashMap<>();
 
     /** Lazy — dispatcher in turn depends on ConnectionService which depends on this one indirectly. */
@@ -71,8 +73,9 @@ public class ClientExecutorService {
 
     private final de.mhus.vance.foot.permission.PermissionService permissions;
 
-    public ClientExecutorService(ObjectProvider<FootExecEventDispatcher> dispatcher,
-                                 de.mhus.vance.foot.permission.PermissionService permissions) {
+    public ClientExecutorService(
+            ObjectProvider<FootExecEventDispatcher> dispatcher,
+            de.mhus.vance.foot.permission.PermissionService permissions) {
         this.dispatcher = dispatcher;
         this.permissions = permissions;
     }
@@ -81,8 +84,7 @@ public class ClientExecutorService {
         return submit(command, null, null, null);
     }
 
-    public ClientExecJob submit(
-            String command, @Nullable String sessionId, @Nullable String projectId) {
+    public ClientExecJob submit(String command, @Nullable String sessionId, @Nullable String projectId) {
         return submit(command, sessionId, projectId, null);
     }
 
@@ -100,10 +102,7 @@ public class ClientExecutorService {
      * front.
      */
     public ClientExecJob submit(
-            String command,
-            @Nullable String sessionId,
-            @Nullable String projectId,
-            @Nullable Instant deadline) {
+            String command, @Nullable String sessionId, @Nullable String projectId, @Nullable Instant deadline) {
         if (command == null || command.isBlank()) {
             throw new IllegalArgumentException("command is required");
         }
@@ -112,14 +111,10 @@ public class ClientExecutorService {
         try {
             Files.createDirectories(jobDir);
         } catch (IOException e) {
-            throw new ClientExecException(
-                    "Cannot create exec job dir: " + e.getMessage(), e);
+            throw new ClientExecException("Cannot create exec job dir: " + e.getMessage(), e);
         }
         ClientExecJob job = new ClientExecJob(
-                jobId, command,
-                jobDir.resolve("stdout.log"),
-                jobDir.resolve("stderr.log"),
-                sessionId, projectId);
+                jobId, command, jobDir.resolve("stdout.log"), jobDir.resolve("stderr.log"), sessionId, projectId);
         if (deadline != null) {
             job.deadline(deadline);
         }
@@ -251,15 +246,17 @@ public class ClientExecutorService {
 
     private static long fileMtime(Path file) {
         try {
-            return Files.isRegularFile(file)
-                    ? Files.getLastModifiedTime(file).toMillis() : 0L;
+            return Files.isRegularFile(file) ? Files.getLastModifiedTime(file).toMillis() : 0L;
         } catch (IOException e) {
             return 0L;
         }
     }
 
     /** Selector for {@link #tail}. */
-    public enum Stream { STDOUT, STDERR }
+    public enum Stream {
+        STDOUT,
+        STDERR
+    }
 
     public boolean kill(String id) {
         ClientExecJob job = jobs.get(id);
@@ -298,13 +295,16 @@ public class ClientExecutorService {
             tree.forEach(ProcessHandle::destroyForcibly);
             return;
         }
-        watchdog.schedule(() -> {
-            for (ProcessHandle h : tree) {
-                if (h.isAlive()) {
-                    h.destroyForcibly();
-                }
-            }
-        }, KILL_GRACE_MS, TimeUnit.MILLISECONDS);
+        watchdog.schedule(
+                () -> {
+                    for (ProcessHandle h : tree) {
+                        if (h.isAlive()) {
+                            h.destroyForcibly();
+                        }
+                    }
+                },
+                KILL_GRACE_MS,
+                TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -324,10 +324,8 @@ public class ClientExecutorService {
     // ──────────────────── Watchdog ────────────────────
 
     private void armWatchdog(ClientExecJob job, Instant deadline) {
-        long delayMs = Math.max(0,
-                Duration.between(Instant.now(), deadline).toMillis());
-        ScheduledFuture<?> future = watchdog.schedule(
-                () -> fireWatchdog(job), delayMs, TimeUnit.MILLISECONDS);
+        long delayMs = Math.max(0, Duration.between(Instant.now(), deadline).toMillis());
+        ScheduledFuture<?> future = watchdog.schedule(() -> fireWatchdog(job), delayMs, TimeUnit.MILLISECONDS);
         ScheduledFuture<?> prev = watchdogFutures.put(job.id(), future);
         if (prev != null) {
             prev.cancel(false);
@@ -366,10 +364,17 @@ public class ClientExecutorService {
 
     private void runJob(ClientExecJob job) {
         try (BufferedWriter stdoutW = openLog(job.stdoutFile());
-             BufferedWriter stderrW = openLog(job.stderrFile())) {
+                BufferedWriter stderrW = openLog(job.stderrFile())) {
 
             ProcessBuilder pb = new ProcessBuilder(buildArgv(job.command()));
             pb.redirectErrorStream(false);
+            // Sealed environment: the foot runs on the user's machine, where the
+            // parent env holds SSH agent sockets, cloud credentials and tokens an
+            // agent-driven command must never see. Same policy as the brain-side
+            // exec — see ExecEnvPolicy.
+            Map<String, String> childEnv = pb.environment();
+            childEnv.clear();
+            childEnv.putAll(ExecEnvPolicy.seal(System.getenv(), permissions.execEnvAllow()));
             Process p = pb.start();
             job.process(p);
 
@@ -390,13 +395,11 @@ public class ClientExecutorService {
 
             job.exitCode(code);
             if (job.status() != ClientExecStatus.KILLED) {
-                job.status(code == 0 ? ClientExecStatus.COMPLETED
-                        : ClientExecStatus.FAILED);
+                job.status(code == 0 ? ClientExecStatus.COMPLETED : ClientExecStatus.FAILED);
             }
         } catch (Exception e) {
             log.warn("Client exec job '{}' failed: {}", job.id(), e.toString());
-            job.appendStderr("ERROR: "
-                    + e.getClass().getSimpleName() + ": " + e.getMessage());
+            job.appendStderr("ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             job.status(ClientExecStatus.FAILED);
         } finally {
             job.finishedAt(Instant.now());
@@ -407,8 +410,7 @@ public class ClientExecutorService {
 
     private static Thread pumpVirtual(InputStream in, Consumer<String> sink) {
         return Thread.ofVirtual().unstarted(() -> {
-            try (BufferedReader r = new BufferedReader(
-                    new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = r.readLine()) != null) {
                     sink.accept(line);
@@ -432,8 +434,8 @@ public class ClientExecutorService {
     }
 
     private static BufferedWriter openLog(Path file) throws IOException {
-        return Files.newBufferedWriter(file, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        return Files.newBufferedWriter(
+                file, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     // ──────────────────── Indexing ────────────────────
@@ -466,13 +468,10 @@ public class ClientExecutorService {
         de.mhus.vance.foot.permission.ExecIsolation isolation = permissions.isolation();
         if (isolation.enabled()) {
             List<String> argv = isolation.wrap(command);
-            log.info("exec isolation: wrapping command in '{}'",
-                    argv.isEmpty() ? "?" : argv.get(0));
+            log.info("exec isolation: wrapping command in '{}'", argv.isEmpty() ? "?" : argv.get(0));
             return argv;
         }
-        return isWindows()
-                ? List.of("cmd.exe", "/c", command)
-                : List.of("/bin/sh", "-c", command);
+        return isWindows() ? List.of("cmd.exe", "/c", command) : List.of("/bin/sh", "-c", command);
     }
 
     private static boolean isWindows() {

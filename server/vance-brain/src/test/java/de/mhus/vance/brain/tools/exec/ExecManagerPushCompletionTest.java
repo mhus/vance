@@ -65,7 +65,7 @@ class ExecManagerPushCompletionTest {
         ObjectProvider<EngineMessageRouter> provider = mock(ObjectProvider.class);
         when(provider.getObject()).thenReturn(router);
 
-        manager = new ExecManager(props, workspace, registry, provider);
+        manager = new ExecManager(props, new ExecEnvironmentBuilder(props), workspace, registry, provider);
         // ExecJobRenderer + tailFile need ExecProperties via the
         // {@code properties} field; lombok's @RequiredArgsConstructor
         // sets it through the constructor — no reflection needed.
@@ -86,8 +86,7 @@ class ExecManagerPushCompletionTest {
         assertThat(job.isTerminal()).isTrue();
         assertThat(fired.await(5, TimeUnit.SECONDS)).isTrue();
 
-        ArgumentCaptor<PendingMessageDocument> docCaptor =
-                ArgumentCaptor.forClass(PendingMessageDocument.class);
+        ArgumentCaptor<PendingMessageDocument> docCaptor = ArgumentCaptor.forClass(PendingMessageDocument.class);
         verify(router, times(1)).dispatch(eq(OWNER), eq(OWNER), docCaptor.capture());
         PendingMessageDocument doc = docCaptor.getValue();
         assertThat(doc.getType()).isEqualTo(PendingMessageType.PROCESS_EVENT);
@@ -124,8 +123,7 @@ class ExecManagerPushCompletionTest {
         manager.waitFor(job, 5_000);
 
         assertThat(fired.await(5, TimeUnit.SECONDS)).isTrue();
-        ArgumentCaptor<PendingMessageDocument> docCaptor =
-                ArgumentCaptor.forClass(PendingMessageDocument.class);
+        ArgumentCaptor<PendingMessageDocument> docCaptor = ArgumentCaptor.forClass(PendingMessageDocument.class);
         verify(router).dispatch(eq(OWNER), eq(OWNER), docCaptor.capture());
         Map<String, Object> payload = docCaptor.getValue().getPayload();
         assertThat(payload).containsEntry("status", "FAILED");

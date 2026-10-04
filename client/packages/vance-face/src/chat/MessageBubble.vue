@@ -94,6 +94,11 @@ const emit = defineEmits<{
   (e: 'pickOption', label: string): void;
 }>();
 
+/** Working-log note (meta.kind='interim') — engine loop narration like
+ * "[redbull] round 11/12". Rendered dimmed: side-channel observability,
+ * not a canonical turn answer (see workingLog.ts). */
+const interimNote = computed(() => props.meta?.['kind'] === 'interim');
+
 const askUserOptions = computed<AskUserOption[]>(() => {
   const raw = props.meta?.['askUserOptions'];
   if (!Array.isArray(raw)) return [];
@@ -396,6 +401,7 @@ async function onCopyMarkdown(): Promise<void> {
     <div
       class="rounded-2xl px-4 py-2.5 shadow-sm relative group"
       :class="[
+        interimNote ? 'opacity-60 text-sm' : '',
         hasRichContent ? 'w-full' : 'max-w-[85%]',
         bubbleStyle ? '' : (isOtherUser ? 'text-white' : ''),
         bubbleStyle ? '' : (isUser && !isOtherUser ? 'bg-primary text-primary-content' : ''),

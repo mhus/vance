@@ -31,6 +31,12 @@ import ChatActivityStrip from './ChatActivityStrip.vue';
 import ChatTheme from './ChatTheme.vue';
 import { applyProgress, createActivityState } from './chatActivity';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
+import {
+  freezeDraftToWorkingLog,
+  isInterimNote,
+  isWorkingLogEntry,
+  supersededWorkingLog,
+} from './workingLog';
 import { buildFollowUpContext, type FollowUpContext } from './followUpContext';
 import { useWsConnection } from '@/ws/wsConnectionStore';
 import { planClosureContent } from './planClosure';
@@ -407,7 +413,17 @@ function onPickAskUserOption(label: string): void {
  * shared sessions. Worker side-channel messages are deliberately excluded.
  */
 const followUpContext = computed<FollowUpContext | null>(() => {
-  return buildFollowUpContext(allMessages.value.filter((message) => !isWorkerMessage(message)));
+  // Working-log noise (interim notes, frozen round drafts) is live-only
+  // observability — neither canonical turns for the export nor context
+  // for follow-up suggestions.
+  return buildFollowUpContext(
+    allMessages.value.filter(
+      (message) =>
+        !isWorkerMessage(message)
+        && !isInterimNote(message.meta)
+        && !isWorkingLogEntry(message),
+    ),
+  );
 });
 
 watch(followUpContext, (next) => {
@@ -480,6 +496,17 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
   if (optimisticIdx >= 0) {
     liveMessages.value.splice(optimisticIdx, 1);
   }
+  // Interim working-log notes (meta.kind='interim' — engine loop
+  // narration like "[redbull] round 11/12") are side-channel
+  // observability, not the canonical commit of the streaming draft:
+  // freeze the finished round's streamed text into a live-only bubble
+  // so it stays visible (live finding 2026-10-04: every round note
+  // wiped the text the user was reading), and never speak the note.
+  const interimNote = isInterimNote(data.meta);
+  if (interimNote) {
+    const frozen = freezeDraftToWorkingLog(streamingDrafts.value.get(data.processName));
+    if (frozen) liveMessages.value.push(frozen);
+  }
   liveMessages.value.push({
     messageId: data.chatMessageId,
     thinkProcessId: data.thinkProcessId,
@@ -494,9 +521,19 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
     addressedToAgent: data.addressedToAgent,
   });
   streamingDrafts.value.delete(data.processName);
+  if (!interimNote) {
+    // Canonical commit: the persisted message supersedes both the
+    // streaming draft and a live-only preview with the same content
+    // (the janx ACCEPT case replays the final round's text as reply).
+    liveMessages.value = supersededWorkingLog(
+      liveMessages.value,
+      data.processName,
+      data.content,
+    );
+  }
   // Speak non-USER messages from the main chat process when the
   // composer's speaker is enabled — sibling component, so emit up.
-  if (String(data.role) !== 'USER' && !isWorkerProcess(data.processName)) {
+  if (!interimNote && String(data.role) !== 'USER' && !isWorkerProcess(data.processName)) {
     emit('speak-message', data.content);
   }
   // Any frame counts as activity for talk-mode's idle timer.
@@ -806,6 +843,7 @@ let exportFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 const exportableTurns = computed<ChatMessageDto[]>(() =>
   allMessages.value.filter((m) => {
     if (isWorkerMessage(m)) return false;
+    if (isInterimNote(m.meta) || isWorkingLogEntry(m)) return false;
     const role = String(m.role);
     if (role !== 'USER' && role !== 'ASSISTANT') return false;
     return (m.content?.trim().length ?? 0) > 0;

@@ -181,6 +181,7 @@ public class ZaphodEngine implements ThinkEngine {
     private final ChatMessageService chatMessageService;
     private final RecipeResolver recipeResolver;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
+    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
     private final de.mhus.vance.brain.thinkengine.SystemPromptComposer composer;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
@@ -659,6 +660,7 @@ public class ZaphodEngine implements ThinkEngine {
                     emitFinalReply(process, ctx, state);
                     thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 } else {
+                    emitFailureNote(process, ctx, state);
                     thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
                 }
                 return;
@@ -687,6 +689,7 @@ public class ZaphodEngine implements ThinkEngine {
                     emitFinalReply(process, ctx, state);
                     thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 } else {
+                    emitFailureNote(process, ctx, state);
                     thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
                 }
                 return;
@@ -1379,6 +1382,17 @@ public class ZaphodEngine implements ThinkEngine {
             messages.add(UserMessage.from(body.toString()));
             String modelAlias = config.providerInstance() + ":" + config.modelName();
 
+            // The synthesis is the longest silent stretch of a council run —
+            // observed 2026-09-28: five provider attempts over five minutes
+            // with no visible activity, which the user read as a fatal
+            // "system error". Mark the turn as parked-on-model so the
+            // activity strip shows a running wait (with its timer) instead
+            // of silence. The session mode's conclusion todo says the same
+            // thing on the plan channel.
+            progressEmitter.emitStatus(
+                    process,
+                    de.mhus.vance.api.progress.StatusTag.WAITING,
+                    "Synthesizing the council's perspectives — a heavy model turn");
             // Structured-output loop: the synthesizer must emit a
             // JSON object with title/summary/synthesisMarkdown.
             // Up to MAX_SYNTHESIS_CORRECTIONS re-prompt attempts on
@@ -1389,7 +1403,25 @@ public class ZaphodEngine implements ThinkEngine {
             for (int attempt = 0; attempt <= MAX_SYNTHESIS_CORRECTIONS; attempt++) {
                 long startMs = System.currentTimeMillis();
                 ChatRequest request = ChatRequest.builder().messages(messages).build();
-                ChatResponse response = ai.chatModel().chat(request);
+                ChatResponse response;
+                try {
+                    response = ai.chatModel().chat(request);
+                } catch (RuntimeException providerError) {
+                    // An exhausted retry chain arrives here as
+                    // AiChatException. A flaky provider is a normal outcome
+                    // for this turn, not a crashed one — record it like any
+                    // other attempt failure and let the budget decide.
+                    validationError = "provider call failed: " + providerError.getMessage();
+                    log.warn(
+                            "Zaphod id='{}' synthesis attempt {} provider call failed: {}",
+                            process.getId(),
+                            attempt,
+                            providerError.toString());
+                    if (attempt < MAX_SYNTHESIS_CORRECTIONS) {
+                        continue;
+                    }
+                    break;
+                }
                 llmCallTracker.record(process, request, response, System.currentTimeMillis() - startMs, modelAlias);
                 String text = response.aiMessage() == null
                         ? null
@@ -1646,6 +1678,37 @@ public class ZaphodEngine implements ThinkEngine {
             persistState(process, state);
         } catch (RuntimeException e) {
             log.warn("Zaphod id='{}' emitFinalReply failed: {}", process.getId(), e.toString());
+        }
+    }
+
+    /**
+     * BATCH councils otherwise close silently when the synthesizer gives up
+     * ({@code CloseReason.STALE}): the user is left with a dead process and
+     * only the head replies in the drafts folder — observed 2026-09-28, where
+     * the user reported "system fehler" while the heads' material sat unread.
+     * Send the failure as the turn's result so the parent chat and the user
+     * learn what happened and where the material is. SESSION councils report
+     * through {@code finishSessionTurn} instead.
+     */
+    private void emitFailureNote(ThinkProcessDocument process, ThinkEngineContext ctx, ZaphodState state) {
+        if (process.getParentProcessId() == null || process.getParentProcessId().isBlank()) {
+            return;
+        }
+        if (state.isReplyEmitted()) {
+            return;
+        }
+        try {
+            String reason = state.getFailureReason() == null ? "unknown error" : state.getFailureReason();
+            ctx.emitReply("The council synthesis failed — "
+                    + reason
+                    + "\n\nThe individual perspectives are saved under `"
+                    + DRAFTS_PREFIX
+                    + process.getId()
+                    + "/`.");
+            state.setReplyEmitted(true);
+            persistState(process, state);
+        } catch (RuntimeException e) {
+            log.warn("Zaphod id='{}' emitFailureNote failed: {}", process.getId(), e.toString());
         }
     }
 

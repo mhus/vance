@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.thinkprocess.TodoItem;
@@ -29,6 +31,7 @@ import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
 import de.mhus.vance.brain.context.LanguageContextResolver;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
@@ -78,6 +81,7 @@ class ZaphodSessionModeTest {
     private ChatMessageService chatMessageService;
     private RecipeResolver recipeResolver;
     private LlmCallTracker llmCallTracker;
+    private ProgressEmitter progressEmitter;
     private EnginePromptResolver enginePromptResolver;
     private SystemPromptComposer composer;
     private EngineChatFactory engineChatFactory;
@@ -97,6 +101,7 @@ class ZaphodSessionModeTest {
         chatMessageService = mock(ChatMessageService.class);
         recipeResolver = mock(RecipeResolver.class);
         llmCallTracker = mock(LlmCallTracker.class);
+        progressEmitter = mock(ProgressEmitter.class);
         enginePromptResolver = mock(EnginePromptResolver.class);
         composer = mock(SystemPromptComposer.class);
         engineChatFactory = mock(EngineChatFactory.class);
@@ -114,6 +119,7 @@ class ZaphodSessionModeTest {
                 chatMessageService,
                 recipeResolver,
                 llmCallTracker,
+                progressEmitter,
                 enginePromptResolver,
                 composer,
                 engineChatFactory,
@@ -612,6 +618,61 @@ class ZaphodSessionModeTest {
                                 .replies(new ArrayList<>())
                                 .build()))
                 .build();
+    }
+
+    @Test
+    void runTurn_batchSynthesis_announcesTheLongTurnBeforeItRuns() {
+        // The synthesis is the longest silent stretch of a council run.
+        // Observed 2026-09-28: five provider attempts over five minutes
+        // with no visible activity — the user read the bare retry notices
+        // as a fatal "system error". BATCH must park visibly, not silently.
+        ThinkProcessDocument process = sessionProcess(Map.of(ZaphodEngine.SESSION_MODE_KEY, false));
+        ZaphodState state = synthesizableState();
+        state.setMode(ZaphodMode.BATCH);
+        seedState(process, state);
+        mockSynthesisChat("{\"title\":\"T\",\"summary\":\"S\",\"synthesisMarkdown\":\"M\"}");
+
+        engine.runTurn(process, ctx);
+
+        verify(progressEmitter).emitStatus(eq(process), eq(StatusTag.WAITING), contains("Synthesizing"));
+    }
+
+    @Test
+    void runTurn_batchSynthesis_providerFailure_repliesWithTheFailureInsteadOfDyingQuietly() {
+        // A BATCH council used to close STALE with no message at all: the
+        // user saw a dead process while the head replies sat unread in the
+        // drafts folder. The failure now arrives as the turn's result —
+        // and the exhausted provider chain must not escape as a crashed
+        // turn either.
+        ThinkProcessDocument process = sessionProcess(Map.of(ZaphodEngine.SESSION_MODE_KEY, false));
+        ZaphodState state = synthesizableState();
+        state.setMode(ZaphodMode.BATCH);
+        seedState(process, state);
+        // The failure note needs someone to tell — a parent-less process
+        // has no chat to report to (same guard as emitFinalReply).
+        process.setParentProcessId("parent-1");
+        mockSynthesisChatFailure();
+
+        engine.runTurn(process, ctx);
+
+        ArgumentCaptor<String> reply = ArgumentCaptor.forClass(String.class);
+        verify(ctx).emitReply(reply.capture());
+        assertThat(reply.getValue()).contains("The council synthesis failed").contains("_zaphod-drafts/p1/");
+        verify(thinkProcessService).closeProcess(process.getId(), CloseReason.STALE);
+    }
+
+    /** Synthesizer whose provider calls all die — the exhausted retry
+     *  chain arrives as an exception from {@code chat()}. */
+    private void mockSynthesisChatFailure() {
+        AiChat aiChat = mock(AiChat.class);
+        ChatModel chatModel = mock(ChatModel.class);
+        when(aiChat.chatModel()).thenReturn(chatModel);
+        when(chatModel.chat(any(ChatRequest.class))).thenThrow(new RuntimeException("provider down"));
+        ChatBehavior behavior = ChatBehavior.single(new AiChatConfig("openai", "test-model", "test-key"));
+        when(engineChatFactory.forProcess(any(), any(), eq(ZaphodEngine.NAME)))
+                .thenReturn(new EngineChatFactory.EngineChatBundle(aiChat, behavior));
+        when(enginePromptResolver.resolve(any(), anyString(), anyString())).thenReturn("sys");
+        when(composer.render(anyString(), any())).thenReturn("rendered system");
     }
 
     private ZaphodState synthesizableState() {

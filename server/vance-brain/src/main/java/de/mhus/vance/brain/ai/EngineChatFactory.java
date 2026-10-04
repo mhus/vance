@@ -127,9 +127,14 @@ public class EngineChatFactory {
             base.setProjectId(process.getProjectId());
         }
         // Default user-notifier — only fires for resilience events
-        // (retry, chain-advance). Caller's notifier always wins.
+        // (retry, chain-advance). Caller's notifier always wins. The engine
+        // name leads the line: a bare provider retry notice reads like a
+        // fatal error, and "who is still working on what" is the question the
+        // user actually has (observed 2026-09-28: a council user read the
+        // bare "transient failure" notices as "system error").
         if (base.getUserNotifier() == null) {
-            base.setUserNotifier(msg -> progressEmitter.emitStatus(process, StatusTag.PROVIDER, msg));
+            base.setUserNotifier(
+                    msg -> progressEmitter.emitStatus(process, StatusTag.PROVIDER, engineName + " · " + msg));
         }
         // Trace-writer is attached unconditionally so audit always fires.
         // The DB-write leg gates on ctx.traceLlm() inside the lambda —

@@ -478,7 +478,7 @@ public class ResilientChatModel implements ChatModel {
         if (n == null) return;
         try {
             n.accept(String.format(
-                    "%s transient failure — %s · retry %d/%d in %.1fs",
+                    "%s: transient %s — still trying (attempt %d/%d, next in %.1fs)",
                     entry.label(), errorSummary(error), attempt, entry.policy().maxAttempts(), backoffMs / 1000.0));
         } catch (RuntimeException notifyFail) {
             log.debug("userNotifier threw on retry: {}", notifyFail.toString());

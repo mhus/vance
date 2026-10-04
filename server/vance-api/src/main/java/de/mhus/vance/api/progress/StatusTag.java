@@ -26,7 +26,9 @@ public enum StatusTag {
     FILE_READ,
     /** Spawning or steering a sub-process. */
     DELEGATING,
-    /** Process is parked waiting for user input (inbox, gate, etc.). */
+    /** Process is parked waiting — for user input (inbox, gate, etc.) or on a
+     *  long synchronous model call (a council synthesis). The text is the
+     *  wait's label; clients show it with an elapsed timer. */
     WAITING,
     /**
      * AI provider resilience event — transient failure being retried, or

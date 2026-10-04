@@ -99,6 +99,30 @@ class ResilientChatModelTest {
     }
 
     @Test
+    void the_retry_notice_reads_as_progress_not_as_failure() {
+        // The notice is what the user sees while a heavy turn retries
+        // (observed 2026-09-28: the bare "transient failure" wording made a
+        // user conclude the council synthesis had died). It has to read as
+        // "still working, attempt n/m".
+        AtomicInteger calls = new AtomicInteger();
+        List<String> notices = new ArrayList<>();
+        ResilientChatModel model = new ResilientChatModel(
+                List.of(entry("openai:a", scripted(calls, new RuntimeException("server overloaded"), response("ok")))),
+                notices::add,
+                null,
+                null,
+                null,
+                null);
+
+        assertThat(model.chat(REQUEST).aiMessage().text()).isEqualTo("ok");
+        assertThat(notices).hasSize(1);
+        assertThat(notices.get(0))
+                .contains("openai:a")
+                .contains("still trying (attempt 1/3")
+                .doesNotContain("transient failure");
+    }
+
+    @Test
     void a_non_retriable_error_does_not_burn_the_attempt_budget() {
         AtomicInteger calls = new AtomicInteger();
         // "invalid api key" matches no retry pattern: repeating it just
@@ -280,7 +304,7 @@ class ResilientChatModelTest {
 
         model.chat(REQUEST);
 
-        assertThat(notes).anyMatch(n -> n.contains("retry 1/3"));
+        assertThat(notes).anyMatch(n -> n.contains("attempt 1/3"));
         assertThat(notes).anyMatch(n -> n.contains("falling back to ollama:b"));
     }
 

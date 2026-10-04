@@ -2,6 +2,13 @@ contextWindowTokens: 1048576
 # Reasoning model — the cap must cover the thinking pass, not just the
 # visible answer (see glm-5.2.yaml for the failure mode).
 defaultMaxOutputTokens: 32768
+
+# Synthesis-class turns run past the 60s call default. Observed
+# 2026-09-28: a Zaphod synthesis (20k chars in, 4.3k out) timed out at
+# exactly 60s four times in a row and finished in 55.6s on the fifth try
+# — the retry chain turned one answer into five calls over five minutes.
+# Same class as the token cap above: the budget covers the thinking pass.
+timeoutSeconds: 180
 size: SMALL
 
 # DeepSeek V4 via strict OpenAI-compatible proxy (Cortecs) reliably

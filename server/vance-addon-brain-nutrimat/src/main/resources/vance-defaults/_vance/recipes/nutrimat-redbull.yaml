@@ -1,0 +1,22 @@
+# Nutrimat loop-lab experiment: nature `redbull` — the hard-budget loop.
+# Exhaustion is an error (the `exhausted` exception), nothing else: no
+# judge, no continuation, no partial-work rescue. Exactly one axis away
+# from `janx`. See specification/public/nutrimat-engine.md.
+title: "Nutrimat redbull — hard budget, exhausted is an error"
+listed: true
+category: experimental
+description: |
+  Experimental loop-lab worker. Nature `redbull` runs the same
+  natural-stop tool loop as `janx`, but its budget is hard: when the
+  iteration budget runs out, the loop raises the `exhausted` error and
+  the turn ends as a visible failure — no judge, no continuation, no
+  best-partial-work rescue. The comparison `janx` vs. `redbull`
+  measures exactly that difference. Pick it when you want an honest
+  "couldn't finish" instead of a rescued partial answer.
+engine: nutrimat-redbull
+params:
+  model: default:analyze,default:fast
+  maxIterations: 40
+tags:
+  - nutrimat
+  - experimental

@@ -1,0 +1,26 @@
+# Nutrimat loop-lab experiment: nature `salitos` — the stop is a decision.
+# At every natural-stop candidate a LightLlm judge decides done vs.
+# continue. Exactly one axis away from `janx`. See
+# specification/public/nutrimat-engine.md.
+title: "Nutrimat salitos — stop decided by a judge"
+listed: true
+category: experimental
+description: |
+  Experimental loop-lab worker. Nature `salitos` runs the natural-stop
+  tool loop, but the stop is not a given: whenever the model stops
+  calling tools, a judge (a single cheap LLM call, recipe
+  `nutrimat-judge-salitos`) looks at the draft answer and decides
+  whether the work is actually finished — or whether to push the model
+  to continue working. The comparison `janx` vs. `salitos` measures
+  exactly that decision point (the Arthur-shaped "done or keep going?"
+  question). `maxDecisions` caps how often the judge may say "continue"
+  per turn.
+engine: nutrimat-salitos
+params:
+  model: default:analyze,default:fast
+  maxIterations: 40
+  # Judge rounds per turn; after this the draft is accepted.
+  maxDecisions: 3
+tags:
+  - nutrimat
+  - experimental

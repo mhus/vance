@@ -198,6 +198,9 @@ public class TrillianSessionBootstrapper {
     /** P2/D8: relaxed model gate for the unattended loop. */
     private final TrillianModelGate modelGate;
 
+    /** P2/D8: the kill switch — no new user-loop while {@code trillian.enabled} is off. */
+    private final TrillianActivationGate activationGate;
+
     /**
      * Present only when a grant-storing permission provider is loaded
      * (simple-auth); {@code ifAvailable} keeps the seed a no-op under an
@@ -268,6 +271,19 @@ public class TrillianSessionBootstrapper {
     }
 
     private void doBootstrap(SessionDocument controlSession, ThinkProcessDocument controlProcess) {
+        // 0a. Kill switch: while trillian.enabled is off, no new user-loop
+        //     is built — checked before anything is minted so a disabled
+        //     Trillian leaves no account, no home and no session behind.
+        //     The hub layer of the cascade is consulted when a previous
+        //     incarnation's account exists (reactivate path); a freshly
+        //     picked name has no hub yet. A suppressed loop retries on the
+        //     next control turn (suppressLoop dedups the announcement).
+        String previousAccount = previousAccountOf(controlSession).orElse(null);
+        if (!activationGate.loopsEnabled(
+                controlSession.getTenantId(), previousAccount, controlSession.getProjectId())) {
+            suppressLoop(controlSession, controlProcess, TrillianActivationGate.refusalMessage());
+            return;
+        }
         // 0. Placement: the user-loop lives in the Trillian's own hub
         //    (_user_<trillian>), which is podless by design. Self-waking no
         //    longer assumes a home pod — the heartbeat claims its wake slot
@@ -287,7 +303,7 @@ public class TrillianSessionBootstrapper {
         //    reversible: same identity, same attributes, same grants —
         //    a Trillian that came back rather than a stranger wearing
         //    its session.
-        String trillianName = previousAccountOf(controlSession).orElse(null);
+        String trillianName = previousAccount;
         boolean adopted = trillianName != null;
         if (!adopted) {
             trillianName = pickUniqueTrillianName(controlSession.getTenantId(), nature);

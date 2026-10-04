@@ -1,11 +1,9 @@
 package de.mhus.vance.brain.runs;
 
 import de.mhus.vance.api.runs.RunAction;
-import de.mhus.vance.api.runs.RunChildDto;
 import de.mhus.vance.api.runs.RunDetailDto;
 import de.mhus.vance.api.runs.RunLinkDto;
 import de.mhus.vance.api.runs.RunStatus;
-import de.mhus.vance.api.runs.RunStepDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
@@ -59,9 +57,11 @@ public class ThinkProcessRunSource implements RunSource {
     private final ObjectMapper objectMapper;
     /** Owns pause/resume/stop for processes; the WS handlers use the same. */
     private final de.mhus.vance.brain.session.SessionLifecycleService sessionLifecycle;
+
     private final de.mhus.vance.brain.thinkengine.ProcessEventEmitter processEventEmitter;
     /** Whose session a process belongs to — see visibleTo. */
     private final de.mhus.vance.shared.session.SessionService sessionService;
+
     private final de.mhus.vance.shared.permission.PermissionService permissionService;
 
     @Override
@@ -77,8 +77,8 @@ public class ThinkProcessRunSource implements RunSource {
         // came back short, too large and one page view loaded thousands of
         // documents. The engine set is known here, so Mongo can do it.
         List<RunSummaryDto> out = new ArrayList<>();
-        for (ThinkProcessDocument p : thinkProcessService.findByProjectAndEngines(
-                tenantId, projectId, planShapedEngines(), limit)) {
+        for (ThinkProcessDocument p :
+                thinkProcessService.findByProjectAndEngines(tenantId, projectId, planShapedEngines(), limit)) {
             out.add(toSummary(p));
         }
         return out;
@@ -112,8 +112,10 @@ public class ThinkProcessRunSource implements RunSource {
                 .variables(new LinkedHashMap<>())
                 .children(List.of())
                 .links(List.of(RunLinkDto.builder()
-                        .rel("session").label(process.getSessionId())
-                        .target(process.getSessionId()).build()))
+                        .rel("session")
+                        .label(process.getSessionId())
+                        .target(process.getSessionId())
+                        .build()))
                 .waitingOnInboxItemId(null)
                 .allowedActions(actionsFor(process))
                 .extra(Map.of(
@@ -157,16 +159,15 @@ public class ThinkProcessRunSource implements RunSource {
     }
 
     @Override
-    public void perform(String tenantId, String projectId, String nativeId,
-                        RunAction action, String reason) {
+    public void perform(String tenantId, String projectId, String nativeId, RunAction action, String reason) {
         ThinkProcessDocument process = load(tenantId, projectId, nativeId)
                 .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
         // Idempotent by construction: an action the current state does not
         // offer is a no-op, not an error — the button may have been
         // rendered from a snapshot that has since moved on.
         if (!actionsFor(process).contains(action)) {
-            log.debug("Run action {} not applicable to process '{}' in state {}",
-                    action, nativeId, process.getStatus());
+            log.debug(
+                    "Run action {} not applicable to process '{}' in state {}", action, nativeId, process.getStatus());
             return;
         }
         switch (action) {
@@ -179,7 +180,8 @@ public class ThinkProcessRunSource implements RunSource {
 
     /** The process, but only if it belongs to the caller's scope. */
     private Optional<ThinkProcessDocument> load(String tenantId, String projectId, String nativeId) {
-        return thinkProcessService.findById(nativeId)
+        return thinkProcessService
+                .findById(nativeId)
                 .filter(p -> tenantId.equals(p.getTenantId()) && projectId.equals(p.getProjectId()));
     }
 
@@ -187,16 +189,21 @@ public class ThinkProcessRunSource implements RunSource {
         return RunSummaryDto.builder()
                 .runId(RunId.of(SOURCE_ID, process.getId()).composite())
                 .source(SOURCE_ID)
-                .name(process.getTitle() != null && !process.getTitle().isBlank()
-                        ? process.getTitle() : process.getName())
+                .name(
+                        process.getTitle() != null && !process.getTitle().isBlank()
+                                ? process.getTitle()
+                                : process.getName())
                 .status(mapStatus(process.getStatus(), process.getCloseReason()))
                 .step(null)
                 .projectId(process.getProjectId())
                 .startedBy(process.getRecipeName())
                 .startedAt(process.getCreatedAt())
                 .updatedAt(process.getUpdatedAt())
-                .parentRunId(process.getParentProcessId() == null
-                        ? null : RunId.of(SOURCE_ID, process.getParentProcessId()).composite())
+                .parentRunId(
+                        process.getParentProcessId() == null
+                                ? null
+                                : RunId.of(SOURCE_ID, process.getParentProcessId())
+                                        .composite())
                 .build();
     }
 
@@ -206,8 +213,7 @@ public class ThinkProcessRunSource implements RunSource {
      * something outside", and {@code SUSPENDED} is a hold like a pause even
      * though its owner is the session rather than the user.
      */
-    private static RunStatus mapStatus(
-            @Nullable ThinkProcessStatus status, @Nullable CloseReason closeReason) {
+    private static RunStatus mapStatus(@Nullable ThinkProcessStatus status, @Nullable CloseReason closeReason) {
         if (status == null) return RunStatus.RUNNING;
         return switch (status) {
             case INIT, RUNNING -> RunStatus.RUNNING;
@@ -222,7 +228,7 @@ public class ThinkProcessRunSource implements RunSource {
         return switch (reason) {
             case DONE, AUTO_CLOSE -> RunStatus.DONE;
             case INCOMPLETE, STALE -> RunStatus.FAILED;
-            case STOPPED, ARCHIVED, USER_DELETE, ABANDONED -> RunStatus.STOPPED;
+            case STOPPED, FORCE, ARCHIVED, USER_DELETE, ABANDONED -> RunStatus.STOPPED;
         };
     }
 
@@ -242,19 +248,21 @@ public class ThinkProcessRunSource implements RunSource {
     @Override
     public boolean visibleTo(
             de.mhus.vance.shared.permission.SecurityContext subject,
-            String tenantId, String projectId, String nativeId) {
+            String tenantId,
+            String projectId,
+            String nativeId) {
         Optional<ThinkProcessDocument> found = load(tenantId, projectId, nativeId);
         if (found.isEmpty()) return true;
         String sessionId = found.get().getSessionId();
         if (sessionId == null || sessionId.isBlank()) return true;
 
-        return sessionService.findBySessionId(sessionId)
+        return sessionService
+                .findBySessionId(sessionId)
                 .map(session -> session.isSystem()
-                        || (subject != null
-                            && subject.subjectId().equals(session.getUserId()))
-                        || permissionService.check(subject,
-                                new de.mhus.vance.shared.permission.Resource.Project(
-                                        tenantId, projectId),
+                        || (subject != null && subject.subjectId().equals(session.getUserId()))
+                        || permissionService.check(
+                                subject,
+                                new de.mhus.vance.shared.permission.Resource.Project(tenantId, projectId),
                                 de.mhus.vance.shared.permission.Action.ADMIN))
                 .orElse(true);
     }

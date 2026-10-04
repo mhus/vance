@@ -11,7 +11,6 @@ import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.command.EngineCommandResult;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,9 +35,6 @@ class TrillianCommandHandlerTest {
     TrillianInternalApi api;
 
     @Mock
-    ThinkProcessService thinkProcessService;
-
-    @Mock
     org.springframework.beans.factory.ObjectProvider<TrillianSessionBootstrapper> sessionBootstrapper;
 
     @InjectMocks
@@ -51,7 +47,7 @@ class TrillianCommandHandlerTest {
             ThinkProcessDocument p = inv.getArgument(0);
             return new TrillianInternalApi.PeerStateSnapshot(p.getId(), p.getName(), p.getStatus(), 3L);
         });
-        when(thinkProcessService.findBySession(TENANT, "sess-worker")).thenReturn(List.of());
+        when(api.listTaskWorkers(any())).thenReturn(List.of());
     }
 
     @Test
@@ -89,9 +85,8 @@ class TrillianCommandHandlerTest {
 
     @Test
     void info_listsSpawnedWorkersWithTheirTargetProject() {
-        when(thinkProcessService.findBySession(TENANT, "sess-worker"))
-                .thenReturn(List.of(
-                        peer(ThinkProcessStatus.IDLE), taskWorker("count-md", "test1", ThinkProcessStatus.RUNNING)));
+        when(api.listTaskWorkers(any()))
+                .thenReturn(List.of(taskWorkerSnapshot("count-md", "test1", ThinkProcessStatus.RUNNING)));
 
         EngineCommandResult result = handler.handle(control(), command("info"));
 
@@ -108,18 +103,24 @@ class TrillianCommandHandlerTest {
     }
 
     @Test
-    void info_skipsClosedWorkers() {
-        when(thinkProcessService.findBySession(TENANT, "sess-worker"))
-                .thenReturn(List.of(
-                        taskWorker("done-one", "test1", ThinkProcessStatus.CLOSED),
-                        taskWorker("live-one", "test1", ThinkProcessStatus.RUNNING)));
+    void info_rendersTheTaskWorkersTheApiReports() {
+        when(api.listTaskWorkers(any()))
+                .thenReturn(List.of(taskWorkerSnapshot("live-one", "test1", ThinkProcessStatus.RUNNING)));
 
         EngineCommandResult result = handler.handle(control(), command("info"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> workers =
                 (List<Map<String, Object>>) value(result).get("workers");
-        assertThat(workers).singleElement().satisfies(w -> assertThat(w).containsEntry("name", "live-one"));
+        // Which processes count as task workers is TrillianInternalApi's
+        // contract (the loop itself and closed ones are filtered there);
+        // the command renders what it gets.
+        assertThat(workers)
+                .singleElement()
+                .satisfies(w -> assertThat(w)
+                        .containsEntry("name", "live-one")
+                        .containsEntry("engine", "frankie")
+                        .containsKey("age"));
     }
 
     @Test
@@ -417,15 +418,9 @@ class TrillianCommandHandlerTest {
         return doc;
     }
 
-    private static ThinkProcessDocument taskWorker(String name, String projectId, ThinkProcessStatus status) {
-        ThinkProcessDocument doc = new ThinkProcessDocument();
-        doc.setId("w-" + name);
-        doc.setName(name);
-        doc.setTenantId(TENANT);
-        doc.setSessionId("sess-worker");
-        doc.setProjectId(projectId);
-        doc.setThinkEngine("frankie");
-        doc.setStatus(status);
-        return doc;
+    private static TrillianInternalApi.TaskWorkerSnapshot taskWorkerSnapshot(
+            String name, String projectId, ThinkProcessStatus status) {
+        return new TrillianInternalApi.TaskWorkerSnapshot(
+                name, "w-" + name, projectId, status, "frankie", java.time.Instant.now());
     }
 }

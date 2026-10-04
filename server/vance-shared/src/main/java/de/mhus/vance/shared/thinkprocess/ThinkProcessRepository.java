@@ -11,8 +11,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
  */
 interface ThinkProcessRepository extends MongoRepository<ThinkProcessDocument, String> {
 
-    Optional<ThinkProcessDocument> findByTenantIdAndSessionIdAndName(
-            String tenantId, String sessionId, String name);
+    Optional<ThinkProcessDocument> findByTenantIdAndSessionIdAndName(String tenantId, String sessionId, String name);
 
     List<ThinkProcessDocument> findByTenantIdAndSessionId(String tenantId, String sessionId);
 
@@ -24,8 +23,7 @@ interface ThinkProcessRepository extends MongoRepository<ThinkProcessDocument, S
      * used by orchestrators (Eddie) that own workers in different
      * projects/sessions.
      */
-    List<ThinkProcessDocument> findByTenantIdAndParentProcessId(
-            String tenantId, String parentProcessId);
+    List<ThinkProcessDocument> findByTenantIdAndParentProcessId(String tenantId, String parentProcessId);
 
     /** Newest-first processes of a project, across its sessions — the run view. */
     List<ThinkProcessDocument> findByTenantIdAndProjectIdOrderByCreatedAtDesc(
@@ -33,11 +31,16 @@ interface ThinkProcessRepository extends MongoRepository<ThinkProcessDocument, S
 
     /** Same, restricted to a set of engines — the run view's plan-shaped ones. */
     List<ThinkProcessDocument> findByTenantIdAndProjectIdAndThinkEngineInOrderByCreatedAtDesc(
-            String tenantId, String projectId, java.util.Collection<String> thinkEngines,
+            String tenantId,
+            String projectId,
+            java.util.Collection<String> thinkEngines,
             org.springframework.data.domain.Pageable pageable);
 
-    boolean existsByTenantIdAndSessionIdAndName(
-            String tenantId, String sessionId, String name);
+    /** Newest-first processes of a tenant running one engine — the Trillian state view. */
+    List<ThinkProcessDocument> findByTenantIdAndThinkEngineOrderByCreatedAtDesc(
+            String tenantId, String thinkEngine, org.springframework.data.domain.Pageable pageable);
+
+    boolean existsByTenantIdAndSessionIdAndName(String tenantId, String sessionId, String name);
 
     long deleteByTenantIdAndSessionId(String tenantId, String sessionId);
 }

@@ -33,6 +33,7 @@ export const INSIGHTS_TOP_TABS = [
   'rag',
   'research',
   'tool-usage',
+  'trillian',
   'cluster',
   'addons',
   'usage',

@@ -196,6 +196,56 @@ class SettingServiceTest {
                 .isEqualTo("outer");
     }
 
+    @Test
+    void booleanUserProjectCascade_hubWinsOverProjectOverTenant() {
+        stubFind(
+                PROJECT,
+                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + "trillian-1",
+                "trillian.enabled",
+                doc("trillian.enabled", "false", SettingType.BOOLEAN));
+        stubFind(PROJECT, "proj-1", "trillian.enabled", doc("trillian.enabled", "true", SettingType.BOOLEAN));
+        stubFind(PROJECT, TENANT_PROJ, "trillian.enabled", doc("trillian.enabled", "true", SettingType.BOOLEAN));
+
+        assertThat(service.getBooleanValueUserProjectCascade(
+                        TENANT, "trillian-1", "proj-1", null, "trillian.enabled", true))
+                .isFalse();
+    }
+
+    @Test
+    void booleanUserProjectCascade_fallsThroughToTenantWhenInnerLayersMiss() {
+        stubFind(PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + "trillian-1", "trillian.enabled", null);
+        stubFind(PROJECT, "proj-1", "trillian.enabled", null);
+        stubFind(PROJECT, TENANT_PROJ, "trillian.enabled", doc("trillian.enabled", "no", SettingType.BOOLEAN));
+
+        assertThat(service.getBooleanValueUserProjectCascade(
+                        TENANT, "trillian-1", "proj-1", null, "trillian.enabled", true))
+                .isFalse();
+    }
+
+    @Test
+    void booleanUserProjectCascade_unsetDefaultStaysEnabled() {
+        stubFind(PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + "trillian-1", "trillian.enabled", null);
+        stubFind(PROJECT, "proj-1", "trillian.enabled", null);
+        stubFind(PROJECT, TENANT_PROJ, "trillian.enabled", null);
+
+        assertThat(service.getBooleanValueUserProjectCascade(
+                        TENANT, "trillian-1", "proj-1", null, "trillian.enabled", true))
+                .isTrue();
+        assertThat(service.getBooleanValueUserProjectCascade(
+                        TENANT, "trillian-1", "proj-1", null, "trillian.enabled", false))
+                .isFalse();
+    }
+
+    @Test
+    void booleanUserProjectCascade_parsesTheTrueWords() {
+        for (String word : new String[] {"true", "1", "yes", "on", "TRUE"}) {
+            stubFind(PROJECT, TENANT_PROJ, "trillian.enabled", doc("trillian.enabled", word, SettingType.BOOLEAN));
+            assertThat(service.getBooleanValueUserProjectCascade(TENANT, null, null, null, "trillian.enabled", false))
+                    .as("value '%s'", word)
+                    .isTrue();
+        }
+    }
+
     // ──────────────── atomic prefix delete ────────────────
 
     @Test

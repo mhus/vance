@@ -20,6 +20,11 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  *       Maps to a {@code FAILED} ProcessEvent.</li>
  *   <li>{@link #STOPPED} — user, parent, or session-close cascade
  *       called {@code engine.stop}.</li>
+ *   <li>{@link #FORCE} — a force-stop cut a wedged process out: the close
+ *       was written out-of-band (halt flag + immediate CLOSED) instead of
+ *       waiting for {@code engine.stop} on the process's lane. Distinct from
+ *       {@link #STOPPED} so an operator can tell "graceful stop landed" from
+ *       "we cut it".</li>
  *   <li>{@link #STALE} — inconsistent state (engine version mismatch,
  *       client-context drift, lane-recovery exhaustion). User must
  *       decide how to proceed.</li>
@@ -42,6 +47,7 @@ public enum CloseReason {
     DONE,
     INCOMPLETE,
     STOPPED,
+    FORCE,
     STALE,
     ARCHIVED,
     USER_DELETE,

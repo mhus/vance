@@ -18,6 +18,7 @@ import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
 import de.mhus.vance.api.insights.ToolUsageEntryInsightsDto;
 import de.mhus.vance.api.insights.ToolUsageRoleInsightsDto;
+import de.mhus.vance.api.insights.TrillianInsightsDto;
 import de.mhus.vance.api.insights.ZarniwoopInsightsDto;
 import de.mhus.vance.api.llmtrace.LlmTraceDto;
 import de.mhus.vance.api.llmtrace.LlmTraceListResponse;
@@ -34,6 +35,7 @@ import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.tools.BuiltInToolSource;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
+import de.mhus.vance.brain.trillian.TrillianInsightsService;
 import de.mhus.vance.brain.workspace.access.PodForwarder;
 import de.mhus.vance.brain.workspace.access.ProjectPodKey;
 import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
@@ -150,6 +152,7 @@ public class InsightsAdminController {
     private final ZarniwoopInsightsService zarniwoopInsightsService;
     private final ZarniwoopGateService zarniwoopGateService;
     private final SessionExchangeService sessionExchangeService;
+    private final TrillianInsightsService trillianInsightsService;
     private final RequestAuthority authority;
     private final ObjectMapper objectMapper;
 
@@ -169,27 +172,48 @@ public class InsightsAdminController {
 
         // status semantics: blank → the active view (all non-CLOSED, so
         // closed sessions stay hidden by default); "all" → every status
-        // incl. CLOSED; otherwise a single explicit status name. An
-        // unknown value falls back to the active view.
-        Set<SessionStatus> statuses = null;
-        if (status != null && !status.isBlank()) {
-            if ("all".equalsIgnoreCase(status)) {
-                statuses = EnumSet.allOf(SessionStatus.class);
-            } else {
-                try {
-                    statuses = EnumSet.of(SessionStatus.valueOf(status.toUpperCase(Locale.ROOT)));
-                } catch (IllegalArgumentException ignored) {
-                    statuses = null;
-                }
-            }
-        }
-
+        // incl. CLOSED; otherwise a comma-separated set of explicit status
+        // names (e.g. "INIT,RUNNING,IDLE" for the live view). Unknown names
+        // are skipped — an all-unknown value falls back to the active view.
+        Set<SessionStatus> statuses = parseStatusFilter(status);
         int cappedLimit = Math.min(Math.max(1, limit), 500);
         List<SessionDocument> sessions =
                 sessionService.listForInsights(tenant, userId, projectId, statuses, Math.max(0, offset), cappedLimit);
 
         // Already sorted (lastActivityAt desc) and sliced at the DB.
         return sessions.stream().map(s -> toListDto(tenant, s)).toList();
+    }
+
+    /**
+     * Parses the {@code status} query parameter of {@link
+     * #listSessions} into a status set: comma-separated status names
+     * ({@code INIT,RUNNING,IDLE}), or {@code all} for every status.
+     * Blank or all-unknown input returns {@code null}, which the query
+     * reads as the active view (everything non-CLOSED).
+     */
+    static @Nullable Set<SessionStatus> parseStatusFilter(@Nullable String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        if ("all".equalsIgnoreCase(status.trim())) {
+            return EnumSet.allOf(SessionStatus.class);
+        }
+        EnumSet<SessionStatus> parsed = EnumSet.noneOf(SessionStatus.class);
+        for (String token : status.split(",")) {
+            SessionStatus named = parseStatusName(token.trim());
+            if (named != null) {
+                parsed.add(named);
+            }
+        }
+        return parsed.isEmpty() ? null : parsed;
+    }
+
+    private static @Nullable SessionStatus parseStatusName(String name) {
+        try {
+            return SessionStatus.valueOf(name.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException unknown) {
+            return null;
+        }
     }
 
     @GetMapping("/sessions/{sessionId}")
@@ -269,6 +293,20 @@ public class InsightsAdminController {
                 .contentType(MediaType.parseMediaType("application/x-ndjson"))
                 .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
                 .body(body);
+    }
+
+    // ─── Trillian ────────────────────────────────────────────────────────────
+
+    /**
+     * Every live Trillian pair of the tenant — the Trillian tab's state
+     * image. Read-only: pause/resume live on the Trillian loop controller,
+     * so this surface stays readable as read-only.
+     */
+    @GetMapping("/trillian")
+    public List<TrillianInsightsDto> listTrillian(
+            @PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        return trillianInsightsService.listAll(tenant);
     }
 
     // ─── Processes ─────────────────────────────────────────────────────────

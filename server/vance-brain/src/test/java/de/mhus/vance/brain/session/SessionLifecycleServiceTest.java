@@ -7,8 +7,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -72,10 +72,15 @@ class SessionLifecycleServiceTest {
         when(bootstrapperProvider.getObject()).thenReturn(chatBootstrapper);
 
         lifecycle = new SessionLifecycleService(
-                sessionService, thinkProcessService,
-                chatMessageService, engineMessageService,
-                memoryService, sessionGroupService,
-                engineProvider, bootstrapperProvider, laneScheduler,
+                sessionService,
+                thinkProcessService,
+                chatMessageService,
+                engineMessageService,
+                memoryService,
+                sessionGroupService,
+                engineProvider,
+                bootstrapperProvider,
+                laneScheduler,
                 java.util.List.of());
         // Default forced-suspend floor — value doesn't matter for these tests.
         ReflectionTestUtils.setField(lifecycle, "forcedFloorMs", 1000L);
@@ -172,8 +177,7 @@ class SessionLifecycleServiceTest {
         ThinkProcessDocument p2 = process("p-2", ThinkProcessStatus.IDLE);
         ThinkProcessDocument p3Closed = process("p-3", ThinkProcessStatus.CLOSED);
         ThinkProcessDocument p4Suspended = process("p-4", ThinkProcessStatus.SUSPENDED);
-        when(thinkProcessService.findBySession(any(), eq("s-1")))
-                .thenReturn(List.of(p1, p2, p3Closed, p4Suspended));
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p1, p2, p3Closed, p4Suspended));
 
         lifecycle.suspendCascade("s-1", SuspendCause.IDLE);
 
@@ -196,8 +200,7 @@ class SessionLifecycleServiceTest {
         stubSession("s-1", SessionStatus.RUNNING, DisconnectPolicy.SUSPEND);
         ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.RUNNING);
         ThinkProcessDocument p2Child = process("p-2", ThinkProcessStatus.RUNNING);
-        when(thinkProcessService.findBySession(any(), eq("s-1")))
-                .thenReturn(List.of(p1), List.of(p1, p2Child));
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p1), List.of(p1, p2Child));
 
         lifecycle.suspendCascade("s-1", SuspendCause.IDLE);
 
@@ -210,17 +213,16 @@ class SessionLifecycleServiceTest {
     void suspendCascade_engineFailure_fallsBackToServiceUpdate() {
         stubSession("s-1", SessionStatus.RUNNING, DisconnectPolicy.SUSPEND);
         ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.RUNNING);
-        when(thinkProcessService.findBySession(any(), eq("s-1")))
-                .thenReturn(List.of(p1));
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p1));
         // engine.suspend throws — service must fall back to direct status flip.
         org.mockito.Mockito.doThrow(new RuntimeException("boom"))
-                .when(engineService).suspend(p1);
+                .when(engineService)
+                .suspend(p1);
 
         lifecycle.suspendCascade("s-1", SuspendCause.DISCONNECT);
 
         verify(thinkProcessService).updateStatus("p-1", ThinkProcessStatus.SUSPENDED);
-        verify(sessionService, atLeast(1))
-                .suspend(eq("s-1"), eq(SuspendCause.DISCONNECT), anyLong());
+        verify(sessionService, atLeast(1)).suspend(eq("s-1"), eq(SuspendCause.DISCONNECT), anyLong());
     }
 
     @Test
@@ -238,8 +240,7 @@ class SessionLifecycleServiceTest {
         stubSession("s-1", SessionStatus.RUNNING, DisconnectPolicy.SUSPEND);
         ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.RUNNING);
         ThinkProcessDocument p2 = process("p-2", ThinkProcessStatus.IDLE);
-        when(thinkProcessService.findBySession(any(), eq("s-1")))
-                .thenReturn(List.of(p1, p2));
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p1, p2));
 
         lifecycle.suspendCascade("s-1", SuspendCause.IDLE);
 
@@ -258,8 +259,7 @@ class SessionLifecycleServiceTest {
         ThinkProcessDocument p2 = process("p-2", ThinkProcessStatus.SUSPENDED);
         ThinkProcessDocument p3Closed = process("p-3", ThinkProcessStatus.CLOSED);
         ThinkProcessDocument p4Running = process("p-4", ThinkProcessStatus.RUNNING);
-        when(thinkProcessService.findBySession(any(), eq("s-1")))
-                .thenReturn(List.of(p1, p2, p3Closed, p4Running));
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p1, p2, p3Closed, p4Running));
         ProcessEventEmitter emitter = mock(ProcessEventEmitter.class);
 
         lifecycle.resumeSessionCascade("s-1", emitter);
@@ -284,10 +284,10 @@ class SessionLifecycleServiceTest {
     void resumeSessionCascade_engineFailure_fallsBackToServiceUpdate() {
         stubSession("s-1", SessionStatus.SUSPENDED, DisconnectPolicy.SUSPEND);
         ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.SUSPENDED);
-        when(thinkProcessService.findBySession(any(), eq("s-1")))
-                .thenReturn(List.of(p1));
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p1));
         org.mockito.Mockito.doThrow(new RuntimeException("boom"))
-                .when(engineService).resume(p1);
+                .when(engineService)
+                .resume(p1);
         ProcessEventEmitter emitter = mock(ProcessEventEmitter.class);
 
         lifecycle.resumeSessionCascade("s-1", emitter);
@@ -327,8 +327,7 @@ class SessionLifecycleServiceTest {
         // reconnect path cheap on the common case.
         stubSession("s-1", SessionStatus.IDLE, DisconnectPolicy.SUSPEND);
         ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.IDLE);
-        when(thinkProcessService.findBySession(any(), eq("s-1")))
-                .thenReturn(List.of(p1));
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p1));
         ProcessEventEmitter emitter = mock(ProcessEventEmitter.class);
 
         lifecycle.resumeSessionCascade("s-1", emitter);
@@ -374,8 +373,7 @@ class SessionLifecycleServiceTest {
         ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.RUNNING);
         ThinkProcessDocument p2Suspended = process("p-2", ThinkProcessStatus.SUSPENDED);
         ThinkProcessDocument p3Closed = process("p-3", ThinkProcessStatus.CLOSED);
-        when(thinkProcessService.findBySession(any(), eq("s-1")))
-                .thenReturn(List.of(p1, p2Suspended, p3Closed));
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p1, p2Suspended, p3Closed));
 
         lifecycle.closeWithCascade("s-1");
 
@@ -392,7 +390,8 @@ class SessionLifecycleServiceTest {
         ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.RUNNING);
         when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p1));
         org.mockito.Mockito.doThrow(new RuntimeException("boom"))
-                .when(engineService).stop(p1);
+                .when(engineService)
+                .stop(p1);
 
         lifecycle.closeWithCascade("s-1");
 
@@ -408,6 +407,74 @@ class SessionLifecycleServiceTest {
 
         verify(thinkProcessService, never()).findBySession(any(), any());
         verify(sessionService, never()).close(any());
+    }
+
+    // ─── engine stop: graceful + force ──────────────────────────────────
+
+    @Test
+    void forceStopProcess_writesClosedOffLane_withForceReason() {
+        ThinkProcessDocument p = process("p-1", ThinkProcessStatus.RUNNING);
+
+        lifecycle.forceStopProcess(p);
+
+        // The cut: halt flag for the running turn, immediate CLOSED with
+        // FORCE — never engine.stop, which would queue behind the very turn
+        // being killed.
+        verify(thinkProcessService).requestHalt("p-1");
+        verify(thinkProcessService).closeProcess("p-1", CloseReason.FORCE);
+        verify(engineService, never()).stop(any());
+    }
+
+    @Test
+    void stopAllInSession_stopsEveryNonClosedProcess_chatProcessIncluded() {
+        ThinkProcessDocument chat = process("chat", ThinkProcessStatus.RUNNING);
+        chat.setName("chat");
+        ThinkProcessDocument worker = process("w-1", ThinkProcessStatus.IDLE);
+        worker.setName("w-1");
+        ThinkProcessDocument closed = process("x", ThinkProcessStatus.CLOSED);
+        closed.setName("x");
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(chat, worker, closed));
+
+        List<String> stopped = lifecycle.stopAllInSession("acme", "s-1");
+
+        // Unlike stopChildrenOfChat (foot's /stop) this includes the chat
+        // process — the operator said "this session shall compute no more".
+        assertThat(stopped).containsExactly("chat", "w-1");
+        verify(engineService).stop(chat);
+        verify(engineService).stop(worker);
+        verify(engineService, never()).stop(closed);
+    }
+
+    @Test
+    void stopAllInSession_engineFailure_fallsBackToCloseStopped() {
+        ThinkProcessDocument p = process("p-1", ThinkProcessStatus.RUNNING);
+        p.setName("p-1");
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p));
+        org.mockito.Mockito.doThrow(new RuntimeException("boom"))
+                .when(engineService)
+                .stop(p);
+
+        lifecycle.stopAllInSession("acme", "s-1");
+
+        verify(thinkProcessService).closeProcess("p-1", CloseReason.STOPPED);
+    }
+
+    @Test
+    void forceStopAllInSession_cutsEveryNonClosedProcess() {
+        ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.RUNNING);
+        p1.setName("p-1");
+        ThinkProcessDocument p2 = process("p-2", ThinkProcessStatus.BLOCKED);
+        p2.setName("p-2");
+        ThinkProcessDocument closed = process("p-3", ThinkProcessStatus.CLOSED);
+        closed.setName("p-3");
+        when(thinkProcessService.findBySession(any(), eq("s-1"))).thenReturn(List.of(p1, p2, closed));
+
+        List<String> stopped = lifecycle.forceStopAllInSession("acme", "s-1");
+
+        assertThat(stopped).containsExactly("p-1", "p-2");
+        verify(thinkProcessService).closeProcess("p-1", CloseReason.FORCE);
+        verify(thinkProcessService).closeProcess("p-2", CloseReason.FORCE);
+        verify(thinkProcessService, never()).closeProcess("p-3", CloseReason.FORCE);
     }
 
     // ─── helpers ────────────────────────────────────────────────────────
@@ -437,13 +504,14 @@ class SessionLifecycleServiceTest {
     @Test
     void pauseActiveInSession_pausesOnlyProcessesWithSomethingToInterrupt() {
         stubSession("s-1", SessionStatus.RUNNING, DisconnectPolicy.KEEP_OPEN);
-        when(thinkProcessService.findBySession("acme", "s-1")).thenReturn(List.of(
-                process("p-running", ThinkProcessStatus.RUNNING),
-                process("p-init", ThinkProcessStatus.INIT),
-                process("p-idle", ThinkProcessStatus.IDLE),
-                process("p-blocked", ThinkProcessStatus.BLOCKED),
-                process("p-paused", ThinkProcessStatus.PAUSED),
-                process("p-closed", ThinkProcessStatus.CLOSED)));
+        when(thinkProcessService.findBySession("acme", "s-1"))
+                .thenReturn(List.of(
+                        process("p-running", ThinkProcessStatus.RUNNING),
+                        process("p-init", ThinkProcessStatus.INIT),
+                        process("p-idle", ThinkProcessStatus.IDLE),
+                        process("p-blocked", ThinkProcessStatus.BLOCKED),
+                        process("p-paused", ThinkProcessStatus.PAUSED),
+                        process("p-closed", ThinkProcessStatus.CLOSED)));
 
         List<String> paused = lifecycle.pauseActiveInSession("s-1");
 
@@ -467,7 +535,8 @@ class SessionLifecycleServiceTest {
         // holds the lane, so the out-of-band flag is the only signal that
         // reaches a running loop in time. It must therefore be written
         // synchronously — everything else may lag.
-        assertThat(lifecycle.pauseProcess(process("p-1", ThinkProcessStatus.RUNNING))).isTrue();
+        assertThat(lifecycle.pauseProcess(process("p-1", ThinkProcessStatus.RUNNING)))
+                .isTrue();
 
         verify(thinkProcessService).requestHalt("p-1");
     }
@@ -492,8 +561,10 @@ class SessionLifecycleServiceTest {
         // INTERRUPTED — RECONSIDER" preamble on the next message, and a
         // BLOCKED one is owed an answer by somebody.
         for (ThinkProcessStatus status : List.of(
-                ThinkProcessStatus.IDLE, ThinkProcessStatus.BLOCKED,
-                ThinkProcessStatus.PAUSED, ThinkProcessStatus.SUSPENDED,
+                ThinkProcessStatus.IDLE,
+                ThinkProcessStatus.BLOCKED,
+                ThinkProcessStatus.PAUSED,
+                ThinkProcessStatus.SUSPENDED,
                 ThinkProcessStatus.CLOSED)) {
             assertThat(lifecycle.pauseProcess(process("p-" + status, status)))
                     .as("pause of a %s process", status)
@@ -513,9 +584,11 @@ class SessionLifecycleServiceTest {
         archived.setStatus(SessionStatus.ARCHIVED);
         archived.setChatProcessId("old-chat");
         when(sessionService.findBySessionId("s-1")).thenReturn(Optional.of(archived));
-        when(thinkProcessService.findById("old-chat")).thenReturn(Optional.of(
-                ThinkProcessDocument.builder()
-                        .id("old-chat").tenantId("acme").sessionId("s-1")
+        when(thinkProcessService.findById("old-chat"))
+                .thenReturn(Optional.of(ThinkProcessDocument.builder()
+                        .id("old-chat")
+                        .tenantId("acme")
+                        .sessionId("s-1")
                         .recipeName("trillian")
                         .status(ThinkProcessStatus.CLOSED)
                         .build()));
@@ -541,8 +614,7 @@ class SessionLifecycleServiceTest {
         verify(chatBootstrapper).ensureChatProcess(any(), eq(null), eq(null));
     }
 
-    private void stubSession(String sessionId, SessionStatus status,
-                             DisconnectPolicy policy) {
+    private void stubSession(String sessionId, SessionStatus status, DisconnectPolicy policy) {
         SessionDocument doc = new SessionDocument();
         doc.setSessionId(sessionId);
         doc.setTenantId("acme");

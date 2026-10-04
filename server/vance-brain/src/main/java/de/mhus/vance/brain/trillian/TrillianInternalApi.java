@@ -496,6 +496,34 @@ public class TrillianInternalApi {
     public record PeerStateSnapshot(String processId, String name, ThinkProcessStatus status, long pendingInboxCount) {}
 
     /**
+     * Live children in the peer's session, i.e. the per-task workers the
+     * loop spawned. The loop itself is filtered out — it is reported as the
+     * worker — as are closed processes. Shared by {@code //trillian info}
+     * and the insights state view, so both see the same definition of
+     * "task worker".
+     */
+    public List<TaskWorkerSnapshot> listTaskWorkers(ThinkProcessDocument peer) {
+        List<TaskWorkerSnapshot> workers = new ArrayList<>();
+        for (ThinkProcessDocument p : thinkProcessService.findBySession(peer.getTenantId(), peer.getSessionId())) {
+            if (p.getId().equals(peer.getId()) || p.getStatus() == ThinkProcessStatus.CLOSED) {
+                continue;
+            }
+            workers.add(new TaskWorkerSnapshot(
+                    p.getName(), p.getId(), p.getProjectId(), p.getStatus(), p.getThinkEngine(), p.getCreatedAt()));
+        }
+        return workers;
+    }
+
+    /** One live per-task worker of a Trillian user-loop. */
+    public record TaskWorkerSnapshot(
+            String name,
+            String processId,
+            String projectId,
+            ThinkProcessStatus status,
+            String engine,
+            @Nullable Instant createdAt) {}
+
+    /**
      * Reads the (active, non-archived) chat history of a process the
      * caller can observe. Cross-session reads are permitted as long
      * as caller and observed live in the same tenant — Nature void stays

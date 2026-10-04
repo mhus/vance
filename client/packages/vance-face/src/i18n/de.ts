@@ -1784,6 +1784,43 @@ export default {
         url: 'URL',
       },
     },
+    control: {
+      stop: 'Stoppen',
+      forceStop: 'Hart stoppen',
+      stopAll: 'Alle stoppen',
+      forceStopAll: 'Alle hart stoppen',
+      stopTooltip:
+        'Sauberer Stop: engine.stop auf der Prozess-Lane, CLOSED mit Grund STOPPED.',
+      forceStopTooltip:
+        'Harter Stop für feststeckende Prozesse: Halt-Flag + sofort CLOSED (Grund FORCE) — wartet auf nichts.',
+      stopAllTooltip: 'Stoppt jeden Prozess dieser Session, den Chat-Prozess eingeschlossen.',
+      forceStopAllTooltip: 'Stoppt jeden Prozess dieser Session hart — der Schnitt.',
+    },
+    trillian: {
+      refresh: 'Aktualisieren',
+      count: '{n} Trillian | {n} Trillians',
+      loading: 'Laden…',
+      emptyHeadline: 'Keine Trillians',
+      emptyBody:
+        'In diesem Tenant gibt es noch keine Trillian-Control-Session — starte eine im Chat mit einem trillian-Recipe.',
+      loopsOn: 'Loops erlaubt',
+      loopsOff: 'Loops gesperrt',
+      pause: 'Pause',
+      resume: 'Weiter',
+      control: 'Control',
+      worker: 'User-Loop',
+      session: 'Session',
+      project: 'Projekt',
+      nature: 'Nature',
+      created: 'Erstellt',
+      account: 'Konto',
+      inbox: 'Inbox',
+      attributes: 'Attribute',
+      noWorker:
+        'Kein User-Loop gebaut — der Control-Chat funktioniert, die Arbeitsseite ist unterdrückt.',
+      taskWorkers: 'Task-Worker',
+      pending: 'Wartend',
+    },
     cluster: {
       refresh: 'Aktualisieren',
       podCount: '{n} Pod | {n} Pods',
@@ -1839,7 +1876,8 @@ export default {
       status: 'Status',
       allProjects: '(alle Projekte)',
       all: '(alle)',
-      active: '(aktiv)',
+      live: '(laufend)',
+      running: '(aktiv)',
       closed: 'geschlossen',
     },
     sidebar: {

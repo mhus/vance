@@ -25,6 +25,7 @@ import {
   useMarvinTree,
   useProcessPrakRuns,
 } from '@/composables/useInsights';
+import { useInsightsControl } from '@/composables/useInsightsControl';
 import {
   useInsightsNavigation,
   type InsightsTopTab,
@@ -51,6 +52,7 @@ import UsageCostTab from './UsageCostTab.vue';
 import ZarniwoopTab from './ZarniwoopTab.vue';
 import ToolUsageTab from './ToolUsageTab.vue';
 import MegadodoTab from './MegadodoTab.vue';
+import TrillianTab from './TrillianTab.vue';
 import {
   ChatRole,
   type MarvinNodeInsightsDto,
@@ -77,6 +79,37 @@ const memoryPrakOnly = ref(false);
 const exportLoading = ref(false);
 const exportError = ref<string | null>(null);
 
+// Engine-stop control surface (two stages: graceful stop, force-stop) —
+// separate from the read-only inspector API, see useInsightsControl.
+const control = useInsightsControl();
+
+async function onStopSession(force: boolean): Promise<void> {
+  const sel = selectedSession.value;
+  if (!sel) return;
+  if (force) await control.forceStopSession(sel.sessionId);
+  else await control.stopSession(sel.sessionId);
+  await refreshAfterStop(sel.sessionId);
+}
+
+async function onStopProcess(force: boolean): Promise<void> {
+  const proc = selectedProcess.value;
+  if (!proc) return;
+  if (force) await control.forceStopProcess(proc.id);
+  else await control.stopProcess(proc.id);
+  await refreshAfterStop(proc.sessionId, proc.id);
+}
+
+/** Re-read what the buttons just changed: the list rows and the open pane. */
+async function refreshAfterStop(sessionId: string, processId?: string): Promise<void> {
+  await reloadSessions();
+  await processesState.load(sessionId);
+  processesBySession.value = {
+    ...processesBySession.value,
+    [sessionId]: [...processesState.processes.value],
+  };
+  if (processId) await processDetailState.load(processId);
+}
+
 async function onExportSession(sessionId: string): Promise<void> {
   exportLoading.value = true;
   exportError.value = null;
@@ -98,7 +131,19 @@ const focusZone = ref<FocusZone>('main');
 // ─── Filter state ───────────────────────────────────────────────────────
 const filterProjectId = ref<string | null>(null);
 const filterUserId = ref<string>('');
-const filterStatus = ref<string | null>(null);
+// Status-filter presets sent verbatim as the `status` query value. "live"
+// is the default view: sessions that are alive (starting, running or idle);
+// "running" narrows to what is actually computing right now.
+const STATUS_LIVE = 'INIT,RUNNING,IDLE';
+const STATUS_RUNNING = 'RUNNING';
+const filterStatus = ref<string | null>(STATUS_LIVE);
+
+/** Live statuses get the "open" badge; parked and terminal ones the closed badge. */
+function sessionBadgeClass(status: string | null | undefined): string {
+  return status === 'INIT' || status === 'RUNNING' || status === 'IDLE'
+    ? 'badge-open'
+    : 'badge-closed';
+}
 
 // ─── Navigation state (URL/history-bound) ──────────────────────────────
 // topTab (project-level pane), selection (session/process drill-down), and
@@ -128,6 +173,7 @@ const ALL_TABS: ReadonlyArray<{ key: TopTab; label: string }> = [
   { key: 'rag', label: 'RAG' },
   { key: 'research', label: 'Research' },
   { key: 'tool-usage', label: 'Tool Usage' },
+  { key: 'trillian', label: 'Trillian' },
   { key: 'cluster', label: 'Cluster' },
   { key: 'addons', label: 'Addons' },
   { key: 'usage', label: 'Usage & Cost' },
@@ -273,11 +319,13 @@ const projectFilterOptions = computed(() => [
   })),
 ]);
 
-// Status filter: blank hides CLOSED sessions (the default active view),
-// "all" shows every status, "CLOSED" narrows to closed ones. The server
-// interprets these values (see InsightsAdminController.listSessions).
+// Status filter: the presets map to status sets the server parses
+// (comma-separated, see InsightsAdminController.parseStatusFilter). The
+// default "live" view shows sessions that are alive — starting, running
+// or idle — and hides parked (SUSPENDED/ARCHIVED) and closed ones.
 const statusOptions = computed(() => [
-  { value: '', label: t('insights.filters.active') },
+  { value: STATUS_LIVE, label: t('insights.filters.live') },
+  { value: STATUS_RUNNING, label: t('insights.filters.running') },
   { value: 'all', label: t('insights.filters.all') },
   { value: 'CLOSED', label: t('insights.filters.closed') },
 ]);
@@ -718,7 +766,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   </span>
                   <span
                     class="text-xs px-1.5 py-0.5 rounded shrink-0"
-                    :class="s.status === 'OPEN' ? 'badge-open' : 'badge-closed'"
+                    :class="sessionBadgeClass(s.status)"
                   >{{ s.status?.toLowerCase() }}</span>
                 </div>
                 <div class="text-xs opacity-60 truncate">
@@ -861,7 +909,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       </div>
 
       <div
-        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'addons' && topTab !== 'usage' && projectContextSource"
+        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'trillian' && topTab !== 'addons' && topTab !== 'usage' && projectContextSource"
         class="text-xs opacity-70 -mt-1 mb-1"
       >
         Showing
@@ -885,6 +933,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <ZarniwoopTab v-else-if="topTab === 'research'" :project-id="effectiveProjectId" />
       <ToolUsageTab v-else-if="topTab === 'tool-usage'" :project-id="effectiveProjectId" />
       <MegadodoTab v-else-if="topTab === 'activity'" :project-id="effectiveProjectId" />
+      <TrillianTab v-else-if="topTab === 'trillian'" />
       <ClusterTab v-else-if="topTab === 'cluster'" />
       <AddonsTab v-else-if="topTab === 'addons'" />
       <UsageCostTab v-else-if="topTab === 'usage'" />
@@ -909,25 +958,48 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                 <span class="font-mono text-sm opacity-70">{{ selectedSession.sessionId }}</span>
                 <span
                   class="text-xs px-1.5 py-0.5 rounded"
-                  :class="selectedSession.status === 'OPEN' ? 'badge-open' : 'badge-closed'"
+                  :class="sessionBadgeClass(selectedSession.status)"
                 >{{ selectedSession.status?.toLowerCase() }}</span>
                 <span class="text-xs opacity-60">
                   {{ selectedSession.userId }} · {{ selectedSession.projectId }}
                 </span>
               </div>
-              <VButton
-                variant="ghost"
-                size="sm"
-                :loading="exportLoading"
-                :disabled="exportLoading"
-                :title="$t('insights.session.exportTooltip')"
-                @click="onExportSession(selectedSession.sessionId)"
-              >
-                {{ $t('insights.session.exportButton') }}
-              </VButton>
+              <div class="flex items-center gap-2 flex-wrap">
+                <VButton
+                  variant="ghost"
+                  size="sm"
+                  :disabled="control.busy.value"
+                  :title="$t('insights.control.stopAllTooltip')"
+                  @click="onStopSession(false)"
+                >
+                  {{ $t('insights.control.stopAll') }}
+                </VButton>
+                <VButton
+                  variant="ghost"
+                  size="sm"
+                  :disabled="control.busy.value"
+                  :title="$t('insights.control.forceStopAllTooltip')"
+                  @click="onStopSession(true)"
+                >
+                  {{ $t('insights.control.forceStopAll') }}
+                </VButton>
+                <VButton
+                  variant="ghost"
+                  size="sm"
+                  :loading="exportLoading"
+                  :disabled="exportLoading"
+                  :title="$t('insights.session.exportTooltip')"
+                  @click="onExportSession(selectedSession.sessionId)"
+                >
+                  {{ $t('insights.session.exportButton') }}
+                </VButton>
+              </div>
             </div>
             <VAlert v-if="exportError" variant="error" class="mt-2">
               <span>{{ exportError }}</span>
+            </VAlert>
+            <VAlert v-if="control.error.value" variant="error" class="mt-2">
+              <span>{{ control.error.value }}</span>
             </VAlert>
             <h2 v-if="selectedSession.firstUserMessage" class="session-topic-title">
               {{ selectedSession.firstUserMessage }}
@@ -1109,6 +1181,29 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                 <dt class="opacity-60">{{ $t('insights.process.updated') }}</dt>
                 <dd>{{ fmt(selectedProcess.updatedAt) }}</dd>
               </dl>
+              <div class="flex items-center gap-2 flex-wrap mt-3">
+                <VButton
+                  variant="ghost"
+                  size="sm"
+                  :disabled="control.busy.value || selectedProcess.status === 'CLOSED'"
+                  :title="$t('insights.control.stopTooltip')"
+                  @click="onStopProcess(false)"
+                >
+                  {{ $t('insights.control.stop') }}
+                </VButton>
+                <VButton
+                  variant="ghost"
+                  size="sm"
+                  :disabled="control.busy.value || selectedProcess.status === 'CLOSED'"
+                  :title="$t('insights.control.forceStopTooltip')"
+                  @click="onStopProcess(true)"
+                >
+                  {{ $t('insights.control.forceStop') }}
+                </VButton>
+              </div>
+              <VAlert v-if="control.error.value" variant="error" class="mt-2">
+                <span>{{ control.error.value }}</span>
+              </VAlert>
             </VCard>
 
             <VCard :title="$t('insights.process.engineParams')">

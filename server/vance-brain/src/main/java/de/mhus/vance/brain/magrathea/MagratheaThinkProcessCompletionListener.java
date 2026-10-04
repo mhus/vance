@@ -1,18 +1,18 @@
 package de.mhus.vance.brain.magrathea;
 
-import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
+import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
-import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
@@ -57,10 +57,7 @@ import tools.jackson.databind.ObjectMapper;
  * {@code RUNNING → BLOCKED} is {@code needs_input}.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaThinkProcessCompletionListener {
@@ -80,15 +77,13 @@ public class MagratheaThinkProcessCompletionListener {
     private final ChatMessageService chatMessageService;
     private final ObjectMapper objectMapper;
     private final MagratheaJournalService journalService;
-    private final org.springframework.beans.factory.ObjectProvider<EngineMessageRouter>
-            messageRouterProvider;
+    private final org.springframework.beans.factory.ObjectProvider<EngineMessageRouter> messageRouterProvider;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
         boolean closed = event.newStatus() == ThinkProcessStatus.CLOSED;
         boolean turnEnded = event.priorStatus() == ThinkProcessStatus.RUNNING
-                && (event.newStatus() == ThinkProcessStatus.IDLE
-                    || event.newStatus() == ThinkProcessStatus.BLOCKED);
+                && (event.newStatus() == ThinkProcessStatus.IDLE || event.newStatus() == ThinkProcessStatus.BLOCKED);
         if (!closed && !turnEnded) {
             return;
         }
@@ -130,19 +125,20 @@ public class MagratheaThinkProcessCompletionListener {
      * {@code CLOSED} event finds no task and stays quiet — otherwise it
      * would publish a second completion behind this one.
      */
-    private void completeAfterTurn(
-            MagratheaTaskDocument task, String processId, ThinkProcessStatus endStatus) {
+    private void completeAfterTurn(MagratheaTaskDocument task, String processId, ThinkProcessStatus endStatus) {
         Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(processId);
         if (processOpt.isEmpty()) {
-            log.warn("Magrathea listener: ThinkProcess {} ended a turn but document is gone "
-                    + "— failing task {}", processId, task.getId());
+            log.warn(
+                    "Magrathea listener: ThinkProcess {} ended a turn but document is gone " + "— failing task {}",
+                    processId,
+                    task.getId());
             publish(task, "technical_error", null, "ThinkProcess document not found", 0L, null);
             return;
         }
         ThinkProcessDocument process = processOpt.get();
         long durationMs = computeDurationMs(process);
-        JsonNode output = lastAssistant(chatMessageService.history(
-                        process.getTenantId(), process.getSessionId(), process.getId()))
+        JsonNode output = lastAssistant(
+                        chatMessageService.history(process.getTenantId(), process.getSessionId(), process.getId()))
                 .map(ChatMessageDocument::getContent)
                 .<JsonNode>map(objectMapper::valueToTree)
                 .orElse(null);
@@ -167,9 +163,13 @@ public class MagratheaThinkProcessCompletionListener {
                         // shape, which the plan can route on.
                         taskService.unlinkSubProcess(task.getId());
                         closeQuietly(processId, CloseReason.DONE);
-                        publish(task, "agent_error", output,
+                        publish(
+                                task,
+                                "agent_error",
+                                output,
                                 "agent did not answer in the requested shape: " + c.hint(),
-                                durationMs, null);
+                                durationMs,
+                                null);
                         return;
                     }
                 }
@@ -178,17 +178,17 @@ public class MagratheaThinkProcessCompletionListener {
 
         taskService.unlinkSubProcess(task.getId());
         try {
-            thinkProcessService.closeProcess(
-                    processId, asked ? CloseReason.INCOMPLETE : CloseReason.DONE);
+            thinkProcessService.closeProcess(processId, asked ? CloseReason.INCOMPLETE : CloseReason.DONE);
         } catch (RuntimeException ex) {
-            log.warn("Magrathea listener: could not close finished agent process '{}': {}",
-                    processId, ex.toString());
+            log.warn("Magrathea listener: could not close finished agent process '{}': {}", processId, ex.toString());
         }
-        publish(task,
+        publish(
+                task,
                 asked ? OUTCOME_NEEDS_INPUT : TaskCompletedEvent.OUTCOME_SUCCESS,
                 output,
                 asked ? "agent ended its turn awaiting input" : null,
-                durationMs, null);
+                durationMs,
+                null);
     }
 
     /**
@@ -210,31 +210,33 @@ public class MagratheaThinkProcessCompletionListener {
         } catch (RuntimeException ex) {
             // A malformed decide:/score: block is an authoring error. Say so
             // once, and let the step end normally rather than wedging the run.
-            log.warn("Magrathea agent_task '{}' has an invalid judgement block: {}",
-                    task.getStateName(), ex.getMessage());
+            log.warn(
+                    "Magrathea agent_task '{}' has an invalid judgement block: {}",
+                    task.getStateName(),
+                    ex.getMessage());
             return Optional.empty();
         }
         if (judgement.isEmpty()) return Optional.empty();
 
-        String answer = lastAssistant(chatMessageService.history(
-                        process.getTenantId(), process.getSessionId(), process.getId()))
+        String answer = lastAssistant(
+                        chatMessageService.history(process.getTenantId(), process.getSessionId(), process.getId()))
                 .map(ChatMessageDocument::getContent)
                 .orElse(null);
-        return Optional.of(
-                AgentOutcomeRefiner.refine(judgement.get(), answer, objectMapper));
+        return Optional.of(AgentOutcomeRefiner.refine(judgement.get(), answer, objectMapper));
     }
 
     /** The state spec as frozen into this run's definition. */
     private Optional<MagratheaStateSpec> frozenState(MagratheaTaskDocument task) {
         try {
-            return journalService.readLast(task.getTenantId(), task.getProjectId(),
-                            task.getWorkflowRunId(), StartRecord.class)
-                    .map(start -> MagratheaWorkflowLoader.parseYaml(
-                            start.getWorkflowName(), start.getDefinitionYaml()))
+            return journalService
+                    .readLast(task.getTenantId(), task.getProjectId(), task.getWorkflowRunId(), StartRecord.class)
+                    .map(start -> MagratheaWorkflowLoader.parseYaml(start.getWorkflowName(), start.getDefinitionYaml()))
                     .map(wf -> wf.states().get(task.getStateName()));
         } catch (RuntimeException ex) {
-            log.warn("Magrathea agent_task '{}' — could not re-read the frozen state: {}",
-                    task.getStateName(), ex.toString());
+            log.warn(
+                    "Magrathea agent_task '{}' — could not re-read the frozen state: {}",
+                    task.getStateName(),
+                    ex.toString());
             return Optional.empty();
         }
     }
@@ -250,29 +252,28 @@ public class MagratheaThinkProcessCompletionListener {
      * @return true when a re-ask was dispatched and this step is still
      *         running; false when the budget is spent
      */
-    private boolean askAgain(
-            MagratheaTaskDocument task, ThinkProcessDocument process, String hint) {
-        Optional<AgentOutcomeRefiner.Judgement> judgement = frozenState(task)
-                .flatMap(s -> {
-                    try {
-                        return AgentOutcomeRefiner.judgementOf(s);
-                    } catch (RuntimeException ex) {
-                        return Optional.empty();
-                    }
-                });
+    private boolean askAgain(MagratheaTaskDocument task, ThinkProcessDocument process, String hint) {
+        Optional<AgentOutcomeRefiner.Judgement> judgement = frozenState(task).flatMap(s -> {
+            try {
+                return AgentOutcomeRefiner.judgementOf(s);
+            } catch (RuntimeException ex) {
+                return Optional.empty();
+            }
+        });
         if (judgement.isEmpty()) return false;
 
         int used = taskService.incrementCorrectionCount(task.getId());
         if (used > judgement.get().maxCorrections()) {
-            log.info("Magrathea agent_task '{}' exhausted its {} correction(s)",
-                    task.getStateName(), judgement.get().maxCorrections());
+            log.info(
+                    "Magrathea agent_task '{}' exhausted its {} correction(s)",
+                    task.getStateName(),
+                    judgement.get().maxCorrections());
             return false;
         }
 
         EngineMessageRouter router = messageRouterProvider.getIfAvailable();
         if (router == null) {
-            log.warn("Magrathea agent_task '{}' cannot re-ask — no message router",
-                    task.getStateName());
+            log.warn("Magrathea agent_task '{}' cannot re-ask — no message router", task.getStateName());
             return false;
         }
         boolean delivered = router.dispatch(
@@ -285,12 +286,17 @@ public class MagratheaThinkProcessCompletionListener {
                         .content(hint)
                         .build());
         if (!delivered) {
-            log.warn("Magrathea agent_task '{}' re-ask was not delivered to process {}",
-                    task.getStateName(), process.getId());
+            log.warn(
+                    "Magrathea agent_task '{}' re-ask was not delivered to process {}",
+                    task.getStateName(),
+                    process.getId());
             return false;
         }
-        log.info("Magrathea agent_task '{}' re-asked the agent (correction {}/{})",
-                task.getStateName(), used, judgement.get().maxCorrections());
+        log.info(
+                "Magrathea agent_task '{}' re-asked the agent (correction {}/{})",
+                task.getStateName(),
+                used,
+                judgement.get().maxCorrections());
         return true;
     }
 
@@ -298,8 +304,7 @@ public class MagratheaThinkProcessCompletionListener {
         try {
             thinkProcessService.closeProcess(processId, reason);
         } catch (RuntimeException ex) {
-            log.warn("Magrathea listener: could not close agent process '{}': {}",
-                    processId, ex.toString());
+            log.warn("Magrathea listener: could not close agent process '{}': {}", processId, ex.toString());
         }
     }
 
@@ -323,8 +328,10 @@ public class MagratheaThinkProcessCompletionListener {
     public boolean reconcile(MagratheaTaskDocument task, String processId) {
         Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(processId);
         if (processOpt.isEmpty()) {
-            log.warn("Magrathea listener: ThinkProcess {} closed but document is gone — failing task {}",
-                    processId, task.getId());
+            log.warn(
+                    "Magrathea listener: ThinkProcess {} closed but document is gone — failing task {}",
+                    processId,
+                    task.getId());
             publish(task, "technical_error", null, "ThinkProcess document not found", 0L, null);
             return true;
         }
@@ -341,10 +348,8 @@ public class MagratheaThinkProcessCompletionListener {
 
         // Categorise the closure first.
         if (closeReason == null) {
-            log.warn("Magrathea listener: ThinkProcess {} closed without closeReason — technical_error",
-                    processId);
-            publish(task, "technical_error", null, "process closed without closeReason",
-                    durationMs, null);
+            log.warn("Magrathea listener: ThinkProcess {} closed without closeReason — technical_error", processId);
+            publish(task, "technical_error", null, "process closed without closeReason", durationMs, null);
             return true;
         }
 
@@ -354,30 +359,25 @@ public class MagratheaThinkProcessCompletionListener {
                 handleSuccessfulClose(task, process, engineName, durationMs);
                 break;
             case STALE:
-                publish(task, "technical_error", null,
-                        "ThinkProcess STALE", durationMs, null);
+                publish(task, "technical_error", null, "ThinkProcess STALE", durationMs, null);
                 break;
             case STOPPED:
+            case FORCE:
             case ARCHIVED:
             case USER_DELETE:
             case ABANDONED:
-                publish(task, "cancelled", null,
-                        "ThinkProcess closed with " + closeReason, durationMs, null);
+                publish(task, "cancelled", null, "ThinkProcess closed with " + closeReason, durationMs, null);
                 break;
             default:
-                publish(task, "technical_error", null,
-                        "Unhandled closeReason: " + closeReason, durationMs, null);
+                publish(task, "technical_error", null, "Unhandled closeReason: " + closeReason, durationMs, null);
         }
         return true;
     }
 
     private void handleSuccessfulClose(
-            MagratheaTaskDocument task,
-            ThinkProcessDocument process,
-            String engineName,
-            long durationMs) {
-        List<ChatMessageDocument> history = chatMessageService.history(
-                process.getTenantId(), process.getSessionId(), process.getId());
+            MagratheaTaskDocument task, ThinkProcessDocument process, String engineName, long durationMs) {
+        List<ChatMessageDocument> history =
+                chatMessageService.history(process.getTenantId(), process.getSessionId(), process.getId());
         Optional<ChatMessageDocument> lastAssistant = lastAssistant(history);
 
         if (ENGINE_JELTZ.equalsIgnoreCase(engineName)) {
@@ -393,26 +393,26 @@ public class MagratheaThinkProcessCompletionListener {
     }
 
     private void mapJeltzOutcome(
-            MagratheaTaskDocument task,
-            Optional<ChatMessageDocument> lastAssistant,
-            long durationMs) {
+            MagratheaTaskDocument task, Optional<ChatMessageDocument> lastAssistant, long durationMs) {
         if (lastAssistant.isEmpty()) {
-            publish(task, "agent_error", null,
-                    "Jeltz closed without an assistant message", durationMs, null);
+            publish(task, "agent_error", null, "Jeltz closed without an assistant message", durationMs, null);
             return;
         }
         String body = lastAssistant.get().getContent();
         JsonNode wrapper = parseJsonOrNull(body);
         if (wrapper == null || !wrapper.isObject()) {
-            publish(task, "agent_error", null,
+            publish(
+                    task,
+                    "agent_error",
+                    null,
                     "Jeltz assistant body is not a JSON object: " + truncate(body, 200),
-                    durationMs, null);
+                    durationMs,
+                    null);
             return;
         }
         JsonNode successNode = wrapper.get("success");
         if (successNode == null || !successNode.isBoolean()) {
-            publish(task, "agent_error", null,
-                    "Jeltz wrapper missing 'success' boolean", durationMs, null);
+            publish(task, "agent_error", null, "Jeltz wrapper missing 'success' boolean", durationMs, null);
             return;
         }
         if (successNode.asBoolean()) {
@@ -424,8 +424,7 @@ public class MagratheaThinkProcessCompletionListener {
         String reason = wrapper.path("error").asString("schema_violation");
         String message = wrapper.path("message").asString("Jeltz returned success=false");
         JsonNode lastInvalid = wrapper.get("lastInvalid");
-        publish(task, "agent_error", lastInvalid, "Jeltz " + reason + ": " + message,
-                durationMs, null);
+        publish(task, "agent_error", lastInvalid, "Jeltz " + reason + ": " + message, durationMs, null);
     }
 
     private @Nullable JsonNode parseJsonOrNull(String body) {
@@ -447,8 +446,7 @@ public class MagratheaThinkProcessCompletionListener {
 
     private static long computeDurationMs(ThinkProcessDocument process) {
         if (process.getCreatedAt() == null) return 0L;
-        java.time.Instant end = process.getUpdatedAt() != null
-                ? process.getUpdatedAt() : java.time.Instant.now();
+        java.time.Instant end = process.getUpdatedAt() != null ? process.getUpdatedAt() : java.time.Instant.now();
         return java.time.Duration.between(process.getCreatedAt(), end).toMillis();
     }
 

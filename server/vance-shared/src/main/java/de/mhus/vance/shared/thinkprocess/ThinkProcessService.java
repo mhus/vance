@@ -411,6 +411,18 @@ public class ThinkProcessService {
     }
 
     /**
+     * Newest-first processes of a whole tenant running {@code thinkEngine},
+     * capped at {@code limit}. The Trillian state view walks every control
+     * process regardless of project — the pair spans the control session's
+     * project and the worker's hub, so a project-scoped query would see only
+     * half of it.
+     */
+    public List<ThinkProcessDocument> findByTenantAndEngine(String tenantId, String thinkEngine, int limit) {
+        return repository.findByTenantIdAndThinkEngineOrderByCreatedAtDesc(
+                tenantId, thinkEngine, org.springframework.data.domain.PageRequest.of(0, Math.max(1, limit)));
+    }
+
+    /**
      * The Mongo ids of every process in the given sessions — ids only, no
      * limit.
      *

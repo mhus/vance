@@ -158,21 +158,16 @@ public class TrillianCommandHandler implements EngineCommandHandler {
      */
     private List<Map<String, Object>> spawnedWorkers(ThinkProcessDocument peer) {
         List<Map<String, Object>> workers = new ArrayList<>();
-        List<ThinkProcessDocument> inSession =
-                thinkProcessService.findBySession(peer.getTenantId(), peer.getSessionId());
-        for (ThinkProcessDocument p : inSession) {
-            if (p.getId().equals(peer.getId()) || p.getStatus() == ThinkProcessStatus.CLOSED) {
-                continue;
-            }
+        for (TrillianInternalApi.TaskWorkerSnapshot t : api.listTaskWorkers(peer)) {
             Map<String, Object> w = new LinkedHashMap<>();
-            w.put("name", p.getName());
-            w.put("processId", p.getId());
+            w.put("name", t.name());
+            w.put("processId", t.processId());
             // The target project is what makes a cross-project spawn
             // visible — it differs from the worker session's own project.
-            w.put("projectId", p.getProjectId());
-            w.put("status", nameOf(p.getStatus()));
-            w.put("engine", p.getThinkEngine());
-            w.put("age", age(p.getCreatedAt()));
+            w.put("projectId", t.projectId());
+            w.put("status", nameOf(t.status()));
+            w.put("engine", t.engine());
+            w.put("age", age(t.createdAt()));
             workers.add(w);
         }
         return workers;

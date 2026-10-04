@@ -90,6 +90,9 @@ class TrillianSessionBootstrapperTest {
     @Mock
     TrillianModelGate modelGate;
 
+    @Mock
+    TrillianActivationGate activationGate;
+
     TrillianSessionBootstrapper bootstrapper;
 
     /** Real registry with the baseline Nature — the seeding path is real logic. */
@@ -112,8 +115,10 @@ class TrillianSessionBootstrapperTest {
                 natureRegistry(),
                 homeBootstrapService,
                 modelGate,
+                activationGate,
                 permissionBootstrapProvider);
 
+        when(activationGate.loopsEnabled(anyString(), any(), any())).thenReturn(true);
         when(userService.existsByTenantAndName(anyString(), anyString())).thenReturn(false);
         de.mhus.vance.shared.project.ProjectDocument home = new de.mhus.vance.shared.project.ProjectDocument();
         home.setName(PROJECT);
@@ -221,6 +226,23 @@ class TrillianSessionBootstrapperTest {
     }
 
     @Test
+    void bootstrap_suppressesTheLoopWhenTheActivationGateIsClosed() {
+        when(activationGate.loopsEnabled(anyString(), any(), any())).thenReturn(false);
+
+        bootstrapper.maybeBootstrap(controlSession(), controlProcess());
+
+        // No account minted, no home ensured, no user session — and the
+        // control chat says why once, naming the setting to flip.
+        verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
+        verify(sessionService, never())
+                .create(anyString(), anyString(), anyString(), any(), anyString(), anyString(), any(), anyBoolean());
+        ArgumentCaptor<ChatMessageDocument> message = ArgumentCaptor.forClass(ChatMessageDocument.class);
+        verify(chatMessageService).append(message.capture());
+        org.assertj.core.api.Assertions.assertThat(message.getValue().getContent())
+                .contains(TrillianActivationGate.ENABLED_KEY);
+    }
+
+    @Test
     void bootstrap_announcesTheWorkerIdentityAsAPersistentChatMessage() {
         bootstrapper.maybeBootstrap(controlSession(), controlProcess());
 
@@ -284,6 +306,7 @@ class TrillianSessionBootstrapperTest {
                 new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(java.util.List.of(named)),
                 homeBootstrapService,
                 modelGate,
+                activationGate,
                 permissionBootstrapProvider);
 
         bootstrapper.maybeBootstrap(controlSession(), controlProcess("adam"));
@@ -453,6 +476,7 @@ class TrillianSessionBootstrapperTest {
                 new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(java.util.List.of(persistent)),
                 homeBootstrapService,
                 modelGate,
+                activationGate,
                 permissionBootstrapProvider);
 
         bootstrapper.maybeBootstrap(controlSession(), controlProcess("adam"));

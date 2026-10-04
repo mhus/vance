@@ -4,6 +4,7 @@ import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.brain.trillian.TrillianActivationGate;
 import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -42,16 +43,23 @@ public class TrillianSessionCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Display name for the new session "
-                                    + "(optional — auto-generated if missing)."),
-                    "initialMessage", Map.of(
-                            "type", "string",
-                            "description", "Optional first chat message to seed the "
-                                    + "Trillian-Control conversation — sent as if the "
-                                    + "caller typed it.")),
+            "properties",
+                    Map.of(
+                            "title",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Display name for the new session "
+                                                    + "(optional — auto-generated if missing)."),
+                            "initialMessage",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional first chat message to seed the "
+                                                    + "Trillian-Control conversation — sent as if the "
+                                                    + "caller typed it.")),
             "required", List.of());
 
     private static final String CLIENT_NAME = "trillian-bridge";
@@ -61,6 +69,7 @@ public class TrillianSessionCreateTool implements Tool {
     private final SessionChatBootstrapper chatBootstrapper;
     private final ThinkEngineService thinkEngineService;
     private final LaneScheduler laneScheduler;
+    private final TrillianActivationGate activationGate;
 
     @Override
     public String name() {
@@ -93,8 +102,16 @@ public class TrillianSessionCreateTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx.projectId() == null || ctx.userId() == null) {
+            throw new ToolException("trillian_session_create requires a project + user scope");
+        }
+        // Kill switch: trillian.enabled=false means no new Trillian loop in
+        // this scope — fail fast here instead of spawning a control session
+        // whose working side is suppressed. A per-Trillian hub value cannot
+        // apply yet (no account exists at spawn time); the bootstrap gate
+        // catches that one on the loop build.
+        if (!activationGate.loopsEnabled(ctx.tenantId(), /*accountId*/ null, ctx.projectId())) {
             throw new ToolException(
-                    "trillian_session_create requires a project + user scope");
+                    "trillian_session_create is switched off: " + TrillianActivationGate.refusalMessage());
         }
         String title = stringParam(params, "title", null);
         String initialMessage = stringParam(params, "initialMessage", null);
@@ -110,33 +127,31 @@ public class TrillianSessionCreateTool implements Tool {
                 /*profile*/ "default",
                 CLIENT_VERSION,
                 CLIENT_NAME);
-        log.info("trillian_session_create: spawned session id='{}' by caller userId='{}'",
-                session.getSessionId(), ctx.userId());
+        log.info(
+                "trillian_session_create: spawned session id='{}' by caller userId='{}'",
+                session.getSessionId(),
+                ctx.userId());
 
         Optional<ThinkProcessDocument> chatProcess = chatBootstrapper.ensureChatProcess(
-                session, /*parentProcessId*/ null,
-                TrillianSessionBootstrapper.DEFAULT_CONTROL_RECIPE);
+                session, /*parentProcessId*/ null, TrillianSessionBootstrapper.DEFAULT_CONTROL_RECIPE);
         if (chatProcess.isEmpty()) {
             throw new ToolException(
-                    "Failed to spawn Trillian-Control chat process for session '"
-                            + session.getSessionId() + "'");
+                    "Failed to spawn Trillian-Control chat process for session '" + session.getSessionId() + "'");
         }
 
         ThinkProcessDocument control = chatProcess.get();
 
         // Optional initial-steer — fire-and-forget on the control lane.
         if (initialMessage != null && !initialMessage.isBlank()) {
-            SteerMessage.UserChatInput input = new SteerMessage.UserChatInput(
-                    Instant.now(),
-                    /*messageId*/ null,
-                    ctx.userId(),
-                    initialMessage);
+            SteerMessage.UserChatInput input =
+                    new SteerMessage.UserChatInput(Instant.now(), /*messageId*/ null, ctx.userId(), initialMessage);
             try {
-                laneScheduler.submit(control.getId(),
-                        () -> thinkEngineService.steer(control, input));
+                laneScheduler.submit(control.getId(), () -> thinkEngineService.steer(control, input));
             } catch (RuntimeException e) {
-                log.warn("Initial-steer lane-submit failed for trillian session '{}': {}",
-                        session.getSessionId(), e.toString());
+                log.warn(
+                        "Initial-steer lane-submit failed for trillian session '{}': {}",
+                        session.getSessionId(),
+                        e.toString());
             }
         }
 

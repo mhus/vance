@@ -476,6 +476,31 @@ public class SettingService {
     }
 
     /**
+     * Boolean variant of {@link #getStringValueUserProjectCascade} — same
+     * cascade ({@code think-process → _user_<userId> → project → _vance}),
+     * parsed with the {@code true/1/yes/on} semantics of
+     * {@link #getBooleanValue}. Falls back to {@code defaultValue} when no
+     * scope holds the key.
+     */
+    public boolean getBooleanValueUserProjectCascade(
+            String tenantId,
+            @Nullable String userId,
+            @Nullable String projectId,
+            @Nullable String thinkProcessId,
+            String key,
+            boolean defaultValue) {
+        String v = getStringValueUserProjectCascade(tenantId, userId, projectId, thinkProcessId, key);
+        if (v == null || v.isBlank()) {
+            return defaultValue;
+        }
+        String normalized = v.trim().toLowerCase();
+        return "true".equals(normalized)
+                || "1".equals(normalized)
+                || "yes".equals(normalized)
+                || "on".equals(normalized);
+    }
+
+    /**
      * Password variant of {@link #getStringValueUserProjectCascade} —
      * same cascade, decrypts the first matching layer's ciphertext.
      */

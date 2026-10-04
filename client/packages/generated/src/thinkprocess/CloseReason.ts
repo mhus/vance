@@ -7,6 +7,7 @@ export enum CloseReason {
   DONE = 'DONE',
   INCOMPLETE = 'INCOMPLETE',
   STOPPED = 'STOPPED',
+  FORCE = 'FORCE',
   STALE = 'STALE',
   ARCHIVED = 'ARCHIVED',
   USER_DELETE = 'USER_DELETE',

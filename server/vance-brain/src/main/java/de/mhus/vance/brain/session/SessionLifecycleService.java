@@ -697,6 +697,80 @@ public class SessionLifecycleService {
     }
 
     /**
+     * Force-stop a wedged process: the opposite of waiting. Halt flag out
+     * first (the prompt channel a mid-turn engine reads), then the CLOSED
+     * write immediately and off-lane — a stop that queues behind the turn it
+     * should kill is not a stop. {@code engine.stop} is deliberately NOT
+     * called: engine shutdown runs on the lane by contract, and waiting for
+     * the lane is exactly what cannot be done here. The running turn dies at
+     * its next halt check ({@code isHaltRequested}); queued lane work
+     * self-cancels because engines skip CLOSED processes.
+     *
+     * <p>Closes with {@link CloseReason#FORCE} — an operator can then tell
+     * "graceful stop landed" from "we cut it". In-flight tool calls are not
+     * awaited and their partial work stays as-is: force is a cut, not a
+     * rollback.
+     */
+    public void forceStopProcess(ThinkProcessDocument process) {
+        thinkProcessService.requestHalt(process.getId());
+        thinkProcessService.closeProcess(process.getId(), CloseReason.FORCE);
+        laneScheduler.forget(process.getId());
+    }
+
+    /**
+     * Graceful stop of every non-CLOSED process of the session — the
+     * session-level "stop all" of the insights inspector. Unlike {@link
+     * #stopChildrenOfChat} this includes the chat-process itself: the caller
+     * is an operator saying "this session shall compute no more", not the
+     * foot {@code /stop} command resetting direction.
+     *
+     * <p>Each {@code engine.stop} runs on its own lane, all lanes in
+     * parallel — one wedged lane must not turn the round trip into
+     * N × 30s.
+     *
+     * @return the names of the processes that were stopped
+     */
+    public List<String> stopAllInSession(String tenantId, String sessionId) {
+        ThinkEngineService engines = thinkEngineServiceProvider.getObject();
+        List<String> stoppedNames = new ArrayList<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        for (ThinkProcessDocument p : thinkProcessService.findBySession(tenantId, sessionId)) {
+            if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;
+            stoppedNames.add(p.getName());
+            futures.add(laneScheduler.submit(p.getId(), () -> {
+                try {
+                    engines.stop(p);
+                } catch (RuntimeException e) {
+                    log.warn("engine.stop failed on session-stop id='{}': {}", p.getId(), e.toString());
+                    thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
+                }
+                return null;
+            }));
+        }
+        joinAll(futures);
+        log.info("Stopped {} process(es) of session='{}': {}", stoppedNames.size(), sessionId, stoppedNames);
+        return stoppedNames;
+    }
+
+    /**
+     * Force variant of {@link #stopAllInSession} — same scope (every
+     * non-CLOSED process, chat-process included), same cut semantics as
+     * {@link #forceStopProcess}.
+     *
+     * @return the names of the processes that were force-stopped
+     */
+    public List<String> forceStopAllInSession(String tenantId, String sessionId) {
+        List<String> stoppedNames = new ArrayList<>();
+        for (ThinkProcessDocument p : thinkProcessService.findBySession(tenantId, sessionId)) {
+            if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;
+            stoppedNames.add(p.getName());
+            forceStopProcess(p);
+        }
+        log.info("Force-stopped {} process(es) of session='{}': {}", stoppedNames.size(), sessionId, stoppedNames);
+        return stoppedNames;
+    }
+
+    /**
      * Upper bound on how long a cascade waits for one lane to land.
      *
      * <p>The cascades below genuinely want their lane work finished before

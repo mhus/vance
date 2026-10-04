@@ -51,8 +51,7 @@ public class UrsaSchedulerProcessTerminationListener {
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
         ThinkProcessStatus newStatus = event.newStatus();
-        if (newStatus != ThinkProcessStatus.CLOSED
-                && newStatus != ThinkProcessStatus.BLOCKED) {
+        if (newStatus != ThinkProcessStatus.CLOSED && newStatus != ThinkProcessStatus.BLOCKED) {
             return;
         }
         Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(event.processId());
@@ -70,17 +69,21 @@ public class UrsaSchedulerProcessTerminationListener {
             // A scheduler spawn always carries both. Without them the run
             // cannot be attributed — say so instead of inventing an id that
             // would open a second, orphaned run log.
-            log.warn("Scheduler-spawned process '{}' has an incomplete trigger origin "
+            log.warn(
+                    "Scheduler-spawned process '{}' has an incomplete trigger origin "
                             + "(source='{}' runId='{}') — run not closed",
-                    event.processId(), source, runId);
+                    event.processId(),
+                    source,
+                    runId);
             return;
         }
 
         if (newStatus == ThinkProcessStatus.BLOCKED) {
-            schedulerLogService.onBlocked(
-                    runId, "process " + event.processId() + " awaiting inbox answer");
-            log.info("Scheduler run blocked source='{}' process='{}' — awaiting inbox answer",
-                    source, event.processId());
+            schedulerLogService.onBlocked(runId, "process " + event.processId() + " awaiting inbox answer");
+            log.info(
+                    "Scheduler run blocked source='{}' process='{}' — awaiting inbox answer",
+                    source,
+                    event.processId());
             return;
         }
 
@@ -88,15 +91,21 @@ public class UrsaSchedulerProcessTerminationListener {
         String projectId = process.getProjectId();
 
         boolean completed = closeReason == CloseReason.DONE;
-        schedulerLogService.onTerminated(
-                runId, completed ? "completed" : "failed", java.time.Instant.now());
+        schedulerLogService.onTerminated(runId, completed ? "completed" : "failed", java.time.Instant.now());
         megadodoService.schedulerRunFinished(
-                event.tenantId(), projectId, schedulerNameOf(source), runId,
+                event.tenantId(),
+                projectId,
+                schedulerNameOf(source),
+                runId,
                 completed,
                 completed ? null : closeReasonText(closeReason),
                 /*logPath*/ null);
-        log.info("Scheduler run terminated source='{}' process='{}' closeReason={} completed={}",
-                source, event.processId(), closeReason, completed);
+        log.info(
+                "Scheduler run terminated source='{}' process='{}' closeReason={} completed={}",
+                source,
+                event.processId(),
+                closeReason,
+                completed);
 
         // Wake the queued-tick path if any.
         schedulerService.onProcessTerminated(event.tenantId(), projectId, event.processId());
@@ -116,6 +125,7 @@ public class UrsaSchedulerProcessTerminationListener {
             case INCOMPLETE -> "the agent stopped before finishing";
             case STALE -> "no progress, gave up";
             case STOPPED -> "stopped";
+            case FORCE -> "force-stopped";
             case AUTO_CLOSE -> "closed automatically";
             case ARCHIVED -> "archived";
             case USER_DELETE -> "deleted";
@@ -123,5 +133,4 @@ public class UrsaSchedulerProcessTerminationListener {
             case DONE -> "done";
         };
     }
-
 }

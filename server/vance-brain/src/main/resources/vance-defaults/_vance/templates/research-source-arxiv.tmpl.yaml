@@ -1,3 +1,6 @@
+$meta:
+  kind: vance-research-source
+
 protocol: arxiv
 baseUrl: https://export.arxiv.org/api
 enabled: true

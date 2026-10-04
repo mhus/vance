@@ -1,3 +1,6 @@
+$meta:
+  kind: vance-research-source
+
 protocol: pubmed
 baseUrl: https://eutils.ncbi.nlm.nih.gov/entrez/eutils
 {% if contactEmail %}contactEmail: {{ contactEmail }}

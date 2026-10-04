@@ -1,3 +1,6 @@
+$meta:
+  kind: vance-research-source
+
 protocol: wikipedia
 baseUrl: {{ baseUrl }}
 enabled: true

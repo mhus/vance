@@ -220,7 +220,9 @@ Operators can override defaults / fallbacks in any project via
 settings. Use `research_providers` to list the inventory live.
 
 Each source is itself a document — `_vance/config/research/<id>.yaml`,
-one per provider instance, the filename being the instance id. An
+one per provider instance, the filename being the instance id, always
+carrying the `$meta.kind: vance-research-source` marker (it opens the
+document in its editing form). An
 operator adds one via the per-protocol create-dialog template
 ("Search source: …") or, on explicit request, the setup creator — a
 chat agent does not set sources up on its own.

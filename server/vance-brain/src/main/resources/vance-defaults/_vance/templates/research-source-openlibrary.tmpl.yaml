@@ -1,3 +1,6 @@
+$meta:
+  kind: vance-research-source
+
 protocol: openlibrary
 baseUrl: https://openlibrary.org
 enabled: true

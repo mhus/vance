@@ -34,6 +34,8 @@ One document per source: `_vance/config/research/<id>.yaml`. The template
 „Suchquelle: Ode" writes it; by hand it looks like this:
 
 ```yaml
+$meta:
+  kind: vance-research-source
 protocol: ode
 baseUrl: https://news.example.com/ode/search
 apiKey: "{{secret:vault:news-index}}"
@@ -48,6 +50,10 @@ enabled: true
 | `apiKey` | no | bearer token, sent as `Authorization: Bearer <key>`. Either a reference (`{{secret:vault:…}}`) or a declared literal (`{noop}…`). What it has to match is the far end's business: either its static `vance.ode.zarniwoop.api-key`, or a token its own `OdeAuthService` issued |
 | `enabled` | no | absent counts as enabled |
 | `capsTtlSeconds` | no | how long the declaration is cached; default 1800, `0` while setting up |
+
+The `$meta.kind` marker at the top is part of the document — the template
+writes it, and without it the file opens as raw YAML instead of the source
+form.
 
 **The filename is the id** (`archive.yaml`, `hrafnagud.yaml`, `legal-index.yaml`).
 It appears in `research_providers` output, in cooldown subjects and in the logs.

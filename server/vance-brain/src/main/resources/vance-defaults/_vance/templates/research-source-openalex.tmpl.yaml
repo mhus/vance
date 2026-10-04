@@ -1,3 +1,6 @@
+$meta:
+  kind: vance-research-source
+
 protocol: openalex
 baseUrl: https://api.openalex.org
 {% if contactEmail %}contactEmail: {{ contactEmail }}

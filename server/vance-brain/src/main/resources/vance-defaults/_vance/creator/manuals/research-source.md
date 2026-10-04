@@ -1,7 +1,7 @@
 ---
 audience: creator
 triggers: search source, research source, search provider, research provider, add a search backend, add a research provider, suchquelle, suchquelle anlegen, such-anbieter hinzufügen, provider hinzufügen, provider einrichten, serper, serper key, api key fuer die suche, search key, search config, research endpoint, research.endpoint, web search einrichten, eigene suche, _vance/config/research, no provider for modality, kein provider
-summary: How I add or change a research source — one YAML document per provider instance under _vance/config/research/, filename = instance id, protocol-picked fields, apiKey as vault reference or {noop} literal, tenant-wide (_tenant) vs project placement, and verification with research_providers. Writing there needs ADMIN; routing defaults are settings I cannot write.
+summary: How I add or change a research source — one YAML document per provider instance under _vance/config/research/, filename = instance id, always with the $meta.kind: vance-research-source marker, protocol-picked fields, apiKey as vault reference or {noop} literal, tenant-wide (_tenant) vs project placement, and verification with research_providers and kind_validate. Writing there needs ADMIN; routing defaults are settings I cannot write.
 requires-tools: doc_write, doc_edit
 ---
 # How I set up research sources
@@ -32,11 +32,18 @@ output, in cooldown subjects and in the logs.
 Serper example:
 
 ```yaml
+$meta:
+  kind: vance-research-source
 protocol: serper
 baseUrl: https://google.serper.dev
 apiKey: "{{secret:vault:research.serper-main}}"
 enabled: true
 ```
+
+**Always start with the kind marker** — `$meta.kind: vance-research-source`
+is what opens the document in its editing form in the web UI, and what
+`kind_validate` reads. Templates, the setup wizard and the form itself all
+write it; a document without it opens as raw YAML.
 
 | Field | Required | Meaning |
 |---|---|---|
@@ -80,6 +87,10 @@ are routed out of the box, so a new keyless source is found by
 wants `research.default.web` pointed at it.
 
 ## Verify
+
+`kind_validate` on the new document first — it reports what the dispatcher
+would silently drop (missing or unknown `protocol`, missing endpoint, an
+undeclared credential) while the file is still open.
 
 Writing a source-config document evicts the provider cache, so the
 inventory is fresh immediately: `research_providers` right after the

@@ -1,3 +1,6 @@
+$meta:
+  kind: vance-research-source
+
 protocol: serper
 baseUrl: https://google.serper.dev
 apiKey: "{{ apiKey }}"

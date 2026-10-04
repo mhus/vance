@@ -1250,6 +1250,9 @@ export default {
       problemsTitle: 'This workflow would not start:',
       empty: 'No states — a workflow needs at least one entry under `states:`.',
     },
+    researchSourceView: {
+      tabLabel: 'Search source',
+    },
     schedulerView: {
       tabLabel: 'Scheduler',
       parseError: 'This scheduler definition is not valid YAML — fix it in the raw editor.',
@@ -2429,6 +2432,41 @@ export default {
     },
   },
 
+  researchSource: {
+    protocols: {
+      arxiv: 'arXiv',
+      hackernews: 'Hacker News',
+      ode: 'Ode (foreign search service)',
+      openalex: 'OpenAlex',
+      openlibrary: 'Open Library',
+      pubmed: 'PubMed',
+      serper: 'Serper.dev (Google SERP)',
+      wikipedia: 'Wikipedia',
+    },
+    form: {
+      sectionSource: 'Source',
+      protocol: 'Protocol',
+      protocolHelp: 'Which search protocol this endpoint speaks.',
+      protocolCustom: 'Protocol id',
+      protocolCustomHelp:
+        'Must match a protocol the server ships — an unknown id keeps the source inert.',
+      baseUrl: 'Endpoint',
+      baseUrlHelp: 'Base URL of the service, e.g. https://google.serper.dev.',
+      apiKey: 'API key',
+      apiKeyHelp:
+        'Either a reference ({ref}) or a declared literal ({literal}). The form stores what you type — it never resolves either.',
+      contactEmail: 'Contact email',
+      contactEmailHelp: 'Politeness contact the provider asks for (openalex, pubmed).',
+      capsTtlSeconds: 'Capabilities cache TTL (seconds)',
+      capsTtlSecondsHelp: 'Overrides what the source itself suggests. 0 = ask every time.',
+      enabled: 'Enabled',
+      enabledHelp: 'A disabled source stays configured but takes no part in routing.',
+      draftWarning:
+        'This document is not under _vance/config/research/ — the research dispatcher only reads that folder, so the source stays inert where it is.',
+      preserved:
+        '{count} further field(s) in this document are kept unchanged — edit them in the raw editor.',
+    },
+  },
   scheduler: {
     pageTitle: 'Scheduler',
     pickProject: 'Pick a session or project to see its schedulers.',

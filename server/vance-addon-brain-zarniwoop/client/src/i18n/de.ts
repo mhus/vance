@@ -35,7 +35,8 @@ export default {
     noProviderHeadline: 'Kein Such-Provider konfiguriert',
     noProviderBody:
       'Für dieses Projekt ist kein Quelldokument konfiguriert. Angelegt wird es über die Vorlage '
-      + '„Suchquelle: …“ im Anlegen-Dialog (sie schreibt _vance/config/research/<id>.yaml). '
+      + '„Suchquelle: …“ im Anlegen-Dialog (sie schreibt _vance/config/research/<id>.yaml und '
+      + 'braucht Projekt-Admin) — das Dokument öffnet sich danach als Bearbeitungs-Formular. '
       + 'Schon angelegt? Das Inventar ist fünf Minuten gecacht — „Provider neu laden“ drücken.',
     providers: 'Provider',
     noProviders: 'In diesem Projekt ist nichts konfiguriert.',

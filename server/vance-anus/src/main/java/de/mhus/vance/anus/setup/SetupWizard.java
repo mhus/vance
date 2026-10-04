@@ -53,6 +53,13 @@ public class SetupWizard {
     /** Where the search-source documents live; see SourceConfigPaths in the brain. */
     private static final String SEARCH_SOURCE_PREFIX = "_vance/config/research/";
 
+    /**
+     * Kind marker every seeded source body starts with, so the document
+     * routes to its form view (`kind: vance-research-source`) instead of the
+     * raw YAML editor.
+     */
+    private static final String RESEARCH_SOURCE_HEADER = "$meta:\n  kind: vance-research-source\n\n";
+
     private final TenantService tenantService;
     private final UserService userService;
     private final PasswordService passwordService;
@@ -1103,7 +1110,7 @@ public class SetupWizard {
                 path, /*title*/
                 null, /*tags*/
                 null,
-                body,
+                RESEARCH_SOURCE_HEADER + body,
                 /*createdBy*/ null,
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         return 1;

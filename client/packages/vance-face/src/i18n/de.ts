@@ -1252,6 +1252,9 @@ export default {
       problemsTitle: 'Der Workflow würde so nicht starten:',
       empty: 'Keine States — der Workflow braucht mindestens einen Eintrag unter `states:`.',
     },
+    researchSourceView: {
+      tabLabel: 'Suchquelle',
+    },
     schedulerView: {
       tabLabel: 'Scheduler',
       parseError: 'Diese Scheduler-Definition ist kein gültiges YAML — im Raw-Editor korrigieren.',
@@ -2446,6 +2449,41 @@ export default {
     },
   },
 
+  researchSource: {
+    protocols: {
+      arxiv: 'arXiv',
+      hackernews: 'Hacker News',
+      ode: 'Ode (Fremd-Suchdienst)',
+      openalex: 'OpenAlex',
+      openlibrary: 'Open Library',
+      pubmed: 'PubMed',
+      serper: 'Serper.dev (Google-SERP)',
+      wikipedia: 'Wikipedia',
+    },
+    form: {
+      sectionSource: 'Quelle',
+      protocol: 'Protokoll',
+      protocolHelp: 'Welches Suchprotokoll dieser Endpunkt spricht.',
+      protocolCustom: 'Protokoll-Id',
+      protocolCustomHelp:
+        'Muss zu einem Protokoll des Servers passen — eine unbekannte Id lässt die Quelle inaktiv.',
+      baseUrl: 'Endpunkt',
+      baseUrlHelp: 'Basis-URL des Dienstes, z.B. https://google.serper.dev.',
+      apiKey: 'API-Key',
+      apiKeyHelp:
+        'Entweder eine Referenz ({ref}) oder ein erklärtes Literal ({literal}). Das Formular speichert, was Sie tippen — es löst beides nicht auf.',
+      contactEmail: 'Kontakt-E-Mail',
+      contactEmailHelp: 'Höflichkeits-Kontakt, den die Quelle wünscht (openalex, pubmed).',
+      capsTtlSeconds: 'Capabilities-Haltezeit (Sekunden)',
+      capsTtlSecondsHelp: 'Überschreibt, was die Quelle selbst vorschlägt. 0 = jedes Mal neu fragen.',
+      enabled: 'Aktiv',
+      enabledHelp: 'Eine abgeschaltete Quelle bleibt konfiguriert, nimmt aber nicht am Routing teil.',
+      draftWarning:
+        'Dieses Dokument liegt nicht unter _vance/config/research/ — der Research-Dispatcher liest nur diesen Ordner, damit bleibt die Quelle an ihrem Ort inaktiv.',
+      preserved:
+        '{count} weitere Feld(er) dieses Dokuments bleiben unverändert — im Raw-Editor bearbeiten.',
+    },
+  },
   scheduler: {
     pageTitle: 'Scheduler',
     pickProject: 'Session oder Projekt links wählen, um Scheduler zu sehen.',

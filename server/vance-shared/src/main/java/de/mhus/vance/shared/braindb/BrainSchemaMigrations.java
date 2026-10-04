@@ -59,9 +59,9 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // database they cost one query each and change nothing. They travel
             // together: _001 sets the flag including kit provisioning and _002
             // takes provisioning back out.
-            new Registered("2026-08-22_001", Migrator_2026_08_22_001_OwnerRequired.class,
-                    /*runOnBaseline*/ true),
-            new Registered("2026-08-22_002",
+            new Registered("2026-08-22_001", Migrator_2026_08_22_001_OwnerRequired.class, /*runOnBaseline*/ true),
+            new Registered(
+                    "2026-08-22_002",
                     Migrator_2026_08_22_002_OwnerRequiredWithoutProvisioning.class,
                     /*runOnBaseline*/ true),
             // Not runOnBaseline: a genuinely new database has no event_log to
@@ -74,8 +74,7 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // goes to maximegalon_threads, so every inbox appears *empty*
             // rather than broken, and nothing later puts it right. On a new
             // database it costs one collectionExists call.
-            new Registered("2026-08-23_002", Migrator_2026_08_23_002_MaximegalonRename.class,
-                    /*runOnBaseline*/ true),
+            new Registered("2026-08-23_002", Migrator_2026_08_23_002_MaximegalonRename.class, /*runOnBaseline*/ true),
             // runOnBaseline, and it has to travel with _002: that one is on the
             // baseline path precisely because a database restored from before
             // the anchor looks new here. On exactly that path the rename then
@@ -85,22 +84,19 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // That is the outcome this migration exists to prevent, and no
             // later boot retries it. Self-emptying filter, so on a genuinely
             // new database it costs one query.
-            new Registered("2026-08-23_003",
-                    Migrator_2026_08_23_003_MaximegalonThreadFields.class,
-                    /*runOnBaseline*/ true),
+            new Registered(
+                    "2026-08-23_003", Migrator_2026_08_23_003_MaximegalonThreadFields.class, /*runOnBaseline*/ true),
             // Not runOnBaseline: llm_usage_daily is newer than the anchor, so a
             // database old enough to be baselined does not have it — and a
             // skipped run here shows up as amounts reading zero rather than as
             // a silently wrong total.
-            new Registered("2026-08-24_001",
-                    Migrator_2026_08_24_001_UsageDailyCostMicros.class),
+            new Registered("2026-08-24_001", Migrator_2026_08_24_001_UsageDailyCostMicros.class),
             // Not runOnBaseline: a new database never had the two retired index
             // names, and the replacements are created by the mapping context on
             // every boot regardless. Being stamped without running is exactly
             // right — and unlike most entries, skipping this one costs only two
             // unused indexes, never a wrong read.
-            new Registered("2026-08-24_002",
-                    Migrator_2026_08_24_002_MegadodoFeedIndexes.class),
+            new Registered("2026-08-24_002", Migrator_2026_08_24_002_MegadodoFeedIndexes.class),
             // runOnBaseline, and it travels with 2026-08-23_002/_003 for the
             // same reason they do: on the baseline path the rename brings the
             // inbox rows across, and a merely-stamped move would leave every
@@ -108,23 +104,25 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // any more. That failure is silent — a thread without a link looks
             // like a thread that never had one. Self-emptying filter, so on a
             // genuinely new database it costs one query.
-            new Registered("2026-08-24_003",
-                    Migrator_2026_08_24_003_ThreadDocumentRef.class,
-                    /*runOnBaseline*/ true),
+            new Registered("2026-08-24_003", Migrator_2026_08_24_003_ThreadDocumentRef.class, /*runOnBaseline*/ true),
             // Not runOnBaseline: a database new enough to be baselined has no
             // Fook configuration that predates the default provider change,
             // which is the only thing this protects. It ships in the same
             // release as that change — separating them is what would make an
             // installation forward its reports somewhere else without failing.
-            new Registered("2026-08-28_001",
-                    Migrator_2026_08_28_001_FookProviderTypeExplicit.class),
+            new Registered("2026-08-28_001", Migrator_2026_08_28_001_FookProviderTypeExplicit.class),
             // Not runOnBaseline: integration tokens are newer than the anchor,
             // so a database old enough to be baselined has none. What this
             // protects is narrow but sharp — a token whose row still carries
             // the old single `scopeProfile` keeps authenticating but drops out
             // of the only list with a Revoke button on it.
-            new Registered("2026-09-01_001",
-                    Migrator_2026_09_01_001_IntegrationTokenProfiles.class));
+            new Registered("2026-09-01_001", Migrator_2026_09_01_001_IntegrationTokenProfiles.class),
+            // Not runOnBaseline: a database new enough to be baselined gets its
+            // search sources from the setup wizard or the templates, and both
+            // write the `$meta.kind` marker since this release. What this fixes
+            // is the row kind of sources written before the kind existed —
+            // without it they open in the raw editor instead of their form.
+            new Registered("2026-10-03_001", Migrator_2026_10_03_001_ResearchSourceKind.class));
 
     @Override
     public List<Registered> migrations() {

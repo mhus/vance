@@ -18,6 +18,12 @@
 import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
 import { parseSchedulerDoc, serializeSchedulerDoc, type SchedulerDoc } from '@/kindViews/schedulerFormCodec';
+import {
+  ResearchSourceParseError,
+  parseResearchSourceDoc,
+  serializeResearchSourceDoc,
+  type ResearchSourceDoc,
+} from '@/kindViews/researchSourceCodec';
 import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
@@ -123,6 +129,26 @@ export function registerBuiltInKinds(): void {
     tabLabelKey: 'documents.schedulerView.tabLabel',
     view: defineAsyncComponent(
       () => import('@/kindViews/SchedulerFormView.vue'),
+    ),
+  });
+  // ── Research source: form view over a source-config document ────
+  // Model = the whole YAML map (researchSourceCodec): the form owns
+  // protocol/baseUrl/apiKey/enabled plus the two per-protocol extras,
+  // and every other key ($meta, readerIdentity, unknown protocol
+  // fields) survives each round-trip. A protocol id this build does not
+  // know degrades to a raw input instead of being snapped to a known
+  // one — the form never misrepresents a source. `$meta.kind` is
+  // guaranteed on save, so sources written before the kind existed
+  // route here as well.
+  registerKind<ResearchSourceDoc>({
+    id: 'vance-research-source',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-research-source',
+    parse: parseResearchSourceDoc,
+    serialize: serializeResearchSourceDoc,
+    isParseError: (e) => e instanceof ResearchSourceParseError,
+    tabLabelKey: 'documents.researchSourceView.tabLabel',
+    view: defineAsyncComponent(
+      () => import('@/kindViews/ResearchSourceFormView.vue'),
     ),
   });
   // ── Age: locked-state view for encrypted documents ────────────

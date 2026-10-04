@@ -42,7 +42,8 @@ export default {
     noProviderHeadline: 'No search provider configured',
     noProviderBody:
       'No search-source document is configured for this project. An operator adds one via a '
-      + '"Search source: …" template in the create dialog (it writes _vance/config/research/<id>.yaml). '
+      + '"Search source: …" template in the create dialog (it writes _vance/config/research/<id>.yaml '
+      + 'and needs project admin) — the document opens as an editing form right after. '
       + 'Already added? The inventory is cached for five minutes — use "Reload providers".',
     providers: 'Providers',
     noProviders: 'Nothing configured in this project.',

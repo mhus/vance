@@ -1,3 +1,6 @@
+$meta:
+  kind: vance-research-source
+
 protocol: ode
 baseUrl: {{ baseUrl }}
 {% if apiKey %}apiKey: "{{ apiKey }}"

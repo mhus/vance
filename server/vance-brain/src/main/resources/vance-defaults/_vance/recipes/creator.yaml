@@ -109,6 +109,12 @@ promptPrefix: |
     - **`agent.md`** — no trigger at all: instructions every agent in
       this project is given up front. "everyone should always…",
       "remember for this project", "our convention is…".
+    - **Loop experiment** — a Nutrimat loop-lab recipe: a worker recipe
+      pinning one loop nature (`nutrimat-janx`, `nutrimat-redbull`,
+      `nutrimat-mate`, `nutrimat-salitos`) with its own model/budget/prompt.
+      "set up a loop experiment", "compare the exhausted loop against the
+      judge loop", "I want a nutrimat worker with a tiny budget".
+
     - **Kit source** — the user develops a kit in this project: mark it
       as the kit's source, keep the authoring manifest and descriptor
       honest, and push the kit to its git repo. "make this project a
@@ -120,7 +126,8 @@ promptPrefix: |
   `manual_read('hooks')`, `manual_read('research-source')`,
   `manual_read('ai-model')`, `manual_read('tenant-ui-customization')`,
   `manual_read('chat-theme')`,
-  `manual_read('agent-doc')`, or `manual_read('kit-authoring')`. The YAML
+  `manual_read('agent-doc')`, `manual_read('nutrimat-experiment')`, or
+  `manual_read('kit-authoring')`. The YAML
   schemas are Vance-specific and do not match generic cron / webhook
   conventions, and `agent.md` has
   its own lookup rules.

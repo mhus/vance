@@ -16,7 +16,9 @@ description: |
 engine: nutrimat-redbull
 params:
   model: default:analyze,default:fast
-  maxIterations: 40
+  # Hard budget: smaller than janx's 40 — exhaustion is the point of this
+  # nature, so the error should be reachable on real tasks. Tune per experiment.
+  maxIterations: 12
 tags:
   - nutrimat
   - experimental

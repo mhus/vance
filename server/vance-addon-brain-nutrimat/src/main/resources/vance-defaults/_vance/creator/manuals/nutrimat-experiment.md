@@ -55,6 +55,11 @@ Rules of thumb:
   are a readable A/B pair.
 - **`maxIterations` is the exhaustion dial.** Small values (5–10) make the
   exhausted/judge paths fire quickly; large values (40) test real work.
+- **Runtime tuning:** `//nutrimat set maxturns <n>` changes the budget of a
+  live process (runtime override — the recipe stays the baseline, and
+  `//nutrimat set maxturns` without a value restores it); `//nutrimat status`
+  shows the effective budget, where it comes from, and the last turn's loop
+  statistics.
 - **Judge cost:** `mate` and `salitos` fire one cheap LLM call per decision
   (`nutrimat-judge-mate` / `nutrimat-judge-salitos`, both `internal: true` —
   never spawn those directly).

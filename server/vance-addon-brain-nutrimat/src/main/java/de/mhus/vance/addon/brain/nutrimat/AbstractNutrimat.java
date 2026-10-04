@@ -490,9 +490,10 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                     paramBool(process, "validation", false),
                     config.providerInstance() + ":" + config.modelName(),
                     userInput);
+            LoopStats stats = new LoopStats();
             TurnOutcome outcome;
             try {
-                outcome = runLoop(process, ctx, in);
+                outcome = runLoop(process, ctx, in, stats);
             } catch (NutrimatExhaustedException e) {
                 // The nature's exhausted policy is a hard failure: the error
                 // IS the turn outcome. No best-free-text rescue — a rescued
@@ -516,6 +517,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                 hardFailure = true;
             }
             awaitingUserInput = outcome.awaitingUserInput();
+            persistNutrimatState(process, stats, outcome);
             String finalText = outcome.finalText();
 
             // Hard-failure worker: the reply is the parent's ONLY signal about
@@ -594,7 +596,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
      * {@code while} — bounded by the per-turn wallclock net, never by a fixed
      * extension ceiling (the hook decides).
      */
-    private TurnOutcome runLoop(ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in) {
+    private TurnOutcome runLoop(ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in, LoopStats stats) {
         StringBuilder finalText = new StringBuilder();
         // Best Free-Text seen so far across all iterations — last-resort
         // material for the failure/extension hooks.
@@ -641,12 +643,15 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                             e);
                     if (d.kind() == ExhaustionDecision.Kind.EXTEND && wallclockOk(turnStart)) {
                         consumed++;
+                        stats.iterationsConsumed = consumed;
                         in.messages().add(UserMessage.from(nudgeText(d)));
+                        stats.extensions++;
                         continue;
                     }
                     return toOutcome(d, process, bestFreeText);
                 }
                 consumed++;
+                stats.iterationsConsumed = consumed;
 
                 String replyText = reply.text();
                 if (replyText != null && replyText.length() > bestFreeText.length()) {
@@ -655,6 +660,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
 
                 if (!reply.hasToolExecutionRequests()) {
                     stopCandidates++;
+                    stats.stopCandidates = stopCandidates;
                     // Natural-stop candidate: the first assistant message
                     // without a tool call. The nature decides what it is.
                     LoopState st = state(
@@ -726,6 +732,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                         consumed,
                         d.reason());
                 in.messages().add(UserMessage.from(nudgeText(d)));
+                stats.extensions++;
                 continue;
             }
             if (d.kind() == ExhaustionDecision.Kind.EXTEND) {
@@ -848,6 +855,51 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                 "The LLM call failed and no partial work is available: " + error.getMessage());
     }
 
+    // ──────────────────── Loop statistics ────────────────────
+
+    /** Mutable per-turn loop statistics — filled by the kernel, persisted by the shell. */
+    protected static final class LoopStats {
+        public int iterationsConsumed;
+        public int stopCandidates;
+        public int extensions;
+    }
+
+    /**
+     * Persists the turn's loop statistics under {@code engineParams.nutrimatState}
+     * so {@code //nutrimat status} can show what the last turn actually did.
+     * Never fails the turn — this is observability, not business logic.
+     */
+    private void persistNutrimatState(ThinkProcessDocument process, LoopStats stats, TurnOutcome outcome) {
+        try {
+            Map<String, Object> params = new java.util.LinkedHashMap<>();
+            if (process.getEngineParams() != null) {
+                params.putAll(process.getEngineParams());
+            }
+            int turns = 1;
+            if (params.get("nutrimatState") instanceof Map<?, ?> prev && prev.get("turns") instanceof Number n) {
+                turns = n.intValue() + 1;
+            }
+            String lastOutcome = "terminal";
+            if (outcome.recovered()) {
+                lastOutcome = "hardFailure";
+            } else if (outcome.interrupted()) {
+                lastOutcome = "interrupted";
+            }
+            Map<String, Object> state = new java.util.LinkedHashMap<>();
+            state.put("nature", natureId());
+            state.put("lastTurnAt", Instant.now().toString());
+            state.put("lastOutcome", lastOutcome);
+            state.put("iterationsConsumed", stats.iterationsConsumed);
+            state.put("stopCandidates", stats.stopCandidates);
+            state.put("extensions", stats.extensions);
+            state.put("turns", turns);
+            params.put("nutrimatState", state);
+            process.setEngineParams(params);
+            thinkProcessService.replaceEngineParams(process.getId(), params);
+        } catch (RuntimeException e) {
+            log.debug("Nutrimat[{}] id='{}' state persist failed: {}", natureId(), process.getId(), e.toString());
+        }
+    }
     // ──────────────────── Loop vocabulary ────────────────────
 
     /** Everything the loop mechanics need — fixed per turn. */
@@ -1382,6 +1434,12 @@ public abstract class AbstractNutrimat implements ThinkEngine {
     }
 
     private static @Nullable Object param(ThinkProcessDocument process, String key) {
+        // Runtime overlay (engineParamOverrides) wins over the spawn-static
+        // recipe params — the //nutrimat set writes live there.
+        Map<String, Object> overrides = process.getEngineParamOverrides();
+        if (overrides != null && overrides.containsKey(key)) {
+            return overrides.get(key);
+        }
         Map<String, Object> p = process.getEngineParams();
         return p == null ? null : p.get(key);
     }

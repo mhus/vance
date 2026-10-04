@@ -19,8 +19,8 @@ params:
   model: default:analyze,default:fast
   # Smaller than janx's 40 on purpose: the judge only speaks when the
   # budget is exhausted. Raise it for harder tasks, lower it to see the
-  # judge sooner.
-  maxIterations: 10
+  # judge sooner. Runtime-tunable via `//nutrimat set maxturns <n>`.
+  maxIterations: 12
 tags:
   - nutrimat
   - experimental

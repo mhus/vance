@@ -1,0 +1,72 @@
+title:
+  de: "Confetti-Web-App bauen"
+  en: "Build a confetti web app"
+description:
+  de: "Kleine moderne Web-App (pnpm, TypeScript, React, Vite) mit einem großen zentralen Button, der bei jedem Klick mehr Confetti auslöst."
+  en: "Small modern web app (pnpm, TypeScript, React, Vite) with one big centered button that triggers more confetti on every click."
+icon: sparkles
+category: entwicklung
+
+fields:
+  - name: projectName
+    type: string
+    required: true
+    label:
+      de: "Projekt-Name"
+      en: "Project name"
+    help:
+      de: "Name des Projektordners (ohne Leerzeichen)."
+      en: "Name of the project folder (no spaces)."
+
+  - name: extraWishes
+    type: textarea
+    rows: 3
+    label:
+      de: "Zusätzliche Wünsche (optional)"
+      en: "Extra wishes (optional)"
+    help:
+      de: "Ergänzungen zum Standard-Setup — z.B. eigene Farben, Dark Mode, Tests, Framer Motion."
+      en: "Additions to the default setup — e.g. custom colors, dark mode, tests, Framer Motion."
+
+promptTemplate: |
+  Build me a modern small web app named '{{ projectName }}' with pnpm,
+  TypeScript, React and Vite. Use current, popular tools and libraries:
+
+  - React + TypeScript
+  - Vite
+  - pnpm
+  - Tailwind CSS
+  - shadcn/ui
+  - react-confetti
+
+  **Goal of the app:**
+  Create a single web page with one large, centrally placed, beautiful
+  button. The button must look modern, high-quality and "satisfying" —
+  with hover effects, shadows, animations, rounded corners and good
+  typography.
+
+  Clicking the button rains confetti. Every click must visibly trigger
+  more confetti. Use react-confetti for that.
+
+  **Requirements:**
+
+  - Set up the project completely.
+  - Use a clean component structure.
+  - Style the page nicely with Tailwind and shadcn/ui.
+  - The page must be responsive.
+  - The button must be centered on the page.
+  - Add a small counter that shows how often the button has been pressed.
+  - After each click the confetti must be more intense or visible longer.
+  - Write clean, readable TypeScript code.
+  - At the end, give me the commands to run the project locally.
+
+  **Optional, where it makes sense:**
+
+  - Add subtle background gradients.
+  - Add small button animations with transition, scale, active:scale-* or Framer Motion.
+  - Use shadcn/ui for the button.
+  {% if extraWishes %}
+
+  **Additional wishes:**
+  {{ extraWishes }}
+  {% endif %}

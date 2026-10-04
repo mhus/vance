@@ -16,6 +16,13 @@ description: |
   question). `maxDecisions` caps how often the judge may say "continue"
   per turn.
 engine: nutrimat-salitos
+# Chat look for sessions on this recipe: warm red transcript with the
+# exclamation-mark frieze (_vance/chat-themes/nutrimat.css) — the shared
+# "this is an experiment" signal. Applies when this recipe runs as the
+# session chat; worker echoes in other sessions inherit that session's
+# theme. Pure UI metadata, never read by spawn or engine logic. See
+# specification/public/chat-themes.md.
+webTheme: nutrimat
 params:
   model: default:analyze,default:fast
   maxIterations: 40

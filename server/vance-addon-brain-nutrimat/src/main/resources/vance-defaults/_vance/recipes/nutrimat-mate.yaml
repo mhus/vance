@@ -15,6 +15,13 @@ description: |
   smaller `maxIterations` here is deliberate — the judge only fires at
   exhaustion; tune it per experiment.
 engine: nutrimat-mate
+# Chat look for sessions on this recipe: warm red transcript with the
+# exclamation-mark frieze (_vance/chat-themes/nutrimat.css) — the shared
+# "this is an experiment" signal. Applies when this recipe runs as the
+# session chat; worker echoes in other sessions inherit that session's
+# theme. Pure UI metadata, never read by spawn or engine logic. See
+# specification/public/chat-themes.md.
+webTheme: nutrimat
 params:
   model: default:analyze,default:fast
   # Smaller than janx's 40 on purpose: the judge only speaks when the

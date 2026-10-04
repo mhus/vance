@@ -42,6 +42,20 @@ public class WorkflowKindHandler implements KindHandler {
         return KIND;
     }
 
+    /**
+     * The workflow tree is the marker: every workflow document lives under
+     * {@link MagratheaWorkflowLoader#WORKFLOW_PATH_PREFIX} in the
+     * {@code <prefix><name>.yaml} shape the loader reads — the claim covers
+     * exactly the documents the subsystem acts on. Types an untyped
+     * {@code doc_write} into the tree as {@code vance-workflow} instead of
+     * {@code text}, so the validator above runs on it. Kind and location stay
+     * independent: a workflow document elsewhere keeps its kind.
+     */
+    @Override
+    public boolean detectsPath(String documentPath) {
+        return MagratheaWorkflowLoader.nameFromPath(documentPath) != null;
+    }
+
     @Override
     public List<Finding> validate(String content, KindValidationContext ctx) {
         String target = StringUtils.isBlank(ctx.docPath()) ? KIND : ctx.docPath();

@@ -42,6 +42,21 @@ public class UrsaSchedulerKindHandler implements KindHandler {
         return KIND;
     }
 
+    /**
+     * The scheduler tree is the marker: every scheduler document lives under
+     * {@link UrsaSchedulerLoader#SCHEDULER_PATH_PREFIX} in the
+     * {@code <prefix><name>.yaml} shape the loader reads — anything else in
+     * that folder is invisible to the scheduler, so the claim covers exactly
+     * the documents the subsystem acts on. Types an untyped {@code doc_write}
+     * into the tree as {@code vance-scheduler} instead of {@code text}, so the
+     * validator above runs on it. Kind and location stay independent: a
+     * scheduler document elsewhere keeps its kind.
+     */
+    @Override
+    public boolean detectsPath(String documentPath) {
+        return UrsaSchedulerLoader.nameFromPath(documentPath) != null;
+    }
+
     @Override
     public List<Finding> validate(String content, KindValidationContext ctx) {
         String target = StringUtils.isBlank(ctx.docPath()) ? KIND : ctx.docPath();

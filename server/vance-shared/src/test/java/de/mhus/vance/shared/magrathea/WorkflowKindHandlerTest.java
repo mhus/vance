@@ -22,9 +22,20 @@ class WorkflowKindHandlerTest {
     private final WorkflowKindHandler handler = new WorkflowKindHandler();
 
     private static final DocRefs NO_REFS = new DocRefs() {
-        @Override public boolean exists(String path) { return false; }
-        @Override public @Nullable String kindOf(String path) { return null; }
-        @Override public @Nullable Map<String, Object> readYaml(String path) { return null; }
+        @Override
+        public boolean exists(String path) {
+            return false;
+        }
+
+        @Override
+        public @Nullable String kindOf(String path) {
+            return null;
+        }
+
+        @Override
+        public @Nullable Map<String, Object> readYaml(String path) {
+            return null;
+        }
     };
 
     private static KindValidationContext ctx(String docPath) {
@@ -96,5 +107,22 @@ class WorkflowKindHandlerTest {
                 .singleElement()
                 .extracting(Finding::level)
                 .isEqualTo(Finding.Level.ERROR);
+    }
+
+    @Test
+    void detectsPath_claimsOnlyWhatTheLoaderReads() {
+        // The claim is the loader's own path grammar — a document the
+        // workflow service would never pick up must not be typed as one.
+        assertThat(handler.detectsPath("_vance/workflows/onboarding.yaml")).isTrue();
+        assertThat(handler.detectsPath("_vance/workflows/onboarding.yml")).isFalse();
+    }
+
+    @Test
+    void detectsPath_neverClaimsOutsideTheTree() {
+        // Prefix must not swallow neighbours like 'workflows-old'.
+        assertThat(handler.detectsPath("_vance/workflow/x.yaml")).isFalse();
+        assertThat(handler.detectsPath("_vance/workflows-old/x.yaml")).isFalse();
+        assertThat(handler.detectsPath("drafts/workflow-draft.yaml")).isFalse();
+        assertThat(handler.detectsPath("_vance/workflows")).isFalse();
     }
 }

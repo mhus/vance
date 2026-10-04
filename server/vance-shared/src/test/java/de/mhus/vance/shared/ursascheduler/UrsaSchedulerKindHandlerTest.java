@@ -109,4 +109,23 @@ class UrsaSchedulerKindHandlerTest {
 
         assertThat(handler.validate(yaml, ctx("drafts/scheduler-draft.yaml"))).isEmpty();
     }
+
+    @Test
+    void detectsPath_claimsOnlyWhatTheLoaderReads() {
+        // The claim is the loader's own path grammar — a document the
+        // scheduler would never pick up must not be typed as one.
+        assertThat(handler.detectsPath("_vance/scheduler/morning-briefing.yaml"))
+                .isTrue();
+        assertThat(handler.detectsPath("_vance/scheduler/morning-briefing.yml")).isFalse();
+        assertThat(handler.detectsPath("_vance/scheduler/nested/x.yaml")).isTrue();
+    }
+
+    @Test
+    void detectsPath_neverClaimsOutsideTheTree() {
+        // Prefix must not swallow neighbours like 'scheduler-old'.
+        assertThat(handler.detectsPath("_vance/scheduler-old/x.yaml")).isFalse();
+        assertThat(handler.detectsPath("_vance/schedulers/x.yaml")).isFalse();
+        assertThat(handler.detectsPath("drafts/scheduler-draft.yaml")).isFalse();
+        assertThat(handler.detectsPath("_vance/scheduler")).isFalse();
+    }
 }

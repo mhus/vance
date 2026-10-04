@@ -155,7 +155,7 @@ public class MagratheaWorkflowLoader {
         return (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
-    private static @Nullable String nameFromPath(String path) {
+    public static @Nullable String nameFromPath(String path) {
         if (!path.startsWith(WORKFLOW_PATH_PREFIX)) return null;
         if (!path.endsWith(WORKFLOW_PATH_SUFFIX)) return null;
         String stem = path.substring(WORKFLOW_PATH_PREFIX.length(), path.length() - WORKFLOW_PATH_SUFFIX.length());

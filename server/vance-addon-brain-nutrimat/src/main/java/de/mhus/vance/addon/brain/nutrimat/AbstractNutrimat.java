@@ -419,7 +419,6 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                         outcome.interrupted());
                 return;
             }
-            runTurnFor(process, ctx, drained);
         }
     }
 

@@ -391,6 +391,34 @@ public abstract class AbstractNutrimat implements ThinkEngine {
         while (true) {
             List<SteerMessage> drained = ctx.drainPending();
             if (drained.isEmpty()) return;
+            TurnOutcome outcome = runTurnFor(process, ctx, drained);
+            // Stop draining after a turn that closed or parked the
+            // process. A hard-failure turn (exhausted error, LLM collapse)
+            // closes a worker terminally INCOMPLETE — any messages that a
+            // mid-turn child worker pushed into the inbox while it was
+            // running must NOT spin another turn on the closed process
+            // (observed live: redbull exhausted at 40, children replied
+            // mid-turn, the drain loop kept the dead worker working). The
+            // same applies to an interrupted turn (ESC / /pause parks the
+            // process, the pending queue stays for the resume) and to a
+            // terminal state anyone else set.
+            ThinkProcessStatus status = thinkProcessService
+                    .findById(process.getId())
+                    .map(ThinkProcessDocument::getStatus)
+                    .orElse(ThinkProcessStatus.CLOSED);
+            if (status == ThinkProcessStatus.CLOSED
+                    || status == ThinkProcessStatus.PAUSED
+                    || status == ThinkProcessStatus.SUSPENDED
+                    || outcome.interrupted()) {
+                log.info(
+                        "Nutrimat[{}].runTurn id='{}' stopping drain loop (status={}, interrupted={}) — "
+                                + "pending messages stay in the queue",
+                        natureId(),
+                        process.getId(),
+                        status,
+                        outcome.interrupted());
+                return;
+            }
             runTurnFor(process, ctx, drained);
         }
     }

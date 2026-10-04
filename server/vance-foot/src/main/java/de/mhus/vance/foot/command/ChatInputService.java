@@ -7,6 +7,7 @@ import de.mhus.vance.api.thinkprocess.ProcessPauseRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.thinkprocess.ProcessStopRequest;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.audit.ConversationAuditService;
 import de.mhus.vance.foot.chat.PendingAskUserPicker;
@@ -470,8 +471,12 @@ public class ChatInputService {
             // the message is safe the moment the ack is back, but a send
             // while a turn is in flight only gets picked up at the engine's
             // next loop boundary — say so instead of letting the user wait
-            // for an answer that is not being worked on yet.
-            if (busyIndicator.isBusy()) {
+            // for an answer that is not being worked on yet. The status in
+            // the ack is the server's truth about a turn in flight — NOT
+            // BusyIndicator.isBusy(), which is a client-side reconstruction
+            // from turn-boundary pings and goes stale on a reconnect
+            // mid-turn (see pause()).
+            if (response.getStatus() == ThinkProcessStatus.RUNNING) {
                 queuedSends.track(response.getMessageId());
                 int depth = response.getQueueDepth() == null ? 1 : response.getQueueDepth();
                 chatTerminal.info(

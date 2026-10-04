@@ -194,7 +194,7 @@ record DefaultThinkEngineContext(
 
     @Override
     public List<SteerMessage> drainPending() {
-        return SteerMessageCodec.toMessages(thinkProcessService.drainPending(process.getId()));
+        return SteerMessageCodec.toMessages(thinkProcessService.drainPending(process));
     }
 
     @Override

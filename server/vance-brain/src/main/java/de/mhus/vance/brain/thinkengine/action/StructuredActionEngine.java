@@ -19,6 +19,8 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.Lc4jSchema;
 import de.mhus.vance.brain.tools.ToolErrorPayload;
+import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -1038,6 +1040,51 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      */
     protected boolean pickupPendingMidLoop(ThinkProcessDocument process) {
         return false;
+    }
+
+    /**
+     * Persists the narration of a "pending input" yield and logs the yield —
+     * the shared half of the mid-turn-pickup exit in Arthur and Eddie. The
+     * narration is the LLM's in-turn work text (same reasoning as the
+     * max-iters yield: the chat log is the only cross-turn record of what
+     * happened) — without this block the text the user was reading vanishes
+     * between rounds. The history tags ride on the saved message or are
+     * dropped with the empty narration.
+     *
+     * <p>The caller ends the turn without a terminal action; the outer
+     * runTurn loop drains the queued message into the next turn. No
+     * completion guard here — a yield is not a natural completion, and a
+     * guard follow-up would race the queued message.
+     *
+     * @return {@code true} when a narration was saved (the caller maps it
+     *     onto its turn signal)
+     */
+    protected final boolean yieldToPendingInput(
+            ThinkProcessDocument process, ThinkEngineContext ctx, @Nullable String narration, int toolInvocations) {
+        boolean narrated = narration != null && !narration.isBlank();
+        if (narrated) {
+            ChatMessageService chatLog = ctx.chatMessageService();
+            ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(ChatRole.ASSISTANT)
+                    .content(narration)
+                    .thinking(ctx.reasoning() == null ? null : ctx.reasoning().snapshot())
+                    .build());
+            if (saved != null && saved.getId() != null) {
+                ctx.historyTagSink().flushTo(saved.getId(), chatLog);
+            }
+        } else {
+            ctx.historyTagSink().discard();
+        }
+        log.info(
+                "{}.turn id='{}' yielding to queued input (toolInvocations={}, narration={} chars)",
+                name(),
+                process.getId(),
+                toolInvocations,
+                narrated ? narration.length() : 0);
+        return narrated;
     }
 
     /**

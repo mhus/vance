@@ -51,4 +51,12 @@ class ModelAllowlistTest {
         assertThat(ModelAllowlist.approved("oai:gpt-5:whatever", "oai:*")).isTrue();
         assertThat(ModelAllowlist.approved("default:fast", "oai:*")).isFalse();
     }
+
+    @Test
+    void backslashEInThePatternIsLiteralNotAQuoteBreak() {
+        // \Q...\E quoting: a pattern carrying \E must match the literal name,
+        // not silently compile into something else (Pattern.quote escapes it).
+        assertThat(ModelAllowlist.approved("oai:a\\Eb", "a\\Eb")).isTrue();
+        assertThat(ModelAllowlist.approved("oai:ab", "a\\Eb")).isFalse();
+    }
 }

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.foot.audit.ConversationAuditService;
 import de.mhus.vance.foot.chat.PendingAskUserPicker;
 import de.mhus.vance.foot.chat.QueuedSendState;
@@ -141,7 +142,6 @@ class ChatInputServiceTest {
     void sendChat_whileATurnRuns_notesTheQueueAndTracksTheMessageId() throws Exception {
         when(sessions.current()).thenReturn(new SessionService.BoundSession("s1", "p1", null, null));
         when(sessions.activeProcess()).thenReturn("chat");
-        when(busyIndicator.isBusy()).thenReturn(true);
         when(autoAi.apply(any())).thenAnswer(inv -> inv.getArgument(0));
         when(ideContextBuilder.buildAndConsumeForSteer()).thenReturn(Optional.empty());
         when(connection.request(any(), any(), any(), any()))
@@ -150,6 +150,7 @@ class ChatInputServiceTest {
                         .processName("chat")
                         .messageId("msg-7")
                         .queueDepth(2)
+                        .status(ThinkProcessStatus.RUNNING)
                         .build());
 
         ChatInputService.InputResult result = newService().sendChat("hello", ChatInputService.DEFAULT_CHAT_TIMEOUT);
@@ -164,7 +165,6 @@ class ChatInputServiceTest {
     void sendChat_whileIdle_doesNotTrackTheMessage() throws Exception {
         when(sessions.current()).thenReturn(new SessionService.BoundSession("s1", "p1", null, null));
         when(sessions.activeProcess()).thenReturn("chat");
-        when(busyIndicator.isBusy()).thenReturn(false);
         when(autoAi.apply(any())).thenAnswer(inv -> inv.getArgument(0));
         when(ideContextBuilder.buildAndConsumeForSteer()).thenReturn(Optional.empty());
         when(connection.request(any(), any(), any(), any()))
@@ -172,6 +172,7 @@ class ChatInputServiceTest {
                         .processName("chat")
                         .messageId("msg-8")
                         .queueDepth(1)
+                        .status(ThinkProcessStatus.IDLE)
                         .build());
 
         newService().sendChat("hello", ChatInputService.DEFAULT_CHAT_TIMEOUT);

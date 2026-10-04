@@ -38,7 +38,10 @@ public final class ModelAllowlist {
             if (pattern.equals("*")) {
                 return true;
             }
-            Pattern regex = Pattern.compile("\\Q" + pattern.replace("*", "\\E.*\\Q") + "\\E");
+            // \Q...\E quoting breaks when the pattern itself contains \E — escape
+            // it first (same move as Pattern.quote), then splice the wildcards.
+            String quoted = pattern.replace("\\E", "\\\\E\\Q");
+            Pattern regex = Pattern.compile("\\Q" + quoted.replace("*", "\\E.*\\Q") + "\\E");
             if (regex.matcher(resolvedModel.toLowerCase()).matches()
                     || regex.matcher(bare.toLowerCase()).matches()) {
                 return true;

@@ -1011,15 +1011,34 @@ public class ThinkProcessService {
     }
 
     /**
-     * Reads and consumes the pending inbox of {@code processId}.
+     * Reads and consumes the pending inbox of {@code processId} — the
+     * id-only form. The queue-change event then carries no source block and
+     * the notification dispatcher resolves it (one lookup on that side).
+     * Callers holding the document use {@link #drainPending(ThinkProcessDocument)}.
+     */
+    public List<PendingMessageDocument> drainPending(String processId) {
+        return drainPending(processId, null, null);
+    }
+
+    /**
+     * Reads and consumes the pending inbox of {@code process}.
      *
      * <p>Returns the messages that were delivered but not yet drained,
      * in insertion order. Returns an empty list if the process has no
      * pending work — never {@code null}. New messages that arrive
      * after this call become available for the next lane-turn
      * (Auto-Wakeup).
+     *
+     * <p>Takes the document, not just its id, so the queue-change event can
+     * carry the source block without a second lookup — the caller holds the
+     * document anyway and this is the hot drain path (every turn).
      */
-    public List<PendingMessageDocument> drainPending(String processId) {
+    public List<PendingMessageDocument> drainPending(ThinkProcessDocument process) {
+        return drainPending(process.getId(), process.getSessionId(), process.getName());
+    }
+
+    private List<PendingMessageDocument> drainPending(
+            String processId, @Nullable String sessionId, @Nullable String processName) {
         List<EngineMessageDocument> docs = engineMessageService.drainInbox(processId);
         if (docs.isEmpty()) {
             return Collections.emptyList();
@@ -1031,9 +1050,7 @@ public class ThinkProcessService {
         // Queue-uptake signal for the clients' "queued" display — the engine
         // just picked these up at a loop boundary. Published after
         // markDrained so a listener that re-reads the queue sees them gone.
-        ThinkProcessDocument owner = repository.findById(processId).orElse(null);
-        eventPublisher.publishEvent(PendingQueueChangedEvent.drained(
-                processId, owner == null ? null : owner.getSessionId(), owner == null ? null : owner.getName(), ids));
+        eventPublisher.publishEvent(PendingQueueChangedEvent.drained(processId, sessionId, processName, ids));
         return docs.stream().map(this::toPendingMessage).toList();
     }
 
@@ -1060,8 +1077,8 @@ public class ThinkProcessService {
     /**
      * Read-only view of the pending inbox of {@code processId} in arrival
      * order — the authoritative "queued messages" list behind the client
-     * display. Unlike {@link #drainPending(String)} this does not consume
-     * anything.
+     * display. Unlike {@link #drainPending(ThinkProcessDocument)} this does
+     * not consume anything.
      */
     public List<PendingMessageDocument> listPending(String processId) {
         return engineMessageService.drainInbox(processId).stream()

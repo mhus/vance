@@ -1012,39 +1012,13 @@ public class EddieEngine extends StructuredActionEngine {
 
             // Mid-turn pickup (planning/active-message-queue.md §4 P1): the
             // action loop yielded at a loop boundary because a fresh message
-            // is queued. Persist whatever the LLM narrated about its in-turn
-            // work (same reasoning as the max-iters yield below — the chat
-            // log is the only cross-turn record of what happened) and end
-            // this turn without a terminal action: the outer runTurn loop
-            // drains the queued message and folds it into the next turn. No
-            // completion guard here — a yield is not a natural completion,
-            // and a guard follow-up would race the queued message.
+            // is queued. Persist the narration and end this turn without a
+            // terminal action — the outer runTurn loop drains the queued
+            // message and folds it into the next turn (shared exit:
+            // StructuredActionEngine#yieldToPendingInput).
             if (loopResult.isPendingInput()) {
-                String narration = loopResult.fallbackText();
-                boolean narrated = narration != null && !narration.isBlank();
-                if (narrated) {
-                    ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
-                            .tenantId(process.getTenantId())
-                            .sessionId(process.getSessionId())
-                            .thinkProcessId(process.getId())
-                            .role(ChatRole.ASSISTANT)
-                            .content(narration)
-                            .thinking(
-                                    ctx.reasoning() == null
-                                            ? null
-                                            : ctx.reasoning().snapshot())
-                            .build());
-                    if (saved != null && saved.getId() != null) {
-                        ctx.historyTagSink().flushTo(saved.getId(), chatLog);
-                    }
-                } else {
-                    ctx.historyTagSink().discard();
-                }
-                log.info(
-                        "Eddie.turn id='{}' yielding to queued input (toolInvocations={}, narration={} chars)",
-                        process.getId(),
-                        loopResult.toolInvocations(),
-                        narrated ? narration.length() : 0);
+                boolean narrated =
+                        yieldToPendingInput(process, ctx, loopResult.fallbackText(), loopResult.toolInvocations());
                 return new TurnSignal(narrated, loopResult.madeProgress());
             }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChatMessageDto, ChatRole } from '@vance/generated';
 import {
   freezeDraftToWorkingLog,
+  isDraftCommit,
   isInterimNote,
   isWorkingLogEntry,
   supersededWorkingLog,
@@ -67,6 +68,18 @@ describe('freezeDraftToWorkingLog', () => {
     const first = freezeDraftToWorkingLog(draft());
     const second = freezeDraftToWorkingLog(draft());
     expect(first!.messageId).not.toBe(second!.messageId);
+  });
+});
+
+describe('isDraftCommit', () => {
+  it('recognises the persisted round text as its draft commit', () => {
+    expect(isDraftCommit(draft({ content: 'round text' }), 'round text')).toBe(true);
+  });
+
+  it('rejects a missing or empty draft and other content', () => {
+    expect(isDraftCommit(undefined, 'round text')).toBe(false);
+    expect(isDraftCommit(draft({ content: '' }), '')).toBe(false);
+    expect(isDraftCommit(draft({ content: 'a' }), 'b')).toBe(false);
   });
 });
 

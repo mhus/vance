@@ -33,6 +33,7 @@ import { applyProgress, createActivityState } from './chatActivity';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 import {
   freezeDraftToWorkingLog,
+  isDraftCommit,
   isInterimNote,
   isWorkingLogEntry,
   supersededWorkingLog,
@@ -503,8 +504,12 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
   // so it stays visible (live finding 2026-10-04: every round note
   // wiped the text the user was reading), and never speak the note.
   const interimNote = isInterimNote(data.meta);
-  if (interimNote) {
-    const frozen = freezeDraftToWorkingLog(streamingDrafts.value.get(data.processName));
+  const draft = streamingDrafts.value.get(data.processName);
+  if (interimNote && !isDraftCommit(draft, data.content)) {
+    // Interim note that is NOT the persisted round text (narration):
+    // freeze the streamed text so it stays visible. A server-persisted
+    // round text supersedes its draft directly below instead.
+    const frozen = freezeDraftToWorkingLog(draft);
     if (frozen) liveMessages.value.push(frozen);
   }
   liveMessages.value.push({

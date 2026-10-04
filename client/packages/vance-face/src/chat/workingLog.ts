@@ -45,6 +45,16 @@ export function isInterimNote(meta: Record<string, unknown> | null | undefined):
 export function isWorkingLogEntry(message: Pick<ChatMessageDto, 'messageId'>): boolean {
   return message.messageId.startsWith(WORKING_LOG_PREFIX);
 }
+/** Whether an incoming interim message is the persisted form of the
+ *  streaming draft — the engine's round working log. Such a message
+ *  supersedes its draft directly: the draft must NOT be frozen, that
+ *  would duplicate the persisted round text. */
+export function isDraftCommit(
+  draft: StreamingDraft | null | undefined,
+  content: string,
+): boolean {
+  return !!draft && draft.content !== '' && draft.content === content;
+}
 
 let workingLogSeq = 0;
 

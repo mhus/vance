@@ -651,7 +651,10 @@ public abstract class AbstractNutrimat implements ThinkEngine {
      * {@code while} — bounded by the per-turn wallclock net, never by a fixed
      * extension ceiling (the hook decides).
      */
-    private TurnOutcome runLoop(ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in, LoopStats stats) {
+    // Package-private: the kernel loop is the seat of the loop semantics
+    // (working-log persistence, stop decisions, budget) — NutrimatKernelLoopTest
+    // drives it with a scripted streaming model instead of a live LLM.
+    TurnOutcome runLoop(ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in, LoopStats stats) {
         StringBuilder finalText = new StringBuilder();
         // Best Free-Text seen so far across all iterations — last-resort
         // material for the failure/extension hooks.
@@ -738,6 +741,14 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                             corrections,
                             stopCandidates);
                     StopDecision d = onNaturalStopCandidate(st, reply);
+                    if (d.kind() != StopDecision.Kind.ACCEPT) {
+                        // The judge pushed the loop on — the draft is
+                        // intermediate working state, never the reply.
+                        // Persist it before the decision note so the
+                        // transcript keeps the round's text above the
+                        // note that judged it.
+                        appendInterimRoundText(ctx, process, replyText);
+                    }
                     narrate(
                             ctx,
                             process,
@@ -781,8 +792,11 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                     continue;
                 }
 
-                // Tool calls present — dispatch them all and loop; the model
-                // decides it's done by NOT calling a tool on a later turn.
+                // Tool calls present — the round is intermediate by
+                // definition: persist its text into the working log, then
+                // dispatch. The model decides it's done by NOT calling a
+                // tool on a later turn.
+                appendInterimRoundText(ctx, process, replyText);
                 in.messages().add(reply);
                 for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
                     String result = invokeOne(in.tools(), call, process.getId());
@@ -997,6 +1011,37 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                         .build());
         if (!process.isHiddenFromUi()) {
             ctx.emitInterimReply("[" + natureId() + "] " + text, null);
+        }
+    }
+
+    /**
+     * Persists one intermediate round's text as an interim working-log
+     * message — fired exactly when the loop is known to go on (tool calls
+     * dispatched, judge pushed back), so the text can never become the
+     * turn reply. It is the experiment's observable: what the model actually
+     * said each round, at the right point in time. {@code kind=interim}
+     * keeps it out of every LLM-replay/compaction/Prak/RAG path
+     * ({@code ChatMessageService.activeHistory} filters it); the UI
+     * scrollback keeps it (dimmed), and the live client supersedes its
+     * streaming draft with the appended frame. Blank rounds (tool calls
+     * only, no text) are silently skipped. Same shape as Frankie's
+     * {@code persistInterimAssistantReply}.
+     */
+    private void appendInterimRoundText(ThinkEngineContext ctx, ThinkProcessDocument process, String text) {
+        if (text == null || text.isBlank()) return;
+        Map<String, Object> meta = new java.util.LinkedHashMap<>();
+        meta.put(ChatMessageDocument.META_KIND, ChatMessageDocument.KIND_INTERIM);
+        ctx.chatMessageService()
+                .append(ChatMessageDocument.builder()
+                        .tenantId(process.getTenantId())
+                        .sessionId(process.getSessionId())
+                        .thinkProcessId(process.getId())
+                        .role(ChatRole.ASSISTANT)
+                        .content(text)
+                        .meta(meta)
+                        .build());
+        if (!process.isHiddenFromUi()) {
+            ctx.emitInterimReply(text, null);
         }
     }
 

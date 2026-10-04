@@ -34,11 +34,15 @@ public class TaskEnqueueTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "description", Map.of(
-                            "type", "string",
-                            "description", "One-line task statement. Should already be "
-                                    + "confirmed with the human before calling this.")),
+            "properties",
+                    Map.of(
+                            "description",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "One-line task statement. Should already be "
+                                            + "confirmed with the human before calling this.")),
             "required", List.of("description"));
 
     private final TrillianInternalApi api;
@@ -50,9 +54,10 @@ public class TaskEnqueueTool implements Tool {
 
     @Override
     public String description() {
-        return "Push a task into the paired Trillian User worker's "
-                + "inbox. Use after confirming the task line with the "
-                + "human. Returns a taskId you can reference later.";
+        return "Take on a task for later — the mechanical side of "
+                + "'I'll remember this'. Use once the task line is clear or "
+                + "confirmed. Returns a task id; keep it as metadata, do not "
+                + "read it out unless the human asks for it.";
     }
 
     @Override
@@ -86,17 +91,15 @@ public class TaskEnqueueTool implements Tool {
         }
         Optional<ThinkProcessDocument> peerOpt = api.findPeer(ctx.processId());
         if (peerOpt.isEmpty()) {
-            throw new ToolException(
-                    "No Trillian User peer process found — this tool is only available "
-                            + "inside a Trillian-Control session");
+            throw new ToolException("No Trillian User peer process found — this tool is only available "
+                    + "inside a Trillian-Control session");
         }
         ThinkProcessDocument peer = peerOpt.get();
         // Shared with the //trillian task command, so a task raised by
         // hand is indistinguishable from one Control raised.
         Optional<String> taskId = api.enqueueTask(ctx.processId(), peer, description);
         if (taskId.isEmpty()) {
-            throw new ToolException(
-                    "Failed to dispatch task to Trillian User — see brain logs for detail");
+            throw new ToolException("Failed to dispatch task to Trillian User — see brain logs for detail");
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -105,5 +108,4 @@ public class TaskEnqueueTool implements Tool {
         out.put("peerProcessName", peer.getName());
         return out;
     }
-
 }

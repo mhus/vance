@@ -767,27 +767,7 @@ public class WowbaggerPoolService {
      * nothing (fail-closed).
      */
     static boolean modelApproved(String resolvedModel, @org.jspecify.annotations.Nullable String allowlistCsv) {
-        if (allowlistCsv == null || allowlistCsv.isBlank()) {
-            return false;
-        }
-        int colon = resolvedModel.indexOf(':');
-        String bare = colon >= 0 ? resolvedModel.substring(colon + 1) : resolvedModel;
-        for (String raw : allowlistCsv.split(",")) {
-            String pattern = raw.trim().toLowerCase();
-            if (pattern.isEmpty()) {
-                continue;
-            }
-            if (pattern.equals("*")) {
-                return true;
-            }
-            java.util.regex.Pattern regex =
-                    java.util.regex.Pattern.compile("\\Q" + pattern.replace("*", "\\E.*\\Q") + "\\E");
-            if (regex.matcher(resolvedModel.toLowerCase()).matches()
-                    || regex.matcher(bare.toLowerCase()).matches()) {
-                return true;
-            }
-        }
-        return false;
+        return de.mhus.vance.brain.ai.ModelAllowlist.approved(resolvedModel, allowlistCsv);
     }
 
     /**

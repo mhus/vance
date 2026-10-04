@@ -163,7 +163,7 @@ promptPrefix: |
 params:
   # Pinned Nature (see trillian-adam.yaml for the architectural note).
   nature: 'adam'
-  model: default:fast,default:analyze
+  model: trillian-adam:fast,trillian:fast,default:fast,default:analyze
   # Per-turn wallclock budget, narrower than Frankie's global 60. A
   # Trillian task is a bounded errand — list, read, write, report. Twenty
   # minutes of one uninterrupted turn means it is looping, not working,

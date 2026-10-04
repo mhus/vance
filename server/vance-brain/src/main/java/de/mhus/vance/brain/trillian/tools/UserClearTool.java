@@ -22,9 +22,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class UserClearTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of());
+    private static final Map<String, Object> SCHEMA = Map.of("type", "object", "properties", Map.of());
 
     private final TrillianInternalApi api;
 
@@ -35,9 +33,9 @@ public class UserClearTool implements Tool {
 
     @Override
     public String description() {
-        return "Drop every queued task_request on the Trillian User "
-                + "worker's inbox. The worker keeps running; use this "
-                + "when the human changes direction completely.";
+        return "Forget the tasks still waiting to be taken on. Work "
+                + "already in flight keeps running. This is what 'forget it' "
+                + "means — say plainly that waiting work is dropped.";
     }
 
     @Override
@@ -67,9 +65,8 @@ public class UserClearTool implements Tool {
         }
         Optional<ThinkProcessDocument> peerOpt = api.findPeer(ctx.processId());
         if (peerOpt.isEmpty()) {
-            throw new ToolException(
-                    "No Trillian User peer process found — this tool is only available "
-                            + "inside a Trillian-Control session");
+            throw new ToolException("No Trillian User peer process found — this tool is only available "
+                    + "inside a Trillian-Control session");
         }
         ThinkProcessDocument peer = peerOpt.get();
         int cleared = api.clearPending(peer.getId());

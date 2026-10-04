@@ -184,6 +184,8 @@ public class TrillianControlEngine implements ThinkEngine {
     private final ModelCatalog modelCatalog;
     private final MemoryContextLoader memoryContextLoader;
     private final MemoryCompactionService memoryCompactionService;
+    /** D1: rebuilds the fluid user-loop pair when it is gone. */
+    private final org.springframework.beans.factory.ObjectProvider<TrillianSessionBootstrapper> sessionBootstrapper;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -277,6 +279,14 @@ public class TrillianControlEngine implements ThinkEngine {
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         TrillianNature nature = natureRegistry.resolve(readNature(process));
+        // D1: the loop session is fluid — rebuild it at the top of the next
+        // turn when it is gone, before anything addresses it.
+        // Lazy on purpose: a constructor reference closes a bean cycle
+        // (handler/engine -> bootstrapper -> ThinkEngineService -> engines).
+        TrillianSessionBootstrapper bootstrapper = sessionBootstrapper.getIfAvailable();
+        if (bootstrapper != null) {
+            bootstrapper.ensureUserLoop(process);
+        }
         ThinkProcessStatus exitStatus = ThinkProcessStatus.IDLE;
         long turnStartMs = System.currentTimeMillis();
         try {

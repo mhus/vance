@@ -44,6 +44,7 @@ import org.springframework.stereotype.Component;
 public class TrillianCommandHandler implements EngineCommandHandler {
 
     private final TrillianInternalApi api;
+    private final org.springframework.beans.factory.ObjectProvider<TrillianSessionBootstrapper> sessionBootstrapper;
     private final ThinkProcessService thinkProcessService;
     private final de.mhus.vance.shared.user.UserService userService;
 
@@ -62,6 +63,13 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         String[] head = splitFirstToken(argText(command));
         String sub = head[0].isEmpty() ? "info" : head[0].toLowerCase(Locale.ROOT);
 
+        // D1: fluid loop session — rebuild before resolving the peer.
+        // Lazy on purpose: a constructor reference closes a bean cycle
+        // (handler/engine -> bootstrapper -> ThinkEngineService -> engines).
+        TrillianSessionBootstrapper bootstrapper = sessionBootstrapper.getIfAvailable();
+        if (bootstrapper != null) {
+            bootstrapper.ensureUserLoop(process);
+        }
         Optional<ThinkProcessDocument> peerOpt = api.findPeer(process.getId());
         if (peerOpt.isEmpty()) {
             return EngineCommandResult.error("No Trillian worker paired with this process — //trillian only works "

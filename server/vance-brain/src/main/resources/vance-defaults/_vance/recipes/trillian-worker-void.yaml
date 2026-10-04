@@ -95,7 +95,7 @@ promptPrefix: |
 params:
   # Pinned Nature (see trillian-void.yaml for the architectural note).
   nature: 'void'
-  model: default:fast,default:analyze
+  model: trillian-void:fast,trillian:fast,default:fast,default:analyze
   manualPaths:
     - _vance/frankie/manuals/
     - _vance/manuals/

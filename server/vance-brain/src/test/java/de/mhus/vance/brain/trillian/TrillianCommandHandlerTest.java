@@ -34,8 +34,12 @@ class TrillianCommandHandlerTest {
 
     @Mock
     TrillianInternalApi api;
+
     @Mock
     ThinkProcessService thinkProcessService;
+
+    @Mock
+    org.springframework.beans.factory.ObjectProvider<TrillianSessionBootstrapper> sessionBootstrapper;
 
     @InjectMocks
     TrillianCommandHandler handler;
@@ -45,8 +49,7 @@ class TrillianCommandHandlerTest {
         when(api.findPeer("control-proc")).thenReturn(Optional.of(peer(ThinkProcessStatus.IDLE)));
         when(api.snapshotPeerState(any())).thenAnswer(inv -> {
             ThinkProcessDocument p = inv.getArgument(0);
-            return new TrillianInternalApi.PeerStateSnapshot(
-                    p.getId(), p.getName(), p.getStatus(), 3L);
+            return new TrillianInternalApi.PeerStateSnapshot(p.getId(), p.getName(), p.getStatus(), 3L);
         });
         when(thinkProcessService.findBySession(TENANT, "sess-worker")).thenReturn(List.of());
     }
@@ -80,17 +83,15 @@ class TrillianCommandHandlerTest {
     void info_reportsWorkerStatusAndInboxDepth() {
         EngineCommandResult result = handler.handle(control(), command("info"));
 
-        assertThat(worker(result))
-                .containsEntry("status", "IDLE")
-                .containsEntry("pendingInbox", 3L);
+        assertThat(worker(result)).containsEntry("status", "IDLE").containsEntry("pendingInbox", 3L);
         assertThat(result.message()).contains(ACCOUNT).contains("inbox 3");
     }
 
     @Test
     void info_listsSpawnedWorkersWithTheirTargetProject() {
-        when(thinkProcessService.findBySession(TENANT, "sess-worker")).thenReturn(List.of(
-                peer(ThinkProcessStatus.IDLE),
-                taskWorker("count-md", "test1", ThinkProcessStatus.RUNNING)));
+        when(thinkProcessService.findBySession(TENANT, "sess-worker"))
+                .thenReturn(List.of(
+                        peer(ThinkProcessStatus.IDLE), taskWorker("count-md", "test1", ThinkProcessStatus.RUNNING)));
 
         EngineCommandResult result = handler.handle(control(), command("info"));
 
@@ -108,17 +109,17 @@ class TrillianCommandHandlerTest {
 
     @Test
     void info_skipsClosedWorkers() {
-        when(thinkProcessService.findBySession(TENANT, "sess-worker")).thenReturn(List.of(
-                taskWorker("done-one", "test1", ThinkProcessStatus.CLOSED),
-                taskWorker("live-one", "test1", ThinkProcessStatus.RUNNING)));
+        when(thinkProcessService.findBySession(TENANT, "sess-worker"))
+                .thenReturn(List.of(
+                        taskWorker("done-one", "test1", ThinkProcessStatus.CLOSED),
+                        taskWorker("live-one", "test1", ThinkProcessStatus.RUNNING)));
 
         EngineCommandResult result = handler.handle(control(), command("info"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> workers =
                 (List<Map<String, Object>>) value(result).get("workers");
-        assertThat(workers).singleElement()
-                .satisfies(w -> assertThat(w).containsEntry("name", "live-one"));
+        assertThat(workers).singleElement().satisfies(w -> assertThat(w).containsEntry("name", "live-one"));
     }
 
     @Test
@@ -149,8 +150,7 @@ class TrillianCommandHandlerTest {
     void continueCommand_resumesThroughTheSharedApi() {
         when(api.resumePeer(any())).thenReturn(ThinkProcessStatus.IDLE);
 
-        assertThat(handler.handle(control(), command("continue")).outcome())
-                .isEqualTo(EngineCommandOutcome.OK);
+        assertThat(handler.handle(control(), command("continue")).outcome()).isEqualTo(EngineCommandOutcome.OK);
         verify(api).resumePeer(any());
     }
 
@@ -235,9 +235,8 @@ class TrillianCommandHandlerTest {
 
     @Test
     void queue_listsWhatIsWaitingWithItsKind() {
-        when(api.listPending("worker-proc")).thenReturn(List.of(
-                request("t-1", "count the markdown docs"),
-                done("t-0")));
+        when(api.listPending("worker-proc"))
+                .thenReturn(List.of(request("t-1", "count the markdown docs"), done("t-0")));
 
         EngineCommandResult result = handler.handle(control(), command("queue"));
 
@@ -254,8 +253,7 @@ class TrillianCommandHandlerTest {
 
     @Test
     void queue_separatesWaitingTasksFromOtherMessages() {
-        when(api.listPending("worker-proc")).thenReturn(List.of(
-                request("t-1", "a"), request("t-2", "b"), done("t-0")));
+        when(api.listPending("worker-proc")).thenReturn(List.of(request("t-1", "a"), request("t-2", "b"), done("t-0")));
 
         EngineCommandResult result = handler.handle(control(), command("queue"));
 
@@ -266,8 +264,7 @@ class TrillianCommandHandlerTest {
 
     @Test
     void queue_abbreviatesLongDescriptions() {
-        when(api.listPending("worker-proc"))
-                .thenReturn(List.of(request("t-1", "x".repeat(200))));
+        when(api.listPending("worker-proc")).thenReturn(List.of(request("t-1", "x".repeat(200))));
 
         EngineCommandResult result = handler.handle(control(), command("queue"));
 
@@ -283,8 +280,7 @@ class TrillianCommandHandlerTest {
     void task_queuesThroughTheSharedApi() {
         when(api.enqueueTask(any(), any(), any())).thenReturn(Optional.of("t-9"));
 
-        EngineCommandResult result = handler.handle(
-                control(), command("task count all markdown docs"));
+        EngineCommandResult result = handler.handle(control(), command("task count all markdown docs"));
 
         // Same call task_enqueue makes, so a hand-raised task is
         // indistinguishable from one Control raised.
@@ -313,8 +309,7 @@ class TrillianCommandHandlerTest {
 
     @Test
     void clear_dropsWaitingTasksButKeepsResults() {
-        when(api.clearPending("worker-proc", true))
-                .thenReturn(new TrillianInternalApi.ClearResult(2, 2, 0));
+        when(api.clearPending("worker-proc", true)).thenReturn(new TrillianInternalApi.ClearResult(2, 2, 0));
 
         EngineCommandResult result = handler.handle(control(), command("clear"));
 
@@ -326,8 +321,7 @@ class TrillianCommandHandlerTest {
 
     @Test
     void clearAll_dropsEverythingAndSaysSo() {
-        when(api.clearPending("worker-proc", false))
-                .thenReturn(new TrillianInternalApi.ClearResult(3, 2, 1));
+        when(api.clearPending("worker-proc", false)).thenReturn(new TrillianInternalApi.ClearResult(3, 2, 1));
 
         EngineCommandResult result = handler.handle(control(), command("clear all"));
 
@@ -369,14 +363,12 @@ class TrillianCommandHandlerTest {
 
     private static TrillianInternalApi.PendingEntry request(String taskId, String description) {
         return new TrillianInternalApi.PendingEntry(
-                "m-" + taskId, TrillianInternalApi.TASK_EVENT_REQUEST, taskId, description,
-                java.time.Instant.now());
+                "m-" + taskId, TrillianInternalApi.TASK_EVENT_REQUEST, taskId, description, java.time.Instant.now());
     }
 
     private static TrillianInternalApi.PendingEntry done(String taskId) {
         return new TrillianInternalApi.PendingEntry(
-                "m-" + taskId, TrillianInternalApi.TASK_EVENT_DONE, taskId, "finished",
-                java.time.Instant.now());
+                "m-" + taskId, TrillianInternalApi.TASK_EVENT_DONE, taskId, "finished", java.time.Instant.now());
     }
 
     private static <T> T eq(T value) {
@@ -420,14 +412,12 @@ class TrillianCommandHandlerTest {
         doc.setStatus(status);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, ACCOUNT);
-        params.put(TrillianInternalApi.PARAM_ATTRIBUTES,
-                new LinkedHashMap<>(Map.of("persona", "dry Swabian")));
+        params.put(TrillianInternalApi.PARAM_ATTRIBUTES, new LinkedHashMap<>(Map.of("persona", "dry Swabian")));
         doc.setEngineParams(params);
         return doc;
     }
 
-    private static ThinkProcessDocument taskWorker(
-            String name, String projectId, ThinkProcessStatus status) {
+    private static ThinkProcessDocument taskWorker(String name, String projectId, ThinkProcessStatus status) {
         ThinkProcessDocument doc = new ThinkProcessDocument();
         doc.setId("w-" + name);
         doc.setName(name);

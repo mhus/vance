@@ -50,10 +50,10 @@ public class UserProjectRequestTool implements Tool {
 
     @Override
     public String description() {
-        return "Request access for the paired Trillian worker to another project, so it can "
-                + "spawn workers there. This does NOT grant anything: an administrator of the "
-                + "target project has to approve it. Tell the user that approval is pending — "
-                + "do not claim the worker can already work there.";
+        return "Request access to another project, so work can happen "
+                + "there. This does NOT grant anything: an administrator of "
+                + "the target project has to approve it. Say approval is "
+                + "pending — never claim the work can already happen there.";
     }
 
     @Override
@@ -64,13 +64,21 @@ public class UserProjectRequestTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("projectId", Map.of("type", "string",
-                "description", "Name of the project the worker should be allowed to work in."));
-        props.put("reason", Map.of("type", "string",
-                "description", "Why the access is needed. Shown to the approver as your "
-                        + "stated reason."));
-        return Map.of("type", "object", "properties", props,
-                "required", List.of("projectId"));
+        props.put(
+                "projectId",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Name of the project the worker should be allowed to work in."));
+        props.put(
+                "reason",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Why the access is needed. Shown to the approver as your " + "stated reason."));
+        return Map.of("type", "object", "properties", props, "required", List.of("projectId"));
     }
 
     @Override
@@ -99,8 +107,12 @@ public class UserProjectRequestTool implements Tool {
         }
 
         PermissionRequestPort.PermissionRequestReceipt receipt = port.requestProjectWriter(
-                ctx.tenantId(), projectId, trillianUser, str(params, "reason"),
-                ctx.userId() == null ? "system" : ctx.userId(), ctx.processId());
+                ctx.tenantId(),
+                projectId,
+                trillianUser,
+                str(params, "reason"),
+                ctx.userId() == null ? "system" : ctx.userId(),
+                ctx.processId());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("requested", true);
@@ -119,8 +131,10 @@ public class UserProjectRequestTool implements Tool {
         if (receipt.reused()) {
             out.put("note", "An identical request is already awaiting approval.");
         } else if (receipt.itemId() == null) {
-            out.put("note", "No administrator was found for that project — "
-                    + "the request cannot be decided and will expire.");
+            out.put(
+                    "note",
+                    "No administrator was found for that project — "
+                            + "the request cannot be decided and will expire.");
         }
         return out;
     }
@@ -129,21 +143,19 @@ public class UserProjectRequestTool implements Tool {
     private String boundWorkerName(ToolInvocationContext ctx) {
         Optional<ThinkProcessDocument> peer = api.findPeer(ctx.processId());
         if (peer.isEmpty()) {
-            throw new ToolException(
-                    "No Trillian User peer process found — this tool is only available "
-                            + "inside a Trillian-Control session");
+            throw new ToolException("No Trillian User peer process found — this tool is only available "
+                    + "inside a Trillian-Control session");
         }
         Object name = peer.get().getEngineParams() == null
-                ? null : peer.get().getEngineParams().get(
-                        TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);
+                ? null
+                : peer.get().getEngineParams().get(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);
         if (name == null || StringUtils.isBlank(name.toString())) {
             throw new ToolException("The paired Trillian worker has no bound service account");
         }
         return name.toString();
     }
 
-    private static @org.jspecify.annotations.Nullable String str(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String str(Map<String, Object> params, String key) {
         Object v = params == null ? null : params.get(key);
         return v == null ? null : v.toString().trim();
     }

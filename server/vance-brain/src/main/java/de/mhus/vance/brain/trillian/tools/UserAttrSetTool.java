@@ -30,16 +30,23 @@ public class UserAttrSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Attribute key. Free-form; the active "
-                                    + "Trillian Nature decides what to do with it."),
-                    "value", Map.of(
-                            "type", "string",
-                            "description", "Attribute value. Free-form text; can be a "
-                                    + "phrase, a number, a sentence — the active Nature "
-                                    + "decides how to read it.")),
+            "properties",
+                    Map.of(
+                            "name",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Attribute key. Free-form; the active "
+                                                    + "Trillian Nature decides what to do with it."),
+                            "value",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Attribute value. Free-form text; can be a "
+                                                    + "phrase, a number, a sentence — the active Nature "
+                                                    + "decides how to read it.")),
             "required", List.of("name", "value"));
 
     private final TrillianInternalApi api;
@@ -51,11 +58,10 @@ public class UserAttrSetTool implements Tool {
 
     @Override
     public String description() {
-        return "Set a free-form attribute on the paired Trillian-User "
-                + "worker. Attributes shape how the worker behaves "
-                + "(persona, mode hints, preferences). The current "
-                + "Nature consumes them — Nature void simply surfaces them "
-                + "in the worker's prompt.";
+        return "Set a free-form attribute on this Trillian — who you are "
+                + "supposed to be: persona, tone, language, preferences. The "
+                + "active Nature consumes them (Nature void renders them into "
+                + "the working side's prompt).";
     }
 
     @Override
@@ -95,8 +101,7 @@ public class UserAttrSetTool implements Tool {
         boolean ok = api.setPeerAttribute(ctx.processId(), name.trim(), rawValue);
         if (!ok) {
             throw new ToolException(
-                    "No Trillian-User peer found — this tool is only available "
-                            + "inside a Trillian-Control session");
+                    "No Trillian-User peer found — this tool is only available " + "inside a Trillian-Control session");
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", name.trim());

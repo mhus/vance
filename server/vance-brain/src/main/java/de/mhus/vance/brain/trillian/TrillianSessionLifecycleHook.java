@@ -8,9 +8,9 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.user.UserService;
-import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -66,6 +66,7 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
     private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
 
     private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
+    private final de.mhus.vance.shared.project.ProjectService projectService;
 
     @Override
     public void onSessionClosed(SessionDocument session) {
@@ -79,8 +80,7 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
         // permission bug rather than a shutdown.
         peerSessionOf(session).ifPresent(peer -> {
             lifecycleProvider.getObject().closeWithCascade(peer);
-            log.info("Trillian: closed worker session '{}' alongside control '{}'",
-                    peer, session.getSessionId());
+            log.info("Trillian: closed worker session '{}' alongside control '{}'", peer, session.getSessionId());
         });
         releaseAccount(session);
     }
@@ -109,12 +109,11 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             // about to stop existing, and the next Trillian gets a new
             // name, so it would be unreadable and unreachable at once.
             try {
-                natureRegistry.resolve(natureOf(session))
-                        .accountDiscarded(
-                                session.getTenantId(), session.getProjectId(), account);
+                natureRegistry
+                        .resolve(natureOf(session))
+                        .accountDiscarded(session.getTenantId(), session.getProjectId(), account);
             } catch (RuntimeException e) {
-                log.warn("Trillian: discarding stored attributes of '{}' failed: {}",
-                        account, e.toString());
+                log.warn("Trillian: discarding stored attributes of '{}' failed: {}", account, e.toString());
             }
             // Grants next: they key on the user *name* too, and one must
             // not outlive its subject. Deleting the account below cascades
@@ -122,10 +121,20 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             // still exists, and the presence check further down is reached
             // on paths where it does not. This covers exactly that case.
             try {
-                permissionBootstrapProvider.ifAvailable(
-                        pb -> pb.revokeAll(session.getTenantId(), account));
+                permissionBootstrapProvider.ifAvailable(pb -> pb.revokeAll(session.getTenantId(), account));
             } catch (RuntimeException e) {
                 log.warn("Trillian: revoking grants of '{}' failed: {}", account, e.toString());
+            }
+            // The home goes with the account (D1): schedules, goals and
+            // stored attributes live in `_user_<trillian>`, and a hub whose
+            // user is gone is unreachable by design. Same ordering rule as
+            // the maintenance path — keyed by the account name, so it goes
+            // before the name does.
+            try {
+                projectService.deleteUserHub(
+                        session.getTenantId(), de.mhus.vance.shared.home.HomeBootstrapService.hubProjectName(account));
+            } catch (RuntimeException e) {
+                log.warn("Trillian: deleting hub of '{}' failed: {}", account, e.toString());
             }
             // Presence check rather than catching UserNotFoundException:
             // on the ordinary path this runs twice, and the second pass
@@ -135,8 +144,10 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             }
             try {
                 userService.delete(session.getTenantId(), account);
-                log.info("Trillian: deleted service-account '{}' with control session '{}'",
-                        account, session.getSessionId());
+                log.info(
+                        "Trillian: deleted service-account '{}' with control session '{}'",
+                        account,
+                        session.getSessionId());
             } catch (RuntimeException e) {
                 log.warn("Trillian: deleting account '{}' failed: {}", account, e.toString());
             }
@@ -150,8 +161,7 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
         }
         peerSessionOf(session).ifPresent(peer -> {
             lifecycleProvider.getObject().archiveWithCascade(peer);
-            log.info("Trillian: archived worker session '{}' alongside control '{}'",
-                    peer, session.getSessionId());
+            log.info("Trillian: archived worker session '{}' alongside control '{}'", peer, session.getSessionId());
         });
     }
 
@@ -173,8 +183,10 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             // adopts the account.
             carryAttributesToControl(session, peer);
             lifecycleProvider.getObject().deleteSession(peer);
-            log.info("Trillian: cleared archived worker session '{}' before reactivating "
-                    + "control '{}'", peer, session.getSessionId());
+            log.info(
+                    "Trillian: cleared archived worker session '{}' before reactivating " + "control '{}'",
+                    peer,
+                    session.getSessionId());
         });
     }
 
@@ -187,8 +199,7 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
         // the delete cascade reads the account off those very processes.
         peerSessionOf(session).ifPresent(peer -> {
             lifecycleProvider.getObject().deleteSession(peer);
-            log.info("Trillian: deleted worker session '{}' alongside control '{}'",
-                    peer, session.getSessionId());
+            log.info("Trillian: deleted worker session '{}' alongside control '{}'", peer, session.getSessionId());
         });
         // Also here, not only in onSessionClosed: an archived session is
         // deleted without ever passing through the close cascade.
@@ -204,31 +215,35 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
      */
     private void carryAttributesToControl(SessionDocument control, String peerSessionId) {
         try {
-            Map<String, Object> attributes = thinkProcessService
-                    .findBySession(control.getTenantId(), peerSessionId).stream()
-                    .map(TrillianInternalApi::readAttributes)
-                    .filter(a -> !a.isEmpty())
-                    .findFirst()
-                    .orElse(Map.of());
+            Map<String, Object> attributes =
+                    thinkProcessService.findBySession(control.getTenantId(), peerSessionId).stream()
+                            .map(TrillianInternalApi::readAttributes)
+                            .filter(a -> !a.isEmpty())
+                            .findFirst()
+                            .orElse(Map.of());
             if (attributes.isEmpty()) {
                 return;
             }
-            for (ThinkProcessDocument p : thinkProcessService.findBySession(
-                    control.getTenantId(), control.getSessionId())) {
+            for (ThinkProcessDocument p :
+                    thinkProcessService.findBySession(control.getTenantId(), control.getSessionId())) {
                 if (paramString(p, TrillianSessionBootstrapper.PARAM_PEER_SESSION_ID) == null) {
                     continue;
                 }
-                Map<String, Object> params = new LinkedHashMap<>(
-                        p.getEngineParams() == null ? Map.of() : p.getEngineParams());
+                Map<String, Object> params =
+                        new LinkedHashMap<>(p.getEngineParams() == null ? Map.of() : p.getEngineParams());
                 params.put(TrillianSessionBootstrapper.PARAM_CARRIED_ATTRIBUTES, attributes);
                 thinkProcessService.replaceEngineParams(p.getId(), params);
-                log.info("Trillian: carried {} attribute(s) across the reactivate of '{}'",
-                        attributes.size(), control.getSessionId());
+                log.info(
+                        "Trillian: carried {} attribute(s) across the reactivate of '{}'",
+                        attributes.size(),
+                        control.getSessionId());
                 return;
             }
         } catch (RuntimeException e) {
-            log.warn("Trillian: could not carry attributes across reactivate of '{}': {}",
-                    control.getSessionId(), e.toString());
+            log.warn(
+                    "Trillian: could not carry attributes across reactivate of '{}': {}",
+                    control.getSessionId(),
+                    e.toString());
         }
     }
 
@@ -240,10 +255,8 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
      * the cascade back and forth forever.
      */
     private boolean isControlSession(SessionDocument session) {
-        return thinkProcessService
-                .findBySession(session.getTenantId(), session.getSessionId()).stream()
-                .anyMatch(p -> TrillianSessionBootstrapper.CONTROL_ENGINE_NAME
-                        .equals(p.getThinkEngine()));
+        return thinkProcessService.findBySession(session.getTenantId(), session.getSessionId()).stream()
+                .anyMatch(p -> TrillianSessionBootstrapper.CONTROL_ENGINE_NAME.equals(p.getThinkEngine()));
     }
 
     /** The Nature this pair runs, or {@code null} to let the registry default. */
@@ -276,8 +289,11 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
                 continue;
             }
             if (sessionService.findBySessionId(peer).isEmpty()) {
-                log.debug("Trillian: worker session '{}' from an earlier cycle of control '{}' "
-                        + "is gone — looking further back", peer, session.getSessionId());
+                log.debug(
+                        "Trillian: worker session '{}' from an earlier cycle of control '{}' "
+                                + "is gone — looking further back",
+                        peer,
+                        session.getSessionId());
                 continue;
             }
             return Optional.of(peer);
@@ -315,11 +331,11 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
      * so anything that wants "the current generation" has to say so.
      */
     private List<ThinkProcessDocument> processesNewestFirst(SessionDocument session) {
-        List<ThinkProcessDocument> processes = new ArrayList<>(
-                thinkProcessService.findBySession(session.getTenantId(), session.getSessionId()));
+        List<ThinkProcessDocument> processes =
+                new ArrayList<>(thinkProcessService.findBySession(session.getTenantId(), session.getSessionId()));
         processes.sort(Comparator.comparing(
-                ThinkProcessDocument::getCreatedAt,
-                Comparator.nullsFirst(Comparator.naturalOrder())).reversed());
+                        ThinkProcessDocument::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
+                .reversed());
         return processes;
     }
 

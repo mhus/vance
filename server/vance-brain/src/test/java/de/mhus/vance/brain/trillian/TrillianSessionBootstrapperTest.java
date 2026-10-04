@@ -28,8 +28,8 @@ import de.mhus.vance.shared.user.UserService;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,43 +56,68 @@ class TrillianSessionBootstrapperTest {
 
     @Mock
     UserService userService;
+
     @Mock
     SessionService sessionService;
+
     @Mock
     ThinkProcessService thinkProcessService;
+
     @Mock
     ThinkEngineService thinkEngineService;
+
     @Mock
     RecipeResolver recipeResolver;
+
     @Mock
     LaneScheduler laneScheduler;
+
     @Mock
     ChatMessageService chatMessageService;
+
     @Mock
     PermissionBootstrap permissionBootstrap;
+
     @Mock
     ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
+
     @Mock
     ThinkEngine engine;
+
+    @Mock
+    de.mhus.vance.shared.home.HomeBootstrapService homeBootstrapService;
+
+    @Mock
+    TrillianModelGate modelGate;
 
     TrillianSessionBootstrapper bootstrapper;
 
     /** Real registry with the baseline Nature — the seeding path is real logic. */
     private de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry() {
         return new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
-                java.util.List.of(
-                        new de.mhus.vance.brain.trillian.nature.TrillianNatureVoid(
-                                thinkProcessService)));
+                java.util.List.of(new de.mhus.vance.brain.trillian.nature.TrillianNatureVoid(thinkProcessService)));
     }
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        bootstrapper = new TrillianSessionBootstrapper(userService, sessionService,
-                thinkProcessService, thinkEngineService, recipeResolver, laneScheduler,
-                chatMessageService, natureRegistry(), permissionBootstrapProvider);
+        bootstrapper = new TrillianSessionBootstrapper(
+                userService,
+                sessionService,
+                thinkProcessService,
+                thinkEngineService,
+                recipeResolver,
+                laneScheduler,
+                chatMessageService,
+                natureRegistry(),
+                homeBootstrapService,
+                modelGate,
+                permissionBootstrapProvider);
 
         when(userService.existsByTenantAndName(anyString(), anyString())).thenReturn(false);
+        de.mhus.vance.shared.project.ProjectDocument home = new de.mhus.vance.shared.project.ProjectDocument();
+        home.setName(PROJECT);
+        when(homeBootstrapService.ensureHome(anyString(), anyString())).thenReturn(home);
         when(userService.createServiceAccount(anyString(), anyString(), any(), any(), any()))
                 .thenAnswer(inv -> {
                     UserDocument user = new UserDocument();
@@ -108,24 +133,47 @@ class TrillianSessionBootstrapperTest {
 
         SessionDocument userSession = new SessionDocument();
         userSession.setSessionId("sess_user");
-        when(sessionService.create(anyString(), anyString(), anyString(), any(), anyString(),
-                anyString(), any(), anyBoolean())).thenReturn(userSession);
+        when(sessionService.create(
+                        anyString(), anyString(), anyString(), any(), anyString(), anyString(), any(), anyBoolean()))
+                .thenReturn(userSession);
 
         ThinkProcessDocument userProcess = new ThinkProcessDocument();
         userProcess.setId("user-process-id");
-        when(thinkProcessService.create(anyString(), any(), anyString(), anyString(), anyString(),
-                anyString(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any())).thenReturn(userProcess);
+        when(thinkProcessService.create(
+                        anyString(),
+                        any(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any()))
+                .thenReturn(userProcess);
 
         doAnswer(inv -> {
-            ((Callable<?>) inv.getArgument(1)).call();
-            return CompletableFuture.completedFuture(null);
-        }).when(laneScheduler).submit(anyString(), any(Callable.class));
+                    ((Callable<?>) inv.getArgument(1)).call();
+                    return CompletableFuture.completedFuture(null);
+                })
+                .when(laneScheduler)
+                .submit(anyString(), any(Callable.class));
 
         doAnswer(inv -> {
-            ((Consumer<PermissionBootstrap>) inv.getArgument(0)).accept(permissionBootstrap);
-            return null;
-        }).when(permissionBootstrapProvider).ifAvailable(any());
+                    ((Consumer<PermissionBootstrap>) inv.getArgument(0)).accept(permissionBootstrap);
+                    return null;
+                })
+                .when(permissionBootstrapProvider)
+                .ifAvailable(any());
     }
 
     @Test
@@ -134,8 +182,7 @@ class TrillianSessionBootstrapperTest {
 
         ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
         verify(permissionBootstrap).grantProjectAdmin(eq(TENANT), eq(PROJECT), username.capture());
-        org.assertj.core.api.Assertions.assertThat(username.getValue())
-                .startsWith("_trillian-void-");
+        org.assertj.core.api.Assertions.assertThat(username.getValue()).startsWith("_trillian-void-");
     }
 
     @Test
@@ -153,8 +200,8 @@ class TrillianSessionBootstrapperTest {
         bootstrapper.maybeBootstrap(controlSession(), controlProcess());
 
         ArgumentCaptor<String> owner = ArgumentCaptor.forClass(String.class);
-        verify(sessionService).create(eq(TENANT), owner.capture(), eq(PROJECT), any(),
-                anyString(), anyString(), any(), eq(true));
+        verify(sessionService)
+                .create(eq(TENANT), owner.capture(), eq(PROJECT), any(), anyString(), anyString(), any(), eq(true));
         org.assertj.core.api.Assertions.assertThat(owner.getValue())
                 .startsWith("_trillian-void-")
                 .isNotEqualTo("mongo-object-id");
@@ -167,20 +214,17 @@ class TrillianSessionBootstrapperTest {
         ArgumentCaptor<String> granted = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> owner = ArgumentCaptor.forClass(String.class);
         verify(permissionBootstrap).grantProjectAdmin(any(), any(), granted.capture());
-        verify(sessionService).create(any(), owner.capture(), any(), any(), any(), any(),
-                any(), anyBoolean());
+        verify(sessionService).create(any(), owner.capture(), any(), any(), any(), any(), any(), anyBoolean());
         // A mismatch here is invisible at runtime until the first tool call
         // is denied — exactly the failure this pair of fixes removes.
-        org.assertj.core.api.Assertions.assertThat(granted.getValue())
-                .isEqualTo(owner.getValue());
+        org.assertj.core.api.Assertions.assertThat(granted.getValue()).isEqualTo(owner.getValue());
     }
 
     @Test
     void bootstrap_announcesTheWorkerIdentityAsAPersistentChatMessage() {
         bootstrapper.maybeBootstrap(controlSession(), controlProcess());
 
-        ArgumentCaptor<ChatMessageDocument> message =
-                ArgumentCaptor.forClass(ChatMessageDocument.class);
+        ArgumentCaptor<ChatMessageDocument> message = ArgumentCaptor.forClass(ChatMessageDocument.class);
         verify(chatMessageService).append(message.capture());
         ArgumentCaptor<String> granted = ArgumentCaptor.forClass(String.class);
         verify(permissionBootstrap).grantProjectAdmin(any(), any(), granted.capture());
@@ -189,15 +233,14 @@ class TrillianSessionBootstrapperTest {
         // the brain log is not a place they can be expected to look.
         org.assertj.core.api.Assertions.assertThat(message.getValue().getContent())
                 .contains(granted.getValue())
-                .contains(PROJECT);
+                .contains("_user__trillian-void-");
         org.assertj.core.api.Assertions.assertThat(message.getValue().getSessionId())
                 .isEqualTo("sess_control");
     }
 
     @Test
     void announceFailure_doesNotAbortTheBootstrap() {
-        org.mockito.Mockito.when(chatMessageService.append(any()))
-                .thenThrow(new IllegalStateException("mongo down"));
+        org.mockito.Mockito.when(chatMessageService.append(any())).thenThrow(new IllegalStateException("mongo down"));
 
         bootstrapper.maybeBootstrap(controlSession(), controlProcess());
 
@@ -221,8 +264,7 @@ class TrillianSessionBootstrapperTest {
                     }
 
                     @Override
-                    public Map<String, Object> initialAttributes(
-                            String tenantId, String projectId, String account) {
+                    public Map<String, Object> initialAttributes(String tenantId, String projectId, String account) {
                         return Map.of("name", "Ada");
                     }
 
@@ -231,11 +273,17 @@ class TrillianSessionBootstrapperTest {
                         return "Ada";
                     }
                 };
-        bootstrapper = new TrillianSessionBootstrapper(userService, sessionService,
-                thinkProcessService, thinkEngineService, recipeResolver, laneScheduler,
+        bootstrapper = new TrillianSessionBootstrapper(
+                userService,
+                sessionService,
+                thinkProcessService,
+                thinkEngineService,
+                recipeResolver,
+                laneScheduler,
                 chatMessageService,
-                new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
-                        java.util.List.of(named)),
+                new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(java.util.List.of(named)),
+                homeBootstrapService,
+                modelGate,
                 permissionBootstrapProvider);
 
         bootstrapper.maybeBootstrap(controlSession(), controlProcess("adam"));
@@ -246,24 +294,25 @@ class TrillianSessionBootstrapperTest {
         // The human meets a name, not a class — and the account is still
         // there, because that is what they need in order to grant access.
         org.assertj.core.api.Assertions.assertThat(message.getValue().getContent())
-                .startsWith("Ada is ready")
+                .startsWith("I am Ada")
                 .contains("_trillian-adam-");
     }
 
     @Test
-    void aPodlessProject_getsNoTrillian() {
-        // _user_* and system projects have no home pod — they follow
-        // whichever pod took the WebSocket. A Trillian there would never
-        // be woken by the heartbeat, which scans by home node.
+    void aPodlessProject_getsATrillianWhoseLoopLivesInTheHome() {
+        // _user_* and system projects have no home pod. That is no reason
+        // to refuse a Trillian any more: the heartbeat does not scan by
+        // home node (the wake claim decides who fires), and the loop
+        // session lives in the account's own home, not in the control
+        // project.
         SessionDocument session = controlSession();
         session.setProjectId("_user_marvin");
 
         bootstrapper.maybeBootstrap(session, controlProcess());
 
-        verify(userService, never()).createServiceAccount(
-                anyString(), anyString(), any(), any(), any());
-        verify(sessionService, never()).create(anyString(), anyString(), anyString(),
-                any(), any(), any(), any(), anyBoolean());
+        verify(userService).createServiceAccount(anyString(), anyString(), any(), any(), any());
+        verify(sessionService)
+                .create(eq(TENANT), anyString(), eq(PROJECT), any(), anyString(), anyString(), any(), eq(true));
     }
 
     @Test
@@ -274,12 +323,29 @@ class TrillianSessionBootstrapperTest {
         // prose, so a new Nature brings its own worker without forking
         // the prompt.
         ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
-        verify(thinkProcessService).create(anyString(), any(), anyString(), anyString(),
-                anyString(), anyString(), any(), any(), any(), params.capture(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any());
+        verify(thinkProcessService)
+                .create(
+                        anyString(),
+                        any(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        params.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any());
         org.assertj.core.api.Assertions.assertThat(params.getValue())
-                .containsEntry(TrillianSessionBootstrapper.PARAM_WORKER_RECIPE,
-                        "trillian-worker-a");
+                .containsEntry(TrillianSessionBootstrapper.PARAM_WORKER_RECIPE, "trillian-worker-a");
     }
 
     @Test
@@ -287,12 +353,29 @@ class TrillianSessionBootstrapperTest {
         bootstrapper.maybeBootstrap(controlSession(), controlProcess());
 
         ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
-        verify(thinkProcessService).create(anyString(), any(), anyString(), anyString(),
-                anyString(), anyString(), any(), any(), any(), params.capture(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any());
+        verify(thinkProcessService)
+                .create(
+                        anyString(),
+                        any(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        params.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any());
         org.assertj.core.api.Assertions.assertThat(params.getValue())
-                .containsEntry(TrillianSessionBootstrapper.PARAM_WORKER_RECIPE,
-                        "trillian-worker-void");
+                .containsEntry(TrillianSessionBootstrapper.PARAM_WORKER_RECIPE, "trillian-worker-void");
     }
 
     @Test
@@ -300,14 +383,12 @@ class TrillianSessionBootstrapperTest {
         bootstrapper.maybeBootstrap(controlSession(), controlProcess("alpha"));
 
         ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
-        verify(userService).createServiceAccount(
-                anyString(), name.capture(), any(), any(), any());
+        verify(userService).createServiceAccount(anyString(), name.capture(), any(), any(), any());
 
         // Three parts, so a Nature id may be a word rather than a letter,
         // and so the id can be read back out of the name at all — with
         // _trillian-a1535 that required knowing where the id ends.
-        org.assertj.core.api.Assertions.assertThat(name.getValue())
-                .matches("_trillian-alpha-\\d{4}");
+        org.assertj.core.api.Assertions.assertThat(name.getValue()).matches("_trillian-alpha-\\d{4}");
     }
 
     @Test
@@ -315,8 +396,7 @@ class TrillianSessionBootstrapperTest {
         bootstrapper.maybeBootstrap(controlSession(), controlProcess("alpha"));
 
         ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
-        verify(userService).createServiceAccount(
-                anyString(), name.capture(), any(), any(), any());
+        verify(userService).createServiceAccount(anyString(), name.capture(), any(), any(), any());
 
         // The leading underscore is the tenant-wide marker for accounts
         // nobody logs into; losing it would make the worker look like a
@@ -330,8 +410,7 @@ class TrillianSessionBootstrapperTest {
 
         ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> title = ArgumentCaptor.forClass(String.class);
-        verify(userService).createServiceAccount(
-                anyString(), name.capture(), any(), title.capture(), any());
+        verify(userService).createServiceAccount(anyString(), name.capture(), any(), title.capture(), any());
 
         // The title is what a human reads and may rename; the account
         // name never changes. Seeding one from the other is a starting
@@ -359,27 +438,49 @@ class TrillianSessionBootstrapperTest {
                     }
 
                     @Override
-                    public Map<String, Object> initialAttributes(
-                            String tenantId, String projectId, String account) {
+                    public Map<String, Object> initialAttributes(String tenantId, String projectId, String account) {
                         return Map.of("persona", "restored from disk");
                     }
                 };
-        bootstrapper = new TrillianSessionBootstrapper(userService, sessionService,
-                thinkProcessService, thinkEngineService, recipeResolver, laneScheduler,
+        bootstrapper = new TrillianSessionBootstrapper(
+                userService,
+                sessionService,
+                thinkProcessService,
+                thinkEngineService,
+                recipeResolver,
+                laneScheduler,
                 chatMessageService,
-                new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
-                        java.util.List.of(persistent)),
+                new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(java.util.List.of(persistent)),
+                homeBootstrapService,
+                modelGate,
                 permissionBootstrapProvider);
 
         bootstrapper.maybeBootstrap(controlSession(), controlProcess("adam"));
 
         ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
-        verify(thinkProcessService).create(anyString(), any(), anyString(), anyString(),
-                anyString(), anyString(), any(), any(), any(), params.capture(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any());
+        verify(thinkProcessService)
+                .create(
+                        anyString(),
+                        any(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        params.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any());
         org.assertj.core.api.Assertions.assertThat(params.getValue())
-                .containsEntry(TrillianInternalApi.PARAM_ATTRIBUTES,
-                        Map.of("persona", "restored from disk"));
+                .containsEntry(TrillianInternalApi.PARAM_ATTRIBUTES, Map.of("persona", "restored from disk"));
     }
 
     @SuppressWarnings("unchecked")
@@ -426,8 +527,19 @@ class TrillianSessionBootstrapperTest {
 
     private static AppliedRecipe appliedRecipe() {
         return new AppliedRecipe(
-                "trillian-user-void", "trillian-user", Map.of(), null, null,
-                PromptMode.APPEND, null, null, null, List.of(), null,
-                RecipeSource.RESOURCE, List.of(), null);
+                "trillian-user-void",
+                "trillian-user",
+                Map.of(),
+                null,
+                null,
+                PromptMode.APPEND,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                RecipeSource.RESOURCE,
+                List.of(),
+                null);
     }
 }

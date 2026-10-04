@@ -23,9 +23,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class UserContinueTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of());
+    private static final Map<String, Object> SCHEMA = Map.of("type", "object", "properties", Map.of());
 
     private final TrillianInternalApi api;
 
@@ -36,8 +34,7 @@ public class UserContinueTool implements Tool {
 
     @Override
     public String description() {
-        return "Resume the paired Trillian User worker. Drains any "
-                + "task_request events that piled up during the pause.";
+        return "Resume after a pause; whatever piled up gets worked on.";
     }
 
     @Override
@@ -67,15 +64,13 @@ public class UserContinueTool implements Tool {
         }
         Optional<ThinkProcessDocument> peerOpt = api.findPeer(ctx.processId());
         if (peerOpt.isEmpty()) {
-            throw new ToolException(
-                    "No Trillian User peer process found — this tool is only available "
-                            + "inside a Trillian-Control session");
+            throw new ToolException("No Trillian User peer process found — this tool is only available "
+                    + "inside a Trillian-Control session");
         }
         ThinkProcessDocument peer = peerOpt.get();
         ThinkProcessStatus current = peer.getStatus();
         if (current == ThinkProcessStatus.CLOSED) {
-            throw new ToolException(
-                    "Trillian User worker is CLOSED — use user_reset to recreate it");
+            throw new ToolException("Trillian User worker is CLOSED — use user_reset to recreate it");
         }
         ThinkProcessStatus now;
         try {

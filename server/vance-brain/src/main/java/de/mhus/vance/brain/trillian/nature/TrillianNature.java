@@ -4,6 +4,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Behaviour layer for a single Trillian generation ("Nature"). The
@@ -75,8 +76,7 @@ public interface TrillianNature {
      * Nature void no-op. Use this in future Natures to trigger
      * reflexion checks, mode transitions, budget enforcement.
      */
-    default void beforeControlTurn(
-            ThinkProcessDocument process, ThinkEngineContext ctx) {
+    default void beforeControlTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         // no-op for Nature void
     }
 
@@ -84,8 +84,7 @@ public interface TrillianNature {
      * Called after each Trillian-Control turn (after natural-stop or
      * tool-loop exhaustion). Nature void no-op.
      */
-    default void afterControlTurn(
-            ThinkProcessDocument process, ThinkEngineContext ctx) {
+    default void afterControlTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         // no-op for Nature void
     }
 
@@ -94,16 +93,14 @@ public interface TrillianNature {
      * no-op. Future Natures may persist reflexion state, refresh a
      * trait snapshot, or rebalance budget here.
      */
-    default void beforeUserTurn(
-            ThinkProcessDocument process, ThinkEngineContext ctx) {
+    default void beforeUserTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         // no-op for Nature void
     }
 
     /**
      * Called after each Trillian-User-loop turn. Nature void no-op.
      */
-    default void afterUserTurn(
-            ThinkProcessDocument process, ThinkEngineContext ctx) {
+    default void afterUserTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         // no-op for Nature void
     }
 
@@ -120,6 +117,19 @@ public interface TrillianNature {
      * {@code //trillian attr set name}, and the call name has to follow
      * without anything else being told.
      */
+    /**
+     * How sociable a session this Trillian opens in a project should be
+     * (A6). Asked per {@code session_open}; a derived Nature may fix a
+     * constant or vary it by purpose and project. The model never chooses —
+     * the noise level is doctrine, not a turn decision.
+     *
+     * <p>Default {@link CollabMode#WATCH}: visible and shared, but human
+     * chat does not wake the loop.
+     */
+    default CollabMode sessionCollab(ThinkProcessDocument loop, String projectId, @Nullable String purpose) {
+        return CollabMode.WATCH;
+    }
+
     default String callName(Map<String, Object> attributes) {
         return "Trillian";
     }
@@ -164,9 +174,7 @@ public interface TrillianNature {
      * Best-effort by construction: a Nature that throws here must not undo
      * the wakeup that already happened.
      */
-    default void selfCheckDelivered(
-            ThinkProcessDocument loop, List<SelfCheckFinding> findings) {
-    }
+    default void selfCheckDelivered(ThinkProcessDocument loop, List<SelfCheckFinding> findings) {}
 
     // ─── Attribute durability ─────────────────────────────────────
 
@@ -188,8 +196,7 @@ public interface TrillianNature {
      *                account the pair runs as, stable across archive and
      *                reactivate
      */
-    default Map<String, Object> initialAttributes(
-            String tenantId, String projectId, String account) {
+    default Map<String, Object> initialAttributes(String tenantId, String projectId, String account) {
         return Map.of();
     }
 
@@ -206,8 +213,7 @@ public interface TrillianNature {
      * @param attributes the map as it now stands, already written to
      *                   {@code engineParams}
      */
-    default void attributesChanged(
-            ThinkProcessDocument worker, Map<String, Object> attributes) {
+    default void attributesChanged(ThinkProcessDocument worker, Map<String, Object> attributes) {
         // no-op for Nature void
     }
 
@@ -238,9 +244,7 @@ public interface TrillianNature {
      * its implementation {@code @Async}). Nothing downstream waits for
      * the answer: the outcome has already reached Control.
      */
-    default void taskConcluded(
-            ThinkProcessDocument worker, String taskId,
-            TaskOutcome outcome, String summary) {
+    default void taskConcluded(ThinkProcessDocument worker, String taskId, TaskOutcome outcome, String summary) {
         // no-op for Nature void
     }
 
@@ -262,8 +266,7 @@ public interface TrillianNature {
      * which die with the process rows anyway. Must not throw: the account
      * deletion proceeds either way.
      */
-    default void accountDiscarded(
-            String tenantId, String projectId, String account) {
+    default void accountDiscarded(String tenantId, String projectId, String account) {
         // no-op for Nature void
     }
 }

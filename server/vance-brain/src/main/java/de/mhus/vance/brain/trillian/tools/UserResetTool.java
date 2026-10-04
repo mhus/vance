@@ -42,10 +42,9 @@ public class UserResetTool implements Tool {
 
     @Override
     public String description() {
-        return "Soft-reset the Trillian User worker: clear queued "
-                + "tasks and return the engine to IDLE. Use when the "
-                + "worker is in a confused state and you want a clean "
-                + "slate without losing the user-identity.";
+        return "Soft-reset: forget queued tasks and return to idle. Use "
+                + "when things are in a confused state and you want a clean "
+                + "slate without losing the identity.";
     }
 
     @Override

@@ -188,8 +188,9 @@ public class TrillianNatureAdam extends TrillianNatureBase {
 
     @Override
     public void accountDiscarded(String tenantId, String projectId, String account) {
-        attributeStore.discard(tenantId, projectId, account);
-        journalStore.discard(tenantId, projectId, account);
+        String home = de.mhus.vance.shared.home.HomeBootstrapService.hubProjectName(account);
+        attributeStore.discard(tenantId, home, account);
+        journalStore.discard(tenantId, home, account);
     }
 
     /**
@@ -216,7 +217,7 @@ public class TrillianNatureAdam extends TrillianNatureBase {
             return;
         }
         String tenantId = worker.getTenantId();
-        String projectId = worker.getProjectId();
+        String projectId = de.mhus.vance.shared.home.HomeBootstrapService.hubProjectName(account);
         try {
             // Numbered, because the pass may point at entries to drop —
             // by position, not by quoting them back: a model asked to
@@ -502,6 +503,10 @@ public class TrillianNatureAdam extends TrillianNatureBase {
                     case EXTERNAL_PENDING -> {
                         // Delivered in the turn, never by this probe
                         // loop (see its javadoc).
+                    }
+                    case SCHEDULE_DUE, BORED -> {
+                        // The turn itself reads these; no worker probe
+                        // is attached to them.
                     }
                 }
             } catch (RuntimeException e) {

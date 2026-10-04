@@ -22,9 +22,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class UserStatusTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of());
+    private static final Map<String, Object> SCHEMA = Map.of("type", "object", "properties", Map.of());
 
     private final TrillianInternalApi api;
 
@@ -35,9 +33,9 @@ public class UserStatusTool implements Tool {
 
     @Override
     public String description() {
-        return "Get the current status of the paired Trillian User "
-                + "worker: runtime status, queued-task count, bound "
-                + "service-account name.";
+        return "Narrow runtime state of your working side: status, pending "
+                + "count, bound service-account name. For 'what are you "
+                + "doing' use user_activity instead.";
     }
 
     @Override
@@ -67,9 +65,8 @@ public class UserStatusTool implements Tool {
         }
         Optional<ThinkProcessDocument> peerOpt = api.findPeer(ctx.processId());
         if (peerOpt.isEmpty()) {
-            throw new ToolException(
-                    "No Trillian User peer process found — this tool is only available "
-                            + "inside a Trillian-Control session");
+            throw new ToolException("No Trillian User peer process found — this tool is only available "
+                    + "inside a Trillian-Control session");
         }
         ThinkProcessDocument peer = peerOpt.get();
         TrillianInternalApi.PeerStateSnapshot snap = api.snapshotPeerState(peer);
@@ -79,8 +76,8 @@ public class UserStatusTool implements Tool {
         out.put("status", snap.status() == null ? null : snap.status().name());
         out.put("pendingInbox", snap.pendingInboxCount());
         Object userName = peer.getEngineParams() == null
-                ? null : peer.getEngineParams().get(
-                        TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);
+                ? null
+                : peer.getEngineParams().get(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);
         out.put("trillianUserName", userName);
         return out;
     }

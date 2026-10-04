@@ -179,9 +179,9 @@ class TrillianEngineInterruptTest {
 
         userLoop().runTurn(process, ctx);
 
-        verify(trillianApi).dispatchTaskEvent(
-                eq(PROC_ID), eq(PEER_ID),
-                eq(TrillianInternalApi.TASK_EVENT_FAILED), eq(TASK_ID), any(), any());
+        verify(trillianApi)
+                .dispatchTaskEvent(
+                        eq(PROC_ID), eq(PEER_ID), eq(TrillianInternalApi.TASK_EVENT_FAILED), eq(TASK_ID), any(), any());
     }
 
     @Test
@@ -193,8 +193,7 @@ class TrillianEngineInterruptTest {
 
         userLoop().runTurn(process, ctx);
 
-        verify(trillianApi, never()).dispatchTaskEvent(
-                any(), any(), any(), any(), any(), any());
+        verify(trillianApi, never()).dispatchTaskEvent(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -202,14 +201,20 @@ class TrillianEngineInterruptTest {
         List<SteerMessage> drained = List.of(
                 taskRequest("t-1"),
                 new SteerMessage.ProcessEvent(
-                        Instant.now(), null, "src", ProcessEventType.SUMMARY, "done",
-                        Map.of(TrillianInternalApi.PAYLOAD_KEY_TASK_EVENT,
-                                        TrillianInternalApi.TASK_EVENT_DONE,
-                                TrillianInternalApi.PAYLOAD_KEY_TASK_ID, "t-2"),
-                        null, null),
+                        Instant.now(),
+                        null,
+                        "src",
+                        ProcessEventType.SUMMARY,
+                        "done",
+                        Map.of(
+                                TrillianInternalApi.PAYLOAD_KEY_TASK_EVENT,
+                                TrillianInternalApi.TASK_EVENT_DONE,
+                                TrillianInternalApi.PAYLOAD_KEY_TASK_ID,
+                                "t-2"),
+                        null,
+                        null),
                 new SteerMessage.ProcessEvent(
-                        Instant.now(), null, "src", ProcessEventType.SUMMARY, "no payload",
-                        null, null, null));
+                        Instant.now(), null, "src", ProcessEventType.SUMMARY, "no payload", null, null, null));
 
         assertThat(TrillianUserEngine.openTaskIds(drained)).containsExactly("t-1");
     }
@@ -230,7 +235,8 @@ class TrillianEngineInterruptTest {
                 natureRegistry(),
                 modelCatalog(),
                 memoryContextLoader(),
-                compactionService());
+                compactionService(),
+                mock(org.springframework.beans.factory.ObjectProvider.class));
     }
 
     private TrillianUserEngine userLoop() {
@@ -256,24 +262,22 @@ class TrillianEngineInterruptTest {
         AiChat aiChat = mock(AiChat.class);
         lenient().when(aiChat.streamingChatModel()).thenReturn(chatModel);
         EngineChatFactory factory = mock(EngineChatFactory.class);
-        lenient().when(factory.forProcess(any(), any(), any()))
+        lenient()
+                .when(factory.forProcess(any(), any(), any()))
                 .thenReturn(new EngineChatFactory.EngineChatBundle(
-                        aiChat,
-                        ChatBehavior.single(new AiChatConfig("test", "scripted", "stub-key"))));
+                        aiChat, ChatBehavior.single(new AiChatConfig("test", "scripted", "stub-key"))));
         return factory;
     }
 
     private EnginePromptResolver promptResolver() {
         EnginePromptResolver resolver = mock(EnginePromptResolver.class);
-        lenient().when(resolver.resolve(any(), any(), any()))
-                .thenAnswer(inv -> inv.getArgument(2));
+        lenient().when(resolver.resolve(any(), any(), any())).thenAnswer(inv -> inv.getArgument(2));
         return resolver;
     }
 
     private SystemPromptComposer promptComposer() {
         SystemPromptComposer composer = mock(SystemPromptComposer.class);
-        lenient().when(composer.compose(any(), any(), any()))
-                .thenAnswer(inv -> inv.getArgument(1));
+        lenient().when(composer.compose(any(), any(), any())).thenAnswer(inv -> inv.getArgument(1));
         return composer;
     }
 
@@ -286,11 +290,23 @@ class TrillianEngineInterruptTest {
 
     private ModelCatalog modelCatalog() {
         ModelCatalog catalog = mock(ModelCatalog.class);
-        lenient().when(catalog.lookupOrDefault(any(), any(), any(), any(), any()))
+        lenient()
+                .when(catalog.lookupOrDefault(any(), any(), any(), any(), any()))
                 .thenReturn(new ModelInfo(
-                        "test", "test-model", 128_000, 4096, ModelSize.LARGE,
-                        java.util.Set.of(), 60, 2, false, null, null,
-                        OutputTokenParam.MAX_TOKENS, java.util.Set.of(), null));
+                        "test",
+                        "test-model",
+                        128_000,
+                        4096,
+                        ModelSize.LARGE,
+                        java.util.Set.of(),
+                        60,
+                        2,
+                        false,
+                        null,
+                        null,
+                        OutputTokenParam.MAX_TOKENS,
+                        java.util.Set.of(),
+                        null));
         return catalog;
     }
 
@@ -302,8 +318,7 @@ class TrillianEngineInterruptTest {
 
     private MemoryCompactionService compactionService() {
         MemoryCompactionService service = mock(MemoryCompactionService.class);
-        lenient().when(service.compactIfNeeded(any(), any(), any(), any()))
-                .thenReturn(CompactionResult.noop("test"));
+        lenient().when(service.compactIfNeeded(any(), any(), any(), any())).thenReturn(CompactionResult.noop("test"));
         return service;
     }
 
@@ -316,12 +331,18 @@ class TrillianEngineInterruptTest {
 
     private static SteerMessage taskRequest(String taskId) {
         return new SteerMessage.ProcessEvent(
-                Instant.now(), null, "control-proc", ProcessEventType.SUMMARY,
+                Instant.now(),
+                null,
+                "control-proc",
+                ProcessEventType.SUMMARY,
                 "Task request: do the thing",
-                Map.of(TrillianInternalApi.PAYLOAD_KEY_TASK_EVENT,
-                                TrillianInternalApi.TASK_EVENT_REQUEST,
-                        TrillianInternalApi.PAYLOAD_KEY_TASK_ID, taskId),
-                null, null);
+                Map.of(
+                        TrillianInternalApi.PAYLOAD_KEY_TASK_EVENT,
+                        TrillianInternalApi.TASK_EVENT_REQUEST,
+                        TrillianInternalApi.PAYLOAD_KEY_TASK_ID,
+                        taskId),
+                null,
+                null);
     }
 
     private static AiMessage toolCall(String name) {
@@ -331,7 +352,10 @@ class TrillianEngineInterruptTest {
     private static AiMessage toolCall(String name, String arguments) {
         return AiMessage.builder()
                 .toolExecutionRequests(List.of(ToolExecutionRequest.builder()
-                        .id("call-1").name(name).arguments(arguments).build()))
+                        .id("call-1")
+                        .name(name)
+                        .arguments(arguments)
+                        .build()))
                 .build();
     }
 
@@ -355,7 +379,8 @@ class TrillianEngineInterruptTest {
                 handler.onError(new IllegalStateException("no scripted response"));
                 return;
             }
-            handler.onCompleteResponse(ChatResponse.builder().aiMessage(repeated).build());
+            handler.onCompleteResponse(
+                    ChatResponse.builder().aiMessage(repeated).build());
         }
     }
 }

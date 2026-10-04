@@ -21,9 +21,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class UserAttrClearTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of());
+    private static final Map<String, Object> SCHEMA = Map.of("type", "object", "properties", Map.of());
 
     private final TrillianInternalApi api;
 
@@ -34,9 +32,8 @@ public class UserAttrClearTool implements Tool {
 
     @Override
     public String description() {
-        return "Clear all attributes on the paired Trillian-User "
-                + "worker. The worker keeps running; only its "
-                + "free-form attribute map is reset.";
+        return "Forget every attribute set on this Trillian. The work "
+                + "carries on; only who you are supposed to be is reset.";
     }
 
     @Override
@@ -67,8 +64,7 @@ public class UserAttrClearTool implements Tool {
         int cleared = api.clearPeerAttributes(ctx.processId());
         if (cleared < 0) {
             throw new ToolException(
-                    "No Trillian-User peer found — this tool is only available "
-                            + "inside a Trillian-Control session");
+                    "No Trillian-User peer found — this tool is only available " + "inside a Trillian-Control session");
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("cleared", cleared);

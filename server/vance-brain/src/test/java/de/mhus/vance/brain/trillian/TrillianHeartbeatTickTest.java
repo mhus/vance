@@ -42,32 +42,55 @@ class TrillianHeartbeatTickTest {
 
     @Mock
     ProjectService projectService;
+
     @Mock
     ClusterService clusterService;
+
     @Mock
     ThinkProcessService thinkProcessService;
+
     @Mock
     TrillianWakeupService wakeupService;
+
     @Mock
     ProcessEventEmitter eventEmitter;
+
     @Mock
     TrillianNatureRegistry natureRegistry;
+
     @Mock
     TrillianNature nature;
+
     @Mock
     MegadodoService megadodoService;
+
+    @Mock
+    TrillianWakeupClaimService wakeupClaimService;
+
+    @Mock
+    TrillianAgendaService agendaService;
 
     TrillianHeartbeatTick tick;
 
     @BeforeEach
     void setUp() {
         when(clusterService.selfPodId()).thenReturn("pod-a");
-        when(projectService.findRunningByHomePodId("pod-a")).thenReturn(List.of(
-                ProjectDocument.builder().tenantId("acme").name("proj").build()));
+        when(projectService.findRunningByHomePodId("pod-a"))
+                .thenReturn(List.of(
+                        ProjectDocument.builder().tenantId("acme").name("proj").build()));
         when(natureRegistry.resolve(any())).thenReturn(nature);
+        when(wakeupClaimService.claim(any(), any(), any())).thenReturn(true);
+        org.mockito.Mockito.lenient().when(wakeupService.nextWakeupAt(any())).thenReturn(java.time.Instant.now());
         tick = new TrillianHeartbeatTick(
-                projectService, clusterService, thinkProcessService,
-                wakeupService, eventEmitter, natureRegistry, megadodoService);
+                projectService,
+                clusterService,
+                thinkProcessService,
+                wakeupService,
+                wakeupClaimService,
+                agendaService,
+                eventEmitter,
+                natureRegistry,
+                megadodoService);
     }
 
     @Test
@@ -143,9 +166,14 @@ class TrillianHeartbeatTickTest {
 
         tick.tick();
 
-        verify(megadodoService).trillianWokeUp(
-                eq("acme"), eq("proj"), eq(LOOP), eq("_trillian-void-1535"), anyString(),
-                eq(List.of("[worker_waiting] ask-worker: parked since 20 minutes")));
+        verify(megadodoService)
+                .trillianWokeUp(
+                        eq("acme"),
+                        eq("proj"),
+                        eq(LOOP),
+                        eq("_trillian-void-1535"),
+                        anyString(),
+                        eq(List.of("[worker_waiting] ask-worker: parked since 20 minutes")));
     }
 
     @Test
@@ -186,15 +214,13 @@ class TrillianHeartbeatTickTest {
         loop.setTenantId("acme");
         loop.setProjectId("proj");
         loop.setStatus(status);
-        loop.getEngineParams().put(
-                TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-void-1535");
+        loop.getEngineParams().put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-void-1535");
         when(wakeupService.loopsOf(eq("acme"), eq("proj"), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(List.of(loop));
     }
 
     private static SelfCheckFinding finding() {
         return new SelfCheckFinding(
-                SelfCheckFinding.Kind.WORKER_WAITING, "ask-worker", "child-1",
-                "parked since 20 minutes");
+                SelfCheckFinding.Kind.WORKER_WAITING, "ask-worker", "child-1", "parked since 20 minutes");
     }
 }

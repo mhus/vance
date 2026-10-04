@@ -8,10 +8,10 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.shared.permission.PermissionBootstrap;
-import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.user.UserService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,20 +41,30 @@ class TrillianSessionLifecycleHookTest {
 
     @Mock
     ThinkProcessService thinkProcessService;
+
     @Mock
     SessionLifecycleService lifecycleService;
+
     @Mock
     ObjectProvider<SessionLifecycleService> lifecycleProvider;
+
     @Mock
     UserService userService;
+
     @Mock
     de.mhus.vance.shared.session.SessionService sessionService;
+
     @Mock
     PermissionBootstrap permissionBootstrap;
+
     @Mock
     ObjectProvider<PermissionBootstrap> permissionProvider;
+
     @Mock
     de.mhus.vance.brain.trillian.nature.TrillianNature nature;
+
+    @Mock
+    de.mhus.vance.shared.project.ProjectService projectService;
 
     TrillianSessionLifecycleHook hook;
 
@@ -63,20 +73,24 @@ class TrillianSessionLifecycleHookTest {
     void setUp() {
         when(lifecycleProvider.getObject()).thenReturn(lifecycleService);
         org.mockito.Mockito.doAnswer(inv -> {
-            ((java.util.function.Consumer<PermissionBootstrap>) inv.getArgument(0))
-                    .accept(permissionBootstrap);
-            return null;
-        }).when(permissionProvider).ifAvailable(any());
+                    ((java.util.function.Consumer<PermissionBootstrap>) inv.getArgument(0)).accept(permissionBootstrap);
+                    return null;
+                })
+                .when(permissionProvider)
+                .ifAvailable(any());
         when(sessionService.findBySessionId(any()))
                 .thenAnswer(inv -> java.util.Optional.of(session(inv.getArgument(0))));
-        when(userService.findByTenantAndName(TENANT, ACCOUNT)).thenAnswer(
-                inv -> java.util.Optional.of(new de.mhus.vance.shared.user.UserDocument()));
+        when(userService.findByTenantAndName(TENANT, ACCOUNT))
+                .thenAnswer(inv -> java.util.Optional.of(new de.mhus.vance.shared.user.UserDocument()));
         when(nature.id()).thenReturn("adam");
         hook = new TrillianSessionLifecycleHook(
-                thinkProcessService, sessionService, userService,
-                lifecycleProvider, permissionProvider,
-                new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(
-                        List.of(nature)));
+                thinkProcessService,
+                sessionService,
+                userService,
+                lifecycleProvider,
+                permissionProvider,
+                new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(List.of(nature)),
+                projectService);
         givenControlProcessLinkingTo(PEER);
     }
 
@@ -128,7 +142,8 @@ class TrillianSessionLifecycleHookTest {
     @Test
     void aFailingNature_stillLosesTheAccount() {
         org.mockito.Mockito.doThrow(new IllegalStateException("mongo down"))
-                .when(nature).accountDiscarded(any(), any(), any());
+                .when(nature)
+                .accountDiscarded(any(), any(), any());
 
         hook.onSessionClosed(session(CONTROL));
 
@@ -183,8 +198,7 @@ class TrillianSessionLifecycleHookTest {
     void anAccountAlreadyGone_isNotDeletedTwice() {
         // The ordinary path runs both hooks. Without the presence check
         // the second pass logs a failure for what the first one did.
-        when(userService.findByTenantAndName(TENANT, ACCOUNT))
-                .thenReturn(java.util.Optional.empty());
+        when(userService.findByTenantAndName(TENANT, ACCOUNT)).thenReturn(java.util.Optional.empty());
 
         hook.onSessionDeleted(session(CONTROL));
 
@@ -219,8 +233,7 @@ class TrillianSessionLifecycleHookTest {
         // made delete bounce between the two until the stack ran out,
         // and made the worker delete the shared account on the way.
         // The control engine is the only reliable discriminator.
-        when(thinkProcessService.findBySession(TENANT, PEER))
-                .thenReturn(List.of(workerProcess()));
+        when(thinkProcessService.findBySession(TENANT, PEER)).thenReturn(List.of(workerProcess()));
 
         hook.onSessionClosed(session(PEER));
         hook.onSessionArchived(session(PEER));
@@ -241,11 +254,11 @@ class TrillianSessionLifecycleHookTest {
         // looking for a worker deleted two cycles earlier, found it gone,
         // and silently did nothing — no attributes carried, the real
         // worker session orphaned.
-        when(thinkProcessService.findBySession(TENANT, CONTROL)).thenReturn(List.of(
-                agedControlProcess("stale-worker", java.time.Instant.parse("2026-08-11T10:00:00Z")),
-                agedControlProcess(PEER, java.time.Instant.parse("2026-08-13T12:00:00Z"))));
-        when(sessionService.findBySessionId("stale-worker"))
-                .thenReturn(java.util.Optional.empty());
+        when(thinkProcessService.findBySession(TENANT, CONTROL))
+                .thenReturn(List.of(
+                        agedControlProcess("stale-worker", java.time.Instant.parse("2026-08-11T10:00:00Z")),
+                        agedControlProcess(PEER, java.time.Instant.parse("2026-08-13T12:00:00Z"))));
+        when(sessionService.findBySessionId("stale-worker")).thenReturn(java.util.Optional.empty());
 
         hook.onSessionDeleted(session(CONTROL));
 
@@ -255,11 +268,11 @@ class TrillianSessionLifecycleHookTest {
 
     @Test
     void aDeadNewestLink_fallsBackToAnOlderLiveOne() {
-        when(thinkProcessService.findBySession(TENANT, CONTROL)).thenReturn(List.of(
-                agedControlProcess(PEER, java.time.Instant.parse("2026-08-11T10:00:00Z")),
-                agedControlProcess("dead-worker", java.time.Instant.parse("2026-08-13T12:00:00Z"))));
-        when(sessionService.findBySessionId("dead-worker"))
-                .thenReturn(java.util.Optional.empty());
+        when(thinkProcessService.findBySession(TENANT, CONTROL))
+                .thenReturn(List.of(
+                        agedControlProcess(PEER, java.time.Instant.parse("2026-08-11T10:00:00Z")),
+                        agedControlProcess("dead-worker", java.time.Instant.parse("2026-08-13T12:00:00Z"))));
+        when(sessionService.findBySessionId("dead-worker")).thenReturn(java.util.Optional.empty());
 
         hook.onSessionDeleted(session(CONTROL));
 
@@ -275,15 +288,11 @@ class TrillianSessionLifecycleHookTest {
         // gone, while the live _trillian-* account kept its project-ADMIN
         // grant and its documents — the orphan the release path exists to
         // prevent.
-        ThinkProcessDocument older =
-                agedControlProcess(PEER, java.time.Instant.parse("2026-08-11T10:00:00Z"));
+        ThinkProcessDocument older = agedControlProcess(PEER, java.time.Instant.parse("2026-08-11T10:00:00Z"));
         older.setId("control-proc-old");
-        older.getEngineParams().put(
-                TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-adam-0001");
-        ThinkProcessDocument current =
-                agedControlProcess(PEER, java.time.Instant.parse("2026-08-13T12:00:00Z"));
-        when(thinkProcessService.findBySession(TENANT, CONTROL))
-                .thenReturn(List.of(older, current));
+        older.getEngineParams().put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-adam-0001");
+        ThinkProcessDocument current = agedControlProcess(PEER, java.time.Instant.parse("2026-08-13T12:00:00Z"));
+        when(thinkProcessService.findBySession(TENANT, CONTROL)).thenReturn(List.of(older, current));
 
         hook.onSessionClosed(session(CONTROL));
 
@@ -309,10 +318,10 @@ class TrillianSessionLifecycleHookTest {
         // The caller logs and carries on: a hook must not block the
         // transition the user asked for.
         org.mockito.Mockito.doThrow(new IllegalStateException("mongo down"))
-                .when(lifecycleService).deleteSession(PEER);
+                .when(lifecycleService)
+                .deleteSession(PEER);
 
-        assertThatCode(() -> hook.onSessionDeleted(session(CONTROL)))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatCode(() -> hook.onSessionDeleted(session(CONTROL))).isInstanceOf(IllegalStateException.class);
     }
 
     // ──── helpers ───────────────────────────────────────────────────────
@@ -332,8 +341,7 @@ class TrillianSessionLifecycleHookTest {
     }
 
     private void givenControlProcessLinkingTo(String peerSessionId) {
-        when(thinkProcessService.findBySession(TENANT, CONTROL))
-                .thenReturn(List.of(controlProcess(peerSessionId)));
+        when(thinkProcessService.findBySession(TENANT, CONTROL)).thenReturn(List.of(controlProcess(peerSessionId)));
     }
 
     private static SessionDocument session(String sessionId) {
@@ -372,8 +380,7 @@ class TrillianSessionLifecycleHookTest {
         return p;
     }
 
-    private static ThinkProcessDocument agedControlProcess(
-            String peerSessionId, java.time.Instant createdAt) {
+    private static ThinkProcessDocument agedControlProcess(String peerSessionId, java.time.Instant createdAt) {
         ThinkProcessDocument p = controlProcess(peerSessionId);
         p.setId("control-proc-" + peerSessionId);
         p.setCreatedAt(createdAt);

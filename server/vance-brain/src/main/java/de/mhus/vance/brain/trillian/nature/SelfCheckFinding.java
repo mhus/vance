@@ -28,11 +28,7 @@ package de.mhus.vance.brain.trillian.nature;
  * @param detail      one line for the prompt: what is the case, and what
  *                    the loop is expected to weigh
  */
-public record SelfCheckFinding(
-        Kind kind,
-        String subjectName,
-        String subjectId,
-        String detail) {
+public record SelfCheckFinding(Kind kind, String subjectName, String subjectId, String detail) {
 
     public enum Kind {
         /** Asked a question and is parked. Nothing will arrive on its own. */
@@ -66,7 +62,17 @@ public record SelfCheckFinding(
          * {@code selfCheckFindings}, which runs on ticks that end in no
          * wakeup at all.
          */
-        EXTERNAL_PENDING
+        EXTERNAL_PENDING,
+
+        /** An appointment in the loop's own schedule came due (A4). */
+        SCHEDULE_DUE,
+
+        /**
+         * Quiet long enough to be worth spending on standing goals (A5).
+         * Carries no rule beyond "look at what you wanted to do" — the goals
+         * are in the detail line and the home document.
+         */
+        BORED
     }
 
     /**
@@ -75,8 +81,7 @@ public record SelfCheckFinding(
      * the wakeup this finding caused.
      */
     public String summary() {
-        return "[" + kind.name().toLowerCase(java.util.Locale.ROOT) + "] "
-                + subjectName + ": " + detail;
+        return "[" + kind.name().toLowerCase(java.util.Locale.ROOT) + "] " + subjectName + ": " + detail;
     }
 
     /** Rendered into the self-check frame. */

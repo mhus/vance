@@ -39,7 +39,7 @@ params:
   # zero output tokens when given multiple function-call options. The
   # analyze tier (sonnet / gpt-4-class) is more reliable for the
   # function-calling pattern Trillian-Control uses.
-  model: default:analyze,default:fast
+  model: trillian-admin:analyze,trillian:analyze,default:analyze,default:fast
   fallbackModels:
     - default:fast
 

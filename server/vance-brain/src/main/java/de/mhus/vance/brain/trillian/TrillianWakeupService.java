@@ -87,6 +87,7 @@ public class TrillianWakeupService {
 
     /** Night cap. Nobody is waiting for an answer at 3 a.m. */
     static final int NIGHT_MINUTES = 120;
+
     static final LocalTime NIGHT_FROM = LocalTime.of(20, 0);
     static final LocalTime NIGHT_UNTIL = LocalTime.of(8, 0);
 
@@ -105,20 +106,25 @@ public class TrillianWakeupService {
      */
     public void arm(ThinkProcessDocument loop, ZoneId zone) {
         if (!shouldArm(loop)) {
-            log.trace("Trillian wakeup not armed id='{}' — status {} or a worker is running",
-                    loop.getId(), loop.getStatus());
+            log.trace(
+                    "Trillian wakeup not armed id='{}' — status {} or a worker is running",
+                    loop.getId(),
+                    loop.getStatus());
             disarm(loop);
             return;
         }
         int step = currentStep(loop);
         Duration gap = jittered(Duration.ofMinutes(minutesFor(step, zone)));
         Instant next = Instant.now().plus(gap);
-        thinkProcessService.setEngineParamOverride(
-                loop.getId(), PARAM_NEXT_WAKEUP_AT, next.toEpochMilli());
+        thinkProcessService.setEngineParamOverride(loop.getId(), PARAM_NEXT_WAKEUP_AT, next.toEpochMilli());
         thinkProcessService.setEngineParamOverride(
                 loop.getId(), PARAM_WAKEUP_STEP, Math.min(step + 1, LADDER.length - 1));
-        log.trace("Trillian wakeup armed id='{}' in {} min (step {}, nominal {})",
-                loop.getId(), gap.toMinutes(), step, minutesFor(step, zone));
+        log.trace(
+                "Trillian wakeup armed id='{}' in {} min (step {}, nominal {})",
+                loop.getId(),
+                gap.toMinutes(),
+                step,
+                minutesFor(step, zone));
     }
 
     /** Clears a pending self-check — something is in flight after all. */
@@ -140,6 +146,20 @@ public class TrillianWakeupService {
     /** Whether an appointment exists at all — armed, due or not. */
     public boolean isArmed(ThinkProcessDocument loop) {
         return longOverride(loop, PARAM_NEXT_WAKEUP_AT) != null;
+    }
+
+    /** The current rung (0-based) of the quiet-ladder. */
+    public int cadenceStep(ThinkProcessDocument loop) {
+        return currentStep(loop);
+    }
+
+    /**
+     * The armed self-check instant, or {@code null} when nothing is armed.
+     * Read-only view for status and activity snapshots.
+     */
+    public @Nullable Instant nextWakeupAt(ThinkProcessDocument loop) {
+        Long at = longOverride(loop, PARAM_NEXT_WAKEUP_AT);
+        return at == null ? null : Instant.ofEpochMilli(at);
     }
 
     /** Whether this loop's self-check is due. */

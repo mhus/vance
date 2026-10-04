@@ -75,20 +75,18 @@ class TrillianControlEmptyReplyTest {
         AiChat aiChat = mock(AiChat.class);
         lenient().when(aiChat.streamingChatModel()).thenReturn(chatModel);
         EngineChatFactory engineChatFactory = mock(EngineChatFactory.class);
-        lenient().when(engineChatFactory.forProcess(any(), any(), any()))
+        lenient()
+                .when(engineChatFactory.forProcess(any(), any(), any()))
                 .thenReturn(new EngineChatFactory.EngineChatBundle(
-                        aiChat,
-                        ChatBehavior.single(new AiChatConfig("test", "scripted", "stub-key"))));
+                        aiChat, ChatBehavior.single(new AiChatConfig("test", "scripted", "stub-key"))));
 
         ContextToolsApi tools = mock(ContextToolsApi.class);
         lenient().when(tools.primaryAsLc4j()).thenReturn(List.of());
 
         EnginePromptResolver enginePromptResolver = mock(EnginePromptResolver.class);
-        lenient().when(enginePromptResolver.resolve(any(), any(), any()))
-                .thenAnswer(inv -> inv.getArgument(2));
+        lenient().when(enginePromptResolver.resolve(any(), any(), any())).thenAnswer(inv -> inv.getArgument(2));
         SystemPromptComposer systemPromptComposer = mock(SystemPromptComposer.class);
-        lenient().when(systemPromptComposer.compose(any(), any(), any()))
-                .thenAnswer(inv -> inv.getArgument(1));
+        lenient().when(systemPromptComposer.compose(any(), any(), any())).thenAnswer(inv -> inv.getArgument(1));
 
         TrillianNature nature = mock(TrillianNature.class);
         lenient().when(nature.controlPromptAddendum(any())).thenReturn(null);
@@ -96,9 +94,11 @@ class TrillianControlEmptyReplyTest {
         lenient().when(natureRegistry.resolve(any())).thenReturn(nature);
 
         ModelCatalog modelCatalog = mock(ModelCatalog.class);
-        lenient().when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
+        lenient()
+                .when(modelCatalog.lookupOrDefault(any(), any(), any(), any(), any()))
                 .thenReturn(new ModelInfo(
-                        "test", "test-model",
+                        "test",
+                        "test-model",
                         /*contextWindowTokens*/ 128_000,
                         /*defaultMaxOutputTokens*/ 4096,
                         ModelSize.LARGE,
@@ -109,12 +109,14 @@ class TrillianControlEmptyReplyTest {
                         /*messageParser*/ null,
                         /*pricing*/ null,
                         OutputTokenParam.MAX_TOKENS,
-                        java.util.Set.of(), null));
+                        java.util.Set.of(),
+                        null));
 
         MemoryContextLoader memoryContextLoader = mock(MemoryContextLoader.class);
         lenient().when(memoryContextLoader.composeBlock(any())).thenReturn(null);
         MemoryCompactionService memoryCompactionService = mock(MemoryCompactionService.class);
-        lenient().when(memoryCompactionService.compactIfNeeded(any(), any(), any(), any()))
+        lenient()
+                .when(memoryCompactionService.compactIfNeeded(any(), any(), any(), any()))
                 .thenReturn(CompactionResult.noop("test"));
 
         engine = new TrillianControlEngine(
@@ -130,7 +132,8 @@ class TrillianControlEmptyReplyTest {
                 natureRegistry,
                 modelCatalog,
                 memoryContextLoader,
-                memoryCompactionService);
+                memoryCompactionService,
+                mock(org.springframework.beans.factory.ObjectProvider.class));
 
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);

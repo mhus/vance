@@ -843,6 +843,18 @@ public class TrillianUserEngine implements ThinkEngine {
                 sb.append("</self-check>");
                 return sb.toString();
             }
+            if (TrillianSessionReplyListener.COMMAND_SESSION_REPLY.equals(ec.command())) {
+                // Something was said in a session this Trillian opened —
+                // the A6 flow-back. The payload names the session and
+                // quotes one line; the whole conversation is one
+                // session_read away.
+                Object replySession =
+                        ec.params() == null ? null : ec.params().get(TrillianSessionReplyListener.PARAM_SESSION_ID);
+                Object preview =
+                        ec.params() == null ? null : ec.params().get(TrillianSessionReplyListener.PARAM_PREVIEW);
+                return "<session-reply session=\"" + escapeAttr(String.valueOf(replySession)) + "\">"
+                        + escapeText(String.valueOf(preview)) + "</session-reply>";
+            }
             return "<external-command command=\""
                     + escapeAttr(ec.command()) + "\">"
                     + escapeText(ec.params() == null ? "" : ec.params().toString())

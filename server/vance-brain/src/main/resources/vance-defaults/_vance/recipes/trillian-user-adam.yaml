@@ -26,7 +26,7 @@ params:
   # default:analyze tends to be more reliable for the orchestrator
   # role (handles structured tool decisions better than the typical
   # default:fast). Fallback to fast if analyze is exhausted/slow.
-  model: default:analyze,default:fast
+  model: trillian-adam:analyze,trillian:analyze,default:analyze,default:fast
   fallbackModels:
     - default:fast
 

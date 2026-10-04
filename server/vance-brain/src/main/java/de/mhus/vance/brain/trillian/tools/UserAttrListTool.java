@@ -22,9 +22,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class UserAttrListTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of());
+    private static final Map<String, Object> SCHEMA = Map.of("type", "object", "properties", Map.of());
 
     private final TrillianInternalApi api;
 
@@ -35,8 +33,7 @@ public class UserAttrListTool implements Tool {
 
     @Override
     public String description() {
-        return "List all attributes currently set on the paired "
-                + "Trillian-User worker.";
+        return "List the attributes currently shaping this Trillian.";
     }
 
     @Override
@@ -67,8 +64,7 @@ public class UserAttrListTool implements Tool {
         Optional<ThinkProcessDocument> peerOpt = api.findPeer(ctx.processId());
         if (peerOpt.isEmpty()) {
             throw new ToolException(
-                    "No Trillian-User peer found — this tool is only available "
-                            + "inside a Trillian-Control session");
+                    "No Trillian-User peer found — this tool is only available " + "inside a Trillian-Control session");
         }
         Map<String, Object> attrs = TrillianInternalApi.readAttributes(peerOpt.get());
         Map<String, Object> out = new LinkedHashMap<>();

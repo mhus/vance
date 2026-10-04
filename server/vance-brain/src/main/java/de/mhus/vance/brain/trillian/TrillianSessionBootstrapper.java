@@ -4,7 +4,9 @@ import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.session.DisconnectPolicy;
 import de.mhus.vance.api.session.IdlePolicy;
 import de.mhus.vance.api.session.SessionLifecycleConfig;
+import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.session.SuspendPolicy;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
@@ -145,6 +147,14 @@ public class TrillianSessionBootstrapper {
      */
     public static final String PARAM_CARRIED_ATTRIBUTES = "carriedWorkerAttributes";
 
+    /**
+     * engineParams key on a control process overriding the derived
+     * user-loop recipe name. Same shape as {@link #PARAM_WORKER_RECIPE}: a
+     * recipe that wants a different working style (direct tools, a
+     * collab-heavy loop) pins it here instead of forking the derivation.
+     */
+    public static final String PARAM_USER_RECIPE = "userRecipe";
+
     /** engineParams key for the Trillian Nature pinned by the recipe. */
     public static final String PARAM_NATURE = "nature";
 
@@ -181,6 +191,10 @@ public class TrillianSessionBootstrapper {
     private final LaneScheduler laneScheduler;
     private final ChatMessageService chatMessageService;
     private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
+    private final de.mhus.vance.shared.home.HomeBootstrapService homeBootstrapService;
+
+    /** P2/D8: relaxed model gate for the unattended loop. */
+    private final TrillianModelGate modelGate;
 
     /**
      * Present only when a grant-storing permission provider is loaded
@@ -234,20 +248,11 @@ public class TrillianSessionBootstrapper {
     }
 
     private void doBootstrap(SessionDocument controlSession, ThinkProcessDocument controlProcess) {
-        // 0. Podless projects (_user_*, _tenant, system) never get a home
-        //    pod: they attach to whichever pod received the WebSocket and
-        //    can move on reconnect. A Trillian is supposed to sit still
-        //    and keep watch — its worker session, its lanes and its
-        //    periodic self-check all assume one owner. Refusing here beats
-        //    minting one that silently never wakes up.
-        if (de.mhus.vance.shared.project.ProjectService.isPodless(controlSession.getProjectId())) {
-            log.warn(
-                    "Trillian bootstrap refused in podless project '{}' (session '{}') — "
-                            + "a Trillian needs a project with a home pod",
-                    controlSession.getProjectId(),
-                    controlSession.getSessionId());
-            return;
-        }
+        // 0. Placement: the user-loop lives in the Trillian's own hub
+        //    (_user_<trillian>), which is podless by design. Self-waking no
+        //    longer assumes a home pod — the heartbeat claims its wake slot
+        //    cross-pod (see TrillianHeartbeatTick), so a podless home is as
+        //    workable as a placed one. No refusal here (D2, 2026-10-04).
 
         // 1. Which Nature this pair runs. It lives in
         //    controlProcess.engineParams.nature; DEFAULT_NATURE covers a
@@ -292,6 +297,15 @@ public class TrillianSessionBootstrapper {
         }
         final String trillianNameFinal = trillianName;
 
+        // 2c. The Trillian's own home. Every account has one
+        //     (`_user_<login>`) — the hub is where the loop session lives,
+        //     where its attributes and schedules are filed, and what outlives
+        //     a merely archived control session. ensureHome is idempotent, so
+        //     an adopted account adopts its hub along with it.
+        final String homeProject = homeBootstrapService
+                .ensureHome(controlSession.getTenantId(), trillianNameFinal)
+                .getName();
+
         // 2b. Seed the account's authority. Without a grant the account
         //     exists but may do nothing: every tool call goes through
         //     ToolDispatcher -> PermissionService.enforce(EXECUTE), which
@@ -306,7 +320,7 @@ public class TrillianSessionBootstrapper {
         }
 
         // 3. Resolve the user recipe — the Nature variant of the loop.
-        String userRecipeName = USER_RECIPE_PREFIX + nature;
+        String userRecipeName = userRecipeNameOf(controlProcess, nature);
         AppliedRecipe applied = recipeResolver.applyDefaulting(
                 controlSession.getTenantId(),
                 controlSession.getProjectId(),
@@ -314,6 +328,16 @@ public class TrillianSessionBootstrapper {
                 HEADLESS_PROFILE,
                 /*callerParams*/ null);
         final String userRecipeNameFinal = userRecipeName;
+        // P2/D8: the cost gate for the unattended loop. Relaxed policy
+        // (default '*'); a refused model means no loop starts, and the
+        // message names both the model and the setting.
+        modelGate.checkLoopModel(
+                controlSession.getTenantId(),
+                homeProject,
+                trillianNameFinal,
+                /*processId*/ null,
+                de.mhus.vance.brain.ai.AiModelResolver.parseModelSpec(applied.params()));
+
         ThinkEngine engine = thinkEngineService
                 .resolve(applied.engine())
                 .orElseThrow(() -> new IllegalStateException("Recipe '" + userRecipeNameFinal
@@ -329,7 +353,7 @@ public class TrillianSessionBootstrapper {
         SessionDocument userSession = sessionService.create(
                 controlSession.getTenantId(),
                 trillianName,
-                controlSession.getProjectId(),
+                homeProject,
                 /*displayName*/ "Trillian-User " + accountSuffix(trillianName),
                 /*profile*/ HEADLESS_PROFILE,
                 CLIENT_VERSION,
@@ -360,7 +384,7 @@ public class TrillianSessionBootstrapper {
             // ephemeral one returns nothing and the worker starts blank.
             carried = natureRegistry
                     .resolve(nature)
-                    .initialAttributes(controlSession.getTenantId(), controlSession.getProjectId(), trillianName);
+                    .initialAttributes(controlSession.getTenantId(), homeProject, trillianName);
         }
         if (!carried.isEmpty()) {
             userParams.put(TrillianInternalApi.PARAM_ATTRIBUTES, carried);
@@ -385,7 +409,7 @@ public class TrillianSessionBootstrapper {
         try {
             userProc = thinkProcessService.create(
                     controlSession.getTenantId(),
-                    controlSession.getProjectId(),
+                    homeProject,
                     userSession.getSessionId(),
                     USER_PROCESS_NAME,
                     engine.name(),
@@ -495,11 +519,11 @@ public class TrillianSessionBootstrapper {
                     .sessionId(controlSession.getSessionId())
                     .thinkProcessId(controlProcess.getId())
                     .role(ChatRole.ASSISTANT)
-                    .content(callName + " is ready. My background worker runs as the service"
-                            + " account `" + trillianName + "` in project `"
-                            + controlSession.getProjectId() + "`, and is removed when this"
-                            + " session closes. To let it work in another project, that"
-                            + " account needs access there.")
+                    .content("I am " + callName + ", ready to go. My working side runs "
+                            + "as the service account `" + trillianName + "` from my home `"
+                            + de.mhus.vance.shared.home.HomeBootstrapService.hubProjectName(trillianName)
+                            + "`, and everything goes away when this session closes. To let"
+                            + " me work in another project, that account needs access there.")
                     .build());
         } catch (RuntimeException e) {
             log.warn(
@@ -630,6 +654,107 @@ public class TrillianSessionBootstrapper {
             return s.trim();
         }
         return DEFAULT_NATURE;
+    }
+
+    /**
+     * Makes sure the user-loop pair exists and is alive. The loop session is
+     * <b>fluid</b> (D1): closed or archived, it is simply rebuilt on the next
+     * turn — same account (adoption), attributes carried over from the
+     * departing loop when they can still be read.
+     *
+     * <p>Called from the control side before it dispatches anything at the
+     * peer (turn head, command handler). Returns {@code true} when a live
+     * loop exists afterwards.
+     */
+    public boolean ensureUserLoop(ThinkProcessDocument controlProcess) {
+        if (!CONTROL_ENGINE_NAME.equals(controlProcess.getThinkEngine())) {
+            return false;
+        }
+        Optional<SessionDocument> controlSession = sessionService.findBySessionId(controlProcess.getSessionId());
+        if (controlSession.isEmpty()) {
+            return false;
+        }
+        Optional<ThinkProcessDocument> loop = findPeerProcess(controlProcess);
+        if (loop.isPresent() && isAlive(loop.get()) && peerSessionAlive(controlProcess)) {
+            return true;
+        }
+        // Fluid, not fatal: park whatever the departing loop still carries,
+        // unwire, and let the bootstrap build a fresh one.
+        loop.ifPresent(old -> parkAttributes(controlProcess, old));
+        unwirePeer(controlProcess);
+        log.info("Trillian: user-loop of control '{}' is gone — rebuilding", controlProcess.getId());
+        maybeBootstrap(controlSession.get(), controlProcess);
+        return findPeerProcess(controlProcess).filter(p -> isAlive(p)).isPresent();
+    }
+
+    /** The wired user-loop process, if the reference still resolves. */
+    private Optional<ThinkProcessDocument> findPeerProcess(ThinkProcessDocument controlProcess) {
+        if (controlProcess.getEngineParams() == null) {
+            return Optional.empty();
+        }
+        Object raw = controlProcess.getEngineParams().get(PARAM_PEER_PROCESS_ID);
+        return raw instanceof String s && !s.isBlank() ? thinkProcessService.findById(s) : Optional.empty();
+    }
+
+    private static boolean isAlive(ThinkProcessDocument process) {
+        return process.getStatus() != null && process.getStatus() != ThinkProcessStatus.CLOSED;
+    }
+
+    private boolean peerSessionAlive(ThinkProcessDocument controlProcess) {
+        Optional<String> sid = findUserSessionId(controlProcess);
+        if (sid.isEmpty()) {
+            return false;
+        }
+        Optional<SessionDocument> s = sessionService.findBySessionId(sid.get());
+        return s.isPresent()
+                && s.get().getStatus() != SessionStatus.CLOSED
+                && s.get().getStatus() != SessionStatus.ARCHIVED;
+    }
+
+    /**
+     * Parks the departing loop's attributes on the control process, so the
+     * rebuild picks them up through the existing {@link
+     * #PARAM_CARRIED_ATTRIBUTES} path. Best-effort: attributes that cannot be
+     * read any more are gone, and that is the smaller loss of the two.
+     */
+    private void parkAttributes(ThinkProcessDocument controlProcess, ThinkProcessDocument oldLoop) {
+        Map<String, Object> attrs = TrillianInternalApi.readAttributes(oldLoop);
+        if (attrs.isEmpty()) {
+            return;
+        }
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (controlProcess.getEngineParams() != null) {
+            params.putAll(controlProcess.getEngineParams());
+        }
+        params.put(PARAM_CARRIED_ATTRIBUTES, attrs);
+        thinkProcessService.replaceEngineParams(controlProcess.getId(), params);
+    }
+
+    /** Drops the peer wiring, keeping {@code trillianUserName} for adoption. */
+    private void unwirePeer(ThinkProcessDocument controlProcess) {
+        if (controlProcess.getEngineParams() == null) {
+            return;
+        }
+        Map<String, Object> params = new LinkedHashMap<>(controlProcess.getEngineParams());
+        params.remove(PARAM_PEER_PROCESS_ID);
+        params.remove(PARAM_PEER_SESSION_ID);
+        thinkProcessService.replaceEngineParams(controlProcess.getId(), params);
+    }
+
+    /**
+     * The user-loop recipe: an explicit {@link #PARAM_USER_RECIPE} on the
+     * control process wins, otherwise the Nature family default. Same shape
+     * as {@link #PARAM_WORKER_RECIPE} — a recipe pins a different working
+     * style instead of forking the derivation.
+     */
+    private static String userRecipeNameOf(ThinkProcessDocument controlProcess, String nature) {
+        if (controlProcess.getEngineParams() != null) {
+            Object raw = controlProcess.getEngineParams().get(PARAM_USER_RECIPE);
+            if (raw instanceof String s && !s.isBlank()) {
+                return s.trim();
+            }
+        }
+        return USER_RECIPE_PREFIX + nature;
     }
 
     /** Lookup the user-session id wired to this control process. */

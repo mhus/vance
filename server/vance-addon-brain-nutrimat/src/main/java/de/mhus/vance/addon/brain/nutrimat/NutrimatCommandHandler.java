@@ -6,12 +6,12 @@ import de.mhus.vance.brain.command.EngineCommandResult;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -61,7 +61,14 @@ public class NutrimatCommandHandler implements EngineCommandHandler {
     private static final int DEFAULT_MAX_DECISIONS = 3;
 
     private final ThinkProcessService thinkProcessService;
-    private final List<AbstractNutrimat> natures;
+    /**
+     * Lazy on purpose: the engine beans pull in {@code SkillTriggerMatcher}
+     * which reaches back into the command dispatcher through the skill
+     * command runner — injecting the natures eagerly would close a bean
+     * cycle (engine → skills → dispatcher → this handler → engine). Same
+     * pattern as {@code ThinkEngineService}'s {@code ObjectProvider<RecipeResolver>}.
+     */
+    private final ObjectProvider<AbstractNutrimat> natures;
 
     @Override
     public String verb() {

@@ -13,9 +13,10 @@ import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.command.EngineCommandResult;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * {@code //nutrimat} control-plane parsing: the knob mapping onto the runtime
@@ -25,8 +26,15 @@ import org.junit.jupiter.api.Test;
 class NutrimatCommandHandlerTest {
 
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
-    private final NutrimatCommandHandler handler =
-            new NutrimatCommandHandler(thinkProcessService, List.of(new FakeNature()));
+    private final NutrimatCommandHandler handler = new NutrimatCommandHandler(thinkProcessService, natures());
+
+    /** Lazy provider like in production — the handler never touches the natures eagerly. */
+    @SuppressWarnings("unchecked")
+    private static ObjectProvider<AbstractNutrimat> natures() {
+        ObjectProvider<AbstractNutrimat> provider = mock(ObjectProvider.class);
+        when(provider.stream()).thenAnswer(inv -> Stream.of(new FakeNature()));
+        return provider;
+    }
 
     /** Minimal nature so the status line has a loop type. */
     private static class FakeNature extends AbstractNutrimat {

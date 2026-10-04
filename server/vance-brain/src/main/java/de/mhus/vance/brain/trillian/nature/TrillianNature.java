@@ -123,11 +123,14 @@ public interface TrillianNature {
      * constant or vary it by purpose and project. The model never chooses —
      * the noise level is doctrine, not a turn decision.
      *
-     * <p>Default {@link CollabMode#WATCH}: visible and shared, but human
-     * chat does not wake the loop.
+     * <p>Default {@link CollabMode#JOIN}: the session is the Trillian's way
+     * of working somewhere, so what is said there flows back to the loop —
+     * answers and human collaboration alike. {@link CollabMode#WATCH} is the
+     * doctrine for pure observation: visible and shared, but the chat does
+     * not wake the loop.
      */
     default CollabMode sessionCollab(ThinkProcessDocument loop, String projectId, @Nullable String purpose) {
-        return CollabMode.WATCH;
+        return CollabMode.JOIN;
     }
 
     default String callName(Map<String, Object> attributes) {

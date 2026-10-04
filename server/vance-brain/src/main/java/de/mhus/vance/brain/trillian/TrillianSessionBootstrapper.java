@@ -146,6 +146,8 @@ public class TrillianSessionBootstrapper {
      * bootstrap to pick up.
      */
     public static final String PARAM_CARRIED_ATTRIBUTES = "carriedWorkerAttributes";
+    /** Engine-param override: why the loop is currently suppressed (model gate). */
+    public static final String PARAM_GATE_DENIED = "trillianGateDenied";
 
     /**
      * engineParams key on a control process overriding the derived
@@ -213,7 +215,12 @@ public class TrillianSessionBootstrapper {
      * the control-session is still alive for the human; a future
      * re-bootstrap or manual cleanup is the recovery path.
      */
-    public void maybeBootstrap(SessionDocument controlSession, @Nullable ThinkProcessDocument controlProcess) {
+    // synchronized: the control engine's first turn and the session-create
+    // path both bootstrap the pair, and check-then-act on the wiring params
+    // is not atomic — without this, one control session can get two loops.
+
+    public synchronized void maybeBootstrap(
+            SessionDocument controlSession, @Nullable ThinkProcessDocument controlProcess) {
         if (controlProcess == null) {
             return;
         }
@@ -229,11 +236,24 @@ public class TrillianSessionBootstrapper {
                 ? null
                 : controlProcess.getEngineParams().get(PARAM_PEER_SESSION_ID);
         if (peerSessRaw instanceof String peerSess && !peerSess.isBlank()) {
+            // Adopt only a pair that is actually alive — a stale wire to a
+            // closed loop session must rebuild, not adopt.
+            Optional<SessionDocument> wired = sessionService.findBySessionId(peerSess);
+            boolean alive = wired.isPresent()
+                    && wired.get().getStatus() != SessionStatus.CLOSED
+                    && wired.get().getStatus() != SessionStatus.ARCHIVED;
+            if (alive) {
+                log.debug(
+                        "Trillian user-session '{}' already wired for control id='{}' — adopting",
+                        peerSess,
+                        controlProcess.getId());
+                return;
+            }
             log.debug(
-                    "Trillian user-session '{}' already wired for control id='{}' — adopting",
+                    "Trillian user-session '{}' wired on control id='{}' is gone — rebuilding",
                     peerSess,
                     controlProcess.getId());
-            return;
+            unwirePeer(controlProcess);
         }
 
         try {
@@ -329,14 +349,22 @@ public class TrillianSessionBootstrapper {
                 /*callerParams*/ null);
         final String userRecipeNameFinal = userRecipeName;
         // P2/D8: the cost gate for the unattended loop. Relaxed policy
-        // (default '*'); a refused model means no loop starts, and the
-        // message names both the model and the setting.
-        modelGate.checkLoopModel(
-                controlSession.getTenantId(),
-                homeProject,
-                trillianNameFinal,
-                /*processId*/ null,
-                de.mhus.vance.brain.ai.AiModelResolver.parseModelSpec(applied.params()));
+        // (default '*'), and loop-only at that: a refused model must not
+        // cost the operator their control session — the loop simply does
+        // not start and the chat says why. Self-healing: fix the setting
+        // and the next turn builds the loop.
+        try {
+            modelGate.checkLoopModel(
+                    controlSession.getTenantId(),
+                    homeProject,
+                    trillianNameFinal,
+                    /*processId*/ null,
+                    de.mhus.vance.brain.ai.AiModelResolver.parseModelSpec(applied.params()));
+        } catch (IllegalStateException denied) {
+            suppressLoop(controlSession, controlProcess, denied.getMessage());
+            return;
+        }
+        clearGateSuppression(controlProcess);
 
         ThinkEngine engine = thinkEngineService
                 .resolve(applied.engine())
@@ -511,6 +539,46 @@ public class TrillianSessionBootstrapper {
      * assistant message. Best-effort — a failure here must not abort a
      * bootstrap that is otherwise complete, so it is logged and swallowed.
      */
+    /**
+     * The model gate refused the loop: say so once in the control chat and
+     * remember the reason, so the next turn can tell a new refusal from one
+     * the operator has already seen. The control conversation stays fully
+     * usable — the gate is about the unattended loop, not about the face.
+     */
+    private void suppressLoop(
+            SessionDocument controlSession, ThinkProcessDocument controlProcess, @Nullable String reason) {
+        String message = reason == null ? "user-loop model refused" : reason;
+        Object last = controlProcess.getEngineParamOverrides() == null
+                ? null
+                : controlProcess.getEngineParamOverrides().get(PARAM_GATE_DENIED);
+        if (message.equals(last)) {
+            return;
+        }
+        thinkProcessService.setEngineParamOverride(controlProcess.getId(), PARAM_GATE_DENIED, message);
+        try {
+            chatMessageService.append(ChatMessageDocument.builder()
+                    .tenantId(controlSession.getTenantId())
+                    .sessionId(controlSession.getSessionId())
+                    .thinkProcessId(controlProcess.getId())
+                    .role(ChatRole.ASSISTANT)
+                    .content("My working side is switched off: " + message)
+                    .build());
+        } catch (RuntimeException e) {
+            log.warn(
+                    "Trillian bootstrap: could not announce the model-gate refusal in session '{}': {}",
+                    controlSession.getSessionId(),
+                    e.toString());
+        }
+    }
+
+    /** A gate that now passes retires the refusal along with it. */
+    private void clearGateSuppression(ThinkProcessDocument controlProcess) {
+        if (controlProcess.getEngineParamOverrides() != null
+                && controlProcess.getEngineParamOverrides().containsKey(PARAM_GATE_DENIED)) {
+            thinkProcessService.setEngineParamOverride(controlProcess.getId(), PARAM_GATE_DENIED, null);
+        }
+    }
+
     private void announceIdentity(
             SessionDocument controlSession, ThinkProcessDocument controlProcess, String trillianName, String callName) {
         try {
@@ -666,7 +734,7 @@ public class TrillianSessionBootstrapper {
      * peer (turn head, command handler). Returns {@code true} when a live
      * loop exists afterwards.
      */
-    public boolean ensureUserLoop(ThinkProcessDocument controlProcess) {
+    public synchronized boolean ensureUserLoop(ThinkProcessDocument controlProcess) {
         if (!CONTROL_ENGINE_NAME.equals(controlProcess.getThinkEngine())) {
             return false;
         }
@@ -683,8 +751,14 @@ public class TrillianSessionBootstrapper {
         loop.ifPresent(old -> parkAttributes(controlProcess, old));
         unwirePeer(controlProcess);
         log.info("Trillian: user-loop of control '{}' is gone — rebuilding", controlProcess.getId());
-        maybeBootstrap(controlSession.get(), controlProcess);
-        return findPeerProcess(controlProcess).filter(p -> isAlive(p)).isPresent();
+        // Re-read: unwirePeer wrote fresh params and the doc in hand still
+        // carries the dead pair — maybeBootstrap would adopt it.
+        ThinkProcessDocument fresh =
+                thinkProcessService.findById(controlProcess.getId()).orElse(controlProcess);
+        maybeBootstrap(controlSession.get(), fresh);
+        ThinkProcessDocument after =
+                thinkProcessService.findById(controlProcess.getId()).orElse(controlProcess);
+        return findPeerProcess(after).filter(p -> isAlive(p)).isPresent();
     }
 
     /** The wired user-loop process, if the reference still resolves. */

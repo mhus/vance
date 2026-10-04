@@ -29,7 +29,7 @@ engine: trillian-control
 # choice a human makes, and there is no third entry standing in for one
 # of them any more.
 listed: true
-category: chat
+category: agents
 title: Trillian void (baseline)
 
 params:

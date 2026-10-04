@@ -16,6 +16,10 @@ categories:
     title:
       en: Chat
       de: Chat
+  - id: agents
+    title:
+      en: Agents
+      de: Agenten
   - id: council
     title:
       en: Council
@@ -32,6 +36,10 @@ categories:
     title:
       en: Workers
       de: Worker
+  - id: system
+    title:
+      en: System
+      de: System
   - id: experimental
     title:
       en: Experimental

@@ -18,9 +18,22 @@ import org.junit.jupiter.api.Test;
 class KindResolverTest {
 
     private static final Set<String> KNOWN_KINDS = Set.of(
-            "text", "slides", "schema", "application", "compose", "formula",
-            "diagram", "mindmap", "chart", "graph", "records", "sheet",
-            "list", "checklist", "tree", "data");
+            "text",
+            "slides",
+            "schema",
+            "application",
+            "compose",
+            "formula",
+            "diagram",
+            "mindmap",
+            "chart",
+            "graph",
+            "records",
+            "sheet",
+            "list",
+            "checklist",
+            "tree",
+            "data");
 
     private KindRegistry registryWith(Set<String> names) {
         KindRegistry registry = mock(KindRegistry.class);
@@ -31,6 +44,47 @@ class KindResolverTest {
     }
 
     private final KindResolver resolver = new KindResolver(registryWith(KNOWN_KINDS));
+
+    // ── path-based defaults ─────────────────────────────────────
+
+    private KindResolver resolverWithPathClaim(String claim) {
+        KindRegistry registry = registryWith(KNOWN_KINDS);
+        when(registry.detectKind(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(claim);
+        return new KindResolver(registry);
+    }
+
+    @Test
+    void pathClaim_typesAnUnkindedCreate() {
+        KindResolver r = resolverWithPathClaim("vance-research-source");
+        assertThat(r.resolve(null, null, "protocol: serper", "_vance/config/research/serper.yaml"))
+                .isEqualTo("vance-research-source");
+    }
+
+    @Test
+    void pathClaim_losesAgainstAnExplicitKind() {
+        // kind= is a decision — the location never re-types what the caller
+        // asked for.
+        KindResolver r = resolverWithPathClaim("vance-research-source");
+        assertThat(r.resolve("diagram", null, "x", "_vance/config/research/serper.yaml"))
+                .isEqualTo("diagram");
+    }
+
+    @Test
+    void pathClaim_losesAgainstAnExistingKind() {
+        KindResolver r = resolverWithPathClaim("vance-research-source");
+        assertThat(r.resolve(null, "sheet", "x", "_vance/config/research/serper.yaml"))
+                .isEqualTo("sheet");
+    }
+
+    @Test
+    void pathClaim_replacesAnUncommittedTextKind() {
+        // 'text' is the name of 'unspecified', not a commitment — an update
+        // that leaves kind blank re-types the document by location.
+        KindResolver r = resolverWithPathClaim("vance-research-source");
+        assertThat(r.resolve(null, "text", "x", "_vance/config/research/serper.yaml"))
+                .isEqualTo("vance-research-source");
+    }
 
     // ── formula-specific cases ──────────────────────────────────
 
@@ -98,45 +152,40 @@ class KindResolverTest {
 
     private KindResolver resolverDetecting(String detected) {
         KindRegistry registry = registryWith(KNOWN_KINDS);
-        when(registry.detectKind(org.mockito.ArgumentMatchers.any()))
+        when(registry.detectKind(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(detected);
         return new KindResolver(registry);
     }
 
     @Test
     void requestedText_withDetectableBody_yieldsDetectedKind() {
-        assertThat(resolverDetecting("diagram")
-                .resolve("text", null, "```mermaid\nflowchart TD\n```"))
+        assertThat(resolverDetecting("diagram").resolve("text", null, "```mermaid\nflowchart TD\n```"))
                 .isEqualTo("diagram");
     }
 
     @Test
     void requestedText_withUndetectableBody_staysText() {
-        assertThat(resolverDetecting(null).resolve("text", null, "just prose"))
-                .isEqualTo("text");
+        assertThat(resolverDetecting(null).resolve("text", null, "just prose")).isEqualTo("text");
     }
 
     @Test
     void requestedSpecificKind_isNeverOverriddenByDetection() {
         // The caller committed to chart; a diagram detector must not win.
-        assertThat(resolverDetecting("diagram")
-                .resolve("chart", null, "```mermaid\npie\n```"))
+        assertThat(resolverDetecting("diagram").resolve("chart", null, "```mermaid\npie\n```"))
                 .isEqualTo("chart");
     }
 
     @Test
     void existingSpecificKind_survivesATextRequest() {
         // Overwriting a diagram with kind=text must not retype the document.
-        assertThat(resolverDetecting("mindmap")
-                .resolve("text", "diagram", "```mermaid\nflowchart TD\n```"))
+        assertThat(resolverDetecting("mindmap").resolve("text", "diagram", "```mermaid\nflowchart TD\n```"))
                 .isEqualTo("diagram");
     }
 
     @Test
     void existingText_isReplacedByDetection() {
         // An existing `text` is as unspecific as a requested one.
-        assertThat(resolverDetecting("diagram")
-                .resolve(null, "text", "```mermaid\nflowchart TD\n```"))
+        assertThat(resolverDetecting("diagram").resolve(null, "text", "```mermaid\nflowchart TD\n```"))
                 .isEqualTo("diagram");
     }
 }

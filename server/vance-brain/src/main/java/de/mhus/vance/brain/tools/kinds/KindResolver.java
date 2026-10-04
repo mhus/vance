@@ -14,16 +14,22 @@ import org.springframework.stereotype.Service;
  *
  * <h2>Resolution order</h2>
  * <ol>
- *   <li>Blank input → {@code existingKind} (on update) or {@code "text"}
- *       (on create).</li>
- *   <li>Exact case-insensitive match against the {@link KindRegistry}.</li>
- *   <li>Substring match: the request <em>contains</em> a registered
- *       kind name (so {@code "diagramm"} → {@code "diagram"},
+ *   <li>Blank or {@code text} input → {@code existingKind} when it is a
+ *       specific kind (on update) — {@code text} is not a decision, see below.</li>
+ *   <li>…then detection: the kind claiming the document's <em>path</em> first
+ *       (config trees, {@link de.mhus.vance.shared.document.kind.KindHandler#detectsPath}),
+ *       then the kind claiming the <em>body</em>
+ *       ({@link de.mhus.vance.shared.document.kind.KindHandler#detects}). Location beats body
+ *       shape — see {@link KindRegistry#detectKind(String, String)}.</li>
+ *   <li>…then {@code existingKind} (on update) or {@code "text"} (on create).</li>
+ *   <li>An explicit kind resolves against the {@link KindRegistry}: exact
+ *       case-insensitive match, then substring match — the request <em>contains</em>
+ *       a registered kind name (so {@code "diagramm"} → {@code "diagram"},
  *       {@code "user-mindmap"} → {@code "mindmap"}). Only the
  *       request-contains-name direction — the reverse is too eager
  *       and silently rewrites things like {@code "li"} to
  *       {@code "list"}.</li>
- *   <li>Unresolvable → {@code existingKind} (on update) or
+ *   <li>Unresolvable explicit kind → {@code existingKind} (on update) or
  *       {@code "text"} (on create).</li>
  * </ol>
  *
@@ -76,10 +82,15 @@ public class KindResolver {
      * body grows a ```mermaid fence. Pinned by
      * {@code KindResolverTest.existingText_isReplacedByDetection}.
      */
+    public String resolve(@Nullable String requested, @Nullable String existingKind, @Nullable String content) {
+        return resolve(requested, existingKind, content, /*documentPath*/ null);
+    }
+
     public String resolve(
             @Nullable String requested,
             @Nullable String existingKind,
-            @Nullable String content) {
+            @Nullable String content,
+            @Nullable String documentPath) {
         String norm = requested == null ? "" : requested.trim().toLowerCase();
         String existing = existingKind == null ? "" : existingKind.trim().toLowerCase();
 
@@ -93,7 +104,7 @@ public class KindResolver {
             if (!existing.isEmpty() && !FALLBACK_KIND.equals(existing)) {
                 return existing;
             }
-            String detected = registry.detectKind(content);
+            String detected = registry.detectKind(documentPath, content);
             if (detected != null) {
                 return detected;
             }

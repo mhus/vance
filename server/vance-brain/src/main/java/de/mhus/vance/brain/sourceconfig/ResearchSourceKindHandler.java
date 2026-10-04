@@ -37,6 +37,14 @@ import org.springframework.stereotype.Service;
  * other subsystems, and the SPI's own rule is to claim narrowly. The marker
  * {@code $meta.kind} is what types these documents; templates, the setup
  * wizard and the form view all write it.
+ *
+ * <p><b>{@link #detectsPath} is implemented</b> — location, not body, is the
+ * marker for this kind. The folder {@code _vance/config/research/} is exclusive
+ * to this subsystem, so the claim is narrow: every document there is a source
+ * definition, and an untyped {@code doc_write} into the config tree lands as
+ * this kind instead of {@code text} (which would silently skip validation).
+ * Kind and location stay independent in the other direction — a source
+ * document elsewhere keeps its kind, exactly what the rule above says.
  */
 @Service
 public class ResearchSourceKindHandler implements KindHandler {
@@ -57,6 +65,19 @@ public class ResearchSourceKindHandler implements KindHandler {
     @Override
     public String getName() {
         return KIND;
+    }
+
+    /**
+     * The config tree is the marker: every document under
+     * {@code _vance/config/research/} is a source definition. This is a claim
+     * on <em>location</em>, not on body shape — see the class javadoc for why
+     * {@link #detects(String)} stays unimplemented. It types the untyped
+     * {@code doc_write} into the config tree as this kind instead of
+     * {@code text}, so the validator above actually runs on what lands there.
+     */
+    @Override
+    public boolean detectsPath(String documentPath) {
+        return documentPath.startsWith(SourceConfigPaths.RESEARCH);
     }
 
     @Override

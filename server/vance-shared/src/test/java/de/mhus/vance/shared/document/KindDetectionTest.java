@@ -2,13 +2,11 @@ package de.mhus.vance.shared.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.List;
-
-import org.junit.jupiter.api.Test;
-
 import de.mhus.vance.shared.document.kind.AgeKindHandler;
 import de.mhus.vance.shared.document.kind.DiagramCodec;
 import de.mhus.vance.shared.document.kind.KindHandler;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 /**
  * Detection of a document's kind from its body — the path taken when a
@@ -19,15 +17,18 @@ class KindDetectionTest {
     /** Minimal handler that claims whatever contains its marker. */
     private static KindHandler handler(String name, String marker, int priority) {
         return new KindHandler() {
-            @Override public String getName() {
+            @Override
+            public String getName() {
                 return name;
             }
 
-            @Override public boolean detects(String content) {
+            @Override
+            public boolean detects(String content) {
                 return content.contains(marker);
             }
 
-            @Override public int detectionPriority() {
+            @Override
+            public int detectionPriority() {
                 return priority;
             }
         };
@@ -37,6 +38,84 @@ class KindDetectionTest {
         KindRegistry r = new KindRegistry(List.of(handlers));
         r.collect();
         return r;
+    }
+
+    /** Minimal handler that claims by path prefix. */
+    private static KindHandler pathHandler(String name, String prefix, int priority) {
+        return new KindHandler() {
+            @Override
+            public String getName() {
+                return name;
+            }
+
+            @Override
+            public boolean detectsPath(String documentPath) {
+                return documentPath.startsWith(prefix);
+            }
+
+            @Override
+            public int detectionPriority() {
+                return priority;
+            }
+        };
+    }
+
+    @Test
+    void detectKind_pathClaim_winsOverBodyShape() {
+        // Location is the stronger statement: a config-tree document with a
+        // mermaid fence is a broken config document, not a diagram — typing it
+        // by body would silently skip the kind's validator.
+        KindRegistry registry = registryOf(
+                pathHandler("config-source", "_vance/config/research/", 100), handler("diagram", "```mermaid", 50));
+
+        assertThat(registry.detectKind("_vance/config/research/serper.yaml", "```mermaid\ngraph TD; A-->B;\n```"))
+                .isEqualTo("config-source");
+    }
+
+    @Test
+    void detectKind_withoutPathClaim_bodyStillDecides() {
+        KindRegistry registry = registryOf(
+                pathHandler("config-source", "_vance/config/research/", 100), handler("diagram", "```mermaid", 50));
+
+        assertThat(registry.detectKind("notes/today.md", "```mermaid\ngraph TD;\n```"))
+                .isEqualTo("diagram");
+        assertThat(registry.detectKind("_vance/config/feeds/hn.yaml", "title: HN"))
+                .isNull();
+    }
+
+    @Test
+    void detectKind_pathDetectorThatThrows_isTreatedAsNoClaim() {
+        KindHandler broken = new KindHandler() {
+            @Override
+            public String getName() {
+                return "broken";
+            }
+
+            @Override
+            public boolean detectsPath(String documentPath) {
+                throw new IllegalStateException("boom");
+            }
+        };
+        KindRegistry registry = registryOf(broken, handler("diagram", "```mermaid", 50));
+
+        assertThat(registry.detectKind("_vance/config/research/x.yaml", "```mermaid\ngraph TD;\n```"))
+                .isEqualTo("diagram");
+        assertThat(registry.detectKind("_vance/config/research/x.yaml", "plain"))
+                .isNull();
+    }
+
+    @Test
+    void detectKind_pathClaim_isStableAcrossHandlerOrder() {
+        // Same winner regardless of bean order — priority first, kind name as
+        // tiebreaker, so the result is a property of the kinds not the
+        // deployment.
+        KindRegistry a = registryOf(
+                pathHandler("zeta", "_vance/config/", 100), pathHandler("alpha", "_vance/config/research/", 100));
+        KindRegistry b = registryOf(
+                pathHandler("alpha", "_vance/config/research/", 100), pathHandler("zeta", "_vance/config/", 100));
+
+        assertThat(a.detectKind("_vance/config/research/x.yaml", null)).isEqualTo("alpha");
+        assertThat(b.detectKind("_vance/config/research/x.yaml", null)).isEqualTo("alpha");
     }
 
     @Test
@@ -54,17 +133,17 @@ class KindDetectionTest {
 
     @Test
     void detectKind_mermaidFence_isClaimedByDiagram() {
-        KindRegistry registry = registryOf(
-                () -> "text",
-                new KindHandler() {
-                    @Override public String getName() {
-                        return "diagram";
-                    }
+        KindRegistry registry = registryOf(() -> "text", new KindHandler() {
+            @Override
+            public String getName() {
+                return "diagram";
+            }
 
-                    @Override public boolean detects(String content) {
-                        return DiagramCodec.looksLikeDiagram(content);
-                    }
-                });
+            @Override
+            public boolean detects(String content) {
+                return DiagramCodec.looksLikeDiagram(content);
+            }
+        });
 
         assertThat(registry.detectKind("""
                 # Login flow
@@ -80,20 +159,19 @@ class KindDetectionTest {
     void detectKind_proseMentioningMermaid_isNotClaimed() {
         // Only the fence language counts. Prose about diagrams is prose —
         // a looser rule would mistype ordinary notes.
-        KindRegistry registry = registryOf(
-                () -> "text",
-                new KindHandler() {
-                    @Override public String getName() {
-                        return "diagram";
-                    }
+        KindRegistry registry = registryOf(() -> "text", new KindHandler() {
+            @Override
+            public String getName() {
+                return "diagram";
+            }
 
-                    @Override public boolean detects(String content) {
-                        return DiagramCodec.looksLikeDiagram(content);
-                    }
-                });
+            @Override
+            public boolean detects(String content) {
+                return DiagramCodec.looksLikeDiagram(content);
+            }
+        });
 
-        assertThat(registry.detectKind(
-                "We should draw this as a mermaid flowchart later."))
+        assertThat(registry.detectKind("We should draw this as a mermaid flowchart later."))
                 .isNull();
     }
 
@@ -159,10 +237,8 @@ class KindDetectionTest {
         // The case that makes "first wins" load-bearing: `- a` is a
         // plausible list, checklist and tree at once. Priority decides,
         // and it must be the declared one — not injection order.
-        KindRegistry registry = registryOf(
-                handler("tree", "- ", 50),
-                handler("checklist", "- ", 30),
-                handler("list", "- ", 20));
+        KindRegistry registry =
+                registryOf(handler("tree", "- ", 50), handler("checklist", "- ", 30), handler("list", "- ", 20));
 
         assertThat(registry.detectKind("- a\n- b")).isEqualTo("list");
     }
@@ -172,9 +248,7 @@ class KindDetectionTest {
         // A total order even when two kinds forget to differentiate
         // themselves: alphabetical, so the winner never depends on which
         // addon happened to register first.
-        KindRegistry registry = registryOf(
-                handler("zeta", "x", 100),
-                handler("alpha", "x", 100));
+        KindRegistry registry = registryOf(handler("zeta", "x", 100), handler("alpha", "x", 100));
 
         assertThat(registry.detectKind("x")).isEqualTo("alpha");
     }
@@ -194,15 +268,18 @@ class KindDetectionTest {
         // Detection is a convenience on the write path; a broken detector
         // must never fail the write.
         KindHandler broken = new KindHandler() {
-            @Override public String getName() {
+            @Override
+            public String getName() {
                 return "broken";
             }
 
-            @Override public boolean detects(String content) {
+            @Override
+            public boolean detects(String content) {
                 throw new IllegalStateException("boom");
             }
 
-            @Override public int detectionPriority() {
+            @Override
+            public int detectionPriority() {
                 return 1;
             }
         };

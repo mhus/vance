@@ -60,6 +60,26 @@ class ResearchSourceKindHandlerTest {
     }
 
     @Test
+    void detectsPath_claimsTheResearchConfigTree() {
+        assertThat(handler.detectsPath("_vance/config/research/serper-main.yaml"))
+                .isTrue();
+        assertThat(handler.detectsPath("_vance/config/research/any-name.yml")).isTrue();
+    }
+
+    @Test
+    void detectsPath_neverClaimsOutsideTheTree() {
+        // The body shape is shared with feeds and Jaglan mounts, so only the
+        // folder is the marker — and the prefix must not swallow neighbours
+        // like 'research-old'.
+        assertThat(handler.detectsPath("_vance/config/research-old/serper.yaml"))
+                .isFalse();
+        assertThat(handler.detectsPath("_vance/config/feeds/hn-algolia.yaml")).isFalse();
+        assertThat(handler.detectsPath("_vance/config/mounts/jira.yaml")).isFalse();
+        assertThat(handler.detectsPath("notes/research.md")).isFalse();
+        assertThat(handler.detectsPath("_vance/config/research")).isFalse();
+    }
+
+    @Test
     void getName_isVanceResearchSource() {
         assertThat(handler.getName()).isEqualTo("vance-research-source");
     }

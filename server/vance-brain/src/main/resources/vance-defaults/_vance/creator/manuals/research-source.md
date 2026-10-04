@@ -43,7 +43,10 @@ enabled: true
 **Always start with the kind marker** — `$meta.kind: vance-research-source`
 is what opens the document in its editing form in the web UI, and what
 `kind_validate` reads. Templates, the setup wizard and the form itself all
-write it; a document without it opens as raw YAML.
+write it; a document without it opens as raw YAML. A `doc_write` into
+`_vance/config/research/` stamps the document kind by location even when the
+body carries no marker — keep the marker anyway, it is what the templates and
+the form guarantee and what makes the document self-describing elsewhere.
 
 | Field | Required | Meaning |
 |---|---|---|

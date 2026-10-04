@@ -41,7 +41,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>The {@code kind} parameter is optional. On overwrite a blank
  * {@code kind} keeps the document's existing kind; on create a blank
- * defaults to {@code text}. A {@link KindResolver} silently coerces
+ * defaults to the kind claiming the document's <em>path</em> (config trees —
+ * {@link KindResolver}) or to {@code text}. A {@link KindResolver} silently coerces
  * blanks, typos, and unknown values to the nearest registered kind
  * (or {@code "text"}) — never throws.
  *
@@ -277,7 +278,7 @@ public class DocWriteTool implements Tool {
                     expectedContentHash, existing.get(), support.readBody(existing.get(), ctx));
         }
         String existingKind = existing.map(DocumentDocument::getKind).orElse(null);
-        String resolvedKind = kindResolver.resolve(requestedKind, existingKind, content);
+        String resolvedKind = kindResolver.resolve(requestedKind, existingKind, content, path);
         // kind=age with a model-produced body is the creation-side twin of
         // the same rule — ciphertext can only arrive as a copy, never as
         // generated content.

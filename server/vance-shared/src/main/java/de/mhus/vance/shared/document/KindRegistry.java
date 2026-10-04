@@ -47,15 +47,17 @@ public class KindRegistry {
         for (KindHandler h : handlers) {
             String name = h.getName();
             if (name == null || name.isBlank()) {
-                throw new IllegalStateException(
-                        "KindHandler " + h.getClass().getName() + " returned a blank name");
+                throw new IllegalStateException("KindHandler " + h.getClass().getName() + " returned a blank name");
             }
             String key = name.toLowerCase();
             collected.add(key);
             KindHandler previous = handlerByName.putIfAbsent(key, h);
             if (previous != null) {
-                log.warn("Duplicate KindHandler for kind '{}' — keeping {} , ignoring {}",
-                        key, previous.getClass().getName(), h.getClass().getName());
+                log.warn(
+                        "Duplicate KindHandler for kind '{}' — keeping {} , ignoring {}",
+                        key,
+                        previous.getClass().getName(),
+                        h.getClass().getName());
             }
         }
         this.names = Collections.unmodifiableSet(collected);
@@ -64,9 +66,7 @@ public class KindRegistry {
         // tiebreaker. Built once here rather than per detectKind call —
         // the set is fixed after startup.
         this.detectionOrder = handlerByName.values().stream()
-                .sorted(Comparator
-                        .comparingInt(KindHandler::detectionPriority)
-                        .thenComparing(KindHandler::getName))
+                .sorted(Comparator.comparingInt(KindHandler::detectionPriority).thenComparing(KindHandler::getName))
                 .toList();
     }
 
@@ -108,6 +108,36 @@ public class KindRegistry {
      * failure is logged, not propagated.
      */
     public @Nullable String detectKind(@Nullable String content) {
+        return detectKind(null, content);
+    }
+
+    /**
+     * The kind that claims the document by location or content, or {@code null}
+     * when none does. Path claims run first: where a document lives is a
+     * stronger statement than what its body happens to look like — a body
+     * under {@code _vance/config/research/} is a source definition even when
+     * it contains a mermaid fence, and the kind's validator then reports the
+     * malformed body instead of the write silently becoming a diagram.
+     *
+     * <p>Same never-fail contract as {@link #detectKind(String)}: a detector
+     * that throws is treated as "does not claim".
+     */
+    public @Nullable String detectKind(@Nullable String documentPath, @Nullable String content) {
+        if (documentPath != null && !documentPath.isBlank()) {
+            for (KindHandler h : detectionOrder) {
+                try {
+                    if (h.detectsPath(documentPath)) {
+                        return h.getName();
+                    }
+                } catch (RuntimeException e) {
+                    log.warn("Kind path detector '{}' failed — treated as no match: {}", h.getName(), e.toString());
+                }
+            }
+        }
+        return detectByContent(content);
+    }
+
+    private @Nullable String detectByContent(@Nullable String content) {
         if (content == null || content.isBlank()) return null;
         for (KindHandler h : detectionOrder) {
             try {
@@ -115,8 +145,7 @@ public class KindRegistry {
                     return h.getName();
                 }
             } catch (RuntimeException e) {
-                log.warn("Kind detector '{}' failed — treated as no match: {}",
-                        h.getName(), e.toString());
+                log.warn("Kind detector '{}' failed — treated as no match: {}", h.getName(), e.toString());
             }
         }
         return null;

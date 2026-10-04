@@ -83,6 +83,23 @@ public interface KindHandler {
     }
 
     /**
+     * Claim documents by their <em>path</em> when the body carries no explicit
+     * kind. The location of a document is itself a decision: a document under
+     * a config tree is that config's document no matter what the body says,
+     * so path claims are consulted before {@link #detects(String)} and win
+     * over body shape. Implement it for kinds that live at a fixed place (a
+     * config tree); leave it alone for kinds that are content-shaped.
+     *
+     * <p>Same contract as {@link #detects(String)}: never throw (the registry
+     * treats a failure as "does not claim"), and never claim a path that can
+     * host documents of other kinds — a folder prefix is fine, a shared
+     * parent directory is not.
+     */
+    default boolean detectsPath(String documentPath) {
+        return false;
+    }
+
+    /**
      * Order in which {@link #detects} is consulted — lower runs first, ties
      * broken by kind name so the sequence is total and stable.
      *

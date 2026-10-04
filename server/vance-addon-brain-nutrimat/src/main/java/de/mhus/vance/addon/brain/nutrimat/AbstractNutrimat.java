@@ -639,6 +639,15 @@ public abstract class AbstractNutrimat implements ThinkEngine {
 
         while (true) {
             for (int iter = 0; iter < budget; iter++) {
+                // Loop narration — a dimmed interim note per iteration so the
+                // user can follow the loop live (experiment observability).
+                // Never enters the LLM context: interim replies are pure
+                // user-progress channel, parent-inbox routing is skipped.
+                narrate(
+                        ctx,
+                        process,
+                        "round " + (stats.iterationsConsumed + 1) + "/" + budget
+                                + (stats.extensions > 0 ? " (extended " + stats.extensions + "×)" : ""));
                 // Mid-loop interrupt — checked before the next LLM call so
                 // ESC / /pause stops a running tool loop promptly.
                 InterruptKind kind = checkInterrupt(process);
@@ -702,6 +711,13 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                             corrections,
                             stopCandidates);
                     StopDecision d = onNaturalStopCandidate(st, reply);
+                    narrate(
+                            ctx,
+                            process,
+                            "stop decision: " + d.kind().name().toLowerCase(java.util.Locale.ROOT)
+                                    + (d.kind() == StopDecision.Kind.ACCEPT
+                                            ? " — the model's text is the reply"
+                                            : " — " + nonBlankOr(d.message(), "")));
                     switch (d.kind()) {
                         case ACCEPT -> {
                             if (replyText != null) {
@@ -749,16 +765,21 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             }
 
             // Budget exhausted — the nature's exhausted policy decides.
+            narrate(ctx, process, "budget exhausted after " + consumed + " iterations — asking the loop policy");
             LoopState st = state(
                     process, ctx, userGoal, consumed, in, bestFreeText, toolDataChars, corrections, stopCandidates);
             ExhaustionDecision d = onExhausted(st);
+            narrate(
+                    ctx,
+                    process,
+                    "exhausted policy: "
+                            + switch (d.kind()) {
+                                case EXTEND -> "extend";
+                                case SYNTHESIZE -> d.hardFailure() ? "synthesize (hard failure)" : "synthesize";
+                                case HARD_ERROR -> "hard error";
+                            }
+                            + nonBlankOr(d.reason() == null ? "" : " — " + d.reason(), ""));
             if (d.kind() == ExhaustionDecision.Kind.EXTEND && wallclockOk(turnStart)) {
-                log.info(
-                        "Nutrimat[{}] id='{}' budget exhausted after {} iterations — extending ({})",
-                        natureId(),
-                        process.getId(),
-                        consumed,
-                        d.reason());
                 in.messages().add(UserMessage.from(nudgeText(d)));
                 stats.extensions++;
                 continue;
@@ -881,6 +902,48 @@ public abstract class AbstractNutrimat implements ThinkEngine {
         }
         return ExhaustionDecision.hardError(
                 "The LLM call failed and no partial work is available: " + error.getMessage());
+    }
+
+    // ──────────────────── Loop narration ────────────────────
+
+    /** Narration knob: nothing, round counters only, or rounds + decisions. */
+    private static final String NARRATION_OFF = "off";
+
+    private static final String NARRATION_ROUNDS = "rounds";
+
+    /**
+     * Emits one dimmed interim note ({@code KIND_INTERIM}) on the user-
+     * progress channel — visible in the chat transcript, never part of the
+     * LLM context, never routed to the parent's inbox (see
+     * {@code ProgressEmitter.emitInterimReply}). Recipe knob
+     * {@code params.loopNarration}: {@code all} (default — rounds and every
+     * loop decision), {@code rounds} (round counters only), {@code off}.
+     */
+    private void narrate(ThinkEngineContext ctx, ThinkProcessDocument process, String text) {
+        if (text == null || text.isBlank()) return;
+        String mode = paramString(process, "loopNarration", "all").toLowerCase(java.util.Locale.ROOT);
+        if (NARRATION_OFF.equals(mode)) return;
+        // rounds-mode: only the round counters pass, loop decisions are suppressed
+        if (NARRATION_ROUNDS.equals(mode) && !text.startsWith("round ")) return;
+        // Persist as an interim-kind assistant note (audit/scrollback) — the
+        // interim marker filters it out of every LLM-replay / compaction /
+        // Prak / RAG path, so the narration never becomes model context.
+        // Then live-emit on the user-progress channel (dimmed in the UI).
+        // Same shape as Frankie's between-batch narration.
+        Map<String, Object> meta = new java.util.LinkedHashMap<>();
+        meta.put(ChatMessageDocument.META_KIND, ChatMessageDocument.KIND_INTERIM);
+        ctx.chatMessageService()
+                .append(ChatMessageDocument.builder()
+                        .tenantId(process.getTenantId())
+                        .sessionId(process.getSessionId())
+                        .thinkProcessId(process.getId())
+                        .role(ChatRole.ASSISTANT)
+                        .content("[" + natureId() + "] " + text)
+                        .meta(meta)
+                        .build());
+        if (!process.isHiddenFromUi()) {
+            ctx.emitInterimReply("[" + natureId() + "] " + text, null);
+        }
     }
 
     // ──────────────────── Loop statistics ────────────────────

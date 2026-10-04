@@ -166,6 +166,19 @@ function submitInvite(): void {
   inviteName.value = '';
 }
 
+/**
+ * Who has taken note of this contribution — the per-message read axis
+ * (maximegalon-system §2: readBy is the truth per message). Shown as names
+ * because in a shared thread the question is not "read?" but "read by whom?";
+ * an empty list is the one state worth naming explicitly.
+ */
+function readLabel(message: MaximegalonMessageDto): string {
+  const readers = message.readBy ?? [];
+  return readers.length
+    ? t('inboxThread.readBy', { names: readers.join(', ') })
+    : t('inboxThread.unread');
+}
+
 /** The generator maps Instant to Date; a string still arrives over the wire. */
 function when(at: Date | string | undefined): string {
   return at ? new Date(at).toLocaleString() : '';
@@ -273,6 +286,10 @@ watch(() => [props.item.participants, props.error], () => {
             <span class="font-medium text-sm">{{ node.message.authorUserId }}</span>
             <span class="text-xs opacity-60">{{ when(node.message.createdAt) }}</span>
             <span
+              class="text-xs"
+              :class="node.message.readBy?.length ? 'opacity-60' : 'opacity-90'"
+            >{{ readLabel(node.message) }}</span>
+            <span
               v-if="selectedMessageId === node.message.id"
               class="text-xs opacity-70"
             >{{ t('inboxThread.picked') }}</span>
@@ -308,6 +325,10 @@ watch(() => [props.item.participants, props.error], () => {
             <div class="flex items-baseline gap-2">
               <span class="font-medium text-sm">{{ reply.authorUserId }}</span>
               <span class="text-xs opacity-60">{{ when(reply.createdAt) }}</span>
+              <span
+                class="text-xs"
+                :class="reply.readBy?.length ? 'opacity-60' : 'opacity-90'"
+              >{{ readLabel(reply) }}</span>
             </div>
             <p class="whitespace-pre-wrap text-sm">{{ reply.body }}</p>
             <InboxReactionBar

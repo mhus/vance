@@ -454,6 +454,8 @@ export default {
     replyingTo: 'Replying to a message',
     cancelReply: 'cancel',
     newFromHere: 'new from here',
+    readBy: 'read: {names}',
+    unread: 'unread',
     empty: 'No discussion yet — ask if something is unclear.',
     placeholder: 'Add to the discussion…',
     send: 'Send',
@@ -2939,6 +2941,7 @@ export default {
       emptyBody: 'No items in this view.',
       noTitle: '(no title)',
       replies: '{count} reply | {count} replies',
+      unread: 'unread',
     },
     chat: {
       show: 'Show chat',

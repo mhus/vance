@@ -453,6 +453,8 @@ export default {
     replyingTo: 'Antwort auf einen Beitrag',
     cancelReply: 'abbrechen',
     newFromHere: 'neu ab hier',
+    readBy: 'gelesen: {names}',
+    unread: 'ungelesen',
     empty: 'Noch keine Klärung — frag nach, wenn etwas unklar ist.',
     placeholder: 'Zur Klärung beitragen…',
     send: 'Senden',
@@ -2958,6 +2960,7 @@ export default {
       emptyBody: 'Keine Einträge in dieser Ansicht.',
       noTitle: '(kein Titel)',
       replies: '{count} Antwort | {count} Antworten',
+      unread: 'ungelesen',
     },
     chat: {
       show: 'Chat anzeigen',

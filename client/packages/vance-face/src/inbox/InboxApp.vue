@@ -202,6 +202,16 @@ const viewLabel = computed<string>(() => {
   return t('inbox.sidebar.inbox');
 });
 
+/**
+ * Whether the viewer has read this message — {@code readBy} is the per-message
+ * truth (maximegalon-system §2), so a marked row is one they have not seen
+ * yet and a row without the mark is read. The nav badge counts a different
+ * question (anything still open in the thread, including unread replies).
+ */
+function isUnread(item: MaximegalonDto): boolean {
+  return !(item.readBy?.includes(currentUser) ?? false);
+}
+
 function formatTimestamp(value?: Date | string | null): string {
   if (!value) return '';
   const d = value instanceof Date ? value : new Date(value);
@@ -1053,6 +1063,9 @@ const breadcrumbs = computed<string[]>(() => {
             <span class="text-xs opacity-60 shrink-0">{{ formatTimestamp(item.createdAt) }}</span>
           </div>
           <div class="flex items-center gap-2 text-xs opacity-70">
+            <VBadge v-if="isUnread(item)" variant="primary" size="sm">
+              {{ $t('inbox.list.unread') }}
+            </VBadge>
             <span>{{ item.type }}</span>
             <VBadge v-if="item.criticality !== Criticality.NORMAL" variant="warning" size="sm">{{ item.criticality }}</VBadge>
             <span v-if="item.assignedToUserId !== currentUser" class="opacity-60">

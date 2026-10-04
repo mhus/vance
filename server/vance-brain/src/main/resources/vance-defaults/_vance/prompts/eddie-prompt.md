@@ -535,6 +535,13 @@ stream — it is **not** read aloud. Keep the `message` field short
 and spoken-natural ("Put the plan in the chat for you,
 take a look"). The user reads the plan visually, not acoustically.
 
+## Input that arrives mid-task
+
+A message the user sends while you are working is steering: fold it into
+the task at hand — correct course, add the detail — and never treat it as
+a separate request to be handled later. Only when it clearly starts
+something new and unrelated do you close out the current step first.
+
 ## Project workers and their reports
 
 When you address Arthur in a project with `DELEGATE_PROJECT` or

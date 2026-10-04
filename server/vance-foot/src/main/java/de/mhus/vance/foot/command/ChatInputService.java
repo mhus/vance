@@ -10,6 +10,7 @@ import de.mhus.vance.api.thinkprocess.ProcessStopRequest;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.audit.ConversationAuditService;
 import de.mhus.vance.foot.chat.PendingAskUserPicker;
+import de.mhus.vance.foot.chat.QueuedSendState;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeContextBuilder;
@@ -54,18 +55,17 @@ import org.springframework.stereotype.Service;
 public class ChatInputService {
 
     /**
-     * Default <em>idle</em> timeout for the chat round-trip to the brain.
-     * Interpreted by {@link de.mhus.vance.foot.connection.ConnectionService#request}
-     * as "give up if nothing inbound arrives for this long" — not as an
-     * absolute wall-clock cap on the turn. Streaming frames
-     * ({@code CHAT_MESSAGE_APPENDED}, {@code PROCESS_PROGRESS}, tool-result
-     * pushes, PING heartbeats, …) reset the clock, so a Frankie / Marvin
-     * turn that keeps producing output happily runs for as long as it
-     * needs. 10 min of <em>complete silence</em> from the brain is the
-     * "something is genuinely wrong" threshold; below that, the user can
-     * still interrupt via {@code /stop} or {@code /pause}.
+     * Ack bound for the chat send. Since the persist-bound steer ack
+     * ({@code planning/active-message-queue.md} §2) the reply confirms the
+     * message is durably queued — it is a Mongo write plus one frame, not a
+     * wait for the engine turn. The turn reports through its own channels
+     * ({@code engine_turn_start}/{@code engine_turn_end} progress pings,
+     * {@code chat-message-appended} for the reply). A reply that has not
+     * arrived after this long means the brain is in trouble: fail visibly
+     * instead of parking the single chat-send thread behind a silent
+     * connection.
      */
-    public static final Duration DEFAULT_CHAT_TIMEOUT = Duration.ofMinutes(10);
+    public static final Duration DEFAULT_CHAT_TIMEOUT = Duration.ofSeconds(30);
 
     /** Timeout for fire-and-forget pause requests. Short — pause is a side-channel. */
     public static final Duration PAUSE_TIMEOUT = Duration.ofSeconds(10);
@@ -89,32 +89,34 @@ public class ChatInputService {
      * responsive while the brain is processing — critical for ESC-stop
      * to be interceptable while a chat-process is "thinking".
      */
-    private final ExecutorService asyncExecutor =
-            Executors.newSingleThreadExecutor(r -> {
-                Thread t = new Thread(r, "chat-async-submit");
-                t.setDaemon(true);
-                return t;
-            });
+    private final ExecutorService asyncExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "chat-async-submit");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final AutoAiService autoAi;
     private final ConversationAuditService audit;
     private final PendingAttachmentService pendingAttachments;
     private final AttachmentUploadService attachmentUpload;
+    private final QueuedSendState queuedSends;
 
-    public ChatInputService(CommandService commandService,
-                            ConnectionService connection,
-                            SessionService sessions,
-                            ChatTerminal chatTerminal,
-                            PromptGate promptGate,
-                            BusyIndicator busyIndicator,
-                            IdeContextBuilder ideContextBuilder,
-                            PendingAskUserPicker askUserPicker,
-                            PendingPermissionPrompt pendingPermission,
-                            PendingLinePrompt pendingLine,
-                            AutoAiService autoAi,
-                            ConversationAuditService audit,
-                            PendingAttachmentService pendingAttachments,
-                            AttachmentUploadService attachmentUpload) {
+    public ChatInputService(
+            CommandService commandService,
+            ConnectionService connection,
+            SessionService sessions,
+            ChatTerminal chatTerminal,
+            PromptGate promptGate,
+            BusyIndicator busyIndicator,
+            IdeContextBuilder ideContextBuilder,
+            PendingAskUserPicker askUserPicker,
+            PendingPermissionPrompt pendingPermission,
+            PendingLinePrompt pendingLine,
+            AutoAiService autoAi,
+            ConversationAuditService audit,
+            PendingAttachmentService pendingAttachments,
+            AttachmentUploadService attachmentUpload,
+            QueuedSendState queuedSends) {
         this.commandService = commandService;
         this.connection = connection;
         this.sessions = sessions;
@@ -129,6 +131,7 @@ public class ChatInputService {
         this.audit = audit;
         this.pendingAttachments = pendingAttachments;
         this.attachmentUpload = attachmentUpload;
+        this.queuedSends = queuedSends;
     }
 
     /**
@@ -414,16 +417,14 @@ public class ChatInputService {
         }
         String process = sessions.activeProcess();
         if (process == null) {
-            String msg = "No active process — /process <name> first, "
-                    + "or use /process-steer <name> <message>.";
+            String msg = "No active process — /process <name> first, " + "or use /process-steer <name> <message>.";
             chatTerminal.error(msg);
             return InputResult.chat(line, false, msg);
         }
-        // Mark busy *around* the synchronous brain round-trip — the
-        // status-bar animation polls this flag and shows the user
-        // that something is in flight even while the REPL prompt is
-        // back and waiting for input.
-        busyIndicator.enter("chat-roundtrip");
+        // No busy-enter around the send: the persist-bound ack is not the
+        // turn. "The brain is working" is tracked from the engine turn
+        // boundaries (ProcessProgressHandler → BusyIndicator), which also
+        // keeps foot's one-shot turn gate from settling on the ack blip.
         try {
             // Auto-AI rewriting — see planning/multi-user-sessions.md §6.
             // Strips a leading @no escape, otherwise prepends @ai when
@@ -439,8 +440,7 @@ public class ChatInputService {
             // turn carries their ids. Draining before the upload means a
             // failed upload does not leave the queue armed for the next
             // message — the user is told and can attach again.
-            java.util.List<de.mhus.vance.api.attachment.AttachmentRef> attachments =
-                    java.util.List.of();
+            java.util.List<de.mhus.vance.api.attachment.AttachmentRef> attachments = java.util.List.of();
             if (!pendingAttachments.isEmpty()) {
                 java.util.List<java.nio.file.Path> files = pendingAttachments.drain();
                 try {
@@ -448,8 +448,7 @@ public class ChatInputService {
                     chatTerminal.info("📎 sent " + attachments.size() + " attachment"
                             + (attachments.size() == 1 ? "" : "s") + ".");
                 } catch (RuntimeException e) {
-                    chatTerminal.error("Attachment upload failed: " + e.getMessage()
-                            + " — message not sent.");
+                    chatTerminal.error("Attachment upload failed: " + e.getMessage() + " — message not sent.");
                     return InputResult.chat(line, false, "attachment upload failed");
                 }
             }
@@ -460,22 +459,24 @@ public class ChatInputService {
                     .voiceMode(voiceMode ? Boolean.TRUE : null)
                     .attachments(attachments.isEmpty() ? null : attachments)
                     .build();
-            // Chat-steer uses the streaming variant: a single engine
-            // turn (Frankie, Marvin, …) can legitimately run for many
-            // minutes while the brain pushes progress / tool / chat
-            // frames in between. Strict request() would false-positive
-            // abort. requestStreaming resets the deadline on every
-            // inbound envelope and only nags ("still waiting") when
-            // the brain has been completely silent for the timeout
-            // window — connection drops still surface as
-            // IllegalStateException via failAllPending.
-            ProcessSteerResponse response = connection.requestStreaming(
-                    MessageType.PROCESS_STEER,
-                    steer,
-                    ProcessSteerResponse.class,
-                    timeout);
-            chatTerminal.verbose("→ steered " + response.getProcessName()
-                    + " (status=" + response.getStatus() + ")");
+            // Persist-bound ack (planning/active-message-queue.md §2): the
+            // reply comes back after the queue write, well before any engine
+            // turn runs. Connection drops surface as IllegalStateException
+            // via failAllPending.
+            ProcessSteerResponse response =
+                    connection.request(MessageType.PROCESS_STEER, steer, ProcessSteerResponse.class, timeout);
+            chatTerminal.verbose("→ steered " + response.getProcessName() + " (status=" + response.getStatus() + ")");
+            // Active message queue (planning/active-message-queue.md §4 P3):
+            // the message is safe the moment the ack is back, but a send
+            // while a turn is in flight only gets picked up at the engine's
+            // next loop boundary — say so instead of letting the user wait
+            // for an answer that is not being worked on yet.
+            if (busyIndicator.isBusy()) {
+                queuedSends.track(response.getMessageId());
+                int depth = response.getQueueDepth() == null ? 1 : response.getQueueDepth();
+                chatTerminal.info(
+                        "⋯ queued (" + depth + " waiting) — the engine picks it up at its next loop boundary");
+            }
             return InputResult.chat(line, true, null);
         } catch (BrainException e) {
             chatTerminal.error(e.getMessage());
@@ -488,8 +489,6 @@ public class ChatInputService {
             String msg = "Steer failed: " + detail;
             chatTerminal.error(msg);
             return InputResult.chat(line, false, msg);
-        } finally {
-            busyIndicator.exit("chat-roundtrip");
         }
     }
 
@@ -536,8 +535,8 @@ public class ChatInputService {
 
         busyIndicator.enter("engine-command");
         try {
-            ProcessCommandResponse resp = connection.request(
-                    MessageType.PROCESS_COMMAND, req, ProcessCommandResponse.class, COMMAND_TIMEOUT);
+            ProcessCommandResponse resp =
+                    connection.request(MessageType.PROCESS_COMMAND, req, ProcessCommandResponse.class, COMMAND_TIMEOUT);
             renderCommandResult(resp);
             boolean ok = resp.getOutcome() == EngineCommandOutcome.OK;
             return InputResult.command(trimmed, ok, ok ? null : resp.getMessage());
@@ -579,7 +578,10 @@ public class ChatInputService {
     }
 
     /** Discriminator for which path {@link #submit(String)} took. */
-    public enum InputKind { COMMAND, CHAT }
+    public enum InputKind {
+        COMMAND,
+        CHAT
+    }
 
     /**
      * Result of a {@link #submit(String)} or {@link #sendChat(String, Duration)}
@@ -594,7 +596,11 @@ public class ChatInputService {
      * {@code error} is {@code null} on success and otherwise the human-
      * readable reason already shown on the terminal.
      */
-    public record InputResult(InputKind kind, String line, boolean ok, @Nullable String error) {
+    public record InputResult(
+            InputKind kind,
+            String line,
+            boolean ok,
+            @Nullable String error) {
         static InputResult command(String line, boolean matched, @Nullable String error) {
             return new InputResult(InputKind.COMMAND, line, matched, error);
         }

@@ -13,7 +13,11 @@ import org.jspecify.annotations.Nullable;
  */
 public enum ProgressLevel {
 
-    /** No metrics, no status pings; plan is still emitted (structurally important). */
+    /**
+     * No metrics, no status asides; plan and the engine turn boundaries
+     * ({@code ENGINE_TURN_START}/{@code ENGINE_TURN_END}) are still emitted —
+     * structurally important for the clients' busy tracking.
+     */
     OFF,
 
     /**
@@ -49,11 +53,18 @@ public enum ProgressLevel {
         return switch (kind) {
             case PLAN -> true;
             case METRICS -> this != OFF;
-            case STATUS -> switch (this) {
-                case OFF -> false;
-                case NORMAL -> tag != StatusTag.INFO;
-                case VERBOSE -> true;
-            };
+            case STATUS ->
+                switch (this) {
+                    // Turn boundaries are structural, not chatty progress: the
+                    // clients' busy spinner, foot's one-shot turn gate and
+                    // remote drivers all track turns from them — and since the
+                    // persist-bound steer ack (planning/active-message-queue.md
+                    // §2) they are the ONLY signal that a turn is in flight. A
+                    // verbosity setting may silence asides, never the lifecycle.
+                    case OFF -> tag == StatusTag.ENGINE_TURN_START || tag == StatusTag.ENGINE_TURN_END;
+                    case NORMAL -> tag != StatusTag.INFO;
+                    case VERBOSE -> true;
+                };
             // REPLY is semantic engine output, not chatty progress —
             // never silenced by this filter. Parent-inbox routing is
             // load-bearing and must not depend on UI-verbosity settings.

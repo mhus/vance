@@ -9,15 +9,15 @@ import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
-import de.mhus.vance.brain.tools.ToolResultStorage;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.ToolInvocationListener;
+import de.mhus.vance.brain.tools.ToolResultStorage;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -60,7 +60,8 @@ record DefaultThinkEngineContext(
         ThinkProcessService thinkProcessService,
         ProcessEventEmitter processEventEmitter,
         ProgressEmitter progressEmitter,
-        BiFunction<de.mhus.vance.api.thinkprocess.ProcessMode, ToolInvocationContext, RecipeResolver.ToolFilter> toolFilterResolver,
+        BiFunction<de.mhus.vance.api.thinkprocess.ProcessMode, ToolInvocationContext, RecipeResolver.ToolFilter>
+                toolFilterResolver,
         ToolInvocationListener toolInvocationListener,
         Duration activationDecayTtl,
         boolean traceLlm,
@@ -79,8 +80,8 @@ record DefaultThinkEngineContext(
          * disables the budget entirely (test contexts). See
          * {@code planning/tool-surface-budget.md}.
          */
-        de.mhus.vance.brain.tools.budget.@Nullable ToolBudgetService toolBudgetService
-) implements ThinkEngineContext {
+        de.mhus.vance.brain.tools.budget.@Nullable ToolBudgetService toolBudgetService)
+        implements ThinkEngineContext {
 
     @Override
     public String tenantId() {
@@ -102,12 +103,7 @@ record DefaultThinkEngineContext(
     @Override
     public ContextToolsApi tools() {
         ToolInvocationContext scope = new ToolInvocationContext(
-                process.getTenantId(),
-                projectId,
-                process.getSessionId(),
-                process.getId(),
-                userId,
-                workingProjectId());
+                process.getTenantId(), projectId, process.getSessionId(), process.getId(), userId, workingProjectId());
         // Re-resolve the tool filter every call against the process's
         // current mode — see class doc for why a snapshot won't do.
         RecipeResolver.ToolFilter filter = toolFilterResolver.apply(process.getMode(), scope);
@@ -123,23 +119,34 @@ record DefaultThinkEngineContext(
             familyHints = toolBudgetService.familyHints();
         }
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                toolDispatcher, scope, baseAllowedTools, filter, activated,
+                toolDispatcher,
+                scope,
+                baseAllowedTools,
+                filter,
+                activated,
                 process.getBoundProfile(),
                 engineRoles,
-                budget, familyHints);
+                budget,
+                familyHints);
         // Sliding-TTL refresh: when the LLM invokes an activated
         // deferred tool, bump its timestamp so frequent use beats decay.
-        java.util.function.Consumer<String> refresh = name ->
-                thinkProcessService.activateDeferredTool(process.getId(), name);
+        java.util.function.Consumer<String> refresh =
+                name -> thinkProcessService.activateDeferredTool(process.getId(), name);
         return new ContextToolsApi(
-                toolDispatcher, scope,
-                c.allowed(), c.primary(), c.deferred(), c.activatedDeferred(),
-                toolInvocationListener, refresh,
-                historyTagBuilder, historyTagSink,
-                toolResultStorage,
-                toolHealthService,
-                imageHarvester,
-                attachmentSink)
+                        toolDispatcher,
+                        scope,
+                        c.allowed(),
+                        c.primary(),
+                        c.deferred(),
+                        c.activatedDeferred(),
+                        toolInvocationListener,
+                        refresh,
+                        historyTagBuilder,
+                        historyTagSink,
+                        toolResultStorage,
+                        toolHealthService,
+                        imageHarvester,
+                        attachmentSink)
                 // Carry the budget so a later withAdditional (skill tools
                 // land in primary after the classification) re-fits
                 // instead of overflowing the endpoint's cap. The demoted
@@ -187,21 +194,21 @@ record DefaultThinkEngineContext(
 
     @Override
     public List<SteerMessage> drainPending() {
-        return SteerMessageCodec.toMessages(
-                thinkProcessService.drainPending(process.getId()));
+        return SteerMessageCodec.toMessages(thinkProcessService.drainPending(process.getId()));
+    }
+
+    @Override
+    public boolean hasPending() {
+        return thinkProcessService.hasPending(process.getId());
     }
 
     @Override
     public ProcessOrchestrator processes() {
-        return new DefaultProcessOrchestrator(
-                process, thinkProcessService, processEventEmitter);
+        return new DefaultProcessOrchestrator(process, thinkProcessService, processEventEmitter);
     }
 
     @Override
-    public void emitReply(
-            String content,
-            @Nullable Instant inResponseToAt,
-            @Nullable Map<String, Object> payload) {
+    public void emitReply(String content, @Nullable Instant inResponseToAt, @Nullable Map<String, Object> payload) {
         progressEmitter.emitReply(process, content, inResponseToAt, payload);
     }
 

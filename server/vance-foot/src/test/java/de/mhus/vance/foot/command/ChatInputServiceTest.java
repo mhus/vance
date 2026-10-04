@@ -7,8 +7,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.foot.audit.ConversationAuditService;
 import de.mhus.vance.foot.chat.PendingAskUserPicker;
+import de.mhus.vance.foot.chat.QueuedSendState;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeContextBuilder;
 import de.mhus.vance.foot.permission.PendingPermissionPrompt;
@@ -17,6 +19,8 @@ import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.PendingLinePrompt;
 import de.mhus.vance.foot.ui.PromptGate;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class ChatInputServiceTest {
@@ -26,6 +30,9 @@ class ChatInputServiceTest {
     private final BusyIndicator busyIndicator = mock(BusyIndicator.class);
     private final PendingPermissionPrompt pendingPermission = mock(PendingPermissionPrompt.class);
     private final PendingLinePrompt pendingLine = mock(PendingLinePrompt.class);
+    private final QueuedSendState queuedSends = new QueuedSendState();
+    private final IdeContextBuilder ideContextBuilder = mock(IdeContextBuilder.class);
+    private final AutoAiService autoAi = mock(AutoAiService.class);
 
     private ChatInputService newService() {
         return new ChatInputService(
@@ -35,14 +42,15 @@ class ChatInputServiceTest {
                 mock(ChatTerminal.class),
                 mock(PromptGate.class),
                 busyIndicator,
-                mock(IdeContextBuilder.class),
+                ideContextBuilder,
                 mock(PendingAskUserPicker.class),
                 pendingPermission,
                 pendingLine,
-                mock(AutoAiService.class),
+                autoAi,
                 mock(ConversationAuditService.class),
                 new PendingAttachmentService(),
-                mock(AttachmentUploadService.class));
+                mock(AttachmentUploadService.class),
+                queuedSends);
     }
 
     @Test
@@ -52,8 +60,7 @@ class ChatInputServiceTest {
         // reach the brain regardless — the brain decides what is actually
         // interruptible (SessionLifecycleService#isInterruptible).
         when(busyIndicator.isBusy()).thenReturn(false);
-        when(sessions.current())
-                .thenReturn(new SessionService.BoundSession("s1", "p1", null, null));
+        when(sessions.current()).thenReturn(new SessionService.BoundSession("s1", "p1", null, null));
         when(connection.send(any())).thenReturn(true);
 
         newService().requestPauseFromInterrupt();
@@ -64,8 +71,7 @@ class ChatInputServiceTest {
     @Test
     void requestPauseFromInterrupt_whenBusy_sendsPause() {
         when(busyIndicator.isBusy()).thenReturn(true);
-        when(sessions.current())
-                .thenReturn(new SessionService.BoundSession("s1", "p1", null, null));
+        when(sessions.current()).thenReturn(new SessionService.BoundSession("s1", "p1", null, null));
         when(connection.send(any())).thenReturn(true);
 
         newService().requestPauseFromInterrupt();
@@ -129,5 +135,49 @@ class ChatInputServiceTest {
         when(pendingPermission.offerAnswer("2")).thenReturn(true);
 
         assertThat(newService().offerToActivePrompt("  2  ")).isTrue();
+    }
+
+    @Test
+    void sendChat_whileATurnRuns_notesTheQueueAndTracksTheMessageId() throws Exception {
+        when(sessions.current()).thenReturn(new SessionService.BoundSession("s1", "p1", null, null));
+        when(sessions.activeProcess()).thenReturn("chat");
+        when(busyIndicator.isBusy()).thenReturn(true);
+        when(autoAi.apply(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(ideContextBuilder.buildAndConsumeForSteer()).thenReturn(Optional.empty());
+        when(connection.request(any(), any(), any(), any()))
+                .thenReturn(ProcessSteerResponse.builder()
+                        .thinkProcessId("tp-1")
+                        .processName("chat")
+                        .messageId("msg-7")
+                        .queueDepth(2)
+                        .build());
+
+        ChatInputService.InputResult result = newService().sendChat("hello", ChatInputService.DEFAULT_CHAT_TIMEOUT);
+
+        assertThat(result.ok()).isTrue();
+        assertThat(queuedSends.pickup(List.of("msg-7")))
+                .as("the acked message is watched until the engine picks it up at a loop boundary")
+                .isEqualTo(1);
+    }
+
+    @Test
+    void sendChat_whileIdle_doesNotTrackTheMessage() throws Exception {
+        when(sessions.current()).thenReturn(new SessionService.BoundSession("s1", "p1", null, null));
+        when(sessions.activeProcess()).thenReturn("chat");
+        when(busyIndicator.isBusy()).thenReturn(false);
+        when(autoAi.apply(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(ideContextBuilder.buildAndConsumeForSteer()).thenReturn(Optional.empty());
+        when(connection.request(any(), any(), any(), any()))
+                .thenReturn(ProcessSteerResponse.builder()
+                        .processName("chat")
+                        .messageId("msg-8")
+                        .queueDepth(1)
+                        .build());
+
+        newService().sendChat("hello", ChatInputService.DEFAULT_CHAT_TIMEOUT);
+
+        assertThat(queuedSends.pickup(List.of("msg-8")))
+                .as("a send with no running turn goes straight into the next one — nothing to wait for")
+                .isZero();
     }
 }

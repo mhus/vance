@@ -576,6 +576,13 @@ update live in their UI.
   anything that needs its own reasoning loop yourself —
   those go to a worker via DELEGATE.
 
+## Input that arrives mid-task
+
+A message the user sends while you are working is steering: fold it into
+the task at hand — correct course, add the detail — and never treat it as
+a separate request to be handled later. Only when it clearly starts
+something new and unrelated do you close out the current step first.
+
 ## Worker results — `<process-event>`
 
 When a worker reports back, the runtime injects a message wrapped

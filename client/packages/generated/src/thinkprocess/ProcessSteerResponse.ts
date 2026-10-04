@@ -9,4 +9,6 @@ export interface ProcessSteerResponse {
   thinkProcessId: string;
   processName: string;
   status: ThinkProcessStatus;
+  messageId?: string;
+  queueDepth?: number;
 }

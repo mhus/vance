@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ws.handlers;
 
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.notification.NotificationSeverity;
 import de.mhus.vance.api.thinkprocess.IdeContext;
 import de.mhus.vance.api.thinkprocess.IdeFileRange;
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
@@ -10,6 +11,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.chat.ChatMentionParser;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -30,6 +32,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -41,22 +44,23 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p><b>Two phases.</b>
  * <ol>
- *   <li><i>Receive thread</i> — validate, look up the process,
- *       atomically append a {@code USER_CHAT_INPUT}
- *       {@link PendingMessageDocument} to its pending queue, snapshot
- *       the chat-history size for later notification diffing, and
- *       submit a drain task on the process's lane. Returns
- *       immediately so further inbound frames (notably
+ *   <li><i>Receive thread</i> — validate, look up the process, atomically
+ *       append a {@code USER_CHAT_INPUT} {@link PendingMessageDocument} to
+ *       its pending queue and send the {@code process-steer} ack. The ack
+ *       is <b>persist-bound</b> (planning/active-message-queue.md §2): it
+ *       confirms the message is durably queued, not that the turn is done.
+ *       Returns immediately so further inbound frames (notably
  *       {@code client-tool-result}) can flow in concurrently.</li>
  *   <li><i>Lane thread</i> — call
- *       {@link ProcessEventEmitter#runTurnNow} which drives the
- *       engine's {@code runTurn}; the engine drains the inbox itself
- *       (default impl loops drain-then-{@code steer} until empty,
- *       orchestrators like Arthur fold the whole inbox into one LLM
- *       round-trip). After the turn, ship every chat message that
- *       landed since the snapshot as a
- *       {@link MessageType#CHAT_MESSAGE_APPENDED} notification, then
- *       send the {@code process-steer} ack.</li>
+ *       {@link ProcessEventEmitter#runTurnNow} which drives the engine's
+ *       {@code runTurn}; the engine drains the inbox itself (default impl
+ *       loops drain-then-{@code steer} until empty, orchestrators like
+ *       Arthur fold the whole inbox into one LLM round-trip). Turn results
+ *       are shipped by their own channels: {@code chat-message-appended} for
+ *       the reply (via {@link MessageType#CHAT_MESSAGE_APPENDED} listener),
+ *       {@code process-progress} for turn boundaries, {@code process-queue}
+ *       for the queue uptake. A turn that dies reports as a
+ *       {@code notify} error — the queued message itself is never lost.</li>
  * </ol>
  *
  * <p><b>Why a queue.</b> The handler used to call
@@ -86,6 +90,7 @@ public class ProcessSteerHandler implements WsHandler {
     private final LaneScheduler laneScheduler;
     private final ProcessEventEmitter eventEmitter;
     private final RequestAuthority authority;
+    private final NotificationService notificationService;
 
     public ProcessSteerHandler(
             ObjectMapper objectMapper,
@@ -96,7 +101,8 @@ public class ProcessSteerHandler implements WsHandler {
             SessionConnectionRegistry connectionRegistry,
             LaneScheduler laneScheduler,
             ProcessEventEmitter eventEmitter,
-            RequestAuthority authority) {
+            RequestAuthority authority,
+            NotificationService notificationService) {
         this.objectMapper = objectMapper;
         this.sender = sender;
         this.thinkProcessService = thinkProcessService;
@@ -106,6 +112,7 @@ public class ProcessSteerHandler implements WsHandler {
         this.laneScheduler = laneScheduler;
         this.eventEmitter = eventEmitter;
         this.authority = authority;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -234,6 +241,12 @@ public class ProcessSteerHandler implements WsHandler {
                 request.getBoundDocSelection(),
                 request.getActiveInbox());
         PendingMessageDocument doc = SteerMessageCodec.toDocument(userInput);
+        // The sender owns the message id (idempotency by construction —
+        // PendingMessageMapper#toEngineMessage). Assign it here so the
+        // persist-ack can hand it back for the client's "queued" display.
+        if (doc.getIdempotencyKey() == null || doc.getIdempotencyKey().isBlank()) {
+            doc.setIdempotencyKey(UUID.randomUUID().toString());
+        }
 
         if (!thinkProcessService.appendPending(processId, doc)) {
             sender.sendError(
@@ -244,53 +257,46 @@ public class ProcessSteerHandler implements WsHandler {
             return;
         }
 
-        laneScheduler.submit(processId, () -> runLaneTurn(wsSession, envelope, processId, request.getProcessName()));
+        // Persist-bound ack (planning/active-message-queue.md §2): the
+        // message is durably queued NOW. The turn runs detached below and
+        // reports through its own channels — never through this reply. A
+        // turn-bound ack used to freeze every client composer for the whole
+        // engine turn, which is what made sending while the engine works
+        // impossible.
+        ProcessSteerResponse response = ProcessSteerResponse.builder()
+                .thinkProcessId(processId)
+                .processName(request.getProcessName())
+                .status(process.getStatus())
+                .messageId(doc.getIdempotencyKey())
+                .queueDepth(thinkProcessService.countPending(processId))
+                .build();
+        sender.sendReply(wsSession, envelope, MessageType.PROCESS_STEER, response);
+
+        laneScheduler.submit(processId, () -> runLaneTurn(processId));
     }
 
     /**
-     * Drain the inbox, then ship the chat-message-appended diff and
-     * the {@code process-steer} ack. Runs on the process's lane —
-     * {@link LaneScheduler} guarantees serial ordering across
-     * concurrent steers targeting the same process.
+     * Drives the engine turn on the process's lane —
+     * {@link LaneScheduler} guarantees serial ordering across concurrent
+     * steers targeting the same process. Detached from the request: the
+     * persist-ack is already out, so a failure here surfaces as a session
+     * notification instead of an error reply.
      */
-    private void runLaneTurn(
-            WebSocketSession wsSession, WebSocketEnvelope envelope, String processId, String processName) {
+    private void runLaneTurn(String processId) {
         try {
             eventEmitter.runTurnNow(processId);
         } catch (Throwable e) {
             // Throwable, not RuntimeException: an Error (e.g.
             // NoClassDefFoundError after target/classes was rebuilt under
-            // the running JVM) used to escape every catch in the turn
-            // stack, so no ack and no error frame were ever sent and the
-            // client span forever on a turn that had already died.
+            // the running JVM) used to escape every catch in the turn stack
+            // and leave the user staring at a turn that had already died.
+            // toString(), not getMessage(): Errors frequently carry a null
+            // message, which would ship a useless "null" to the UI.
             log.error("Steer drain failed id='{}': {}", processId, e.toString(), e);
-            try {
-                // toString(), not getMessage(): Errors frequently carry a
-                // null message, which would ship a useless "null" to the UI.
-                sender.sendError(wsSession, envelope, 500, "Engine steer failed: " + e);
-            } catch (IOException sendErr) {
-                log.warn("Failed to send error reply: {}", sendErr.toString());
-            }
-            return;
-        }
-
-        try {
-            ThinkProcessDocument refreshed =
-                    thinkProcessService.findById(processId).orElse(null);
-            // CHAT_MESSAGE_APPENDED frames for the chat-messages produced
-            // by this turn are pushed by ChatMessageNotificationDispatcher
-            // (Spring listener on ChatMessageAppendedEvent). Doing it
-            // here too would duplicate every frame; the listener also
-            // covers chat-messages produced by Auto-Wakeup turns later
-            // on, which this synchronous path would miss.
-            ProcessSteerResponse response = ProcessSteerResponse.builder()
-                    .thinkProcessId(processId)
-                    .processName(processName)
-                    .status(refreshed == null ? null : refreshed.getStatus())
-                    .build();
-            sender.sendReply(wsSession, envelope, MessageType.PROCESS_STEER, response);
-        } catch (IOException sendErr) {
-            log.warn("Failed to ship steer follow-up frames: {}", sendErr.toString());
+            thinkProcessService
+                    .findById(processId)
+                    .ifPresent(p ->
+                            notificationService.publish(p, "Engine turn failed: " + e, NotificationSeverity.ERROR));
         }
     }
 

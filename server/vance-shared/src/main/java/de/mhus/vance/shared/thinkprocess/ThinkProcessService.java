@@ -987,6 +987,8 @@ public class ThinkProcessService {
         EngineMessageDocument incoming = toEngineMessage(
                 message, processId, target.get().getTenantId(), senderProcessId == null ? "" : senderProcessId);
         engineMessageService.acceptDelivery(incoming);
+        eventPublisher.publishEvent(PendingQueueChangedEvent.added(
+                processId, target.get().getSessionId(), target.get().getName(), incoming));
         log.debug(
                 "Pending append id='{}' type={} messageId='{}' sender='{}'",
                 processId,
@@ -1014,7 +1016,45 @@ public class ThinkProcessService {
                 docs.stream().map(EngineMessageDocument::getMessageId).toList();
         engineMessageService.markDrained(ids);
         log.debug("Pending drain id='{}' count={}", processId, docs.size());
+        // Queue-uptake signal for the clients' "queued" display — the engine
+        // just picked these up at a loop boundary. Published after
+        // markDrained so a listener that re-reads the queue sees them gone.
+        ThinkProcessDocument owner = repository.findById(processId).orElse(null);
+        eventPublisher.publishEvent(PendingQueueChangedEvent.drained(
+                processId, owner == null ? null : owner.getSessionId(), owner == null ? null : owner.getName(), ids));
         return docs.stream().map(this::toPendingMessage).toList();
+    }
+
+    /**
+     * Whether the pending inbox of {@code processId} holds at least one
+     * delivered-but-not-drained message. Non-destructive — the engine uses
+     * this at loop boundaries to decide whether to take fresh input up
+     * mid-turn ("active message queue", see
+     * {@code planning/active-message-queue.md} §4 P1).
+     */
+    public boolean hasPending(String processId) {
+        return engineMessageService.countInbox(processId) > 0;
+    }
+
+    /**
+     * Number of queued-but-not-drained messages of {@code processId} — the
+     * {@code queueDepth} half of the persist-bound steer ack.
+     */
+    public int countPending(String processId) {
+        long count = engineMessageService.countInbox(processId);
+        return count > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) count;
+    }
+
+    /**
+     * Read-only view of the pending inbox of {@code processId} in arrival
+     * order — the authoritative "queued messages" list behind the client
+     * display. Unlike {@link #drainPending(String)} this does not consume
+     * anything.
+     */
+    public List<PendingMessageDocument> listPending(String processId) {
+        return engineMessageService.drainInbox(processId).stream()
+                .map(this::toPendingMessage)
+                .toList();
     }
 
     // ─────────── Legacy <-> EngineMessage conversion ───────────

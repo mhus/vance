@@ -56,7 +56,8 @@ public interface ThinkEngineContext {
      * should instead reach it via {@code ToolInvocationContext} so the
      * LLM cannot override it with a hallucinated param.
      */
-    @Nullable String workingProjectId();
+    @Nullable
+    String workingProjectId();
 
     /**
      * Spot-bound resolution helper — equivalent to
@@ -68,8 +69,7 @@ public interface ThinkEngineContext {
     default String requireWorkingProjectId() {
         String spot = workingProjectId();
         if (spot == null || spot.isBlank()) {
-            throw new IllegalStateException(
-                    "No working project selected — emit SWITCH_PROJECT before using this tool");
+            throw new IllegalStateException("No working project selected — emit SWITCH_PROJECT before using this tool");
         }
         return spot;
     }
@@ -79,7 +79,8 @@ public interface ThinkEngineContext {
      * (system-launched processes without a human owner). Resolved once
      * per context build via the session lookup.
      */
-    @Nullable String userId();
+    @Nullable
+    String userId();
 
     /** Access to AI model instantiation. */
     AiModelService aiModelService();
@@ -117,6 +118,15 @@ public interface ThinkEngineContext {
     List<SteerMessage> drainPending();
 
     /**
+     * Whether at least one message is queued but not yet drained — the
+     * engine's "anything new?" probe at loop boundaries ("active message
+     * queue", see {@code planning/active-message-queue.md} §4 P1).
+     * Non-destructive; the message itself is taken up via
+     * {@link #drainPending()} at the next boundary.
+     */
+    boolean hasPending();
+
+    /**
      * Sibling-process control surface — orchestrators (Arthur,
      * deep-think) reach for their session-mates and notify their
      * parent through this API.
@@ -147,10 +157,7 @@ public interface ThinkEngineContext {
      *                        engine-driven replies
      * @param payload         optional structured side-channel data
      */
-    void emitReply(
-            String content,
-            @Nullable Instant inResponseToAt,
-            @Nullable Map<String, Object> payload);
+    void emitReply(String content, @Nullable Instant inResponseToAt, @Nullable Map<String, Object> payload);
 
     /** Convenience overload — text only. */
     default void emitReply(String content) {

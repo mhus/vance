@@ -11,6 +11,7 @@ import type {
   PlanProposedNotification,
   ProcessModeChangedNotification,
   ProcessProgressNotification,
+  ProcessQueueNotification,
   TodoItem,
   TodosUpdatedNotification,
 } from '@vance/generated';
@@ -736,14 +737,41 @@ function scrollToBottom(): void {
 // via emits routed through the parent. Parent calls these methods
 // imperatively on this component's ref.
 
+/** Ids of optimistic echoes the engine has not picked up yet. */
+const queuedEchoIds = ref<string[]>([]);
+
+function isQueued(messageId?: string): boolean {
+  return !!messageId && queuedEchoIds.value.includes(messageId);
+}
+
 function appendLocalEcho(message: ChatMessageDto): void {
   liveMessages.value.push(message);
+  // Active message queue (planning/active-message-queue.md §4 P3): a send
+  // while a turn is in flight is persisted immediately but picked up only
+  // at the engine's next loop boundary — mark the bubble until then.
+  if (activityState.value.turnActive && message.messageId) {
+    queuedEchoIds.value = [...queuedEchoIds.value, message.messageId];
+  }
   scrollToBottom();
 }
 
 function rollbackLocalEcho(messageId: string): void {
   const idx = liveMessages.value.findIndex((m) => m.messageId === messageId);
   if (idx >= 0) liveMessages.value.splice(idx, 1);
+  queuedEchoIds.value = queuedEchoIds.value.filter((id) => id !== messageId);
+}
+
+/**
+ * The engine drained its pending queue at a loop boundary — what was
+ * queued is being worked on now. A drain takes the whole queue, so every
+ * queued badge of this process clears with the frame (the {@code added}
+ * half is for the other clients' views; the sender already has its
+ * bubble).
+ */
+function onProcessQueue(data: ProcessQueueNotification): void {
+  if (!isChatProcess(data.processName)) return;
+  if (!data.drainedIds || data.drainedIds.length === 0) return;
+  queuedEchoIds.value = [];
 }
 
 defineExpose({ appendLocalEcho, rollbackLocalEcho, pushWhoActivity, pushCommandActivity });
@@ -781,6 +809,7 @@ function subscribeToSocket(): void {
     props.socket.on<TodosUpdatedNotification>('todos-updated', onTodosUpdated),
     props.socket.on<PlanProposedNotification>('plan-proposed', onPlanProposed),
     props.socket.on<ProcessProgressNotification>('process-progress', onProgress),
+    props.socket.on<ProcessQueueNotification>('process-queue', onProcessQueue),
   );
 }
 
@@ -1018,6 +1047,13 @@ onBeforeUnmount(() => {
             :current-user-id="currentUserId"
             @pick-option="onPickAskUserOption"
           />
+          <div
+            v-if="isQueued(msg.messageId)"
+            class="flex items-center gap-1 text-xs opacity-60 -mt-1 mb-2 no-print"
+          >
+            <span aria-hidden="true">⏳</span>
+            <span>{{ _('chat.queuedBadge') }}</span>
+          </div>
           <FollowUpGhost
             v-if="idx === followUpAnchorIndex && !visibleDraft"
             class="no-print"

@@ -3,10 +3,11 @@ package de.mhus.vance.foot.debug;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import de.mhus.vance.api.ws.RemoteClientState;
+import de.mhus.vance.foot.cli.OneShotTurnGate;
 import de.mhus.vance.foot.command.ChatInputService;
 import de.mhus.vance.foot.command.CommandService;
 import de.mhus.vance.foot.config.FootConfig;
-import de.mhus.vance.api.ws.RemoteClientState;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.remote.FootStateService;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -15,8 +16,8 @@ import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.time.Duration;
 import java.net.InetSocketAddress;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,22 +67,26 @@ public final class DebugRestServer {
     private final ChatInputService chatInputService;
     private final ConnectionService connectionService;
     private final FootStateService footState;
+    private final OneShotTurnGate turnGate;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     private @Nullable HttpServer server;
 
-    public DebugRestServer(FootConfig config,
-                           ChatTerminal terminal,
-                           CommandService commandService,
-                           ChatInputService chatInputService,
-                           ConnectionService connectionService,
-                           FootStateService footState) {
+    public DebugRestServer(
+            FootConfig config,
+            ChatTerminal terminal,
+            CommandService commandService,
+            ChatInputService chatInputService,
+            ConnectionService connectionService,
+            FootStateService footState,
+            OneShotTurnGate turnGate) {
         this.config = config;
         this.terminal = terminal;
         this.commandService = commandService;
         this.chatInputService = chatInputService;
         this.connectionService = connectionService;
         this.footState = footState;
+        this.turnGate = turnGate;
     }
 
     @PostConstruct
@@ -222,9 +227,33 @@ public final class DebugRestServer {
             Duration timeout = req.timeoutMs != null && req.timeoutMs > 0
                     ? Duration.ofMillis(req.timeoutMs)
                     : ChatInputService.DEFAULT_CHAT_TIMEOUT;
+            // Turn-bound wait (automation compatibility): callers like the
+            // QA harness historically got the steer ack AFTER the engine turn
+            // resolved and rely on it. Since the persist-bound ack
+            // (planning/active-message-queue.md §2) the reply returns right
+            // after the queue write — so this endpoint waits for the turn to
+            // settle on its own, on the same busy-edge gate the one-shot CLI
+            // mode rides. {@code waitForTurn:false} opts out and answers at
+            // the ack, which is what the interactive REPL does.
+            boolean waitForTurn = !Boolean.FALSE.equals(req.waitForTurn);
+            if (waitForTurn) {
+                turnGate.arm();
+            }
             ChatInputService.InputResult result =
-                    chatInputService.sendChat(req.line, timeout,
-                            Boolean.TRUE.equals(req.voiceMode));
+                    chatInputService.sendChat(req.line, timeout, Boolean.TRUE.equals(req.voiceMode));
+            if (waitForTurn && result.ok()) {
+                Duration turnWait = req.timeoutMs != null && req.timeoutMs > 0
+                        ? Duration.ofMillis(req.timeoutMs)
+                        : Duration.ofMinutes(10);
+                try {
+                    if (!turnGate.awaitTurn(turnWait)) {
+                        terminal.warn("debug/chat: turn did not settle within " + turnWait
+                                + " — returning anyway (send waitForTurn:false to skip this wait)");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             writeJson(exchange, 200, toJson(result));
         }
     }
@@ -312,5 +341,14 @@ public final class DebugRestServer {
          * + {@code /input} ignore it. {@code null} → {@code false}.
          */
         public @Nullable Boolean voiceMode;
+        /**
+         * Whether {@code /debug/chat} waits for the engine turn to settle
+         * before answering (automation compatibility — the pre-queue
+         * semantics of a turn-bound steer ack). {@code null} → {@code true};
+         * {@code false} returns at the persist-bound ack like the
+         * interactive REPL does. See {@code planning/active-message-queue.md}
+         * §2.
+         */
+        public @Nullable Boolean waitForTurn;
     }
 }

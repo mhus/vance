@@ -534,6 +534,19 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 return ActionLoopResult.interrupted(true, toolInvocations);
             }
 
+            // Active message queue (planning/active-message-queue.md §4 P1):
+            // a message arrived while this turn was already running. Take it
+            // up at the next loop boundary — never mid tool-chain — by ending
+            // this turn without a terminal action; the outer drain loop folds
+            // the message into the next turn. Opt-in per engine via
+            // pickupPendingMidLoop(). The iter > 0 gate guarantees a turn that
+            // was handed its input directly (engine.steer) always gets at
+            // least one full round before yielding.
+            if (iter > 0 && pickupPendingMidLoop(process) && ctx.hasPending()) {
+                log.info("{} id='{}' action-loop pending input — yielding at loop boundary", name(), process.getId());
+                return ActionLoopResult.pendingInput(bestFreeText, toolInvocations);
+            }
+
             // Wallclock safety net — the automatic backstop for a runaway
             // judge that keeps extending. Spans the whole turn (the same
             // deadlineMs rides every extension round). Surfaces the best
@@ -1015,6 +1028,19 @@ public abstract class StructuredActionEngine implements ThinkEngine {
     }
 
     /**
+     * Whether this engine takes up messages that arrived mid-turn at the
+     * next loop boundary ("active message queue", see
+     * {@code planning/active-message-queue.md} §4 P1). Default off — a
+     * deterministic runner (script execution, chunk workers, phase gates)
+     * must not have its defined state changed by late input. Engines that
+     * opt in (Arthur, Eddie — the user-facing chat engines) override this;
+     * a recipe can turn it off via {@code params.midTurnPickup}.
+     */
+    protected boolean pickupPendingMidLoop(ThinkProcessDocument process) {
+        return false;
+    }
+
+    /**
      * Result of the action loop. Either the LLM produced a valid
      * action ({@link #action()} non-null), or we exhausted retries
      * and fell back to the best free-text we could see ({@link
@@ -1032,6 +1058,8 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         static final String REASON_INTERRUPTED = "interrupted";
         /** Loop bailed on an out-of-band halt flag (engine parks PAUSED). */
         static final String REASON_INTERRUPTED_HALT = "interrupted-halt";
+        /** Loop bailed to take up queued input at the loop boundary. */
+        static final String REASON_PENDING_INPUT = "pending-input";
 
         static ActionLoopResult action(EngineAction a, int toolInvocations) {
             return new ActionLoopResult(a, null, null, null, toolInvocations);
@@ -1052,17 +1080,31 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                     null, "", forcePause ? REASON_INTERRUPTED_HALT : REASON_INTERRUPTED, null, toolInvocations);
         }
 
+        /**
+         * The loop stopped because a message arrived mid-turn and the engine
+         * takes it up at the loop boundary. No terminal action, no synthesized
+         * answer — the outer drain loop handles the message in the next turn.
+         */
+        static ActionLoopResult pendingInput(String text, int toolInvocations) {
+            return new ActionLoopResult(null, text == null ? "" : text, REASON_PENDING_INPUT, null, toolInvocations);
+        }
+
         public boolean isAction() {
             return action != null;
         }
 
         public boolean isFallback() {
-            return action == null && !isInterrupted();
+            return action == null && !isInterrupted() && !isPendingInput();
         }
 
         /** True when the loop bailed on a mid-loop interrupt. */
         public boolean isInterrupted() {
             return REASON_INTERRUPTED.equals(fallbackReason) || REASON_INTERRUPTED_HALT.equals(fallbackReason);
+        }
+
+        /** True when the loop yielded to take up queued input. */
+        public boolean isPendingInput() {
+            return REASON_PENDING_INPUT.equals(fallbackReason);
         }
 
         /**

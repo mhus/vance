@@ -343,6 +343,13 @@ const composerText = ref(readDraft());
 const localSend = ref(false);
 /** Busy either way — ours or the host's. Everything user-facing reads this. */
 const sending = computed(() => localSend.value || props.turnActive === true);
+/**
+ * The only state that may keep the user from hitting send: a send this
+ * composer started (or an upload). A running engine turn does NOT block —
+ * the persist-bound steer ack queues the message and the engine picks it
+ * up at its next loop boundary (planning/active-message-queue.md §2).
+ */
+const sendBlocked = computed(() => localSend.value || uploading.value);
 const uploading = ref(false);
 const sendError = ref<string | null>(null);
 
@@ -1000,7 +1007,7 @@ async function send(): Promise<void> {
   // Allow attachment-only sends so the user can drop a PDF and hit
   // send without typing — Arthur can then ask "what should I do with
   // this?" rather than the UI silently rejecting the click.
-  if (sending.value || !props.chatProcessName) return;
+  if (sendBlocked.value || !props.chatProcessName) return;
   if (!text && filesSnapshot.length === 0 && docsSnapshot.length === 0) return;
   localSend.value = true;
   sendError.value = null;
@@ -1133,13 +1140,21 @@ async function send(): Promise<void> {
  * Fire-and-forget {@code process-pause} for the bound session. Pauses
  * everything alive in the session (chat + workers) and immediately
  * drops the local "sending" spinner so the composer is usable again.
+ *
+ * <p><b>Always fireable — never gated on the client's busy guess.</b>
+ * Mirrors foot's ESC contract ({@code ChatInputService#requestPauseFromInterrupt}):
+ * the busy state is a client-side reconstruction from turn-boundary pings
+ * and goes stale on a reconnect mid-turn, so gating the stop on it would
+ * silently disarm the user's only interrupt exactly when it matters. The
+ * brain knows which processes are actually interruptible and skips the
+ * rest. With no bound session there is nothing to pause — stay silent.
  */
 function pause(): void {
-  if (!sending.value) return;
+  if (!props.chatProcessName) return;
   try {
     props.socket.sendNoReply<ProcessPauseRequest>('process-pause', {});
   } catch (e) {
-    sendError.value = e instanceof Error ? e.message : 'Pause failed.';
+    sendError.value = e instanceof Error ? e.message : t('chat.pauseFailed');
   }
   localSend.value = false;
   // The inherited half of the busy state belongs to the host — it set the
@@ -1196,6 +1211,15 @@ function onComposerKeydown(event: KeyboardEvent): void {
     closeHistory();
     // fall through: the key still does its normal thing
   }
+  // Escape — always send the pause/stop to the engine (same contract as
+  // foot's ESC, see pause()). The history overlay above claims Escape first
+  // while it is open; with the overlay closed this is the user's one-key
+  // interrupt and must never be swallowed by composer state.
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    pause();
+    return;
+  }
   // ArrowUp opens the overlay when the caret sits in the first composer
   // line — there is no line above it, so claiming the key loses nothing.
   if (event.key === 'ArrowUp'
@@ -1251,13 +1275,13 @@ function onComposerKeydown(event: KeyboardEvent): void {
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
 function onComposerDragEnter(event: DragEvent): void {
-  if (sending.value || uploading.value) return;
+  if (sendBlocked.value) return;
   event.preventDefault();
   dragActive.value = true;
 }
 
 function onComposerDragOver(event: DragEvent): void {
-  if (sending.value || uploading.value) return;
+  if (sendBlocked.value) return;
   event.preventDefault();
   dragActive.value = true;
 }
@@ -1271,7 +1295,7 @@ function onComposerDragLeave(event: DragEvent): void {
 function onComposerDrop(event: DragEvent): void {
   event.preventDefault();
   dragActive.value = false;
-  if (sending.value || uploading.value) return;
+  if (sendBlocked.value) return;
   const incoming = event.dataTransfer?.files;
   if (!incoming || incoming.length === 0) return;
   appendFiles(Array.from(incoming));
@@ -1436,7 +1460,7 @@ onBeforeUnmount(() => {
         <VButton
           variant="ghost"
           size="sm"
-          :disabled="sending || uploading"
+          :disabled="sendBlocked"
           :title="$t('chat.attachments.remove')"
           @click="removeAttachedDoc(idx)"
         >✕</VButton>
@@ -1453,7 +1477,7 @@ onBeforeUnmount(() => {
         <VButton
           variant="ghost"
           size="sm"
-          :disabled="sending || uploading"
+          :disabled="sendBlocked"
           :title="$t('chat.attachments.remove')"
           @click="removeFile(idx)"
         >✕</VButton>
@@ -1635,7 +1659,7 @@ onBeforeUnmount(() => {
             v-else
             variant="ghost"
             size="sm"
-            :disabled="sending || uploading || !chatProcessName"
+            :disabled="sendBlocked || !chatProcessName"
             :title="$t('chat.attachments.pickerTooltip')"
             @click="() => fileInputRef?.click()"
           >
@@ -1660,15 +1684,14 @@ onBeforeUnmount(() => {
           variant="primary"
           size="sm"
           :disabled="(!composerText.trim() && selectedFiles.length === 0 && selectedDocs.length === 0)
-            || sending || uploading || !chatProcessName"
-          :loading="sending || uploading"
+            || sendBlocked || !chatProcessName"
+          :loading="sendBlocked"
           :title="$t('chat.send')"
           @click="send"
         >
           ▶
         </VButton>
         <VButton
-          v-if="sending"
           variant="danger"
           size="sm"
           :title="$t('chat.pauseTooltip')"

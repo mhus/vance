@@ -491,6 +491,20 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /**
+     * Mid-turn pickup of queued messages (planning/active-message-queue.md
+     * §4 P1) — enabled for user-facing top-level chat processes only. A
+     * sub-process worker's turn is awaited by its parent ({@code process_steer}
+     * blocks on the steer round-trip), so cutting it short would hand the
+     * parent a "steered" result for work that has not happened; workers keep
+     * turn-atomic processing. Recipe override: {@code params.midTurnPickup}
+     * (default on).
+     */
+    @Override
+    protected boolean pickupPendingMidLoop(ThinkProcessDocument process) {
+        return process.getParentProcessId() == null && paramBool(process, "midTurnPickup", true);
+    }
+
+    /**
      * Drains the inbox and processes everything in one LLM
      * round-trip. Auto-Wakeup: keep re-draining until the queue
      * stays empty across a full pass — covers messages that arrive
@@ -906,6 +920,44 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         process.getId(),
                         interruptForcePause);
                 return new TurnSignal(false, loopResult.madeProgress());
+            }
+
+            // Mid-turn pickup (planning/active-message-queue.md §4 P1): the
+            // action loop yielded at a loop boundary because a fresh message
+            // is queued. Persist whatever the LLM narrated about its in-turn
+            // work (same reasoning as the max-iters yield below — the chat
+            // log is the only cross-turn record of what happened) and end
+            // this turn without a terminal action: the outer runTurn loop
+            // drains the queued message and folds it into the next turn. No
+            // completion guard here — a yield is not a natural completion,
+            // and a guard follow-up would race the queued message.
+            if (loopResult.isPendingInput()) {
+                String narration = loopResult.fallbackText();
+                boolean narrated = narration != null && !narration.isBlank();
+                if (narrated) {
+                    ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
+                            .tenantId(process.getTenantId())
+                            .sessionId(process.getSessionId())
+                            .thinkProcessId(process.getId())
+                            .role(ChatRole.ASSISTANT)
+                            .content(narration)
+                            .thinking(
+                                    ctx.reasoning() == null
+                                            ? null
+                                            : ctx.reasoning().snapshot())
+                            .build());
+                    if (saved != null && saved.getId() != null) {
+                        ctx.historyTagSink().flushTo(saved.getId(), chatLog);
+                    }
+                } else {
+                    ctx.historyTagSink().discard();
+                }
+                log.info(
+                        "Arthur.turn id='{}' yielding to queued input (toolInvocations={}, narration={} chars)",
+                        process.getId(),
+                        loopResult.toolInvocations(),
+                        narrated ? narration.length() : 0);
+                return new TurnSignal(narrated, loopResult.madeProgress());
             }
 
             ActionTurnOutcome outcome;

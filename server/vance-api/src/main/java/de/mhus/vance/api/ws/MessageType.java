@@ -94,6 +94,27 @@ public final class MessageType {
     public static final String PROCESS_MESSAGES = "process-messages";
 
     /**
+     * Client → brain: the not-yet-drained queue of one think-process of the
+     * bound session — the authoritative "queued messages" read behind the
+     * composer's queue display. Payload
+     * {@link de.mhus.vance.api.thinkprocess.ProcessInboxRequest}, reply
+     * {@link de.mhus.vance.api.thinkprocess.ProcessInboxResponse}. Session-
+     * scoped like {@link #PROCESS_MESSAGES}. See
+     * {@code planning/active-message-queue.md} §4 P3.
+     */
+    public static final String PROCESS_INBOX = "process-inbox";
+
+    /**
+     * Server-initiated notification: the pending-message queue of a
+     * think-process changed — entries were appended ({@code added}) or the
+     * engine picked them up at a loop boundary ({@code drainedIds}). Payload
+     * {@link de.mhus.vance.api.thinkprocess.ProcessQueueNotification}. Optimistic
+     * side-channel; {@link #PROCESS_INBOX} is the authoritative read. See
+     * {@code planning/active-message-queue.md} §4 P3.
+     */
+    public static final String PROCESS_QUEUE = "process-queue";
+
+    /**
      * Client → brain: stop a running think-process in the bound
      * session. User-initiated counterpart to the orchestrator-only
      * {@code process_stop} brain-tool. Triggers

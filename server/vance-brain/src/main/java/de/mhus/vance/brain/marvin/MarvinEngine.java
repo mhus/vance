@@ -996,7 +996,13 @@ public class MarvinEngine implements ThinkEngine {
 
     // ──────────────────── Phase prompt builder ────────────────────
 
-    private String buildPhaseUserMessage(
+    /**
+     * Assembles the worker's phase message — the ONLY input a phase turn gets
+     * (the turn is [system, user] with no chat history), which is why the
+     * CALL_RECIPE results have to be rendered here. Package-private for tests:
+     * this assembly is exactly where results once silently went missing.
+     */
+    String buildPhaseUserMessage(
             ThinkProcessDocument process,
             MarvinNodeDocument node,
             WorkerPhase phase,
@@ -1050,6 +1056,21 @@ public class MarvinEngine implements ThinkEngine {
         String budgetBlock = renderDepthDamperBlock(nodeDepth, caps.maxTreeDepth());
         if (budgetBlock != null) {
             sb.append(budgetBlock).append("\n\n");
+        }
+
+        // CALL_RECIPE results. The phase loop is memoryless — each turn is
+        // [system, user] with no chat history — so everything the worker knows
+        // must be in this message. Without this block the REFLECT instruction
+        // ("The latest CALL_RECIPE result is above") pointed at nothing:
+        // appendCallReply persists the sub-process's answer on the node, but
+        // nothing rendered it back, so the worker concluded and validated
+        // blind while full answers sat unread in the node artifacts.
+        List<String> callReplies = callReplies(node);
+        if (!callReplies.isEmpty()) {
+            sb.append("Results of previous CALL_RECIPE sub-calls (latest last):\n\n");
+            for (String reply : callReplies) {
+                sb.append(reply).append("\n\n");
+            }
         }
 
         if (phase == WorkerPhase.POST_CHILDREN) {
@@ -1473,6 +1494,21 @@ public class MarvinEngine implements ThinkEngine {
             }
         }
         return null;
+    }
+
+    /**
+     * The accumulated CALL_RECIPE replies of {@code node}, oldest first —
+     * written by {@link #appendCallReply}, rendered into the phase message by
+     * {@code buildPhaseUserMessage}. Kept as the persisted blocks
+     * ({@code <<< Result of ... >>>}) so the worker sees exactly what was
+     * stored.
+     */
+    @SuppressWarnings("unchecked")
+    static List<String> callReplies(MarvinNodeDocument node) {
+        Map<String, Object> art = node.getArtifacts();
+        if (art == null) return List.of();
+        Object v = art.get("recipeReplies");
+        return v instanceof List<?> l ? (List<String>) l : List.of();
     }
 
     /**

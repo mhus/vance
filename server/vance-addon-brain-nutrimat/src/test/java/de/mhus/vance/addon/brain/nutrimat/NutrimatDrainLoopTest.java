@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.nutrimat;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -140,6 +141,49 @@ class NutrimatDrainLoopTest {
         assertThat(contents).anyMatch(c -> c.contains("discarded 2 background event(s)"));
         assertThat(contents).anyMatch(c -> c.contains("discarded 1 background event(s)"));
         verify(ctx, times(3)).drainPending();
+    }
+
+    @Test
+    void runTurn_userKickOnClosedGate_resetsRunStateImmediately() {
+        // Live finding 2026-10-04: after a hard-failure turn the state kept
+        // the closed-gate markers and the cumulative turns counter until
+        // the NEXT turn end — mid-run //nutrimat status showed a closed
+        // loop that was already working. A user kick must reset the run
+        // state (turns back to 0, gate open, outcome 'running') the moment
+        // the loop reopens.
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setId("p3");
+        process.setTenantId("acme");
+        process.setSessionId("s1");
+        process.setEngineParams(Map.of("nutrimatState", Map.of("awaitingUserContinue", true, "turns", 5)));
+        when(thinkProcessService.findById("p3")).thenReturn(Optional.of(process));
+        when(ctx.drainPending())
+                .thenReturn(List.of(new SteerMessage.UserChatInput(Instant.now(), null, "wile", "continue")))
+                .thenReturn(List.of());
+
+        // The turn proceeds into the full shell and dies on the first
+        // unstubbed dependency (chat factory) — the reset happened before
+        // that, so the captured state IS the assertion.
+        assertThatThrownBy(() -> engine.runTurn(process, ctx)).isInstanceOf(RuntimeException.class);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> paramsCaptor =
+                ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        verify(thinkProcessService).replaceEngineParams(eq("p3"), paramsCaptor.capture());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> state =
+                (Map<String, Object>) paramsCaptor.getValue().get("nutrimatState");
+        assertThat(state)
+                .containsEntry("turns", 0)
+                .containsEntry("awaitingUserContinue", false)
+                .containsEntry("lastOutcome", "running");
+
+        // The reopen is visible in the working log — the run boundary the
+        // user sees between two loop runs.
+        ArgumentCaptor<ChatMessageDocument> saved = ArgumentCaptor.forClass(ChatMessageDocument.class);
+        verify(chatLog, times(2)).append(saved.capture());
+        assertThat(saved.getAllValues().stream().map(ChatMessageDocument::getContent))
+                .anyMatch(c -> c.contains("loop reopened by user input"));
     }
 
     @Test

@@ -39,7 +39,23 @@ public final class ExecEnvPolicy {
      * decision at the call site or in configuration.
      */
     public static final Set<String> INHERITABLE_NAMES = Set.of(
-            "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR", "TMP", "TEMP", "SystemRoot", "USERPROFILE");
+            "PATH",
+            "HOME",
+            "LANG",
+            "LC_ALL",
+            "LC_CTYPE",
+            "TZ",
+            "TMPDIR",
+            "TMP",
+            "TEMP",
+            "SystemRoot",
+            "USERPROFILE",
+            // The exec-context marker the manuals read *inside* the child
+            // (manual self-installed-tools: echo exec env: ${VANCE_EXEC_ENV:-workstation}
+            // — set = commands run in the brain container, unset = workstation).
+            // Non-secret; without it the agent always sees workstation and
+            // applies the wrong install pattern inside the container.
+            "VANCE_EXEC_ENV");
 
     private ExecEnvPolicy() {}
 

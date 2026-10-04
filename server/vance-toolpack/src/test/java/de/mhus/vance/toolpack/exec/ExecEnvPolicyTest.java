@@ -30,6 +30,18 @@ class ExecEnvPolicyTest {
     }
 
     @Test
+    void seal_keepsTheExecContextMarker() {
+        // The manuals read the marker *inside* the child to pick the install
+        // pattern (manual self-installed-tools) — stripping it would make
+        // every container look like a workstation.
+        Map<String, String> parent = Map.of("PATH", "/usr/bin", "VANCE_EXEC_ENV", "container");
+
+        Map<String, String> sealed = ExecEnvPolicy.seal(parent, List.of());
+
+        assertThat(sealed).containsEntry("VANCE_EXEC_ENV", "container");
+    }
+
+    @Test
     void seal_grantedNamesArePassedThrough() {
         Map<String, String> parent = Map.of("PATH", "/usr/bin", "GH_TOKEN", "ghp_secret");
 

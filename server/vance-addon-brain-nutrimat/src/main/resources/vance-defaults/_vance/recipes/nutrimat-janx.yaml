@@ -1,0 +1,24 @@
+# Nutrimat loop-lab experiment: nature `janx` — the natural-stop basis
+# loop (Ford semantics, independently implemented). The baseline every
+# loop comparison starts from. See specification/public/nutrimat-engine.md.
+title: "Nutrimat janx — natural-stop basis loop"
+listed: true
+category: experimental
+description: |
+  Experimental loop-lab worker. Nature `janx` is the basis loop of the
+  Nutrimat laboratory: a natural-stop tool loop — the engine dispatches
+  tool calls as long as the model emits them, and the first message
+  without a tool call IS the reply — with the Ford recovery semantics
+  (a budget overrun carries the best partial work out as a hard-failure
+  outcome). Use it as the baseline worker in A/B comparisons against the
+  other Nutrimat natures, or as an ordinary worker. Everything except
+  the loop policy is shared across the natures, so a comparison
+  measures the loop and nothing else.
+engine: nutrimat-janx
+params:
+  model: default:analyze,default:fast
+  # Safety-net cap only — a healthy turn natural-stops well before this.
+  maxIterations: 40
+tags:
+  - nutrimat
+  - experimental

@@ -245,6 +245,63 @@ class BundledSettingFormsTest {
                 });
     }
 
+    /**
+     * The research routing form pins default source + fallback chain per
+     * modality. Every default field's value is an <em>instance id</em> — the
+     * filename stem of a {@code _vance/config/research/} document — which is
+     * why the defaults are pickers over the live source inventory instead of
+     * free text. The old research settings form hard-wired endpoint ids into
+     * the setting <em>key</em>; here the key is fixed per modality and only
+     * the id is chosen.
+     */
+    @Test
+    void research_routing_parses_cleanly() throws IOException {
+        ResolvedSettingForm f = loadBundled("research-routing");
+
+        // One default+fallback pair per modality the built-in protocols can
+        // serve. map/code/internal_doc/rag have no built-in sources and stay
+        // plain setting_set keys.
+        assertThat(f.fields())
+                .extracting(field -> field.getName())
+                .containsExactly(
+                        "defaultWeb", "fallbackWeb",
+                        "defaultNews", "fallbackNews",
+                        "defaultAcademic", "fallbackAcademic",
+                        "defaultEncyclopedia", "fallbackEncyclopedia",
+                        "defaultBook", "fallbackBook",
+                        "defaultImage", "fallbackImage",
+                        "defaultVideo", "fallbackVideo",
+                        "defaultPdf", "fallbackPdf");
+
+        assertThat(f.fields())
+                .filteredOn(field -> field.getName().startsWith("default"))
+                .as("default fields pick from the source inventory")
+                .isNotEmpty()
+                .allSatisfy(field -> {
+                    assertThat(field.getChoicesFrom()).isEqualTo("research-sources");
+                    assertThat(field.getBindsTo().getKey()).startsWith("research.default.");
+                    assertThat(field.isRequired()).isFalse();
+                });
+        assertThat(f.fields())
+                .filteredOn(field -> field.getName().startsWith("fallback"))
+                .as("fallback fields hold the comma-separated id chain")
+                .isNotEmpty()
+                .allSatisfy(field -> {
+                    assertThat(field.getType()).isEqualTo("string");
+                    assertThat(field.getBindsTo().getKey()).startsWith("research.fallback.");
+                    assertThat(field.isRequired()).isFalse();
+                });
+
+        // Routing is tenant-wide configuration: offered in the tenant context
+        // only, written to _tenant (per-project overrides remain possible via
+        // raw setting_set, the cascade still lets a project win).
+        assertThat(f.defaultScope()).isEqualTo("tenant");
+        assertThat(f.availableIn()).containsExactly("_tenant");
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_tenant")).isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "research-2026"))
+                .isFalse();
+    }
+
     private ResolvedSettingForm loadBundled(String name) throws IOException {
         String resourcePath = "vance-defaults/_vance/setting_forms/" + name + ".yaml";
         String yaml = readClasspath(resourcePath);

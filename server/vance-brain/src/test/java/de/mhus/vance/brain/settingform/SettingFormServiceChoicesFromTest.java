@@ -15,6 +15,8 @@ import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
 import de.mhus.vance.brain.ai.OutputTokenParam;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
+import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
 import de.mhus.vance.shared.form.FormValidationException;
 import de.mhus.vance.shared.form.FormValidator;
 import de.mhus.vance.shared.settings.SettingService;
@@ -44,11 +46,12 @@ class SettingFormServiceChoicesFromTest {
 
     private final SettingService settingService = mock(SettingService.class);
     private final ModelCatalog modelCatalog = mock(ModelCatalog.class);
+    private final SourceConfigLoader sourceConfigs = mock(SourceConfigLoader.class);
     private final FormValidator formValidator = new FormValidator();
     private final PromptTemplateRenderer renderer = new PromptTemplateRenderer();
     private final SettingFormPlanBuilder planBuilder = new SettingFormPlanBuilder(renderer, settingService);
     private final SettingFormService service =
-            new SettingFormService(settingService, formValidator, planBuilder, modelCatalog);
+            new SettingFormService(settingService, formValidator, planBuilder, modelCatalog, sourceConfigs);
 
     @Test
     void validate_accepts_a_value_present_in_the_ai_models_catalog() {
@@ -144,6 +147,46 @@ class SettingFormServiceChoicesFromTest {
         assertThat(resolved.get(0).getChoices())
                 .extracting(c -> c.getValue())
                 .containsExactly("lmstudio:qwen2.5-coder-32b-instruct");
+    }
+
+    @Test
+    void withLiveCascadeValues_researchSources_listInstanceIds() {
+        // The routing form's default fields pick from the configured search
+        // sources; the value is the instance id (the filename stem of a
+        // {@code _vance/config/research/} document), which is exactly what
+        // {@code research.default.<modality>} stores.
+        when(sourceConfigs.load(any(), any(), any()))
+                .thenReturn(List.of(source("serper-main", "serper"), source("wiki-de", "wikipedia")));
+
+        FormFieldDto field = FormFieldDto.builder()
+                .name("defaultWeb")
+                .type("select")
+                .label(Map.of("en", "Web — source"))
+                .choicesFrom("research-sources")
+                .bindsTo(BindsToDto.builder().key("research.default.web").build())
+                .build();
+        ResolvedSettingForm form = new ResolvedSettingForm(
+                "research-routing",
+                Map.of("en", "Research Routing"),
+                Map.of("en", "Research Routing"),
+                null,
+                "research",
+                SettingService.SCOPE_TENANT,
+                List.of(field),
+                List.of(),
+                true,
+                List.of("_tenant"),
+                SettingFormSource.RESOURCE);
+
+        List<FormFieldDto> resolved = service.withLiveCascadeValues(form, TENANT, null, "alice");
+
+        assertThat(resolved.get(0).getChoices())
+                .extracting(c -> c.getValue())
+                .containsExactly("serper-main", "wiki-de");
+    }
+
+    private static SourceConfig source(String name, String protocol) {
+        return new SourceConfig(name, "_vance/config/research/" + name + ".yaml", protocol, null, null, true, Map.of());
     }
 
     @Test

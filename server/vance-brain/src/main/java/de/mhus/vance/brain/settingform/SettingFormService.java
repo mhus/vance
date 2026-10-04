@@ -6,6 +6,9 @@ import de.mhus.vance.api.form.FormFieldDto;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.sourceconfig.SourceConfig;
+import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
+import de.mhus.vance.brain.sourceconfig.SourceConfigPaths;
 import de.mhus.vance.shared.form.FormValidator;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingDocument;
@@ -50,6 +53,7 @@ public class SettingFormService {
     private final FormValidator formValidator;
     private final SettingFormPlanBuilder planBuilder;
     private final ModelCatalog modelCatalog;
+    private final SourceConfigLoader sourceConfigs;
 
     /** Recognized {@link FormFieldDto#getChoicesFrom()} markers. */
     public static final String CHOICES_FROM_AI_MODELS = "ai-models";
@@ -66,6 +70,15 @@ public class SettingFormService {
      *  fail-closed error at call time, so the form doesn't offer it in
      *  the first place. */
     public static final String CHOICES_FROM_AI_FIM_MODELS = "ai-fim-models";
+
+    /**
+     * Research-source counterpart of {@link #CHOICES_FROM_AI_MODELS} —
+     * populates a select with the configured search-source instance ids
+     * (the {@code _vance/config/research/} documents). Value is the instance
+     * id ({@code <id>}, the filename stem), which is exactly what the routing
+     * settings {@code research.default.<modality>} expect.
+     */
+    public static final String CHOICES_FROM_RESEARCH_SOURCES = "research-sources";
 
     /**
      * Validates and applies {@code values} against {@code form}. The
@@ -262,6 +275,7 @@ public class SettingFormService {
         @Nullable List<FormChoiceDto> aiModelChoices = null;
         @Nullable List<FormChoiceDto> aiImageModelChoices = null;
         @Nullable List<FormChoiceDto> aiFimModelChoices = null;
+        @Nullable List<FormChoiceDto> researchSourceChoices = null;
         List<FormFieldDto> out = new ArrayList<>(fields.size());
         for (FormFieldDto f : fields) {
             String src = f.getChoicesFrom();
@@ -280,9 +294,35 @@ public class SettingFormService {
                     aiFimModelChoices = buildAiFimModelChoices(tenantId, projectId);
                 }
                 out.add(f.toBuilder().choices(aiFimModelChoices).build());
+            } else if (CHOICES_FROM_RESEARCH_SOURCES.equals(src)) {
+                if (researchSourceChoices == null) {
+                    researchSourceChoices = buildResearchSourceChoices(tenantId, projectId);
+                }
+                out.add(f.toBuilder().choices(researchSourceChoices).build());
             } else {
                 out.add(f);
             }
+        }
+        return out;
+    }
+
+    /**
+     * Builds the {@code FormChoiceDto} list for the configured search sources
+     * (the {@code _vance/config/research/} documents of this scope). Value is
+     * the instance id — the filename stem, which is exactly what
+     * {@code research.default.<modality>} stores; the label carries the
+     * protocol in parentheses so two sources stay tellable apart.
+     */
+    private List<FormChoiceDto> buildResearchSourceChoices(String tenantId, @Nullable String projectId) {
+        String scopeProject = projectId == null ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
+        List<SourceConfig> configs = sourceConfigs.load(tenantId, scopeProject, SourceConfigPaths.RESEARCH);
+        List<FormChoiceDto> out = new ArrayList<>(configs.size());
+        for (SourceConfig config : configs) {
+            String label = config.name() + (config.protocol() == null ? "" : "  (" + config.protocol() + ")");
+            out.add(FormChoiceDto.builder()
+                    .value(config.name())
+                    .label(java.util.Map.of("en", label))
+                    .build());
         }
         return out;
     }

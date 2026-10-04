@@ -1,0 +1,150 @@
+title:
+  de: "Research — Such-Routing"
+  en: "Research — Search Routing"
+description:
+  de: "Welche Quelle welche Modalität bedient: die Default-Instanz pro Modalität und die Fallback-Kette dahinter. Die Quellen selbst legt man als Dokumente unter _vance/config/research/ an — hier wählt man nur, welche davon eine Modalität beantwortet. Leerer Wert entfernt das Routing (der Dispatcher nutzt dann die Quellen-Reihenfolge der aktuellen Ansicht)."
+  en: "Which source serves which modality: the default instance per modality and the fallback chain behind it. The sources themselves are documents under _vance/config/research/ — this form only pins which of them answers a modality. An empty value removes the pin (the dispatcher then falls back to the cascade order of the current scope)."
+icon: magnifying-glass
+category: research
+defaultScope: tenant
+availableIn: [ "_tenant" ]
+
+fields:
+  - name: defaultWeb
+    type: select
+    required: false
+    choicesFrom: research-sources
+    bindsTo: { key: "research.default.web" }
+    label:
+      de: "Web — Quelle"
+      en: "Web — source"
+    help:
+      de: "Instanz für WEB-Anfragen. Fallbacks in der nächsten Zeile: Kommagetrennte Instanz-IDs in Prioritätsreihenfolge, z.B. 'wiki-de'."
+      en: "Instance answering WEB requests. Fallbacks in the next row: comma-separated instance ids in priority order, e.g. 'wiki-de'."
+
+  - name: fallbackWeb
+    type: string
+    required: false
+    bindsTo: { key: "research.fallback.web" }
+    label:
+      de: "Web — Fallbacks"
+      en: "Web — fallbacks"
+
+  - name: defaultNews
+    type: select
+    required: false
+    choicesFrom: research-sources
+    bindsTo: { key: "research.default.news" }
+    label:
+      de: "News — Quelle"
+      en: "News — source"
+
+  - name: fallbackNews
+    type: string
+    required: false
+    bindsTo: { key: "research.fallback.news" }
+    label:
+      de: "News — Fallbacks"
+      en: "News — fallbacks"
+
+  - name: defaultAcademic
+    type: select
+    required: false
+    choicesFrom: research-sources
+    bindsTo: { key: "research.default.academic" }
+    label:
+      de: "Wissenschaft — Quelle"
+      en: "Academic — source"
+
+  - name: fallbackAcademic
+    type: string
+    required: false
+    bindsTo: { key: "research.fallback.academic" }
+    label:
+      de: "Wissenschaft — Fallbacks"
+      en: "Academic — fallbacks"
+
+  - name: defaultEncyclopedia
+    type: select
+    required: false
+    choicesFrom: research-sources
+    bindsTo: { key: "research.default.encyclopedia" }
+    label:
+      de: "Enzyklopädie — Quelle"
+      en: "Encyclopedia — source"
+
+  - name: fallbackEncyclopedia
+    type: string
+    required: false
+    bindsTo: { key: "research.fallback.encyclopedia" }
+    label:
+      de: "Enzyklopädie — Fallbacks"
+      en: "Encyclopedia — fallbacks"
+
+  - name: defaultBook
+    type: select
+    required: false
+    choicesFrom: research-sources
+    bindsTo: { key: "research.default.book" }
+    label:
+      de: "Bücher — Quelle"
+      en: "Books — source"
+
+  - name: fallbackBook
+    type: string
+    required: false
+    bindsTo: { key: "research.fallback.book" }
+    label:
+      de: "Bücher — Fallbacks"
+      en: "Books — fallbacks"
+
+  - name: defaultImage
+    type: select
+    required: false
+    choicesFrom: research-sources
+    bindsTo: { key: "research.default.image" }
+    label:
+      de: "Bilder — Quelle"
+      en: "Images — source"
+
+  - name: fallbackImage
+    type: string
+    required: false
+    bindsTo: { key: "research.fallback.image" }
+    label:
+      de: "Bilder — Fallbacks"
+      en: "Images — fallbacks"
+
+  - name: defaultVideo
+    type: select
+    required: false
+    choicesFrom: research-sources
+    bindsTo: { key: "research.default.video" }
+    label:
+      de: "Video — Quelle"
+      en: "Video — source"
+
+  - name: fallbackVideo
+    type: string
+    required: false
+    bindsTo: { key: "research.fallback.video" }
+    label:
+      de: "Video — Fallbacks"
+      en: "Video — fallbacks"
+
+  - name: defaultPdf
+    type: select
+    required: false
+    choicesFrom: research-sources
+    bindsTo: { key: "research.default.pdf" }
+    label:
+      de: "PDF — Quelle"
+      en: "PDF — source"
+
+  - name: fallbackPdf
+    type: string
+    required: false
+    bindsTo: { key: "research.fallback.pdf" }
+    label:
+      de: "PDF — Fallbacks"
+      en: "PDF — fallbacks"

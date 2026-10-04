@@ -12,6 +12,7 @@ import de.mhus.vance.api.form.FormFieldDto;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.brain.sourceconfig.SourceConfigLoader;
 import de.mhus.vance.shared.form.FormValidator;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.List;
@@ -44,20 +45,19 @@ class SettingFormServiceEmptyValueTest {
 
     private final SettingService settingService = mock(SettingService.class);
     private final ModelCatalog modelCatalog = mock(ModelCatalog.class);
+    private final SourceConfigLoader sourceConfigs = mock(SourceConfigLoader.class);
     private final FormValidator formValidator = new FormValidator();
     private final PromptTemplateRenderer renderer = new PromptTemplateRenderer();
-    private final SettingFormPlanBuilder planBuilder =
-            new SettingFormPlanBuilder(renderer, settingService);
-    private final SettingFormService service = new SettingFormService(
-            settingService, formValidator, planBuilder, modelCatalog);
+    private final SettingFormPlanBuilder planBuilder = new SettingFormPlanBuilder(renderer, settingService);
+    private final SettingFormService service =
+            new SettingFormService(settingService, formValidator, planBuilder, modelCatalog, sourceConfigs);
 
     @Test
     void emptying_an_inherited_value_writes_an_empty_string_into_the_edited_project() {
         liveValue(PROJECT, null);
         liveValue(TENANT_PROJECT, GATEWAY);
 
-        List<PlannedSettingAction> plan = service.apply(
-                form(), Map.of("baseUrl", ""), TENANT, PROJECT, "alice", "en");
+        List<PlannedSettingAction> plan = service.apply(form(), Map.of("baseUrl", ""), TENANT, PROJECT, "alice", "en");
 
         assertThat(plan).singleElement().satisfies(a -> {
             assertThat(a.action()).isEqualTo(PlannedSettingAction.Action.WRITE);
@@ -67,9 +67,8 @@ class SettingFormServiceEmptyValueTest {
         // The persisted "" is what stops getStringValueCascade at the project
         // layer — a null value would keep falling through to the tenant.
         // setAs, not set: the acting user travels into the setting.change row.
-        verify(settingService).setAs(
-                TENANT, SettingService.SCOPE_PROJECT, PROJECT, KEY, "", SettingType.STRING,
-                null, "alice");
+        verify(settingService)
+                .setAs(TENANT, SettingService.SCOPE_PROJECT, PROJECT, KEY, "", SettingType.STRING, null, "alice");
     }
 
     @Test
@@ -77,10 +76,10 @@ class SettingFormServiceEmptyValueTest {
         liveValue(PROJECT, "https://my-vllm.internal/v1");
         liveValue(TENANT_PROJECT, GATEWAY);
 
-        List<PlannedSettingAction> plan = service.apply(
-                form(), Map.of("baseUrl", ""), TENANT, PROJECT, "alice", "en");
+        List<PlannedSettingAction> plan = service.apply(form(), Map.of("baseUrl", ""), TENANT, PROJECT, "alice", "en");
 
-        assertThat(plan).singleElement()
+        assertThat(plan)
+                .singleElement()
                 .extracting(PlannedSettingAction::action)
                 .isEqualTo(PlannedSettingAction.Action.DELETE);
         verify(settingService).delete(TENANT, SettingService.SCOPE_PROJECT, PROJECT, KEY);
@@ -91,14 +90,13 @@ class SettingFormServiceEmptyValueTest {
         liveValue(PROJECT, null);
         liveValue(TENANT_PROJECT, null);
 
-        List<PlannedSettingAction> plan = service.apply(
-                form(), Map.of("baseUrl", ""), TENANT, PROJECT, "alice", "en");
+        List<PlannedSettingAction> plan = service.apply(form(), Map.of("baseUrl", ""), TENANT, PROJECT, "alice", "en");
 
-        assertThat(plan).singleElement()
+        assertThat(plan)
+                .singleElement()
                 .extracting(PlannedSettingAction::action)
                 .isEqualTo(PlannedSettingAction.Action.SKIP);
-        verify(settingService, never()).set(
-                any(), any(), any(), any(), any(), any(), any());
+        verify(settingService, never()).set(any(), any(), any(), any(), any(), any(), any());
         verify(settingService, never()).delete(any(), any(), any(), any());
     }
 
@@ -109,14 +107,13 @@ class SettingFormServiceEmptyValueTest {
         liveValue(PROJECT, "");
         liveValue(TENANT_PROJECT, GATEWAY);
 
-        List<PlannedSettingAction> plan = service.apply(
-                form(), Map.of("baseUrl", ""), TENANT, PROJECT, "alice", "en");
+        List<PlannedSettingAction> plan = service.apply(form(), Map.of("baseUrl", ""), TENANT, PROJECT, "alice", "en");
 
-        assertThat(plan).singleElement()
+        assertThat(plan)
+                .singleElement()
                 .extracting(PlannedSettingAction::action)
                 .isEqualTo(PlannedSettingAction.Action.SKIP);
-        verify(settingService, never()).set(
-                any(), any(), any(), any(), any(), any(), any());
+        verify(settingService, never()).set(any(), any(), any(), any(), any(), any(), any());
         verify(settingService, never()).delete(any(), any(), any(), any());
     }
 
@@ -128,14 +125,13 @@ class SettingFormServiceEmptyValueTest {
         liveValue(PROJECT, null);
         liveValue(TENANT_PROJECT, GATEWAY);
 
-        List<PlannedSettingAction> plan = service.apply(
-                form(), Map.of(), TENANT, PROJECT, "alice", "en");
+        List<PlannedSettingAction> plan = service.apply(form(), Map.of(), TENANT, PROJECT, "alice", "en");
 
-        assertThat(plan).singleElement()
+        assertThat(plan)
+                .singleElement()
                 .extracting(PlannedSettingAction::action)
                 .isEqualTo(PlannedSettingAction.Action.SKIP);
-        verify(settingService, never()).set(
-                any(), any(), any(), any(), any(), any(), any());
+        verify(settingService, never()).set(any(), any(), any(), any(), any(), any(), any());
         verify(settingService, never()).delete(any(), any(), any(), any());
     }
 
@@ -145,8 +141,7 @@ class SettingFormServiceEmptyValueTest {
         liveValue(TENANT_PROJECT, GATEWAY);
 
         List<PlannedSettingAction> plan = service.apply(
-                form(), Map.of("baseUrl", "https://openrouter.ai/api/v1"),
-                TENANT, PROJECT, "alice", "en");
+                form(), Map.of("baseUrl", "https://openrouter.ai/api/v1"), TENANT, PROJECT, "alice", "en");
 
         assertThat(plan).singleElement().satisfies(a -> {
             assertThat(a.action()).isEqualTo(PlannedSettingAction.Action.WRITE);
@@ -157,8 +152,8 @@ class SettingFormServiceEmptyValueTest {
     // ──────────────────── helpers ────────────────────
 
     private void liveValue(String referenceId, @Nullable String value) {
-        when(settingService.getStringValue(
-                TENANT, SettingService.SCOPE_PROJECT, referenceId, KEY)).thenReturn(value);
+        when(settingService.getStringValue(TENANT, SettingService.SCOPE_PROJECT, referenceId, KEY))
+                .thenReturn(value);
     }
 
     private static ResolvedSettingForm form() {
@@ -169,9 +164,16 @@ class SettingFormServiceEmptyValueTest {
                 .bindsTo(BindsToDto.builder().key(KEY).build())
                 .build();
         return new ResolvedSettingForm(
-                "llm-setup", Map.of("en", "LLM"), Map.of("en", "LLM"),
-                null, null, SettingService.SCOPE_PROJECT,
-                List.of(field), List.of(), true, List.of("*"),
+                "llm-setup",
+                Map.of("en", "LLM"),
+                Map.of("en", "LLM"),
+                null,
+                null,
+                SettingService.SCOPE_PROJECT,
+                List.of(field),
+                List.of(),
+                true,
+                List.of("*"),
                 SettingFormSource.RESOURCE);
     }
 }

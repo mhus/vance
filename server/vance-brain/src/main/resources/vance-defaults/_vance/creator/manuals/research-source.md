@@ -81,7 +81,10 @@ Which instance serves a modality by default lives in the settings
 `research.default.<modality>` and `research.fallback.<modality>` (e.g.
 `research.default.web = serper-main`). These are plain keys — I can set
 them myself with `setting_set` when the user is ADMIN on the target
-scope; otherwise name the keys to the operator. The keyless sources
+scope; otherwise name the keys to the operator, and point at the
+**research-routing** settings form (tenant scope): it offers the configured
+sources as pickers and pins defaults and fallbacks per modality without
+anyone typing instance ids. The keyless sources
 are routed out of the box, so a new keyless source is found by
 `research_search` without any routing change; a new keyed source usually
 wants `research.default.web` pointed at it.

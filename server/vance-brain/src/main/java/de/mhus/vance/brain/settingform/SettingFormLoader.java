@@ -400,11 +400,14 @@ public class SettingFormLoader {
         String writeIf = optionalString(raw.get("writeIf"));
         String choicesFrom = optionalString(raw.get("choicesFrom"));
         if (choicesFrom != null) {
-            if (!"ai-models".equals(choicesFrom)
-                    && !"ai-image-models".equals(choicesFrom)
-                    && !"ai-fim-models".equals(choicesFrom)) {
+            List<String> knownChoicesFrom = List.of(
+                    SettingFormService.CHOICES_FROM_AI_MODELS,
+                    SettingFormService.CHOICES_FROM_AI_IMAGE_MODELS,
+                    SettingFormService.CHOICES_FROM_AI_FIM_MODELS,
+                    SettingFormService.CHOICES_FROM_RESEARCH_SOURCES);
+            if (!knownChoicesFrom.contains(choicesFrom)) {
                 throw new IllegalStateException("'" + path + ".choicesFrom' unknown source: '" + choicesFrom
-                        + "' (known: 'ai-models', 'ai-image-models', 'ai-fim-models')");
+                        + "' (known: " + knownChoicesFrom + ")");
             }
             if (!choices.isEmpty()) {
                 throw new IllegalStateException("'" + path + "' declares both 'choices' and 'choicesFrom' — pick one");

@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.nutrimat;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -88,6 +89,29 @@ class NutrimatFrameworkTest {
     }
 
     @Test
+    void exhaustedStopsUntilUserInput_defaultsToFordBehaviour() {
+        // janx keeps the Ford baseline: a primary hard failure parks BLOCKED
+        // and any pending message may wake it.
+        assertThat(new GoodNature().exhaustedStopsUntilUserInput()).isFalse();
+    }
+
+    @Test
+    void awaitingUserContinue_readsThePersistedStateFlag() {
+        // The continue-gate marker lives in nutrimatState — tolerant read,
+        // absent flag (or absent state) means "not parked".
+        assertThat(AbstractNutrimat.awaitingUserContinue(new ThinkProcessDocument()))
+                .isFalse();
+
+        ThinkProcessDocument parked = new ThinkProcessDocument();
+        parked.setEngineParams(java.util.Map.of("nutrimatState", java.util.Map.of("awaitingUserContinue", true)));
+        assertThat(AbstractNutrimat.awaitingUserContinue(parked)).isTrue();
+
+        ThinkProcessDocument past = new ThinkProcessDocument();
+        past.setEngineParams(
+                java.util.Map.of("nutrimatState", java.util.Map.of("awaitingUserContinue", false, "turns", 3)));
+        assertThat(AbstractNutrimat.awaitingUserContinue(past)).isFalse();
+    }
+
     void workerContract_isFordShaped() {
         AbstractNutrimat engine = new GoodNature();
         // The closed outside: orchestrators steer synchronously and get one

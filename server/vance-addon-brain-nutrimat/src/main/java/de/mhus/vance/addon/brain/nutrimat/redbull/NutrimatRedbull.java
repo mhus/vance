@@ -98,6 +98,18 @@ public class NutrimatRedbull extends AbstractNutrimat {
         return "redbull";
     }
 
+    /**
+     * redbull's exhausted is a hard stop even on a primary: background events
+     * (exec_finished & friends) are discarded after exhaustion — only an
+     * explicit user message ("continue") starts the next loop run. Without
+     * this gate the BLOCKED auto-wakeup would let stale events bury the
+     * failure under follow-up loops (observed live, 2026-10-04).
+     */
+    @Override
+    protected boolean exhaustedStopsUntilUserInput() {
+        return true;
+    }
+
     @Override
     protected String loopType() {
         return "hard budget — exhaustion raises the exhausted error (no judge, no rescue)";

@@ -35,6 +35,14 @@ class NutrimatRedbullTest {
     }
 
     @Test
+    void exhaustedStopsUntilUserInput_isTrue() {
+        // The live finding 2026-10-04: without the gate, a BLOCKED primary was
+        // re-spun by stale exec_finished events — the exhausted error got
+        // buried under follow-up loops. redbull hard-stops until the user
+        // speaks ("continue").
+        assertThat(engine.exhaustedStopsUntilUserInput()).isTrue();
+    }
+
     void onLlmFailure_neverRescuesPartialWork() {
         // janx would carry "partial progress" out as the reply; redbull
         // surfaces the failure verbatim instead.

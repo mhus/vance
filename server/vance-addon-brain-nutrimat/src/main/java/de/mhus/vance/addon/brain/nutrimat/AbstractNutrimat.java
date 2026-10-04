@@ -439,6 +439,27 @@ public abstract class AbstractNutrimat implements ThinkEngine {
         // Fail-open; guard-injected turns fire nothing.
         guardService.guardsOnTurnStart(process, inbox);
         boolean awaitingUserInput = false;
+
+        // Exhausted hard-stop semantics (redbull): once a PRIMARY hit its
+        // hard budget, the loop's work is OVER — background events that pile
+        // up afterwards (exec_finished & friends) must not spin another
+        // loop. Only an explicit user message (e.g. "continue") starts the
+        // next loop run. See the awaitingUserContinue flag in nutrimatState.
+        if (exhaustedStopsUntilUserInput()
+                && process.getParentProcessId() == null
+                && awaitingUserContinue(process)
+                && inbox.stream().noneMatch(m -> m instanceof SteerMessage.UserChatInput)) {
+            narrate(
+                    ctx,
+                    process,
+                    "loop closed after exhausted — discarded " + inbox.size()
+                            + " background event(s); send a message ('continue') to start the next loop");
+            // Park the process: work is over until the user speaks. This
+            // return path is outside the try/finally below — set the status
+            // explicitly (the outcome's awaitingUserInput=true mirrors it).
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
+            return TurnOutcome.terminal("", true);
+        }
         // True iff this turn exited via a hard-failure path (budget
         // exhausted / LLM collapse / exhausted exception). For sub-process
         // workers this triggers a terminal close — a worker that cannot make
@@ -560,6 +581,13 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                         + "treat it as done, and do not assume the remaining steps ran. To "
                         + "carry the task further, start a fresh worker (tighter scope or a "
                         + "higher step limit).\n\nPartial progress:\n\n" + finalText;
+            }
+            // Primary continue-gate hint: tell the user how the closed loop
+            // reopens — background events are being discarded until they speak.
+            if (hardFailure && process.getParentProcessId() == null && exhaustedStopsUntilUserInput()) {
+                finalText = finalText
+                        + "\n\nThe loop is closed — background events are ignored from here. "
+                        + "Send a message (e.g. 'continue') to start the next loop run.";
             }
 
             ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
@@ -890,6 +918,33 @@ public abstract class AbstractNutrimat implements ThinkEngine {
      * recovery as the exhausted default. A nature that wants the failure to
      * surface verbatim throws {@link NutrimatExhaustedException} here too.
      */
+    /**
+     * Whether a hard-failure turn (exhausted / collapse) ends the process's
+     * work for good on a <b>primary</b>: background events that arrive
+     * afterwards (exec_finished & friends) are discarded instead of spinning
+     * another loop, and only an explicit user message — e.g. "continue" —
+     * starts the next loop run (which then runs until it exhausts again).
+     *
+     * <p>Default {@code false} (Ford-like: a primary hard failure parks
+     * BLOCKED and every pending message wakes it). {@code redbull} overrides
+     * to {@code true} — its "Hard stop by design" promise must survive the
+     * wake-up mechanics. {@code mate} keeps the default: its exhausted path
+     * is judge-mediated (extend or synthesize), not a hard stop.
+     */
+    protected boolean exhaustedStopsUntilUserInput() {
+        return false;
+    }
+
+    /**
+     * Whether the process is parked in the continue-gate: the last
+     * hard-failure turn set {@code nutrimatState.awaitingUserContinue}.
+     */
+    static boolean awaitingUserContinue(ThinkProcessDocument process) {
+        return process.getEngineParams() != null
+                && process.getEngineParams().get("nutrimatState") instanceof Map<?, ?> state
+                && Boolean.TRUE.equals(state.get("awaitingUserContinue"));
+    }
+
     protected ExhaustionDecision onLlmFailure(LoopState state, RuntimeException error) {
         if (!state.bestFreeText().isBlank()) {
             log.warn(
@@ -984,6 +1039,12 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             state.put("stopCandidates", stats.stopCandidates);
             state.put("extensions", stats.extensions);
             state.put("turns", turns);
+            // redbull's continue-gate: a hard-failure turn on a primary parks the
+            // process "awaiting user input" — background events are discarded
+            // until an explicit user message starts the next loop run.
+            state.put(
+                    "awaitingUserContinue",
+                    exhaustedStopsUntilUserInput() && process.getParentProcessId() == null && outcome.recovered());
             params.put("nutrimatState", state);
             process.setEngineParams(params);
             thinkProcessService.replaceEngineParams(process.getId(), params);

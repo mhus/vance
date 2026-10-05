@@ -12,6 +12,7 @@ import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolTeasers;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -743,15 +744,16 @@ public final class ContextToolsApi implements ToolBus {
     }
 
     private Map<String, Object> doInvoke(String name, Map<String, Object> params, boolean delegated) {
-        if (delegated) listener.beforeDelegate(name);
-        else listener.before(name);
+        String callTeaser = ToolTeasers.describe(name, params);
+        if (delegated) listener.beforeDelegate(name, callTeaser);
+        else listener.before(name, callTeaser);
         long startMs = System.currentTimeMillis();
         // Resolve once up-front so the history hook can inspect the
         // tool's labels without a second resolve. Cheap (map lookup).
         Optional<ToolDispatcher.Resolved> resolved = dispatcher.resolve(name, ctx);
         try {
             Map<String, Object> result = harvestImages(name, dispatcher.invoke(name, params, ctx, this));
-            notifyAfter(delegated, name, System.currentTimeMillis() - startMs, null);
+            notifyAfter(delegated, name, System.currentTimeMillis() - startMs, ToolTeasers.outcome(name, result), null);
             // Sliding TTL: bump the activation timestamp on every use of
             // an activated deferred tool so the discovery cycle doesn't
             // rip a frequently-used tool out from under the LLM.
@@ -776,7 +778,7 @@ public final class ContextToolsApi implements ToolBus {
                     .orElse(false);
             return bypass ? result : maybeTruncateResult(result);
         } catch (RuntimeException e) {
-            notifyAfter(delegated, name, System.currentTimeMillis() - startMs, e);
+            notifyAfter(delegated, name, System.currentTimeMillis() - startMs, null, e);
             emitHistoryTags(historyTagBuilder.onError(name));
             // The ERROR tag alone only says "something failed in this
             // turn". Tool results are not persisted, so without the
@@ -839,9 +841,13 @@ public final class ContextToolsApi implements ToolBus {
     }
 
     private void notifyAfter(
-            boolean delegated, String name, long elapsedMs, @org.jspecify.annotations.Nullable Throwable error) {
-        if (delegated) listener.afterDelegate(name, elapsedMs, error);
-        else listener.after(name, elapsedMs, error);
+            boolean delegated,
+            String name,
+            long elapsedMs,
+            @org.jspecify.annotations.Nullable String outcomeTeaser,
+            @org.jspecify.annotations.Nullable Throwable error) {
+        if (delegated) listener.afterDelegate(name, elapsedMs, outcomeTeaser, error);
+        else listener.after(name, elapsedMs, outcomeTeaser, error);
     }
 
     /**

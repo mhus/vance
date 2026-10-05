@@ -6,10 +6,10 @@ import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.SourceLanguage;
 import de.mhus.vance.foot.ui.StyleParser;
 import de.mhus.vance.foot.ui.Verbosity;
+import de.mhus.vance.toolpack.ToolTeasers;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
@@ -206,113 +206,20 @@ public class ClientToolPrettyRenderer {
 
     /**
      * Builds the param-summary string for one tool call, capped at
-     * {@code maxLen} visible characters. The cap is the *whole* summary's
-     * budget — when a tool composes multiple fragments (path + pattern
-     * etc.) the leading fragments stay readable and the long ones get
-     * the ellipsis.
+     * {@code maxLen} visible characters. The subject line itself comes
+     * from {@code ToolTeasers} (vance-toolpack) — the same authority the
+     * brain ships over the progress channel — with the local
+     * {@code shortDescribe} fallback for tools that have no subject.
      */
     private static String summariseParams(String toolName, Map<String, Object> params, int maxLen) {
         if (params == null || params.isEmpty()) return "";
-        String raw =
-                switch (toolName) {
-                    case "client_file_read", "client_file_list", "client_file_count", "client_file_head_tail" ->
-                        pathOnly(params);
-                    case "client_file_write" -> {
-                        String path = string(params, "path");
-                        Object content = params.get("content");
-                        int chars = content instanceof String s ? s.length() : 0;
-                        yield path + (chars > 0 ? ", " + chars + " chars" : "");
-                    }
-                    case "client_file_edit" -> {
-                        String path = string(params, "path");
-                        Object oldS = params.get("oldText");
-                        int oldLen = oldS instanceof String s ? s.length() : 0;
-                        yield path + (oldLen > 0 ? ", replace " + oldLen + " chars" : "");
-                    }
-                    case "client_file_grep" -> {
-                        String pattern = string(params, "pattern");
-                        String path = string(params, "path");
-                        yield (pattern.isEmpty() ? "" : "/" + pattern + "/ ") + (path.isEmpty() ? "." : path);
-                    }
-                    case "client_file_find" -> {
-                        String glob = string(params, "pathGlob");
-                        String path = string(params, "path");
-                        yield (glob.isEmpty() ? "*" : glob) + " in " + (path.isEmpty() ? "." : path);
-                    }
-                    case "client_exec_run" -> oneLine(string(params, "command"));
-                    case "client_exec_status", "client_exec_stat", "client_exec_kill", "client_exec_tail" ->
-                        string(params, "id");
-                    case "client_javascript" -> oneLine(string(params, "code"));
-                    default -> shortDescribe(params, maxLen);
-                };
-        return truncate(raw, maxLen);
+        String teaser = ToolTeasers.call(toolName, params);
+        return truncate(teaser == null ? shortDescribe(params, maxLen) : teaser, maxLen);
     }
 
     private static String summariseResult(String toolName, Map<String, Object> r) {
-        if (r == null) return "ok";
-        return switch (toolName) {
-            case "client_file_read" -> {
-                Object total = r.get("totalChars");
-                Object trunc = r.get("truncated");
-                yield "Read " + total + " chars" + (Boolean.TRUE.equals(trunc) ? " (truncated)" : "");
-            }
-            case "client_file_write" -> {
-                Object chars = r.get("chars");
-                yield "Wrote " + chars + " chars";
-            }
-            case "client_file_edit" -> {
-                Object replaced = r.get("replaced");
-                Object total = r.get("totalChars");
-                yield "Edited " + replaced + " occurrence(s), " + total + " chars total";
-            }
-            case "client_file_list" -> {
-                Object count = r.get("count");
-                yield "Listed " + count + " entries";
-            }
-            case "client_file_grep" -> {
-                Object matches = r.get("matchCount");
-                Object scanned = r.get("filesScanned");
-                yield "Matched " + matches + " (scanned " + scanned + " files)";
-            }
-            case "client_file_find" -> {
-                Object matches = r.get("matchCount");
-                Object returned = r.get("returned");
-                yield "Found " + matches
-                        + (matches != null && matches.equals(returned) ? "" : ", returned " + returned);
-            }
-            case "client_file_count" -> {
-                Object lines = r.get("lines");
-                Object chars = r.get("chars");
-                yield lines + " lines, " + chars + " chars";
-            }
-            case "client_file_head_tail" -> {
-                Object total = r.get("totalLines");
-                List<?> rows = r.get("head") instanceof List<?> h ? h : r.get("tail") instanceof List<?> t ? t : null;
-                yield (rows == null ? 0 : rows.size()) + " rows of " + total + " total";
-            }
-            case "client_exec_run", "client_exec_status" -> {
-                Object status = r.get("status");
-                Object exit = r.get("exitCode");
-                Object dur = r.get("durationMs");
-                StringBuilder sb = new StringBuilder();
-                sb.append(status);
-                if (exit != null) sb.append(" (exit ").append(exit).append(")");
-                if (dur != null) sb.append(", ").append(dur).append(" ms");
-                yield sb.toString();
-            }
-            case "client_javascript" -> {
-                if (r.containsKey("error")) {
-                    yield "Error: " + r.get("error");
-                }
-                Object dur = r.get("durationMs");
-                yield "ok" + (dur == null ? "" : " (" + dur + " ms)");
-            }
-            default -> "ok";
-        };
-    }
-
-    private static String pathOnly(Map<String, Object> params) {
-        return string(params, "path");
+        String outcome = ToolTeasers.outcome(toolName, r);
+        return outcome == null ? "ok" : outcome;
     }
 
     private static String string(Map<String, Object> params, String key) {

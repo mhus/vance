@@ -25,8 +25,7 @@ import org.junit.jupiter.api.Test;
 class ContextToolsApiDelegateListenerTest {
 
     private final ToolDispatcher dispatcher = mock(ToolDispatcher.class);
-    private final ToolInvocationContext ctx = new ToolInvocationContext(
-            "acme", "proj", "sess", "proc", "u");
+    private final ToolInvocationContext ctx = new ToolInvocationContext("acme", "proj", "sess", "proc", "u");
 
     @Test
     void llmCall_reportsToTheNormalHooks() {
@@ -47,8 +46,8 @@ class ContextToolsApiDelegateListenerTest {
 
         api.invokeDelegate("client_file_read", Map.of());
 
-        assertThat(listener.events).containsExactly(
-                "beforeDelegate:client_file_read", "afterDelegate:client_file_read");
+        assertThat(listener.events)
+                .containsExactly("beforeDelegate:client_file_read", "afterDelegate:client_file_read");
     }
 
     @Test
@@ -83,23 +82,50 @@ class ContextToolsApiDelegateListenerTest {
 
     private void stubTool(String name) {
         Tool tool = new Tool() {
-            @Override public String name() { return name; }
-            @Override public String description() { return "stub " + name; }
-            @Override public boolean primary() { return true; }
-            @Override public Map<String, Object> paramsSchema() { return Map.of(); }
-            @Override public Map<String, Object> invoke(
-                    Map<String, Object> p, ToolInvocationContext c) { return Map.of(); }
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public String description() {
+                return "stub " + name;
+            }
+
+            @Override
+            public boolean primary() {
+                return true;
+            }
+
+            @Override
+            public Map<String, Object> paramsSchema() {
+                return Map.of();
+            }
+
+            @Override
+            public Map<String, Object> invoke(Map<String, Object> p, ToolInvocationContext c) {
+                return Map.of();
+            }
         };
-        when(dispatcher.resolve(eq(name), any())).thenReturn(
-                Optional.of(new ToolDispatcher.Resolved(tool, source(name, tool))));
+        when(dispatcher.resolve(eq(name), any()))
+                .thenReturn(Optional.of(new ToolDispatcher.Resolved(tool, source(name, tool))));
         when(dispatcher.invoke(eq(name), any(), any(), any())).thenReturn(Map.of("ok", true));
     }
 
     private static de.mhus.vance.brain.tools.ToolSource source(String name, Tool tool) {
         return new de.mhus.vance.brain.tools.ToolSource() {
-            @Override public String sourceId() { return "stub"; }
-            @Override public List<Tool> tools(ToolInvocationContext c) { return List.of(tool); }
-            @Override public Optional<Tool> find(String n, ToolInvocationContext c) {
+            @Override
+            public String sourceId() {
+                return "stub";
+            }
+
+            @Override
+            public List<Tool> tools(ToolInvocationContext c) {
+                return List.of(tool);
+            }
+
+            @Override
+            public Optional<Tool> find(String n, ToolInvocationContext c) {
                 return n.equals(name) ? Optional.of(tool) : Optional.empty();
             }
         };
@@ -117,20 +143,24 @@ class ContextToolsApiDelegateListenerTest {
     private static final class RecordingListener implements ToolInvocationListener {
         final List<String> events = new ArrayList<>();
 
-        @Override public void before(String toolName) {
+        @Override
+        public void before(String toolName, @Nullable String callTeaser) {
             events.add("before:" + toolName);
         }
 
-        @Override public void after(String toolName, long elapsedMs, @Nullable Throwable error) {
+        @Override
+        public void after(String toolName, long elapsedMs, @Nullable String outcomeTeaser, @Nullable Throwable error) {
             events.add("after:" + toolName);
         }
 
-        @Override public void beforeDelegate(String toolName) {
+        @Override
+        public void beforeDelegate(String toolName, @Nullable String callTeaser) {
             events.add("beforeDelegate:" + toolName);
         }
 
-        @Override public void afterDelegate(
-                String toolName, long elapsedMs, @Nullable Throwable error) {
+        @Override
+        public void afterDelegate(
+                String toolName, long elapsedMs, @Nullable String outcomeTeaser, @Nullable Throwable error) {
             events.add("afterDelegate:" + toolName);
         }
     }

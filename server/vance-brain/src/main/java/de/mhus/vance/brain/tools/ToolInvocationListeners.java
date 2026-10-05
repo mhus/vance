@@ -34,31 +34,31 @@ public final class ToolInvocationListeners {
         List<ToolInvocationListener> chain = List.of(listeners);
         return new ToolInvocationListener() {
             @Override
-            public void before(String toolName) {
-                fanOut(chain, l -> l.before(toolName));
+            public void before(String toolName, @Nullable String callTeaser) {
+                fanOut(chain, l -> l.before(toolName, callTeaser));
             }
 
             @Override
-            public void after(String toolName, long elapsedMs, @Nullable Throwable error) {
-                fanOut(chain, l -> l.after(toolName, elapsedMs, error));
+            public void after(
+                    String toolName, long elapsedMs, @Nullable String outcomeTeaser, @Nullable Throwable error) {
+                fanOut(chain, l -> l.after(toolName, elapsedMs, outcomeTeaser, error));
             }
 
             @Override
-            public void beforeDelegate(String toolName) {
-                fanOut(chain, l -> l.beforeDelegate(toolName));
+            public void beforeDelegate(String toolName, @Nullable String callTeaser) {
+                fanOut(chain, l -> l.beforeDelegate(toolName, callTeaser));
             }
 
             @Override
             public void afterDelegate(
-                    String toolName, long elapsedMs, @Nullable Throwable error) {
-                fanOut(chain, l -> l.afterDelegate(toolName, elapsedMs, error));
+                    String toolName, long elapsedMs, @Nullable String outcomeTeaser, @Nullable Throwable error) {
+                fanOut(chain, l -> l.afterDelegate(toolName, elapsedMs, outcomeTeaser, error));
             }
         };
     }
 
     /** Calls every listener, swallowing individual observer failures. */
-    private static void fanOut(
-            List<ToolInvocationListener> chain, Consumer<ToolInvocationListener> call) {
+    private static void fanOut(List<ToolInvocationListener> chain, Consumer<ToolInvocationListener> call) {
         for (ToolInvocationListener l : chain) {
             try {
                 call.accept(l);
@@ -96,25 +96,25 @@ public final class ToolInvocationListeners {
             @Nullable String recipeName) {
         return new ToolInvocationListener() {
             @Override
-            public void before(String toolName) {
+            public void before(String toolName, @Nullable String callTeaser) {
                 // nothing to do — counting happens once the call landed
             }
 
             @Override
-            public void after(String toolName, long elapsedMs, @Nullable Throwable error) {
+            public void after(
+                    String toolName, long elapsedMs, @Nullable String outcomeTeaser, @Nullable Throwable error) {
                 if (error != null) return;
-                usageService.recordCall(
-                        tenantId, projectId, recipeName, toolName, ToolFamily.of(toolName));
+                usageService.recordCall(tenantId, projectId, recipeName, toolName, ToolFamily.of(toolName));
             }
 
             @Override
-            public void beforeDelegate(String toolName) {
+            public void beforeDelegate(String toolName, @Nullable String callTeaser) {
                 // no-op: the wrapper's own call is the demand signal
             }
 
             @Override
             public void afterDelegate(
-                    String toolName, long elapsedMs, @Nullable Throwable error) {
+                    String toolName, long elapsedMs, @Nullable String outcomeTeaser, @Nullable Throwable error) {
                 // no-op — see beforeDelegate
             }
         };

@@ -11,6 +11,7 @@ export interface StatusPayload {
   text: string;
   detail?: string;
   tool?: string;
+  teaser?: string;
   failed?: boolean;
   operationId?: string;
   usage?: UsageDelta;

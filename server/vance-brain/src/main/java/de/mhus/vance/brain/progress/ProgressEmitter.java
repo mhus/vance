@@ -54,9 +54,8 @@ public class ProgressEmitter {
         if (!shouldEmit(process, ProgressKind.METRICS, null)) {
             return;
         }
-        ProcessProgressNotification msg = envelope(process, ProgressKind.METRICS)
-                .metrics(payload)
-                .build();
+        ProcessProgressNotification msg =
+                envelope(process, ProgressKind.METRICS).metrics(payload).build();
         publish(process, msg);
     }
 
@@ -64,9 +63,8 @@ public class ProgressEmitter {
         if (!shouldEmit(process, ProgressKind.PLAN, null)) {
             return;
         }
-        ProcessProgressNotification msg = envelope(process, ProgressKind.PLAN)
-                .plan(payload)
-                .build();
+        ProcessProgressNotification msg =
+                envelope(process, ProgressKind.PLAN).plan(payload).build();
         publish(process, msg);
     }
 
@@ -74,9 +72,8 @@ public class ProgressEmitter {
         if (!shouldEmit(process, ProgressKind.STATUS, payload.getTag())) {
             return;
         }
-        ProcessProgressNotification msg = envelope(process, ProgressKind.STATUS)
-                .status(payload)
-                .build();
+        ProcessProgressNotification msg =
+                envelope(process, ProgressKind.STATUS).status(payload).build();
         publish(process, msg);
     }
 
@@ -131,9 +128,8 @@ public class ProgressEmitter {
         //    independent and always fires when a parent exists, because
         //    it is the load-bearing parent-notification path, not UI).
         if (shouldEmit(process, ProgressKind.REPLY, null)) {
-            ProcessProgressNotification msg = envelope(process, ProgressKind.REPLY)
-                    .reply(replyPayload)
-                    .build();
+            ProcessProgressNotification msg =
+                    envelope(process, ProgressKind.REPLY).reply(replyPayload).build();
             publish(process, msg);
         }
         // b) Parent-inbox routing — REPLY is the only kind that flows up.
@@ -145,20 +141,24 @@ public class ProgressEmitter {
                 .type(PendingMessageType.REPLY)
                 .at(Instant.now())
                 .sourceProcessId(process.getId())
-                .fromUser(process.getName())   // worker name surfaces to the parent
+                .fromUser(process.getName()) // worker name surfaces to the parent
                 .content(content)
                 .payload(payload)
                 .inResponseToAt(inResponseToAt)
                 .idempotencyKey(UUID.randomUUID().toString())
                 .build();
-        boolean ok = messageRouterProvider.getObject()
-                .dispatch(process.getId(), parentId, doc);
+        boolean ok = messageRouterProvider.getObject().dispatch(process.getId(), parentId, doc);
         if (!ok) {
-            log.warn("Reply dropped — parent process not found / cross-pod push failed parent='{}' child='{}'",
-                    parentId, process.getId());
+            log.warn(
+                    "Reply dropped — parent process not found / cross-pod push failed parent='{}' child='{}'",
+                    parentId,
+                    process.getId());
         } else {
-            log.debug("Reply queued parent='{}' child='{}' content-length={}",
-                    parentId, process.getId(), content.length());
+            log.debug(
+                    "Reply queued parent='{}' child='{}' content-length={}",
+                    parentId,
+                    process.getId(),
+                    content.length());
         }
     }
 
@@ -183,10 +183,7 @@ public class ProgressEmitter {
      *
      * <p>Blank content is silently dropped (mirrors {@link #emitReply}).
      */
-    public void emitInterimReply(
-            ThinkProcessDocument process,
-            String content,
-            @Nullable Instant inResponseToAt) {
+    public void emitInterimReply(ThinkProcessDocument process, String content, @Nullable Instant inResponseToAt) {
         if (content == null || content.isBlank()) {
             return;
         }
@@ -198,9 +195,8 @@ public class ProgressEmitter {
                 .inResponseToAt(inResponseToAt)
                 .interim(true)
                 .build();
-        ProcessProgressNotification msg = envelope(process, ProgressKind.REPLY)
-                .reply(replyPayload)
-                .build();
+        ProcessProgressNotification msg =
+                envelope(process, ProgressKind.REPLY).reply(replyPayload).build();
         publish(process, msg);
     }
 
@@ -217,16 +213,20 @@ public class ProgressEmitter {
      *
      * @param tool bare tool name for tool-boundary pings, {@code null} for
      *             every other tag (see {@link StatusPayload#getTool()})
+     * @param teaser curated call teaser (see {@link StatusPayload#getTeaser()})
      */
     public String openOperation(
-            ThinkProcessDocument process, StatusTag tag, String text, @Nullable String tool) {
+            ThinkProcessDocument process, StatusTag tag, String text, @Nullable String tool, @Nullable String teaser) {
         String operationId = UUID.randomUUID().toString();
-        emitStatus(process, StatusPayload.builder()
-                .tag(tag)
-                .text(text)
-                .tool(tool)
-                .operationId(operationId)
-                .build());
+        emitStatus(
+                process,
+                StatusPayload.builder()
+                        .tag(tag)
+                        .text(text)
+                        .tool(tool)
+                        .teaser(teaser)
+                        .operationId(operationId)
+                        .build());
         return operationId;
     }
 
@@ -239,6 +239,7 @@ public class ProgressEmitter {
      *
      * @param tool bare tool name for tool-boundary pings, {@code null} for
      *             every other tag (see {@link StatusPayload#getTool()})
+     * @param teaser curated outcome teaser (see {@link StatusPayload#getTeaser()})
      */
     public void closeOperation(
             ThinkProcessDocument process,
@@ -246,23 +247,28 @@ public class ProgressEmitter {
             StatusTag tag,
             String text,
             @Nullable String tool,
-            @Nullable UsageDelta usage) {
-        emitStatus(process, StatusPayload.builder()
-                .tag(tag)
-                .text(text)
-                .tool(tool)
-                // A close through this path is the success path — the
-                // failure close is built by the caller with detail+failed.
-                .failed(false)
-                .operationId(operationId)
-                .usage(usage)
-                .build());
+            @Nullable UsageDelta usage,
+            @Nullable String teaser) {
+        emitStatus(
+                process,
+                StatusPayload.builder()
+                        .tag(tag)
+                        .text(text)
+                        .tool(tool)
+                        .teaser(teaser)
+                        // A close through this path is the success path — the
+                        // failure close is built by the caller with detail+failed.
+                        .failed(false)
+                        .operationId(operationId)
+                        .usage(usage)
+                        .build());
     }
 
     // ──────────────────────────────────────────────────────────────
 
     private boolean shouldEmit(ThinkProcessDocument process, ProgressKind kind, StatusTag tag) {
-        if (process.getId() == null || process.getSessionId() == null
+        if (process.getId() == null
+                || process.getSessionId() == null
                 || process.getSessionId().isBlank()) {
             return false;
         }

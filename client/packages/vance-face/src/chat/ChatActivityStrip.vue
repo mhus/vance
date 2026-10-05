@@ -81,7 +81,9 @@ const ops = computed(() => opsNewestFirst(props.state));
 const headline = computed<string>(() => {
   const current = view.value.current;
   if (current) {
-    return current.worker ? `${current.worker} · ${current.label}` : current.label;
+    const base = current.worker ? `${current.worker} · ${current.label}` : current.label;
+    const teaser = firstLine(current.teaser);
+    return teaser ? `${base} · ${teaser}` : base;
   }
   // Parked with nothing running — the wait IS the headline. This is the gate
   // case (Vogon goes BLOCKED and yields), where no op will ever follow to
@@ -133,6 +135,19 @@ function opLabel(op: ActivityOp): string {
   return op.worker ? `${op.worker} · ${op.label}` : op.label;
 }
 
+/** First line of a possibly multi-line teaser — the subject line. */
+function firstLine(teaser: string | undefined): string {
+  return teaser ? teaser.split('\n', 1)[0] : '';
+}
+
+/**
+ * What to show under an op: the call teaser while it runs (what is being
+ * touched), the outcome teaser once it closed (what happened).
+ */
+function opTeaser(op: ActivityOp): string | null {
+  const teaser = op.endedAt === undefined ? op.teaser : (op.outcome ?? op.teaser);
+  return teaser ?? null;
+}
 function opMarker(op: ActivityOp): string {
   if (op.endedAt === undefined) return '⟳';
   if (op.failed) return '⚠';
@@ -171,6 +186,10 @@ function opElapsedLabel(op: ActivityOp): string {
           <span class="ml-auto shrink-0 opacity-60 tabular-nums">{{ opElapsedLabel(op) }}</span>
         </div>
         <div v-if="op.detail" class="pl-5 opacity-60 break-words">{{ op.detail }}</div>
+        <div
+          v-if="opTeaser(op)"
+          class="pl-5 opacity-60 font-mono whitespace-pre-line break-words"
+        >{{ opTeaser(op) }}</div>
       </li>
     </ol>
 

@@ -43,6 +43,21 @@ public class StatusPayload {
     private @Nullable String tool;
 
     /**
+     * Short human-readable teaser of the call, distilled from the tool's
+     * parameters — e.g. {@code "src/Main.java, 42 lines, 1234 chars"} with
+     * a capped preview block of the written lines. On close-pings
+     * ({@link StatusTag#TOOL_END}) the same field carries the outcome
+     * teaser ("Wrote 1234 chars").
+     *
+     * <p>Produced by {@code ToolTeasers} (vance-toolpack), which caps it
+     * at a few lines and never echoes raw parameters or file contents.
+     * This is a teaser on the wire, not the payload: clients render it
+     * as-is and must not parse it. {@code null} for tools without a
+     * meaningful subject and for non-tool pings.
+     */
+    private @Nullable String teaser;
+
+    /**
      * {@code true} on a close-ping whose operation ended in an error.
      * Deliberately three-state: {@code null} means "not applicable" (open
      * pings, one-shot pings), so a client cannot mistake the absence of a

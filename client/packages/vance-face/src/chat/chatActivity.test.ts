@@ -24,6 +24,7 @@ function status(
     tool?: string;
     text?: string;
     operationId?: string;
+    teaser?: string;
     detail?: string;
     failed?: boolean;
     elapsedMs?: number;
@@ -44,6 +45,7 @@ function status(
       text: extra.text ?? `${tag} ping`,
       tool: extra.tool,
       operationId: extra.operationId,
+      teaser: extra.teaser,
       detail: extra.detail,
       failed: extra.failed,
       usage: extra.elapsedMs === undefined
@@ -65,6 +67,38 @@ function feed(
 }
 
 describe('applyProgress', () => {
+  it('carries the call teaser on the open ping and the outcome on the close', () => {
+    const state = createActivityState();
+    feed(state, [
+      [status('TOOL_START', {
+        tool: 'file_write',
+        operationId: 'op-w',
+        teaser: 'a.txt, 2 lines, 7 chars\n+ one\n+ two',
+      }), 1_000],
+      [status('TOOL_END', {
+        tool: 'file_write',
+        operationId: 'op-w',
+        teaser: 'Wrote 7 chars',
+        elapsedMs: 5,
+      }), 1_200],
+    ]);
+
+    expect(state.ops[0]).toMatchObject({
+      teaser: 'a.txt, 2 lines, 7 chars\n+ one\n+ two',
+      outcome: 'Wrote 7 chars',
+    });
+  });
+
+  it('keeps the outcome teaser on a close without a matching open', () => {
+    const state = createActivityState();
+    feed(state, [
+      [status('TOOL_END', { tool: 'file_write', operationId: 'op-x', teaser: 'Wrote 7 chars' }), 1_000],
+    ]);
+
+    expect(state.ops[0]).toMatchObject({ label: 'file_write', outcome: 'Wrote 7 chars' });
+    expect(state.ops[0].teaser).toBeUndefined();
+  });
+
   it('pairs a tool start with its close via operationId', () => {
     const state = createActivityState();
     feed(state, [

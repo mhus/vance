@@ -64,6 +64,15 @@ export interface ActivityOp {
   /** Longer prose — the ping's text for one-shots, the error cause for failures. */
   detail?: string;
   /**
+   * Call teaser distilled server-side from the tool's params — what the
+   * call touches ("src/Main.java, 42 lines, 1234 chars"), optionally with
+   * a multi-line preview block of the written lines. The first line is
+   * the subject; expanded views may render the block as-is.
+   */
+  teaser?: string;
+  /** Outcome teaser from the close ping ("Wrote 1234 chars"), once closed. */
+  outcome?: string;
+  /**
    * Emitting process name, but only when it is *not* the chat process —
    * a worker's tool calls are the user's progress too, and hiding whose
    * they are would make the list read as one confused agent.
@@ -250,6 +259,7 @@ export function applyProgress(
       id: event.status.operationId ?? `op-${++state.seq}`,
       kind: 'tool',
       label: event.status.tool ?? event.status.text,
+      teaser: event.status.teaser ?? undefined,
       worker,
       startedAt: now,
     };
@@ -274,6 +284,9 @@ export function applyProgress(
       startedAt: now,
     };
     op.endedAt = now;
+    // The close ping carries the outcome teaser — on a synthesised entry
+    // (no matching open) it is all we know about the call.
+    op.outcome = event.status.teaser ?? undefined;
     op.elapsedMs = event.status.usage?.elapsedMs ?? undefined;
     op.failed = event.status.failed === true;
     if (op.failed && event.status.detail) op.detail = event.status.detail;

@@ -18,12 +18,24 @@ import org.springframework.stereotype.Component;
  * carrying the per-tool {@link UsageDelta} (token delta read from
  * {@link LlmCallTracker}, wall-clock from the listener's {@code elapsedMs}).
  *
+ * <p>The pings carry the curated <em>teaser</em> (call subject on the
+ * open ping, outcome summary on the close ping) — that is what the web
+ * UI shows so the user knows which file a call touches without the
+ * params ever crossing the wire.
+ *
  * <p>One listener instance per (process, lane-turn) — captured into the
  * {@code ContextToolsApi} that's handed to the engine for the call. The
  * listener keeps a per-instance frame stack so nested tool dispatches
  * (tool-A invokes tool-B) line up correctly; the surrounding tool layer
  * still calls {@code before}/{@code after} sequentially per call, so the
  * stack stays shallow in practice.
+ *
+ * <p><b>Delegated legs are deliberately silent.</b> A wrapper call
+ * ({@code file_read}) dispatches to its backend ({@code client_file_read})
+ * through {@code invokeDelegate}; by contract that leg is always nested
+ * inside the wrapper's own dispatch, whose ping already names the subject.
+ * Emitting the backend leg too would put an identical second line into
+ * the user's activity list for every single call.
  */
 @Component
 @RequiredArgsConstructor
@@ -39,36 +51,42 @@ public class ProgressToolListener {
         Deque<OpFrame> stack = new ArrayDeque<>();
         return new ToolInvocationListener() {
             @Override
-            public void before(String toolName) {
+            public void before(String toolName, @Nullable String callTeaser) {
                 String operationId = emitter.openOperation(
-                        process, StatusTag.TOOL_START, "Calling tool: " + toolName, toolName);
+                        process, StatusTag.TOOL_START, "Calling tool: " + toolName, toolName, callTeaser);
                 stack.push(new OpFrame(operationId, llmCallTracker.snapshot(processId)));
             }
 
             @Override
-            public void after(String toolName, long elapsedMs, @Nullable Throwable error) {
+            public void after(
+                    String toolName, long elapsedMs, @Nullable String outcomeTeaser, @Nullable Throwable error) {
                 OpFrame frame = stack.pollFirst();
                 if (frame == null) {
                     // Mismatched before/after — should never happen, but
                     // degrade gracefully to an uncorrelated end-ping.
-                    emitter.emitStatus(process, StatusPayload.builder()
-                            .tag(StatusTag.TOOL_END)
-                            .text("Tool " + toolName + " done (" + elapsedMs + "ms)")
-                            .tool(toolName)
-                            .build());
+                    emitter.emitStatus(
+                            process,
+                            StatusPayload.builder()
+                                    .tag(StatusTag.TOOL_END)
+                                    .text("Tool " + toolName + " done (" + elapsedMs + "ms)")
+                                    .tool(toolName)
+                                    .teaser(outcomeTeaser)
+                                    .build());
                     return;
                 }
                 UsageDelta usage = buildUsage(processId, frame.startSnapshot, elapsedMs);
                 if (error != null) {
-                    emitter.emitStatus(process, StatusPayload.builder()
-                            .tag(StatusTag.TOOL_END)
-                            .text("Tool " + toolName + " failed (" + elapsedMs + "ms)")
-                            .detail(abbrev(error.getMessage()))
-                            .tool(toolName)
-                            .failed(true)
-                            .operationId(frame.operationId)
-                            .usage(usage)
-                            .build());
+                    emitter.emitStatus(
+                            process,
+                            StatusPayload.builder()
+                                    .tag(StatusTag.TOOL_END)
+                                    .text("Tool " + toolName + " failed (" + elapsedMs + "ms)")
+                                    .detail(abbrev(error.getMessage()))
+                                    .tool(toolName)
+                                    .failed(true)
+                                    .operationId(frame.operationId)
+                                    .usage(usage)
+                                    .build());
                     return;
                 }
                 emitter.closeOperation(
@@ -77,15 +95,24 @@ public class ProgressToolListener {
                         StatusTag.TOOL_END,
                         "Tool " + toolName + " done (" + elapsedMs + "ms)",
                         toolName,
-                        usage);
+                        usage,
+                        outcomeTeaser);
+            }
+
+            @Override
+            public void beforeDelegate(String toolName, @Nullable String callTeaser) {
+                // no-op — the wrapper's ping already covers this leg
+            }
+
+            @Override
+            public void afterDelegate(
+                    String toolName, long elapsedMs, @Nullable String outcomeTeaser, @Nullable Throwable error) {
+                // no-op — see beforeDelegate
             }
         };
     }
 
-    private UsageDelta buildUsage(
-            @Nullable String processId,
-            LlmCallTracker.Snapshot startSnapshot,
-            long elapsedMs) {
+    private UsageDelta buildUsage(@Nullable String processId, LlmCallTracker.Snapshot startSnapshot, long elapsedMs) {
         LlmCallTracker.Snapshot delta = llmCallTracker.snapshot(processId).minus(startSnapshot);
         return UsageDelta.builder()
                 .tokensIn(clampInt(delta.tokensIn()))

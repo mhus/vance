@@ -11,6 +11,7 @@ import com.anthropic.models.messages.TextDelta;
 import com.anthropic.models.messages.ThinkingDelta;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
+import de.mhus.vance.brain.ai.ModelInfo;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
@@ -41,27 +42,27 @@ public class AnthropicDirectStreamingChatModel implements StreamingChatModel {
     private final String modelName;
     private final int maxTokens;
     private final AiChatOptions options;
+    private final ModelInfo modelInfo;
     private final AnthropicDirectChatModel paramsBuilder;
 
     public AnthropicDirectStreamingChatModel(
-            AnthropicClient client, String modelName, int maxTokens, AiChatOptions options) {
+            AnthropicClient client, String modelName, int maxTokens, AiChatOptions options, ModelInfo modelInfo) {
         this.client = client;
         this.modelName = modelName;
         this.maxTokens = maxTokens;
         this.options = options;
+        this.modelInfo = modelInfo;
         // Reuse the sync model's param-building logic. It's a tiny
         // object — sharing it avoids drift between sync and streaming
         // request shapes (cache markers, beta headers, etc.).
-        this.paramsBuilder = new AnthropicDirectChatModel(
-                client, modelName, maxTokens, options);
+        this.paramsBuilder = new AnthropicDirectChatModel(client, modelName, maxTokens, options, modelInfo);
     }
 
     @Override
     public void chat(ChatRequest request, StreamingChatResponseHandler handler) {
         MessageCreateParams params = paramsBuilder.buildParams(request);
         MessageAccumulator accumulator = MessageAccumulator.create();
-        try (StreamResponse<RawMessageStreamEvent> stream =
-                     client.messages().createStreaming(params)) {
+        try (StreamResponse<RawMessageStreamEvent> stream = client.messages().createStreaming(params)) {
             stream.stream().forEach(event -> {
                 accumulator.accumulate(event);
                 forwardDelta(event, handler);
@@ -76,8 +77,7 @@ public class AnthropicDirectStreamingChatModel implements StreamingChatModel {
             ChatResponse response = AnthropicResponseMapper.toChatResponse(message);
             handler.onCompleteResponse(response);
         } catch (RuntimeException e) {
-            handler.onError(new AiChatException(
-                    "Failed to assemble Anthropic streaming response", e));
+            handler.onError(new AiChatException("Failed to assemble Anthropic streaming response", e));
         }
     }
 
@@ -89,8 +89,7 @@ public class AnthropicDirectStreamingChatModel implements StreamingChatModel {
      * input deltas, signature deltas) are accumulated into the final
      * {@link Message} but not surfaced as partials.
      */
-    private static void forwardDelta(
-            RawMessageStreamEvent event, StreamingChatResponseHandler handler) {
+    private static void forwardDelta(RawMessageStreamEvent event, StreamingChatResponseHandler handler) {
         Optional<RawContentBlockDeltaEvent> deltaEvent = event.contentBlockDelta();
         if (deltaEvent.isEmpty()) {
             return;
@@ -103,8 +102,7 @@ public class AnthropicDirectStreamingChatModel implements StreamingChatModel {
                 try {
                     handler.onPartialResponse(token);
                 } catch (RuntimeException e) {
-                    log.warn("StreamingChatResponseHandler.onPartialResponse threw: {}",
-                            e.toString());
+                    log.warn("StreamingChatResponseHandler.onPartialResponse threw: {}", e.toString());
                 }
             }
             return;
@@ -116,8 +114,7 @@ public class AnthropicDirectStreamingChatModel implements StreamingChatModel {
                 try {
                     handler.onPartialThinking(new PartialThinking(token));
                 } catch (RuntimeException e) {
-                    log.warn("StreamingChatResponseHandler.onPartialThinking threw: {}",
-                            e.toString());
+                    log.warn("StreamingChatResponseHandler.onPartialThinking threw: {}", e.toString());
                 }
             }
         }

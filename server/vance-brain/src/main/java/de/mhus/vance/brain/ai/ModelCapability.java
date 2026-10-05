@@ -33,10 +33,25 @@ import java.util.Optional;
  * happen.
  */
 public enum ModelCapability {
-
     VISION,
     PDF,
-    THINKING;
+    THINKING,
+    /**
+     * Model accepts {@code {role:"system"}} messages inside the conversation
+     * without that invalidating the prompt cache (Anthropic: Opus 4.8/5/5.5,
+     * Sonnet 5.5, Fable/Mythos 5 and 5.1 — <b>not</b> Sonnet 5, Haiku or the
+     * 4.x families). The Anthropic mapper needs this to move the dynamic
+     * system blocks out of the top-level {@code system} array, which is what
+     * makes the history cache breakpoint (see {@link CacheBoundary}) hit at
+     * all. Unknown models are treated as <i>without</i> the capability:
+     * sending a {@code role:"system"} message to a model that rejects it is
+     * a hard 400, and this is a wire-shaping decision the catalog owns.
+     *
+     * <p>Declared per model in {@code ai-models.yaml} — never guessed from
+     * the model name, because a wrong guess is an API error, not a cache
+     * miss.
+     */
+    MID_CONVERSATION_SYSTEM;
 
     /** Case-insensitive lookup; {@link Optional#empty()} on unknown values. */
     public static Optional<ModelCapability> fromString(String s) {
@@ -44,7 +59,11 @@ public enum ModelCapability {
             return Optional.empty();
         }
         try {
-            return Optional.of(ModelCapability.valueOf(s.trim().toUpperCase(Locale.ROOT)));
+            // Kebab-case capability names (mid-conversation-system) map onto
+            // the enum constants the same way kebab-case settings map onto
+            // their property names.
+            return Optional.of(ModelCapability.valueOf(
+                    s.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_')));
         } catch (IllegalArgumentException e) {
             return Optional.empty();
         }

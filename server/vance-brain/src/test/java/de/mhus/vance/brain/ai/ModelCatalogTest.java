@@ -206,6 +206,23 @@ class ModelCatalogTest {
     // ──── Capabilities list — replace, not concat ──────────────────────
 
     @Test
+    void capability_midConversationSystem_parsesFromKebabCaseName() {
+        // The YAML surface uses kebab-case; the enum value is the constant
+        // name. Declaring it wrongly is a hard provider 400 on every call, so
+        // the parse must be exact — see the ai-model-catalog manual.
+        stubModelDoc(TENANT, PROJECT, "anthropic/claude-future.yaml", """
+                contextWindowTokens: 200000
+                size: LARGE
+                capabilities: [mid-conversation-system]
+                """);
+        catalog.refresh();
+
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "anthropic", "claude-future");
+
+        assertThat(info.capabilities()).containsExactly(ModelCapability.MID_CONVERSATION_SYSTEM);
+    }
+
+    @Test
     void capabilities_are_replaced_not_concatenated() {
         // Bundled gives claude-sonnet-4-5 capabilities=[vision, pdf, thinking].
         // Project explicitly lists only [vision]. Final result: [vision].

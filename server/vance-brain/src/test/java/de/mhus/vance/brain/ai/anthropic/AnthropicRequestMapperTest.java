@@ -4,23 +4,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheBoundary;
+import de.mhus.vance.brain.ai.ModelCapability;
+import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.ModelSize;
+import de.mhus.vance.brain.ai.OutputTokenParam;
 import de.mhus.vance.brain.ai.SystemBlockKind;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.ai.VanceSystemMessage;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.Content;
 import dev.langchain4j.data.message.ImageContent;
 import dev.langchain4j.data.message.PdfFileContent;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.TextContent;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -35,20 +43,17 @@ class AnthropicRequestMapperTest {
 
     @Test
     void cacheMarker_setsOnLastSystemBlock_whenAllStatic() {
-        ChatRequest request = buildRequest(List.of(
-                SystemMessage.from("rule one"),
-                SystemMessage.from("rule two"),
-                UserMessage.from("hi")));
+        ChatRequest request = buildRequest(
+                List.of(SystemMessage.from("rule one"), SystemMessage.from("rule two"), UserMessage.from("hi")));
         AiChatOptions options = optionsWithBoundary(CacheBoundary.SYSTEM_AND_TOOLS);
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
         List<Map<String, Object>> system = systemBlocks(body);
 
         assertThat(system).hasSize(2);
         assertThat(system.get(0)).doesNotContainKey("cache_control");
         assertThat(system.get(1)).containsKey("cache_control");
-        assertThat(system.get(1).get("cache_control"))
-                .isEqualTo(Map.of("type", "ephemeral"));
+        assertThat(system.get(1).get("cache_control")).isEqualTo(Map.of("type", "ephemeral"));
     }
 
     @Test
@@ -61,7 +66,7 @@ class AnthropicRequestMapperTest {
                 UserMessage.from("hi")));
         AiChatOptions options = optionsWithBoundary(CacheBoundary.SYSTEM_AND_TOOLS);
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
         List<Map<String, Object>> system = systemBlocks(body);
 
         assertThat(system).hasSize(4);
@@ -82,7 +87,7 @@ class AnthropicRequestMapperTest {
                 UserMessage.from("hi")));
         AiChatOptions options = optionsWithBoundary(CacheBoundary.SYSTEM_AND_TOOLS);
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
         List<Map<String, Object>> system = systemBlocks(body);
 
         assertThat(system).hasSize(2);
@@ -92,13 +97,11 @@ class AnthropicRequestMapperTest {
 
     @Test
     void cacheBoundaryNone_setsNoMarkerEvenWithStaticBlocks() {
-        ChatRequest request = buildRequest(List.of(
-                SystemMessage.from("rule one"),
-                SystemMessage.from("rule two"),
-                UserMessage.from("hi")));
+        ChatRequest request = buildRequest(
+                List.of(SystemMessage.from("rule one"), SystemMessage.from("rule two"), UserMessage.from("hi")));
         AiChatOptions options = optionsWithBoundary(CacheBoundary.NONE);
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
         List<Map<String, Object>> system = systemBlocks(body);
 
         assertThat(system).hasSize(2);
@@ -112,14 +115,12 @@ class AnthropicRequestMapperTest {
         // marker must still fire when CacheBoundary.cachesTools()
         // holds.
         ChatRequest request = ChatRequest.builder()
-                .messages(List.of(
-                        VanceSystemMessage.dynamic("dynamic-only"),
-                        UserMessage.from("call a tool")))
+                .messages(List.of(VanceSystemMessage.dynamic("dynamic-only"), UserMessage.from("call a tool")))
                 .toolSpecifications(toolSpec("alpha"), toolSpec("bravo"))
                 .build();
         AiChatOptions options = optionsWithBoundary(CacheBoundary.SYSTEM_AND_TOOLS);
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
         List<Map<String, Object>> system = systemBlocks(body);
         List<Map<String, Object>> tools = toolBlocks(body);
 
@@ -144,7 +145,7 @@ class AnthropicRequestMapperTest {
                 UserMessage.from("hi")));
         AiChatOptions options = optionsWithBoundary(CacheBoundary.SYSTEM_AND_TOOLS);
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
         List<Map<String, Object>> system = systemBlocks(body);
 
         assertThat(system).hasSize(3);
@@ -156,32 +157,25 @@ class AnthropicRequestMapperTest {
 
     @Test
     void thinking_off_omitsBlock() {
-        ChatRequest request = buildRequest(List.of(
-                SystemMessage.from("rule"),
-                UserMessage.from("hi")));
-        AiChatOptions options = AiChatOptions.builder()
-                .thinkingLevel(ThinkingLevel.OFF)
-                .build();
+        ChatRequest request = buildRequest(List.of(SystemMessage.from("rule"), UserMessage.from("hi")));
+        AiChatOptions options =
+                AiChatOptions.builder().thinkingLevel(ThinkingLevel.OFF).build();
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
 
         assertThat(body).doesNotContainKey("thinking");
     }
 
     @Test
     void thinking_high_emitsEnabledBlockWith16kBudget() {
-        ChatRequest request = buildRequest(List.of(
-                SystemMessage.from("rule"),
-                UserMessage.from("hi")));
-        AiChatOptions options = AiChatOptions.builder()
-                .thinkingLevel(ThinkingLevel.HIGH)
-                .build();
+        ChatRequest request = buildRequest(List.of(SystemMessage.from("rule"), UserMessage.from("hi")));
+        AiChatOptions options =
+                AiChatOptions.builder().thinkingLevel(ThinkingLevel.HIGH).build();
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
 
         assertThat(body).containsKey("thinking");
-        assertThat(body.get("thinking"))
-                .isEqualTo(Map.of("type", "enabled", "budget_tokens", 16000));
+        assertThat(body.get("thinking")).isEqualTo(Map.of("type", "enabled", "budget_tokens", 16000));
     }
 
     @Test
@@ -205,12 +199,9 @@ class AnthropicRequestMapperTest {
 
     @Test
     void userMessage_textOnly_emitsPlainStringContent() {
-        ChatRequest request = buildRequest(List.of(
-                SystemMessage.from("rule"),
-                UserMessage.from("plain question")));
+        ChatRequest request = buildRequest(List.of(SystemMessage.from("rule"), UserMessage.from("plain question")));
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(
-                request, AiChatOptions.defaults());
+        Map<String, Object> body = buildBody(request, AiChatOptions.defaults());
         List<Map<String, Object>> messages = userMessages(body);
 
         assertThat(messages).hasSize(1);
@@ -221,11 +212,9 @@ class AnthropicRequestMapperTest {
     void userMessage_singleTextContentBlock_unwrapsToString() {
         // UserMessage built with one TextContent should render as a
         // bare string for cache-key stability with the legacy path.
-        ChatRequest request = buildRequest(List.of(
-                UserMessage.from(List.of(TextContent.from("just text")))));
+        ChatRequest request = buildRequest(List.of(UserMessage.from(List.of(TextContent.from("just text")))));
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(
-                request, AiChatOptions.defaults());
+        Map<String, Object> body = buildBody(request, AiChatOptions.defaults());
         List<Map<String, Object>> messages = userMessages(body);
 
         assertThat(messages.get(0).get("content")).isEqualTo("just text");
@@ -233,15 +222,13 @@ class AnthropicRequestMapperTest {
 
     @Test
     void userMessage_imageAndText_emitsImageBlockBeforeText() {
-        byte[] png = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47};
+        byte[] png = new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47};
         String base64 = Base64.getEncoder().encodeToString(png);
-        UserMessage user = UserMessage.from(List.of(
-                ImageContent.from(base64, "image/png"),
-                TextContent.from("describe this")));
+        UserMessage user =
+                UserMessage.from(List.of(ImageContent.from(base64, "image/png"), TextContent.from("describe this")));
         ChatRequest request = buildRequest(List.of(user));
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(
-                request, AiChatOptions.defaults());
+        Map<String, Object> body = buildBody(request, AiChatOptions.defaults());
         List<Map<String, Object>> blocks = userContentBlocks(body, 0);
 
         assertThat(blocks).hasSize(2);
@@ -256,15 +243,13 @@ class AnthropicRequestMapperTest {
 
     @Test
     void userMessage_pdfBlock_emitsDocumentType() {
-        byte[] pdf = new byte[]{0x25, 0x50, 0x44, 0x46};
+        byte[] pdf = new byte[] {0x25, 0x50, 0x44, 0x46};
         String base64 = Base64.getEncoder().encodeToString(pdf);
-        UserMessage user = UserMessage.from(List.of(
-                PdfFileContent.from(base64, "application/pdf"),
-                TextContent.from("summarise")));
+        UserMessage user = UserMessage.from(
+                List.of(PdfFileContent.from(base64, "application/pdf"), TextContent.from("summarise")));
         ChatRequest request = buildRequest(List.of(user));
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(
-                request, AiChatOptions.defaults());
+        Map<String, Object> body = buildBody(request, AiChatOptions.defaults());
         List<Map<String, Object>> blocks = userContentBlocks(body, 0);
 
         assertThat(blocks.get(0).get("type")).isEqualTo("document");
@@ -274,7 +259,7 @@ class AnthropicRequestMapperTest {
 
     @Test
     void userMessage_attachmentCacheMarkerOnLastAttachment_whenCacheBoundaryActive() {
-        byte[] dummy = new byte[]{1, 2, 3};
+        byte[] dummy = new byte[] {1, 2, 3};
         String base64 = Base64.getEncoder().encodeToString(dummy);
         UserMessage user = UserMessage.from(List.of(
                 ImageContent.from(base64, "image/png"),
@@ -285,7 +270,7 @@ class AnthropicRequestMapperTest {
                 .cacheBoundary(CacheBoundary.SYSTEM_AND_TOOLS)
                 .build();
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
         List<Map<String, Object>> blocks = userContentBlocks(body, 0);
 
         // Image (idx 0) — no marker
@@ -298,17 +283,15 @@ class AnthropicRequestMapperTest {
 
     @Test
     void userMessage_noAttachmentCacheMarker_whenBoundaryNone() {
-        byte[] dummy = new byte[]{1};
+        byte[] dummy = new byte[] {1};
         String base64 = Base64.getEncoder().encodeToString(dummy);
-        UserMessage user = UserMessage.from(List.of(
-                PdfFileContent.from(base64, "application/pdf"),
-                TextContent.from("summarise")));
+        UserMessage user = UserMessage.from(
+                List.of(PdfFileContent.from(base64, "application/pdf"), TextContent.from("summarise")));
         ChatRequest request = buildRequest(List.of(user));
-        AiChatOptions options = AiChatOptions.builder()
-                .cacheBoundary(CacheBoundary.NONE)
-                .build();
+        AiChatOptions options =
+                AiChatOptions.builder().cacheBoundary(CacheBoundary.NONE).build();
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
         List<Map<String, Object>> blocks = userContentBlocks(body, 0);
 
         assertThat(blocks.get(0)).doesNotContainKey("cache_control");
@@ -323,7 +306,7 @@ class AnthropicRequestMapperTest {
                 .stopSequences(List.of("STOP", "</answer>"))
                 .build();
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
 
         assertThat(body).containsEntry("top_p", 0.9);
         assertThat(body).containsEntry("top_k", 40);
@@ -335,7 +318,7 @@ class AnthropicRequestMapperTest {
         ChatRequest request = buildRequest(List.of(UserMessage.from("hi")));
         AiChatOptions options = AiChatOptions.builder().build();
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
 
         assertThat(body).doesNotContainKeys("top_p", "top_k", "stop_sequences");
     }
@@ -343,36 +326,146 @@ class AnthropicRequestMapperTest {
     @Test
     void samplingParams_emptyStopSequences_omitted() {
         ChatRequest request = buildRequest(List.of(UserMessage.from("hi")));
-        AiChatOptions options = AiChatOptions.builder()
-                .stopSequences(List.of())
-                .build();
+        AiChatOptions options = AiChatOptions.builder().stopSequences(List.of()).build();
 
-        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options);
 
         assertThat(body).doesNotContainKey("stop_sequences");
     }
 
+    @Test
+    void tailMarker_sitsOnTheLastConversationBlock_whenTheModelCarriesMidConversationSystem() {
+        ChatRequest request = buildRequest(List.of(
+                SystemMessage.from("static base"),
+                VanceSystemMessage.dynamic("working memory"),
+                UserMessage.from("hi"),
+                AiMessage.from("hello"),
+                UserMessage.from("and now?")));
+        AiChatOptions options = optionsWithBoundary(CacheBoundary.SYSTEM_AND_TOOLS_AND_TAIL);
+
+        Map<String, Object> body = buildBody(request, options, modelWith(ModelCapability.MID_CONVERSATION_SYSTEM));
+        List<Map<String, Object>> messages = userMessages(body);
+
+        // The dynamic block left the system array entirely — an edit there
+        // invalidates the message cache along with the system cache and would
+        // undo the history breakpoint on every turn.
+        assertThat(systemBlocks(body)).hasSize(1);
+        assertThat(systemBlocks(body).get(0)).containsKey("cache_control");
+        // … and rides along after the marker as a mid-conversation message.
+        assertThat(messages).hasSize(4);
+        assertThat(messages.get(3).get("role")).isEqualTo("system");
+        assertThat(messages.get(3).get("content")).isEqualTo("working memory");
+        assertThat(messages.get(3)).doesNotContainKey("cache_control");
+        List<Map<String, Object>> lastConversation = userContentBlocks(body, 2);
+        assertThat(lastConversation.get(lastConversation.size() - 1)).containsKey("cache_control");
+    }
+
+    @Test
+    void tailMarker_isDemoted_whenTheModelRejectsMidConversationSystemMessages() {
+        // Same request, a model without the capability: today's layout. A
+        // {role:"system"} message would be a hard 400 there, and a history
+        // marker over a mutating system tail would write a fresh full-prefix
+        // entry every turn (~1.25x instead of 1x).
+        ChatRequest request = buildRequest(List.of(
+                SystemMessage.from("static base"),
+                VanceSystemMessage.dynamic("working memory"),
+                UserMessage.from("hi")));
+        AiChatOptions options = optionsWithBoundary(CacheBoundary.SYSTEM_AND_TOOLS_AND_TAIL);
+
+        Map<String, Object> body = buildBody(request, options);
+
+        assertThat(systemBlocks(body)).hasSize(2);
+        assertThat(userMessages(body)).hasSize(1);
+        // Single-text user messages keep the plain-string form without a tail
+        // marker — nothing is marked in the history.
+        assertThat(userMessages(body).get(0).get("content")).isEqualTo("hi");
+    }
+
+    @Test
+    void tailMode_rendersTextOnlyUserMessagesInBlockForm() {
+        // The marked last message is a block array; a message that changed
+        // shape between "last" and "not last" would move the prefix hash.
+        ChatRequest request = buildRequest(List.of(SystemMessage.from("rule"), UserMessage.from("plain question")));
+        AiChatOptions options = optionsWithBoundary(CacheBoundary.SYSTEM_AND_TOOLS_AND_TAIL);
+
+        Map<String, Object> body = buildBody(request, options, modelWith(ModelCapability.MID_CONVERSATION_SYSTEM));
+        List<Map<String, Object>> blocks = userContentBlocks(body, 0);
+
+        assertThat(blocks).hasSize(1);
+        assertThat(blocks.get(0).get("type")).isEqualTo("text");
+        assertThat(blocks.get(0).get("text")).isEqualTo("plain question");
+        assertThat(blocks.get(0)).containsKey("cache_control");
+    }
+
+    @Test
+    void tailMarker_landsOnTheToolResult_inAToolLoop() {
+        // The tool-loop case is where the money is: the growing history is
+        // written once and read afterwards instead of being re-billed at
+        // full input price every iteration.
+        ChatRequest request = buildRequest(List.of(
+                SystemMessage.from("rule"),
+                UserMessage.from("do it"),
+                AiMessage.from(ToolExecutionRequest.builder()
+                        .id("call_1")
+                        .name("tool_a")
+                        .arguments("{}")
+                        .build()),
+                ToolExecutionResultMessage.from("call_1", "tool_a", "42")));
+        AiChatOptions options = optionsWithBoundary(CacheBoundary.SYSTEM_AND_TOOLS_AND_TAIL);
+
+        Map<String, Object> body = buildBody(request, options, modelWith(ModelCapability.MID_CONVERSATION_SYSTEM));
+        List<Map<String, Object>> blocks = userContentBlocks(body, 2);
+
+        assertThat(blocks.get(0).get("type")).isEqualTo("tool_result");
+        assertThat(blocks.get(0)).containsKey("cache_control");
+    }
+
     // ──────────────────── helpers ────────────────────
 
+    /** Test shorthand: the same mapping against a model with no capabilities. */
+    private static Map<String, Object> buildBody(ChatRequest request, AiChatOptions options) {
+        return AnthropicRequestMapper.buildBody(request, options, modelWith());
+    }
+
+    private static Map<String, Object> buildBody(ChatRequest request, AiChatOptions options, ModelInfo model) {
+        return AnthropicRequestMapper.buildBody(request, options, model);
+    }
+
+    /** Minimal chat model carrying exactly the named capabilities. */
+    private static ModelInfo modelWith(ModelCapability... caps) {
+        return new ModelInfo(
+                "anthropic",
+                "claude-test",
+                200_000,
+                8192,
+                ModelSize.LARGE,
+                Set.copyOf(Arrays.asList(caps)),
+                60,
+                0,
+                false,
+                /*messageParser*/ null,
+                /*pricing*/ null,
+                OutputTokenParam.MAX_TOKENS,
+                Set.of(),
+                /*reasoningEffortWhenOff*/ null,
+                /*maxTools*/ null,
+                /*mergeSystemMessages*/ false);
+    }
+
     private static ChatRequest buildRequest(List<ChatMessage> messages) {
-        return ChatRequest.builder()
-                .messages(new ArrayList<>(messages))
-                .build();
+        return ChatRequest.builder().messages(new ArrayList<>(messages)).build();
     }
 
     private static AiChatOptions optionsWithBoundary(CacheBoundary boundary) {
-        return AiChatOptions.builder()
-                .cacheBoundary(boundary)
-                .build();
+        return AiChatOptions.builder().cacheBoundary(boundary).build();
     }
 
     private static ToolSpecification toolSpec(String name) {
         return ToolSpecification.builder()
                 .name(name)
                 .description(name + " description")
-                .parameters(JsonObjectSchema.builder()
-                        .addStringProperty("input")
-                        .build())
+                .parameters(
+                        JsonObjectSchema.builder().addStringProperty("input").build())
                 .build();
     }
 
@@ -400,14 +493,12 @@ class AnthropicRequestMapperTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> userContentBlocks(
-            Map<String, Object> body, int messageIndex) {
+    private static List<Map<String, Object>> userContentBlocks(Map<String, Object> body, int messageIndex) {
         Map<String, Object> message = userMessages(body).get(messageIndex);
         Object content = message.get("content");
         if (content instanceof List<?> list) {
             return (List<Map<String, Object>>) list;
         }
-        throw new IllegalStateException(
-                "user message content is not a block list: " + content);
+        throw new IllegalStateException("user message content is not a block list: " + content);
     }
 }

@@ -112,9 +112,9 @@ public class AnthropicProvider extends AbstractChatProvider {
                 .apiKey(config.apiKey())
                 .timeout(streamTimeout)
                 .build();
-        ChatModel sync = new AnthropicDirectChatModel(client, config.modelName(), maxTokens, effective);
-        StreamingChatModel streaming =
-                new AnthropicDirectStreamingChatModel(streamClient, config.modelName(), maxTokens, effective);
+        ChatModel sync = new AnthropicDirectChatModel(client, config.modelName(), maxTokens, effective, modelInfo);
+        StreamingChatModel streaming = new AnthropicDirectStreamingChatModel(
+                streamClient, config.modelName(), maxTokens, effective, modelInfo);
         log.debug(
                 "Built Anthropic chat: model='{}', maxTokens={}, " + "cacheBoundary={}, ttl={}, thinking={}",
                 config.modelName(),

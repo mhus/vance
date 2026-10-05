@@ -5,6 +5,7 @@ import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheTtl;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -37,6 +38,7 @@ public class AnthropicDirectChatModel implements ChatModel {
     private final String modelName;
     private final int maxTokens;
     private final AiChatOptions options;
+    private final ModelInfo modelInfo;
 
     @Override
     public ChatResponse chat(ChatRequest request) {
@@ -51,22 +53,18 @@ public class AnthropicDirectChatModel implements ChatModel {
      * configured. Package-private so the streaming adapter can reuse it.
      */
     MessageCreateParams buildParams(ChatRequest request) {
-        MessageCreateParams.Builder builder = MessageCreateParams.builder()
-                .model(modelName)
-                .maxTokens(maxTokens);
+        MessageCreateParams.Builder builder =
+                MessageCreateParams.builder().model(modelName).maxTokens(maxTokens);
         if (options.getCacheTtl() == CacheTtl.LONG_1H) {
-            builder.putAdditionalHeader(
-                    "anthropic-beta", "extended-cache-ttl-2025-04-11");
+            builder.putAdditionalHeader("anthropic-beta", "extended-cache-ttl-2025-04-11");
         }
-        if (options.getThinkingLevel() != null
-                && options.getThinkingLevel() != ThinkingLevel.OFF) {
+        if (options.getThinkingLevel() != null && options.getThinkingLevel() != ThinkingLevel.OFF) {
             // Interleaved thinking lets the model reason between tool
             // calls inside one turn — required for tool-use sessions
             // where extended thinking is enabled.
-            builder.putAdditionalHeader(
-                    "anthropic-beta", "interleaved-thinking-2025-05-14");
+            builder.putAdditionalHeader("anthropic-beta", "interleaved-thinking-2025-05-14");
         }
-        AnthropicRequestMapper.apply(builder, request, options);
+        AnthropicRequestMapper.apply(builder, request, options, modelInfo);
         return builder.build();
     }
 }

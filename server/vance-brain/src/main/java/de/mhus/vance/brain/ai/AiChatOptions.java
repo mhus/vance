@@ -213,8 +213,11 @@ public class AiChatOptions {
 
     /**
      * Where to place the {@code cache_control} marker on the
-     * outbound request. Default {@link CacheBoundary#SYSTEM_AND_TOOLS}
-     * — the wirtschaftlich sweet spot for most engines. Set to
+     * outbound request. Default {@link CacheBoundary#SYSTEM_AND_TOOLS_AND_TAIL}
+     * — system + tools cached, plus a marker on the conversation history where
+     * the model can carry it (the Anthropic mapper demotes to
+     * {@link CacheBoundary#SYSTEM_AND_TOOLS} for models without
+     * {@link ModelCapability#MID_CONVERSATION_SYSTEM}). Set to
      * {@link CacheBoundary#NONE} to disable caching for a single call
      * (e.g. debugging cache-stability issues).
      *
@@ -223,7 +226,7 @@ public class AiChatOptions {
      * today.
      */
     @Builder.Default
-    private CacheBoundary cacheBoundary = CacheBoundary.SYSTEM_AND_TOOLS;
+    private CacheBoundary cacheBoundary = CacheBoundary.SYSTEM_AND_TOOLS_AND_TAIL;
 
     /**
      * Requested cache lifetime — 5 minutes by default. {@link

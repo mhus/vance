@@ -88,6 +88,7 @@ capabilities:                           # optional input modalities
   - vision                              # accepts image blocks
   - pdf                                 # accepts PDF blocks natively
   - thinking                            # honours an explicit reasoning effort
+  - mid-conversation-system             # accepts {role:"system"} between turns, see below
 stripThinkTags: false                   # strip <think>…</think> from output text
 timeoutSeconds: 60                      # per-call HTTP timeout
 actionLoopCorrections: 2                # structured-action loop pacemaker
@@ -168,6 +169,20 @@ the model spec (e.g. `lmstudio:qwen3-coder-30b`) switches the
 follow-up endpoint's edit mode onto the completion path; unset = chat
 path (default). Never point it at a chat model — missing
 `fimTemplate` is a hard error by design.
+
+### `capabilities` — input modalities and conversation shape
+
+`vision`, `pdf` and `thinking` describe what the model accepts as input.
+`mid-conversation-system` additionally allows `{role: "system"}` messages
+*inside* the conversation array (Anthropic), which enables the tail cache
+breakpoint — the conversation history is written into the prompt cache once
+and read on every later turn instead of being re-billed at full input price.
+Declaring it for a model that rejects those messages fails every call with a
+provider-side 400 *and* throws away the cache win. List it only when the
+vendor documentation confirms it (as of 2026-10: Opus 4.8, Opus 5/5.5, Sonnet
+5.5, Fable 5/5.1, Mythos 5/5.1 — never Haiku, never the 4.x families, and not
+Sonnet 5). Models without the flag keep today's layout: system + tools
+cached, history uncached.
 
 ### Image-only fields (when `kind: image`)
 

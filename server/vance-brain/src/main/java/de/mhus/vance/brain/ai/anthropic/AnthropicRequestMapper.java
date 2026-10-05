@@ -1,13 +1,15 @@
 package de.mhus.vance.brain.ai.anthropic;
 
+import com.anthropic.core.JsonValue;
+import com.anthropic.models.messages.MessageCreateParams;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
+import de.mhus.vance.brain.ai.ModelCapability;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.SystemBlockKind;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.ai.VanceSystemMessage;
-import com.anthropic.core.JsonValue;
-import com.anthropic.models.messages.MessageCreateParams;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -80,15 +82,13 @@ final class AnthropicRequestMapper {
      * {@code messages}, {@code tools}).
      */
     static void apply(
-            MessageCreateParams.Builder builder,
-            ChatRequest request,
-            AiChatOptions options) {
+            MessageCreateParams.Builder builder, ChatRequest request, AiChatOptions options, ModelInfo modelInfo) {
         @Nullable Double temperature = readTemperature(request, options);
         if (temperature != null) {
             builder.temperature(temperature);
         }
 
-        Map<String, Object> body = buildBody(request, options);
+        Map<String, Object> body = buildBody(request, options, modelInfo);
         for (Map.Entry<String, Object> e : body.entrySet()) {
             builder.putAdditionalBodyProperty(e.getKey(), JsonValue.from(e.getValue()));
         }
@@ -100,17 +100,15 @@ final class AnthropicRequestMapper {
      * {@code putAdditionalBodyProperty}; package-private so unit tests
      * can assert on it directly without instantiating the SDK builder.
      */
-    static Map<String, Object> buildBody(
-            ChatRequest request, AiChatOptions options) {
+    static Map<String, Object> buildBody(ChatRequest request, AiChatOptions options, ModelInfo modelInfo) {
         Map<String, Object> body = new LinkedHashMap<>();
-        CacheBoundary boundary = effectiveBoundary(options);
+        CacheBoundary boundary = effectiveBoundary(options, modelInfo);
         @Nullable String ttl = ttlString(options.getCacheTtl());
 
         // ─── System ───────────────────────────────────────────────
-        @Nullable List<Map<String, Object>> system =
-                buildSystemBlocks(request, boundary, ttl);
-        if (system != null && !system.isEmpty()) {
-            body.put("system", system);
+        SystemSplit split = buildSystemBlocks(request, boundary, ttl);
+        if (!split.system().isEmpty()) {
+            body.put("system", split.system());
         }
 
         // ─── Tools ─────────────────────────────────────────────────
@@ -141,7 +139,7 @@ final class AnthropicRequestMapper {
         }
 
         // ─── Messages ──────────────────────────────────────────────
-        body.put("messages", buildMessages(request, boundary, ttl));
+        body.put("messages", buildMessages(request, boundary, ttl, split.trailing()));
         return body;
     }
 
@@ -161,21 +159,21 @@ final class AnthropicRequestMapper {
         if (level == null || level == ThinkingLevel.OFF) {
             return null;
         }
-        int budget = switch (level) {
-            case MINIMAL -> 1024;
-            case LOW -> 2000;
-            case MEDIUM -> 8000;
-            case HIGH -> 16000;
-            case OFF -> throw new IllegalStateException("OFF handled above");
-        };
+        int budget =
+                switch (level) {
+                    case MINIMAL -> 1024;
+                    case LOW -> 2000;
+                    case MEDIUM -> 8000;
+                    case HIGH -> 16000;
+                    case OFF -> throw new IllegalStateException("OFF handled above");
+                };
         Map<String, Object> block = new LinkedHashMap<>();
         block.put("type", "enabled");
         block.put("budget_tokens", budget);
         return block;
     }
 
-    private static @Nullable Double readTemperature(
-            ChatRequest request, AiChatOptions options) {
+    private static @Nullable Double readTemperature(ChatRequest request, AiChatOptions options) {
         ChatRequestParameters params = request.parameters();
         if (params != null && params.temperature() != null) {
             return params.temperature();
@@ -184,10 +182,10 @@ final class AnthropicRequestMapper {
     }
 
     /**
-     * Lifts the request's {@link SystemMessage}s into Anthropic's
-     * top-level {@code system} array (text-block form) and plants
-     * the {@code cache_control} marker on the last <i>static</i>
-     * block.
+     * Splits the request's {@link SystemMessage}s into Anthropic's top-level
+     * {@code system} array (text-block form) and — for
+     * {@link CacheBoundary#cachesTail()} — the trailing mid-conversation
+     * system messages that carry everything non-static.
      *
      * <p>Per-message kind comes from {@link VanceSystemMessage#kind()};
      * a plain {@link SystemMessage} is treated as
@@ -196,17 +194,25 @@ final class AnthropicRequestMapper {
      *
      * <ul>
      *   <li>All blocks STATIC → marker on the last block (legacy behaviour).</li>
-     *   <li>Static blocks followed by dynamic ones → marker on the last STATIC,
-     *       dynamic blocks ride along outside the cache hash.</li>
+     *   <li>Static blocks followed by dynamic ones → marker on the last STATIC.
+     *       Without a tail breakpoint the dynamic blocks ride along in
+     *       {@code system}, outside the cache hash; with one they leave the
+     *       array entirely.</li>
      *   <li>All blocks DYNAMIC → no system-side marker. The tools-side
      *       marker (when {@link CacheBoundary#cachesTools()} holds)
      *       still fires independently.</li>
      * </ul>
      *
-     * <p>Returns {@code null} when the request has no system messages.
+     * <p>Why the relocation: any edit inside {@code system} invalidates the
+     * message cache along with the system cache, which would undo the history
+     * breakpoint on every turn. Trailing {@code {role:"system"}} messages sit
+     * <i>after</i> that marker, so changing them leaves the cached prefix
+     * untouched — Anthropic's documented pattern for mid-conversation
+     * instructions. Only models with
+     * {@link ModelCapability#MID_CONVERSATION_SYSTEM} accept that form; the
+     * boundary is demoted in {@link #effectiveBoundary} before we get here.
      */
-    private static @Nullable List<Map<String, Object>> buildSystemBlocks(
-            ChatRequest request, CacheBoundary boundary, @Nullable String ttl) {
+    private static SystemSplit buildSystemBlocks(ChatRequest request, CacheBoundary boundary, @Nullable String ttl) {
         record TaggedBlock(String text, SystemBlockKind kind) {}
         List<TaggedBlock> tagged = new ArrayList<>();
         for (ChatMessage m : safeMessages(request)) {
@@ -217,14 +223,13 @@ final class AnthropicRequestMapper {
             if (t == null || t.isEmpty()) {
                 continue;
             }
-            SystemBlockKind kind = (s instanceof VanceSystemMessage v)
-                    ? v.kind()
-                    : SystemBlockKind.STATIC;
+            SystemBlockKind kind = (s instanceof VanceSystemMessage v) ? v.kind() : SystemBlockKind.STATIC;
             tagged.add(new TaggedBlock(t, kind));
         }
         if (tagged.isEmpty()) {
-            return null;
+            return new SystemSplit(List.of(), List.of());
         }
+        boolean relocate = boundary.cachesTail();
 
         // Find the last STATIC block — that's where the marker goes.
         // -1 means "no static block at all" → no system-side marker.
@@ -239,17 +244,41 @@ final class AnthropicRequestMapper {
         }
 
         List<Map<String, Object>> blocks = new ArrayList<>(tagged.size());
+        List<Map<String, Object>> trailing = new ArrayList<>();
         for (int i = 0; i < tagged.size(); i++) {
+            TaggedBlock tb = tagged.get(i);
+            if (relocate && tb.kind() != SystemBlockKind.STATIC) {
+                trailing.add(midConversationSystemMessage(tb.text()));
+                continue;
+            }
             Map<String, Object> block = new LinkedHashMap<>();
             block.put("type", "text");
-            block.put("text", tagged.get(i).text());
+            block.put("text", tb.text());
             if (i == markerIndex) {
                 block.put("cache_control", cacheControl(ttl));
             }
             blocks.add(block);
         }
-        return blocks;
+        return new SystemSplit(blocks, trailing);
     }
+
+    /**
+     * A trailing {@code {role:"system"}} message — Anthropic's documented
+     * form for instructions that change mid-conversation without touching the
+     * cached prefix.
+     */
+    private static Map<String, Object> midConversationSystemMessage(String text) {
+        Map<String, Object> msg = new LinkedHashMap<>();
+        msg.put("role", "system");
+        msg.put("content", text);
+        return msg;
+    }
+
+    /**
+     * Anthropic's {@code system} array plus the dynamic blocks that ride
+     * along after the history marker instead of inside the cached prefix.
+     */
+    private record SystemSplit(List<Map<String, Object>> system, List<Map<String, Object>> trailing) {}
 
     private static List<Map<String, Object>> buildTools(
             ChatRequest request, CacheBoundary boundary, @Nullable String ttl) {
@@ -298,11 +327,11 @@ final class AnthropicRequestMapper {
     }
 
     private static List<Map<String, Object>> buildMessages(
-            ChatRequest request, CacheBoundary boundary, @Nullable String ttl) {
+            ChatRequest request, CacheBoundary boundary, @Nullable String ttl, List<Map<String, Object>> trailing) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (ChatMessage m : safeMessages(request)) {
             if (m instanceof SystemMessage) {
-                continue; // already lifted to top-level "system"
+                continue; // lifted to top-level "system" or the trailing set
             }
             if (m instanceof UserMessage u) {
                 out.add(userMessage(u, boundary, ttl));
@@ -315,11 +344,51 @@ final class AnthropicRequestMapper {
             // than crashing the call when langchain4j adds a kind we
             // don't know yet.
         }
+        // History breakpoint: the marker goes on the last content block of
+        // the last *conversation* message — the position whose prefix is
+        // identical across round-trips, so the next call's walk-back finds
+        // this write. The trailing system messages follow after it; they
+        // change per turn and must stay outside the cached prefix.
+        if (boundary.cachesTail()) {
+            placeTailMarker(out, ttl);
+        }
+        out.addAll(trailing);
         return out;
     }
 
-    private static Map<String, Object> userMessage(
-            UserMessage u, CacheBoundary boundary, @Nullable String ttl) {
+    /**
+     * Plants the history marker on the last content block of the last
+     * conversation message. Messages without content are skipped
+     * (defensive); when no message carries content, no marker is placed and
+     * the effective boundary degrades to system+tools.
+     */
+    private static void placeTailMarker(List<Map<String, Object>> messages, @Nullable String ttl) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Map<String, Object> msg = messages.get(i);
+            Object content = msg.get("content");
+            if (content instanceof List<?> raw && !raw.isEmpty()) {
+                List<Map<String, Object>> blocks = new ArrayList<>(raw.size());
+                for (Object o : raw) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> block = (Map<String, Object>) o;
+                    blocks.add(block);
+                }
+                blocks.get(blocks.size() - 1).put("cache_control", cacheControl(ttl));
+                msg.put("content", blocks);
+                return;
+            }
+            if (content instanceof String s && !s.isEmpty()) {
+                Map<String, Object> block = new LinkedHashMap<>();
+                block.put("type", "text");
+                block.put("text", s);
+                block.put("cache_control", cacheControl(ttl));
+                msg.put("content", List.of(block));
+                return;
+            }
+        }
+    }
+
+    private static Map<String, Object> userMessage(UserMessage u, CacheBoundary boundary, @Nullable String ttl) {
         Map<String, Object> msg = new LinkedHashMap<>();
         msg.put("role", "user");
         List<Content> contents = u.contents();
@@ -331,14 +400,20 @@ final class AnthropicRequestMapper {
         }
         if (contents.size() == 1 && contents.get(0) instanceof TextContent textOnly) {
             // Single text block — render as plain string for cache-key
-            // stability with non-multimodal turns.
-            msg.put("content", textOnly.text() == null ? "" : textOnly.text());
-            return msg;
+            // stability with non-multimodal turns. Not with a history
+            // breakpoint: there the last message is marked and switches to
+            // block form, and a message that changes shape between "last"
+            // and "not last" would move the prefix hash. Tail mode renders
+            // the whole conversation in uniform block form.
+            if (!boundary.cachesTail()) {
+                msg.put("content", textOnly.text() == null ? "" : textOnly.text());
+                return msg;
+            }
         }
-        // Multimodal: emit a content-block array. Cache marker lives
-        // on the LAST attachment block (image/document) when caching is
-        // active — symmetric to system/tools. The user's static
-        // attachments are exactly the kind of prefix worth caching.
+        // Content-block array. Without a tail breakpoint the cache marker
+        // lives on the LAST attachment block (image/document) — symmetric to
+        // system/tools, the user's static attachments are exactly the kind of
+        // prefix worth caching. With one, the tail marker subsumes it.
         msg.put("content", buildUserContentBlocks(contents, boundary, ttl));
         return msg;
     }
@@ -358,7 +433,7 @@ final class AnthropicRequestMapper {
             }
             blocks.add(block);
         }
-        if (boundary != CacheBoundary.NONE && lastAttachmentIdx >= 0) {
+        if (boundary != CacheBoundary.NONE && !boundary.cachesTail() && lastAttachmentIdx >= 0) {
             blocks.get(lastAttachmentIdx).put("cache_control", cacheControl(ttl));
         }
         return blocks;
@@ -406,7 +481,8 @@ final class AnthropicRequestMapper {
             source.put("url", pdf.pdfFile().url().toString());
         } else {
             source.put("type", "base64");
-            source.put("media_type",
+            source.put(
+                    "media_type",
                     pdf.pdfFile().mimeType() == null
                             ? "application/pdf"
                             : pdf.pdfFile().mimeType());
@@ -450,8 +526,7 @@ final class AnthropicRequestMapper {
         return msg;
     }
 
-    private static Map<String, Object> toolResultMessage(
-            ToolExecutionResultMessage trm) {
+    private static Map<String, Object> toolResultMessage(ToolExecutionResultMessage trm) {
         Map<String, Object> block = new LinkedHashMap<>();
         block.put("type", "tool_result");
         block.put("tool_use_id", trm.id());
@@ -506,9 +581,23 @@ final class AnthropicRequestMapper {
         };
     }
 
-    private static CacheBoundary effectiveBoundary(AiChatOptions options) {
+    /**
+     * The boundary actually applied to this request. Tail caching needs a
+     * model that accepts mid-conversation system messages — without that
+     * capability the dynamic blocks cannot leave {@code system}, and a
+     * history marker over a mutating system tail would write a fresh
+     * full-prefix entry every turn (~1.25× instead of 1×). Demoted here, kept
+     * where the model allows it.
+     */
+    private static CacheBoundary effectiveBoundary(AiChatOptions options, ModelInfo modelInfo) {
         CacheBoundary b = options.getCacheBoundary();
-        return b == null ? CacheBoundary.NONE : b;
+        if (b == null) {
+            return CacheBoundary.NONE;
+        }
+        if (b.cachesTail() && !modelInfo.capabilities().contains(ModelCapability.MID_CONVERSATION_SYSTEM)) {
+            return b.withoutTail();
+        }
+        return b;
     }
 
     // ──────────────────── JsonSchema → Anthropic input_schema ──

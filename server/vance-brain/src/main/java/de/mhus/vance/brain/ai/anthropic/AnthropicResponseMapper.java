@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ai.anthropic;
 
 import com.anthropic.core.JsonValue;
+import com.anthropic.models.messages.CacheCreation;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.StopReason;
@@ -144,8 +145,11 @@ final class AnthropicResponseMapper {
         long output = usage.outputTokens();
         long cacheCreate = usage.cacheCreationInputTokens().orElse(0L);
         long cacheRead = usage.cacheReadInputTokens().orElse(0L);
-        return new AnthropicTokenUsage(
-                (int) input, (int) output, cacheCreate, cacheRead);
+        // TTL split of the write counter — 1h writes are billed at ~2× the 5m
+        // rate. Absent split ⇒ 0 ⇒ everything is priced at the 5m rate.
+        long cacheCreate1h =
+                usage.cacheCreation().map(CacheCreation::ephemeral1hInputTokens).orElse(0L);
+        return new AnthropicTokenUsage((int) input, (int) output, cacheCreate, cacheRead, cacheCreate1h);
     }
 
     private static @Nullable FinishReason toFinishReason(Message message) {
@@ -161,5 +165,4 @@ final class AnthropicResponseMapper {
         if (reason.equals(StopReason.TOOL_USE)) return FinishReason.TOOL_EXECUTION;
         return FinishReason.OTHER;
     }
-
 }

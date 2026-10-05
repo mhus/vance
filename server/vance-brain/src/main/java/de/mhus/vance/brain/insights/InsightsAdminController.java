@@ -5,6 +5,7 @@ import de.mhus.vance.api.insights.ActiveSkillInsightsDto;
 import de.mhus.vance.api.insights.BrainPodInsightsDto;
 import de.mhus.vance.api.insights.BrainPodProjectInsightsDto;
 import de.mhus.vance.api.insights.CacheStatsDto;
+import de.mhus.vance.api.insights.CacheStatsProviderDto;
 import de.mhus.vance.api.insights.ChatMessageInsightsDto;
 import de.mhus.vance.api.insights.ClusterInsightsDto;
 import de.mhus.vance.api.insights.EffectiveRecipeDto;
@@ -27,6 +28,8 @@ import de.mhus.vance.api.toolhealth.ToolHealthClassification;
 import de.mhus.vance.api.toolhealth.ToolHealthCooldownDto;
 import de.mhus.vance.api.toolhealth.ToolHealthEntryDto;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
+import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -133,6 +136,7 @@ public class InsightsAdminController {
     private final MemoryService memoryService;
     private final MarvinNodeService marvinNodeService;
     private final LlmTraceService llmTraceService;
+    private final ModelCatalog modelCatalog;
     private final EngineMessageService engineMessageService;
     private final RecipeLoader recipeLoader;
     private final ServerToolService serverToolService;
@@ -413,10 +417,11 @@ public class InsightsAdminController {
     }
 
     /**
-     * Aggregated Anthropic cache statistics for one process: input /
-     * output / cache-creation / cache-read tokens summed over every
-     * OUTPUT trace row, plus a hit-rate fraction. Drives the Insights
-     * "is caching paying off here?" view. See
+     * Aggregated prompt-cache statistics for one process: input / output /
+     * cache-creation / cache-read tokens summed over every OUTPUT trace row,
+     * the labeled estimate for unitemized caches, a hit-rate fraction, and a
+     * per-wire slice answering "which provider produced these numbers?".
+     * Drives the Insights "is caching paying off here?" view. See
      * {@code specification/prompt-caching.md} §10.4.
      */
     @GetMapping("/processes/{processId}/cache-stats")
@@ -427,14 +432,59 @@ public class InsightsAdminController {
         ThinkProcessDocument process = loadProcess(tenant, processId);
         authority.enforce(httpRequest, processResource(process), Action.ADMIN);
         LlmTraceService.CacheStatsAccumulator acc = llmTraceService.cacheStatsByProcess(tenant, process.getId());
+        List<CacheStatsProviderDto> providers =
+                new ArrayList<>(acc.byProviderModel().size());
+        for (Map.Entry<String, LlmTraceService.CacheStatsAccumulator> entry :
+                acc.byProviderModel().entrySet()) {
+            LlmTraceService.CacheStatsAccumulator slice = entry.getValue();
+            providers.add(CacheStatsProviderDto.builder()
+                    .providerModel(entry.getKey().isEmpty() ? null : entry.getKey())
+                    .roundTrips(slice.roundTrips())
+                    .inputTokens(slice.inputTokens())
+                    .outputTokens(slice.outputTokens())
+                    .cacheCreationInputTokens(slice.cacheCreationInputTokens())
+                    .cacheReadInputTokens(slice.cacheReadInputTokens())
+                    .implicitCacheReadTokens(slice.implicitCacheReadTokens())
+                    .hitRate(slice.hitRate())
+                    .minCacheableInputTokens(minCacheableInputTokens(process, entry.getKey()))
+                    .build());
+        }
         return CacheStatsDto.builder()
                 .roundTrips(acc.roundTrips())
                 .inputTokens(acc.inputTokens())
                 .outputTokens(acc.outputTokens())
                 .cacheCreationInputTokens(acc.cacheCreationInputTokens())
                 .cacheReadInputTokens(acc.cacheReadInputTokens())
+                .implicitCacheReadTokens(acc.implicitCacheReadTokens())
                 .hitRate(acc.hitRate())
+                .hitRateIncludingEstimate(acc.hitRateIncludingEstimate())
+                .providers(providers)
                 .build();
+    }
+
+    /**
+     * The catalog's cacheable-prompt floor for a trace row's
+     * {@code providerModel} ({@code instance:model}), or {@code null} when the
+     * catalog has no entry for that wire. Then the UI cannot tell "too small
+     * to cache" from "provider reports no cache tokens" and says nothing
+     * rather than guessing.
+     */
+    private @Nullable Integer minCacheableInputTokens(ThinkProcessDocument process, String providerModel) {
+        if (providerModel == null || providerModel.isBlank()) {
+            return null;
+        }
+        int sep = providerModel.indexOf(':');
+        if (sep <= 0 || sep == providerModel.length() - 1) {
+            return null;
+        }
+        return modelCatalog
+                .lookup(
+                        process.getTenantId(),
+                        process.getProjectId(),
+                        providerModel.substring(0, sep),
+                        providerModel.substring(sep + 1))
+                .map(ModelInfo::minCacheableInputTokens)
+                .orElse(null);
     }
 
     // ─── Authorization helpers ─────────────────────────────────────────────

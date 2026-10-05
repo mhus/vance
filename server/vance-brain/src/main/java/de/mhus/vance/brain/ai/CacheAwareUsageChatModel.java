@@ -18,6 +18,10 @@ import org.jspecify.annotations.Nullable;
  * uncached-input count, not the raw provider total. See
  * {@link CacheAwareTokenUsageAdapter} for the counting semantics.
  *
+ * <p>Also attaches the implicit-cache estimate for gateways that bill a tail
+ * without itemizing ({@link ImplicitCacheEstimator}) — computed here, once per
+ * attempt, and carried on the usage so no upper layer recomputes it.
+ *
  * <p>Passes the response through untouched when there is nothing to map —
  * including the Anthropic wire, whose usage class already speaks
  * {@link CacheAwareTokenUsage}.
@@ -34,25 +38,29 @@ public class CacheAwareUsageChatModel implements ChatModel {
 
     @Override
     public ChatResponse chat(ChatRequest request) {
-        return withNormalizedUsage(delegate.chat(request));
+        return withNormalizedUsage(request, delegate.chat(request));
     }
 
     /**
-     * Rebuilds the response around the normalized usage. Shared with the
-     * streaming twin, whose final complete response is the same object
-     * shape with the same metadata rules.
+     * Rebuilds the response around the normalized usage and, where the
+     * provider itemized nothing, the attached estimate. Shared with the
+     * streaming twin, whose final complete response is the same object shape
+     * with the same metadata rules.
      *
      * <p>The rebuild goes through {@code metadata}: a response always has
      * one, and the metadata builder keeps id, model name and finish reason
      * intact while the discrete setters would not.
      */
-    static @Nullable ChatResponse withNormalizedUsage(@Nullable ChatResponse response) {
+    static @Nullable ChatResponse withNormalizedUsage(@Nullable ChatRequest request, @Nullable ChatResponse response) {
         if (response == null) return null;
         TokenUsage raw = response.tokenUsage();
         TokenUsage mapped = CacheAwareTokenUsageAdapter.map(raw);
-        if (mapped == raw) return response;
+        TokenUsage withEstimate =
+                ImplicitCacheTokenUsage.wrap(mapped, ImplicitCacheEstimator.estimate(request, mapped));
+        if (withEstimate == raw) return response;
         return response.toBuilder()
-                .metadata(response.metadata().toBuilder().tokenUsage(mapped).build())
+                .metadata(
+                        response.metadata().toBuilder().tokenUsage(withEstimate).build())
                 .build();
     }
 }

@@ -42,6 +42,7 @@ public class LedgerUsageSink implements UsageSink {
                     .tokensOut(m.tokensOut())
                     .cacheReadTokens(m.cacheReadTokens())
                     .cacheWriteTokens(m.cacheWriteTokens())
+                    .cacheWrite1hTokens(m.cacheWrite1hTokens())
                     .implicitCacheReadTokens(m.implicitCacheReadTokens())
                     .images(m.images())
                     .imageCost(m.imageCost())

@@ -143,6 +143,49 @@ class CacheAwareUsageChatModelTest {
         // minus the reported 300 → the gap is the estimate.
         assertThat(m.implicitCacheReadTokens()).isGreaterThan(1_000).isLessThan(6_000);
     }
+
+    @Test
+    void theImplicitEstimateTravelsOnTheUsageInsteadOfBeingRecomputed() {
+        // The trace layer and the ledger must read the same number — so it
+        // is computed here, once, and carried on the usage like every other
+        // counter.
+        String bigSystem = "The quick brown fox jumps over the lazy dog. ".repeat(400);
+        ChatRequest bigRequest = ChatRequest.builder()
+                .messages(SystemMessage.from(bigSystem), UserMessage.from("hi"))
+                .build();
+
+        ChatResponse out = new CacheAwareUsageChatModel(new FakeChatModel(req -> response(new TokenUsage(300, 50))))
+                .chat(bigRequest);
+
+        assertThat(out.tokenUsage()).isInstanceOf(CacheAwareTokenUsage.class);
+        assertThat(((CacheAwareTokenUsage) out.tokenUsage()).implicitCacheReadTokens())
+                .isGreaterThan(1_000);
+    }
+
+    @Test
+    void measuredCacheReadsAreNeverEstimatedOnTopOf() {
+        // The adapter normalized a provider-measured cache read. An
+        // estimate on top of it would count one saving twice.
+        String bigSystem = "The quick brown fox jumps over the lazy dog. ".repeat(400);
+        ChatRequest bigRequest = ChatRequest.builder()
+                .messages(SystemMessage.from(bigSystem), UserMessage.from("hi"))
+                .build();
+
+        ChatResponse out = new CacheAwareUsageChatModel(new FakeChatModel(req -> response(OpenAiTokenUsage.builder()
+                        .inputTokenCount(20_000)
+                        .outputTokenCount(300)
+                        .inputTokensDetails(OpenAiTokenUsage.InputTokensDetails.builder()
+                                .cachedTokens(18_000)
+                                .build())
+                        .build())))
+                .chat(bigRequest);
+
+        assertThat(((CacheAwareTokenUsage) out.tokenUsage()).cacheReadInputTokens())
+                .isEqualTo(18_000);
+        assertThat(((CacheAwareTokenUsage) out.tokenUsage()).implicitCacheReadTokens())
+                .isZero();
+    }
+
     // ──────────────────── helpers ────────────────────
 
     private static final CallAttribution ATTRIBUTION =

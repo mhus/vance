@@ -104,6 +104,13 @@ public class LlmUsageDocument {
     private int cacheReadTokens;
     private int cacheWriteTokens;
     /**
+     * Share of {@link #cacheWriteTokens} written with 1h-TTL (billed at
+     * ~2× the 5m write rate). {@code 0} when the provider did not split its
+     * write counters — then everything is priced at the 5m rate, which is
+     * the documented fallback for payloads without the split.
+     */
+    private int cacheWrite1hTokens;
+    /**
      * Estimated tokens the provider served from a cache it did not itemize
      * (see {@code ImplicitCacheEstimator}) — informational, no cost
      * attached, never mixed into {@link #cacheReadTokens}.

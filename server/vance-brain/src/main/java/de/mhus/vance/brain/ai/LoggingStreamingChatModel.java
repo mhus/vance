@@ -4,7 +4,6 @@ import de.mhus.vance.shared.metric.MetricService;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
-import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -33,8 +32,7 @@ public class LoggingStreamingChatModel implements StreamingChatModel {
         this(name, delegate, null, null);
     }
 
-    public LoggingStreamingChatModel(
-            String name, StreamingChatModel delegate, @Nullable LlmTraceWriter traceWriter) {
+    public LoggingStreamingChatModel(String name, StreamingChatModel delegate, @Nullable LlmTraceWriter traceWriter) {
         this(name, delegate, traceWriter, null);
     }
 
@@ -82,7 +80,7 @@ public class LoggingStreamingChatModel implements StreamingChatModel {
     private void safeRecord(ChatRequest request, @Nullable ChatResponse response, long elapsedMs) {
         if (traceWriter == null) return;
         try {
-            traceWriter.onRoundtrip(request, response, elapsedMs);
+            traceWriter.onRoundtrip(name, request, response, elapsedMs);
         } catch (RuntimeException e) {
             LOG.warn("LlmTraceWriter threw — ignoring (chat='{}'): {}", name, e.toString());
         }

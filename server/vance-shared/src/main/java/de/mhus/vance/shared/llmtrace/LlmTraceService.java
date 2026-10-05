@@ -1,6 +1,9 @@
 package de.mhus.vance.shared.llmtrace;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -39,8 +42,12 @@ public class LlmTraceService {
         try {
             return repository.save(entry);
         } catch (RuntimeException e) {
-            log.warn("LlmTraceService.record failed (tenantId='{}' processId='{}' direction={}): {}",
-                    entry.getTenantId(), entry.getProcessId(), entry.getDirection(), e.toString());
+            log.warn(
+                    "LlmTraceService.record failed (tenantId='{}' processId='{}' direction={}): {}",
+                    entry.getTenantId(),
+                    entry.getProcessId(),
+                    entry.getDirection(),
+                    e.toString());
             return entry;
         }
     }
@@ -50,13 +57,11 @@ public class LlmTraceService {
      * Insights UI list view; one round-trip groups by {@code turnId}
      * which the UI surfaces.
      */
-    public Page<LlmTraceDocument> listByProcess(
-            String tenantId, String processId, int page, int size) {
+    public Page<LlmTraceDocument> listByProcess(String tenantId, String processId, int page, int size) {
         int safePage = Math.max(0, page);
         int safeSize = Math.max(1, Math.min(size, 200));
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
-        return repository.findByTenantIdAndProcessId(
-                tenantId, processId, PageRequest.of(safePage, safeSize, sort));
+        return repository.findByTenantIdAndProcessId(tenantId, processId, PageRequest.of(safePage, safeSize, sort));
     }
 
     /**
@@ -65,8 +70,7 @@ public class LlmTraceService {
      * TOOL_RESULT pairs.
      */
     public List<LlmTraceDocument> listByTurn(String tenantId, String processId, String turnId) {
-        return repository.findByTenantIdAndProcessIdAndTurnIdOrderBySequenceAsc(
-                tenantId, processId, turnId);
+        return repository.findByTenantIdAndProcessIdAndTurnIdOrderBySequenceAsc(tenantId, processId, turnId);
     }
 
     /** Hard-delete every trace row for a process. Best-effort; TTL handles bulk cleanup. */
@@ -75,8 +79,8 @@ public class LlmTraceService {
     }
 
     /**
-     * Aggregate Anthropic cache-token counters across all trace rows
-     * of one process. Walks the trace history (typically &lt; 100
+     * Aggregate prompt-cache counters across all trace rows of one
+     * process. Walks the trace history (typically &lt; 100
      * rows per process — the TTL keeps it bounded) and sums the
      * cache fields from OUTPUT rows. Other directions don't carry
      * token counts.
@@ -112,6 +116,12 @@ public class LlmTraceService {
      * Mutable accumulator for {@link #cacheStatsByProcess}. Stays in
      * the shared layer (no API DTO) so the controller can shape it for
      * the wire format.
+     *
+     * <p>Tracks the two kinds of cache savings separately and never sums
+     * them: {@link #cacheReadInputTokens} is what a provider itemized,
+     * {@link #implicitCacheReadTokens} is the labeled estimate for gateways
+     * that bill a tail without itemizing. Slices per {@code providerModel}
+     * sit in {@link #byProviderModel()}; those slices do not slice further.
      */
     public static final class CacheStatsAccumulator {
         private long roundTrips;
@@ -119,31 +129,81 @@ public class LlmTraceService {
         private long outputTokens;
         private long cacheCreationInputTokens;
         private long cacheReadInputTokens;
+        private long implicitCacheReadTokens;
+        private final Map<String, CacheStatsAccumulator> byProviderModel = new LinkedHashMap<>();
 
-        public long roundTrips() { return roundTrips; }
-        public long inputTokens() { return inputTokens; }
-        public long outputTokens() { return outputTokens; }
-        public long cacheCreationInputTokens() { return cacheCreationInputTokens; }
-        public long cacheReadInputTokens() { return cacheReadInputTokens; }
+        public long roundTrips() {
+            return roundTrips;
+        }
 
+        public long inputTokens() {
+            return inputTokens;
+        }
+
+        public long outputTokens() {
+            return outputTokens;
+        }
+
+        public long cacheCreationInputTokens() {
+            return cacheCreationInputTokens;
+        }
+
+        public long cacheReadInputTokens() {
+            return cacheReadInputTokens;
+        }
+
+        public long implicitCacheReadTokens() {
+            return implicitCacheReadTokens;
+        }
+
+        /** Measured hit rate — provider-itemized cache reads only. */
         public double hitRate() {
             long totalInput = inputTokens + cacheCreationInputTokens + cacheReadInputTokens;
             return totalInput == 0 ? 0.0 : (double) cacheReadInputTokens / totalInput;
         }
 
+        /**
+         * Hit rate including the estimate — the only figure in which the two
+         * kinds of cache savings meet. Callers must label it as an estimate.
+         */
+        public double hitRateIncludingEstimate() {
+            long totalInput = inputTokens + cacheCreationInputTokens + cacheReadInputTokens + implicitCacheReadTokens;
+            return totalInput == 0 ? 0.0 : (double) (cacheReadInputTokens + implicitCacheReadTokens) / totalInput;
+        }
+
+        /**
+         * Per-wire slices in first-seen order, keyed by {@code providerModel}
+         * (empty key for rows written before provider tracking landed).
+         */
+        public Map<String, CacheStatsAccumulator> byProviderModel() {
+            return Collections.unmodifiableMap(byProviderModel);
+        }
+
         void addOutput(LlmTraceDocument doc) {
-            roundTrips++;
+            fold(doc, this);
+            fold(
+                    doc,
+                    byProviderModel.computeIfAbsent(
+                            doc.getProviderModel() == null ? "" : doc.getProviderModel(),
+                            key -> new CacheStatsAccumulator()));
+        }
+
+        private static void fold(LlmTraceDocument doc, CacheStatsAccumulator acc) {
+            acc.roundTrips++;
             if (doc.getTokensIn() != null) {
-                inputTokens += doc.getTokensIn();
+                acc.inputTokens += doc.getTokensIn();
             }
             if (doc.getTokensOut() != null) {
-                outputTokens += doc.getTokensOut();
+                acc.outputTokens += doc.getTokensOut();
             }
             if (doc.getCacheCreationInputTokens() != null) {
-                cacheCreationInputTokens += doc.getCacheCreationInputTokens();
+                acc.cacheCreationInputTokens += doc.getCacheCreationInputTokens();
             }
             if (doc.getCacheReadInputTokens() != null) {
-                cacheReadInputTokens += doc.getCacheReadInputTokens();
+                acc.cacheReadInputTokens += doc.getCacheReadInputTokens();
+            }
+            if (doc.getImplicitCacheReadTokens() != null) {
+                acc.implicitCacheReadTokens += doc.getImplicitCacheReadTokens();
             }
         }
     }

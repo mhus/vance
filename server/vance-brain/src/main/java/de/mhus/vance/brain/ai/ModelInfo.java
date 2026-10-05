@@ -42,7 +42,60 @@ public record ModelInfo(
         @Nullable String reasoningEffortWhenOff,
         @Nullable Integer maxTools,
         boolean mergeSystemMessages,
-        @Nullable String fimTemplate) {
+        @Nullable String fimTemplate,
+        /**
+         * Smallest prompt (tokens) this model family will cache at all —
+         * Anthropic: 512–4.096 depending on the family; shorter prompts are
+         * processed uncached even when marked with {@code cache_control}.
+         * {@code null} = no known minimum. Purely informational: it lets
+         * Insights say "0 % cache hits because the prompts were too small"
+         * instead of implying a fault.
+         */
+        @Nullable Integer minCacheableInputTokens) {
+
+    /**
+     * Pre-{@code minCacheableInputTokens} constructor — defaults the field to
+     * "no known minimum". Retains every legacy call site that passes the FIM
+     * template explicitly.
+     */
+    public ModelInfo(
+            String provider,
+            String modelName,
+            int contextWindowTokens,
+            int defaultMaxOutputTokens,
+            ModelSize size,
+            Set<ModelCapability> capabilities,
+            int timeoutSeconds,
+            int actionLoopCorrections,
+            boolean stripThinkTags,
+            @Nullable String messageParser,
+            @Nullable Pricing pricing,
+            OutputTokenParam outputTokenParam,
+            Set<SamplingParam> unsupportedParams,
+            @Nullable String reasoningEffortWhenOff,
+            @Nullable Integer maxTools,
+            boolean mergeSystemMessages,
+            @Nullable String fimTemplate) {
+        this(
+                provider,
+                modelName,
+                contextWindowTokens,
+                defaultMaxOutputTokens,
+                size,
+                capabilities,
+                timeoutSeconds,
+                actionLoopCorrections,
+                stripThinkTags,
+                messageParser,
+                pricing,
+                outputTokenParam,
+                unsupportedParams,
+                reasoningEffortWhenOff,
+                maxTools,
+                mergeSystemMessages,
+                fimTemplate,
+                /*minCacheableInputTokens*/ null);
+    }
 
     /*
      * fimTemplate — the Fill-In-the-Middle prompt shape a
@@ -113,7 +166,8 @@ public record ModelInfo(
                 reasoningEffortWhenOff,
                 maxTools,
                 mergeSystemMessages,
-                /*fimTemplate*/ null);
+                /*fimTemplate*/ null,
+                /*minCacheableInputTokens*/ null);
     }
 
     /** Pre-{@code mergeSystemMessages} constructor — defaults the flag to off. */
@@ -150,7 +204,8 @@ public record ModelInfo(
                 reasoningEffortWhenOff,
                 maxTools, /*mergeSystemMessages*/
                 false,
-                /*fimTemplate*/ null);
+                /*fimTemplate*/ null,
+                /*minCacheableInputTokens*/ null);
     }
 
     /*

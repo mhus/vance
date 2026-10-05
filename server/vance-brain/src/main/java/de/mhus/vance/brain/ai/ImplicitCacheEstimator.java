@@ -83,6 +83,19 @@ final class ImplicitCacheEstimator {
         return gap;
     }
 
+    /**
+     * The call's implicit cache estimate, wherever it lives: computed once per
+     * attempt in the cache-aware normalization layer and carried on the usage
+     * ({@link ImplicitCacheTokenUsage}), or — for wires that skip that layer —
+     * computed here. {@code 0} for providers that itemize their cache:
+     * measurement beats estimate.
+     */
+    static long implicitCacheReads(@Nullable ChatRequest request, @Nullable TokenUsage usage) {
+        if (usage instanceof CacheAwareTokenUsage cau) {
+            return cau.implicitCacheReadTokens();
+        }
+        return estimate(request, usage);
+    }
     /** Plain text length of the request messages — same extraction the trace rows use. */
     private static long messageChars(@Nullable List<ChatMessage> messages) {
         if (messages == null) return 0;

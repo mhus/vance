@@ -1475,9 +1475,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
             <LlmTraceTab :process-id="selectedProcess.id" />
           </template>
 
-          <!-- Cache Stats — aggregated Anthropic prompt-cache hit rate
-               for this process, summed over every OUTPUT trace row.
-               Driving question: "is prompt caching paying off here?". -->
+          <!-- Cache Stats — aggregated prompt-cache hit rate for this
+               process, summed over every OUTPUT trace row, plus the labeled
+               estimate for unitemized caches and a per-provider slice.
+               Driving question: "is prompt caching paying off here, and on
+               which wire?". -->
           <template v-else-if="activeTab === 'cache-stats'">
             <CacheStatsTab :process-id="selectedProcess.id" />
           </template>

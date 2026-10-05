@@ -162,6 +162,7 @@ public class LlmUsageReportService {
                 "cacheReadTokens",
                 "implicitCacheReadTokens",
                 "cacheWriteTokens",
+                "cacheWrite1hTokens",
                 "images",
                 "costInputMicros",
                 "costOutputMicros",
@@ -188,6 +189,7 @@ public class LlmUsageReportService {
                 .cacheReadTokens(asLong(doc.get("cacheReadTokens")))
                 .implicitCacheReadTokens(asLong(doc.get("implicitCacheReadTokens")))
                 .cacheWriteTokens(asLong(doc.get("cacheWriteTokens")))
+                .cacheWrite1hTokens(asLong(doc.get("cacheWrite1hTokens")))
                 .images(asLong(doc.get("images")))
                 // Stored as integer micro-units, reported as an amount. The
                 // conversion happens once, here, at the edge — summing in

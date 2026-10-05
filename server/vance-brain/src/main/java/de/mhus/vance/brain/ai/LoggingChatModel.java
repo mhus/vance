@@ -72,7 +72,7 @@ public class LoggingChatModel implements ChatModel {
     private void safeRecord(ChatRequest request, @Nullable ChatResponse response, long elapsedMs) {
         if (traceWriter == null) return;
         try {
-            traceWriter.onRoundtrip(request, response, elapsedMs);
+            traceWriter.onRoundtrip(name, request, response, elapsedMs);
         } catch (RuntimeException e) {
             LOG.warn("LlmTraceWriter threw — ignoring (chat='{}'): {}", name, e.toString());
         }

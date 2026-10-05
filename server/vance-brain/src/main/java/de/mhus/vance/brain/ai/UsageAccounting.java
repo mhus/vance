@@ -41,17 +41,30 @@ final class UsageAccounting {
         int out = nonNegative(usage == null ? null : usage.outputTokenCount());
         int cacheRead = 0;
         int cacheWrite = 0;
+        int cacheWrite1h = 0;
         if (usage instanceof CacheAwareTokenUsage cau) {
             cacheRead = (int) Math.max(0, cau.cacheReadInputTokens());
             cacheWrite = (int) Math.max(0, cau.cacheCreationInputTokens());
+            cacheWrite1h = (int) Math.max(0, cau.cacheCreation1hInputTokens());
         }
         // Cache savings the provider reported nowhere: billed tail far below the
-        // request's actual volume, no cache counters of its own. Informational
-        // only — the cost estimate stays on the reported tokens, which is what
-        // was billed. Estimate field, never mixed into the measured cacheRead.
-        int implicitCache = ImplicitCacheEstimator.estimate(request, usage);
+        // request's actual volume, no cache counters of its own. Computed once in
+        // the cache-aware normalization layer and carried on the usage — this
+        // lookup falls back to the estimator only for wires that skip that layer.
+        // Informational only: the cost estimate stays on the reported tokens, which
+        // is the amount actually charged. Never mixed into the measured cacheRead.
+        int implicitCache = (int) ImplicitCacheEstimator.implicitCacheReads(request, usage);
         return UsageMeasurement.chat(
-                model, providerInstance, attempt, in, out, cacheRead, cacheWrite, implicitCache, durationMs);
+                model,
+                providerInstance,
+                attempt,
+                in,
+                out,
+                cacheRead,
+                cacheWrite,
+                cacheWrite1h,
+                implicitCache,
+                durationMs);
     }
 
     /**

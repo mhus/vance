@@ -29,9 +29,13 @@ public interface LlmTraceWriter {
      * regardless of whether the underlying call streamed or was
      * synchronous.
      *
+     * @param chatName  full name of the chat that answered —
+     *                  {@code providerInstance:model}, i.e. the wire that
+     *                  billed, which on a fallback chain is not necessarily
+     *                  the one that was asked for
      * @param request   the request as sent to the provider
      * @param response  the assembled reply, or {@code null} on error
      * @param elapsedMs wall-clock duration of the call in milliseconds
      */
-    void onRoundtrip(ChatRequest request, ChatResponse response, long elapsedMs);
+    void onRoundtrip(String chatName, ChatRequest request, ChatResponse response, long elapsedMs);
 }

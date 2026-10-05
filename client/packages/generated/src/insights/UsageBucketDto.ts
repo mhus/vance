@@ -12,6 +12,7 @@ export interface UsageBucketDto {
   cacheReadTokens: number;
   implicitCacheReadTokens: number;
   cacheWriteTokens: number;
+  cacheWrite1hTokens: number;
   costInput: number;
   costOutput: number;
   costCacheRead: number;

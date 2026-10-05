@@ -196,6 +196,7 @@ const totals = computed<{
   cacheRead: number;
   implicitCacheRead: number;
   cacheWrite: number;
+  cacheWrite1h: number;
   byCurrency: Map<string, number>;
 }>(() => {
   const out = {
@@ -204,6 +205,7 @@ const totals = computed<{
     cacheRead: 0,
     implicitCacheRead: 0,
     cacheWrite: 0,
+    cacheWrite1h: 0,
     byCurrency: new Map<string, number>(),
   };
   if (!summary.value) return out;
@@ -213,6 +215,7 @@ const totals = computed<{
     out.cacheRead += b.cacheReadTokens;
     out.implicitCacheRead += b.implicitCacheReadTokens ?? 0;
     out.cacheWrite += b.cacheWriteTokens;
+    out.cacheWrite1h += b.cacheWrite1hTokens ?? 0;
     if (b.currency) {
       out.byCurrency.set(b.currency, (out.byCurrency.get(b.currency) || 0) + b.costTotal);
     }
@@ -320,6 +323,10 @@ const detailHorizon = computed<string | null>(() => {
           <div v-if="totals.cacheWrite > 0">
             <span class="muted">{{ $t('insights.usage.cacheWrite') }}</span>
             <strong>{{ fmtTokens(totals.cacheWrite) }}</strong>
+          </div>
+          <div v-if="totals.cacheWrite1h > 0">
+            <span class="muted">{{ $t('insights.usage.cacheWrite1h') }}</span>
+            <strong>{{ fmtTokens(totals.cacheWrite1h) }}</strong>
           </div>
           <div v-for="[cur, sum] in totals.byCurrency" :key="cur">
             <span class="muted">{{ $t('insights.usage.cost') }}</span>

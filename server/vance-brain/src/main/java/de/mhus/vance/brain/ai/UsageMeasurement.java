@@ -39,6 +39,12 @@ public record UsageMeasurement(
         int cacheReadTokens,
         int cacheWriteTokens,
         /**
+         * Share of {@link #cacheWriteTokens} written with the 1h TTL — billed
+         * at ~2× the 5m write rate. {@code 0} when the provider reported no
+         * split.
+         */
+        int cacheWrite1hTokens,
+        /**
          * Estimated tokens the provider served from a cache it did not
          * itemize — see {@link ImplicitCacheEstimator}. Informational
          * only: carries no cost (the provider billed the reported
@@ -63,6 +69,7 @@ public record UsageMeasurement(
             int tokensOut,
             int cacheReadTokens,
             int cacheWriteTokens,
+            int cacheWrite1hTokens,
             int implicitCacheReadTokens,
             long durationMs) {
         return of(
@@ -74,6 +81,7 @@ public record UsageMeasurement(
                 tokensOut,
                 cacheReadTokens,
                 cacheWriteTokens,
+                cacheWrite1hTokens,
                 implicitCacheReadTokens,
                 durationMs);
     }
@@ -81,7 +89,7 @@ public record UsageMeasurement(
     /** Chat attempt that raised. Token counts are whatever the provider reported. */
     public static UsageMeasurement chatFailed(
             ModelInfo model, String providerInstance, int attempt, int tokensIn, int tokensOut, long durationMs) {
-        return of(model, providerInstance, UsageOutcome.FAILED, attempt, tokensIn, tokensOut, 0, 0, 0, durationMs);
+        return of(model, providerInstance, UsageOutcome.FAILED, attempt, tokensIn, tokensOut, 0, 0, 0, 0, durationMs);
     }
 
     /** Embedding batch — one row per batch, not per chunk. */
@@ -96,6 +104,7 @@ public record UsageMeasurement(
                 UsageOutcome.SUCCESS,
                 1,
                 tokensIn,
+                0,
                 0,
                 0,
                 0,
@@ -129,6 +138,7 @@ public record UsageMeasurement(
                 0,
                 0,
                 0,
+                0,
                 1,
                 cost,
                 currency,
@@ -144,6 +154,7 @@ public record UsageMeasurement(
             int tokensOut,
             int cacheReadTokens,
             int cacheWriteTokens,
+            int cacheWrite1hTokens,
             int implicitCacheReadTokens,
             long durationMs) {
         return new UsageMeasurement(
@@ -159,6 +170,7 @@ public record UsageMeasurement(
                 tokensOut,
                 cacheReadTokens,
                 cacheWriteTokens,
+                cacheWrite1hTokens,
                 implicitCacheReadTokens,
                 0,
                 null,

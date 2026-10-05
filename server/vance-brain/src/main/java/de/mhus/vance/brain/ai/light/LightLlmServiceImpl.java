@@ -382,7 +382,7 @@ public class LightLlmServiceImpl implements LightLlmService {
         // hands the numbers to the caller instead of only to the log
         // stream (budget-metering engines read it off the answer).
         AtomicReference<LightLlmJsonAnswer.Usage> usage = new AtomicReference<>();
-        options.setLlmTraceWriter((request, response, elapsedMs) -> {
+        options.setLlmTraceWriter((chatName, request, response, elapsedMs) -> {
             Integer tokensIn = null;
             Integer tokensOut = null;
             if (response != null && response.tokenUsage() != null) {

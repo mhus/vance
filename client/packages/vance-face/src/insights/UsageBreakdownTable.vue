@@ -34,6 +34,14 @@ const showCache = computed(
  * volume or when implicit volume exists — a provider that meters its
  * cache honestly never produces it.
  */
+/**
+ * The 1h-TTL write share appears only when the window actually holds one —
+ * providers that write with the default TTL would otherwise show a permanent
+ * zero column that reads as broken data.
+ */
+const showCacheWrite1h = computed(
+  () => props.rows.some((r) => (r.cacheWrite1hTokens ?? 0) > 0),
+);
 const showImplicitCache = computed(
   () =>
     showCache.value || props.rows.some((r) => (r.implicitCacheReadTokens ?? 0) > 0),
@@ -50,6 +58,7 @@ const showImplicitCache = computed(
         <th v-if="showCache" class="num">{{ $t('insights.usageTable.cacheRead') }}</th>
         <th v-if="showImplicitCache" class="num">{{ $t('insights.usageTable.implicitCacheRead') }}</th>
         <th v-if="showCache" class="num">{{ $t('insights.usageTable.cacheWrite') }}</th>
+        <th v-if="showCacheWrite1h" class="num">{{ $t('insights.usageTable.cacheWrite1h') }}</th>
         <th class="num">{{ $t('insights.usageTable.tokensOut') }}</th>
         <th class="num">{{ $t('insights.usageTable.cost') }}</th>
       </tr>
@@ -62,6 +71,7 @@ const showImplicitCache = computed(
         <td v-if="showCache" class="num">{{ fmtTokens(row.cacheReadTokens) }}</td>
         <td v-if="showImplicitCache" class="num">≈ {{ fmtTokens(row.implicitCacheReadTokens ?? 0) }}</td>
         <td v-if="showCache" class="num">{{ fmtTokens(row.cacheWriteTokens) }}</td>
+        <td v-if="showCacheWrite1h" class="num">{{ fmtTokens(row.cacheWrite1hTokens ?? 0) }}</td>
         <td class="num">{{ fmtTokens(row.tokensOut) }}</td>
         <td class="num">{{ fmtCost(row.costTotal, row.currency) }}</td>
       </tr>

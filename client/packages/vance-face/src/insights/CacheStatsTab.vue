@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import type { CacheStatsProviderDto } from '@vance/generated';
 import { VAlert, VButton, VCard, VEmptyState } from '@/components';
 import { useCacheStats } from '@/composables/useCacheStats';
 
@@ -37,8 +38,18 @@ const totalInput = computed<number>(() => {
   );
 });
 
-/** Hit-rate as a percentage, 0–100. */
+/** Hit-rate as a percentage, 0–100. Measured cache reads only. */
 const hitRatePct = computed<number>(() => (stats.value ? stats.value.hitRate * 100 : 0));
+
+/** Same, but including the estimate — the honest figure for tail-billing
+ *  gateways. Always labeled as an estimate where shown. */
+const hitRateEstimatePct = computed<number>(() =>
+  (stats.value ? stats.value.hitRateIncludingEstimate : 0) * 100,
+);
+
+/** Only rendered when there is something to label — providers that itemize
+ *  their cache never produce an estimate. */
+const hasEstimate = computed<boolean>(() => (stats.value?.implicitCacheReadTokens ?? 0) > 0);
 
 /** Cost-saved: cache-read tokens are billed at ~10% of input vs. ~100%
  *  if they had to come in fresh. Saved = cacheRead × 0.9. Display only,
@@ -47,6 +58,13 @@ const tokensSaved = computed<number>(() => {
   if (!stats.value) return 0;
   return Math.round(stats.value.cacheReadInputTokens * 0.9);
 });
+
+/** Per-wire slices, biggest call count first — "which provider produced
+ *  these cache numbers?" is the question this tab used to be unable to
+ *  answer. */
+const providers = computed<CacheStatsProviderDto[]>(() =>
+  [...(stats.value?.providers ?? [])].sort((a, b) => b.roundTrips - a.roundTrips),
+);
 
 function fmt(n: number): string {
   if (n < 1_000) return String(n);
@@ -65,6 +83,30 @@ const hitRateClass = computed<string>(() => {
   if (hitRatePct.value >= 40) return 'rate-bar--mid';
   return 'rate-bar--bad';
 });
+
+/**
+ * Why this wire shows zero cache reads — but only when the catalog knows the
+ * model's cacheable minimum. Prompts below that floor are processed uncached
+ * even with markers, and zero counters are then the expected result, not a
+ * fault. {@code null} when the catalog has no entry: say nothing rather than
+ * guess.
+ */
+function tooSmallHint(p: CacheStatsProviderDto): string | null {
+  if (!p.minCacheableInputTokens || p.roundTrips === 0) return null;
+  const total =
+    p.inputTokens
+    + p.cacheCreationInputTokens
+    + p.cacheReadInputTokens
+    + (p.implicitCacheReadTokens ?? 0);
+  const avgPerCall = total / p.roundTrips;
+  return avgPerCall < p.minCacheableInputTokens
+    ? t('insights.cacheStats.minCacheableHint', { tokens: p.minCacheableInputTokens })
+    : null;
+}
+
+function providerLabel(p: CacheStatsProviderDto): string {
+  return p.providerModel || t('insights.cacheStats.unknownProvider');
+}
 
 async function reload(): Promise<void> {
   await load(props.processId);
@@ -106,20 +148,27 @@ async function reload(): Promise<void> {
               :style="{ width: `${Math.min(hitRatePct, 100)}%` }"
             />
           </div>
+          <p v-if="hasEstimate" class="text-sm opacity-70">
+            {{ t('insights.cacheStats.headlineEstimate', { pct: fmtPct(hitRateEstimatePct) }) }}
+          </p>
           <p class="text-xs opacity-60">
             {{ t('insights.cacheStats.headlineHint') }}
           </p>
         </div>
       </VCard>
 
-      <!-- Token breakdown: the four counters that make up totalInput +
-           the output total. Read/write are the cache-aware ones; the
-           uncached input row is what arrived after the last cache
-           breakpoint. -->
+      <!-- Token breakdown: the counters that make up totalInput + the
+           output total. Measured cache reads and the labeled estimate stay
+           in separate rows — they are never summed into one number. -->
       <VCard :title="t('insights.cacheStats.breakdownTitle')">
         <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <dt class="opacity-60">{{ t('insights.cacheStats.cacheRead') }}</dt>
           <dd class="font-mono">{{ fmt(stats.cacheReadInputTokens) }}</dd>
+
+          <template v-if="hasEstimate">
+            <dt class="opacity-60">{{ t('insights.cacheStats.implicitCacheRead') }}</dt>
+            <dd class="font-mono">≈ {{ fmt(stats.implicitCacheReadTokens) }}</dd>
+          </template>
 
           <dt class="opacity-60">{{ t('insights.cacheStats.cacheCreate') }}</dt>
           <dd class="font-mono">{{ fmt(stats.cacheCreationInputTokens) }}</dd>
@@ -139,6 +188,32 @@ async function reload(): Promise<void> {
         <p class="text-xs opacity-60 mt-3">
           {{ t('insights.cacheStats.savingsHint') }}
         </p>
+      </VCard>
+
+      <!-- Per-wire slice: which provider produced these numbers. One row
+           per providerModel seen in the process, fallback chain included. -->
+      <VCard v-if="providers.length" :title="t('insights.cacheStats.providersTitle')">
+        <table class="w-full text-sm provider-table">
+          <thead>
+            <tr>
+              <th class="text-left opacity-60">{{ t('insights.cacheStats.colProvider') }}</th>
+              <th class="text-right opacity-60">{{ t('insights.cacheStats.colRounds') }}</th>
+              <th class="text-right opacity-60">{{ t('insights.cacheStats.colHitRate') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in providers" :key="p.providerModel || 'unknown'">
+              <td>
+                <div class="font-mono">{{ providerLabel(p) }}</div>
+                <div v-if="tooSmallHint(p)" class="text-xs opacity-60">
+                  {{ tooSmallHint(p) }}
+                </div>
+              </td>
+              <td class="text-right font-mono">{{ fmt(p.roundTrips) }}</td>
+              <td class="text-right font-mono">{{ fmtPct(p.hitRate * 100) }}</td>
+            </tr>
+          </tbody>
+        </table>
       </VCard>
 
       <div class="flex justify-end">
@@ -165,4 +240,9 @@ async function reload(): Promise<void> {
 .rate-bar--good { background: #4caf50; }
 .rate-bar--mid  { background: #ffb74d; }
 .rate-bar--bad  { background: #e57373; }
+.provider-table th,
+.provider-table td {
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.2);
+}
 </style>

@@ -1,5 +1,6 @@
 contextWindowTokens: 200000
 defaultMaxOutputTokens: 8192
+minCacheableInputTokens: 1024
 size: LARGE
 capabilities:
 - vision

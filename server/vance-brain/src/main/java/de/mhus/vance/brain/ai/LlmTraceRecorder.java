@@ -64,6 +64,7 @@ public final class LlmTraceRecorder {
             LlmTraceService service,
             ThinkProcessDocument process,
             String engineName,
+            String chatName,
             ChatRequest request,
             @Nullable ChatResponse response,
             long elapsedMs) {
@@ -83,13 +84,34 @@ public final class LlmTraceRecorder {
             toolsCount = specs.size();
             toolsBytes = estimateToolsBytes(specs);
         }
+        String modelAlias =
+                request.parameters() == null ? null : request.parameters().modelName();
+        // The estimate is computed once per attempt, in the cache-aware
+        // normalization layer, and travels on the usage — this reads it off
+        // (and falls back to the estimator for wires without that layer).
+        Integer implicitCache = response == null
+                ? null
+                : (int) ImplicitCacheEstimator.implicitCacheReads(request, response.tokenUsage());
         try {
             int seq = 0;
             for (ChatMessage msg : safeMessages(request)) {
-                seq = recordRequestMessage(service, process, engineName, turnId, seq, msg, toolsCount, toolsBytes);
+                seq = recordRequestMessage(
+                        service, process, engineName, chatName, modelAlias, turnId, seq, msg, toolsCount, toolsBytes);
             }
             if (response != null) {
-                recordResponse(service, process, engineName, turnId, seq, response, elapsedMs, toolsCount, toolsBytes);
+                recordResponse(
+                        service,
+                        process,
+                        engineName,
+                        chatName,
+                        modelAlias,
+                        turnId,
+                        seq,
+                        response,
+                        implicitCache,
+                        elapsedMs,
+                        toolsCount,
+                        toolsBytes);
             }
         } catch (RuntimeException e) {
             LOG.warn(
@@ -109,6 +131,8 @@ public final class LlmTraceRecorder {
             LlmTraceService service,
             ThinkProcessDocument process,
             String engineName,
+            String chatName,
+            @Nullable String modelAlias,
             String turnId,
             int seq,
             ChatMessage msg,
@@ -116,7 +140,7 @@ public final class LlmTraceRecorder {
             @Nullable Integer toolsBytes) {
         boolean firstRow = seq == 0;
         if (msg instanceof ToolExecutionResultMessage trm) {
-            service.record(baseEntry(process, engineName, turnId, seq)
+            service.record(baseEntry(process, engineName, chatName, modelAlias, turnId, seq)
                     .direction(LlmTraceDirection.TOOL_RESULT)
                     .role("tool")
                     .toolName(trm.toolName())
@@ -129,7 +153,7 @@ public final class LlmTraceRecorder {
         }
         // Treat AiMessage in the request (e.g. replayed history) as an
         // INPUT — it's part of what the model sees, not a fresh OUTPUT.
-        service.record(baseEntry(process, engineName, turnId, seq)
+        service.record(baseEntry(process, engineName, chatName, modelAlias, turnId, seq)
                 .direction(LlmTraceDirection.INPUT)
                 .role(roleOf(msg))
                 .content(textOf(msg))
@@ -143,9 +167,12 @@ public final class LlmTraceRecorder {
             LlmTraceService service,
             ThinkProcessDocument process,
             String engineName,
+            String chatName,
+            @Nullable String modelAlias,
             String turnId,
             int seq,
             ChatResponse response,
+            @Nullable Integer implicitCache,
             long elapsedMs,
             @Nullable Integer toolsCount,
             @Nullable Integer toolsBytes) {
@@ -163,7 +190,7 @@ public final class LlmTraceRecorder {
         // OUTPUT row — assistant reply text. Always written even for
         // empty replies so the operator can tell "model said nothing"
         // from "model wasn't called".
-        service.record(baseEntry(process, engineName, turnId, seq)
+        service.record(baseEntry(process, engineName, chatName, modelAlias, turnId, seq)
                 .direction(LlmTraceDirection.OUTPUT)
                 .role("assistant")
                 .content(ai == null ? null : safeText(ai))
@@ -171,6 +198,7 @@ public final class LlmTraceRecorder {
                 .tokensOut(tokensOut)
                 .cacheCreationInputTokens(cacheCreate)
                 .cacheReadInputTokens(cacheRead)
+                .implicitCacheReadTokens(implicitCache)
                 .toolsCount(seq == 0 ? toolsCount : null)
                 .toolsBytes(seq == 0 ? toolsBytes : null)
                 .elapsedMs(elapsedMs)
@@ -180,7 +208,7 @@ public final class LlmTraceRecorder {
         // One TOOL_CALL row per request the assistant emitted.
         if (ai != null && ai.hasToolExecutionRequests()) {
             for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
-                service.record(baseEntry(process, engineName, turnId, seq)
+                service.record(baseEntry(process, engineName, chatName, modelAlias, turnId, seq)
                         .direction(LlmTraceDirection.TOOL_CALL)
                         .role("assistant")
                         .toolName(req.name())
@@ -194,12 +222,19 @@ public final class LlmTraceRecorder {
     }
 
     private static LlmTraceDocument.LlmTraceDocumentBuilder baseEntry(
-            ThinkProcessDocument process, String engineName, String turnId, int seq) {
+            ThinkProcessDocument process,
+            String engineName,
+            String chatName,
+            @Nullable String modelAlias,
+            String turnId,
+            int seq) {
         return LlmTraceDocument.builder()
                 .tenantId(process.getTenantId() == null ? "" : process.getTenantId())
                 .sessionId(process.getSessionId())
                 .processId(process.getId() == null ? "" : process.getId())
                 .engine(engineName)
+                .providerModel(chatName)
+                .modelAlias(modelAlias)
                 .turnId(turnId)
                 .sequence(seq);
     }

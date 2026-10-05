@@ -258,7 +258,7 @@ public class FimCompletionService {
         // Same audit contract as light LLM calls: the writer hook is
         // the emitter, the accounting decorator inside the provider
         // books the usage ledger.
-        options.setLlmTraceWriter((request, response, elapsedMs) -> {
+        options.setLlmTraceWriter((chatName, request, response, elapsedMs) -> {
             Integer tokensIn = null;
             Integer tokensOut = null;
             if (response != null && response.tokenUsage() != null) {

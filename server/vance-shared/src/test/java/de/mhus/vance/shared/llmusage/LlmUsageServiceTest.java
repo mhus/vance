@@ -2,9 +2,18 @@ package de.mhus.vance.shared.llmusage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
+import de.mhus.vance.shared.settings.RetentionSettingCache;
 import java.time.Instant;
+import org.bson.Document;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Update;
 
 /**
  * Cost derivation and the pricing-coverage predicate — the two pieces the
@@ -55,10 +64,10 @@ class LlmUsageServiceTest {
         assertThat(d.getCostOutput()).isCloseTo(0.015, within(1e-9));
         assertThat(d.getCostCacheRead()).isCloseTo(20_000 / 1_000_000.0 * 0.30, within(1e-9));
         assertThat(d.getCostCacheWrite()).isCloseTo(8_000 / 1_000_000.0 * 3.75, within(1e-9));
-        assertThat(d.getCostTotal()).isCloseTo(
-                d.getCostInput() + d.getCostOutput()
-                        + d.getCostCacheRead() + d.getCostCacheWrite(),
-                within(1e-9));
+        assertThat(d.getCostTotal())
+                .isCloseTo(
+                        d.getCostInput() + d.getCostOutput() + d.getCostCacheRead() + d.getCostCacheWrite(),
+                        within(1e-9));
     }
 
     @Test
@@ -78,8 +87,7 @@ class LlmUsageServiceTest {
         assertThat(d.getCostOutput()).isGreaterThan(0.0);
         assertThat(d.getCostCacheRead()).isZero();
         // Total still reflects the priced buckets only.
-        assertThat(d.getCostTotal()).isCloseTo(
-                d.getCostInput() + d.getCostOutput(), within(1e-9));
+        assertThat(d.getCostTotal()).isCloseTo(d.getCostInput() + d.getCostOutput(), within(1e-9));
     }
 
     @Test
@@ -120,8 +128,7 @@ class LlmUsageServiceTest {
     @Test
     void imageCall_isPricedPerImageNotPerToken() {
         LlmUsageService.UsageWrite w = LlmUsageService.UsageWrite.builder()
-                .attribution(CallAttribution.ofService(
-                        "acme", "demo", LlmUsageService.CALLER_FENCHURCH))
+                .attribution(CallAttribution.ofService("acme", "demo", LlmUsageService.CALLER_FENCHURCH))
                 .kind(UsageKind.IMAGE)
                 .images(1)
                 .imageCost(0.039)
@@ -140,10 +147,8 @@ class LlmUsageServiceTest {
         // The distinction that keeps the invoice honest: a model with no
         // `pricing:` block is unknown, not free. The report has to say so
         // instead of adding a silent zero into the total.
-        LlmUsageService.UsageWrite unpriced = baseBuilder()
-                .tokensIn(10_000)
-                .tokensOut(5_000)
-                .build();
+        LlmUsageService.UsageWrite unpriced =
+                baseBuilder().tokensIn(10_000).tokensOut(5_000).build();
         assertThat(unpriced.priced()).isFalse();
 
         // A local model declares zero explicitly, which counts as priced.
@@ -183,14 +188,67 @@ class LlmUsageServiceTest {
         // follow UTC, or a late-evening call lands in tomorrow's invoice.
         assertThat(LlmUsageDailyDocument.dayOf(Instant.parse("2026-06-24T22:30:00Z")))
                 .isEqualTo("2026-06-24");
-        assertThat(LlmUsageDailyDocument.dayStart("2026-06-24"))
-                .isEqualTo(Instant.parse("2026-06-24T00:00:00Z"));
+        assertThat(LlmUsageDailyDocument.dayStart("2026-06-24")).isEqualTo(Instant.parse("2026-06-24T00:00:00Z"));
+    }
+
+    @Test
+    void build_prices1hCacheWritesAtTwiceTheWriteRate() {
+        // Anthropic bills 5m writes at 1.25× and 1h writes at 2× the input
+        // rate. The split arrives in `usage.cache_creation`; the ledger must
+        // price the two shares separately or long-TTL recipes are
+        // under-costed by half.
+        LlmUsageService.UsageWrite w = baseBuilder()
+                .cacheWriteTokens(8_000)
+                .cacheWrite1hTokens(3_000)
+                .priceCacheWritePerMTok(3.75)
+                .currency("USD")
+                .build();
+
+        LlmUsageDocument d = LlmUsageService.build(w);
+
+        // (5_000 × 3.75 + 3_000 × 7.50) / 1e6 = 0.04125
+        assertThat(d.getCostCacheWrite()).isCloseTo(0.04125, within(1e-9));
+        assertThat(d.getCacheWriteTokens()).isEqualTo(8_000);
+        assertThat(d.getCacheWrite1hTokens()).isEqualTo(3_000);
+    }
+
+    @Test
+    void build_withoutASplitPricesEveryWriteAtThe5mRate() {
+        // Documented fallback: a payload without `usage.cache_creation` keeps
+        // the old behaviour instead of inventing a 1h share.
+        LlmUsageService.UsageWrite w = baseBuilder()
+                .cacheWriteTokens(8_000)
+                .priceCacheWritePerMTok(3.75)
+                .build();
+
+        assertThat(LlmUsageService.build(w).getCostCacheWrite()).isCloseTo(0.03, within(1e-9));
+    }
+
+    @Test
+    void dayBucket_incrementsTheWriteCountersAlongsideTheReadOnes() {
+        // The day bucket used to skip `cacheWriteTokens` entirely — every
+        // cached-write workload showed zero writes in the report while the
+        // detail rows carried them.
+        MongoTemplate mongo = mock(MongoTemplate.class);
+        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
+        LlmUsageService service = new LlmUsageService(mongo, mock(RetentionSettingCache.class), 0, 60, 14);
+
+        service.record(baseBuilder()
+                .cacheWriteTokens(8_000)
+                .cacheWrite1hTokens(3_000)
+                .cacheReadTokens(20_000)
+                .build());
+
+        verify(mongo).upsert(any(), update.capture(), eq(LlmUsageDailyDocument.class));
+        Document inc = update.getValue().getUpdateObject().get("$inc", Document.class);
+        assertThat(inc.get("cacheWriteTokens")).isEqualTo(8_000);
+        assertThat(inc.get("cacheWrite1hTokens")).isEqualTo(3_000);
+        assertThat(inc.get("cacheReadTokens")).isEqualTo(20_000);
     }
 
     private static LlmUsageService.UsageWrite.UsageWriteBuilder baseBuilder() {
         return LlmUsageService.UsageWrite.builder()
-                .attribution(new CallAttribution(
-                        "acme", "demo", "sess-1", "proc-1", "frankie", "coding"))
+                .attribution(new CallAttribution("acme", "demo", "sess-1", "proc-1", "frankie", "coding"))
                 .providerInstance("openai")
                 .providerType("openai")
                 .providerModel("glm-5.2")

@@ -2110,20 +2110,32 @@ export default {
       loading: 'Cache-Statistik wird geladen…',
       emptyHeadline: 'Keine Cache-Daten',
       emptyBody:
-        'Entweder war tracing.llm beim Lauf aus, oder der Provider liefert keine Cache-Tokens (Gemini, OpenAI). Cache-Tracking ist heute Anthropic-spezifisch.',
+        'Entweder war tracing.llm beim Lauf aus, das Prompt lag unter der cachbaren Mindestgröße des Modells, '
+        + 'oder der Provider meldet keine Cache-Tokens. Cache-Hits werden pro Provider gemessen: Anthropic '
+        + 'meldet sie nativ, OpenAI und Gemini, wenn das Gateway cached_tokens liefert.',
       headlineTitle: 'Cache-Hit-Rate',
       headlineSub: 'über {rounds} LLM-Calls',
       headlineHint:
-        'Anteil der Eingabe-Tokens, die aus dem Anthropic-Prompt-Cache gelesen wurden — höher ist besser. Spec-Ziel: ≥ 70 %.',
+        'Anteil der Eingabe-Tokens, die aus dem Prompt-Cache gelesen wurden — höher ist besser. Spec-Ziel: ≥ 70 %.',
+      headlineEstimate: '≈ {pct} inkl. geschätzter Cache-Reads',
       breakdownTitle: 'Token-Aufschlüsselung',
       cacheRead: 'Aus Cache gelesen',
       cacheCreate: 'In Cache geschrieben',
+      implicitCacheRead: 'Aus Cache (geschätzt)',
       uncachedInput: 'Eingabe (uncached)',
       totalInput: 'Eingabe gesamt',
       outputTokens: 'Ausgabe',
       tokensSaved: 'Tokens gespart',
       savingsHint:
-        'Aus-Cache-Tokens kosten ~10 % des normalen Eingabe-Preises; die Spar-Schätzung ignoriert die einmaligen Schreib-Aufschläge auf Creation-Tokens.',
+        'Aus-Cache-Tokens kosten ~10 % des normalen Eingabe-Preises; die Spar-Schätzung ignoriert die einmaligen '
+        + 'Schreib-Aufschläge auf Creation-Tokens. Geschätzte Reads sind gekennzeichnet — der Provider hat nur '
+        + 'den uncached Tail abgerechnet, sie tragen keine Kosten.',
+      providersTitle: 'Pro Provider',
+      colProvider: 'Provider : Modell',
+      colRounds: 'Calls',
+      colHitRate: 'Hit-Rate',
+      unknownProvider: 'unbekannt — Zeile stammt aus der Zeit vor dem Provider-Tracking',
+      minCacheableHint: 'Prompts unter {tokens} Tokens sind für dieses Modell zu klein für den Cache.',
       reload: 'Neu laden',
     },
     timeline: {

@@ -705,6 +705,7 @@ public class ModelCatalog {
             "maxTools",
             "mergeSystemMessages",
             "fimTemplate",
+            "minCacheableInputTokens",
             // Image
             "supportedAspectRatios",
             "maxPromptChars",
@@ -751,6 +752,11 @@ public class ModelCatalog {
         if (fimTemplate == null) {
             fimTemplate = modelQuirks.fimTemplateFor(modelName).orElse(null);
         }
+        // Smallest cacheable prompt — Anthropic refuses to cache below a
+        // per-family floor (512–4.096 tokens) and says nothing about it.
+        // Absent = no known minimum.
+        Integer minCacheableInputTokens =
+                readPositiveInt(spec.get("minCacheableInputTokens"), provider, modelName, "minCacheableInputTokens");
         ModelInfo.Pricing pricing = readPricing(spec.get("pricing"), provider, modelName);
         // Endpoint-level tool cap: per-model value wins, provider sidecar
         // fills the gap, absent in both = no known limit. A *present*
@@ -788,7 +794,8 @@ public class ModelCatalog {
                 reasoningOff,
                 maxTools,
                 mergeSystemMessages,
-                fimTemplate);
+                fimTemplate,
+                minCacheableInputTokens);
     }
 
     /**
@@ -888,7 +895,8 @@ public class ModelCatalog {
                 modelQuirks.reasoningEffortWhenOffFor(modelName).orElse(null),
                 maxTools,
                 /*mergeSystemMessages*/ false,
-                modelQuirks.fimTemplateFor(modelName).orElse(null));
+                modelQuirks.fimTemplateFor(modelName).orElse(null),
+                /*minCacheableInputTokens*/ null);
     }
 
     /** The {@code maxTools} a provider sidecar declares, if any. */

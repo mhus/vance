@@ -27,7 +27,7 @@ public class CacheAwareUsageStreamingChatModel implements StreamingChatModel {
         delegate.chat(request, new ForwardingStreamingChatResponseHandler(handler) {
             @Override
             public void onCompleteResponse(ChatResponse complete) {
-                super.onCompleteResponse(CacheAwareUsageChatModel.withNormalizedUsage(complete));
+                super.onCompleteResponse(CacheAwareUsageChatModel.withNormalizedUsage(request, complete));
             }
         });
     }

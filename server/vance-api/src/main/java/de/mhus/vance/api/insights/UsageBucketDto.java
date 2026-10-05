@@ -54,6 +54,8 @@ public class UsageBucketDto {
     private long implicitCacheReadTokens;
 
     private long cacheWriteTokens;
+    /** Share of {@link #cacheWriteTokens} written with 1h-TTL (~2× write rate). */
+    private long cacheWrite1hTokens;
 
     private double costInput;
     private double costOutput;

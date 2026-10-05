@@ -95,10 +95,19 @@ public class LlmTraceDocument {
     /** Provider-issued tool-call id, ties a TOOL_CALL leg to its TOOL_RESULT. */
     private @Nullable String toolCallId;
 
-    /** Resolved model alias (e.g. {@code default:analyze}) when relevant. */
+    /**
+     * Model name the engine configured for the call (the request's
+     * {@code modelName}), e.g. {@code claude-sonnet-4-5}. {@code null} on rows
+     * written before provider tracking landed.
+     */
     private @Nullable String modelAlias;
 
-    /** Concrete provider:model the call ran against. */
+    /**
+     * Concrete {@code providerInstance:model} the call ran against, e.g.
+     * {@code anthropic:claude-sonnet-4-5} — the wire that billed, which on a
+     * fallback chain is not necessarily the one that was asked for.
+     * {@code null} on rows written before provider tracking landed.
+     */
     private @Nullable String providerModel;
 
     /** Input tokens for this leg (if known — typically only on OUTPUT rows). */
@@ -108,20 +117,30 @@ public class LlmTraceDocument {
     private @Nullable Integer tokensOut;
 
     /**
-     * Tokens written to the Anthropic prompt cache on this call —
-     * billed at ~1.25× normal input. Only populated on OUTPUT rows
-     * for cache-aware providers (Anthropic). {@code null} when the
-     * provider doesn't expose cache stats or no caching was active.
+     * Tokens written to the prompt cache on this call — billed at ~1.25×
+     * normal input (1h-TTL writes at ~2×). Only populated on OUTPUT rows and
+     * only when the provider itemized its cache: Anthropic reports natively,
+     * OpenAI and Gemini via the cache-aware usage adapter.
+     * {@code null} when the provider exposes no cache counters.
      */
     private @Nullable Integer cacheCreationInputTokens;
 
     /**
-     * Tokens read from the prompt cache on this call — billed at
-     * ~10% of normal input. Together with {@link #cacheCreationInputTokens}
-     * this is the data Insights aggregates per tenant/process to
-     * report a hit-rate.
+     * Tokens read from the prompt cache on this call — billed at ~10% of
+     * normal input. Together with {@link #cacheCreationInputTokens} this is
+     * the data Insights aggregates per process to report a hit-rate. Measured
+     * only; the estimate for unitemized caches lives in
+     * {@link #implicitCacheReadTokens} and is never mixed in here.
      */
     private @Nullable Integer cacheReadInputTokens;
+
+    /**
+     * Estimated tokens served from a cache the provider did not itemize
+     * (tail-billing gateways) — same estimate the usage ledger books as
+     * {@code implicitCacheReadTokens}. Informational, no cost, never added to
+     * {@link #cacheReadInputTokens}.
+     */
+    private @Nullable Integer implicitCacheReadTokens;
 
     /** Wall-clock the underlying LLM call took, in milliseconds. */
     private @Nullable Long elapsedMs;

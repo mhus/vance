@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.anthropic.core.JsonValue;
+import com.anthropic.models.messages.CacheCreation;
 import com.anthropic.models.messages.ContentBlock;
 import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.StopReason;
@@ -49,8 +50,7 @@ class AnthropicResponseMapperTest {
     @Test
     void toolUseResponse_mapsToToolExecutionRequest_withRoundTrippedJson() {
         Map<String, Object> input = Map.of("location", "Berlin", "unit", "C");
-        ContentBlock toolBlock = toolUseContentBlock(
-                "call_42", "get_weather", JsonValue.from(input));
+        ContentBlock toolBlock = toolUseContentBlock("call_42", "get_weather", JsonValue.from(input));
         Usage usage = usageWith(20, 8, 0L, 0L);
         Message message = messageWith(List.of(toolBlock), usage, StopReason.TOOL_USE);
 
@@ -125,8 +125,7 @@ class AnthropicResponseMapperTest {
         // tool_use block when the model "explains" the call before making
         // it. AiMessage.from(text, tools) preserves both.
         ContentBlock text = textContentBlock("Looking that up for you.");
-        ContentBlock tool = toolUseContentBlock(
-                "call_x", "search", JsonValue.from(Map.of("q", "vance")));
+        ContentBlock tool = toolUseContentBlock("call_x", "search", JsonValue.from(Map.of("q", "vance")));
         Usage usage = usageWith(30, 12, 0L, 0L);
         Message message = messageWith(List.of(text, tool), usage, StopReason.TOOL_USE);
 
@@ -138,6 +137,44 @@ class AnthropicResponseMapperTest {
         assertThat(ai.toolExecutionRequests()).hasSize(1);
     }
 
+    @Test
+    void cacheCreation1hShare_isReadFromTheCacheCreationBreakdown() {
+        // Anthropic splits the write counter by TTL — `usage.cache_creation`
+        // carries `ephemeral_5m_input_tokens` / `ephemeral_1h_input_tokens` —
+        // and 1h writes cost ~2×. The ledger needs the share, not the sum.
+        Usage usage = mock(Usage.class);
+        when(usage.inputTokens()).thenReturn(100L);
+        when(usage.outputTokens()).thenReturn(20L);
+        when(usage.cacheCreationInputTokens()).thenReturn(Optional.of(4_096L));
+        when(usage.cacheReadInputTokens()).thenReturn(Optional.empty());
+        CacheCreation split = mock(CacheCreation.class);
+        when(split.ephemeral5mInputTokens()).thenReturn(3_072L);
+        when(split.ephemeral1hInputTokens()).thenReturn(1_024L);
+        when(usage.cacheCreation()).thenReturn(Optional.of(split));
+        Message message = messageWith(List.of(textContentBlock("ok")), usage, StopReason.END_TURN);
+
+        AnthropicTokenUsage tokenUsage = (AnthropicTokenUsage)
+                AnthropicResponseMapper.toChatResponse(message).tokenUsage();
+
+        assertThat(tokenUsage.getCacheCreationInputTokens()).isEqualTo(4_096L);
+        assertThat(tokenUsage.getCacheCreation1hInputTokens()).isEqualTo(1_024L);
+        assertThat(tokenUsage.getCacheReadInputTokens()).isZero();
+    }
+
+    @Test
+    void cacheCreation1hShare_defaultsToZeroWithoutTheBreakdown() {
+        // Payloads without `usage.cache_creation` price every write at the
+        // 5m rate — the documented fallback, nothing invented.
+        Usage usage = usageWith(100, 20, 4_096L, 0L);
+        Message message = messageWith(List.of(textContentBlock("ok")), usage, StopReason.END_TURN);
+
+        AnthropicTokenUsage tokenUsage = (AnthropicTokenUsage)
+                AnthropicResponseMapper.toChatResponse(message).tokenUsage();
+
+        assertThat(tokenUsage.getCacheCreationInputTokens()).isEqualTo(4_096L);
+        assertThat(tokenUsage.getCacheCreation1hInputTokens()).isZero();
+    }
+
     // ──────────────────── helpers ────────────────────
 
     private static FinishReason finishReasonFor(StopReason reason) {
@@ -147,8 +184,7 @@ class AnthropicResponseMapperTest {
         return AnthropicResponseMapper.toChatResponse(message).finishReason();
     }
 
-    private static Message messageWith(
-            List<ContentBlock> content, Usage usage, StopReason stopReason) {
+    private static Message messageWith(List<ContentBlock> content, Usage usage, StopReason stopReason) {
         Message message = mock(Message.class);
         when(message.content()).thenReturn(content);
         when(message.usage()).thenReturn(usage);
@@ -180,10 +216,9 @@ class AnthropicResponseMapperTest {
         Usage usage = mock(Usage.class);
         when(usage.inputTokens()).thenReturn(input);
         when(usage.outputTokens()).thenReturn(output);
-        when(usage.cacheCreationInputTokens()).thenReturn(
-                cacheCreate > 0 ? Optional.of(cacheCreate) : Optional.empty());
-        when(usage.cacheReadInputTokens()).thenReturn(
-                cacheRead > 0 ? Optional.of(cacheRead) : Optional.empty());
+        when(usage.cacheCreationInputTokens())
+                .thenReturn(cacheCreate > 0 ? Optional.of(cacheCreate) : Optional.empty());
+        when(usage.cacheReadInputTokens()).thenReturn(cacheRead > 0 ? Optional.of(cacheRead) : Optional.empty());
         return usage;
     }
 }

@@ -120,6 +120,9 @@ public class LlmUsageDailyDocument {
     private long implicitCacheReadTokens;
 
     private long cacheWriteTokens;
+    /** Share of {@link #cacheWriteTokens} written with 1h-TTL (~2× rate). */
+    private long cacheWrite1hTokens;
+
     private long images;
 
     // Money is integer micro-units of `currency`, never a double.

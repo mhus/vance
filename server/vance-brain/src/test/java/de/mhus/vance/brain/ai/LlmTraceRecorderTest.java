@@ -14,7 +14,9 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.request.ChatRequestParameters;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.output.TokenUsage;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -44,6 +46,7 @@ class LlmTraceRecorderTest {
                 recordingService(rows),
                 process(),
                 "arthur",
+                "anthropic:claude-sonnet-4-5",
                 request,
                 ChatResponse.builder().aiMessage(AiMessage.from("ok")).build(),
                 42L);
@@ -69,6 +72,7 @@ class LlmTraceRecorderTest {
                 recordingService(rows),
                 process(),
                 "arthur",
+                "anthropic:claude-sonnet-4-5",
                 request,
                 ChatResponse.builder().aiMessage(AiMessage.from("ok")).build(),
                 42L);
@@ -92,6 +96,64 @@ class LlmTraceRecorderTest {
 
         assertThat(LlmTraceRecorder.estimateToolsBytes(a)).isEqualTo(LlmTraceRecorder.estimateToolsBytes(b));
         assertThat(LlmTraceRecorder.estimateToolsBytes(a)).isNotEqualTo(LlmTraceRecorder.estimateToolsBytes(different));
+    }
+
+    @Test
+    void everyRowNamesTheWireThatBilledAndTheModelAskedFor() {
+        // The cache numbers are only meaningful next to the wire that
+        // produced them — the question "is this Anthropic-only?" has to be
+        // answerable from the trace rows alone.
+        List<LlmTraceDocument> rows = new ArrayList<>();
+        ChatRequest request = ChatRequest.builder()
+                .messages(UserMessage.from("hi"))
+                .parameters(ChatRequestParameters.builder()
+                        .modelName("claude-sonnet-4-5")
+                        .build())
+                .build();
+
+        LlmTraceRecorder.record(
+                recordingService(rows),
+                process(),
+                "arthur",
+                "anthropic:claude-sonnet-4-5",
+                request,
+                ChatResponse.builder().aiMessage(AiMessage.from("ok")).build(),
+                42L);
+
+        assertThat(rows).isNotEmpty();
+        for (LlmTraceDocument row : rows) {
+            assertThat(row.getProviderModel()).isEqualTo("anthropic:claude-sonnet-4-5");
+            assertThat(row.getModelAlias()).isEqualTo("claude-sonnet-4-5");
+        }
+    }
+
+    @Test
+    void theOutputRowCarriesTheImplicitCacheEstimateSeparately() {
+        // The estimate is computed once per attempt, in the cache-aware
+        // normalization layer, and read off the usage here. It never lands
+        // in the measured cacheRead field — the two stay apart all the way
+        // into the Insights cache tab.
+        List<LlmTraceDocument> rows = new ArrayList<>();
+        ChatRequest request =
+                ChatRequest.builder().messages(UserMessage.from("hi")).build();
+        TokenUsage usage = ImplicitCacheTokenUsage.wrap(new TokenUsage(300, 50), 4_200);
+
+        LlmTraceRecorder.record(
+                recordingService(rows),
+                process(),
+                "arthur",
+                "coding-proxy:sipgate-coding-pro",
+                request,
+                ChatResponse.builder()
+                        .aiMessage(AiMessage.from("ok"))
+                        .tokenUsage(usage)
+                        .build(),
+                42L);
+
+        LlmTraceDocument out = rows.get(rows.size() - 1);
+        assertThat(out.getDirection()).isEqualTo(LlmTraceDirection.OUTPUT);
+        assertThat(out.getImplicitCacheReadTokens()).isEqualTo(4_200);
+        assertThat(out.getCacheReadInputTokens()).isZero();
     }
 
     // ──────────────────── helpers ────────────────────

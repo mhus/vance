@@ -284,6 +284,7 @@ public class RagService {
                         0,
                         0,
                         0,
+                        0,
                         null,
                         null,
                         durationMs));

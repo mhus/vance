@@ -143,9 +143,9 @@ public class EngineChatFactory {
         // caller (kept consistent with the original "their lambda, their
         // rules" behaviour for tests / engines with custom persistence).
         if (base.getLlmTraceWriter() == null) {
-            base.setLlmTraceWriter((req, resp, ms) -> {
+            base.setLlmTraceWriter((chatName, req, resp, ms) -> {
                 if (ctx.traceLlm()) {
-                    LlmTraceRecorder.record(ctx.llmTraceService(), process, engineName, req, resp, ms);
+                    LlmTraceRecorder.record(ctx.llmTraceService(), process, engineName, chatName, req, resp, ms);
                 }
                 Integer tokensIn = null;
                 Integer tokensOut = null;

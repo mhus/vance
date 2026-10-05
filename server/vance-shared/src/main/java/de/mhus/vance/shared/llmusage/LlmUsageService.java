@@ -188,6 +188,8 @@ public class LlmUsageService {
                     .inc("tokensIn", w.tokensIn())
                     .inc("tokensOut", w.tokensOut())
                     .inc("cacheReadTokens", w.cacheReadTokens())
+                    .inc("cacheWriteTokens", w.cacheWriteTokens())
+                    .inc("cacheWrite1hTokens", w.cacheWrite1hTokens())
                     .inc("implicitCacheReadTokens", w.implicitCacheReadTokens())
                     .inc("images", w.images())
                     .inc("costInputMicros", toMicros(costs.input()))
@@ -310,6 +312,7 @@ public class LlmUsageService {
                 .tokensOut(w.tokensOut())
                 .cacheReadTokens(w.cacheReadTokens())
                 .cacheWriteTokens(w.cacheWriteTokens())
+                .cacheWrite1hTokens(w.cacheWrite1hTokens())
                 .implicitCacheReadTokens(w.implicitCacheReadTokens())
                 .priceInputPerMTok(w.priceInputPerMTok())
                 .priceOutputPerMTok(w.priceOutputPerMTok())
@@ -378,11 +381,23 @@ public class LlmUsageService {
                 double amount = w.imageCost() == null ? 0.0 : w.imageCost();
                 return new Costs(amount, 0.0, 0.0, 0.0);
             }
+            // 1h-TTL writes are billed at twice the 5m write rate. The split
+            // comes from the provider's `cache_creation` breakdown; when it is
+            // absent, every write is priced at the 5m rate — the documented
+            // fallback for payloads without the split.
+            int cacheWrite1h = Math.min(w.cacheWrite1hTokens(), Math.max(0, w.cacheWriteTokens()));
+            double cacheWriteCost = costOf(w.cacheWriteTokens() - cacheWrite1h, w.priceCacheWritePerMTok())
+                    + costOf(cacheWrite1h, twice(w.priceCacheWritePerMTok()));
             return new Costs(
                     costOf(w.tokensIn(), w.priceInputPerMTok()),
                     costOf(w.tokensOut(), w.priceOutputPerMTok()),
                     costOf(w.cacheReadTokens(), w.priceCacheReadPerMTok()),
-                    costOf(w.cacheWriteTokens(), w.priceCacheWritePerMTok()));
+                    cacheWriteCost);
+        }
+
+        /** The 1h-TTL write rate: twice the 5m write rate (Anthropic). */
+        private static @Nullable Double twice(@Nullable Double rate) {
+            return rate == null ? null : rate * 2.0;
         }
 
         double total() {
@@ -426,6 +441,12 @@ public class LlmUsageService {
             int tokensOut,
             int cacheReadTokens,
             int cacheWriteTokens,
+            /**
+             * Share of {@link #cacheWriteTokens} written with 1h-TTL — billed
+             * at ~2× the 5m write rate. {@code 0} when the provider reported
+             * no split.
+             */
+            int cacheWrite1hTokens,
             /**
              * Estimated tokens the provider served from a cache it did not
              * itemize — see {@code ImplicitCacheEstimator}. Informational

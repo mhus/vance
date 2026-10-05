@@ -1590,6 +1590,7 @@ export default {
       cacheRead: 'Cached read',
       implicitCacheRead: 'From cache (est.)',
       cacheWrite: 'Cached write',
+      cacheWrite1h: 'Cached write (1h TTL)',
       cost: 'Cost',
       coveragePartial:
         'Covers {pct}% of {calls} calls — {unpriced} ran on a model with no price in the catalog '
@@ -1661,6 +1662,7 @@ export default {
       cacheRead: 'Cache read',
       implicitCacheRead: 'Cache read (est.)',
       cacheWrite: 'Cache write',
+      cacheWrite1h: 'Cache write (1h TTL)',
       tokensOut: 'Tokens out',
       cost: 'Cost',
     },
@@ -2100,20 +2102,32 @@ export default {
       loading: 'Loading cache stats…',
       emptyHeadline: 'No cache data',
       emptyBody:
-        'Either tracing.llm was off, or the provider does not emit cache tokens (Gemini, OpenAI). Cache tracking is Anthropic-specific today.',
+        'Either tracing.llm was off for this process, the prompt was below the cacheable minimum of the model, '
+        + 'or the provider reported no cache tokens. Cache hits are measured per provider: Anthropic reports '
+        + 'them natively, OpenAI and Gemini when their gateway exposes cached tokens.',
       headlineTitle: 'Cache hit rate',
       headlineSub: 'across {rounds} LLM calls',
       headlineHint:
-        'Share of input tokens served from the Anthropic prompt cache — higher is better. Spec target: ≥ 70%.',
+        'Share of input tokens served from the prompt cache — higher is better. Spec target: ≥ 70%.',
+      headlineEstimate: '≈ {pct} including estimated cache reads',
       breakdownTitle: 'Token breakdown',
       cacheRead: 'Read from cache',
       cacheCreate: 'Written to cache',
+      implicitCacheRead: 'From cache (estimated)',
       uncachedInput: 'Uncached input',
       totalInput: 'Total input',
       outputTokens: 'Output',
       tokensSaved: 'Tokens saved',
       savingsHint:
-        'Cache-read tokens cost ~10% of the normal input price; the savings estimate ignores the one-off write surcharge on creation tokens.',
+        'Cache-read tokens cost ~10% of the normal input price; the savings estimate ignores the one-off '
+        + 'write surcharge on creation tokens. Estimated reads are labeled — the provider billed only the '
+        + 'uncached tail, so they carry no cost.',
+      providersTitle: 'Per provider',
+      colProvider: 'Provider : model',
+      colRounds: 'Calls',
+      colHitRate: 'Hit rate',
+      unknownProvider: 'unknown — row predates provider tracking',
+      minCacheableHint: 'Prompts below {tokens} tokens are too small to cache for this model.',
       reload: 'Reload',
     },
     timeline: {

@@ -1,0 +1,18 @@
+# Shipped default search source — the keyless Firecrawl free tier.
+#
+# Firecrawl opened a keyless tier on 2026-08-28: search works without an
+# account, but rate limits are per-IP and unpublished, and there is no SLA.
+# That makes this the free net at the end of the fallback chain — not a
+# contracted default. For a key (plan credits, measurable quota), place a
+# document with your own name under `_vance/config/research/` using the
+# template `research-source-firecrawl` and put that instance first in
+# `research.fallback.web` / `research.default.web`.
+#
+# Keyless traffic shares one budget per egress IP — in a cluster that is one
+# budget for every pod. If searches start coming back 429, that is the tier
+# saying no, not an outage.
+$meta:
+  kind: vance-research-source
+protocol: firecrawl
+baseUrl: https://api.firecrawl.dev
+enabled: true

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.zarniwoop;
 
+import de.mhus.vance.api.toolhealth.ToolHealthClassification;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
 import de.mhus.vance.brain.agrajag.AgrajagChecker;
 import de.mhus.vance.shared.settings.SettingService;
@@ -11,11 +12,11 @@ import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.QuotaStatus;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchProviderInstance;
+import de.mhus.vance.toolpack.research.SearchQuotaExceededException;
 import de.mhus.vance.toolpack.research.SearchRequest;
 import de.mhus.vance.toolpack.research.SearchResult;
 import de.mhus.vance.toolpack.research.SearchScope;
 import de.mhus.vance.toolpack.research.SearchTier;
-import de.mhus.vance.api.toolhealth.ToolHealthClassification;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
@@ -94,38 +96,62 @@ public class ZarniwoopService {
 
         List<SearchProviderInstance> ordered = resolveProviders(scope, req);
         if (ordered.isEmpty()) {
-            return SearchResult.unavailable(req,
-                    "no provider instance available for modality=" + req.modality());
+            return SearchResult.unavailable(req, "no provider instance available for modality=" + req.modality());
         }
 
         SearchResult lastError = null;
+        SearchResult firstEmpty = null;
         for (SearchProviderInstance instance : ordered) {
             try {
                 SearchResult result = instance.search(req, scope);
                 if (result != null && result.ok()) {
+                    // The call happened and cost quota, empty or not.
                     usageCounter.recordSuccess(scope, instance.id(), req.modality());
+                    // An empty answer is not a failure (sources guarantee that),
+                    // but it must not stop the cascade either: a default that
+                    // knows nothing must not starve the fallbacks behind it.
+                    // First non-empty answer wins; when every candidate comes
+                    // back empty, the first empty answer is the honest result.
+                    if (result.hits().isEmpty()) {
+                        if (firstEmpty == null) {
+                            firstEmpty = result;
+                        }
+                        continue;
+                    }
                     return result;
                 }
                 lastError = result;
-                log.debug("Zarniwoop: instance '{}' returned soft failure: {}",
+                log.debug(
+                        "Zarniwoop: instance '{}' returned soft failure: {}",
                         instance.id(),
                         result == null ? "(null result)" : result.errorMessage());
+            } catch (SearchQuotaExceededException quota) {
+                // Known, terminating state — not a failure to analyse and not
+                // an Agrajag case. Cool the instance down until its quota
+                // returns and fall through to the next candidate.
+                String note = "quota exhausted: " + quota.getMessage();
+                usageCounter.recordError(scope, instance.id(), req.modality(), note);
+                applyQuotaCooldown(instance, scope, req.modality(), quota.resetsAt(), "quota_exhausted", note);
             } catch (Throwable t) {
-                usageCounter.recordError(scope, instance.id(), req.modality(),
-                        t.getMessage());
+                usageCounter.recordError(scope, instance.id(), req.modality(), t.getMessage());
                 handleHardFailure(instance, req, ctx, t);
             }
         }
-        return lastError != null
-                ? lastError
-                : SearchResult.unavailable(req, "all candidate instances failed");
+        return firstEmpty != null
+                ? firstEmpty
+                : lastError != null ? lastError : SearchResult.unavailable(req, "all candidate instances failed");
     }
 
     /**
      * Order candidate instances for the request: pinned instance first
      * (EXPERT-tier only), then default, then fallback, then implicit
-     * candidates that simply support the modality. Filters out
-     * unavailable / cooldown'd / wrong-tier entries.
+     * candidates that simply support the modality. The default/fallback
+     * chain comes from the {@code research.default.*} /
+     * {@code research.fallback.*} settings, or from the shipped chain in
+     * {@link ZarniwoopSettings} when no setting was written — an id that is
+     * not configured as a source document is skipped silently, so the
+     * chain degrades instead of failing. Filters out unavailable /
+     * cooldown'd / wrong-tier entries.
      */
     List<SearchProviderInstance> resolveProviders(SearchScope scope, SearchRequest req) {
         List<SearchProviderInstance> all = factory.assemble(scope);
@@ -143,12 +169,16 @@ public class ZarniwoopService {
         }
 
         String defaultId = settings.getStringValueCascade(
-                scope.tenantId(), scope.projectId(), scope.processId(),
-                ZarniwoopSettings.defaultKey(req.modality()));
-        List<String> fallbackIds = csv(settings.getStringValueCascade(
-                scope.tenantId(), scope.projectId(), scope.processId(),
-                ZarniwoopSettings.fallbackKey(req.modality())));
-
+                scope.tenantId(), scope.projectId(), scope.processId(), ZarniwoopSettings.defaultKey(req.modality()));
+        if (defaultId == null) {
+            defaultId = ZarniwoopSettings.shippedDefault(req.modality());
+        }
+        // Absent setting → the shipped chain; an explicitly empty setting is
+        // the operator saying "no chain, use the assemble order".
+        String fallbackSetting = settings.getStringValueCascade(
+                scope.tenantId(), scope.projectId(), scope.processId(), ZarniwoopSettings.fallbackKey(req.modality()));
+        List<String> fallbackIds =
+                csv(fallbackSetting != null ? fallbackSetting : ZarniwoopSettings.shippedFallbacks(req.modality()));
         Map<String, SearchProviderInstance> byId = new LinkedHashMap<>();
         for (SearchProviderInstance p : all) byId.put(p.id(), p);
 
@@ -185,18 +215,15 @@ public class ZarniwoopService {
         if (req.facets().isEmpty()) {
             return true;
         }
-        List<String> missing = FacetSelection.undeclaredKeys(
-                req.facets(), FacetSelection.keysOf(instance.facets()));
+        List<String> missing = FacetSelection.undeclaredKeys(req.facets(), FacetSelection.keysOf(instance.facets()));
         if (missing.isEmpty()) {
             return true;
         }
-        log.debug("Skipping search instance '{}' — it does not declare facet(s) {}",
-                instance.id(), missing);
+        log.debug("Skipping search instance '{}' — it does not declare facet(s) {}", instance.id(), missing);
         return false;
     }
 
-    private boolean isUsable(SearchProviderInstance instance,
-                             SearchScope scope, SearchModality modality) {
+    private boolean isUsable(SearchProviderInstance instance, SearchScope scope, SearchModality modality) {
         // Operator gate first — a setting or UI override that turned
         // the instance off short-circuits everything below.
         if (!gate.isEnabled(scope, instance.id())) {
@@ -220,28 +247,49 @@ public class ZarniwoopService {
         // return Optional.empty() and are passed through.
         Optional<QuotaStatus> q = quotaCache.get(instance, scope);
         if (q.isPresent() && q.get().remaining() <= 0) {
-            applyProactiveQuotaCooldown(instance, scope, modality, subject, q.get());
+            applyProactiveQuotaCooldown(instance, scope, modality, q.get());
             return false;
         }
         return true;
     }
 
-    private void applyProactiveQuotaCooldown(SearchProviderInstance instance,
-                                             SearchScope scope,
-                                             SearchModality modality,
-                                             String subject,
-                                             QuotaStatus quota) {
-        Duration cooldown = quota.resetsAt() != null
-                ? Duration.between(Instant.now(), quota.resetsAt())
-                : Duration.ofHours(24);
+    /** Proactive zero-quota gate entry point — {@link QuotaStatus} variant. */
+    private void applyProactiveQuotaCooldown(
+            SearchProviderInstance instance, SearchScope scope, SearchModality modality, QuotaStatus quota) {
+        applyQuotaCooldown(
+                instance,
+                scope,
+                modality,
+                quota.resetsAt(),
+                "proactive_quota_zero",
+                "proactive: remaining=0" + (quota.resetsAt() == null ? "" : ", resetsAt=" + quota.resetsAt()));
+    }
+
+    /**
+     * Cooldown for a <em>known-empty quota</em> — either observed proactively
+     * ({@code remaining == 0}) or reported by the provider
+     * ({@link SearchQuotaExceededException}). Runs until the quota comes back
+     * ({@code resetsAt}, else 24h) and is deliberately not routed through
+     * Agrajag: an empty quota is a terminating state, not a defect to analyse
+     * — the provider is not "technically broken", it is spent. The cascade
+     * continues with the next candidate while this holds.
+     */
+    private void applyQuotaCooldown(
+            SearchProviderInstance instance,
+            SearchScope scope,
+            SearchModality modality,
+            @Nullable Instant resetsAt,
+            String errorSignature,
+            String note) {
+        Duration cooldown = resetsAt != null ? Duration.between(Instant.now(), resetsAt) : Duration.ofHours(24);
         if (cooldown.isNegative() || cooldown.isZero()) cooldown = Duration.ofHours(1);
         try {
             healthService.setCooldown(
                     scope.tenantId(),
                     ToolHealthScope.PROJECT,
                     scope.projectId(),
-                    subject,
-                    /* errorSignature */ "proactive_quota_zero",
+                    ZarniwoopSettings.cooldownSubject(instance.id(), modality),
+                    errorSignature,
                     // Store under the same userId isUsable() looks up with — a
                     // null-user cooldown is only matched by a null-user lookup,
                     // so writing null here made the proactive zero-quota gate a
@@ -249,22 +297,22 @@ public class ZarniwoopService {
                     /* userId */ scope.userId(),
                     ToolHealthClassification.TECHNICALLY_BROKEN,
                     cooldown,
-                    "proactive: remaining=0"
-                            + (quota.resetsAt() == null ? "" : ", resetsAt=" + quota.resetsAt()));
-            log.debug("Zarniwoop: proactive quota cooldown set on '{}' for modality={} "
-                    + "(scope project='{}/{}'), duration={}",
-                    instance.id(), modality, scope.tenantId(), scope.projectId(), cooldown);
+                    note);
+            log.debug(
+                    "Zarniwoop: quota cooldown set on '{}' for modality={} " + "(scope project='{}/{}'), duration={}",
+                    instance.id(),
+                    modality,
+                    scope.tenantId(),
+                    scope.projectId(),
+                    cooldown);
         } catch (RuntimeException e) {
-            log.warn("Zarniwoop: setCooldown raised — proceeding without proactive lock: {}",
-                    e.toString());
+            log.warn("Zarniwoop: setCooldown raised — proceeding without quota lock: {}", e.toString());
         }
     }
 
-    private void handleHardFailure(SearchProviderInstance instance,
-                                   SearchRequest req, ToolInvocationContext ctx,
-                                   Throwable t) {
-        log.warn("Zarniwoop: instance '{}' raised on modality={}: {}",
-                instance.id(), req.modality(), t.toString());
+    private void handleHardFailure(
+            SearchProviderInstance instance, SearchRequest req, ToolInvocationContext ctx, Throwable t) {
+        log.warn("Zarniwoop: instance '{}' raised on modality={}: {}", instance.id(), req.modality(), t.toString());
         if (ctx == null) {
             return;
         }
@@ -273,11 +321,10 @@ public class ZarniwoopService {
             return;
         }
         try {
-            checker.handle(
-                    ZarniwoopSettings.cooldownSubject(instance.id(), req.modality()),
-                    t, ctx);
+            checker.handle(ZarniwoopSettings.cooldownSubject(instance.id(), req.modality()), t, ctx);
         } catch (RuntimeException agrajagFailure) {
-            log.warn("Zarniwoop: Agrajag.handle raised — proceeding without classification: {}",
+            log.warn(
+                    "Zarniwoop: Agrajag.handle raised — proceeding without classification: {}",
                     agrajagFailure.toString());
         }
     }

@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
@@ -21,10 +22,13 @@ import de.mhus.vance.toolpack.research.SearchDomain;
 import de.mhus.vance.toolpack.research.SearchHit;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchProviderInstance;
+import de.mhus.vance.toolpack.research.SearchQuotaExceededException;
 import de.mhus.vance.toolpack.research.SearchRequest;
 import de.mhus.vance.toolpack.research.SearchResult;
 import de.mhus.vance.toolpack.research.SearchScope;
 import de.mhus.vance.toolpack.research.SearchTier;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,8 +42,7 @@ class ZarniwoopServiceTest {
     private static final String TENANT = "acme";
     private static final String PROJECT = "alpha";
     private static final SearchScope SCOPE = SearchScope.of(TENANT, PROJECT);
-    private static final ToolInvocationContext CTX =
-            new ToolInvocationContext(TENANT, PROJECT, null, null, null);
+    private static final ToolInvocationContext CTX = new ToolInvocationContext(TENANT, PROJECT, null, null, null);
 
     private SearchProviderFactory factory;
     private SettingService settings;
@@ -59,26 +62,29 @@ class ZarniwoopServiceTest {
         agrajag = mock(AgrajagChecker.class);
         agrajagProvider = (ObjectProvider<AgrajagChecker>) mock(ObjectProvider.class);
         when(agrajagProvider.getIfAvailable()).thenReturn(agrajag);
-        when(healthService.lookupActiveCooldown(
-                anyString(), any(), anyString(), anyString(), any(), any(), any()))
+        when(healthService.lookupActiveCooldown(anyString(), any(), anyString(), anyString(), any(), any(), any()))
                 .thenReturn(Optional.empty());
         quotaCache = mock(QuotaCache.class);
         when(quotaCache.get(any(), any())).thenReturn(Optional.empty());
         gate = mock(ZarniwoopGateService.class);
         when(gate.isEnabled(any(), anyString())).thenReturn(true);
-        service = new ZarniwoopService(factory, settings, healthService,
-                agrajagProvider, quotaCache, new ZarniwoopUsageCounter(), gate,
+        service = new ZarniwoopService(
+                factory,
+                settings,
+                healthService,
+                agrajagProvider,
+                quotaCache,
+                new ZarniwoopUsageCounter(),
+                gate,
                 new de.mhus.vance.brain.tools.ToolInterruptChecker(
-                        org.mockito.Mockito.mock(
-                                de.mhus.vance.shared.thinkprocess.ThinkProcessService.class)));
+                        org.mockito.Mockito.mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class)));
     }
 
     @Test
     void search_rejects_request_without_project_scope() {
         SearchRequest req = SearchRequest.normal("q", SearchModality.WEB, 5);
         SearchScope tenantOnly = new SearchScope(TENANT, "", null, null);
-        assertThatThrownBy(() -> service.search(req, tenantOnly, CTX))
-                .isInstanceOf(ZarniwoopException.class);
+        assertThatThrownBy(() -> service.search(req, tenantOnly, CTX)).isInstanceOf(ZarniwoopException.class);
     }
 
     @Test
@@ -94,12 +100,10 @@ class ZarniwoopServiceTest {
 
     @Test
     void search_returns_first_successful_result() {
-        FakeInstance primary = new FakeInstance("primary",
-                Behavior.success("primary"));
+        FakeInstance primary = new FakeInstance("primary", Behavior.success("primary"));
         when(factory.assemble(eq(SCOPE))).thenReturn(List.of(primary));
         when(settings.getStringValueCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
                 .thenReturn("primary");
 
         SearchRequest req = SearchRequest.normal("q", SearchModality.WEB, 5);
@@ -112,18 +116,14 @@ class ZarniwoopServiceTest {
 
     @Test
     void search_falls_back_after_hard_failure_and_routes_to_agrajag() {
-        FakeInstance primary = new FakeInstance("primary",
-                Behavior.throwHard(new RuntimeException("upstream 502")));
-        FakeInstance secondary = new FakeInstance("secondary",
-                Behavior.success("secondary"));
+        FakeInstance primary = new FakeInstance("primary", Behavior.throwHard(new RuntimeException("upstream 502")));
+        FakeInstance secondary = new FakeInstance("secondary", Behavior.success("secondary"));
         when(factory.assemble(eq(SCOPE))).thenReturn(List.of(primary, secondary));
         when(settings.getStringValueCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
                 .thenReturn("primary");
         when(settings.getStringValueCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.fallbackKey(SearchModality.WEB))))
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.fallbackKey(SearchModality.WEB))))
                 .thenReturn("secondary");
 
         SearchRequest req = SearchRequest.normal("q", SearchModality.WEB, 5);
@@ -131,9 +131,11 @@ class ZarniwoopServiceTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.providerInstanceId()).isEqualTo("secondary");
-        verify(agrajag).handle(
-                eq(ZarniwoopSettings.cooldownSubject("primary", SearchModality.WEB)),
-                any(Throwable.class), eq(CTX));
+        verify(agrajag)
+                .handle(
+                        eq(ZarniwoopSettings.cooldownSubject("primary", SearchModality.WEB)),
+                        any(Throwable.class),
+                        eq(CTX));
     }
 
     @Test
@@ -142,8 +144,7 @@ class ZarniwoopServiceTest {
         FakeInstance live = new FakeInstance("live", Behavior.success("live"));
         when(factory.assemble(eq(SCOPE))).thenReturn(List.of(gated, live));
         when(settings.getStringValueCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
                 .thenReturn("gated");
         when(gate.isEnabled(any(), eq("gated"))).thenReturn(false);
 
@@ -161,13 +162,16 @@ class ZarniwoopServiceTest {
         FakeInstance hot = new FakeInstance("hot", Behavior.success("hot"));
         when(factory.assemble(eq(SCOPE))).thenReturn(List.of(cooled, hot));
         when(settings.getStringValueCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
                 .thenReturn("cooled");
         when(healthService.lookupActiveCooldown(
-                eq(TENANT), eq(ToolHealthScope.PROJECT), eq(PROJECT),
-                eq(ZarniwoopSettings.cooldownSubject("cooled", SearchModality.WEB)),
-                any(), any(), any()))
+                        eq(TENANT),
+                        eq(ToolHealthScope.PROJECT),
+                        eq(PROJECT),
+                        eq(ZarniwoopSettings.cooldownSubject("cooled", SearchModality.WEB)),
+                        any(),
+                        any(),
+                        any()))
                 .thenReturn(Optional.of(new ToolHealthCooldown()));
 
         SearchRequest req = SearchRequest.normal("q", SearchModality.WEB, 5);
@@ -185,8 +189,7 @@ class ZarniwoopServiceTest {
         FakeInstance live = new FakeInstance("live", Behavior.success("live"));
         when(factory.assemble(eq(SCOPE))).thenReturn(List.of(dead, live));
         when(settings.getStringValueCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
                 .thenReturn("dead");
 
         SearchRequest req = SearchRequest.normal("q", SearchModality.WEB, 5);
@@ -198,25 +201,114 @@ class ZarniwoopServiceTest {
 
     @Test
     void expert_with_pinned_instance_bypasses_default_cascade() {
-        FakeInstance defaultInstance =
-                new FakeInstance("default", Behavior.success("default"));
-        FakeInstance pinned =
-                new FakeInstance("pinned", Behavior.success("pinned"));
+        FakeInstance defaultInstance = new FakeInstance("default", Behavior.success("default"));
+        FakeInstance pinned = new FakeInstance("pinned", Behavior.success("pinned"));
         when(factory.assemble(eq(SCOPE))).thenReturn(List.of(defaultInstance, pinned));
         // default is set but the pin must override.
         when(settings.getStringValueCascade(
-                eq(TENANT), eq(PROJECT), any(),
-                eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
                 .thenReturn("default");
 
-        SearchRequest req = new SearchRequest(
-                "q", SearchModality.WEB, SearchTier.EXPERT, 5,
-                null, "pinned", Map.of());
+        SearchRequest req = new SearchRequest("q", SearchModality.WEB, SearchTier.EXPERT, 5, null, "pinned", Map.of());
         FakeInstance.makeExpertCapable(pinned);
         SearchResult result = service.search(req, SCOPE, CTX);
 
         assertThat(result.providerInstanceId()).isEqualTo("pinned");
         assertThat(defaultInstance.calls).isEqualTo(0);
+    }
+
+    @Test
+    void search_skips_an_empty_result_and_falls_back_to_the_next_candidate() {
+        FakeInstance primary = new FakeInstance("primary", Behavior.empty("primary"));
+        FakeInstance secondary = new FakeInstance("secondary", Behavior.success("secondary"));
+        when(factory.assemble(eq(SCOPE))).thenReturn(List.of(primary, secondary));
+        when(settings.getStringValueCascade(
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
+                .thenReturn("primary");
+        when(settings.getStringValueCascade(
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.fallbackKey(SearchModality.WEB))))
+                .thenReturn("secondary");
+
+        SearchRequest req = SearchRequest.normal("q", SearchModality.WEB, 5);
+        SearchResult result = service.search(req, SCOPE, CTX);
+
+        // An empty default must not starve the fallbacks behind it.
+        assertThat(result.ok()).isTrue();
+        assertThat(result.providerInstanceId()).isEqualTo("secondary");
+        assertThat(result.hits()).hasSize(1);
+        assertThat(primary.calls).isEqualTo(1);
+    }
+
+    @Test
+    void search_returns_the_first_empty_result_when_every_candidate_is_empty() {
+        FakeInstance primary = new FakeInstance("primary", Behavior.empty("primary"));
+        FakeInstance secondary = new FakeInstance("secondary", Behavior.empty("secondary"));
+        when(factory.assemble(eq(SCOPE))).thenReturn(List.of(primary, secondary));
+        when(settings.getStringValueCascade(
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
+                .thenReturn("primary");
+
+        SearchRequest req = SearchRequest.normal("q", SearchModality.WEB, 5);
+        SearchResult result = service.search(req, SCOPE, CTX);
+
+        // Empty is not a failure — it is the honest answer when nobody knows.
+        assertThat(result.ok()).isTrue();
+        assertThat(result.hits()).isEmpty();
+        assertThat(result.providerInstanceId()).isEqualTo("primary");
+    }
+
+    @Test
+    void search_falls_through_quota_exhaustion_and_cools_the_instance_down() {
+        Instant resetsAt = Instant.now().plus(Duration.ofHours(6));
+        FakeInstance spent = new FakeInstance(
+                "spent",
+                Behavior.throwHard(new SearchQuotaExceededException("returned HTTP 402: out of credits", resetsAt)));
+        FakeInstance fresh = new FakeInstance("fresh", Behavior.success("fresh"));
+        when(factory.assemble(eq(SCOPE))).thenReturn(List.of(spent, fresh));
+        when(settings.getStringValueCascade(
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.defaultKey(SearchModality.WEB))))
+                .thenReturn("spent");
+        when(settings.getStringValueCascade(
+                        eq(TENANT), eq(PROJECT), any(), eq(ZarniwoopSettings.fallbackKey(SearchModality.WEB))))
+                .thenReturn("fresh");
+
+        SearchRequest req = SearchRequest.normal("q", SearchModality.WEB, 5);
+        SearchResult result = service.search(req, SCOPE, CTX);
+
+        assertThat(result.providerInstanceId()).isEqualTo("fresh");
+        // Quota exhaustion is a state, not a defect — no Agrajag diagnosis,
+        // but a cooldown that ends when the quota comes back.
+        verify(healthService)
+                .setCooldown(
+                        eq(TENANT),
+                        eq(ToolHealthScope.PROJECT),
+                        eq(PROJECT),
+                        eq(ZarniwoopSettings.cooldownSubject("spent", SearchModality.WEB)),
+                        eq("quota_exhausted"),
+                        any(),
+                        any(),
+                        any(),
+                        any());
+        verifyNoInteractions(agrajag);
+    }
+
+    @Test
+    void search_uses_the_shipped_chain_when_no_routing_setting_is_set() {
+        // No research.default.* / research.fallback.* settings at all — the
+        // shipped chain (ZarniwoopSettings) says WEB: default `exa`, then
+        // `firecrawl,firecrawl-keyless,searxng,wikipedia,hackernews`.
+        FakeInstance builtin = new FakeInstance("wikipedia", Behavior.success("wiki"));
+        FakeInstance assembleOrder = new FakeInstance("openlibrary", Behavior.success("books"));
+        when(factory.assemble(eq(SCOPE))).thenReturn(List.of(assembleOrder, builtin));
+
+        SearchRequest req = SearchRequest.normal("q", SearchModality.WEB, 5);
+        SearchResult result = service.search(req, SCOPE, CTX);
+
+        // `exa` is not configured → skipped silently; `wikipedia` is next
+        // in the shipped fallback chain and beats the implicit assemble
+        // order (which is only the last resort).
+        assertThat(result.providerInstanceId()).isEqualTo("wikipedia");
+        assertThat(assembleOrder.calls).isZero();
     }
 
     // ── helpers ───────────────────────────────────────────────────────
@@ -226,28 +318,61 @@ class ZarniwoopServiceTest {
 
         static Behavior success(String label) {
             return (id, req) -> new SearchResult(
-                    req.query(), req.modality(), id, req.tier(),
-                    List.of(new SearchHit("Title " + label,
+                    req.query(),
+                    req.modality(),
+                    id,
+                    req.tier(),
+                    List.of(new SearchHit(
+                            "Title " + label,
                             "https://example/" + label,
-                            "snippet", "src", req.modality(), null, Map.of())),
-                    1, 0, null, null, Map.of());
+                            "snippet",
+                            "src",
+                            req.modality(),
+                            null,
+                            Map.of())),
+                    1,
+                    0,
+                    null,
+                    null,
+                    Map.of());
+        }
+
+        static Behavior empty(String label) {
+            return (id, req) -> new SearchResult(
+                    req.query(),
+                    req.modality(),
+                    id,
+                    req.tier(),
+                    List.of(),
+                    0,
+                    0,
+                    "no results for " + label,
+                    null,
+                    Map.of());
         }
 
         static Behavior throwHard(RuntimeException e) {
-            return (id, req) -> { throw e; };
+            return (id, req) -> {
+                throw e;
+            };
         }
     }
 
     @Test
     void search_skips_an_instance_that_does_not_declare_the_selected_facet() {
         FakeInstance withFacet = new FakeInstance("ode-news", Behavior.success("ode"));
-        withFacet.facets = List.of(
-                de.mhus.vance.toolpack.facet.Facet.flat("origin-place", "Origin", List.of()));
+        withFacet.facets = List.of(de.mhus.vance.toolpack.facet.Facet.flat("origin-place", "Origin", List.of()));
         FakeInstance without = new FakeInstance("serper", Behavior.success("serper"));
         when(factory.assemble(eq(SCOPE))).thenReturn(List.of(without, withFacet));
 
         SearchRequest req = new SearchRequest(
-                "q", SearchModality.WEB, SearchTier.NORMAL, 5, null, null, Map.of(),
+                "q",
+                SearchModality.WEB,
+                SearchTier.NORMAL,
+                5,
+                null,
+                null,
+                Map.of(),
                 Map.of("origin-place", List.of("m49:142")));
         SearchResult result = service.search(req, SCOPE, CTX);
 
@@ -275,18 +400,46 @@ class ZarniwoopServiceTest {
             fi.tiers = Set.of(SearchTier.NORMAL, SearchTier.EXPERT);
         }
 
-        @Override public String id() { return id; }
-        @Override public String displayName() { return id; }
-        @Override public Set<SearchModality> modalities() { return Set.of(SearchModality.WEB); }
-        @Override public Set<SearchDomain> domains() { return Set.of(SearchDomain.GENERAL); }
-        @Override public Set<SearchTier> tiers() { return tiers; }
-        @Override public List<de.mhus.vance.toolpack.facet.Facet> facets() { return facets; }
-        @Override public ProviderAvailability availability(SearchScope scope) {
+        @Override
+        public String id() {
+            return id;
+        }
+
+        @Override
+        public String displayName() {
+            return id;
+        }
+
+        @Override
+        public Set<SearchModality> modalities() {
+            return Set.of(SearchModality.WEB);
+        }
+
+        @Override
+        public Set<SearchDomain> domains() {
+            return Set.of(SearchDomain.GENERAL);
+        }
+
+        @Override
+        public Set<SearchTier> tiers() {
+            return tiers;
+        }
+
+        @Override
+        public List<de.mhus.vance.toolpack.facet.Facet> facets() {
+            return facets;
+        }
+
+        @Override
+        public ProviderAvailability availability(SearchScope scope) {
             return availability;
         }
-        @Override public Optional<QuotaStatus> currentQuota(SearchScope scope) {
+
+        @Override
+        public Optional<QuotaStatus> currentQuota(SearchScope scope) {
             return Optional.empty();
         }
+
         @Override
         public SearchResult search(SearchRequest req, SearchScope scope) {
             calls++;

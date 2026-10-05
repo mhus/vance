@@ -1,0 +1,8 @@
+# Shipped default search source — works without an account or key.
+#
+# An NCBI API key lifts the rate limit from 3 to 10 requests per second:
+#   apiKey: "{{secret:research.pubmed.apiKey}}"
+$meta:
+  kind: vance-research-source
+protocol: pubmed
+enabled: true

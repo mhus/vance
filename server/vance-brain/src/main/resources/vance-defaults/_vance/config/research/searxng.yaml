@@ -1,0 +1,15 @@
+# Shipped example — disabled until an instance URL is configured.
+#
+# A metasearch instance is somebody's server; its URL cannot be invented for
+# the operator. Flip `enabled` and set `baseUrl` (or replace this whole file
+# with one of your own under `_vance/config/research/`, which overrides it),
+# and SearXNG becomes the unlimited bottom of the fallback chain.
+#
+# The instance must answer the JSON API: `formats: [html, json]` in its
+# settings.yml. An instance that serves HTML instead is reported as a
+# configuration message ("does not serve JSON"), not as an outage.
+$meta:
+  kind: vance-research-source
+protocol: searxng
+baseUrl: http://searxng:8080
+enabled: false

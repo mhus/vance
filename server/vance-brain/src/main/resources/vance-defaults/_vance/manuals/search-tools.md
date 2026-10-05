@@ -205,19 +205,41 @@ Use when:
 
 ## Default providers per modality (out of the box)
 
-| Modality | Default endpoint | Protocol | Notes |
+Shipped keyless source documents live under `_vance/config/research/` on the
+classpath and are overridden per tenant/project by a document of the same
+name. The routing chain (`research.default.<modality>` /
+`research.fallback.<modality>`) walks the candidates in order; a source that
+is not configured is skipped silently, so the chain degrades instead of
+failing.
+
+| Modality | Default | Fallback chain | Notes |
 |---|---|---|---|
-| `web` / `image` / `video` / `pdf` | `serper-main` | Serper.dev | Needs API key (free 2 500 / month). |
-| `web` fallback | `wiki-de` | Wikipedia | Key-less. |
-| `encyclopedia` | `wiki-de` | Wikipedia | Inline extract. |
-| `news` | `hn-algolia` | HackerNews via Algolia | Key-less, tech focus. |
-| `book` | `openlib` | OpenLibrary | Key-less. |
-| `academic` | `openalex` | OpenAlex | Polite-pool needs `contactEmail`. |
-| `academic` fallback | `arxiv` | arXiv | Key-less, STEM focus. |
+| `web` | `exa` | `firecrawl`, `firecrawl-keyless`, `searxng`, `wikipedia`, `hackernews` | contract → keyless → self-hosted → built-in |
+| `news` | `exa` | `firecrawl`, `hackernews`, `searxng` | |
+| `image` | `firecrawl` | `serper`, `searxng` | |
+| `video` | `serper` | `searxng` | |
+| `pdf` | `serper` | `searxng` | |
+| `academic` | `openalex` | `pubmed`, `arxiv` | polite-pool via `contactEmail` |
+| `encyclopedia` | `wikipedia` | — | inline extract |
+| `book` | `openlibrary` | — | |
+
+Shipped and enabled (keyless): `wikipedia`, `openalex`, `arxiv`, `pubmed`,
+`openlibrary`, `hackernews`, `firecrawl-keyless`. `searxng` ships as a
+disabled example until an instance URL is placed. `exa`, `firecrawl` (with
+key) and `serper` need credentials — until an operator creates those source
+documents they are simply skipped.
+
+**Exhausted sources step aside.** When a credited source runs out (402 /
+"out of credits") it is cooled down until its quota returns, and the next
+candidate in the chain answers. A source that answers "nothing found" does
+not end the chain either — an empty default does not starve its fallbacks.
+Neither is an error you need to react to: compose the answer from what came
+back. If *everything* came back empty, say so.
 
 Operators can override defaults / fallbacks in any project via
-`research.default.<modality>` and `research.fallback.<modality>`
-settings. Use `research_providers` to list the inventory live.
+`research.default.<modality>` and `research.fallback.<modality>` settings
+(Setting-Form "Research — Search Routing"). Use `research_providers` to list
+the inventory live.
 
 Each source is itself a document — `_vance/config/research/<id>.yaml`,
 one per provider instance, the filename being the instance id, always

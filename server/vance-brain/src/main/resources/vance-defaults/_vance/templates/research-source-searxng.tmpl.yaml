@@ -1,0 +1,8 @@
+$meta:
+  kind: vance-research-source
+
+protocol: searxng
+baseUrl: {{ baseUrl }}
+{% if language %}language: {{ language }}
+{% endif %}{% if safesearch %}safesearch: {{ safesearch }}
+{% endif %}enabled: true

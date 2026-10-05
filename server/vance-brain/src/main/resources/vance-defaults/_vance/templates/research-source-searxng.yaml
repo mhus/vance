@@ -1,0 +1,29 @@
+title:       { de: "Suchquelle: SearXNG",  en: "Search source: SearXNG" }
+description: { de: "Selbstgehostete Metasearch-Instanz — aggregiert öffentliche Engines. Kein Konto, kein Key, unbegrenzt.",
+               en: "Self-hosted metasearch instance aggregating public engines. No account, no key, unlimited." }
+icon: magnifying-glass
+tags: [research, source]
+
+# The loader reads exactly this folder, so the template pins it.
+folder: _vance/config/research
+
+name:
+  mode: free
+  default: "searxng"
+
+fields:
+  - name: baseUrl
+    type: string
+    required: true
+    label: { de: "Instanz-URL", en: "Instance URL" }
+    help:  { de: "Z.B. https://searxng.example.de — die Instanz muss format=json erlauben (formats: [html, json] in settings.yml).",
+             en: "e.g. https://searxng.example.de — the instance must allow format=json (formats: [html, json] in settings.yml)." }
+  - name: language
+    type: string
+    label: { de: "Sprache (optional)", en: "Language (optional)" }
+    help:  { de: "Default-Sprachfilter, z.B. de oder en. Pro Suche überschreibbar.",
+             en: "Default language filter, e.g. de or en. Overridable per search." }
+  - name: safesearch
+    type: string
+    label: { de: "SafeSearch (optional)", en: "Safe search (optional)" }
+    help:  { de: "0, 1 oder 2.", en: "0, 1 or 2." }

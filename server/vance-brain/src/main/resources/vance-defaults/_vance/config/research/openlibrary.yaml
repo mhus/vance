@@ -1,0 +1,6 @@
+# Shipped default search source — works without an account or key.
+# Internet Archive book index.
+$meta:
+  kind: vance-research-source
+protocol: openlibrary
+enabled: true

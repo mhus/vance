@@ -1,0 +1,12 @@
+# Shipped default search source — works without an account or key.
+#
+# One language edition per instance. This file is a whole-document classpath
+# default: place a document with the same name under
+# `_vance/config/research/` (tenant or project) to replace it entirely, e.g.
+# `baseUrl: https://en.wikipedia.org/w/api.php` for the English edition.
+# Both a host base and a full api.php URL are accepted.
+$meta:
+  kind: vance-research-source
+protocol: wikipedia
+baseUrl: https://de.wikipedia.org/w/api.php
+enabled: true

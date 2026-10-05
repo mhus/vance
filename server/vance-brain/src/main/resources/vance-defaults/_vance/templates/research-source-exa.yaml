@@ -1,0 +1,25 @@
+title:       { de: "Suchquelle: Exa",  en: "Search source: Exa" }
+description: { de: "Neuronale Websuche (REST) — WEB, NEWS und ACADEMIC. Free-Account: 10 $ Credits pro Monat.",
+               en: "Neural web search (REST) — WEB, NEWS and ACADEMIC. Free account: $10 credits per month." }
+icon: magnifying-glass
+tags: [research, source]
+
+# The loader reads exactly this folder, so the template pins it.
+folder: _vance/config/research
+
+name:
+  mode: free
+  default: "exa-main"
+
+fields:
+  - name: apiKey
+    type: string
+    required: true
+    label: { de: "API-Key", en: "API key" }
+    help:  { de: "Referenz ({{secret:vault:…}}) oder erklärtes Literal ({noop}…). Key aus dem Exa-Dashboard; Free-Tier: 10 $ Credits pro Monat, Reset am Monatsersten (402 = aufgebraucht).",
+             en: "A reference ({{secret:vault:…}}) or a declared literal ({noop}…). Key from the Exa dashboard; free tier: $10 credits per month, resets on the 1st (402 = spent)." }
+  - name: type
+    type: string
+    label: { de: "Such-Typ (optional)", en: "Search type (optional)" }
+    help:  { de: "auto (Default), fast, instant, deep-lite oder deep.",
+             en: "auto (default), fast, instant, deep-lite or deep." }

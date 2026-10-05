@@ -1,0 +1,8 @@
+$meta:
+  kind: vance-research-source
+
+protocol: exa
+baseUrl: https://api.exa.ai
+apiKey: "{{ apiKey }}"
+{% if type %}type: {{ type }}
+{% endif %}enabled: true

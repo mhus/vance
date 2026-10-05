@@ -43,9 +43,7 @@ public record SearchResult(
             throw new IllegalArgumentException("tier is required");
         }
         hits = hits == null ? List.of() : List.copyOf(hits);
-        upstreamHeaders = upstreamHeaders == null
-                ? Map.of()
-                : Map.copyOf(upstreamHeaders);
+        upstreamHeaders = upstreamHeaders == null ? Map.of() : Map.copyOf(upstreamHeaders);
     }
 
     public boolean ok() {
@@ -59,15 +57,18 @@ public record SearchResult(
      */
     public static SearchResult unavailable(SearchRequest req, String message) {
         return new SearchResult(
-                req.query(),
-                req.modality(),
-                "(none)",
-                req.tier(),
-                List.of(),
-                0,
-                0,
-                null,
-                message,
-                Map.of());
+                req.query(), req.modality(), "(none)", req.tier(), List.of(), 0, 0, null, message, Map.of());
+    }
+
+    /**
+     * Build a soft-failure result: the instance answered but cannot serve
+     * this request — unsupported modality, a configuration state, a
+     * malformed payload. {@code errorMessage} is set, {@code hits} is empty,
+     * and the dispatcher cascades on to the next candidate: no cooldown, no
+     * health write.
+     */
+    public static SearchResult softFailure(SearchRequest req, String instanceId, String message) {
+        return new SearchResult(
+                req.query(), req.modality(), instanceId, req.tier(), List.of(), 0, 0, null, message, Map.of());
     }
 }

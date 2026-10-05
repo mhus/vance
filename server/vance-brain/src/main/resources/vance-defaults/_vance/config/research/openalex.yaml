@@ -1,0 +1,8 @@
+# Shipped default search source — works without an account or key.
+#
+# OpenAlex' polite pool lowers rate pressure when a contact email is set:
+#   contactEmail: ops@example.com
+$meta:
+  kind: vance-research-source
+protocol: openalex
+enabled: true

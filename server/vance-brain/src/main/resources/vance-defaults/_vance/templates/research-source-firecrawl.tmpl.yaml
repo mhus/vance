@@ -1,0 +1,7 @@
+$meta:
+  kind: vance-research-source
+
+protocol: firecrawl
+baseUrl: https://api.firecrawl.dev
+{% if apiKey %}apiKey: "{{ apiKey }}"
+{% endif %}enabled: true

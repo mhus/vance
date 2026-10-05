@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.agrajag;
 
+import de.mhus.vance.api.toolhealth.RetryAfterError;
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
 import de.mhus.vance.shared.toolhealth.ToolHealthCooldown;
@@ -35,6 +36,7 @@ public class AgrajagChecker {
 
     /** Default cooldowns per classification when the pattern doesn't pin one. */
     static final Duration DEFAULT_USER_PERMISSION_COOLDOWN = Duration.ofHours(24);
+
     static final Duration DEFAULT_USER_INPUT_COOLDOWN = Duration.ofMinutes(5);
     static final Duration DEFAULT_USER_SPECIFIC_COOLDOWN = Duration.ofMinutes(15);
     static final Duration DEFAULT_INTERMITTENT_COOLDOWN = Duration.ofSeconds(30);
@@ -58,8 +60,7 @@ public class AgrajagChecker {
      * Triage a failing tool invocation. Side-effects (cooldown,
      * health-doc) are performed against {@link ToolHealthService}.
      */
-    public AgrajagCheckResult handle(
-            String toolName, Throwable error, ToolInvocationContext ctx) {
+    public AgrajagCheckResult handle(String toolName, Throwable error, ToolInvocationContext ctx) {
 
         Instant now = Instant.now();
         List<ToolErrorPattern> patterns = resolver.resolve(ctx.tenantId(), ctx.projectId());
@@ -88,39 +89,52 @@ public class AgrajagChecker {
 
         // Already cooling down? Don't refresh hits, don't write status —
         // the LLM will just see the same backend error reflected.
-        Optional<ToolHealthCooldown> active = healthService.lookupActiveCooldown(
-                ctx.tenantId(), scope, scopeId, toolName, signature, userKey, now);
+        Optional<ToolHealthCooldown> active =
+                healthService.lookupActiveCooldown(ctx.tenantId(), scope, scopeId, toolName, signature, userKey, now);
         if (active.isPresent()) {
-            log.debug("AgrajagChecker: cooldown still active for tool='{}' sig='{}' user='{}' until {}",
-                    toolName, signature, userKey, active.get().getNextSpawnAllowedAt());
+            log.debug(
+                    "AgrajagChecker: cooldown still active for tool='{}' sig='{}' user='{}' until {}",
+                    toolName,
+                    signature,
+                    userKey,
+                    active.get().getNextSpawnAllowedAt());
             return new AgrajagCheckResult(
-                    matched.getId(), matched.getClassification(), signature,
-                    true, false, matched.getNote());
+                    matched.getId(), matched.getClassification(), signature, true, false, matched.getNote());
         }
 
-        Duration cooldown = resolveCooldown(matched, ctx);
-        Instant expectedRecovery = cooldown == null
-                ? null
-                : now.plus(cooldown);
+        Duration cooldown = resolveCooldown(matched, ctx, error);
+        Instant expectedRecovery = cooldown == null ? null : now.plus(cooldown);
 
         // Direct health-doc write when the pattern asks for it.
         boolean wroteHealth = false;
         switch (matched.getHealthAction()) {
             case MARK_UNAVAILABLE -> {
                 healthService.markUnavailable(
-                        ctx.tenantId(), scope, scopeId, toolName,
-                        matched.getClassification(), expectedRecovery,
-                        matched.getNote(), "agrajag-checker");
+                        ctx.tenantId(),
+                        scope,
+                        scopeId,
+                        toolName,
+                        matched.getClassification(),
+                        expectedRecovery,
+                        matched.getNote(),
+                        "agrajag-checker");
                 wroteHealth = true;
             }
             case MARK_DEGRADED -> {
                 healthService.markDegraded(
-                        ctx.tenantId(), scope, scopeId, toolName,
-                        matched.getClassification(), expectedRecovery,
-                        matched.getNote(), "agrajag-checker");
+                        ctx.tenantId(),
+                        scope,
+                        scopeId,
+                        toolName,
+                        matched.getClassification(),
+                        expectedRecovery,
+                        matched.getNote(),
+                        "agrajag-checker");
                 wroteHealth = true;
             }
-            case NONE -> { /* cooldown-only */ }
+            case NONE -> {
+                /* cooldown-only */
+            }
         }
 
         // Atomically claim the cooldown instead of a separate check-then-set:
@@ -132,9 +146,14 @@ public class AgrajagChecker {
         // configured there is nothing to dedup against, so treat it as claimed.
         boolean claimed = cooldown == null
                 || healthService.claimSpawnCooldown(
-                        ctx.tenantId(), scope, scopeId, toolName,
-                        signature, userKey,
-                        matched.getClassification(), cooldown,
+                        ctx.tenantId(),
+                        scope,
+                        scopeId,
+                        toolName,
+                        signature,
+                        userKey,
+                        matched.getClassification(),
+                        cooldown,
                         matched.getNote());
 
         // Escalate UNCLEAR cases to Agrajag's async engine for deeper
@@ -145,23 +164,29 @@ public class AgrajagChecker {
             if (spawner != null) {
                 try {
                     spawner.spawnDiagnosis(
-                            ctx.tenantId(), ctx.projectId(), toolName,
-                            scope, scopeId, signature,
-                            ctx.userId(), buildSpawnNote(matched, error));
+                            ctx.tenantId(),
+                            ctx.projectId(),
+                            toolName,
+                            scope,
+                            scopeId,
+                            signature,
+                            ctx.userId(),
+                            buildSpawnNote(matched, error));
                 } catch (RuntimeException e) {
-                    log.warn("Agrajag spawnDiagnosis raised — proceeding without engine "
-                            + "diagnosis: {}", e.toString());
+                    log.warn(
+                            "Agrajag spawnDiagnosis raised — proceeding without engine " + "diagnosis: {}",
+                            e.toString());
                 }
             }
         }
 
         return new AgrajagCheckResult(
-                matched.getId(), matched.getClassification(), signature,
-                false, wroteHealth, matched.getNote());
+                matched.getId(), matched.getClassification(), signature, false, wroteHealth, matched.getNote());
     }
 
     private static String buildSpawnNote(ToolErrorPattern matched, Throwable error) {
-        StringBuilder sb = new StringBuilder("pattern='").append(matched.getId()).append("'");
+        StringBuilder sb =
+                new StringBuilder("pattern='").append(matched.getId()).append("'");
         if (matched.getNote() != null && !matched.getNote().isBlank()) {
             sb.append("; ").append(matched.getNote());
         }
@@ -176,10 +201,7 @@ public class AgrajagChecker {
     // ──────────────────────────────── matching
 
     static boolean matches(
-            ToolErrorPattern p,
-            @Nullable Integer httpStatus,
-            List<String> exceptionTypes,
-            String message) {
+            ToolErrorPattern p, @Nullable Integer httpStatus, List<String> exceptionTypes, String message) {
         if (p.getHttpStatus() != null) {
             if (httpStatus == null || !p.getHttpStatus().equals(httpStatus)) return false;
         }
@@ -192,7 +214,10 @@ public class AgrajagChecker {
         if (p.getExceptionTypes() != null && !p.getExceptionTypes().isEmpty()) {
             boolean any = false;
             for (String type : p.getExceptionTypes()) {
-                if (exceptionTypes.contains(type)) { any = true; break; }
+                if (exceptionTypes.contains(type)) {
+                    any = true;
+                    break;
+                }
             }
             if (!any) return false;
         }
@@ -200,7 +225,10 @@ public class AgrajagChecker {
             boolean any = false;
             String lower = message.toLowerCase(Locale.ROOT);
             for (String needle : p.getBodyContains()) {
-                if (lower.contains(needle.toLowerCase(Locale.ROOT))) { any = true; break; }
+                if (lower.contains(needle.toLowerCase(Locale.ROOT))) {
+                    any = true;
+                    break;
+                }
             }
             if (!any) return false;
         }
@@ -243,31 +271,29 @@ public class AgrajagChecker {
             try {
                 int v = Integer.parseInt(m.group(1));
                 if (v >= 100 && v <= 599) return v;
-            } catch (NumberFormatException ignored) { /* keep looking */ }
+            } catch (NumberFormatException ignored) {
+                /* keep looking */
+            }
         }
         return null;
     }
 
-    private static final java.util.regex.Pattern HTTP_STATUS_PATTERN =
-            java.util.regex.Pattern.compile(
-                    "(?:\\bHTTP\\s+|\\bstatus[:=]\\s*|\\bcode[:=]\\s*|[(\\s])(\\d{3})\\b",
-                    java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern HTTP_STATUS_PATTERN = java.util.regex.Pattern.compile(
+            "(?:\\bHTTP\\s+|\\bstatus[:=]\\s*|\\bcode[:=]\\s*|[(\\s])(\\d{3})\\b",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
 
     // ──────────────────────────────── scope + cooldown helpers
 
     private static ToolHealthScope chooseScope(
-            ToolHealthClassification classification,
-            String toolName,
-            ToolInvocationContext ctx) {
+            ToolHealthClassification classification, String toolName, ToolInvocationContext ctx) {
         // Client-side tools are always session-scoped — their backend
         // is the foot/web connection.
         if (toolName.startsWith("client_") && ctx.sessionId() != null) {
             return ToolHealthScope.SESSION;
         }
         return switch (classification) {
-            case USER_PERMISSION, USER_SPECIFIC_TECHNICAL, USER_INPUT -> ctx.userId() != null
-                    ? ToolHealthScope.USER
-                    : fallbackScope(ctx);
+            case USER_PERMISSION, USER_SPECIFIC_TECHNICAL, USER_INPUT ->
+                ctx.userId() != null ? ToolHealthScope.USER : fallbackScope(ctx);
             case TECHNICALLY_BROKEN, INTERMITTENT, WORKING, UNCLEAR -> fallbackScope(ctx);
         };
     }
@@ -297,20 +323,27 @@ public class AgrajagChecker {
         };
     }
 
-    private @Nullable Duration resolveCooldown(ToolErrorPattern p, ToolInvocationContext ctx) {
-        Duration raw = resolveCooldownRaw(p);
+    private @Nullable Duration resolveCooldown(ToolErrorPattern p, ToolInvocationContext ctx, Throwable error) {
+        Duration raw = resolveCooldownRaw(p, error);
         return cooldownPolicy.cap(raw, ctx.tenantId(), ctx.projectId(), ctx.processId());
     }
 
-    private static @Nullable Duration resolveCooldownRaw(ToolErrorPattern p) {
+    private static @Nullable Duration resolveCooldownRaw(ToolErrorPattern p, Throwable error) {
         Duration explicit = p.getCooldown();
         if (explicit != null && explicit != ToolErrorPattern.COOLDOWN_FROM_RETRY_AFTER) {
             return explicit;
         }
         if (explicit == ToolErrorPattern.COOLDOWN_FROM_RETRY_AFTER) {
-            // No retry-after header surface today — fall through to the
-            // intermittent default. When a typed HTTP error is added,
-            // read the header here and prefer it.
+            // The pattern config says "header:retry-after" — so prefer the hint
+            // the typed error carried along (RetryAfterError), and fall back to
+            // the intermittent default when the response said nothing usable.
+            Instant hint = retryAfterHint(error);
+            if (hint != null) {
+                Duration untilHint = Duration.between(Instant.now(), hint);
+                if (!untilHint.isNegative() && !untilHint.isZero()) {
+                    return untilHint;
+                }
+            }
             return DEFAULT_INTERMITTENT_COOLDOWN;
         }
         return switch (p.getClassification()) {
@@ -322,6 +355,23 @@ public class AgrajagChecker {
             case UNCLEAR -> DEFAULT_UNCLEAR_COOLDOWN;
             case WORKING -> null;
         };
+    }
+
+    /**
+     * The upstream retry hint, if this error carries one. Walks the cause
+     * chain like {@link #extractHttpStatus} does for the status — transport
+     * errors usually arrive wrapped.
+     */
+    private static @Nullable Instant retryAfterHint(Throwable t) {
+        Throwable cur = t;
+        int guard = 16;
+        while (cur != null && guard-- > 0) {
+            if (cur instanceof RetryAfterError r && r.retryAfter() != null) {
+                return r.retryAfter();
+            }
+            cur = cur.getCause();
+        }
+        return null;
     }
 
     private static String nullToEmpty(@Nullable String s) {

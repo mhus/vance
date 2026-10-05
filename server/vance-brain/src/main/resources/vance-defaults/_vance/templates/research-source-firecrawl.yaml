@@ -1,0 +1,19 @@
+title:       { de: "Suchquelle: Firecrawl",  en: "Search source: Firecrawl" }
+description: { de: "Live-Websuche (REST) — WEB, NEWS und IMAGE. Ohne Key läuft das Keyless-Free-Tier (per-IP, undokumentierte Limits).",
+               en: "Live web search (REST) — WEB, NEWS and IMAGE. Without a key it runs on the keyless free tier (per-IP, undocumented limits)." }
+icon: magnifying-glass
+tags: [research, source]
+
+# The loader reads exactly this folder, so the template pins it.
+folder: _vance/config/research
+
+name:
+  mode: free
+  default: "firecrawl-main"
+
+fields:
+  - name: apiKey
+    type: string
+    label: { de: "API-Key (optional)", en: "API key (optional)" }
+    help:  { de: "Referenz ({{secret:vault:…}}) oder erklärtes Literal ({noop}…). Ohne Key = Keyless-Free-Tier (per-IP, ohne SLA); mit Key: Plan-Credits, 1 000/Monat im Free-Plan. Ein Key macht die Quelle verlässlich und messbar — ohne Key gehört sie hinter vertraglich gesicherte Quellen in die Fallback-Kette.",
+             en: "A reference ({{secret:vault:…}}) or a declared literal ({noop}…). Without a key = keyless free tier (per-IP, no SLA); with a key: plan credits, 1,000/month on the free plan. A key makes the source reliable and measurable — keyless belongs behind contracted sources in the fallback chain." }

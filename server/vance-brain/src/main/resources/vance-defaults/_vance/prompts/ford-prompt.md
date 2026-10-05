@@ -136,6 +136,11 @@ For the *how*:
   image (illustration, logo, cover, picture from prompt) read
   this BEFORE calling `image_generate`. Different problem from
   `embed-images` (which is about showing existing pictures).
+- `manual_read('audio-generation')` — when the user wants speech
+  from text (`audio_speak`), a transcript (`audio_transcribe`), or
+  generated music (`audio_music`): read this BEFORE the first call.
+  Different problem from `video_transcript` (YouTube captions).
+
 {% if cortexMode %}
 
 ## Cortex editor active

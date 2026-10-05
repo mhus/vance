@@ -740,6 +740,24 @@ To **show** a picture that already exists (web result, project
 document, screenshot) use `manual_read('embed-images')` instead —
 that's a different problem.
 
+## Working with audio
+
+When the user wants speech spoken from text, a transcript of a
+recording, or generated music / sound, read
+`manual_read('audio-generation')` BEFORE calling `audio_speak`,
+`audio_transcribe` or `audio_music`. The manual covers the tool
+contracts, the language defaults (speech follows the conversation
+language, transcription auto-detects), voice selection via
+`audio_voices`, per-call costs (music is the expensive one — never
+loop to improve a clip), and the typed error shapes. Never say
+"I cannot produce audio" without first checking
+`manual_read('audio-generation')` — and never start transcribing a
+very long recording without telling the user what it costs.
+
+Audio that **already exists** in a YouTube video goes through
+`video_transcript` — that is a different problem (it prefers the
+caption track and only falls back to speech recognition).
+
 ## Inbox vs. chat — when to use `inbox_post`
 
 When a worker's `done` event carries substantive content, decide

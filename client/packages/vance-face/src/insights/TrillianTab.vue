@@ -5,7 +5,7 @@ import { VAlert, VButton, VEmptyState } from '@/components';
 import { useTrillianInsights } from '@/composables/useTrillianInsights';
 import { useI18n } from 'vue-i18n';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const state = useTrillianInsights();
 const actionError = ref<string | null>(null);
 const busyId = ref<string | null>(null);
@@ -21,6 +21,19 @@ function refresh(): void {
 /** The Trillian's face: the account title humans renamed, else the account, else the session. */
 function displayName(item: TrillianInsightsDto): string {
   return item.worker?.accountTitle || item.worker?.accountId || item.control.sessionId;
+}
+
+/** Deep link into the sessions walker — the same shape the walker mirrors into the URL. */
+function sessionLink(sessionId: string): string {
+  return `/insights.html?sel=session:${encodeURIComponent(sessionId)}`;
+}
+
+/** The human holding the control session: user title if it resolves, plus the raw user id. */
+function controlUser(item: TrillianInsightsDto): string {
+  const title = item.control.userTitle?.trim();
+  const id = item.control.userId?.trim();
+  if (title && id && title !== id) return `${title} (${id})`;
+  return title || id || '—';
 }
 
 function canPause(item: TrillianInsightsDto): boolean {
@@ -70,6 +83,14 @@ function fmtAge(value: Date | string | null | undefined): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return t('chat.picker.relativeDays', { n: days });
   return new Date(ts).toLocaleDateString();
+}
+
+/** Absolute stamp for a "when": date and clock time in the reader's locale. */
+function fmtStamp(value: Date | string | null | undefined): string {
+  if (value == null) return '';
+  const ts = value instanceof Date ? value.getTime() : Date.parse(String(value));
+  if (Number.isNaN(ts)) return '';
+  return new Date(ts).toLocaleString(locale.value);
 }
 
 /** Attribute entries as `name=value`, sorted — map order is not a property of the loop. */
@@ -144,7 +165,11 @@ function attributePairs(item: TrillianInsightsDto): string[] {
         <div>
           <div class="pair-label">{{ $t('insights.trillian.control') }}</div>
           <div class="text-xs leading-5">
-            <div><span class="opacity-60">{{ $t('insights.trillian.session') }}:</span> <span class="font-mono">{{ item.control.sessionId }}</span></div>
+            <div><span class="opacity-60">{{ $t('insights.trillian.user') }}:</span> <span class="font-mono">{{ controlUser(item) }}</span></div>
+            <div>
+              <span class="opacity-60">{{ $t('insights.trillian.session') }}:</span>
+              <a :href="sessionLink(item.control.sessionId)" class="link link-hover text-primary font-mono">{{ item.control.sessionId }}</a>
+            </div>
             <div><span class="opacity-60">{{ $t('insights.trillian.project') }}:</span> <span class="font-mono">{{ item.control.projectId }}</span></div>
             <div><span class="opacity-60">{{ $t('insights.trillian.nature') }}:</span> {{ item.control.nature ?? '—' }}</div>
             <div><span class="opacity-60">{{ $t('insights.trillian.created') }}:</span> {{ fmtAge(item.control.createdAt) }}</div>
@@ -156,14 +181,26 @@ function attributePairs(item: TrillianInsightsDto): string[] {
           <div class="pair-label">{{ $t('insights.trillian.worker') }}</div>
           <div v-if="item.worker" class="text-xs leading-5">
             <div><span class="opacity-60">{{ $t('insights.trillian.account') }}:</span> <span class="font-mono">{{ item.worker.accountId ?? '—' }}</span></div>
-            <div><span class="opacity-60">{{ $t('insights.trillian.session') }}:</span> <span class="font-mono">{{ item.worker.sessionId ?? '—' }}</span></div>
+            <div>
+              <span class="opacity-60">{{ $t('insights.trillian.session') }}:</span>
+              <a v-if="item.worker.sessionId" :href="sessionLink(item.worker.sessionId)" class="link link-hover text-primary font-mono">{{ item.worker.sessionId }}</a>
+              <span v-else class="font-mono">—</span>
+            </div>
+            <div>
+              <span class="opacity-60">{{ $t('insights.trillian.lastRun') }}:</span>
+              {{ fmtStamp(item.worker.lastRunAt) || '—' }}
+            </div>
             <div>
               <span class="opacity-60">{{ $t('insights.trillian.inbox') }}:</span> {{ item.worker.pendingInbox }}
             </div>
-            <div v-if="attributePairs(item).length > 0" class="truncate" :title="attributePairs(item).join(', ')">
-              <span class="opacity-60">{{ $t('insights.trillian.attributes') }}:</span>
-              {{ attributePairs(item).join(', ') }}
-            </div>
+            <details v-if="attributePairs(item).length > 0">
+              <summary class="opacity-60 cursor-pointer">
+                {{ $t('insights.trillian.attributes') }} ({{ attributePairs(item).length }})
+              </summary>
+              <ul class="mt-1">
+                <li v-for="pair in attributePairs(item)" :key="pair" class="font-mono break-words">{{ pair }}</li>
+              </ul>
+            </details>
           </div>
           <div v-else class="text-xs opacity-60">{{ $t('insights.trillian.noWorker') }}</div>
         </div>

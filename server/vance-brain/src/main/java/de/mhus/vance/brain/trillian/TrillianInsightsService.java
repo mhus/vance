@@ -5,14 +5,15 @@ import de.mhus.vance.api.insights.TrillianInsightsDto;
 import de.mhus.vance.api.insights.TrillianPendingEntryInsightsDto;
 import de.mhus.vance.api.insights.TrillianTaskWorkerInsightsDto;
 import de.mhus.vance.api.insights.TrillianWorkerInsightsDto;
-import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,6 +49,7 @@ public class TrillianInsightsService {
     private final ThinkProcessService thinkProcessService;
     private final SessionService sessionService;
     private final UserService userService;
+    private final ChatMessageService chatMessageService;
     private final TrillianInternalApi api;
     private final TrillianActivationGate activationGate;
 
@@ -80,6 +82,8 @@ public class TrillianInsightsService {
         Optional<ThinkProcessDocument> peer = api.findPeer(control.getId());
         TrillianWorkerInsightsDto worker = peer.map(this::toWorkerDto).orElse(null);
         String accountName = worker == null ? null : worker.getAccountId();
+        Optional<SessionDocument> session = sessionService.findBySessionId(control.getSessionId());
+        String userId = session.map(SessionDocument::getUserId).orElse(null);
 
         List<TrillianTaskWorkerInsightsDto> taskWorkers = new ArrayList<>();
         List<TrillianPendingEntryInsightsDto> pending = new ArrayList<>();
@@ -107,7 +111,9 @@ public class TrillianInsightsService {
         return TrillianInsightsDto.builder()
                 .control(TrillianControlInsightsDto.builder()
                         .sessionId(control.getSessionId())
-                        .status(sessionStatusOf(control))
+                        .userId(userId)
+                        .userTitle(userId == null ? null : userTitleOf(control.getTenantId(), userId))
+                        .status(session.map(SessionDocument::getStatus).orElse(null))
                         .projectId(control.getProjectId())
                         .processId(control.getId())
                         .processName(control.getName())
@@ -132,40 +138,47 @@ public class TrillianInsightsService {
         TrillianInternalApi.readAttributes(peer).forEach((k, v) -> attributes.put(k, String.valueOf(v)));
         return TrillianWorkerInsightsDto.builder()
                 .accountId(account)
-                .accountTitle(accountTitleOf(peer.getTenantId(), account))
+                .accountTitle(userTitleOf(peer.getTenantId(), account))
                 .sessionId(peer.getSessionId())
                 .processId(snap.processId())
                 .processName(snap.name())
                 .status(snap.status())
                 .pendingInbox(snap.pendingInboxCount())
                 .attributes(attributes)
+                .lastRunAt(lastRunOf(peer.getTenantId(), peer.getId()))
                 .build();
     }
 
     /**
-     * The account's display name, or {@code null} when the account is gone.
-     * Cosmetic: the state view must still answer.
+     * When the loop last actually turned: the newest chat message of the
+     * loop process. Cosmetic — a missing value must not stop the view.
      */
-    private @Nullable String accountTitleOf(String tenantId, @Nullable String account) {
-        if (account == null) {
-            return null;
-        }
+    private @Nullable Instant lastRunOf(String tenantId, String processId) {
         try {
-            return userService
-                    .findByTenantAndName(tenantId, account)
-                    .map(UserDocument::getTitle)
-                    .orElse(null);
+            return chatMessageService.findLatestCreatedAt(tenantId, processId).orElse(null);
         } catch (RuntimeException e) {
-            log.debug("Trillian insights: could not read title of '{}': {}", account, e.toString());
+            log.debug("Trillian insights: could not read last run of '{}': {}", processId, e.toString());
             return null;
         }
     }
 
-    private @Nullable SessionStatus sessionStatusOf(ThinkProcessDocument control) {
-        return sessionService
-                .findBySessionId(control.getSessionId())
-                .map(SessionDocument::getStatus)
-                .orElse(null);
+    /**
+     * The user's display title, or {@code null} when the user is gone.
+     * Cosmetic: the state view must still answer.
+     */
+    private @Nullable String userTitleOf(String tenantId, @Nullable String userName) {
+        if (userName == null) {
+            return null;
+        }
+        try {
+            return userService
+                    .findByTenantAndName(tenantId, userName)
+                    .map(UserDocument::getTitle)
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            log.debug("Trillian insights: could not read title of '{}': {}", userName, e.toString());
+            return null;
+        }
     }
 
     private static @Nullable String param(ThinkProcessDocument process, String key) {

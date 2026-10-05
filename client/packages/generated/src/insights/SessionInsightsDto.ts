@@ -13,6 +13,7 @@ export interface SessionInsightsDto {
   clientVersion: string;
   clientName?: string;
   status: string;
+  allowMultipleClients: boolean;
   boundConnectionId?: string;
   chatProcessId?: string;
   createdAt?: Date;

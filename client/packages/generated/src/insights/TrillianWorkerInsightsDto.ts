@@ -12,6 +12,7 @@ export interface TrillianWorkerInsightsDto {
   processId: string;
   processName: string;
   status: ThinkProcessStatus;
+  lastRunAt?: Date;
   pendingInbox: number;
   attributes: Record<string, string>;
 }

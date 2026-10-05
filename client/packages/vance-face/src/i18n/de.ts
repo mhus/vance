@@ -1810,11 +1810,13 @@ export default {
       control: 'Control',
       worker: 'User-Loop',
       session: 'Session',
+      user: 'Benutzer',
       project: 'Projekt',
       nature: 'Nature',
       created: 'Erstellt',
       account: 'Konto',
       inbox: 'Inbox',
+      lastRun: 'Zuletzt gelaufen',
       attributes: 'Attribute',
       noWorker:
         'Kein User-Loop gebaut — der Control-Chat funktioniert, die Arbeitsseite ist unterdrückt.',
@@ -1909,6 +1911,7 @@ export default {
       prakRuns: 'Prak',
     },
     session: {
+      headerLabel: 'Session',
       detailsTitle: 'Details',
       mongoId: 'Mongo-ID',
       user: 'Benutzer',
@@ -1925,8 +1928,16 @@ export default {
       exportButton: 'Export',
       exportTooltip: 'JSON-Lines-Paket dieser Session für externe Diagnose herunterladen',
       exportFailed: 'Export fehlgeschlagen.',
+      sharedOn: 'Shared',
+      sharedOff: 'Nicht geteilt',
+      sharedOnTooltip:
+        'Session ist geteilt — alle Verbindungen im Tenant dürfen beitreten. Klick macht sie wieder privat.',
+      sharedOffTooltip:
+        'Session ist privat. Klick teilt sie — alle Verbindungen im Tenant dürfen beitreten.',
     },
     process: {
+      headerLabel: 'Prozess',
+      sessionLinkTooltip: 'Zur Session-Übersicht',
       titlePrefix: 'Prozess {name}',
       mongoId: 'Mongo-ID',
       session: 'Session',

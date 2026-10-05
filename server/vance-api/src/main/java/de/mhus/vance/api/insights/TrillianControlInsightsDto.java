@@ -27,6 +27,12 @@ public class TrillianControlInsightsDto {
     /** Business id of the control session ({@code sess_...}). */
     private String sessionId;
 
+    /** Owning user of the control session ({@code UserDocument.name}) — the human holding it. */
+    private @Nullable String userId;
+
+    /** Display title of the owning user; {@code null} when the user is gone. */
+    private @Nullable String userTitle;
+
     private @Nullable SessionStatus status;
 
     private String projectId;

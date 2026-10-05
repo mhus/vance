@@ -60,8 +60,7 @@ public class ChatMessageService {
      * so the primary key ranks them all together; the {@code ObjectId}
      * encodes the insert timestamp and breaks the tie monotonically.
      */
-    private static final Sort BY_CREATED =
-            Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"));
+    private static final Sort BY_CREATED = Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"));
 
     private final ChatMessageRepository repository;
     private final MongoTemplate mongoTemplate;
@@ -81,9 +80,13 @@ public class ChatMessageService {
     public ChatMessageDocument append(ChatMessageDocument message) {
         maybeAutoPinOriginalTask(message);
         ChatMessageDocument saved = repository.save(message);
-        log.debug("Chat message appended tenant='{}' session='{}' process='{}' role={} id='{}'",
-                saved.getTenantId(), saved.getSessionId(), saved.getThinkProcessId(),
-                saved.getRole(), saved.getId());
+        log.debug(
+                "Chat message appended tenant='{}' session='{}' process='{}' role={} id='{}'",
+                saved.getTenantId(),
+                saved.getSessionId(),
+                saved.getThinkProcessId(),
+                saved.getRole(),
+                saved.getId());
         sessionService.touchChatPreview(
                 saved.getSessionId(),
                 saved.getRole() == null ? null : saved.getRole().name(),
@@ -115,15 +118,13 @@ public class ChatMessageService {
     }
 
     private void restoreCreatedAt(List<ChatMessageDocument> saved, List<Instant> intended) {
-        BulkOperations bulk = mongoTemplate.bulkOps(
-                BulkOperations.BulkMode.UNORDERED, ChatMessageDocument.class);
+        BulkOperations bulk = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, ChatMessageDocument.class);
         boolean any = false;
         for (int i = 0; i < saved.size(); i++) {
             Instant ts = intended.get(i);
             if (ts == null) continue;
             bulk.updateOne(
-                    new Query(Criteria.where("_id").is(saved.get(i).getId())),
-                    new Update().set("createdAt", ts));
+                    new Query(Criteria.where("_id").is(saved.get(i).getId())), new Update().set("createdAt", ts));
             saved.get(i).setCreatedAt(ts);
             any = true;
         }
@@ -135,10 +136,8 @@ public class ChatMessageService {
      * ascending — including messages that have been archived into a
      * compaction memory. Use {@link #activeHistory} for the LLM-replay path.
      */
-    public List<ChatMessageDocument> history(
-            String tenantId, String sessionId, String thinkProcessId) {
-        return repository.findByTenantIdAndSessionIdAndThinkProcessId(
-                tenantId, sessionId, thinkProcessId, BY_CREATED);
+    public List<ChatMessageDocument> history(String tenantId, String sessionId, String thinkProcessId) {
+        return repository.findByTenantIdAndSessionIdAndThinkProcessId(tenantId, sessionId, thinkProcessId, BY_CREATED);
     }
 
     /**
@@ -152,8 +151,7 @@ public class ChatMessageService {
      * <p>Use {@link #activeHistoryWithInterim} for the UI-scrollback
      * variant that includes interim messages.
      */
-    public List<ChatMessageDocument> activeHistory(
-            String tenantId, String sessionId, String thinkProcessId) {
+    public List<ChatMessageDocument> activeHistory(String tenantId, String sessionId, String thinkProcessId) {
         List<ChatMessageDocument> raw =
                 repository.findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
                         tenantId, sessionId, thinkProcessId, BY_CREATED);
@@ -204,11 +202,9 @@ public class ChatMessageService {
      *
      * <p>See {@code planning/process-visibility.md} §5.3.
      */
-    public List<ChatMessageDocument> activeHistoryWithInterimForSession(
-            String tenantId, String sessionId) {
+    public List<ChatMessageDocument> activeHistoryWithInterimForSession(String tenantId, String sessionId) {
         List<ChatMessageDocument> raw =
-                repository.findByTenantIdAndSessionIdAndArchivedInMemoryIdIsNull(
-                        tenantId, sessionId, BY_CREATED);
+                repository.findByTenantIdAndSessionIdAndArchivedInMemoryIdIsNull(tenantId, sessionId, BY_CREATED);
         List<ChatMessageDocument> filtered = new ArrayList<>(raw.size());
         for (ChatMessageDocument m : raw) {
             if (!m.isRemoved()) filtered.add(m);
@@ -224,8 +220,7 @@ public class ChatMessageService {
      * {@code meta.kind=removed}, which the DTO exposes so the UI can render
      * their state. See {@code specification/public/session-crop.md}.
      */
-    public List<ChatMessageDocument> historyForCrop(
-            String tenantId, String sessionId, String thinkProcessId) {
+    public List<ChatMessageDocument> historyForCrop(String tenantId, String sessionId, String thinkProcessId) {
         List<ChatMessageDocument> raw =
                 repository.findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
                         tenantId, sessionId, thinkProcessId, BY_CREATED);
@@ -244,8 +239,8 @@ public class ChatMessageService {
      */
     public long markArchived(Collection<String> messageIds, String memoryId) {
         if (messageIds == null || messageIds.isEmpty()) return 0;
-        Query query = new Query(Criteria.where("_id").in(messageIds)
-                .and("archivedInMemoryId").isNull());
+        Query query = new Query(
+                Criteria.where("_id").in(messageIds).and("archivedInMemoryId").isNull());
         Update update = new Update().set("archivedInMemoryId", memoryId);
         UpdateResult result = mongoTemplate.updateMulti(query, update, ChatMessageDocument.class);
         long n = result.getModifiedCount();
@@ -266,15 +261,17 @@ public class ChatMessageService {
      *
      * <p>See {@code specification/public/session-crop.md}.
      */
-    public long markRemoved(
-            String tenantId, String sessionId, Collection<String> messageIds) {
+    public long markRemoved(String tenantId, String sessionId, Collection<String> messageIds) {
         if (messageIds == null || messageIds.isEmpty()) return 0;
-        Query query = new Query(Criteria.where("_id").in(messageIds)
-                .and("tenantId").is(tenantId)
-                .and("sessionId").is(sessionId));
-        Update update = new Update().set(
-                "meta." + ChatMessageDocument.META_KIND, ChatMessageDocument.KIND_REMOVED);
-        long n = mongoTemplate.updateMulti(query, update, ChatMessageDocument.class)
+        Query query = new Query(Criteria.where("_id")
+                .in(messageIds)
+                .and("tenantId")
+                .is(tenantId)
+                .and("sessionId")
+                .is(sessionId));
+        Update update = new Update().set("meta." + ChatMessageDocument.META_KIND, ChatMessageDocument.KIND_REMOVED);
+        long n = mongoTemplate
+                .updateMulti(query, update, ChatMessageDocument.class)
                 .getModifiedCount();
         if (n > 0) log.debug("Removed {} chat message(s) from memory session='{}'", n, sessionId);
         return n;
@@ -287,16 +284,19 @@ public class ChatMessageService {
      * strip an {@code interim} marker), scoped to tenant + session.
      * Returns the number of rows restored.
      */
-    public long unmarkRemoved(
-            String tenantId, String sessionId, Collection<String> messageIds) {
+    public long unmarkRemoved(String tenantId, String sessionId, Collection<String> messageIds) {
         if (messageIds == null || messageIds.isEmpty()) return 0;
-        Query query = new Query(Criteria.where("_id").in(messageIds)
-                .and("tenantId").is(tenantId)
-                .and("sessionId").is(sessionId)
+        Query query = new Query(Criteria.where("_id")
+                .in(messageIds)
+                .and("tenantId")
+                .is(tenantId)
+                .and("sessionId")
+                .is(sessionId)
                 .and("meta." + ChatMessageDocument.META_KIND)
                 .is(ChatMessageDocument.KIND_REMOVED));
         Update update = new Update().unset("meta." + ChatMessageDocument.META_KIND);
-        long n = mongoTemplate.updateMulti(query, update, ChatMessageDocument.class)
+        long n = mongoTemplate
+                .updateMulti(query, update, ChatMessageDocument.class)
                 .getModifiedCount();
         if (n > 0) log.debug("Restored {} chat message(s) to memory session='{}'", n, sessionId);
         return n;
@@ -331,8 +331,7 @@ public class ChatMessageService {
         if (messageId == null || messageId.isBlank()) return;
         if (failures == null || failures.isEmpty()) return;
         Query q = new Query(Criteria.where("_id").is(messageId));
-        Update u = new Update().set(
-                "meta." + ChatMessageDocument.META_TOOL_FAILURES, failures);
+        Update u = new Update().set("meta." + ChatMessageDocument.META_TOOL_FAILURES, failures);
         mongoTemplate.updateFirst(q, u, ChatMessageDocument.class);
     }
 
@@ -359,14 +358,12 @@ public class ChatMessageService {
      * current {@code STRENGTH:*} tag — there must be at most one per
      * message). Returns the number of rows modified.
      */
-    public long removeTagsWithPrefix(
-            java.util.Collection<String> messageIds, String prefix) {
+    public long removeTagsWithPrefix(java.util.Collection<String> messageIds, String prefix) {
         if (messageIds == null || messageIds.isEmpty()) return 0;
         if (prefix == null || prefix.isEmpty()) return 0;
         // Anchor with ^ so the prefix is a true left-anchor rather than
         // a contains-anywhere match.
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
-                "^" + java.util.regex.Pattern.quote(prefix));
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("^" + java.util.regex.Pattern.quote(prefix));
         Query q = new Query(Criteria.where("_id").in(messageIds));
         Update u = new Update().pull("tags", p);
         return mongoTemplate.updateMulti(q, u, ChatMessageDocument.class).getModifiedCount();
@@ -399,15 +396,17 @@ public class ChatMessageService {
      * {@code tags} use {@code $all} (AND). {@code limit} is honoured
      * as-is (already clamped on the query).
      */
-    public List<ChatMessageDocument> search(
-            ChatMessageSearchQuery q, java.util.Set<String> allowedProcessIds) {
+    public List<ChatMessageDocument> search(ChatMessageSearchQuery q, java.util.Set<String> allowedProcessIds) {
         if (allowedProcessIds == null || allowedProcessIds.isEmpty()) {
             return List.of();
         }
-        Criteria c = Criteria.where("tenantId").is(q.tenantId())
-                .and("thinkProcessId").in(allowedProcessIds)
+        Criteria c = Criteria.where("tenantId")
+                .is(q.tenantId())
+                .and("thinkProcessId")
+                .in(allowedProcessIds)
                 // history_search must not resurface user-removed messages
-                .and("meta.kind").ne(ChatMessageDocument.KIND_REMOVED);
+                .and("meta.kind")
+                .ne(ChatMessageDocument.KIND_REMOVED);
         if (!q.tags().isEmpty()) {
             c = c.and("tags").all(q.tags());
         }
@@ -424,9 +423,8 @@ public class ChatMessageService {
                     .with(Sort.by(Sort.Direction.DESC, "createdAt"))
                     .limit(q.limit());
         } else {
-            mongoQ = new Query(c)
-                    .with(Sort.by(Sort.Direction.DESC, "createdAt"))
-                    .limit(q.limit());
+            mongoQ =
+                    new Query(c).with(Sort.by(Sort.Direction.DESC, "createdAt")).limit(q.limit());
         }
         return mongoTemplate.find(mongoQ, ChatMessageDocument.class);
     }
@@ -436,8 +434,7 @@ public class ChatMessageService {
      * {@link #findByIds(String, java.util.Set, java.util.Collection)}
      * with the scope set to just {@code thinkProcessId}.
      */
-    public List<ChatMessageDocument> findByIds(
-            String tenantId, String thinkProcessId, Collection<String> ids) {
+    public List<ChatMessageDocument> findByIds(String tenantId, String thinkProcessId, Collection<String> ids) {
         if (thinkProcessId == null || thinkProcessId.isBlank()) return List.of();
         return findByIds(tenantId, java.util.Set.of(thinkProcessId), ids);
     }
@@ -455,16 +452,17 @@ public class ChatMessageService {
      * filter, not as a strict resolve.
      */
     public List<ChatMessageDocument> findByIds(
-            String tenantId,
-            java.util.Set<String> allowedProcessIds,
-            Collection<String> ids) {
+            String tenantId, java.util.Set<String> allowedProcessIds, Collection<String> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
         if (allowedProcessIds == null || allowedProcessIds.isEmpty()) {
             return List.of();
         }
-        Query q = new Query(Criteria.where("_id").in(ids)
-                .and("tenantId").is(tenantId)
-                .and("thinkProcessId").in(allowedProcessIds))
+        Query q = new Query(Criteria.where("_id")
+                        .in(ids)
+                        .and("tenantId")
+                        .is(tenantId)
+                        .and("thinkProcessId")
+                        .in(allowedProcessIds))
                 .with(Sort.by(Sort.Direction.ASC, "createdAt"));
         return mongoTemplate.find(q, ChatMessageDocument.class);
     }
@@ -480,15 +478,35 @@ public class ChatMessageService {
      * into a concrete time floor, so the LLM does not need to chain
      * {@code history_search} + {@code list_edited_resources} manually.
      */
-    public Optional<Instant> findLatestCreatedAtForTag(
-            String tenantId, Set<String> allowedProcessIds, String tag) {
-        if (allowedProcessIds == null || allowedProcessIds.isEmpty()
-                || tag == null || tag.isBlank()) {
+    public Optional<Instant> findLatestCreatedAtForTag(String tenantId, Set<String> allowedProcessIds, String tag) {
+        if (allowedProcessIds == null || allowedProcessIds.isEmpty() || tag == null || tag.isBlank()) {
             return Optional.empty();
         }
-        Query q = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("thinkProcessId").in(allowedProcessIds)
-                .and("tags").is(tag))
+        Query q = new Query(Criteria.where("tenantId")
+                        .is(tenantId)
+                        .and("thinkProcessId")
+                        .in(allowedProcessIds)
+                        .and("tags")
+                        .is(tag))
+                .with(Sort.by(Sort.Direction.DESC, "createdAt"))
+                .limit(1);
+        ChatMessageDocument hit = mongoTemplate.findOne(q, ChatMessageDocument.class);
+        return Optional.ofNullable(hit == null ? null : hit.getCreatedAt());
+    }
+
+    /**
+     * When the given think-process last wrote into its chat history —
+     * the timestamp of its newest message, archived or removed or not.
+     * Empty when the process has never written anything.
+     *
+     * <p>Used by the Trillian state view to answer "when did this loop
+     * actually run last" without replaying the whole history.
+     */
+    public Optional<Instant> findLatestCreatedAt(String tenantId, String thinkProcessId) {
+        Query q = new Query(Criteria.where("tenantId")
+                        .is(tenantId)
+                        .and("thinkProcessId")
+                        .is(thinkProcessId))
                 .with(Sort.by(Sort.Direction.DESC, "createdAt"))
                 .limit(1);
         ChatMessageDocument hit = mongoTemplate.findOne(q, ChatMessageDocument.class);
@@ -520,11 +538,15 @@ public class ChatMessageService {
         if (thinkProcessId == null || thinkProcessId.isBlank()) {
             return List.of();
         }
-        Criteria c = Criteria.where("tenantId").is(tenantId)
-                .and("thinkProcessId").is(thinkProcessId)
-                .and("archivedInMemoryId").isNull()
+        Criteria c = Criteria.where("tenantId")
+                .is(tenantId)
+                .and("thinkProcessId")
+                .is(thinkProcessId)
+                .and("archivedInMemoryId")
+                .isNull()
                 // user-removed messages are out of memory — never recompact them
-                .and("meta.kind").ne(ChatMessageDocument.KIND_REMOVED);
+                .and("meta.kind")
+                .ne(ChatMessageDocument.KIND_REMOVED);
         if (fromCreatedAtInclusive != null && toCreatedAtInclusive != null) {
             c = c.and("createdAt").gte(fromCreatedAtInclusive).lte(toCreatedAtInclusive);
         } else if (fromCreatedAtInclusive != null) {
@@ -554,9 +576,12 @@ public class ChatMessageService {
         if (allowedProcessIds == null || allowedProcessIds.isEmpty()) {
             return List.of();
         }
-        Criteria match = Criteria.where("tenantId").is(tenantId)
-                .and("thinkProcessId").in(allowedProcessIds)
-                .and("tags").regex("^RESOURCE:");
+        Criteria match = Criteria.where("tenantId")
+                .is(tenantId)
+                .and("thinkProcessId")
+                .in(allowedProcessIds)
+                .and("tags")
+                .regex("^RESOURCE:");
         if (since != null) {
             match = match.and("createdAt").gte(since);
         }
@@ -595,17 +620,23 @@ public class ChatMessageService {
         TextCriteria tc = TextCriteria.forDefaultLanguage().matching(query);
         Query tq = TextQuery.queryText(tc)
                 .sortByScore()
-                .addCriteria(Criteria.where("tenantId").is(tenantId)
-                        .and("sessionId").in(sessionIds)
-                        .and("archivedInMemoryId").isNull())
+                .addCriteria(Criteria.where("tenantId")
+                        .is(tenantId)
+                        .and("sessionId")
+                        .in(sessionIds)
+                        .and("archivedInMemoryId")
+                        .isNull())
                 .limit(limit);
         List<ChatMessageDocument> messages = mongoTemplate.find(tq, ChatMessageDocument.class);
         if (messages.isEmpty()) {
-            Query fallback = new Query(Criteria.where("tenantId").is(tenantId)
-                    .and("sessionId").in(sessionIds)
-                    .and("archivedInMemoryId").isNull()
-                    .and("content").regex(
-                            java.util.regex.Pattern.quote(query.trim()), "i"))
+            Query fallback = new Query(Criteria.where("tenantId")
+                            .is(tenantId)
+                            .and("sessionId")
+                            .in(sessionIds)
+                            .and("archivedInMemoryId")
+                            .isNull()
+                            .and("content")
+                            .regex(java.util.regex.Pattern.quote(query.trim()), "i"))
                     .with(Sort.by(Sort.Direction.DESC, "createdAt"))
                     .limit(limit);
             messages = mongoTemplate.find(fallback, ChatMessageDocument.class);
@@ -615,11 +646,14 @@ public class ChatMessageService {
 
     /** Drops all messages of a think-process (process deletion). */
     public long deleteByProcess(String tenantId, String sessionId, String thinkProcessId) {
-        long n = repository.deleteByTenantIdAndSessionIdAndThinkProcessId(
-                tenantId, sessionId, thinkProcessId);
+        long n = repository.deleteByTenantIdAndSessionIdAndThinkProcessId(tenantId, sessionId, thinkProcessId);
         if (n > 0) {
-            log.info("Deleted {} chat messages for process tenant='{}' session='{}' process='{}'",
-                    n, tenantId, sessionId, thinkProcessId);
+            log.info(
+                    "Deleted {} chat messages for process tenant='{}' session='{}' process='{}'",
+                    n,
+                    tenantId,
+                    sessionId,
+                    thinkProcessId);
         }
         return n;
     }
@@ -628,8 +662,7 @@ public class ChatMessageService {
     public long deleteBySession(String tenantId, String sessionId) {
         long n = repository.deleteByTenantIdAndSessionId(tenantId, sessionId);
         if (n > 0) {
-            log.info("Deleted {} chat messages for session tenant='{}' session='{}'",
-                    n, tenantId, sessionId);
+            log.info("Deleted {} chat messages for session tenant='{}' session='{}'", n, tenantId, sessionId);
         }
         return n;
     }
@@ -639,11 +672,13 @@ public class ChatMessageService {
      * abandoned-session detection (§9.1) to determine whether a complete
      * Q&amp;A pair exists.
      */
-    public long countBySessionAndRole(
-            String tenantId, String sessionId, de.mhus.vance.api.chat.ChatRole role) {
-        Query q = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("sessionId").is(sessionId)
-                .and("role").is(role));
+    public long countBySessionAndRole(String tenantId, String sessionId, de.mhus.vance.api.chat.ChatRole role) {
+        Query q = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("sessionId")
+                .is(sessionId)
+                .and("role")
+                .is(role));
         return mongoTemplate.count(q, ChatMessageDocument.class);
     }
 
@@ -653,19 +688,20 @@ public class ChatMessageService {
      * abandoned-session detection to recognise tool-call activity
      * (e.g. {@code TOOL_CALL:*}, {@code FILE_EDIT}, {@code RESOURCE:*}).
      */
-    public long countBySessionAndAnyTagPrefix(
-            String tenantId, String sessionId, Collection<String> tagPrefixes) {
+    public long countBySessionAndAnyTagPrefix(String tenantId, String sessionId, Collection<String> tagPrefixes) {
         if (tagPrefixes == null || tagPrefixes.isEmpty()) return 0;
         List<java.util.regex.Pattern> patterns = new ArrayList<>();
         for (String prefix : tagPrefixes) {
             if (prefix == null || prefix.isBlank()) continue;
-            patterns.add(java.util.regex.Pattern.compile(
-                    "^" + java.util.regex.Pattern.quote(prefix)));
+            patterns.add(java.util.regex.Pattern.compile("^" + java.util.regex.Pattern.quote(prefix)));
         }
         if (patterns.isEmpty()) return 0;
-        Query q = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("sessionId").is(sessionId)
-                .and("tags").in(patterns));
+        Query q = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("sessionId")
+                .is(sessionId)
+                .and("tags")
+                .in(patterns));
         return mongoTemplate.count(q, ChatMessageDocument.class);
     }
 
@@ -676,12 +712,14 @@ public class ChatMessageService {
      * title/icon/color prompt.
      */
     public List<ChatMessageDocument> openingWindow(
-            String tenantId, String sessionId,
-            Collection<de.mhus.vance.api.chat.ChatRole> roles, int limit) {
+            String tenantId, String sessionId, Collection<de.mhus.vance.api.chat.ChatRole> roles, int limit) {
         if (roles == null || roles.isEmpty() || limit <= 0) return List.of();
-        Query q = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("sessionId").is(sessionId)
-                .and("role").in(roles))
+        Query q = new Query(Criteria.where("tenantId")
+                        .is(tenantId)
+                        .and("sessionId")
+                        .is(sessionId)
+                        .and("role")
+                        .in(roles))
                 .with(Sort.by(Sort.Direction.ASC, "createdAt"))
                 .limit(limit);
         return mongoTemplate.find(q, ChatMessageDocument.class);
@@ -733,8 +771,7 @@ public class ChatMessageService {
             message.setTags(tags);
         }
         tags.add(SpanStrength.PINNED.tag());
-        log.debug("Auto-pinned original-task USER message tenant='{}' process='{}'",
-                tenantId, processId);
+        log.debug("Auto-pinned original-task USER message tenant='{}' process='{}'", tenantId, processId);
     }
 
     private static boolean hasStrengthTag(ChatMessageDocument message) {
@@ -747,8 +784,8 @@ public class ChatMessageService {
     }
 
     private boolean hasAnyMessage(String tenantId, String thinkProcessId) {
-        Query q = new Query(Criteria.where("tenantId").is(tenantId)
-                .and("thinkProcessId").is(thinkProcessId));
+        Query q = new Query(
+                Criteria.where("tenantId").is(tenantId).and("thinkProcessId").is(thinkProcessId));
         return mongoTemplate.exists(q, ChatMessageDocument.class);
     }
 }

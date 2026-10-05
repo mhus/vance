@@ -20,6 +20,7 @@ import {
   useInsightsSessions,
   useSessionProcesses,
   useProcessDetail,
+  useSessionDetail,
   useProcessChat,
   useProcessMemory,
   useMarvinTree,
@@ -65,6 +66,7 @@ const tenantProjects = useTenantProjects();
 const sessionsState = useInsightsSessions();
 const processesState = useSessionProcesses();
 const processDetailState = useProcessDetail();
+const sessionDetailState = useSessionDetail();
 const chatState = useProcessChat();
 const memoryState = useProcessMemory();
 const treeState = useMarvinTree();
@@ -89,6 +91,15 @@ async function onStopSession(force: boolean): Promise<void> {
   if (force) await control.forceStopSession(sel.sessionId);
   else await control.stopSession(sel.sessionId);
   await refreshAfterStop(sel.sessionId);
+}
+
+/** Flip the session's shared flag ("shared"): every connection in the tenant may join. */
+async function onToggleShared(): Promise<void> {
+  const sel = selectedSession.value;
+  if (!sel) return;
+  await control.setSharing(sel.sessionId, !sel.allowMultipleClients);
+  await reloadSessions();
+  await ensureSessionLoaded(sel.sessionId);
 }
 
 async function onStopProcess(force: boolean): Promise<void> {
@@ -373,6 +384,7 @@ watch(selection, async (sel) => {
     // Make sure the processes for this session are loaded — they
     // populate the "Processes" tab.
     await ensureProcessesLoaded(sel.id);
+    await ensureSessionLoaded(sel.id);
   } else {
     await processDetailState.load(sel.id);
     chatState.clear();
@@ -450,7 +462,12 @@ function isSelectedProcess(p: ThinkProcessInsightsDto): boolean {
 const selectedSession = computed<SessionInsightsDto | null>(() => {
   const sel = selection.value;
   if (sel?.kind !== 'session') return null;
-  return sessionsState.sessions.value.find(s => s.sessionId === sel.id) ?? null;
+  return (
+    sessionsState.sessions.value.find(s => s.sessionId === sel.id) ??
+    (sessionDetailState.session.value?.sessionId === sel.id
+      ? sessionDetailState.session.value
+      : null)
+  );
 });
 
 const selectedProcess = computed<ThinkProcessInsightsDto | null>(() =>
@@ -691,6 +708,22 @@ function asJson(obj: unknown): string {
   } catch {
     return String(obj);
   }
+}
+
+/**
+ * Make sure a selected session resolves even when the session list does
+ * not carry it (deep link, filter, paging) — see {@link useSessionDetail}.
+ */
+async function ensureSessionLoaded(sessionId: string): Promise<void> {
+  if (!sessionsState.sessions.value.some(s => s.sessionId === sessionId)) {
+    await sessionDetailState.load(sessionId);
+  }
+}
+
+/** Drill up from a process to its session — the sibling of clickProcessByMongoId. */
+function clickSessionById(sessionId: string | undefined | null): void {
+  if (!sessionId) return;
+  selection.value = { kind: 'session', id: sessionId };
 }
 
 function clickProcessByMongoId(id: string | undefined | null): void {
@@ -947,12 +980,15 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 
         <!-- ─── Session view ─── -->
         <template v-else-if="selection.kind === 'session'">
-        <div v-if="!selectedSession" class="opacity-70">{{ $t('insights.loading') }}</div>
+        <div v-if="!selectedSession" class="opacity-70">
+          {{ sessionDetailState.error.value ?? $t('insights.loading') }}
+        </div>
         <template v-else>
           <!-- Session header — always visible across Overview / Processes /
                Timeline tabs so the user keeps the "what session am I in"
                context after switching. -->
           <header class="session-header">
+            <div class="context-kicker">{{ $t('insights.session.headerLabel') }}</div>
             <div class="flex items-baseline gap-2 flex-wrap justify-between">
               <div class="flex items-baseline gap-2 flex-wrap">
                 <span class="font-mono text-sm opacity-70">{{ selectedSession.sessionId }}</span>
@@ -992,6 +1028,15 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   @click="onExportSession(selectedSession.sessionId)"
                 >
                   {{ $t('insights.session.exportButton') }}
+                </VButton>
+                <VButton
+                  variant="ghost"
+                  size="sm"
+                  :disabled="control.busy.value"
+                  :title="selectedSession.allowMultipleClients ? $t('insights.session.sharedOnTooltip') : $t('insights.session.sharedOffTooltip')"
+                  @click="onToggleShared"
+                >
+                  {{ selectedSession.allowMultipleClients ? $t('insights.session.sharedOn') : $t('insights.session.sharedOff') }}
                 </VButton>
               </div>
             </div>
@@ -1112,6 +1157,55 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <template v-else-if="selection.kind === 'process'">
         <div v-if="!selectedProcess" class="opacity-70">{{ $t('insights.loading') }}</div>
         <template v-else>
+          <!-- Process header — same role as the session header: the 'which
+               process am I in' context plus the control buttons, fixed
+               above every sub-tab, not buried in the Overview card. -->
+          <header class="session-header">
+            <div class="context-kicker">{{ $t('insights.process.headerLabel') }}</div>
+            <div class="flex items-baseline gap-2 flex-wrap justify-between">
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <span class="font-mono text-sm font-semibold">{{ selectedProcess.name }}</span>
+                <span
+                  class="text-xs px-1.5 py-0.5 rounded"
+                  :class="sessionBadgeClass(selectedProcess.status)"
+                >{{ selectedProcess.status?.toLowerCase() }}</span>
+                <span class="text-xs opacity-60">
+                  {{ selectedProcess.thinkEngine }}
+                  <span v-if="selectedProcess.recipeName">· {{ selectedProcess.recipeName }}</span>
+                  · {{ $t('insights.process.session') }}
+                  <button
+                    class="link font-mono"
+                    :title="$t('insights.process.sessionLinkTooltip')"
+                    @click="clickSessionById(selectedProcess.sessionId)"
+                  >{{ selectedProcess.sessionId }}</button>
+                  · {{ fmt(selectedProcess.createdAt) }}
+                </span>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <VButton
+                  variant="ghost"
+                  size="sm"
+                  :disabled="control.busy.value || selectedProcess.status === 'CLOSED'"
+                  :title="$t('insights.control.stopTooltip')"
+                  @click="onStopProcess(false)"
+                >
+                  {{ $t('insights.control.stop') }}
+                </VButton>
+                <VButton
+                  variant="ghost"
+                  size="sm"
+                  :disabled="control.busy.value || selectedProcess.status === 'CLOSED'"
+                  :title="$t('insights.control.forceStopTooltip')"
+                  @click="onStopProcess(true)"
+                >
+                  {{ $t('insights.control.forceStop') }}
+                </VButton>
+              </div>
+            </div>
+            <VAlert v-if="control.error.value" variant="error" class="mt-2">
+              <span>{{ control.error.value }}</span>
+            </VAlert>
+          </header>
           <div class="tab-bar">
             <button
               class="tab"
@@ -1181,29 +1275,6 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                 <dt class="opacity-60">{{ $t('insights.process.updated') }}</dt>
                 <dd>{{ fmt(selectedProcess.updatedAt) }}</dd>
               </dl>
-              <div class="flex items-center gap-2 flex-wrap mt-3">
-                <VButton
-                  variant="ghost"
-                  size="sm"
-                  :disabled="control.busy.value || selectedProcess.status === 'CLOSED'"
-                  :title="$t('insights.control.stopTooltip')"
-                  @click="onStopProcess(false)"
-                >
-                  {{ $t('insights.control.stop') }}
-                </VButton>
-                <VButton
-                  variant="ghost"
-                  size="sm"
-                  :disabled="control.busy.value || selectedProcess.status === 'CLOSED'"
-                  :title="$t('insights.control.forceStopTooltip')"
-                  @click="onStopProcess(true)"
-                >
-                  {{ $t('insights.control.forceStop') }}
-                </VButton>
-              </div>
-              <VAlert v-if="control.error.value" variant="error" class="mt-2">
-                <span>{{ control.error.value }}</span>
-              </VAlert>
             </VCard>
 
             <VCard :title="$t('insights.process.engineParams')">
@@ -1568,6 +1639,14 @@ function clickProcessByMongoId(id: string | undefined | null): void {
   padding: 0.75rem 1rem;
   background: var(--color-base-100);
 }
+.context-kicker {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.55;
+  margin-bottom: 0.25rem;
+}
+
 .session-topic-title {
   font-size: 1.05rem;
   font-weight: 600;

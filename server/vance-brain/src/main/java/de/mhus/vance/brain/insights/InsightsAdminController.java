@@ -473,6 +473,7 @@ public class InsightsAdminController {
                 .clientVersion(s.getClientVersion())
                 .clientName(s.getClientName())
                 .status(s.getStatus() == null ? "" : s.getStatus().name())
+                .allowMultipleClients(s.isAllowMultipleClients())
                 .boundConnectionId(s.getBoundConnectionId())
                 .chatProcessId(s.getChatProcessId())
                 .createdAt(s.getCreatedAt())

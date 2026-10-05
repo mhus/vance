@@ -91,6 +91,43 @@ export function useInsightsSessions(): {
   return { sessions, loading, loadingMore, hasMore, error, reload, loadMore };
 }
 
+/**
+ * One session by business id — the fallback for a drill-down the session
+ * list does not contain (a deep link, or a jump up from a process whose
+ * session sits outside the current filter or page). Without it the detail
+ * pane would sit on "loading" forever: the list view is the primary
+ * source, this is the safety net.
+ */
+export function useSessionDetail(): {
+  session: Ref<SessionInsightsDto | null>;
+  loading: Ref<boolean>;
+  error: Ref<string | null>;
+  load: (sessionId: string) => Promise<void>;
+  clear: () => void;
+} {
+  const session = ref<SessionInsightsDto | null>(null);
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+
+  function clear(): void { session.value = null; error.value = null; }
+
+  async function load(sessionId: string): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      session.value = await brainFetch<SessionInsightsDto>(
+        'GET', `admin/sessions/${encodeURIComponent(sessionId)}`);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load session.';
+      session.value = null;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  return { session, loading, error, load, clear };
+}
+
 export function useSessionProcesses(): {
   processes: Ref<ThinkProcessInsightsDto[]>;
   loading: Ref<boolean>;

@@ -3,6 +3,7 @@ package de.mhus.vance.api.insights;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import java.time.Instant;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -42,6 +43,12 @@ public class TrillianWorkerInsightsDto {
 
     private ThinkProcessStatus status;
 
+    /**
+     * When the loop last actually turned — the timestamp of the newest
+     * chat message in the loop process's history. {@code null} when the
+     * loop has never run a turn.
+     */
+    private @Nullable Instant lastRunAt;
     /** Depth of the loop's pending inbox (task requests plus results to report). */
     private long pendingInbox;
 

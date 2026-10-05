@@ -8,6 +8,8 @@ import { ThinkProcessStatus } from '../thinkprocess/ThinkProcessStatus';
 
 export interface TrillianControlInsightsDto {
   sessionId: string;
+  userId?: string;
+  userTitle?: string;
   status?: SessionStatus;
   projectId: string;
   processId: string;

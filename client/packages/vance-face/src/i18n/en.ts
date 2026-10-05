@@ -1804,11 +1804,13 @@ export default {
       control: 'Control',
       worker: 'User-Loop',
       session: 'Session',
+      user: 'User',
       project: 'Project',
       nature: 'Nature',
       created: 'Created',
       account: 'Account',
       inbox: 'Inbox',
+      lastRun: 'Last run',
       attributes: 'Attributes',
       noWorker:
         'No user-loop built — the control chat works, the working side is suppressed.',
@@ -1903,6 +1905,7 @@ export default {
       prakRuns: 'Prak',
     },
     session: {
+      headerLabel: 'Session',
       detailsTitle: 'Details',
       mongoId: 'Mongo id',
       user: 'User',
@@ -1919,8 +1922,16 @@ export default {
       exportButton: 'Export',
       exportTooltip: 'Download a JSON-lines bundle of this session for external diagnostics',
       exportFailed: 'Export failed.',
+      sharedOn: 'Shared',
+      sharedOff: 'Not shared',
+      sharedOnTooltip:
+        'Session is shared — every connection in the tenant may join. Click to make it private again.',
+      sharedOffTooltip:
+        'Session is private. Click to share it — every connection in the tenant may join.',
     },
     process: {
+      headerLabel: 'Process',
+      sessionLinkTooltip: 'Back to the session view',
       titlePrefix: 'Process {name}',
       mongoId: 'Mongo id',
       session: 'Session',

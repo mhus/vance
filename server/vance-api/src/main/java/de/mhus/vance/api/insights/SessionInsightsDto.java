@@ -47,6 +47,12 @@ public class SessionInsightsDto {
 
     private String status;
 
+    /**
+     * {@code true} when the session is shared: every connection in the
+     * tenant may join it ({@code specification/multi-user-sessions.md} §1).
+     */
+    private boolean allowMultipleClients;
+
     private @Nullable String boundConnectionId;
 
     /** Mongo id of the auto-spawned session-chat process — links to a process inspection. */

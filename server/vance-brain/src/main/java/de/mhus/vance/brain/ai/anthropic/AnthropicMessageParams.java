@@ -95,11 +95,15 @@ final class AnthropicMessageParams {
             return ContentBlockParam.ofDocument(builder.build());
         }
         if ("tool_use".equals(type)) {
-            return ContentBlockParam.ofToolUse(ToolUseBlockParam.builder()
+            ToolUseBlockParam.Builder builder = ToolUseBlockParam.builder()
                     .id(asString(block.get("id"), "tool_use.id"))
                     .name(asString(block.get("name"), "tool_use.name"))
-                    .input(toolInput(block.get("input")))
-                    .build());
+                    .input(toolInput(block.get("input")));
+            // cache_control rides every block type the mapper can mark —
+            // the history breakpoint lands on a tool_use when the request
+            // ends on an assistant tool-call message.
+            cacheControl(block).ifPresent(builder::cacheControl);
+            return ContentBlockParam.ofToolUse(builder.build());
         }
         if ("tool_result".equals(type)) {
             ToolResultBlockParam.Builder builder = ToolResultBlockParam.builder()

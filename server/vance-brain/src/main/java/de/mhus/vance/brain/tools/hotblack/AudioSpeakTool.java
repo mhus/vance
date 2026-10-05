@@ -74,9 +74,13 @@ public class AudioSpeakTool implements Tool {
                                     + "title is generated from the text."),
                     "format",
                     Map.of(
-                            "type", "string",
-                            "enum", List.of("mp3", "wav"),
-                            "description", "Output audio format. Defaults to mp3."),
+                            "type",
+                            "string",
+                            "enum",
+                            List.of("mp3", "wav"),
+                            "description",
+                            "Output audio format. Defaults to mp3 — or wav when the model serves "
+                                    + "no mp3. An explicit value the model does not serve is rejected."),
                     "speed",
                     Map.of(
                             "type",

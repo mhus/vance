@@ -4,13 +4,16 @@ import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.hotblack.AudioCallRecord;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 /**
@@ -50,6 +53,21 @@ public class AudioCallTracker {
 
     /** Outcome marker for a reserved-but-not-yet-finalized call row. */
     public static final String OUTCOME_PENDING = "pending";
+
+    /**
+     * Outcome for a reserve row whose call never finalized it (crash /
+     * interrupt) — swept by {@link #sweepAbandonedReserves}. Kept in the fixed
+     * outcome vocabulary of {@link AudioCallRecord}: an attempt happened and
+     * counts against the quota, it just never reported.
+     */
+    public static final String OUTCOME_CANCELLED = "cancelled";
+
+    /**
+     * How long a reserve row may stay {@code pending} before it counts as
+     * abandoned. Comfortably above every legal call — the largest shipped
+     * per-call timeout is the 3600 s faster-whisper STT.
+     */
+    static final Duration PENDING_RESERVE_MAX_AGE = Duration.ofHours(24);
 
     private final AudioCallRecordRepository repository;
     private final SettingService settingService;
@@ -91,6 +109,38 @@ public class AudioCallTracker {
                         "model",
                         alias)
                 .increment();
+    }
+
+    /**
+     * Finalize reserve rows whose call never reached {@link #recordCall} —
+     * a crashed pod, a killed thread, anything that skipped the finalize.
+     * Left at {@code pending} they would count against the quota for the rest
+     * of the window (the monthly window up to a month). Flipped to
+     * {@code cancelled}, not deleted: an attempt was made, and quota math
+     * counts attempts. A late finalize of the same row overwrites the outcome
+     * in place, so a sweep that fires early on a call exceeding
+     * {@link #PENDING_RESERVE_MAX_AGE} self-corrects.
+     */
+    @Scheduled(
+            fixedDelayString = "${vance.hotblack.pending-sweep.interval:PT1H}",
+            initialDelayString = "${vance.hotblack.pending-sweep.interval:PT1H}")
+    public void sweepAbandonedReserves() {
+        try {
+            List<AudioCallRecord> stale = repository.findByOutcomeAndAtBefore(
+                    OUTCOME_PENDING, Instant.now().minus(PENDING_RESERVE_MAX_AGE));
+            for (AudioCallRecord record : stale) {
+                record.setOutcome(OUTCOME_CANCELLED);
+                repository.save(record);
+            }
+            if (!stale.isEmpty()) {
+                log.warn(
+                        "AudioCallTracker: finalized {} abandoned pending reserve(s) as '{}'",
+                        stale.size(),
+                        OUTCOME_CANCELLED);
+            }
+        } catch (RuntimeException e) {
+            log.warn("AudioCallTracker: abandoned-reserve sweep failed: {}", e.toString());
+        }
     }
 
     /**

@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -76,11 +77,19 @@ public class OpenRouterAudioProvider implements AiAudioModelProvider {
     private final String defaultBaseUrl;
     private final HttpClient httpClient;
 
+    @Autowired
     public OpenRouterAudioProvider(@Value("${vance.ai.openrouter.base-url:}") String baseUrl) {
+        this(
+                baseUrl,
+                HttpClient.newBuilder()
+                        .followRedirects(HttpClient.Redirect.NORMAL)
+                        .build());
+    }
+
+    /** Test seam — same transport, injected client. */
+    OpenRouterAudioProvider(String baseUrl, HttpClient httpClient) {
         this.defaultBaseUrl = baseUrl == null || baseUrl.isBlank() ? DEFAULT_BASE_URL : baseUrl.trim();
-        this.httpClient = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        this.httpClient = httpClient;
     }
 
     @Override
@@ -106,9 +115,16 @@ public class OpenRouterAudioProvider implements AiAudioModelProvider {
 
         // Some TTS models serve pcm only (Gemini TTS rejects mp3 with a 400
         // that names response_format) — one retry as pcm, wrapped into a WAV
-        // container so the document stays playable.
+        // container so the document stays playable. The retry checks its own
+        // status: a non-200 here is an error body, and wrapping *that* as pcm
+        // would commit a corrupt "audio" document and book the call as a
+        // success.
         if (isFormatRejection(response)) {
             response = execute(config, "/audio/speech", ttsBody(config, request, "pcm"));
+            if (response.statusCode() != 200) {
+                throw new AiAudioException("OpenRouter /audio/speech pcm retry failed (HTTP " + response.statusCode()
+                        + "): " + errorMessage(response.body()));
+            }
             audio = wrapPcm(response);
             wireFormat = "pcm";
         } else if (response.statusCode() != 200) {

@@ -38,6 +38,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -197,7 +198,12 @@ public class HotblackService {
         voice = validateVoice(voice, language, modelInfo);
 
         String format = resolveFormat(
-                request.getFormat(), request.getTenantId(), request.getProjectId(), request.getProcessId());
+                request.getFormat(),
+                modelInfo.supportedFormats(),
+                modelInfo.provider() + ":" + modelInfo.modelName(),
+                request.getTenantId(),
+                request.getProjectId(),
+                request.getProcessId());
 
         if (text.length() > modelInfo.maxInputChars()) {
             throw new HotblackException(
@@ -229,9 +235,16 @@ public class HotblackService {
         ScheduledFuture<?> heartbeat = startHeartbeat(process, "speech (" + resolved.alias() + ")", callStart, request);
 
         Double estimate = estimateTtsCost(modelInfo, text);
+        DocumentDocument committed;
+        Double cost;
         try {
             DocumentAudioDestinationStream stream = openStream(request, path, title.title());
             audioService.synthesize(config, new TtsRequest(text, language, voice, format, request.getSpeed()), stream);
+            // The committed document is the proof of success — resolved inside
+            // the try so a missing commit finalizes the reserve row as a
+            // failure instead of leaving its pending row behind.
+            committed = requireCommitted(request.getTenantId(), resolveProjectId(request), path);
+            cost = effectiveCostUsd(estimate, committed);
         } catch (AiAudioException e) {
             cancelHeartbeat(heartbeat);
             recordFailure(
@@ -261,6 +274,11 @@ public class HotblackService {
                     callStart,
                     text.length(),
                     e);
+            if (e instanceof HotblackException) {
+                // The commit proof failing is already a HotblackException —
+                // keep its reason and message instead of wrapping it again.
+                throw e;
+            }
             throw new HotblackException(
                     HotblackException.Reason.PROVIDER_ERROR,
                     "Speech generation failed for " + config.fullName() + ": " + e.getMessage(),
@@ -269,8 +287,6 @@ public class HotblackService {
         cancelHeartbeat(heartbeat);
 
         long durationMs = System.currentTimeMillis() - callStart;
-        DocumentDocument committed = requireCommitted(request.getTenantId(), resolveProjectId(request), path);
-        Double cost = effectiveCostUsd(estimate, committed);
         recordSuccess(
                 reserveId,
                 request.getTenantId(),
@@ -356,6 +372,13 @@ public class HotblackService {
                     HotblackException.Reason.UNSUPPORTED_LANGUAGE,
                     "Model " + modelInfo.provider() + ":" + modelInfo.modelName() + " does not support language '"
                             + language + "'");
+        }
+        if (!acceptsAudioFormat(modelInfo.supportedFormats(), source.format())) {
+            throw new HotblackException(
+                    HotblackException.Reason.UNSUPPORTED_FORMAT,
+                    "Model " + modelInfo.provider() + ":" + modelInfo.modelName()
+                            + " does not accept audio format '" + source.format() + "' — it accepts "
+                            + modelInfo.supportedFormats());
         }
 
         long callStart = System.currentTimeMillis();
@@ -543,7 +566,12 @@ public class HotblackService {
 
         String prompt = composeMusicPrompt(request.getPrompt(), language, durationSeconds);
         String format = resolveFormat(
-                request.getFormat(), request.getTenantId(), request.getProjectId(), request.getProcessId());
+                request.getFormat(),
+                modelInfo.supportedFormats(),
+                modelInfo.provider() + ":" + modelInfo.modelName(),
+                request.getTenantId(),
+                request.getProjectId(),
+                request.getProcessId());
 
         long callStart = System.currentTimeMillis();
         TitleResolution title = resolveTitleAndSlug(
@@ -568,9 +596,16 @@ public class HotblackService {
         ScheduledFuture<?> heartbeat = startHeartbeat(process, "music (" + resolved.alias() + ")", callStart, request);
 
         Double estimate = estimateMusicCost(modelInfo, durationSeconds);
+        DocumentDocument committed;
+        Double cost;
         try {
             DocumentAudioDestinationStream stream = openStream(request, path, title.title());
             audioService.generateMusic(config, prompt, durationSeconds, stream);
+            // The committed document is the proof of success — resolved inside
+            // the try so a missing commit finalizes the reserve row as a
+            // failure instead of leaving its pending row behind.
+            committed = requireCommitted(request.getTenantId(), resolveProjectId(request), path);
+            cost = effectiveCostUsd(estimate, committed);
         } catch (AiAudioException e) {
             cancelHeartbeat(heartbeat);
             recordFailure(
@@ -600,6 +635,11 @@ public class HotblackService {
                     callStart,
                     0,
                     e);
+            if (e instanceof HotblackException) {
+                // The commit proof failing is already a HotblackException —
+                // keep its reason and message instead of wrapping it again.
+                throw e;
+            }
             throw new HotblackException(
                     HotblackException.Reason.PROVIDER_ERROR,
                     "Music generation failed for " + config.fullName() + ": " + e.getMessage(),
@@ -608,8 +648,6 @@ public class HotblackService {
         cancelHeartbeat(heartbeat);
 
         long durationMs = System.currentTimeMillis() - callStart;
-        DocumentDocument committed = requireCommitted(request.getTenantId(), resolveProjectId(request), path);
-        Double cost = effectiveCostUsd(estimate, committed);
         recordSuccess(
                 reserveId,
                 request.getTenantId(),
@@ -719,22 +757,92 @@ public class HotblackService {
         return voice;
     }
 
+    /**
+     * The committed output format. An explicit {@code requested} value is a
+     * gate: it must be one of the standard formats <i>and</i> servable by the
+     * model. Without one, the configured default is a preference — when the
+     * model does not serve it, the first servable standard format wins (mp3
+     * first, wav second), because one scope holds many models and a pcm-only
+     * TTS must still work out of the box.
+     */
     private String resolveFormat(
-            @Nullable String requested, String tenantId, @Nullable String projectId, @Nullable String processId) {
-        String format = requested;
-        if (format == null || format.isBlank()) {
-            format = settingService.getStringValueCascade(tenantId, projectId, processId, SETTING_DEFAULT_FORMAT);
+            @Nullable String requested,
+            Set<String> modelFormats,
+            String modelLabel,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId) {
+        if (requested != null && !requested.isBlank()) {
+            return requireOutputFormat(requested.trim().toLowerCase(Locale.ROOT), modelFormats, modelLabel);
         }
-        if (format == null || format.isBlank()) {
-            format = "mp3";
+        String configured =
+                settingService.getStringValueCascade(tenantId, projectId, processId, SETTING_DEFAULT_FORMAT);
+        String chosen = chooseOutputFormat(modelFormats, configured);
+        if (chosen == null) {
+            throw new HotblackException(
+                    HotblackException.Reason.UNSUPPORTED_FORMAT,
+                    "Model " + modelLabel + " serves no output format Vance can commit — it serves " + modelFormats);
         }
-        format = format.trim().toLowerCase(Locale.ROOT);
+        return chosen;
+    }
+
+    private static String requireOutputFormat(String format, Set<String> modelFormats, String modelLabel) {
         if (!format.equals("mp3") && !format.equals("wav")) {
             throw new HotblackException(
                     HotblackException.Reason.UNSUPPORTED_FORMAT,
                     "Unsupported output format '" + format + "' — use mp3 or wav");
         }
+        if (!acceptsAudioFormat(modelFormats, format)) {
+            throw new HotblackException(
+                    HotblackException.Reason.UNSUPPORTED_FORMAT,
+                    "Model " + modelLabel + " does not serve output format '" + format + "' — it serves "
+                            + modelFormats);
+        }
         return format;
+    }
+
+    /**
+     * The implicit output format: the configured default when the model
+     * serves it, else the first servable standard format (mp3 preferred, wav
+     * second). {@code null} when the model serves none of them.
+     */
+    static @Nullable String chooseOutputFormat(Set<String> modelFormats, @Nullable String configured) {
+        if (configured != null && !configured.isBlank()) {
+            String candidate = configured.trim().toLowerCase(Locale.ROOT);
+            if (acceptsAudioFormat(modelFormats, candidate)) {
+                return candidate;
+            }
+        }
+        for (String candidate : new String[] {"mp3", "wav"}) {
+            if (acceptsAudioFormat(modelFormats, candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether the model can deliver {@code format}. {@code pcm} is raw
+     * samples without a container — providers wrap them into a WAV document
+     * ({@code PcmWav}) and {@code AudioSource} maps {@code audio/pcm} to
+     * {@code wav}, so the two spellings are one delivery form.
+     */
+    static boolean acceptsAudioFormat(Set<String> modelFormats, String format) {
+        String wanted = format.toLowerCase(Locale.ROOT);
+        for (String supported : modelFormats) {
+            String s = supported.toLowerCase(Locale.ROOT);
+            if (s.equals(wanted)) {
+                return true;
+            }
+            if (pcmForm(s) && pcmForm(wanted)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean pcmForm(String format) {
+        return "wav".equals(format) || "pcm".equals(format);
     }
 
     // ──────────────────── shared: title + path ────────────────────

@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.hotblack;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,6 +15,7 @@ import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
 import io.micrometer.core.instrument.Counter;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -100,6 +103,40 @@ class AudioCallTrackerTest {
 
         verify(repository).save(record);
         verify(counter).increment();
+    }
+
+    @Test
+    void sweep_finalizes_abandoned_pending_reserves_as_cancelled() {
+        AudioCallRecord stale = AudioCallRecord.builder()
+                .tenantId(TENANT)
+                .modality("tts")
+                .outcome("pending")
+                .build();
+        when(repository.findByOutcomeAndAtBefore(eq("pending"), any(Instant.class)))
+                .thenReturn(List.of(stale));
+
+        tracker.sweepAbandonedReserves();
+
+        assertThat(stale.getOutcome()).isEqualTo(AudioCallTracker.OUTCOME_CANCELLED);
+        verify(repository).save(stale);
+    }
+
+    @Test
+    void sweep_saves_nothing_when_nothing_is_abandoned() {
+        when(repository.findByOutcomeAndAtBefore(eq("pending"), any(Instant.class)))
+                .thenReturn(List.of());
+
+        tracker.sweepAbandonedReserves();
+
+        verify(repository, never()).save(any(AudioCallRecord.class));
+    }
+
+    @Test
+    void sweep_never_throws_on_repository_errors() {
+        when(repository.findByOutcomeAndAtBefore(anyString(), any(Instant.class)))
+                .thenThrow(new RuntimeException("mongo down"));
+
+        assertThatNoException().isThrownBy(() -> tracker.sweepAbandonedReserves());
     }
 
     private void stubLimit(String key, String value) {

@@ -145,6 +145,19 @@ fields:
     bindsTo:
       key: "ai.hotblack.daily-tts-calls"
 
+  - name: monthlyTtsCalls
+    type: number
+    defaultValue: "0"
+    label:
+      de: "TTS-Aufrufe pro Monat (tenant-weit)"
+      en: "TTS calls per month (tenant-wide)"
+    help:
+      de: "0 = unbegrenzt."
+      en: "0 = unlimited."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.monthly-tts-calls"
+
   - name: dailySttCalls
     type: number
     defaultValue: "0"
@@ -157,6 +170,19 @@ fields:
     showIf: "enabled"
     bindsTo:
       key: "ai.hotblack.daily-stt-calls"
+
+  - name: monthlySttCalls
+    type: number
+    defaultValue: "0"
+    label:
+      de: "STT-Aufrufe pro Monat (tenant-weit)"
+      en: "STT calls per month (tenant-wide)"
+    help:
+      de: "0 = unbegrenzt."
+      en: "0 = unlimited."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.monthly-stt-calls"
 
   - name: dailyMusicCalls
     type: number

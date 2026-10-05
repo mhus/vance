@@ -116,6 +116,28 @@ class AnthropicMessageParamsTest {
     }
 
     @Test
+    void toolUseBlock_withMarker() {
+        // The history breakpoint lands on a tool_use block whenever the
+        // request ends on an assistant tool-call message — the marker must
+        // survive the typed translation like every other block type.
+        Map<String, Object> raw = message(
+                "assistant",
+                List.of(Map.of(
+                        "type",
+                        "tool_use",
+                        "id",
+                        "call_1",
+                        "name",
+                        "tool_a",
+                        "input",
+                        Map.of("arg", "value"),
+                        "cache_control",
+                        Map.of("type", "ephemeral"))));
+
+        assertWireEquivalence(raw);
+    }
+
+    @Test
     void toolResultBlock_withMarker() {
         Map<String, Object> raw = message(
                 "user",

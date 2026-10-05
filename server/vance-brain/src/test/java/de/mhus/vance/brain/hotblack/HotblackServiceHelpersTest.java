@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.shared.document.DocumentDocument;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class HotblackServiceHelpersTest {
@@ -60,6 +61,41 @@ class HotblackServiceHelpersTest {
         DocumentDocument committed = docWithHeader("costUsd", "n/a");
 
         assertThat(HotblackService.effectiveCostUsd(0.5, committed)).isEqualTo(0.5);
+    }
+
+    // ──── audio format gate ────────────────────────────────────────────
+
+    @Test
+    void pcm_serving_model_delivers_the_wav_document_format() {
+        assertThat(HotblackService.acceptsAudioFormat(Set.of("pcm"), "wav")).isTrue();
+        assertThat(HotblackService.acceptsAudioFormat(Set.of("pcm"), "mp3")).isFalse();
+    }
+
+    @Test
+    void format_names_match_case_insensitively() {
+        assertThat(HotblackService.acceptsAudioFormat(Set.of("MP3", "PCM"), "mp3"))
+                .isTrue();
+        assertThat(HotblackService.acceptsAudioFormat(Set.of("PCM"), "wav")).isTrue();
+    }
+
+    @Test
+    void default_format_prefers_the_configured_one_when_the_model_serves_it() {
+        assertThat(HotblackService.chooseOutputFormat(Set.of("mp3", "wav"), "wav"))
+                .isEqualTo("wav");
+    }
+
+    @Test
+    void default_format_downshifts_to_a_servable_standard_format() {
+        // One scope holds many models — a pcm-only TTS must still work under
+        // the global `mp3` default, delivering the wav document form.
+        assertThat(HotblackService.chooseOutputFormat(Set.of("pcm"), "mp3")).isEqualTo("wav");
+        assertThat(HotblackService.chooseOutputFormat(Set.of("wav"), "mp3")).isEqualTo("wav");
+        assertThat(HotblackService.chooseOutputFormat(Set.of("wav"), null)).isEqualTo("wav");
+    }
+
+    @Test
+    void default_format_is_absent_when_the_model_serves_no_standard_format() {
+        assertThat(HotblackService.chooseOutputFormat(Set.of("ogg"), "mp3")).isNull();
     }
 
     private static DocumentDocument docWithHeader(String key, String value) {

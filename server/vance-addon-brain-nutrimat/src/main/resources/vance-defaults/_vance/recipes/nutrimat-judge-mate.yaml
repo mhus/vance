@@ -16,7 +16,14 @@ description: |
 engine: jeltz
 internal: true
 params:
+  # Primary on the fast tier. The comma form is an alias-resolution
+  # cascade (first DEFINED alias wins), NOT a runtime fallback — the
+  # chain fallback is the list below (LightLlm reads the same param).
   model: default:fast,default:analyze
+  # Degraded-but-available fallback: if the fast tier is broken at the
+  # provider, retry on the analyze tier rather than degrading the judge.
+  fallbackModels:
+    - default:analyze
   maxAttempts: 2
   temperature: 0.1
 promptPrefix: |

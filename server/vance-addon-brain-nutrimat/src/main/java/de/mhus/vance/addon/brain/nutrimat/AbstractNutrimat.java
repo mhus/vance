@@ -459,6 +459,20 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
             return TurnOutcome.terminal("", true);
         }
+        // The mirror case of the gate above: a user kick onto the closed
+        // gate REOPENS the loop and starts a new run. Persist the fresh
+        // run state now — not at turn end — so //nutrimat status mid-run
+        // shows the open run instead of the stale closed one, and the
+        // run's turn counter starts from zero again. The iteration budget
+        // is fresh per turn anyway (runLoop counts locally); only the
+        // persisted run observability needed the reset.
+        if (exhaustedStopsUntilUserInput()
+                && process.getParentProcessId() == null
+                && awaitingUserContinue(process)
+                && inbox.stream().anyMatch(m -> m instanceof SteerMessage.UserChatInput)) {
+            narrate(ctx, process, "loop reopened by user input — starting the next loop run");
+            persistRunStart(process);
+        }
         // True iff this turn exited via a hard-failure path (budget
         // exhausted / LLM collapse / exhausted exception). For sub-process
         // workers this triggers a terminal close — a worker that cannot make
@@ -1057,7 +1071,10 @@ public abstract class AbstractNutrimat implements ThinkEngine {
     /**
      * Persists the turn's loop statistics under {@code engineParams.nutrimatState}
      * so {@code //nutrimat status} can show what the last turn actually did.
-     * Never fails the turn — this is observability, not business logic.
+     * {@code turns} counts turns of the <em>current run</em>: a run start
+     * (user kick reopening the continue-gate, {@link #persistRunStart})
+     * zeroes it, this method increments it. Never fails the turn — this is
+     * observability, not business logic.
      */
     private void persistNutrimatState(ThinkProcessDocument process, LoopStats stats, TurnOutcome outcome) {
         try {
@@ -1089,12 +1106,46 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             state.put(
                     "awaitingUserContinue",
                     exhaustedStopsUntilUserInput() && process.getParentProcessId() == null && outcome.recovered());
-            params.put("nutrimatState", state);
-            process.setEngineParams(params);
-            thinkProcessService.replaceEngineParams(process.getId(), params);
+            writeNutrimatState(process, state);
         } catch (RuntimeException e) {
             log.debug("Nutrimat[{}] id='{}' state persist failed: {}", natureId(), process.getId(), e.toString());
         }
+    }
+
+    /**
+     * Run-start state for the continue-gate: the user's kick just
+     * reopened a closed loop. Writes the fresh run <em>immediately</em>
+     * (not at turn end) so the state never claims a closed loop while
+     * the new run is already working, and the per-run {@code turns}
+     * counter starts from zero again. Never fails the turn —
+     * observability, not business logic.
+     */
+    private void persistRunStart(ThinkProcessDocument process) {
+        try {
+            Map<String, Object> state = new java.util.LinkedHashMap<>();
+            state.put("nature", natureId());
+            state.put("lastTurnAt", Instant.now().toString());
+            state.put("lastOutcome", "running");
+            state.put("iterationsConsumed", 0);
+            state.put("stopCandidates", 0);
+            state.put("extensions", 0);
+            state.put("turns", 0);
+            state.put("awaitingUserContinue", false);
+            writeNutrimatState(process, state);
+        } catch (RuntimeException e) {
+            log.debug("Nutrimat[{}] id='{}' run-start persist failed: {}", natureId(), process.getId(), e.toString());
+        }
+    }
+
+    /** Merges {@code state} under {@code engineParams.nutrimatState} and persists it. */
+    private void writeNutrimatState(ThinkProcessDocument process, Map<String, Object> state) {
+        Map<String, Object> params = new java.util.LinkedHashMap<>();
+        if (process.getEngineParams() != null) {
+            params.putAll(process.getEngineParams());
+        }
+        params.put("nutrimatState", state);
+        process.setEngineParams(params);
+        thinkProcessService.replaceEngineParams(process.getId(), params);
     }
     // ──────────────────── Loop vocabulary ────────────────────
 

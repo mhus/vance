@@ -1,0 +1,15 @@
+# Recraft V4.1 Flash via OpenRouter's dedicated Image API. Flat
+# per-image billing ($0.007/image) — the cheapest image model on the
+# gateway, useful as the fast/draft tier.
+kind: image
+timeoutSeconds: 120
+supportedAspectRatios:
+- '1:1'
+- '4:3'
+- '3:4'
+- '16:9'
+- '9:16'
+- 'auto'
+costPerImage:
+  standard: 0.007
+maxPromptChars: 4000

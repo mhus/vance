@@ -1,0 +1,13 @@
+# OpenAI gpt-image-1 via OpenRouter's dedicated Image API — same model
+# as the bundled `openai/gpt-image-1`, served through the OpenRouter
+# gateway. Token-based billing ($0.00004/output_image token) instead of
+# OpenAI's flat per-image price — `costPerImage` stays empty; a
+# 1024x1024 high render is roughly $0.15.
+kind: image
+timeoutSeconds: 360
+supportedAspectRatios:
+- '1:1'
+- '3:2'
+- '2:3'
+- 'auto'
+maxPromptChars: 4000

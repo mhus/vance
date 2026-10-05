@@ -1,0 +1,16 @@
+# Microsoft MAI Image 2.6 Flash via OpenRouter's dedicated Image API.
+# Token-based billing ($0.000019/output_image token, Azure endpoint) —
+# no flat per-image price, `costPerImage` stays empty. Fast draft tier
+# of the MAI family.
+kind: image
+timeoutSeconds: 180
+supportedAspectRatios:
+- '1:1'
+- '4:3'
+- '3:4'
+- '16:9'
+- '9:16'
+- '3:2'
+- '2:3'
+- 'auto'
+maxPromptChars: 4000

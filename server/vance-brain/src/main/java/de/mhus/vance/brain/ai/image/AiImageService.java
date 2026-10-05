@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -15,8 +16,19 @@ import org.springframework.stereotype.Service;
  * {@link AiImageModelProvider} and runs the generation against the
  * supplied {@link ImageDestinationStream}.
  *
- * <p>Providers are auto-discovered as Spring beans at startup and indexed by
- * {@link AiImageModelProvider#getType()}. Duplicate provider types fail fast.
+ * <p><b>Dispatch order — instance before protocol.</b> Providers are
+ * auto-discovered as Spring beans at startup and indexed by
+ * {@link AiImageModelProvider#getType()}; duplicate provider types
+ * fail fast. A provider may additionally declare a
+ * {@link AiImageModelProvider#getInstanceName() named instance} — a
+ * dispatch key that wins over the protocol type. That is the
+ * OpenRouter shape: its <em>chat</em> wire is OpenAI (the
+ * {@code openrouter} instance runs with {@code wireType: openai}), but
+ * its <em>image</em> API is a dedicated, non-OpenAI endpoint — the
+ * image adapter must be selected by the instance
+ * ({@code config.providerInstance()}), not by the protocol. Instances
+ * without a dedicated provider keep dispatching on the protocol type;
+ * duplicate instance keys fail fast at startup, same as types.
  *
  * <p>Callers (typically the Fenchurch service) resolve the right config
  * first — which model is "default:image" for this scope, where to read
@@ -30,16 +42,24 @@ public class AiImageService {
 
     private final List<AiImageModelProvider> providerBeans;
     private Map<ProviderType, AiImageModelProvider> providers;
+    private Map<String, AiImageModelProvider> instanceProviders;
 
     @jakarta.annotation.PostConstruct
     public void postConstruct() {
-        this.providers = providerBeans.stream().collect(
-                Collectors.toUnmodifiableMap(AiImageModelProvider::getType, p -> p, (a, b) -> {
-                    throw new IllegalStateException(
-                            "Duplicate AiImageModelProvider type: " + a.getType()
-                                    + " — " + a.getClass() + " vs " + b.getClass());
+        this.providers = providerBeans.stream()
+                .filter(p -> p.getInstanceName().isEmpty())
+                .collect(Collectors.toUnmodifiableMap(AiImageModelProvider::getType, p -> p, (a, b) -> {
+                    throw new IllegalStateException("Duplicate AiImageModelProvider type: " + a.getType() + " — "
+                            + a.getClass() + " vs " + b.getClass());
                 }));
-        log.info("Registered AI image providers: {}", providers.keySet());
+        this.instanceProviders = providerBeans.stream()
+                .filter(p -> p.getInstanceName().isPresent())
+                .collect(Collectors.toUnmodifiableMap(p -> p.getInstanceName().orElseThrow(), p -> p, (a, b) -> {
+                    throw new IllegalStateException("Duplicate AiImageModelProvider instance: "
+                            + a.getInstanceName().orElseThrow()
+                            + " — " + a.getClass() + " vs " + b.getClass());
+                }));
+        log.info("Registered AI image providers: {} (instances: {})", providers.keySet(), instanceProviders.keySet());
     }
 
     /**
@@ -51,16 +71,31 @@ public class AiImageService {
      * @throws IllegalArgumentException if the wire-name in {@code config}
      *                         maps to no known {@link ProviderType}
      */
-    public void generate(AiImageConfig config, String prompt,
-                         ImageDestinationStream destination) {
-        ProviderType type = ProviderType.requireWireName(config.provider());
-        AiImageModelProvider provider = providers.get(type);
+    public void generate(AiImageConfig config, String prompt, ImageDestinationStream destination) {
+        AiImageModelProvider provider = providerFor(config);
         if (provider == null) {
-            throw new AiImageException(
-                    "No image adapter for provider " + type
-                            + " — registered: " + providers.keySet());
+            throw new AiImageException("No image adapter for provider " + config.provider()
+                    + (config.providerInstance().equals(config.provider())
+                            ? ""
+                            : " (instance " + config.providerInstance() + ")")
+                    + " — registered: " + providers.keySet()
+                    + (instanceProviders.isEmpty() ? "" : ", instances: " + instanceProviders.keySet()));
         }
         provider.generate(config, prompt, destination);
+    }
+
+    /**
+     * Instance dispatch first, protocol dispatch second — see the
+     * class doc for why the OpenRouter image adapter cannot hang off
+     * the {@code openai} protocol key.
+     */
+    private @Nullable AiImageModelProvider providerFor(AiImageConfig config) {
+        AiImageModelProvider byInstance = instanceProviders.get(config.providerInstance());
+        if (byInstance != null) {
+            return byInstance;
+        }
+        ProviderType type = ProviderType.requireWireName(config.provider());
+        return providers.get(type);
     }
 
     /** Wire-names of all registered image providers, in no particular order. */

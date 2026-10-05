@@ -1,0 +1,18 @@
+# Google Gemini 3 Pro Image (preview) via OpenRouter's dedicated
+# Image API. Token-based billing ($0.00012/output_image token on the
+# standard endpoint, $0.00006 on flex) — no flat per-image price,
+# `costPerImage` stays empty.
+kind: image
+timeoutSeconds: 360
+supportedAspectRatios:
+- '1:1'
+- '2:3'
+- '3:2'
+- '3:4'
+- '4:3'
+- '4:5'
+- '5:4'
+- '9:16'
+- '16:9'
+- '21:9'
+maxPromptChars: 4000

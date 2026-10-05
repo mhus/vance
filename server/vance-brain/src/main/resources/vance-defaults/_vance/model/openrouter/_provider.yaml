@@ -1,0 +1,42 @@
+displayName: OpenRouter (OpenAI-wire gateway)
+wireType: openai
+authType: api-key
+
+# This sidecar is what makes `openrouter` a usable provider instance: it
+# declares the protocol once, so `openrouter:<model>` resolves without an
+# `ai.provider.openrouter.type` setting next to the key. AiModelResolver
+# reads `wireType` after checking that setting, so a tenant that needs a
+# different protocol on this name can still override it.
+#
+# There are deliberately no *chat* model documents in this directory —
+# only the curated image models below. OpenRouter serves a changing
+# catalogue of 400+ chat models that we do not curate; run "Discover AI
+# Models" (Profile → Actions) after setting the key and the models land
+# under `_vance/model-auto/openrouter/`. OpenRouter's /v1/models reports
+# context length and per-token USD prices, so discovery carries those
+# observations automatically (limits as auto-docs, prices as
+# `auto: true` files in the manual layer).
+#
+# Image models: OpenRouter has a *dedicated* Image API
+# (POST /api/v1/images, GET /api/v1/images/models) with an
+# OpenAI-shaped body (model, prompt, n, quality, size — explicit
+# pixel sizes accepted as authoritative) and response
+# (data[].b64_json). But it is not the OpenAI wire: the
+# documented route is /images, not /images/generations, the params
+# carry native aspect_ratio/resolution beyond the size shorthand,
+# and real costs arrive per image or per token in usage.cost.
+# Image generation for this instance is therefore served by the
+# dedicated OpenRouterImageProvider, dispatched on the instance
+# name (chat keeps the openai wire declared above). It posts the
+# documented route, passes the Fenchurch aspect ratio natively, and
+# books the response's usage.cost as the costUsd document header —
+# Fenchurch prefers that vendor-reported fact over flat
+# costPerImage estimates, so token- and megapixel-priced models
+# book their real spend. The curated `kind: image` documents below
+# carry the per-model facts the capability descriptors of
+# GET /api/v1/images/models report.
+#
+# No `maxTools:`. The value belongs to the endpoint, and we have not
+# measured what this gateway enforces; an invented cap would silently
+# shrink the tool surface, an absent one lets ObservedToolLimitRegistry
+# learn the real limit from the first rejection.

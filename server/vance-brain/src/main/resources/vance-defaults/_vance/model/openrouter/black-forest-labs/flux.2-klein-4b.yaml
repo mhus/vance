@@ -1,0 +1,20 @@
+# FLUX.2 [klein] 4B via OpenRouter's dedicated Image API — the same
+# engine as the Cortecs-served `cortecs/flux-2-klein-4b`, here on the
+# Black Forest Labs endpoint ($0.014 per megapixel, not the flat
+# per-image price the Cortecs gateway charges).
+#
+# Megapixel-based billing means no flat per-image rate, so
+# `costPerImage` stays empty — a 1K render is ~1 MP ≈ $0.014.
+kind: image
+timeoutSeconds: 120
+supportedAspectRatios:
+- '1:1'
+- '4:3'
+- '3:4'
+- '3:2'
+- '2:3'
+- '16:9'
+- '9:16'
+- '21:9'
+- 'auto'
+maxPromptChars: 2000

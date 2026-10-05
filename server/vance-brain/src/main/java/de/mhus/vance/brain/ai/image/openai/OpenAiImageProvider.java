@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.ai.image.openai;
 
 import de.mhus.vance.brain.ai.ProviderType;
-import de.mhus.vance.brain.ai.openai.OpenAiProvider;
 import de.mhus.vance.brain.ai.image.AiImageConfig;
 import de.mhus.vance.brain.ai.image.AiImageException;
 import de.mhus.vance.brain.ai.image.AiImageModelProvider;
+import de.mhus.vance.brain.ai.image.ImageMimeTypeSniffer;
+import de.mhus.vance.brain.ai.openai.OpenAiProvider;
 import de.mhus.vance.shared.document.ImageDestinationStream;
 import dev.langchain4j.data.image.Image;
 import dev.langchain4j.model.openai.OpenAiImageModel;
@@ -49,14 +50,11 @@ public class OpenAiImageProvider implements AiImageModelProvider {
 
     private final String defaultBaseUrl;
 
-    public OpenAiImageProvider(
-            @Value("${vance.ai.openai.base-url:}") String baseUrl) {
+    public OpenAiImageProvider(@Value("${vance.ai.openai.base-url:}") String baseUrl) {
         // Blank (unset, or an env var that exists but is empty) → OpenAI
         // proper. Same normalisation as the chat provider, which owns the
         // constant.
-        this.defaultBaseUrl = StringUtils.isBlank(baseUrl)
-                ? OpenAiProvider.OPENAI_BASE_URL
-                : baseUrl.trim();
+        this.defaultBaseUrl = StringUtils.isBlank(baseUrl) ? OpenAiProvider.OPENAI_BASE_URL : baseUrl.trim();
     }
 
     @Override
@@ -65,8 +63,7 @@ public class OpenAiImageProvider implements AiImageModelProvider {
     }
 
     @Override
-    public void generate(AiImageConfig config, String prompt,
-                         ImageDestinationStream destination) {
+    public void generate(AiImageConfig config, String prompt, ImageDestinationStream destination) {
         long start = System.currentTimeMillis();
         OpenAiImageModel model = buildModel(config);
         Response<Image> response;
@@ -74,8 +71,7 @@ public class OpenAiImageProvider implements AiImageModelProvider {
             response = model.generate(prompt);
         } catch (RuntimeException e) {
             throw new AiImageException(
-                    "OpenAI image generation failed for " + config.fullName()
-                            + ": " + e.getMessage(), e);
+                    "OpenAI image generation failed for " + config.fullName() + ": " + e.getMessage(), e);
         }
         long durationMs = System.currentTimeMillis() - start;
         writeToDestination(response.content(), config, durationMs, destination);
@@ -93,7 +89,7 @@ public class OpenAiImageProvider implements AiImageModelProvider {
                 // response_format param is gone for it and langchain4j dropped
                 // the builder method in 1.18.x. decodeBytes still reads b64.
                 .timeout(Duration.ofSeconds(config.timeoutSeconds()))
-                .maxRetries(0)   // Fenchurch handles retries at a higher level.
+                .maxRetries(0) // Fenchurch handles retries at a higher level.
                 .build();
     }
 
@@ -107,14 +103,12 @@ public class OpenAiImageProvider implements AiImageModelProvider {
     }
 
     static void writeToDestination(
-            Image image, AiImageConfig config, long durationMs,
-            ImageDestinationStream destination) {
+            Image image, AiImageConfig config, long durationMs, ImageDestinationStream destination) {
         if (image == null) {
-            throw new AiImageException(
-                    "OpenAI returned no image for " + config.fullName());
+            throw new AiImageException("OpenAI returned no image for " + config.fullName());
         }
         byte[] bytes = decodeBytes(image, config);
-        String mimeType = resolveMimeType(image.mimeType());
+        String mimeType = resolveOrSniff(image.mimeType(), bytes);
 
         destination.setMimeType(mimeType);
         destination.setMetadata("model", config.fullName());
@@ -128,8 +122,8 @@ public class OpenAiImageProvider implements AiImageModelProvider {
             destination.write(bytes, 0, bytes.length);
         } catch (RuntimeException e) {
             throw new AiImageException(
-                    "Failed to stream OpenAI image into destination for "
-                            + config.fullName() + ": " + e.getMessage(), e);
+                    "Failed to stream OpenAI image into destination for " + config.fullName() + ": " + e.getMessage(),
+                    e);
         }
         destination.close();
     }
@@ -137,24 +131,26 @@ public class OpenAiImageProvider implements AiImageModelProvider {
     static byte[] decodeBytes(Image image, AiImageConfig config) {
         String b64 = image.base64Data();
         if (b64 == null || b64.isBlank()) {
-            throw new AiImageException(
-                    "OpenAI image response carries no base64 data for "
-                            + config.fullName()
-                            + " (expected b64_json image data)");
+            throw new AiImageException("OpenAI image response carries no base64 data for "
+                    + config.fullName()
+                    + " (expected b64_json image data)");
         }
         try {
             return Base64.getDecoder().decode(b64);
         } catch (IllegalArgumentException e) {
             throw new AiImageException(
-                    "Failed to decode OpenAI base64 image data for "
-                            + config.fullName() + ": " + e.getMessage(), e);
+                    "Failed to decode OpenAI base64 image data for " + config.fullName() + ": " + e.getMessage(), e);
         }
     }
 
-    static String resolveMimeType(@Nullable String reported) {
-        if (reported == null || reported.isBlank()) {
-            return "image/png";
-        }
-        return reported;
+    /**
+     * Mime type for the payload: a reported type wins, otherwise
+     * sniff the leading bytes, otherwise assume PNG (the historical
+     * default — gpt-image-1 on the OpenAI wire is always PNG, so
+     * only gateway-served vendors with JPEG/WebP backends ever hit
+     * the sniff path).
+     */
+    static String resolveOrSniff(@Nullable String reported, byte[] bytes) {
+        return ImageMimeTypeSniffer.resolveOrSniff(reported, bytes, "image/png");
     }
 }

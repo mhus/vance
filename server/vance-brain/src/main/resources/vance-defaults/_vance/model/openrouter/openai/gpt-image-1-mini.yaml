@@ -1,0 +1,11 @@
+# OpenAI gpt-image-1-mini via OpenRouter's dedicated Image API. The
+# cheap draft tier ($0.000008/output_image token — token-based, no
+# flat per-image rate, `costPerImage` stays empty).
+kind: image
+timeoutSeconds: 240
+supportedAspectRatios:
+- '1:1'
+- '3:2'
+- '2:3'
+- 'auto'
+maxPromptChars: 4000

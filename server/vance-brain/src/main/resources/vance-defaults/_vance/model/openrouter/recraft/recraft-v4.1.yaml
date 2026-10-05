@@ -1,0 +1,15 @@
+# Recraft V4.1 via OpenRouter's dedicated Image API. Flat per-image
+# billing ($0.035/image). Vector-output variants (recraft-v4.1-vector)
+# are not curated here — Fenchurch v1 has no SVG destination.
+kind: image
+timeoutSeconds: 120
+supportedAspectRatios:
+- '1:1'
+- '4:3'
+- '3:4'
+- '16:9'
+- '9:16'
+- 'auto'
+costPerImage:
+  standard: 0.035
+maxPromptChars: 4000

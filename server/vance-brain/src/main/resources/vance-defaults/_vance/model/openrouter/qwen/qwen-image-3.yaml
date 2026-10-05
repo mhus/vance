@@ -1,0 +1,21 @@
+# Qwen Image 3 via OpenRouter's dedicated Image API. Flat per-image
+# billing ($0.03/image). Strong typography/logo rendering; n up to 6.
+kind: image
+timeoutSeconds: 180
+supportedAspectRatios:
+- '1:1'
+- '1:2'
+- '1:4'
+- '2:1'
+- '2:3'
+- '3:2'
+- '3:4'
+- '4:1'
+- '4:3'
+- '4:5'
+- '5:4'
+- '9:16'
+- '16:9'
+costPerImage:
+  standard: 0.03
+maxPromptChars: 4000

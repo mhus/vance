@@ -1,0 +1,21 @@
+# Qwen Image 3 Pro via OpenRouter's dedicated Image API. Flat
+# per-image billing ($0.04/image); n up to 6.
+kind: image
+timeoutSeconds: 240
+supportedAspectRatios:
+- '1:1'
+- '1:2'
+- '1:4'
+- '2:1'
+- '2:3'
+- '3:2'
+- '3:4'
+- '4:1'
+- '4:3'
+- '4:5'
+- '5:4'
+- '9:16'
+- '16:9'
+costPerImage:
+  standard: 0.04
+maxPromptChars: 4000

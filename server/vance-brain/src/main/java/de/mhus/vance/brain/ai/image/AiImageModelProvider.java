@@ -39,6 +39,19 @@ public interface AiImageModelProvider {
     }
 
     /**
+     * Optional per-instance dispatch key. Present when this adapter
+     * serves ONE named provider instance whose image wire differs from
+     * the chat wire the instance declares — the OpenRouter shape
+     * (chat: {@code wireType: openai}, images: dedicated
+     * {@code POST /api/v1/images}). When present, {@link AiImageService}
+     * dispatches on the instance label of an incoming
+     * {@link AiImageConfig} before falling back to the protocol type.
+     */
+    default java.util.Optional<String> getInstanceName() {
+        return java.util.Optional.empty();
+    }
+
+    /**
      * Generate one image from {@code prompt} using {@code config} and
      * stream the bytes + metadata into {@code destination}. The
      * provider is responsible for calling {@link ImageDestinationStream#close()}
@@ -48,6 +61,5 @@ public interface AiImageModelProvider {
      * @throws AiImageException on provider error, timeout, or
      *                         decoding failure
      */
-    void generate(AiImageConfig config, String prompt,
-                  ImageDestinationStream destination);
+    void generate(AiImageConfig config, String prompt, ImageDestinationStream destination);
 }

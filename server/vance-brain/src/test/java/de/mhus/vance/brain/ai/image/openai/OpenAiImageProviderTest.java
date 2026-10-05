@@ -14,9 +14,8 @@ import org.junit.jupiter.api.Test;
 
 class OpenAiImageProviderTest {
 
-    private static final AiImageConfig CONFIG = new AiImageConfig(
-            "openai", "openai", "gpt-image-1", "sk-test",
-            null, "1:1", 360);
+    private static final AiImageConfig CONFIG =
+            new AiImageConfig("openai", "openai", "gpt-image-1", "sk-test", null, "1:1", 360);
 
     @Test
     void provider_type_is_openai() {
@@ -28,46 +27,60 @@ class OpenAiImageProviderTest {
 
     @Test
     void map_aspect_ratio_square_uses_square_pixel_size() {
-        assertThat(OpenAiImageProvider.mapAspectRatioToSize("1:1"))
-                .isEqualTo("1024x1024");
+        assertThat(OpenAiImageProvider.mapAspectRatioToSize("1:1")).isEqualTo("1024x1024");
     }
 
     @Test
     void map_aspect_ratio_landscape_uses_landscape_pixel_size() {
-        assertThat(OpenAiImageProvider.mapAspectRatioToSize("16:9"))
-                .isEqualTo("1536x1024");
-        assertThat(OpenAiImageProvider.mapAspectRatioToSize("4:3"))
-                .isEqualTo("1536x1024");
+        assertThat(OpenAiImageProvider.mapAspectRatioToSize("16:9")).isEqualTo("1536x1024");
+        assertThat(OpenAiImageProvider.mapAspectRatioToSize("4:3")).isEqualTo("1536x1024");
     }
 
     @Test
     void map_aspect_ratio_portrait_uses_portrait_pixel_size() {
-        assertThat(OpenAiImageProvider.mapAspectRatioToSize("9:16"))
-                .isEqualTo("1024x1536");
-        assertThat(OpenAiImageProvider.mapAspectRatioToSize("3:4"))
-                .isEqualTo("1024x1536");
+        assertThat(OpenAiImageProvider.mapAspectRatioToSize("9:16")).isEqualTo("1024x1536");
+        assertThat(OpenAiImageProvider.mapAspectRatioToSize("3:4")).isEqualTo("1024x1536");
     }
 
     @Test
     void map_aspect_ratio_unknown_falls_back_to_auto() {
-        assertThat(OpenAiImageProvider.mapAspectRatioToSize("21:9"))
-                .isEqualTo("auto");
-        assertThat(OpenAiImageProvider.mapAspectRatioToSize(""))
-                .isEqualTo("auto");
+        assertThat(OpenAiImageProvider.mapAspectRatioToSize("21:9")).isEqualTo("auto");
+        assertThat(OpenAiImageProvider.mapAspectRatioToSize("")).isEqualTo("auto");
     }
 
     @Test
     void resolve_mime_type_falls_back_to_png_for_blank() {
-        assertThat(OpenAiImageProvider.resolveMimeType(null))
-                .isEqualTo("image/png");
-        assertThat(OpenAiImageProvider.resolveMimeType("  "))
+        byte[] png = new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
+        assertThat(OpenAiImageProvider.resolveOrSniff(null, png)).isEqualTo("image/png");
+        assertThat(OpenAiImageProvider.resolveOrSniff("  ", png)).isEqualTo("image/png");
+        // No signature at all — unknown bytes keep the historical PNG
+        // default (an OpenAI proper payload; sniffing only guards the
+        // gateway case).
+        assertThat(OpenAiImageProvider.resolveOrSniff(null, new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}))
                 .isEqualTo("image/png");
     }
 
     @Test
     void resolve_mime_type_preserves_reported_value() {
-        assertThat(OpenAiImageProvider.resolveMimeType("image/jpeg"))
+        // A reported type wins over the bytes — sniffing must not
+        // override information the wire actually carried.
+        assertThat(OpenAiImageProvider.resolveOrSniff("image/jpeg", new byte[] {1, 2, 3}))
                 .isEqualTo("image/jpeg");
+    }
+
+    @Test
+    void resolve_mime_type_sniffs_gateway_jpeg_bytes() {
+        // OpenAI-wire gateways (OpenRouter, Cortecs) serve vendor
+        // backends that answer with JPEG while the wire carries no
+        // mime type — sniffed from the FF D8 FF signature.
+        byte[] jpeg = new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
+        assertThat(OpenAiImageProvider.resolveOrSniff(null, jpeg)).isEqualTo("image/jpeg");
+    }
+
+    @Test
+    void resolve_mime_type_sniffs_webp_bytes() {
+        byte[] webp = new byte[] {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'};
+        assertThat(OpenAiImageProvider.resolveOrSniff(null, webp)).isEqualTo("image/webp");
     }
 
     @Test
@@ -132,9 +145,23 @@ class OpenAiImageProviderTest {
     }
 
     @Test
+    void write_to_destination_sniffs_jpeg_when_adapter_reports_nothing() {
+        // The gateway case end-to-end: bytes decode to a JPEG signature,
+        // the adapter carries no mime type → the committed document
+        // must be typed image/jpeg, not the historical PNG assumption.
+        byte[] jpeg = new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
+        String b64 = java.util.Base64.getEncoder().encodeToString(jpeg);
+        Image image = Image.builder().base64Data(b64).build();
+        RecordingStream sink = new RecordingStream();
+
+        OpenAiImageProvider.writeToDestination(image, CONFIG, 100L, sink);
+
+        assertThat(sink.mimeType).isEqualTo("image/jpeg");
+    }
+
+    @Test
     void write_to_destination_throws_on_null_image() {
-        assertThatThrownBy(() -> OpenAiImageProvider.writeToDestination(
-                null, CONFIG, 0L, new RecordingStream()))
+        assertThatThrownBy(() -> OpenAiImageProvider.writeToDestination(null, CONFIG, 0L, new RecordingStream()))
                 .isInstanceOf(AiImageException.class)
                 .hasMessageContaining("no image");
     }
@@ -148,14 +175,43 @@ class OpenAiImageProviderTest {
         String altText;
         boolean closed;
 
-        byte[] bytes() { return buffer.toByteArray(); }
+        byte[] bytes() {
+            return buffer.toByteArray();
+        }
 
-        @Override public void write(int b) { buffer.write(b); }
-        @Override public void write(byte[] b, int off, int len) { buffer.write(b, off, len); }
-        @Override public void setMimeType(String mime) { this.mimeType = mime; }
-        @Override public void setTitle(String t) { this.title = t; }
-        @Override public void setMetadata(String k, String v) { metadata.put(k, v); }
-        @Override public void setAltText(String a) { this.altText = a; }
-        @Override public void close() { this.closed = true; }
+        @Override
+        public void write(int b) {
+            buffer.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) {
+            buffer.write(b, off, len);
+        }
+
+        @Override
+        public void setMimeType(String mime) {
+            this.mimeType = mime;
+        }
+
+        @Override
+        public void setTitle(String t) {
+            this.title = t;
+        }
+
+        @Override
+        public void setMetadata(String k, String v) {
+            metadata.put(k, v);
+        }
+
+        @Override
+        public void setAltText(String a) {
+            this.altText = a;
+        }
+
+        @Override
+        public void close() {
+            this.closed = true;
+        }
     }
 }

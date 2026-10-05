@@ -1,0 +1,23 @@
+# xAI Grok Imagine Image 2.0 via OpenRouter's dedicated Image API.
+# Flat per-image billing ($0.04/image). Quality param supported
+# (low/medium); n is fixed at 1.
+kind: image
+timeoutSeconds: 180
+supportedAspectRatios:
+- '1:1'
+- '3:4'
+- '4:3'
+- '9:16'
+- '16:9'
+- '2:3'
+- '3:2'
+- '9:19.5'
+- '19.5:9'
+- '9:20'
+- '20:9'
+- '1:2'
+- '2:1'
+- 'auto'
+costPerImage:
+  standard: 0.04
+maxPromptChars: 4000

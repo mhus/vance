@@ -1,16 +1,11 @@
 package de.mhus.vance.brain.fenchurch;
 
-import de.mhus.vance.shared.fenchurch.ImageCallRecord;
-
 import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.ModelCatalog;
-import de.mhus.vance.brain.ai.image.AiImageConfig;
 import de.mhus.vance.brain.ai.UsageMeasurement;
-import de.mhus.vance.shared.llmusage.CallAttribution;
-import de.mhus.vance.shared.llmusage.LlmUsageService;
-import de.mhus.vance.shared.llmusage.UsageOutcome;
+import de.mhus.vance.brain.ai.image.AiImageConfig;
 import de.mhus.vance.brain.ai.image.AiImageException;
 import de.mhus.vance.brain.ai.image.AiImageService;
 import de.mhus.vance.brain.ai.image.DocumentImageDestinationStream;
@@ -21,14 +16,16 @@ import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.fenchurch.ImageCallRecord;
+import de.mhus.vance.shared.llmusage.CallAttribution;
+import de.mhus.vance.shared.llmusage.LlmUsageService;
+import de.mhus.vance.shared.llmusage.UsageOutcome;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -140,18 +137,19 @@ public class FenchurchService {
         ensureEnabled(request);
 
         long callStart = System.currentTimeMillis();
-        String resolvedAlias = request.getAlias() == null || request.getAlias().isBlank()
-                ? DEFAULT_IMAGE_ALIAS : request.getAlias();
+        String resolvedAlias =
+                request.getAlias() == null || request.getAlias().isBlank() ? DEFAULT_IMAGE_ALIAS : request.getAlias();
         AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
-                resolvedAlias, request.getTenantId(),
-                request.getProjectId(), request.getProcessId());
+                resolvedAlias, request.getTenantId(), request.getProjectId(), request.getProcessId());
 
-        ImageModelInfo modelInfo = modelCatalog.lookupImage(
-                request.getTenantId(), request.getProjectId(),
-                resolved.providerInstance(), resolved.modelName())
-                .orElseGet(() -> modelCatalog.lookupImage(
+        ImageModelInfo modelInfo = modelCatalog
+                .lookupImage(
                         request.getTenantId(), request.getProjectId(),
-                        resolved.provider(), resolved.modelName())
+                        resolved.providerInstance(), resolved.modelName())
+                .orElseGet(() -> modelCatalog
+                        .lookupImage(
+                                request.getTenantId(), request.getProjectId(),
+                                resolved.provider(), resolved.modelName())
                         .orElseThrow(() -> new FenchurchException(
                                 FenchurchException.Reason.PROVIDER_ERROR,
                                 "No image model entry for "
@@ -166,8 +164,7 @@ public class FenchurchService {
         String path = resolvePath(request, titleResolution);
 
         int timeoutSeconds = resolveTimeout(request, modelInfo);
-        AiImageConfig config = buildImageConfig(
-                request, resolved, aspectRatio, timeoutSeconds);
+        AiImageConfig config = buildImageConfig(request, resolved, aspectRatio, timeoutSeconds);
 
         ThinkProcessDocument process = loadProcess(request);
 
@@ -191,7 +188,8 @@ public class FenchurchService {
             throw new FenchurchException(
                     FenchurchException.Reason.QUOTA_EXCEEDED,
                     denied.verdict().message() == null
-                            ? "Quota exceeded" : denied.verdict().message());
+                            ? "Quota exceeded"
+                            : denied.verdict().message());
         }
         String reserveId = ((ImageCallTracker.Granted) reservation).reserveId();
 
@@ -229,26 +227,23 @@ public class FenchurchService {
             recordFailure(reserveId, request, config, callStart, e);
             throw new FenchurchException(
                     FenchurchException.Reason.PROVIDER_ERROR,
-                    "Fenchurch generation failed for " + config.fullName()
-                            + ": " + e.getMessage(), e);
+                    "Fenchurch generation failed for " + config.fullName() + ": " + e.getMessage(),
+                    e);
         }
         cancelHeartbeat(heartbeat);
 
         long durationMs = System.currentTimeMillis() - callStart;
-        DocumentDocument committed = documentService.findByPath(
-                request.getTenantId(), resolveProjectId(request), path)
+        DocumentDocument committed = documentService
+                .findByPath(request.getTenantId(), resolveProjectId(request), path)
                 .orElseThrow(() -> new FenchurchException(
                         FenchurchException.Reason.PROVIDER_ERROR,
-                        "Image generation reported success but the document at "
-                                + path + " was not committed"));
+                        "Image generation reported success but the document at " + path + " was not committed"));
 
-        recordSuccess(reserveId, request, config, modelInfo,
-                callStart, durationMs, committed);
+        recordSuccess(reserveId, request, config, modelInfo, callStart, durationMs, committed);
 
         return GenerateImageResult.builder()
                 .path(committed.getPath())
-                .mimeType(committed.getMimeType() == null
-                        ? "image/png" : committed.getMimeType())
+                .mimeType(committed.getMimeType() == null ? "image/png" : committed.getMimeType())
                 .sizeBytes(committed.getSize())
                 .modelUsed(config.fullName())
                 .durationMs(durationMs)
@@ -272,13 +267,11 @@ public class FenchurchService {
 
     private void ensureEnabled(GenerateImageRequest request) {
         boolean enabled = settingService.getBooleanValueCascade(
-                request.getTenantId(), request.getProjectId(),
-                request.getProcessId(), SETTING_ENABLED, true);
+                request.getTenantId(), request.getProjectId(), request.getProcessId(), SETTING_ENABLED, true);
         if (!enabled) {
             throw new FenchurchException(
                     FenchurchException.Reason.DISABLED,
-                    "Image generation is disabled in this scope "
-                            + "(ai.fenchurch.enabled = false)");
+                    "Image generation is disabled in this scope " + "(ai.fenchurch.enabled = false)");
         }
     }
 
@@ -308,13 +301,11 @@ public class FenchurchService {
         return style.trim() + "\n\n" + body;
     }
 
-    private String resolveAspectRatio(
-            GenerateImageRequest request, ImageModelInfo modelInfo) {
+    private String resolveAspectRatio(GenerateImageRequest request, ImageModelInfo modelInfo) {
         String aspect = request.getAspectRatio();
         if (aspect == null || aspect.isBlank()) {
             aspect = settingService.getStringValueCascade(
-                    request.getTenantId(), request.getProjectId(),
-                    request.getProcessId(), SETTING_DEFAULT_ASPECT);
+                    request.getTenantId(), request.getProjectId(), request.getProcessId(), SETTING_DEFAULT_ASPECT);
         }
         if (aspect == null || aspect.isBlank()) {
             aspect = DEFAULT_ASPECT_RATIO;
@@ -335,15 +326,13 @@ public class FenchurchService {
      *  ASCII kebab-case suitable for inclusion in a path. */
     private record TitleResolution(@Nullable String title, String slug) {}
 
-    private TitleResolution resolveTitleAndSlug(
-            GenerateImageRequest request, String composedPrompt) {
+    private TitleResolution resolveTitleAndSlug(GenerateImageRequest request, String composedPrompt) {
         String explicit = request.getTitle();
         if (explicit != null && !explicit.isBlank()) {
             return new TitleResolution(explicit, slugify(explicit));
         }
         boolean autoTitle = settingService.getBooleanValueCascade(
-                request.getTenantId(), request.getProjectId(),
-                request.getProcessId(), SETTING_AUTO_TITLE, true);
+                request.getTenantId(), request.getProjectId(), request.getProcessId(), SETTING_AUTO_TITLE, true);
         if (!autoTitle) {
             return new TitleResolution(null, "image");
         }
@@ -364,8 +353,8 @@ public class FenchurchService {
             slug = sanitizeSlug(slug);
             return new TitleResolution(title, slug);
         } catch (LightLlmException e) {
-            log.info("FenchurchService: title generation failed ({}), "
-                            + "falling back to 'image' slug",
+            log.info(
+                    "FenchurchService: title generation failed ({}), " + "falling back to 'image' slug",
                     e.getMessage());
             return new TitleResolution(null, "image");
         }
@@ -373,8 +362,7 @@ public class FenchurchService {
 
     /** Caller-supplied path wins; otherwise build
      *  {@code images/<uuid8>-<slug>.png}. */
-    private static String resolvePath(
-            GenerateImageRequest request, TitleResolution title) {
+    private static String resolvePath(GenerateImageRequest request, TitleResolution title) {
         if (request.getPath() != null && !request.getPath().isBlank()) {
             return request.getPath().trim();
         }
@@ -423,15 +411,16 @@ public class FenchurchService {
 
     private int resolveTimeout(GenerateImageRequest request, ImageModelInfo modelInfo) {
         String override = settingService.getStringValueCascade(
-                request.getTenantId(), request.getProjectId(),
-                request.getProcessId(), SETTING_TIMEOUT);
+                request.getTenantId(), request.getProjectId(), request.getProcessId(), SETTING_TIMEOUT);
         if (override != null && !override.isBlank()) {
             try {
                 int parsed = Integer.parseInt(override.trim());
                 if (parsed > 0) return parsed;
             } catch (NumberFormatException ignored) {
-                log.warn("FenchurchService: non-numeric '{}' setting '{}' — using model default",
-                        SETTING_TIMEOUT, override);
+                log.warn(
+                        "FenchurchService: non-numeric '{}' setting '{}' — using model default",
+                        SETTING_TIMEOUT,
+                        override);
             }
         }
         int modelDefault = modelInfo.timeoutSeconds();
@@ -439,22 +428,25 @@ public class FenchurchService {
     }
 
     private AiImageConfig buildImageConfig(
-            GenerateImageRequest request,
-            AiModelResolver.Resolved resolved,
-            String aspectRatio,
-            int timeoutSeconds) {
+            GenerateImageRequest request, AiModelResolver.Resolved resolved, String aspectRatio, int timeoutSeconds) {
         String apiKey = ChatBehaviorBuilder.resolveApiKey(
                 resolved.provider(), resolved.providerInstance(),
                 request.getTenantId(), request.getProjectId(),
                 request.getProcessId(), settingService);
         String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(
                 resolved.providerInstance(),
-                request.getTenantId(), request.getProjectId(),
-                request.getProcessId(), settingService);
+                request.getTenantId(),
+                request.getProjectId(),
+                request.getProcessId(),
+                settingService);
         return new AiImageConfig(
-                resolved.provider(), resolved.providerInstance(),
-                resolved.modelName(), apiKey, baseUrl,
-                aspectRatio, timeoutSeconds);
+                resolved.provider(),
+                resolved.providerInstance(),
+                resolved.modelName(),
+                apiKey,
+                baseUrl,
+                aspectRatio,
+                timeoutSeconds);
     }
 
     private String resolveProjectId(GenerateImageRequest request) {
@@ -473,28 +465,35 @@ public class FenchurchService {
     private @Nullable ScheduledFuture<?> startHeartbeat(
             @Nullable ThinkProcessDocument process, String alias, long callStart) {
         if (process == null) return null;
-        progressEmitter.emitStatus(process, StatusTag.WAITING,
-                "Generating image (" + alias + ") …");
+        progressEmitter.emitStatus(process, StatusTag.WAITING, "Generating image (" + alias + ") …");
         int interval = readHeartbeatInterval(process);
         if (interval <= 0 || scheduler == null) return null;
-        return scheduler.scheduleAtFixedRate(() -> {
-            long elapsedMs = System.currentTimeMillis() - callStart;
-            long elapsedSec = elapsedMs / 1000;
-            try {
-                progressEmitter.emitStatus(process, StatusTag.WAITING,
-                        String.format(Locale.ROOT,
-                                "Generating image (%s) … %d:%02d elapsed",
-                                alias, elapsedSec / 60, elapsedSec % 60));
-            } catch (RuntimeException e) {
-                log.debug("FenchurchService: heartbeat emit failed: {}", e.toString());
-            }
-        }, interval, interval, TimeUnit.SECONDS);
+        return scheduler.scheduleAtFixedRate(
+                () -> {
+                    long elapsedMs = System.currentTimeMillis() - callStart;
+                    long elapsedSec = elapsedMs / 1000;
+                    try {
+                        progressEmitter.emitStatus(
+                                process,
+                                StatusTag.WAITING,
+                                String.format(
+                                        Locale.ROOT,
+                                        "Generating image (%s) … %d:%02d elapsed",
+                                        alias,
+                                        elapsedSec / 60,
+                                        elapsedSec % 60));
+                    } catch (RuntimeException e) {
+                        log.debug("FenchurchService: heartbeat emit failed: {}", e.toString());
+                    }
+                },
+                interval,
+                interval,
+                TimeUnit.SECONDS);
     }
 
     private int readHeartbeatInterval(ThinkProcessDocument process) {
         String raw = settingService.getStringValueCascade(
-                process.getTenantId(), process.getProjectId(),
-                process.getId(), SETTING_HEARTBEAT);
+                process.getTenantId(), process.getProjectId(), process.getId(), SETTING_HEARTBEAT);
         if (raw == null || raw.isBlank()) return DEFAULT_HEARTBEAT_INTERVAL_SECONDS;
         try {
             int parsed = Integer.parseInt(raw.trim());
@@ -528,29 +527,54 @@ public class FenchurchService {
                 .projectId(request.getProjectId())
                 .modelUsed(config.fullName())
                 .alias(request.getAlias())
-                .costUsd(modelInfo.costFor("standard"))
+                .costUsd(effectiveCostUsd(modelInfo, committed))
                 .qualityTier("standard")
                 .outcome("success")
                 .at(Instant.ofEpochMilli(callStart))
                 .durationMs(durationMs)
                 .build();
         callTracker.recordCall(record);
-        bookUsage(request, config, modelInfo.costFor("standard"),
-                UsageOutcome.SUCCESS, durationMs);
+        bookUsage(request, config, effectiveCostUsd(modelInfo, committed), UsageOutcome.SUCCESS, durationMs);
+        logSuccess(request, committed, config, durationMs);
+    }
+
+    /**
+     * The cost booked for a successful call: the vendor-reported
+     * {@code costUsd} header wins (written by providers that read the
+     * real price off the response — OpenRouter's dedicated image
+     * adapter reports {@code usage.cost}, which flat estimates can
+     * never match for token- or megapixel-priced models), the
+     * catalog's flat {@code costPerImage} is the fallback, and null
+     * stays null — an unpriced call is counted but not billed.
+     */
+    static @Nullable Double effectiveCostUsd(ImageModelInfo modelInfo, DocumentDocument committed) {
+        String reported =
+                committed.getHeaders() == null ? null : committed.getHeaders().get("costUsd");
+        if (reported != null && !reported.isBlank()) {
+            try {
+                return Double.parseDouble(reported.trim());
+            } catch (NumberFormatException ignored) {
+                log.warn("FenchurchService: non-numeric costUsd header '{}'", reported);
+            }
+        }
+        return modelInfo.costFor("standard");
+    }
+
+    private void logSuccess(
+            GenerateImageRequest request, DocumentDocument committed, AiImageConfig config, long durationMs) {
         if (log.isDebugEnabled()) {
-            log.debug("Fenchurch: generated image tenant='{}' path='{}' model='{}' "
-                            + "size={} duration={}ms",
-                    request.getTenantId(), committed.getPath(),
-                    config.fullName(), committed.getSize(), durationMs);
+            log.debug(
+                    "Fenchurch: generated image tenant='{}' path='{}' model='{}' " + "size={} duration={}ms",
+                    request.getTenantId(),
+                    committed.getPath(),
+                    config.fullName(),
+                    committed.getSize(),
+                    durationMs);
         }
     }
 
     private void recordFailure(
-            String reserveId,
-            GenerateImageRequest request,
-            AiImageConfig config,
-            long callStart,
-            Throwable cause) {
+            String reserveId, GenerateImageRequest request, AiImageConfig config, long callStart, Throwable cause) {
         String outcome = outcomeFromError(cause);
         // Finalize the reserve row in place (a failed attempt still counts
         // against quota — vendor-charged) by reusing its id.
@@ -568,8 +592,7 @@ public class FenchurchService {
         callTracker.recordCall(record);
         // No cost on a failure — the vendor may or may not have charged, and
         // guessing an amount is worse than counting the attempt.
-        bookUsage(request, config, /*cost*/ null, UsageOutcome.FAILED,
-                System.currentTimeMillis() - callStart);
+        bookUsage(request, config, /*cost*/ null, UsageOutcome.FAILED, System.currentTimeMillis() - callStart);
     }
 
     /**
@@ -599,21 +622,24 @@ public class FenchurchService {
                         LlmUsageService.CALLER_FENCHURCH,
                         /*recipeName*/ null),
                 UsageMeasurement.image(
-                        config.providerInstance(), config.provider(), config.modelName(),
-                        costUsd, "USD", outcome, durationMs));
+                        config.providerInstance(),
+                        config.provider(),
+                        config.modelName(),
+                        costUsd,
+                        "USD",
+                        outcome,
+                        durationMs));
     }
 
     private static String outcomeFromError(Throwable cause) {
-        String msg = cause.getMessage() == null
-                ? "" : cause.getMessage().toLowerCase(Locale.ROOT);
+        String msg = cause.getMessage() == null ? "" : cause.getMessage().toLowerCase(Locale.ROOT);
         if (msg.contains("timeout") || msg.contains("timed out")) {
             return "timeout";
         }
         if (msg.contains("safety") || msg.contains("content") || msg.contains("policy")) {
             return "content_policy";
         }
-        if (cause instanceof java.util.concurrent.CancellationException
-                || msg.contains("cancel")) {
+        if (cause instanceof java.util.concurrent.CancellationException || msg.contains("cancel")) {
             return "cancelled";
         }
         return "provider_error";
@@ -621,19 +647,16 @@ public class FenchurchService {
 
     // ──────────────────── Helpers ────────────────────
 
-    private static FenchurchException mapProviderError(
-            AiImageException cause, AiImageConfig config) {
-        String msg = cause.getMessage() == null
-                ? "" : cause.getMessage().toLowerCase(Locale.ROOT);
+    private static FenchurchException mapProviderError(AiImageException cause, AiImageConfig config) {
+        String msg = cause.getMessage() == null ? "" : cause.getMessage().toLowerCase(Locale.ROOT);
         FenchurchException.Reason reason = FenchurchException.Reason.PROVIDER_ERROR;
         if (msg.contains("timeout") || msg.contains("timed out")) {
             reason = FenchurchException.Reason.TIMEOUT;
         } else if (msg.contains("safety") || msg.contains("content") || msg.contains("policy")) {
             reason = FenchurchException.Reason.CONTENT_POLICY;
         }
-        return new FenchurchException(reason,
-                "Fenchurch generation failed for " + config.fullName()
-                        + ": " + cause.getMessage(), cause);
+        return new FenchurchException(
+                reason, "Fenchurch generation failed for " + config.fullName() + ": " + cause.getMessage(), cause);
     }
 
     private static @Nullable String stringOrNull(@Nullable Object o) {

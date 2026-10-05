@@ -1,0 +1,24 @@
+# Google Gemini 2.5 Flash Image ("Nano Banana") via OpenRouter's
+# dedicated Image API (POST /api/v1/images) — the same engine as the
+# bundled `gemini/gemini-2.5-flash-image`, served here through the
+# OpenRouter gateway instead of Google's API.
+#
+# Billing is token-based on this endpoint ($0.00003/output_image token,
+# google-vertex) — there is no flat per-image price, so `costPerImage`
+# stays empty: Fenchurch still runs and the call is counted, it just
+# can't book a per-image cost. A rough 1024x1024 render is ~2800
+# output tokens ≈ $0.08.
+kind: image
+timeoutSeconds: 120
+supportedAspectRatios:
+- '1:1'
+- '2:3'
+- '3:2'
+- '3:4'
+- '4:3'
+- '4:5'
+- '5:4'
+- '9:16'
+- '16:9'
+- '21:9'
+maxPromptChars: 480

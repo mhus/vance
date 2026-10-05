@@ -21,7 +21,7 @@
          Kept inline here because this aggregator deliberately has no parent;
          when changing formatter or rules, change both places. -->
     <properties>
-        <spotless.maven.version>3.10.2</spotless.maven.version>
+        <spotless.maven.version>3.10.3</spotless.maven.version>
         <spotless.palantir.version>2.97.0</spotless.palantir.version>
         <spotless.ratchetFrom>origin/main</spotless.ratchetFrom>
     </properties>

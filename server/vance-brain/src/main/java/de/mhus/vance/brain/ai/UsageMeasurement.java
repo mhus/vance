@@ -145,6 +145,41 @@ public record UsageMeasurement(
                 durationMs);
     }
 
+    /**
+     * One audio call (Hotblack: TTS, transcription, music) — priced per
+     * character / per second / per clip rather than per token. The
+     * `images` slot of the super-shape carries {@code 1} as "one call"; the
+     * billable unit count lives in {@code audio_call_records}, not here.
+     */
+    public static UsageMeasurement audio(
+            String providerInstance,
+            String providerType,
+            String providerModel,
+            @Nullable Double cost,
+            String currency,
+            UsageOutcome outcome,
+            long durationMs) {
+        return new UsageMeasurement(
+                providerInstance,
+                providerType,
+                providerModel,
+                null,
+                null,
+                UsageKind.AUDIO,
+                outcome,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                cost,
+                currency,
+                durationMs);
+    }
+
     private static UsageMeasurement of(
             ModelInfo model,
             String providerInstance,

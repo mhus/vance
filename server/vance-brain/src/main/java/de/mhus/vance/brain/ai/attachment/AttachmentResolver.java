@@ -44,10 +44,36 @@ public class AttachmentResolver {
      * the gap than send a binary blob the LLM would reject silently.
      */
     private static final Set<String> ALLOWED_MIMES = Set.of(
-            "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+            "image/gif",
+            "image/webp",
             "application/pdf",
-            "text/plain", "text/markdown", "text/html", "text/csv",
-            "application/json", "application/yaml", "application/xml");
+            "text/plain",
+            "text/markdown",
+            "text/html",
+            "text/csv",
+            "application/json",
+            "application/yaml",
+            "application/xml",
+            // Audio — Hotblack transcription input (and, later, audio
+            // understanding). The chat content-block mapper still fails
+            // audio attachments cleanly until the AUDIO_INPUT dispatch
+            // lands; materialising them here is the shared groundwork.
+            "audio/wav",
+            "audio/x-wav",
+            "audio/wave",
+            "audio/mpeg",
+            "audio/mp3",
+            "audio/mp4",
+            "audio/x-m4a",
+            "audio/aac",
+            "audio/ogg",
+            "audio/opus",
+            "audio/webm",
+            "audio/flac",
+            "audio/pcm");
 
     private final DocumentService documentService;
     private final long maxBytesPerFile;
@@ -60,8 +86,8 @@ public class AttachmentResolver {
         this.documentService = documentService;
         this.maxBytesPerFile = maxBytesPerFile;
         this.maxBytesPerRequest = maxBytesPerRequest;
-        log.info("AttachmentResolver: maxPerFile={} bytes, maxPerRequest={} bytes",
-                maxBytesPerFile, maxBytesPerRequest);
+        log.info(
+                "AttachmentResolver: maxPerFile={} bytes, maxPerRequest={} bytes", maxBytesPerFile, maxBytesPerRequest);
     }
 
     /**
@@ -83,52 +109,46 @@ public class AttachmentResolver {
             ResolvedAttachment resolved = resolveOne(ref, expectedTenantId, expectedProjectId);
             total += resolved.data().length;
             if (total > maxBytesPerRequest) {
-                throw new AttachmentException(
-                        "Attachment payload exceeds per-request limit: " + total
-                                + " > " + maxBytesPerRequest + " bytes");
+                throw new AttachmentException("Attachment payload exceeds per-request limit: " + total + " > "
+                        + maxBytesPerRequest + " bytes");
             }
             out.add(resolved);
         }
         return out;
     }
 
-    private ResolvedAttachment resolveOne(
-            AttachmentRef ref, String expectedTenantId, String expectedProjectId) {
-        DocumentDocument doc = documentService.findById(ref.documentId())
-                .orElseThrow(() -> new AttachmentException(
-                        "Attachment document not found: " + ref.documentId()));
+    private ResolvedAttachment resolveOne(AttachmentRef ref, String expectedTenantId, String expectedProjectId) {
+        DocumentDocument doc = documentService
+                .findById(ref.documentId())
+                .orElseThrow(() -> new AttachmentException("Attachment document not found: " + ref.documentId()));
 
-        if (!equalsScope(doc.getTenantId(), expectedTenantId)
-                || !equalsScope(doc.getProjectId(), expectedProjectId)) {
+        if (!equalsScope(doc.getTenantId(), expectedTenantId) || !equalsScope(doc.getProjectId(), expectedProjectId)) {
             // Don't leak the actual scope — log it server-side, return a
             // neutral message to the caller.
-            log.warn("Attachment scope mismatch: docId='{}' doc-scope='{}/{}' caller-scope='{}/{}'",
-                    ref.documentId(), doc.getTenantId(), doc.getProjectId(),
-                    expectedTenantId, expectedProjectId);
-            throw new AttachmentException(
-                    "Attachment is not accessible in this scope: " + ref.documentId());
+            log.warn(
+                    "Attachment scope mismatch: docId='{}' doc-scope='{}/{}' caller-scope='{}/{}'",
+                    ref.documentId(),
+                    doc.getTenantId(),
+                    doc.getProjectId(),
+                    expectedTenantId,
+                    expectedProjectId);
+            throw new AttachmentException("Attachment is not accessible in this scope: " + ref.documentId());
         }
 
         String mimeType = normaliseMime(doc.getMimeType());
         if (!ALLOWED_MIMES.contains(mimeType)) {
             throw new AttachmentException(
-                    "Attachment MIME type not allowed: '" + mimeType
-                            + "' (docId=" + ref.documentId() + ")");
+                    "Attachment MIME type not allowed: '" + mimeType + "' (docId=" + ref.documentId() + ")");
         }
 
         if (doc.getSize() > maxBytesPerFile) {
-            throw new AttachmentException(
-                    "Attachment exceeds per-file limit: " + doc.getSize()
-                            + " > " + maxBytesPerFile + " bytes (docId="
-                            + ref.documentId() + ")");
+            throw new AttachmentException("Attachment exceeds per-file limit: " + doc.getSize()
+                    + " > " + maxBytesPerFile + " bytes (docId="
+                    + ref.documentId() + ")");
         }
 
         byte[] data = readBoundedBytes(doc);
-        return new ResolvedAttachment(
-                ref.documentId(),
-                mimeType,
-                data,
-                deriveFilename(doc));
+        return new ResolvedAttachment(ref.documentId(), mimeType, data, deriveFilename(doc));
     }
 
     /**
@@ -141,15 +161,13 @@ public class AttachmentResolver {
         try (InputStream in = documentService.loadContent(doc)) {
             byte[] data = in.readNBytes((int) Math.min(maxBytesPerFile + 1, Integer.MAX_VALUE));
             if (data.length > maxBytesPerFile) {
-                throw new AttachmentException(
-                        "Attachment content stream exceeds per-file limit (docId="
-                                + doc.getId() + ", reported size=" + doc.getSize() + ")");
+                throw new AttachmentException("Attachment content stream exceeds per-file limit (docId=" + doc.getId()
+                        + ", reported size=" + doc.getSize() + ")");
             }
             return data;
         } catch (IOException e) {
             throw new AttachmentException(
-                    "Failed to read attachment content (docId=" + doc.getId() + "): "
-                            + e.getMessage(), e);
+                    "Failed to read attachment content (docId=" + doc.getId() + "): " + e.getMessage(), e);
         }
     }
 

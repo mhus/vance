@@ -20,15 +20,15 @@ import java.util.stream.Stream;
  * fails fast on unknown values.
  */
 public enum ProviderType {
-    ANTHROPIC("anthropic",     true),
-    OPENAI("openai",           true),
-    GEMINI("gemini",           true),
+    ANTHROPIC("anthropic", true),
+    OPENAI("openai", true),
+    GEMINI("gemini", true),
     /** Local Ollama daemon — no auth required by default. */
-    OLLAMA("ollama",           false),
+    OLLAMA("ollama", false),
     /** Hosted Ollama Turbo — requires a JWT. */
     OLLAMA_CLOUD("ollama-cloud", true),
     /** Local LM Studio server — no auth required by default. */
-    LM_STUDIO("lmstudio",      false),
+    LM_STUDIO("lmstudio", false),
     AZURE_OPENAI("azure-openai", true),
     /**
      * OpenAI Responses-API endpoint ({@code /v1/responses}) via
@@ -42,8 +42,10 @@ public enum ProviderType {
      * {@code readme/openai-experimental-provider.md}.
      */
     OPENAI_EXPERIMENTAL("openai-experimental", true),
+    /** Local, non-network backend (e.g. the faster-whisper adapter). */
+    LOCAL("local", false),
     /** Test-only deterministic stub provider (qa/ai-test). */
-    SCRIPTED("scripted",       false);
+    SCRIPTED("scripted", false);
 
     private final String wireName;
     private final boolean requiresApiKey;
@@ -68,8 +70,8 @@ public enum ProviderType {
         return requiresApiKey;
     }
 
-    private static final Map<String, ProviderType> BY_WIRE = Stream.of(values())
-            .collect(Collectors.toUnmodifiableMap(p -> p.wireName, p -> p));
+    private static final Map<String, ProviderType> BY_WIRE =
+            Stream.of(values()).collect(Collectors.toUnmodifiableMap(p -> p.wireName, p -> p));
 
     /** Case-insensitive lookup; {@link Optional#empty()} on unknown. */
     public static Optional<ProviderType> fromWireName(String s) {
@@ -79,7 +81,7 @@ public enum ProviderType {
 
     /** Strict variant for boot-time / config validation. */
     public static ProviderType requireWireName(String s) {
-        return fromWireName(s).orElseThrow(() ->
-                new IllegalArgumentException("Unknown provider wire-name: '" + s + "'"));
+        return fromWireName(s)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown provider wire-name: '" + s + "'"));
     }
 }

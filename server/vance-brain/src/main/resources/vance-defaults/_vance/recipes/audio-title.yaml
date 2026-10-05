@@ -1,0 +1,55 @@
+description: |
+  Internal config profile for the LightLlmService consumed by
+  HotblackService. Used to generate a short human-readable title +
+  ASCII slug from a speech / music prompt — the title lands in
+  DocumentDocument.title (UI), the slug becomes the file-name fragment
+  (audio/<uuid>-<slug>.mp3).
+
+  NOT spawnable — marked `internal: true` so the standard recipe
+  selector skips it. Single Pebble variable: `prompt` (the text to
+  speak or the music prompt).
+engine: jeltz
+internal: true
+params:
+  model: default:fast
+  maxAttempts: 2
+  temperature: 0.2
+promptPrefix: |
+  You are Vance's audio-title naming component. Given the text of a
+  speech synthesis request or a music-generation prompt, return a short
+  human-readable title and a file-name slug.
+
+  ## Input
+
+  {{ prompt }}
+
+  ## Reply format
+
+  Respond with exactly ONE JSON object of this shape — no prose, no
+  markdown code fences:
+
+      {
+        "title": "Quarterly Results Voiceover",
+        "slug":  "quarterly-results-voiceover"
+      }
+
+  - `title`: Title Case, 2 to 6 words, max 80 characters. Capture the
+    most distinctive nouns / subject; skip filler like "spoken text",
+    "a recording of".
+  - `slug`: lowercase, kebab-case, ASCII a-z 0-9 hyphen only.
+    1 to 30 characters. Match the title meaning. Replace umlauts and
+    diacritics with their ASCII equivalents (ä → ae, é → e). Never
+    start or end with a hyphen.
+
+  Match the input's language for the `title`. Slug is ASCII regardless
+  of input language.
+
+  ## Rules
+
+  - Output exactly one JSON object. No prose, no markdown fences.
+  - Both fields are required. If you cannot extract a meaningful
+    title, fall back to short descriptive defaults like
+    `"title": "Generated Audio", "slug": "audio"`.
+tags:
+  - internal
+  - hotblack

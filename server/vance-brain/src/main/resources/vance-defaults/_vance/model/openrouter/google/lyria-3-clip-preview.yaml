@@ -1,0 +1,11 @@
+# Google Lyria 3 (clip preview) via OpenRouter — music / non-speech
+# audio generation. Wire: chat completions with modalities
+# ["text","audio"] and stream:true; the adapter assembles the base64
+# audio chunks. Live-verified 2026-10-05: an 8-second clip came back as
+# MP3 bytes with usage.cost 0.04 — the vendor-reported cost is booked,
+# the costPerTrack below is only the fallback estimate.
+kind: music
+timeoutSeconds: 600
+maxDurationSeconds: 300
+supportedFormats: [mp3, wav]
+costPerTrack: 0.04

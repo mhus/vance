@@ -1,0 +1,13 @@
+displayName: Local tools (offline)
+wireType: local
+authType: none
+
+# This sidecar makes `local:<model>` a resolvable provider instance:
+# the protocol is declared once (`wireType: local`), so model specs like
+# `local:faster-whisper-small` resolve without an
+# `ai.provider.local.type` setting. No credentials — the adapters run
+# on the host (faster-whisper via the bundled Python wrapper).
+#
+# Only `kind: stt` documents live here today: the whisper adapter is a
+# transcription-only backend. The instance exists so the audio stack
+# has an offline fallback and `video_transcript` shares one ASR path.

@@ -1,0 +1,216 @@
+title:
+  de: "Hotblack — Audio (Sprache, Transkription, Musik)"
+  en: "Hotblack — Audio (speech, transcription, music)"
+description:
+  de: "Konfiguriert Vance's Audio-Service. Modell-Aliase (`default:tts`,
+       `default:stt`, `default:music`) werden hier nicht gesetzt — das
+       macht die LLM-Setup-Form. Diese Form steuert Verfügbarkeit,
+       Defaults, Quotas und Performance-Parameter."
+  en: "Configures Vance's audio service. Model aliases (`default:tts`,
+       `default:stt`, `default:music`) are set in the LLM setup form —
+       this form controls availability, defaults, quotas, and
+       performance knobs."
+icon: music_note
+category: ai
+defaultScope: tenant
+# Tenant + regular projects (not per-user). availableIn is a projectId glob.
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  # ─── Availability ────────────────────────────────────────────────
+
+  - name: enabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Aktiviert"
+      en: "Enabled"
+    help:
+      de: "Master-Schalter. Aus bedeutet, dass jeder audio_*-Aufruf mit
+           Fehler `disabled` zurückkommt."
+      en: "Master switch. Off makes every audio_* call return a
+           `disabled` error."
+    bindsTo:
+      key: "ai.hotblack.enabled"
+
+  - name: ttsEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Text-to-Speech aktiviert"
+      en: "Text-to-speech enabled"
+    help:
+      de: "Schaltet `audio_speak` frei oder sperrt es."
+      en: "Enables or suspends `audio_speak`."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.tts.enabled"
+
+  - name: sttEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Spracherkennung aktiviert"
+      en: "Speech-to-text enabled"
+    help:
+      de: "Schaltet `audio_transcribe` frei oder sperrt es."
+      en: "Enables or suspends `audio_transcribe`."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.stt.enabled"
+
+  - name: musicEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Musik-Generierung aktiviert"
+      en: "Music generation enabled"
+    help:
+      de: "Schaltet `audio_music` frei oder sperrt es. Musik kostet pro
+           Clip echtes Geld — in ruhigen Umgebungen bewusst abschaltbar."
+      en: "Enables or suspends `audio_music`. Music costs real money per
+           clip — switch it off in quiet environments."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.music.enabled"
+
+  # ─── Defaults ────────────────────────────────────────────────────
+
+  - name: defaultVoice
+    type: string
+    label:
+      de: "Default-Stimme"
+      en: "Default voice"
+    help:
+      de: "Voice-ID für `audio_speak`, wenn der Tool-Call keine
+           `voice` mitgibt. Leer = Modell-Default. Die möglichen
+           Stimmen liefert das Tool `audio_voices`."
+      en: "Voice id for `audio_speak` when the tool call carries no
+           `voice`. Empty = model default. The `audio_voices` tool
+           lists the options."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.default-voice"
+
+  - name: defaultFormat
+    type: select
+    defaultValue: "mp3"
+    label:
+      de: "Default-Audioformat"
+      en: "Default audio format"
+    help:
+      de: "Format für erzeugte Audio-Dokumente, wenn der Tool-Call
+           keins mitgibt."
+      en: "Format for generated audio documents when the tool call
+           does not specify one."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.default-format"
+    choices:
+      - value: "mp3"
+        label: { de: "MP3 (klein, überall abspielbar)", en: "MP3 (small, plays everywhere)" }
+      - value: "wav"
+        label: { de: "WAV (unkomprimiert)", en: "WAV (uncompressed)" }
+
+  - name: autoTitleFromPrompt
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Titel automatisch erzeugen"
+      en: "Auto-generate title"
+    help:
+      de: "Wenn an: ein zusätzlicher leichter LLM-Call erzeugt einen
+           kurzen Titel und einen Slug aus dem Text / Prompt."
+      en: "When on, a small extra LLM call derives a short title + slug
+           from the text / prompt."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.auto-title-from-prompt"
+
+  # ─── Quotas ──────────────────────────────────────────────────────
+
+  - name: dailyTtsCalls
+    type: number
+    defaultValue: "0"
+    label:
+      de: "TTS-Aufrufe pro Tag (tenant-weit)"
+      en: "TTS calls per day (tenant-wide)"
+    help:
+      de: "0 = unbegrenzt. Zählt Aufrufe, nicht Zeichen — die
+           Zeichen-Anzahl steht im Audit-Log (`audio_call_records`)."
+      en: "0 = unlimited. Counts calls, not characters — the character
+           counts live in the audit log (`audio_call_records`)."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.daily-tts-calls"
+
+  - name: dailySttCalls
+    type: number
+    defaultValue: "0"
+    label:
+      de: "STT-Aufrufe pro Tag (tenant-weit)"
+      en: "STT calls per day (tenant-wide)"
+    help:
+      de: "0 = unbegrenzt."
+      en: "0 = unlimited."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.daily-stt-calls"
+
+  - name: dailyMusicCalls
+    type: number
+    defaultValue: "0"
+    label:
+      de: "Musik-Aufrufe pro Tag (tenant-weit)"
+      en: "Music calls per day (tenant-wide)"
+    help:
+      de: "0 = unbegrenzt. Empfehlung: begrenzen, weil jeder Clip
+           Kosten verursacht."
+      en: "0 = unlimited. Recommendation: cap it — every clip costs
+           money."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.daily-music-calls"
+
+  - name: monthlyMusicCalls
+    type: number
+    defaultValue: "0"
+    label:
+      de: "Musik-Aufrufe pro Monat (tenant-weit)"
+      en: "Music calls per month (tenant-wide)"
+    help:
+      de: "0 = unbegrenzt."
+      en: "0 = unlimited."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.monthly-music-calls"
+
+  # ─── Performance ─────────────────────────────────────────────────
+
+  - name: timeout
+    type: number
+    label:
+      de: "Timeout (Sekunden)"
+      en: "Timeout (seconds)"
+    help:
+      de: "Pro Call. Leer = Modell-Default aus dem Katalog."
+      en: "Per call. Empty = the catalog's model default."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.timeout"
+
+  - name: heartbeatIntervalSec
+    type: number
+    defaultValue: "30"
+    label:
+      de: "Heartbeat-Intervall (Sekunden)"
+      en: "Heartbeat interval (seconds)"
+    help:
+      de: "Wie oft der Fortschritt während eines laufenden Calls über
+           den PROCESS_PROGRESS-Kanal gemeldet wird."
+      en: "How often progress is reported on the PROCESS_PROGRESS
+           channel while a call runs."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.heartbeat-interval-sec"

@@ -48,6 +48,9 @@ class BundledSettingFormsTest {
                         "aliasFim",
                         "aliasImage",
                         "aliasImageHigh",
+                        "aliasTts",
+                        "aliasStt",
+                        "aliasMusic",
                         "provider",
                         "embeddingProvider",
                         "embeddingModel",
@@ -108,6 +111,22 @@ class BundledSettingFormsTest {
             assertThat(fld.getChoicesFrom()).isEqualTo("ai-image-models");
             assertThat(fld.getBindsTo()).isNotNull();
             assertThat(fld.getBindsTo().getKey()).startsWith("ai.alias.default.image");
+        }
+
+        // Audio aliases (Hotblack) use the kind-filtered sources so the
+        // pickers don't mix chat models in.
+        for (String[] audioAlias : new String[][] {
+            {"aliasTts", "ai-tts-models"},
+            {"aliasStt", "ai-stt-models"},
+            {"aliasMusic", "ai-music-models"}
+        }) {
+            var fld = f.fields().stream()
+                    .filter(field -> field.getName().equals(audioAlias[0]))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(fld.getChoicesFrom()).isEqualTo(audioAlias[1]);
+            assertThat(fld.getBindsTo()).isNotNull();
+            assertThat(fld.getBindsTo().getKey()).startsWith("ai.alias.default.");
         }
 
         // Tracing should produce two computed settings.

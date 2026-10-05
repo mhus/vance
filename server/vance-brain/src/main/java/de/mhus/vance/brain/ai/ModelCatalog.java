@@ -1,5 +1,8 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.audio.MusicModelInfo;
+import de.mhus.vance.brain.ai.audio.SttModelInfo;
+import de.mhus.vance.brain.ai.audio.TtsModelInfo;
 import de.mhus.vance.brain.ai.image.ImageModelInfo;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -214,6 +217,45 @@ public class ModelCatalog {
         return Optional.of(buildImageInfo(provider, modelName, spec));
     }
 
+    public Optional<TtsModelInfo> lookupTts(
+            @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
+        if (provider == null || modelName == null) {
+            return Optional.empty();
+        }
+        Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
+        Map<String, Object> spec = view.get(key(provider, modelName));
+        if (spec == null || !isKind(spec, "tts")) {
+            return Optional.empty();
+        }
+        return Optional.of(buildTtsInfo(provider, modelName, spec));
+    }
+
+    public Optional<SttModelInfo> lookupStt(
+            @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
+        if (provider == null || modelName == null) {
+            return Optional.empty();
+        }
+        Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
+        Map<String, Object> spec = view.get(key(provider, modelName));
+        if (spec == null || !isKind(spec, "stt")) {
+            return Optional.empty();
+        }
+        return Optional.of(buildSttInfo(provider, modelName, spec));
+    }
+
+    public Optional<MusicModelInfo> lookupMusic(
+            @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
+        if (provider == null || modelName == null) {
+            return Optional.empty();
+        }
+        Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
+        Map<String, Object> spec = view.get(key(provider, modelName));
+        if (spec == null || !isKind(spec, "music")) {
+            return Optional.empty();
+        }
+        return Optional.of(buildMusicInfo(provider, modelName, spec));
+    }
+
     public ModelInfo lookupOrDefault(
             @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
         return lookup(tenantId, projectId, provider, modelName)
@@ -275,6 +317,45 @@ public class ModelCatalog {
             String[] parts = splitKey(entry.getKey());
             if (parts == null) continue;
             out.add(buildImageInfo(parts[0], originalCaseName(spec, parts[1]), spec));
+        }
+        return out;
+    }
+
+    public List<TtsModelInfo> listAllTts(@Nullable String tenantId, @Nullable String projectId) {
+        Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
+        List<TtsModelInfo> out = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : view.entrySet()) {
+            Map<String, Object> spec = entry.getValue();
+            if (!isKind(spec, "tts")) continue;
+            String[] parts = splitKey(entry.getKey());
+            if (parts == null) continue;
+            out.add(buildTtsInfo(parts[0], originalCaseName(spec, parts[1]), spec));
+        }
+        return out;
+    }
+
+    public List<SttModelInfo> listAllStt(@Nullable String tenantId, @Nullable String projectId) {
+        Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
+        List<SttModelInfo> out = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : view.entrySet()) {
+            Map<String, Object> spec = entry.getValue();
+            if (!isKind(spec, "stt")) continue;
+            String[] parts = splitKey(entry.getKey());
+            if (parts == null) continue;
+            out.add(buildSttInfo(parts[0], originalCaseName(spec, parts[1]), spec));
+        }
+        return out;
+    }
+
+    public List<MusicModelInfo> listAllMusic(@Nullable String tenantId, @Nullable String projectId) {
+        Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
+        List<MusicModelInfo> out = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : view.entrySet()) {
+            Map<String, Object> spec = entry.getValue();
+            if (!isKind(spec, "music")) continue;
+            String[] parts = splitKey(entry.getKey());
+            if (parts == null) continue;
+            out.add(buildMusicInfo(parts[0], originalCaseName(spec, parts[1]), spec));
         }
         return out;
     }
@@ -678,6 +759,92 @@ public class ModelCatalog {
         return new ImageModelInfo(provider, modelName, aspects, maxPromptChars, costs, timeout, maxRefs);
     }
 
+    /** Generic kind discriminator for the non-chat, non-image kinds. */
+    private static boolean isKind(Map<String, Object> spec, String kind) {
+        Object raw = spec.get("kind");
+        return raw != null && kind.equalsIgnoreCase(raw.toString().trim());
+    }
+
+    private static TtsModelInfo buildTtsInfo(String provider, String modelName, Map<String, Object> spec) {
+        List<TtsModelInfo.Voice> voices = readVoices(spec.get("supportedVoices"));
+        Set<String> languages = readStringList(spec.get("supportedLanguages"));
+        Set<String> formats = readStringList(spec.get("supportedFormats"));
+        int maxInputChars = readInt(spec.get("maxInputChars"), TtsModelInfo.DEFAULT_MAX_INPUT_CHARS);
+        boolean supportsSpeed = readBoolean(spec.get("supportsSpeed"), false);
+        Double costPerChar = readDouble(spec.get("costPerChar"));
+        Double costPerSecond = readDouble(spec.get("costPerSecond"));
+        int timeout = readInt(spec.get("timeoutSeconds"), TtsModelInfo.DEFAULT_TIMEOUT_SECONDS);
+        return new TtsModelInfo(
+                provider,
+                modelName,
+                voices,
+                languages,
+                formats,
+                maxInputChars,
+                supportsSpeed,
+                costPerChar,
+                costPerSecond,
+                timeout);
+    }
+
+    private static SttModelInfo buildSttInfo(String provider, String modelName, Map<String, Object> spec) {
+        Set<String> formats = readStringList(spec.get("supportedFormats"));
+        int maxDuration = readInt(spec.get("maxDurationSeconds"), SttModelInfo.DEFAULT_MAX_DURATION_SECONDS);
+        Set<String> languages = readStringList(spec.get("supportedLanguages"));
+        Double costPerSecond = readDouble(spec.get("costPerSecond"));
+        Double costPerMinute = readDouble(spec.get("costPerMinute"));
+        int timeout = readInt(spec.get("timeoutSeconds"), SttModelInfo.DEFAULT_TIMEOUT_SECONDS);
+        return new SttModelInfo(
+                provider, modelName, formats, maxDuration, languages, costPerSecond, costPerMinute, timeout);
+    }
+
+    private static MusicModelInfo buildMusicInfo(String provider, String modelName, Map<String, Object> spec) {
+        Set<String> formats = readStringList(spec.get("supportedFormats"));
+        int maxDuration = readInt(spec.get("maxDurationSeconds"), MusicModelInfo.DEFAULT_MAX_DURATION_SECONDS);
+        Set<String> languages = readStringList(spec.get("supportedLanguages"));
+        Double costPerSecond = readDouble(spec.get("costPerSecond"));
+        Double costPerTrack = readDouble(spec.get("costPerTrack"));
+        int timeout = readInt(spec.get("timeoutSeconds"), MusicModelInfo.DEFAULT_TIMEOUT_SECONDS);
+        return new MusicModelInfo(
+                provider, modelName, formats, maxDuration, languages, costPerSecond, costPerTrack, timeout);
+    }
+
+    /**
+     * Voice-list parser — accepts the short form (list of voice-id
+     * strings) and the long form (list of maps with id / locale /
+     * gender / description), whichever the model document uses.
+     */
+    private static List<TtsModelInfo.Voice> readVoices(@Nullable Object raw) {
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        List<TtsModelInfo.Voice> out = new ArrayList<>();
+        for (Object entry : list) {
+            if (entry == null) continue;
+            if (entry instanceof Map<?, ?> map) {
+                String id = stringOf(map.get("id"));
+                if (id == null) continue;
+                out.add(new TtsModelInfo.Voice(
+                        id,
+                        stringOf(map.get("locale")),
+                        stringOf(map.get("gender")),
+                        stringOf(map.get("description"))));
+            } else {
+                String id = entry.toString().trim();
+                if (!id.isEmpty()) {
+                    out.add(new TtsModelInfo.Voice(id, null, null, null));
+                }
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private static @Nullable String stringOf(@Nullable Object o) {
+        if (o == null) return null;
+        String s = o.toString().trim();
+        return s.isEmpty() ? null : s;
+    }
+
     /**
      * Known top-level field names accepted in a model YAML. Used by
      * {@link #checkUnknownFields} to surface LLM-typed field-name typos
@@ -712,6 +879,17 @@ public class ModelCatalog {
             "maxPromptChars",
             "costPerImage",
             "maxInputReferences",
+            // Audio (Hotblack: tts / stt / music)
+            "supportedVoices",
+            "supportedLanguages",
+            "supportedFormats",
+            "maxInputChars",
+            "maxDurationSeconds",
+            "supportsSpeed",
+            "costPerChar",
+            "costPerSecond",
+            "costPerMinute",
+            "costPerTrack",
             // Discovery markers (informational)
             "discoveredBy",
             "discoveredAt");

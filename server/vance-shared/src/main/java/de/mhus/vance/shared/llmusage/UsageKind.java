@@ -20,5 +20,12 @@ public enum UsageKind {
     EMBEDDING,
 
     /** Image generation, priced per image and quality tier. */
-    IMAGE
+    IMAGE,
+
+    /**
+     * Audio generation / processing (Hotblack): TTS, transcription, and
+     * music. Priced per character, per second of audio, or per clip —
+     * never per token, which is why it is its own kind.
+     */
+    AUDIO
 }

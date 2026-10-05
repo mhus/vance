@@ -74,6 +74,9 @@ public class LlmUsageService {
     /** Image generation issued by Fenchurch outside any think-process. */
     public static final String CALLER_FENCHURCH = "_fenchurch";
 
+    /** Audio calls (TTS / transcription / music) issued by Hotblack. */
+    public static final String CALLER_HOTBLACK = "_hotblack";
+
     /** Embedding batches issued by the RAG service. */
     public static final String CALLER_RAG = "_rag";
 

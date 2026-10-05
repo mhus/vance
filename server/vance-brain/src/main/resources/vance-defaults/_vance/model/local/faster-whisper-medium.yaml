@@ -1,0 +1,5 @@
+# Local faster-whisper (medium) — higher accuracy than `small`, slower
+# on CPU. Same offline contract: unpriced, host-local Python.
+kind: stt
+timeoutSeconds: 7200
+maxDurationSeconds: 10800

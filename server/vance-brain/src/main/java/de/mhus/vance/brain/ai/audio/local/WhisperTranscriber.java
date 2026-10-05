@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.video;
+package de.mhus.vance.brain.ai.audio.local;
 
 import de.mhus.vance.toolpack.ToolException;
 import jakarta.annotation.PostConstruct;

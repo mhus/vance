@@ -1,0 +1,9 @@
+# OpenAI gpt-transcribe via OpenRouter's dedicated transcription
+# endpoint (POST /api/v1/audio/transcriptions). Live-verified 2026-10-05:
+# JSON response {text, usage:{seconds, cost}} — the vendor-reported cost
+# is booked, so this entry stays unpriced on purpose (token-priced
+# model; a flat per-second estimate would be a guess).
+kind: stt
+timeoutSeconds: 300
+maxDurationSeconds: 3600
+supportedFormats: [wav, mp3, m4a, ogg, webm, flac, aac]

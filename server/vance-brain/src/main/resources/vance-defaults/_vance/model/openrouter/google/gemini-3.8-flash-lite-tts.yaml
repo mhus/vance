@@ -1,0 +1,47 @@
+# Google Gemini 3.8 Flash Lite TTS via OpenRouter's dedicated TTS
+# endpoint (POST /api/v1/audio/speech). Live-verified 2026-10-05: the model
+# serves `response_format: "pcm"` ONLY (mp3 is rejected with a 400 that
+# names response_format), 24 kHz mono — the OpenRouter adapter wraps the
+# pcm into a WAV container for the document.
+kind: tts
+timeoutSeconds: 120
+supportedFormats: [pcm]
+supportedVoices:
+- Zephyr
+- Puck
+- Charon
+- Kore
+- Fenrir
+- Leda
+- Orus
+- Aoede
+- Callirrhoe
+- Autonoe
+- Enceladus
+- Iapetus
+- Umbriel
+- Algieba
+- Despina
+- Erinome
+- Algenib
+- Rasalgethi
+- Laomedeia
+- Achernar
+- Alnilam
+- Schedar
+- Gacrux
+- Pulcherrima
+- Achird
+- Zubenelgenubi
+- Vindemiatrix
+- Sadachbia
+- Sadaltager
+- Sulafat
+maxInputChars: 4000
+supportsSpeed: false
+# Pricing as listed by OpenRouter's ?output_modalities=speech filter:
+# prompt = per input character (the common TTS pricing), completion =
+# per second of generated audio for per-second-priced vendors. The
+# estimate is a fallback only — see planning/hotblack-audio.md §9.
+costPerChar: 0.0000005
+costPerSecond: 0.000006

@@ -71,6 +71,21 @@ public class SettingFormService {
      *  the first place. */
     public static final String CHOICES_FROM_AI_FIM_MODELS = "ai-fim-models";
 
+    /** TTS counterpart of {@link #CHOICES_FROM_AI_MODELS} — populates a
+     *  select with the {@code kind: tts} entries. Used by the Hotblack
+     *  {@code default:tts} alias picker. */
+    public static final String CHOICES_FROM_AI_TTS_MODELS = "ai-tts-models";
+
+    /** STT counterpart of {@link #CHOICES_FROM_AI_MODELS} — populates a
+     *  select with the {@code kind: stt} entries. Used by the Hotblack
+     *  {@code default:stt} alias picker. */
+    public static final String CHOICES_FROM_AI_STT_MODELS = "ai-stt-models";
+
+    /** Music counterpart of {@link #CHOICES_FROM_AI_MODELS} — populates a
+     *  select with the {@code kind: music} entries. Used by the Hotblack
+     *  {@code default:music} alias picker. */
+    public static final String CHOICES_FROM_AI_MUSIC_MODELS = "ai-music-models";
+
     /**
      * Research-source counterpart of {@link #CHOICES_FROM_AI_MODELS} —
      * populates a select with the configured search-source instance ids
@@ -276,6 +291,9 @@ public class SettingFormService {
         @Nullable List<FormChoiceDto> aiImageModelChoices = null;
         @Nullable List<FormChoiceDto> aiFimModelChoices = null;
         @Nullable List<FormChoiceDto> researchSourceChoices = null;
+        @Nullable List<FormChoiceDto> aiTtsModelChoices = null;
+        @Nullable List<FormChoiceDto> aiSttModelChoices = null;
+        @Nullable List<FormChoiceDto> aiMusicModelChoices = null;
         List<FormFieldDto> out = new ArrayList<>(fields.size());
         for (FormFieldDto f : fields) {
             String src = f.getChoicesFrom();
@@ -294,6 +312,21 @@ public class SettingFormService {
                     aiFimModelChoices = buildAiFimModelChoices(tenantId, projectId);
                 }
                 out.add(f.toBuilder().choices(aiFimModelChoices).build());
+            } else if (CHOICES_FROM_AI_TTS_MODELS.equals(src)) {
+                if (aiTtsModelChoices == null) {
+                    aiTtsModelChoices = buildAiTtsModelChoices(tenantId, projectId);
+                }
+                out.add(f.toBuilder().choices(aiTtsModelChoices).build());
+            } else if (CHOICES_FROM_AI_STT_MODELS.equals(src)) {
+                if (aiSttModelChoices == null) {
+                    aiSttModelChoices = buildAiSttModelChoices(tenantId, projectId);
+                }
+                out.add(f.toBuilder().choices(aiSttModelChoices).build());
+            } else if (CHOICES_FROM_AI_MUSIC_MODELS.equals(src)) {
+                if (aiMusicModelChoices == null) {
+                    aiMusicModelChoices = buildAiMusicModelChoices(tenantId, projectId);
+                }
+                out.add(f.toBuilder().choices(aiMusicModelChoices).build());
             } else if (CHOICES_FROM_RESEARCH_SOURCES.equals(src)) {
                 if (researchSourceChoices == null) {
                     researchSourceChoices = buildResearchSourceChoices(tenantId, projectId);
@@ -363,6 +396,39 @@ public class SettingFormService {
             out.add(FormChoiceDto.builder()
                     .value(value)
                     .label(java.util.Map.of("en", label))
+                    .build());
+        }
+        return out;
+    }
+
+    /** TTS-model counterpart of {@link #buildAiModelChoices}: only
+     *  {@code kind: tts} entries via {@link ModelCatalog#listAllTts}. */
+    private List<FormChoiceDto> buildAiTtsModelChoices(String tenantId, @Nullable String projectId) {
+        return audioModelChoices(modelCatalog.listAllTts(tenantId, projectId).stream()
+                .map(m -> m.provider() + ":" + m.modelName())
+                .toList());
+    }
+
+    /** STT-model counterpart: only {@code kind: stt} entries. */
+    private List<FormChoiceDto> buildAiSttModelChoices(String tenantId, @Nullable String projectId) {
+        return audioModelChoices(modelCatalog.listAllStt(tenantId, projectId).stream()
+                .map(m -> m.provider() + ":" + m.modelName())
+                .toList());
+    }
+
+    /** Music-model counterpart: only {@code kind: music} entries. */
+    private List<FormChoiceDto> buildAiMusicModelChoices(String tenantId, @Nullable String projectId) {
+        return audioModelChoices(modelCatalog.listAllMusic(tenantId, projectId).stream()
+                .map(m -> m.provider() + ":" + m.modelName())
+                .toList());
+    }
+
+    private static List<FormChoiceDto> audioModelChoices(List<String> values) {
+        List<FormChoiceDto> out = new ArrayList<>(values.size());
+        for (String value : values) {
+            out.add(FormChoiceDto.builder()
+                    .value(value)
+                    .label(java.util.Map.of("en", value))
                     .build());
         }
         return out;

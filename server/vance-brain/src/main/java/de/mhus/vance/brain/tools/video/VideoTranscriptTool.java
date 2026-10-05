@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.video;
 
 import de.mhus.vance.api.progress.StatusTag;
+import de.mhus.vance.brain.ai.audio.local.WhisperTranscriber;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.prompt.UntrustedContent;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;

@@ -1,0 +1,7 @@
+# Local faster-whisper (small) — offline speech-to-text via the bundled
+# Python wrapper. Unpriced: no vendor, no invoice — the call is counted
+# in the audio ledger with cost 0. Requires python3 + faster-whisper on
+# the host PATH (see readme/video-transcript-setup.md).
+kind: stt
+timeoutSeconds: 3600
+maxDurationSeconds: 10800

@@ -103,6 +103,7 @@ public class FenchurchService {
     private final ProgressEmitter progressEmitter;
     private final ThinkProcessService thinkProcessService;
     private final de.mhus.vance.brain.ai.UsageSink usageSink;
+    private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
 
     @Value("${vance.fenchurch.scheduler-pool-size:2}")
     private int schedulerPoolSize;
@@ -136,13 +137,19 @@ public class FenchurchService {
         validate(request);
         ensureEnabled(request);
 
-        long callStart = System.currentTimeMillis();
         String resolvedAlias =
                 request.getAlias() == null || request.getAlias().isBlank() ? DEFAULT_IMAGE_ALIAS : request.getAlias();
         AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
                 resolvedAlias, request.getTenantId(), request.getProjectId(), request.getProcessId());
+        ImageModelInfo modelInfo = requireImageModel(request, resolved);
+        return generateInternal(request, resolved, modelInfo, java.util.List.of());
+    }
 
-        ImageModelInfo modelInfo = modelCatalog
+    /** Resolve alias → (protocol, instance, model) → catalog image entry.
+     *  Shared by generate and edit — the gate is the same, only the
+     *  reference handling differs. */
+    private ImageModelInfo requireImageModel(GenerateImageRequest request, AiModelResolver.Resolved resolved) {
+        return modelCatalog
                 .lookupImage(
                         request.getTenantId(), request.getProjectId(),
                         resolved.providerInstance(), resolved.modelName())
@@ -155,6 +162,21 @@ public class FenchurchService {
                                 "No image model entry for "
                                         + resolved.provider() + ":" + resolved.modelName()
                                         + " — add it to ai-models.yaml with kind: image")));
+    }
+
+    /**
+     * Shared core of generate and edit: alias/model already resolved
+     * and catalog-gated by the callers; runs validation, quota, the
+     * provider call and the commit. References are empty for a plain
+     * text-to-image call and non-empty for an edit — the provider
+     * dispatch picks {@code edit} iff they are present.
+     */
+    private GenerateImageResult generateInternal(
+            GenerateImageRequest request,
+            AiModelResolver.Resolved resolved,
+            ImageModelInfo modelInfo,
+            java.util.List<de.mhus.vance.brain.ai.image.ImageReference> references) {
+        long callStart = System.currentTimeMillis();
 
         String aspectRatio = resolveAspectRatio(request, modelInfo);
         String prompt = composePrompt(request);
@@ -193,6 +215,8 @@ public class FenchurchService {
         }
         String reserveId = ((ImageCallTracker.Granted) reservation).reserveId();
 
+        String resolvedAlias =
+                request.getAlias() == null || request.getAlias().isBlank() ? DEFAULT_IMAGE_ALIAS : request.getAlias();
         ScheduledFuture<?> heartbeat = startHeartbeat(process, resolvedAlias, callStart);
 
         try {
@@ -217,7 +241,11 @@ public class FenchurchService {
             if (titleResolution.title() != null) {
                 stream.setTitle(titleResolution.title());
             }
-            imageService.generate(config, prompt, stream);
+            if (references.isEmpty()) {
+                imageService.generate(config, prompt, stream);
+            } else {
+                imageService.edit(config, prompt, references, stream);
+            }
         } catch (AiImageException e) {
             cancelHeartbeat(heartbeat);
             recordFailure(reserveId, request, config, callStart, e);
@@ -249,6 +277,97 @@ public class FenchurchService {
                 .durationMs(durationMs)
                 .title(committed.getTitle())
                 .build();
+    }
+
+    /**
+     * Edit one image: {@code prompt} plus the request's reference
+     * documents, routed to the provider's edit capability
+     * (image-to-image). Same contract as {@link #generate} —
+     * synchronous, commits the result document, books the real cost
+     * (the edit response carries {@code usage.cost} too, and input
+     * image tokens are part of it).
+     *
+     * <p>Catalog-gated capability: a model without
+     * {@code maxInputReferences > 0} is rejected before any provider
+     * call (cheap validation, no quota burn), and a reference count
+     * above the model's maximum likewise. The references themselves
+     * resolve through the same attachment pipeline the chat uses —
+     * scope-checked against the caller's project, image-MIME
+     * allowlist, size caps.
+     *
+     * @throws FenchurchException when the resolved model cannot
+     *         edit, the reference count exceeds the model's maximum,
+     *         a reference document is missing/foreign/oversize, or
+     *         any {@link #generate} failure applies
+     */
+    public GenerateImageResult editImage(GenerateImageRequest request) {
+        validate(request);
+        ensureEnabled(request);
+
+        java.util.List<String> refIds =
+                request.getReferenceDocumentIds() == null ? java.util.List.of() : request.getReferenceDocumentIds();
+        if (refIds.isEmpty()) {
+            throw new FenchurchException(
+                    FenchurchException.Reason.INVALID_CHOICE, "image_edit requires at least one referenceDocumentId");
+        }
+
+        String resolvedAlias =
+                request.getAlias() == null || request.getAlias().isBlank() ? DEFAULT_IMAGE_ALIAS : request.getAlias();
+        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
+                resolvedAlias, request.getTenantId(), request.getProjectId(), request.getProcessId());
+
+        ImageModelInfo modelInfo = requireImageModel(request, resolved);
+        if (!modelInfo.supportsImageEdit()) {
+            throw new FenchurchException(
+                    FenchurchException.Reason.INVALID_CHOICE,
+                    "Model " + resolved.provider() + ":" + resolved.modelName()
+                            + " does not accept reference images (maxInputReferences is 0)");
+        }
+        if (refIds.size() > modelInfo.maxInputReferences()) {
+            throw new FenchurchException(
+                    FenchurchException.Reason.INVALID_CHOICE,
+                    "Model " + resolved.provider() + ":" + resolved.modelName()
+                            + " accepts at most " + modelInfo.maxInputReferences()
+                            + " reference image(s), got " + refIds.size());
+        }
+
+        // Resolve through the attachment pipeline — scope, MIME and
+        // size caps all live there, one authority for chat and edit.
+        java.util.List<de.mhus.vance.brain.ai.image.ImageReference> references = resolveReferences(refIds, request);
+
+        return generateInternal(request, resolved, modelInfo, references);
+    }
+
+    /**
+     * Resolves reference documents through the shared attachment
+     * pipeline — scope check against the caller's project, image
+     * MIME allowlist, per-file and per-request size caps — and maps
+     * the results into the provider-agnostic {@code ImageReference}
+     * form. A non-image reference fails the edit with
+     * {@code invalid_choice}; the tool layer surfaces the message.
+     */
+    private java.util.List<de.mhus.vance.brain.ai.image.ImageReference> resolveReferences(
+            java.util.List<String> refIds, GenerateImageRequest request) {
+        java.util.List<de.mhus.vance.api.attachment.AttachmentRef> refs = refIds.stream()
+                .map(de.mhus.vance.api.attachment.AttachmentRef::new)
+                .toList();
+        java.util.List<de.mhus.vance.brain.ai.attachment.ResolvedAttachment> resolved;
+        try {
+            resolved = attachmentResolver.resolveAll(refs, request.getTenantId(), resolveProjectId(request));
+        } catch (de.mhus.vance.brain.ai.attachment.AttachmentException e) {
+            throw new FenchurchException(
+                    FenchurchException.Reason.INVALID_CHOICE, "Reference image rejected: " + e.getMessage(), e);
+        }
+        java.util.List<de.mhus.vance.brain.ai.image.ImageReference> out = new java.util.ArrayList<>(resolved.size());
+        for (de.mhus.vance.brain.ai.attachment.ResolvedAttachment att : resolved) {
+            if (!att.isImage()) {
+                throw new FenchurchException(
+                        FenchurchException.Reason.INVALID_CHOICE,
+                        "Reference document '" + att.originalFilename() + "' is not an image (" + att.mimeType() + ")");
+            }
+            out.add(new de.mhus.vance.brain.ai.image.ImageReference(att.documentId(), att.mimeType(), att.data()));
+        }
+        return out;
     }
 
     // ──────────────────── Validation / gating ────────────────────

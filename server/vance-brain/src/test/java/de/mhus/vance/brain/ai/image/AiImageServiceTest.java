@@ -156,6 +156,77 @@ class AiImageServiceTest {
     }
 
     @Test
+    void edit_fails_closed_when_provider_does_not_override() {
+        AiImageModelProvider stock = new AiImageModelProvider() {
+            @Override
+            public ProviderType getType() {
+                return ProviderType.OPENAI;
+            }
+
+            @Override
+            public void generate(AiImageConfig c, String p, ImageDestinationStream d) {}
+            // no edit() override — the default must fail closed
+        };
+        AiImageService service = new AiImageService(List.of(stock));
+        service.postConstruct();
+
+        java.util.List<de.mhus.vance.brain.ai.image.ImageReference> refs =
+                java.util.List.of(new de.mhus.vance.brain.ai.image.ImageReference(
+                        "doc-1", "image/png", new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.edit(
+                        new AiImageConfig("openai", "openai", "gpt-image-1", "key", null, "1:1", 60),
+                        "prompt",
+                        refs,
+                        new DiscardingStream()))
+                .isInstanceOf(AiImageException.class)
+                .hasMessageContaining("not supported");
+    }
+
+    @Test
+    void edit_dispatches_to_instance_provider() {
+        java.util.concurrent.atomic.AtomicReference<String> editSink =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        AiImageModelProvider dedicated = new AiImageModelProvider() {
+            @Override
+            public ProviderType getType() {
+                return ProviderType.OPENAI;
+            }
+
+            @Override
+            public java.util.Optional<String> getInstanceName() {
+                return java.util.Optional.of("openrouter");
+            }
+
+            @Override
+            public void generate(AiImageConfig c, String p, ImageDestinationStream d) {}
+
+            @Override
+            public void edit(
+                    AiImageConfig c,
+                    String p,
+                    java.util.List<de.mhus.vance.brain.ai.image.ImageReference> refs,
+                    ImageDestinationStream d) {
+                editSink.set("edited:" + refs.size());
+            }
+        };
+        AiImageService service = new AiImageService(List.of(dedicated));
+        service.postConstruct();
+
+        java.util.List<de.mhus.vance.brain.ai.image.ImageReference> refs =
+                java.util.List.of(new de.mhus.vance.brain.ai.image.ImageReference(
+                        "doc-1", "image/png", new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+
+        service.edit(
+                new AiImageConfig("openai", "openrouter", "seedream-5-0-flash", "key", null, "1:1", 60),
+                "prompt",
+                refs,
+                new DiscardingStream());
+
+        assertThat(editSink.get()).isEqualTo("edited:1");
+    }
+
+    @Test
     void duplicate_instance_provider_fails_at_setup() {
         AiImageModelProvider a = new AiImageModelProvider() {
             @Override

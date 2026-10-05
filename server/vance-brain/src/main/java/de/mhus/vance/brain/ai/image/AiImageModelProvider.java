@@ -62,4 +62,38 @@ public interface AiImageModelProvider {
      *                         decoding failure
      */
     void generate(AiImageConfig config, String prompt, ImageDestinationStream destination);
+
+    /**
+     * Generate one image from {@code prompt} <b>plus reference
+     * images</b> (image-to-image editing, style transfer, variations)
+     * and stream the result into {@code destination}.
+     *
+     * <p>References arrive already materialised: resolved from
+     * documents by the caller (Fenchurch) with mime type and bytes —
+     * providers do no document I/O. Ordering is preserved: the first
+     * reference is the primary subject.
+     *
+     * <p>Default implementation fails closed: a provider that does not
+     * override this does not support editing, and the catalog's
+     * {@code maxInputReferences} gate should have rejected the call
+     * before it ever reached the adapter. The override lives with the
+     * adapter because the wire shapes are genuinely different
+     * (OpenRouter: {@code input_references}; OpenAI: multipart
+     * {@code /images/edits}; Gemini: multimodal edit) — one contract,
+     * three transports.
+     *
+     * <p>Same destination contract as {@link #generate}: set mime +
+     * metadata, write bytes, {@link ImageDestinationStream#close()}
+     * exactly once on success — never on failure.
+     *
+     * @throws AiImageException on provider error, timeout, decoding
+     *                         failure, or when this adapter cannot edit
+     */
+    default void edit(
+            AiImageConfig config,
+            String prompt,
+            java.util.List<ImageReference> references,
+            ImageDestinationStream destination) {
+        throw new AiImageException("Image editing is not supported by the " + getName() + " adapter");
+    }
 }

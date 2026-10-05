@@ -21,14 +21,17 @@ public class GenerateImageRequest {
 
     /** Optional. Username of the caller — used for the user-scope
      *  style layer and as the {@code createdBy} field on the document. */
-    @Nullable String userId;
+    @Nullable
+    String userId;
 
     /** Optional. Project scope. {@code null} ⇒ tenant-system project. */
-    @Nullable String projectId;
+    @Nullable
+    String projectId;
 
     /** Optional. Process scope — used for both setting cascades and
      *  the progress side-channel. {@code null} disables heartbeat. */
-    @Nullable String processId;
+    @Nullable
+    String processId;
 
     /** Required. The image-generation prompt. */
     String prompt;
@@ -38,24 +41,39 @@ public class GenerateImageRequest {
      * routes the image to {@code images/<uuid>-<slug>.png} where the
      * slug is generated via the {@code image-title} LightLlm recipe.
      */
-    @Nullable String path;
+    @Nullable
+    String path;
 
     /**
      * Optional title override. {@code null} (the default) routes
      * through the {@code image-title} LightLlm recipe.
      */
-    @Nullable String title;
+    @Nullable
+    String title;
 
     /**
      * Optional aspect-ratio. {@code null} ⇒ the cascade default from
      * {@code ai.fenchurch.default_aspect_ratio} or hard-default
      * {@code 1:1}.
      */
-    @Nullable String aspectRatio;
+    @Nullable
+    String aspectRatio;
 
     /**
      * Model alias to resolve. {@code null} ⇒ {@code default:image}.
      * Use {@code default:image-high} to request the quality tier.
      */
-    @Nullable String alias;
+    @Nullable
+    String alias;
+
+    /**
+     * Reference images for image-to-image editing — document ids in
+     * the caller's project scope, resolved against the same attachment
+     * pipeline the chat uses (scope check, image MIME allowlist, size
+     * caps). Empty means a plain text-to-image call.
+     *
+     * <p>Only read by the edit path; {@code generate} ignores the field
+     * so both paths share this request type.
+     */
+    java.util.@Nullable List<String> referenceDocumentIds;
 }

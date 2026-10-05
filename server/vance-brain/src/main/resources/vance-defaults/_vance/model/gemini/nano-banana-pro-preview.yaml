@@ -3,6 +3,7 @@
 # gemini-3-pro-image; listed separately because the model listing
 # returns it as its own ID.
 kind: image
+maxInputReferences: 1
 timeoutSeconds: 360
 supportedAspectRatios:
 - '1:1'

@@ -390,14 +390,20 @@ class ModelCatalogTest {
     }
 
     @Test
-    void every_bundled_image_model_carries_a_standard_price() {
+    void every_bundled_image_model_carries_a_standard_price_or_vendor_cost() {
         // An empty costPerImage silently degrades ImageCallTracker to
-        // counting-without-billing, so a bundled entry must always price.
+        // counting-without-billing, so a bundled entry must always price —
+        // EXCEPT models of the openrouter instance: their dedicated provider
+        // books the real per-call cost from the response's usage.cost
+        // (effectiveCostUsd prefers the vendor fact), and their billing is
+        // token- or megapixel-based, which a flat costPerImage cannot
+        // express. For those, maxInputReferences >= 0 is enough: the edit
+        // gate and the cost header work without a flat estimate.
         assertThat(catalog.listAllImages(null, null))
                 .isNotEmpty()
-                .allSatisfy(info -> assertThat(info.costFor("standard"))
+                .allSatisfy(info -> assertThat(info.costFor("standard") != null || "openrouter".equals(info.provider()))
                         .as(info.provider() + ":" + info.modelName())
-                        .isNotNull());
+                        .isTrue());
     }
 
     @Test

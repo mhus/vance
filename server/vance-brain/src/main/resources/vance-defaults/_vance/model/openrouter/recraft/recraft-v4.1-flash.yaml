@@ -2,6 +2,7 @@
 # per-image billing ($0.007/image) — the cheapest image model on the
 # gateway, useful as the fast/draft tier.
 kind: image
+maxInputReferences: 0
 timeoutSeconds: 120
 supportedAspectRatios:
 - '1:1'

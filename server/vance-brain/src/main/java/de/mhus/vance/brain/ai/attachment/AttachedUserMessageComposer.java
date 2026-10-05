@@ -82,20 +82,27 @@ public class AttachedUserMessageComposer {
         try {
             resolved = attachmentResolver.resolveAll(refs, ctx.tenantId(), ctx.projectId());
         } catch (AttachmentException e) {
-            log.warn("attachment resolution failed for process '{}': {} — "
-                            + "falling back to text-only turn",
-                    ctx.processId(), e.getMessage());
-            return UserMessage.from(text
-                    + "\n\n[Attachment resolution failed: " + e.getMessage() + "]");
+            log.warn(
+                    "attachment resolution failed for process '{}': {} — " + "falling back to text-only turn",
+                    ctx.processId(),
+                    e.getMessage());
+            return UserMessage.from(text + "\n\n[Attachment resolution failed: " + e.getMessage() + "]");
         }
         List<Content> blocks = new ArrayList<>();
+        List<ResolvedAttachment> acceptedImages = new ArrayList<>();
         for (ResolvedAttachment att : resolved) {
             try {
-                blocks.add(StandardAiChat.toContentBlock(
-                        att, ctx.chatName(), ctx.providerType(), ctx.capabilities()));
+                blocks.add(StandardAiChat.toContentBlock(att, ctx.chatName(), ctx.providerType(), ctx.capabilities()));
+                if (att.isImage()) {
+                    acceptedImages.add(att);
+                }
             } catch (AttachmentException e) {
-                log.warn("attachment '{}' rejected by model '{}' (process '{}'): {} — skipping",
-                        att.originalFilename(), ctx.chatName(), ctx.processId(), e.getMessage());
+                log.warn(
+                        "attachment '{}' rejected by model '{}' (process '{}'): {} — skipping",
+                        att.originalFilename(),
+                        ctx.chatName(),
+                        ctx.processId(),
+                        e.getMessage());
             }
         }
         if (blocks.isEmpty()) {
@@ -104,7 +111,31 @@ public class AttachedUserMessageComposer {
             // than building a one-element multimodal message.
             return UserMessage.from(text);
         }
-        blocks.add(TextContent.from(text));
+        blocks.add(TextContent.from(editHintIfImages(acceptedImages) + text));
         return UserMessage.from(blocks);
+    }
+
+    /**
+     * Appends the image-edit bridge to the user text whenever the turn
+     * carries resolved image attachments: the document ids the
+     * {@code image_edit} tool expects as {@code referenceDocumentIds}.
+     * Without this hint the model sees the pixels but has no way to
+     * name the picture it is looking at — the whole image-to-image
+     * flow depends on the ids being in the prompt.
+     *
+     * <p>Placement above the user text keeps the ids adjacent to the
+     * blocks they belong to; the wording mirrors what the tool schema
+     * promises so the model can copy the ids verbatim.
+     */
+    private static String editHintIfImages(List<ResolvedAttachment> resolved) {
+        String ids = resolved.stream()
+                .filter(ResolvedAttachment::isImage)
+                .map(att -> "'" + att.documentId() + "'")
+                .collect(java.util.stream.Collectors.joining(", "));
+        if (ids.isEmpty()) {
+            return "";
+        }
+        return "[Attached image document ids: " + ids
+                + " — pass these as referenceDocumentIds to image_edit to edit or restyle them.]\n";
     }
 }

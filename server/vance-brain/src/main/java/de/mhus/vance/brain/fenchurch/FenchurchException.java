@@ -17,6 +17,7 @@ public class FenchurchException extends RuntimeException {
         CANCELLED(false),
         PROMPT_TOO_LONG(false),
         UNSUPPORTED_ASPECT_RATIO(false),
+        INVALID_CHOICE(false),
         DISABLED(false);
 
         private final boolean retryable;

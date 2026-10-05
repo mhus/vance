@@ -10,26 +10,22 @@ class ImageModelInfoTest {
 
     @Test
     void empty_aspect_ratios_default_to_one_to_one() {
-        ImageModelInfo info = new ImageModelInfo(
-                "openai", "gpt-image-1", Set.of(), 4000,
-                Map.of("standard", 0.04), 360);
+        ImageModelInfo info =
+                new ImageModelInfo("openai", "gpt-image-1", Set.of(), 4000, Map.of("standard", 0.04), 360, 0);
 
         assertThat(info.supportedAspectRatios()).containsExactly("1:1");
     }
 
     @Test
     void null_aspect_ratios_default_to_one_to_one() {
-        ImageModelInfo info = new ImageModelInfo(
-                "openai", "gpt-image-1", null, 4000,
-                Map.of("standard", 0.04), 360);
+        ImageModelInfo info = new ImageModelInfo("openai", "gpt-image-1", null, 4000, Map.of("standard", 0.04), 360, 0);
 
         assertThat(info.supportedAspectRatios()).containsExactly("1:1");
     }
 
     @Test
     void null_cost_map_normalizes_to_empty() {
-        ImageModelInfo info = new ImageModelInfo(
-                "openai", "gpt-image-1", Set.of("1:1"), 4000, null, 360);
+        ImageModelInfo info = new ImageModelInfo("openai", "gpt-image-1", Set.of("1:1"), 4000, null, 360, 0);
 
         assertThat(info.costPerImage()).isEmpty();
         assertThat(info.costFor("standard")).isNull();
@@ -37,12 +33,8 @@ class ImageModelInfoTest {
 
     @Test
     void non_positive_max_prompt_chars_falls_back_to_default() {
-        ImageModelInfo zero = new ImageModelInfo(
-                "openai", "gpt-image-1", Set.of("1:1"), 0,
-                Map.of(), 360);
-        ImageModelInfo negative = new ImageModelInfo(
-                "openai", "gpt-image-1", Set.of("1:1"), -10,
-                Map.of(), 360);
+        ImageModelInfo zero = new ImageModelInfo("openai", "gpt-image-1", Set.of("1:1"), 0, Map.of(), 360, 0);
+        ImageModelInfo negative = new ImageModelInfo("openai", "gpt-image-1", Set.of("1:1"), -10, Map.of(), 360, 0);
 
         assertThat(zero.maxPromptChars()).isEqualTo(ImageModelInfo.DEFAULT_MAX_PROMPT_CHARS);
         assertThat(negative.maxPromptChars()).isEqualTo(ImageModelInfo.DEFAULT_MAX_PROMPT_CHARS);
@@ -50,18 +42,15 @@ class ImageModelInfoTest {
 
     @Test
     void non_positive_timeout_falls_back_to_default() {
-        ImageModelInfo info = new ImageModelInfo(
-                "openai", "gpt-image-1", Set.of("1:1"), 4000,
-                Map.of(), 0);
+        ImageModelInfo info = new ImageModelInfo("openai", "gpt-image-1", Set.of("1:1"), 4000, Map.of(), 0, 0);
 
         assertThat(info.timeoutSeconds()).isEqualTo(ImageModelInfo.DEFAULT_TIMEOUT_SECONDS);
     }
 
     @Test
     void supportsAspectRatio_returns_true_for_listed_ratio() {
-        ImageModelInfo info = new ImageModelInfo(
-                "openai", "gpt-image-1", Set.of("1:1", "16:9"), 4000,
-                Map.of(), 360);
+        ImageModelInfo info =
+                new ImageModelInfo("openai", "gpt-image-1", Set.of("1:1", "16:9"), 4000, Map.of(), 360, 0);
 
         assertThat(info.supportsAspectRatio("1:1")).isTrue();
         assertThat(info.supportsAspectRatio("16:9")).isTrue();
@@ -71,8 +60,7 @@ class ImageModelInfoTest {
     @Test
     void costFor_returns_value_for_known_tier() {
         ImageModelInfo info = new ImageModelInfo(
-                "openai", "gpt-image-1", Set.of("1:1"), 4000,
-                Map.of("standard", 0.04, "hd", 0.08), 360);
+                "openai", "gpt-image-1", Set.of("1:1"), 4000, Map.of("standard", 0.04, "hd", 0.08), 360, 0);
 
         assertThat(info.costFor("standard")).isEqualTo(0.04);
         assertThat(info.costFor("hd")).isEqualTo(0.08);
@@ -83,8 +71,7 @@ class ImageModelInfoTest {
     void cost_map_is_defensively_copied() {
         Map<String, Double> mutable = new java.util.HashMap<>();
         mutable.put("standard", 0.04);
-        ImageModelInfo info = new ImageModelInfo(
-                "openai", "gpt-image-1", Set.of("1:1"), 4000, mutable, 360);
+        ImageModelInfo info = new ImageModelInfo("openai", "gpt-image-1", Set.of("1:1"), 4000, mutable, 360, 0);
 
         mutable.put("hd", 0.99);
 

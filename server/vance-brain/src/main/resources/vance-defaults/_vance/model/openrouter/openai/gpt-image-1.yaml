@@ -4,6 +4,7 @@
 # OpenAI's flat per-image price — `costPerImage` stays empty; a
 # 1024x1024 high render is roughly $0.15.
 kind: image
+maxInputReferences: 16
 timeoutSeconds: 360
 supportedAspectRatios:
 - '1:1'

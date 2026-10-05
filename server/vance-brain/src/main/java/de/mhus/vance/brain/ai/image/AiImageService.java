@@ -85,6 +85,29 @@ public class AiImageService {
     }
 
     /**
+     * Edit one image: {@code prompt} plus the given reference images,
+     * routed through the same instance-first dispatch as
+     * {@link #generate}.
+     *
+     * @throws AiImageException if no provider is registered or the
+     *                         selected adapter cannot edit (default
+     *                         {@link AiImageModelProvider#edit} fails closed)
+     */
+    public void edit(
+            AiImageConfig config, String prompt, List<ImageReference> references, ImageDestinationStream destination) {
+        AiImageModelProvider provider = providerFor(config);
+        if (provider == null) {
+            throw new AiImageException("No image adapter for provider " + config.provider()
+                    + (config.providerInstance().equals(config.provider())
+                            ? ""
+                            : " (instance " + config.providerInstance() + ")")
+                    + " — registered: " + providers.keySet()
+                    + (instanceProviders.isEmpty() ? "" : ", instances: " + instanceProviders.keySet()));
+        }
+        provider.edit(config, prompt, references, destination);
+    }
+
+    /**
      * Instance dispatch first, protocol dispatch second — see the
      * class doc for why the OpenRouter image adapter cannot hang off
      * the {@code openai} protocol key.

@@ -25,7 +25,8 @@ public record ImageModelInfo(
         Set<String> supportedAspectRatios,
         int maxPromptChars,
         Map<String, Double> costPerImage,
-        int timeoutSeconds) {
+        int timeoutSeconds,
+        int maxInputReferences) {
 
     /** Per-call HTTP timeout used when the catalog entry doesn't carry one. */
     public static final int DEFAULT_TIMEOUT_SECONDS = 360;
@@ -47,11 +48,24 @@ public record ImageModelInfo(
         if (timeoutSeconds <= 0) {
             timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
         }
+        if (maxInputReferences < 0) {
+            maxInputReferences = 0;
+        }
     }
 
     /** Whether {@code aspectRatio} is in the supported set. */
     public boolean supportsAspectRatio(String aspectRatio) {
         return supportedAspectRatios.contains(aspectRatio);
+    }
+
+    /**
+     * Whether this model accepts reference images (image-to-image
+     * editing / style transfer). {@code 0} means no — the request
+     * carries only the prompt. Catalog default when the model doc
+     * omits the field.
+     */
+    public boolean supportsImageEdit() {
+        return maxInputReferences > 0;
     }
 
     /**

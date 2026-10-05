@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
@@ -82,14 +83,48 @@ public class OpenRouterImageProvider implements AiImageModelProvider {
     @Override
     public void generate(AiImageConfig config, String prompt, ImageDestinationStream destination) {
         long start = System.currentTimeMillis();
-        String baseUrl = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
-        String imagesUrl = baseUrl.endsWith("/") ? baseUrl + "images" : baseUrl + "/images";
-
         ObjectNode body = MAPPER.createObjectNode();
         body.put("model", config.modelName());
         body.put("prompt", prompt);
         body.put("aspect_ratio", config.aspectRatio());
         body.put("n", 1);
+        executeAndCommit(config, body, start, destination);
+    }
+
+    @Override
+    public void edit(
+            AiImageConfig config,
+            String prompt,
+            java.util.List<de.mhus.vance.brain.ai.image.ImageReference> references,
+            ImageDestinationStream destination) {
+        if (references == null || references.isEmpty()) {
+            throw new AiImageException(
+                    "OpenRouter image edit requires at least one reference image for " + config.fullName());
+        }
+        long start = System.currentTimeMillis();
+        ObjectNode body = MAPPER.createObjectNode();
+        body.put("model", config.modelName());
+        body.put("prompt", prompt);
+        body.put("aspect_ratio", config.aspectRatio());
+        body.put("n", 1);
+        ArrayNode refs = body.putArray("input_references");
+        for (de.mhus.vance.brain.ai.image.ImageReference ref : references) {
+            ObjectNode part = refs.addObject();
+            part.put("type", "image_url");
+            part.putObject("image_url").put("url", ref.toDataUrl());
+        }
+        executeAndCommit(config, body, start, destination);
+    }
+
+    /**
+     * Shared request/response/commit path — {@code generate} and
+     * {@code edit} differ only in the body, everything after the POST
+     * is identical (same route, same response shape, same commit).
+     */
+    private void executeAndCommit(
+            AiImageConfig config, ObjectNode body, long start, ImageDestinationStream destination) {
+        String baseUrl = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
+        String imagesUrl = baseUrl.endsWith("/") ? baseUrl + "images" : baseUrl + "/images";
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(imagesUrl))

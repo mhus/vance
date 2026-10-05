@@ -2,6 +2,7 @@
 # Flat per-image billing ($0.045/image) — the quality tier of the
 # Seedream 5 family, a candidate `default:image-high`.
 kind: image
+maxInputReferences: 14
 timeoutSeconds: 240
 supportedAspectRatios:
 - '1:1'

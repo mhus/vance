@@ -1,6 +1,7 @@
 # Black Forest Labs FLUX 3 Image via OpenRouter's dedicated Image API.
 # Flat per-image billing ($0.041/image) — the current flagship FLUX.
 kind: image
+maxInputReferences: 10
 timeoutSeconds: 240
 supportedAspectRatios:
 - '1:1'

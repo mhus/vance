@@ -6,6 +6,7 @@
 # The model also bills 0.5K ($0.045), 2K ($0.101) and 4K ($0.151), but
 # Fenchurch does not select a resolution — see gemini-3-pro-image.yaml.
 kind: image
+maxInputReferences: 1
 timeoutSeconds: 180
 supportedAspectRatios:
 - '1:1'

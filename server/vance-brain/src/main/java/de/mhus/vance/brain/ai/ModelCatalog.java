@@ -674,7 +674,8 @@ public class ModelCatalog {
         int maxPromptChars = readInt(spec.get("maxPromptChars"), ImageModelInfo.DEFAULT_MAX_PROMPT_CHARS);
         Map<String, Double> costs = readCostMap(spec.get("costPerImage"), provider, modelName);
         int timeout = readInt(spec.get("timeoutSeconds"), ImageModelInfo.DEFAULT_TIMEOUT_SECONDS);
-        return new ImageModelInfo(provider, modelName, aspects, maxPromptChars, costs, timeout);
+        int maxRefs = readInt(spec.get("maxInputReferences"), 0);
+        return new ImageModelInfo(provider, modelName, aspects, maxPromptChars, costs, timeout, maxRefs);
     }
 
     /**
@@ -710,6 +711,7 @@ public class ModelCatalog {
             "supportedAspectRatios",
             "maxPromptChars",
             "costPerImage",
+            "maxInputReferences",
             // Discovery markers (informational)
             "discoveredBy",
             "discoveredAt");

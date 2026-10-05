@@ -6,6 +6,7 @@
 # Megapixel-based billing means no flat per-image rate, so
 # `costPerImage` stays empty — a 1K render is ~1 MP ≈ $0.014.
 kind: image
+maxInputReferences: 4
 timeoutSeconds: 120
 supportedAspectRatios:
 - '1:1'

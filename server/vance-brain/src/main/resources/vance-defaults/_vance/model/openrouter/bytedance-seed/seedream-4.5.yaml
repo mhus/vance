@@ -2,6 +2,7 @@
 # Flat per-image billing ($0.04 per generated image) — the cheapest
 # widely-capable Seedream tier with n up to 10 per call.
 kind: image
+maxInputReferences: 14
 timeoutSeconds: 180
 supportedAspectRatios:
 - '1:1'

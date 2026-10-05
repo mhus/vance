@@ -1,5 +1,6 @@
 # Gemini 2.5 Flash Image ("Nano Banana") — current `default:image`.
 kind: image
+maxInputReferences: 1
 timeoutSeconds: 90
 supportedAspectRatios:
 - '1:1'

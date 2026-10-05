@@ -3,6 +3,7 @@
 # billing ($0.00003/output_image token) — no flat per-image price,
 # `costPerImage` stays empty.
 kind: image
+maxInputReferences: 14
 timeoutSeconds: 180
 supportedAspectRatios:
 - '1:1'

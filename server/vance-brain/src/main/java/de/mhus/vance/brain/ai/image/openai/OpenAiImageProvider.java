@@ -77,6 +77,39 @@ public class OpenAiImageProvider implements AiImageModelProvider {
         writeToDestination(response.content(), config, durationMs, destination);
     }
 
+    @Override
+    public void edit(
+            AiImageConfig config,
+            String prompt,
+            java.util.List<de.mhus.vance.brain.ai.image.ImageReference> references,
+            ImageDestinationStream destination) {
+        if (references == null || references.isEmpty()) {
+            throw new AiImageException(
+                    "OpenAI image edit requires at least one reference image for " + config.fullName());
+        }
+        long start = System.currentTimeMillis();
+        OpenAiImageModel model = buildModel(config);
+        // The first reference is the edit subject; langchain4j's edit()
+        // takes one image (+ optional mask, out of scope v1). Extra
+        // references beyond the first are OpenAI-multi-image territory
+        // the adapter does not speak — the catalog's
+        // maxInputReferences gate on the openai instance docs keeps
+        // callers to one.
+        de.mhus.vance.brain.ai.image.ImageReference first = references.get(0);
+        Image image = Image.builder()
+                .base64Data(java.util.Base64.getEncoder().encodeToString(first.data()))
+                .mimeType(first.mimeType())
+                .build();
+        Response<Image> response;
+        try {
+            response = model.edit(image, prompt);
+        } catch (RuntimeException e) {
+            throw new AiImageException("OpenAI image edit failed for " + config.fullName() + ": " + e.getMessage(), e);
+        }
+        long durationMs = System.currentTimeMillis() - start;
+        writeToDestination(response.content(), config, durationMs, destination);
+    }
+
     private OpenAiImageModel buildModel(AiImageConfig config) {
         String baseUrl = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
         return OpenAiImageModel.builder()

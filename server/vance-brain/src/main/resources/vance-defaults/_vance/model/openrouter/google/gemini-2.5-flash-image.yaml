@@ -9,6 +9,7 @@
 # can't book a per-image cost. A rough 1024x1024 render is ~2800
 # output tokens ≈ $0.08.
 kind: image
+maxInputReferences: 3
 timeoutSeconds: 120
 supportedAspectRatios:
 - '1:1'

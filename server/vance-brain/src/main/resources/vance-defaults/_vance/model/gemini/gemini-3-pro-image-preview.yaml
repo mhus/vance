@@ -2,6 +2,7 @@
 # stable ID — kept as its own entry because the wire name differs and a
 # picker selection has to classify as `image` either way.
 kind: image
+maxInputReferences: 1
 timeoutSeconds: 360
 supportedAspectRatios:
 - '1:1'

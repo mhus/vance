@@ -2,6 +2,7 @@
 # cheap draft tier ($0.000008/output_image token — token-based, no
 # flat per-image rate, `costPerImage` stays empty).
 kind: image
+maxInputReferences: 16
 timeoutSeconds: 240
 supportedAspectRatios:
 - '1:1'

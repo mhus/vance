@@ -2,6 +2,7 @@
 # Flat per-image billing ($0.04/image). Quality param supported
 # (low/medium); n is fixed at 1.
 kind: image
+maxInputReferences: 3
 timeoutSeconds: 180
 supportedAspectRatios:
 - '1:1'

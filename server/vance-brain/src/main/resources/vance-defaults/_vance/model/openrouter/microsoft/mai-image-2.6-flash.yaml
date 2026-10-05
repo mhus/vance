@@ -3,6 +3,7 @@
 # no flat per-image price, `costPerImage` stays empty. Fast draft tier
 # of the MAI family.
 kind: image
+maxInputReferences: 5
 timeoutSeconds: 180
 supportedAspectRatios:
 - '1:1'

@@ -19,12 +19,13 @@ class FenchurchServiceEffectiveCostTest {
 
     private static ImageModelInfo flatPriced(double cost) {
         return new ImageModelInfo(
-                "openrouter", "seedream-5-0-flash", java.util.Set.of("1:1"), 4000, Map.of("standard", cost), 120);
+                "openrouter", "seedream-5-0-flash", java.util.Set.of("1:1"), 4000, Map.of("standard", cost), 120, 0);
     }
 
     private static ImageModelInfo tokenPriced() {
         // No costPerImage at all — the token-priced gateway shape.
-        return new ImageModelInfo("openrouter", "gemini-2.5-flash-image", java.util.Set.of("1:1"), 480, Map.of(), 120);
+        return new ImageModelInfo(
+                "openrouter", "gemini-2.5-flash-image", java.util.Set.of("1:1"), 480, Map.of(), 120, 0);
     }
 
     private static DocumentDocument committedWithHeaders(Map<String, String> headers) {

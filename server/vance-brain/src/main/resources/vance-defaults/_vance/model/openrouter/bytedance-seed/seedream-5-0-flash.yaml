@@ -3,6 +3,7 @@
 # Seedream 5 family, a candidate `default:image` for OpenRouter-only
 # tenants.
 kind: image
+maxInputReferences: 14
 timeoutSeconds: 120
 supportedAspectRatios:
 - '1:1'

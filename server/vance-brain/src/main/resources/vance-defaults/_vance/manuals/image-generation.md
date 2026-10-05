@@ -1,6 +1,6 @@
 ---
-triggers: generate image, create image, draw, paint, picture from prompt, Bild erzeugen, Bild generieren, illustration, render, AI image, image_generate, Fenchurch, Logo, Cover, Diagram from text, text-to-image
-summary: How to generate a new image from a text prompt with the Fenchurch service — tool contract, style layers, aspect ratios, anti-patterns.
+triggers: generate image, create image, draw, paint, picture from prompt, Bild erzeugen, Bild generieren, illustration, render, AI image, image_generate, Fenchurch, Logo, Cover, Diagram from text, text-to-image, image_edit, edit image, restyle, style transfer, image-to-image, Bild bearbeiten, variation
+summary: How to generate a new image from a text prompt, or edit an existing image with image_edit (style transfer, restyle, variation) — tool contracts, style layers, aspect ratios, anti-patterns.
 ---
 # Image Generation — Fenchurch
 
@@ -9,6 +9,11 @@ problem from `manual_read('embed-images')` (which shows existing
 pictures); this one is about producing them.
 
 ## When to use this
+
+Generate when there is no picture yet. **Edit** (`image_edit`) when
+the user references an existing image — "make it look like this",
+"restyle", "same but as watercolor", or an attached chat image to
+transform.
 
 User wants a picture that does not exist yet:
 
@@ -89,6 +94,33 @@ Aspect ratio goes into the tool param, **not** into the prompt
 text. Words like "Querformat" or "landscape orientation" in the
 prompt are unreliable — vendors interpret them inconsistently.
 
+## Editing an existing image — `image_edit`
+
+```
+image_edit(prompt, referenceDocumentIds, path?, title?, aspectRatio?, alias?)
+  → same success/error shape as image_generate
+```
+
+- **`referenceDocumentIds`** — document ids of the images to edit,
+  priority order (first = primary subject). These are the SAME ids
+  chat attachments carry: when the user attaches a picture, the
+  turn text carries a `[Attached image document ids: ...]` hint —
+  copy those ids here. `image_generate` results and `doc_read`
+  results carry ids too.
+- **`prompt`** — what to change: "make this a watercolor",
+  "replace the background with mountains". Describe the edit, not
+  the whole scene.
+- The model must support editing. OpenRouter models accept up to
+  14–16 references (seedream, gpt-image); `default:image`
+  (nano-banana) and `default:image-high` (gpt-image-1) accept one.
+  An unsupported model returns `invalid_choice` naming the limit —
+  pick another alias instead of retrying.
+- Cost: edit responses carry the real `usage.cost` including the
+  input image tokens; it books automatically, nothing to configure.
+
+Bulk edits ("make variations of these 20 sketches"): Marvin plan,
+one WORKER child per edit — same as bulk generation.
+
 ## Latency expectations
 
 - `default:image` (fast model, e.g. Gemini nano-banana): **3–10 s**
@@ -142,6 +174,9 @@ reasons and what to do:
 - `prompt_too_long` — exceed the model's prompt cap. Trim or
   shorten the style layer with `__none__`.
 - `unsupported_aspect_ratio` — pick one from the cheatsheet above.
+- `invalid_choice` (edit only) — the model cannot edit or the
+  reference count exceeds its maximum. Switch the alias or drop
+  references; retrying unchanged cannot succeed.
 - `disabled` — image generation is off in this tenant/project.
   Ask an admin to enable it.
 - `provider_error` — generic upstream failure. Retry up to 2× —

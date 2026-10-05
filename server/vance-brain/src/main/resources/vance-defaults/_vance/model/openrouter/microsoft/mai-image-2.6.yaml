@@ -2,6 +2,7 @@
 # Token-based billing ($0.000038/output_image token, Azure endpoint) —
 # no flat per-image price, `costPerImage` stays empty.
 kind: image
+maxInputReferences: 5
 timeoutSeconds: 240
 supportedAspectRatios:
 - '1:1'

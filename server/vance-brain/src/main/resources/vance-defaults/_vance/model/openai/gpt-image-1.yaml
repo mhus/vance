@@ -1,4 +1,9 @@
 kind: image
+# langchain4j edit() takes exactly one image; the OpenAI image
+# wire has no multi-reference form. Kept at 1 so image_edit works
+# through default:image-high but bulk references route to the
+# openrouter instance (seedream et al.).
+maxInputReferences: 1
 timeoutSeconds: 360
 supportedAspectRatios:
 - '1:1'

@@ -31,8 +31,7 @@ public class GeminiImageProvider implements AiImageModelProvider {
 
     private final String defaultBaseUrl;
 
-    public GeminiImageProvider(
-            @Value("${vance.ai.gemini.base-url:}") String baseUrl) {
+    public GeminiImageProvider(@Value("${vance.ai.gemini.base-url:}") String baseUrl) {
         this.defaultBaseUrl = baseUrl == null || baseUrl.isBlank() ? null : baseUrl;
     }
 
@@ -42,8 +41,7 @@ public class GeminiImageProvider implements AiImageModelProvider {
     }
 
     @Override
-    public void generate(AiImageConfig config, String prompt,
-                         ImageDestinationStream destination) {
+    public void generate(AiImageConfig config, String prompt, ImageDestinationStream destination) {
         long start = System.currentTimeMillis();
         GoogleAiGeminiImageModel model = buildModel(config);
         Response<Image> response;
@@ -51,21 +49,48 @@ public class GeminiImageProvider implements AiImageModelProvider {
             response = model.generate(prompt);
         } catch (RuntimeException e) {
             throw new AiImageException(
-                    "Gemini image generation failed for " + config.fullName()
-                            + ": " + e.getMessage(), e);
+                    "Gemini image generation failed for " + config.fullName() + ": " + e.getMessage(), e);
+        }
+        long durationMs = System.currentTimeMillis() - start;
+        writeToDestination(response.content(), config, durationMs, destination);
+    }
+
+    @Override
+    public void edit(
+            AiImageConfig config,
+            String prompt,
+            java.util.List<de.mhus.vance.brain.ai.image.ImageReference> references,
+            ImageDestinationStream destination) {
+        if (references == null || references.isEmpty()) {
+            throw new AiImageException(
+                    "Gemini image edit requires at least one reference image for " + config.fullName());
+        }
+        long start = System.currentTimeMillis();
+        GoogleAiGeminiImageModel model = buildModel(config);
+        // langchain4j's edit() takes one image (+ optional mask, out of
+        // scope v1); the first reference is the subject.
+        de.mhus.vance.brain.ai.image.ImageReference first = references.get(0);
+        Image image = Image.builder()
+                .base64Data(java.util.Base64.getEncoder().encodeToString(first.data()))
+                .mimeType(first.mimeType())
+                .build();
+        Response<Image> response;
+        try {
+            response = model.edit(image, prompt);
+        } catch (RuntimeException e) {
+            throw new AiImageException("Gemini image edit failed for " + config.fullName() + ": " + e.getMessage(), e);
         }
         long durationMs = System.currentTimeMillis() - start;
         writeToDestination(response.content(), config, durationMs, destination);
     }
 
     private GoogleAiGeminiImageModel buildModel(AiImageConfig config) {
-        GoogleAiGeminiImageModel.GoogleAiGeminiImageModelBuilder builder =
-                GoogleAiGeminiImageModel.builder()
-                        .apiKey(config.apiKey())
-                        .modelName(config.modelName())
-                        .aspectRatio(config.aspectRatio())
-                        .timeout(Duration.ofSeconds(config.timeoutSeconds()))
-                        .maxRetries(0);   // Fenchurch handles retries above.
+        GoogleAiGeminiImageModel.GoogleAiGeminiImageModelBuilder builder = GoogleAiGeminiImageModel.builder()
+                .apiKey(config.apiKey())
+                .modelName(config.modelName())
+                .aspectRatio(config.aspectRatio())
+                .timeout(Duration.ofSeconds(config.timeoutSeconds()))
+                .maxRetries(0); // Fenchurch handles retries above.
         if (config.baseUrl() != null) {
             builder.baseUrl(config.baseUrl());
         } else if (defaultBaseUrl != null) {
@@ -75,11 +100,9 @@ public class GeminiImageProvider implements AiImageModelProvider {
     }
 
     static void writeToDestination(
-            Image image, AiImageConfig config, long durationMs,
-            ImageDestinationStream destination) {
+            Image image, AiImageConfig config, long durationMs, ImageDestinationStream destination) {
         if (image == null) {
-            throw new AiImageException(
-                    "Gemini returned no image for " + config.fullName());
+            throw new AiImageException("Gemini returned no image for " + config.fullName());
         }
         byte[] bytes = decodeBytes(image, config);
         String mimeType = resolveMimeType(image.mimeType());
@@ -96,8 +119,8 @@ public class GeminiImageProvider implements AiImageModelProvider {
             destination.write(bytes, 0, bytes.length);
         } catch (RuntimeException e) {
             throw new AiImageException(
-                    "Failed to stream Gemini image into destination for "
-                            + config.fullName() + ": " + e.getMessage(), e);
+                    "Failed to stream Gemini image into destination for " + config.fullName() + ": " + e.getMessage(),
+                    e);
         }
         destination.close();
     }
@@ -105,16 +128,13 @@ public class GeminiImageProvider implements AiImageModelProvider {
     static byte[] decodeBytes(Image image, AiImageConfig config) {
         String b64 = image.base64Data();
         if (b64 == null || b64.isBlank()) {
-            throw new AiImageException(
-                    "Gemini image response carries no base64 data for "
-                            + config.fullName());
+            throw new AiImageException("Gemini image response carries no base64 data for " + config.fullName());
         }
         try {
             return Base64.getDecoder().decode(b64);
         } catch (IllegalArgumentException e) {
             throw new AiImageException(
-                    "Failed to decode Gemini base64 image data for "
-                            + config.fullName() + ": " + e.getMessage(), e);
+                    "Failed to decode Gemini base64 image data for " + config.fullName() + ": " + e.getMessage(), e);
         }
     }
 

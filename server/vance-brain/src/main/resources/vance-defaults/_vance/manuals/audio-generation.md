@@ -22,6 +22,24 @@ All are **synchronous**: one call, one blocking wait, one document.
 Do NOT loop to "improve" a result — every call costs money. For bulk
 voice-over, spawn one child per item (Marvin plan).
 
+## Working with audio the user provides
+
+- The user **drops an audio file into the chat** (or names one in the
+  project): that is `audio_transcribe` material — the attachment hint
+  carries the document id, pass it as `documentId`. Nothing else can
+  consume audio yet (no audio understanding in chat).
+- A **YouTube link** is `video_transcript`, not `audio_transcribe`
+  (caption track first — cheaper, faster, better).
+- **Long recordings:** tell the user cost and latency before you
+  start (see Costs below). For hour-long material ask first whether
+  they want the full transcript or a summary (transcribe, then
+  summarize).
+- The transcript is text: pass `path` to persist it as a document
+  when it is long or should stay around; return it inline when the
+  user just asked "what did they say".
+- Generated audio is a document like any other — link it in your
+  reply (`[listen](path)`), don't describe it at length.
+
 ## Language
 
 - `audio_speak` speaks the **conversation language** by default — pass

@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -104,14 +105,8 @@ public class AnthropicProvider extends AbstractChatProvider {
         // own client with the larger budget.
         Duration streamTimeout = Duration.ofSeconds(
                 modelInfo.scaledStreamTimeoutSeconds(effective.getTimeoutSeconds(), effective.getEstInputTokens()));
-        AnthropicClient client = AnthropicOkHttpClient.builder()
-                .apiKey(config.apiKey())
-                .timeout(timeout)
-                .build();
-        AnthropicClient streamClient = AnthropicOkHttpClient.builder()
-                .apiKey(config.apiKey())
-                .timeout(streamTimeout)
-                .build();
+        AnthropicClient client = newClient(config.apiKey(), config.baseUrl(), timeout);
+        AnthropicClient streamClient = newClient(config.apiKey(), config.baseUrl(), streamTimeout);
         ChatModel sync = new AnthropicDirectChatModel(client, config.modelName(), maxTokens, effective, modelInfo);
         StreamingChatModel streaming = new AnthropicDirectStreamingChatModel(
                 streamClient, config.modelName(), maxTokens, effective, modelInfo);
@@ -123,6 +118,27 @@ public class AnthropicProvider extends AbstractChatProvider {
                 effective.getCacheTtl(),
                 effective.getThinkingLevel());
         return new BuiltChat(sync, streaming);
+    }
+
+    /**
+     * Fresh SDK client for one chat instance.
+     *
+     * <p>{@code baseUrl} is the per-instance gateway override from the
+     * {@code ai.provider.<instance>.baseUrl} setting ({@link AiChatConfig#baseUrl()}).
+     * Anthropic-wire gateways speak the same {@code /v1/messages} protocol behind
+     * a different host — {@code https://openrouter.ai/api} for an OpenRouter
+     * instance, for example — so the only thing that changes is the base URL.
+     * {@code null} keeps the SDK default ({@code https://api.anthropic.com}).
+     * Authentication stays the API key ({@code x-api-key}); gateways that expose
+     * an Anthropic-compatible endpoint accept the same header.
+     */
+    private static AnthropicClient newClient(String apiKey, @Nullable String baseUrl, Duration timeout) {
+        AnthropicOkHttpClient.Builder builder =
+                AnthropicOkHttpClient.builder().apiKey(apiKey).timeout(timeout);
+        if (baseUrl != null && !baseUrl.isBlank()) {
+            builder.baseUrl(baseUrl);
+        }
+        return builder.build();
     }
 
     /**

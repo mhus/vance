@@ -90,8 +90,18 @@ final class AnthropicRequestMapper {
 
         Map<String, Object> body = buildBody(request, options, modelInfo);
         for (Map.Entry<String, Object> e : body.entrySet()) {
+            if ("messages".equals(e.getKey())) {
+                // Typed below: `messages` is a required *typed* field of
+                // MessageCreateParams — an additional body property serializes
+                // but does not satisfy the required check, so the SDK refuses to
+                // build the request at all (`messages` is required, but was not set).
+                continue;
+            }
             builder.putAdditionalBodyProperty(e.getKey(), JsonValue.from(e.getValue()));
         }
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> messages = (List<Map<String, Object>>) body.get("messages");
+        builder.messages(AnthropicMessageParams.messageParams(messages));
     }
 
     /**

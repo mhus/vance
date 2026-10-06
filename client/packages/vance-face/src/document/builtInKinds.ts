@@ -47,6 +47,7 @@ import {
 } from '@/kindViews/providerDocCodec';
 import { recipeSettingsProvider } from '@/kindViews/recipeSettingsProvider';
 import { chatThemeSettingsProvider, reportThemeSettingsProvider } from '@/kindViews/themeSettingsProvider';
+import { promptSettingsProvider } from '@/kindViews/promptSettingsProvider';
 import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
@@ -243,6 +244,19 @@ export function registerBuiltInKinds(): void {
     matches: (kind) => (kind ?? '').toLowerCase() === 'vance-report-theme',
     tabLabelKey: 'documents.reportThemeView.tabLabel',
     settingsProvider: reportThemeSettingsProvider,
+  });
+  // ── Engine prompts: tiered overrides (settings area, raw Markdown) ──
+  // _vance/prompts/<engine>-prompt.md, server truth EnginePromptResolver —
+  // the tenant shadows the bundled classpath prompts by name. Like recipes
+  // and themes: no view and no codec, the settings host falls back to its
+  // CodeEditor (markdown via mime type). Unlike themes there IS a server
+  // handler: prompts render as Pebble per turn, a syntax error fails the
+  // turn, not a fallback — PromptDocKindHandler compiles the body.
+  registerKind({
+    id: 'vance-prompt',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-prompt',
+    tabLabelKey: 'documents.promptView.tabLabel',
+    settingsProvider: promptSettingsProvider,
   });
   registerKind<MountSourceDoc>({
     id: 'vance-mount-source',

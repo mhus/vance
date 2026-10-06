@@ -1268,6 +1268,9 @@ export default {
     reportThemeView: {
       tabLabel: 'Report-Theme',
     },
+    promptView: {
+      tabLabel: 'Prompt',
+    },
     providerDocView: {
       tabLabel: 'Provider',
     },
@@ -3686,6 +3689,11 @@ export default {
       reportThemes: {
         title: 'Report-Themes',
         createHint: 'Kebab-Case-Name (nur Kleinbuchstaben, Ziffern, Bindestrich) — er wird über den Frontmatter-Key theme gewählt.',
+      },
+      prompts: {
+        title: 'Prompts',
+        createHint:
+          'Name des zu überschreibenden Engine-Prompts (z.B. arthur-prompt) — gleiche Datei, eigene Ebene: das Dokument schattiert die gebündelte Version.',
       },
       backToAreas: 'Zurück zu den Bereichen',
       backToEntries: 'Zurück zur Liste',

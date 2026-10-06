@@ -1259,6 +1259,9 @@ export default {
     modelDocView: {
       tabLabel: 'Modell',
     },
+    recipeView: {
+      tabLabel: 'Recipe',
+    },
     providerDocView: {
       tabLabel: 'Provider',
     },
@@ -3665,6 +3668,10 @@ export default {
         title: 'KI-Modelle',
         createHint:
           'Nur den Provider-Namen für eine neue Provider-Instanz; „provider/modell“ für ein neues Modell-Dokument.',
+      },
+      recipes: {
+        title: 'Recipes',
+        createHint: 'Kebab-Case-Name — er wird zum Dateinamen und damit zum Recipe-Namen.',
       },
       backToAreas: 'Zurück zu den Bereichen',
       backToEntries: 'Zurück zur Liste',

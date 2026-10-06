@@ -45,6 +45,7 @@ import {
   serializeProviderDoc,
   type ProviderDoc,
 } from '@/kindViews/providerDocCodec';
+import { recipeSettingsProvider } from '@/kindViews/recipeSettingsProvider';
 import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
@@ -209,6 +210,19 @@ export function registerBuiltInKinds(): void {
     view: defineAsyncComponent(
       () => import('@/kindViews/ProviderDocFormView.vue'),
     ),
+  });
+  // ── Recipe: named configuration bundle (settings area, raw editor) ──
+  // _vance/recipes/<name>.yaml, server truth RecipeLoader. Deliberately no
+  // view and no codec: recipe YAMLs are the most complex configuration
+  // documents there are, so the settings host falls back to its raw YAML
+  // editor with save — inventory, create, delete, edit in place. The
+  // listing is flat and location-based: what the loader resolves by name,
+  // not the Slart working trees below it.
+  registerKind({
+    id: 'vance-recipe',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-recipe',
+    tabLabelKey: 'documents.recipeView.tabLabel',
+    settingsProvider: recipeSettingsProvider,
   });
   registerKind<MountSourceDoc>({
     id: 'vance-mount-source',

@@ -1257,6 +1257,9 @@ export default {
     modelDocView: {
       tabLabel: 'Model',
     },
+    recipeView: {
+      tabLabel: 'Recipe',
+    },
     providerDocView: {
       tabLabel: 'Provider',
     },
@@ -3645,6 +3648,10 @@ export default {
         title: 'AI models',
         createHint:
           'Just the provider name for a new provider instance; "provider/model" for a new model document.',
+      },
+      recipes: {
+        title: 'Recipes',
+        createHint: 'A kebab-case name — it becomes the filename and with it the recipe name.',
       },
       backToAreas: 'Back to areas',
       backToEntries: 'Back to the list',

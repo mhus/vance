@@ -48,6 +48,9 @@ import {
 import { recipeSettingsProvider } from '@/kindViews/recipeSettingsProvider';
 import { chatThemeSettingsProvider, reportThemeSettingsProvider } from '@/kindViews/themeSettingsProvider';
 import { promptSettingsProvider } from '@/kindViews/promptSettingsProvider';
+import { schedulerSettingsProvider } from '@/kindViews/schedulerSettingsProvider';
+import { workflowSettingsProvider } from '@/kindViews/workflowSettingsProvider';
+import { hookSettingsProvider } from '@/kindViews/hookSettingsProvider';
 import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
@@ -138,6 +141,10 @@ export function registerBuiltInKinds(): void {
     view: defineAsyncComponent(
       () => import('@/kindViews/WorkflowFlowView.vue'),
     ),
+    // Settings 'Bereiche' area over _vance/workflows/ — the graph is a
+    // viewer (no update:doc), so the area renders it inline and leaves
+    // authoring to the raw editor.
+    settingsProvider: workflowSettingsProvider,
   });
 
   // ── Ursa scheduler: form view over the definition ────────────────
@@ -154,6 +161,9 @@ export function registerBuiltInKinds(): void {
     view: defineAsyncComponent(
       () => import('@/kindViews/SchedulerFormView.vue'),
     ),
+    // Settings 'Bereiche' area over _vance/scheduler/ — the same typed
+    // form inline; manual fire and run events stay in Insights.
+    settingsProvider: schedulerSettingsProvider,
   });
   // ── Research source: form view over a source-config document ────
   // Model = the whole YAML map (researchSourceCodec): the form owns
@@ -269,6 +279,18 @@ export function registerBuiltInKinds(): void {
       () => import('@/kindViews/MountSourceFormView.vue'),
     ),
     settingsProvider: mountSourceSettingsProvider,
+  });
+  // ── Ursa hooks: event hook definitions (settings area, raw YAML) ──
+  // _vance/hooks/<event>/<name>.yaml, server truth UrsaHookLoader — the
+  // event is a path segment, the body is one TriggerAction (recipe /
+  // script / workflow). Like recipes: no view and no codec, the settings
+  // host falls back to its raw YAML editor; HookDocKindHandler surfaces
+  // what the loader would silently skip.
+  registerKind({
+    id: 'vance-hook',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-hook',
+    tabLabelKey: 'documents.hookView.tabLabel',
+    settingsProvider: hookSettingsProvider,
   });
   // ── Age: locked-state view for encrypted documents ────────────
   // An age-encrypted document renders here while no imported key fits

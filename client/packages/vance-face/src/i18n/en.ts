@@ -1269,6 +1269,9 @@ export default {
     promptView: {
       tabLabel: 'Prompt',
     },
+    hookView: {
+      tabLabel: 'Hook',
+    },
     providerDocView: {
       tabLabel: 'Provider',
     },
@@ -3674,6 +3677,20 @@ export default {
         title: 'Prompts',
         createHint:
           'The name of the engine prompt to override (e.g. arthur-prompt) — same file, own layer: the document shadows the bundled version.',
+      },
+      schedulers: {
+        title: 'Schedulers',
+        createHint:
+          'Kebab-case name — it becomes the file name and with it the scheduler name. Firing and the event log stay in Insights.',
+      },
+      workflows: {
+        title: 'Workflows',
+        createHint: 'Kebab-case name — it becomes the file name and with it the workflow name.',
+      },
+      hooks: {
+        title: 'Hooks',
+        createHint:
+          '"event/hook-name" — e.g. process.completed/notify-owner. The event is a path segment, the name lowercase with _ and -.',
       },
       backToAreas: 'Back to areas',
       backToEntries: 'Back to the list',

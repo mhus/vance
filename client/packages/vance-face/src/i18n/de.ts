@@ -1271,6 +1271,9 @@ export default {
     promptView: {
       tabLabel: 'Prompt',
     },
+    hookView: {
+      tabLabel: 'Hook',
+    },
     providerDocView: {
       tabLabel: 'Provider',
     },
@@ -3694,6 +3697,20 @@ export default {
         title: 'Prompts',
         createHint:
           'Name des zu überschreibenden Engine-Prompts (z.B. arthur-prompt) — gleiche Datei, eigene Ebene: das Dokument schattiert die gebündelte Version.',
+      },
+      schedulers: {
+        title: 'Scheduler',
+        createHint:
+          'Kebab-Case-Name — er wird zum Dateinamen und damit zum Scheduler-Namen. Feuern und Ereignisprotokoll bleiben in den Insights.',
+      },
+      workflows: {
+        title: 'Workflows',
+        createHint: 'Kebab-Case-Name — er wird zum Dateinamen und damit zum Workflow-Namen.',
+      },
+      hooks: {
+        title: 'Hooks',
+        createHint:
+          '„event/hook-name“ — z.B. process.completed/notify-owner. Das Event ist ein Pfadsegment, der Name klein mit _ und -.',
       },
       backToAreas: 'Zurück zu den Bereichen',
       backToEntries: 'Zurück zur Liste',

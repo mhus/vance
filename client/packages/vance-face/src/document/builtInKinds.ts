@@ -46,6 +46,7 @@ import {
   type ProviderDoc,
 } from '@/kindViews/providerDocCodec';
 import { recipeSettingsProvider } from '@/kindViews/recipeSettingsProvider';
+import { chatThemeSettingsProvider, reportThemeSettingsProvider } from '@/kindViews/themeSettingsProvider';
 import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
@@ -223,6 +224,25 @@ export function registerBuiltInKinds(): void {
     matches: (kind) => (kind ?? '').toLowerCase() === 'vance-recipe',
     tabLabelKey: 'documents.recipeView.tabLabel',
     settingsProvider: recipeSettingsProvider,
+  });
+  // ── CSS themes: chat transcript + PDF report (settings areas, raw CSS) ──
+  // One named .css per theme, flat folder, [a-z0-9-]+ names, first-match
+  // cascade — identical mechanics, different vocabulary (chat-themes.md /
+  // report-themes.md). Like recipes: no view and no codec, the settings
+  // host falls back to its CodeEditor (CSS highlighting via mime type).
+  // No server KindHandler — both pipelines are fail-open by design, there
+  // is no finding a validator could report the runtime would not absorb.
+  registerKind({
+    id: 'vance-chat-theme',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-chat-theme',
+    tabLabelKey: 'documents.chatThemeView.tabLabel',
+    settingsProvider: chatThemeSettingsProvider,
+  });
+  registerKind({
+    id: 'vance-report-theme',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-report-theme',
+    tabLabelKey: 'documents.reportThemeView.tabLabel',
+    settingsProvider: reportThemeSettingsProvider,
   });
   registerKind<MountSourceDoc>({
     id: 'vance-mount-source',

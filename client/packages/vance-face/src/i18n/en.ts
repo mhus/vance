@@ -1260,6 +1260,12 @@ export default {
     recipeView: {
       tabLabel: 'Recipe',
     },
+    chatThemeView: {
+      tabLabel: 'Chat theme',
+    },
+    reportThemeView: {
+      tabLabel: 'Report theme',
+    },
     providerDocView: {
       tabLabel: 'Provider',
     },
@@ -3652,6 +3658,14 @@ export default {
       recipes: {
         title: 'Recipes',
         createHint: 'A kebab-case name — it becomes the filename and with it the recipe name.',
+      },
+      chatThemes: {
+        title: 'Chat themes',
+        createHint: 'A kebab-case name (lowercase letters, digits, dash only) — recipes pick it via the webTheme field.',
+      },
+      reportThemes: {
+        title: 'Report themes',
+        createHint: 'A kebab-case name (lowercase letters, digits, dash only) — documents pick it via the theme frontmatter key.',
       },
       backToAreas: 'Back to areas',
       backToEntries: 'Back to the list',

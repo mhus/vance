@@ -8,8 +8,10 @@
  * <p>Params owned here:
  *  - `scope` — the selected scope row. {@code tenant} and {@code user}
  *    are keywords; any other value is a project name.
- *  - `tab`   — {@code areas} (settings-doc kinds), {@code raw} (the
- *    advanced key/value editor) or omitted for the default forms tab.
+ *  - `tab`   - {@code areas} (settings-doc kinds), {@code raw} (the
+ *    advanced key/value editor), {@code project} (project properties
+ *    + kits; only valid for a project scope) or omitted for the
+ *    default forms tab.
  *  - `form`  — name of the open Setting Form (forms tab).
  *  - `area`  — kind id of the open area (Bereiche tab).
  *  - `entry` — document id of the open area entry (Bereiche tab).
@@ -21,8 +23,8 @@
 /** The three persisted setting layers in their wire form. */
 export type SettingsScopeKind = 'tenant' | 'user' | 'project';
 
-/** Tabs: areas (settings-doc kinds) · forms (default) · raw (advanced). */
-export type SettingsTab = 'areas' | 'forms' | 'raw';
+/** Tabs: areas (settings-doc kinds) · forms (default) · project (properties + kits, project scopes only) · raw (advanced). */
+export type SettingsTab = 'areas' | 'forms' | 'project' | 'raw';
 
 export interface SettingsView {
   /** Scope keyword (`tenant`/`user`) or project name. */
@@ -66,7 +68,9 @@ export function parseSettingsView(
   const scope = params.get(SCOPE_PARAM)?.trim() || fallbackScope;
   const tabParam = params.get(TAB_PARAM);
   const tab: SettingsTab =
-    tabParam === 'areas' ? 'areas' : tabParam === 'raw' ? 'raw' : 'forms';
+    tabParam === 'areas' || tabParam === 'project' || tabParam === 'raw'
+      ? tabParam
+      : 'forms';
   return {
     scope,
     tab,

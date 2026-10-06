@@ -3580,6 +3580,7 @@ export default {
     },
     tab: {
       areas: 'Areas',
+      project: 'Project',
       forms: 'Settings',
       raw: 'Advanced',
     },

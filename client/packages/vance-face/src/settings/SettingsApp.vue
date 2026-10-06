@@ -13,6 +13,7 @@ import {
 } from '@/components';
 import RawSettingsPanel from './RawSettingsPanel.vue';
 import AreaEntryView from './AreaEntryView.vue';
+import ProjectTab from './ProjectTab.vue';
 import { useProfile } from '@/composables/useProfile';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { recallProject, rememberProject } from '@/platform/lastProject';
@@ -112,6 +113,28 @@ const registryScope = computed<SettingsScope>(() => ({
   login: login.value || undefined,
 }));
 
+/** The project tab exists only for a project scope. */
+const isProjectScope = computed(() => scopeKeyword(view.value.scope) === null);
+
+/**
+ * The tab the content renders: `project` is scope-gated — a URL that
+ * carries it for a tenant/user scope (stale link, back-button) falls back
+ * to the forms tab instead of rendering an empty shell.
+ */
+const effectiveTab = computed<SettingsView['tab']>(() =>
+  view.value.tab === 'project' && !isProjectScope.value ? 'forms' : view.value.tab);
+
+const tabDefs = computed(() => {
+  const defs: Array<{ id: SettingsView['tab']; label: string }> = [
+    { id: 'areas', label: t('settings.tab.areas') },
+    { id: 'forms', label: t('settings.tab.forms') },
+  ];
+  if (isProjectScope.value) {
+    defs.push({ id: 'project', label: t('settings.tab.project') });
+  }
+  defs.push({ id: 'raw', label: t('settings.tab.raw') });
+  return defs;
+});
 const activeForm = computed<SettingFormSummaryDto | null>(() => {
   if (!view.value.form) return null;
   return forms.value.find((f) => f.name === view.value.form) ?? null;
@@ -226,10 +249,14 @@ function navigate(next: SettingsView): void {
 function selectScope(scope: string): void {
   // Keep the tab (and the open area — it exists per layer) when hopping
   // scopes; never a stale form or entry — their context shifts with the
-  // scope.
+  // scope. The project tab is scope-gated: leaving a project with it
+  // open lands on the forms tab, not on a guarded fallback.
+  const nextTab = view.value.tab === 'project' && scopeKeyword(scope) !== null
+    ? 'forms'
+    : view.value.tab;
   navigate({
     scope,
-    tab: view.value.tab,
+    tab: nextTab,
     form: null,
     area: view.value.area,
     entry: null,
@@ -428,16 +455,12 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
 
       <div role="tablist" class="flex gap-1 border-b border-base-300">
         <button
-          v-for="tabDef in ([
-            { id: 'areas', label: t('settings.tab.areas') },
-            { id: 'forms', label: t('settings.tab.forms') },
-            { id: 'raw', label: t('settings.tab.raw') },
-          ] as const)"
+          v-for="tabDef in tabDefs"
           :key="tabDef.id"
           type="button"
           role="tab"
           class="px-3 py-1.5 text-sm font-semibold border-b-2 transition-colors"
-          :class="view.tab === tabDef.id
+          :class="effectiveTab === tabDef.id
             ? 'border-primary text-primary'
             : 'border-transparent opacity-60 hover:opacity-100'"
           @click="selectTab(tabDef.id)"
@@ -447,7 +470,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
       </div>
 
       <!-- ─── Tab: Bereiche (settings-doc kinds) ─── -->
-      <template v-if="view.tab === 'areas'">
+      <template v-if="effectiveTab === 'areas'">
         <!-- Level 3: open entry, inline view -->
         <template v-if="activeArea && activeEntry">
           <div class="flex items-center gap-2">
@@ -533,7 +556,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
       </template>
 
       <!-- ─── Tab: Settings (guided forms) ─── -->
-      <template v-else-if="view.tab === 'forms'">
+      <template v-else-if="effectiveTab === 'forms'">
         <template v-if="activeForm">
           <div class="flex items-center gap-2">
             <VButton variant="ghost" size="sm" @click="backToFormsListing">
@@ -580,6 +603,14 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
             </button>
           </div>
         </template>
+      </template>
+
+      <!-- ─── Tab: Projekt (properties + kits) ─── -->
+      <template v-else-if="effectiveTab === 'project' && isProjectScope">
+        <ProjectTab
+          :project-name="view.scope"
+          :groups="tenantProjects.groups.value"
+        />
       </template>
 
       <!-- ─── Tab: Erweitert (raw editor) ─── -->

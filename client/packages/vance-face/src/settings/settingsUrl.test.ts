@@ -52,6 +52,7 @@ describe('parseSettingsView', () => {
     expect(parseSettingsView('?scope=user&tab=nonsense', 'tenant').tab).toBe('forms');
     expect(parseSettingsView('?scope=user&tab=raw', 'tenant').tab).toBe('raw');
     expect(parseSettingsView('?scope=user&tab=areas', 'tenant').tab).toBe('areas');
+    expect(parseSettingsView('?scope=user&tab=project', 'tenant').tab).toBe('project');
     expect(parseSettingsView('?scope=user', 'tenant').tab).toBe('forms');
   });
 });

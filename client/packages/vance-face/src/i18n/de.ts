@@ -3600,6 +3600,7 @@ export default {
     },
     tab: {
       areas: 'Bereiche',
+      project: 'Projekt',
       forms: 'Settings',
       raw: 'Erweitert',
     },

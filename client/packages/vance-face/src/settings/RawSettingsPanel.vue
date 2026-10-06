@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   VAlert,
@@ -38,6 +38,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const settingsState = useScopeSettings();
 
+
 const newSettingKey = ref('');
 const newSettingType = ref<SettingType>(SettingType.STRING);
 const newSettingValue = ref('');
@@ -45,6 +46,21 @@ const newSettingDescription = ref('');
 const editingKey = ref<string | null>(null);
 const editValue = ref('');
 const editDescription = ref('');
+
+// Load the scope's settings whenever the panel mounts or the scope
+// changes — the listing is the panel's whole purpose; upsert/remove
+// only reload as a side-effect of a write. Without this the tab
+// renders the empty state until the first mutation. Watch AFTER the
+// refs above: immediate:true runs the callback synchronously during
+// setup, where an earlier-positioned watch would hit the refs' TDZ.
+watch(
+  () => [props.referenceType, props.referenceId] as const,
+  ([type, id]) => {
+    editingKey.value = null;
+    void settingsState.load(type, id);
+  },
+  { immediate: true },
+);
 
 const settingTypeOptions = [
   { value: SettingType.STRING, label: t('settings.raw.types.string') },

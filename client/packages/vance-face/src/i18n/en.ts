@@ -3579,14 +3579,34 @@ export default {
       emptyBody: 'Projects you can access appear here.',
     },
     tab: {
-      guided: 'Guided',
+      areas: 'Areas',
+      forms: 'Settings',
       raw: 'Advanced',
     },
     backToListing: 'Back',
     emptyHeadline: 'Nothing to configure here',
     emptyBody:
-      'No Setting Forms and no configuration documents are available for this scope.',
-    openInEditor: 'Open in document editor',
+      'No Setting Forms are available for this scope.',
+    areas: {
+      research: {
+        title: 'Research',
+      },
+      backToAreas: 'Back to areas',
+      backToEntries: 'Back to the list',
+      addEntry: 'Add',
+      deleteEntry: 'Delete',
+      nameLabel: 'Name',
+      namePlaceholder: 'e.g. serper-main',
+      confirmDeleteEntry: 'Delete "{name}"? This cannot be undone.',
+      emptyHeadline: 'No entries in this area',
+      emptyBody: 'Nothing of this kind is configured in the selected scope yet.',
+      noneHeadline: 'No areas',
+      noneBody: 'No configuration areas are registered in this build.',
+      save: 'Save',
+      entrySaved: 'Saved.',
+      parseFailedRaw:
+        'This document could not be parsed as its kind expects — editing the raw text instead.',
+    },
     raw: {
       hint:
         'Free-form key/value editing for keys no form covers yet. Values resolve through the settings cascade (project → tenant).',

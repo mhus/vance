@@ -3599,14 +3599,34 @@ export default {
       emptyBody: 'Projekte, auf die du Zugriff hast, erscheinen hier.',
     },
     tab: {
-      guided: 'Geführt',
+      areas: 'Bereiche',
+      forms: 'Settings',
       raw: 'Erweitert',
     },
     backToListing: 'Zurück',
     emptyHeadline: 'Hier gibt es nichts zu konfigurieren',
     emptyBody:
-      'Für diesen Bereich sind keine Settings-Formulare und keine Konfigurationsdokumente verfügbar.',
-    openInEditor: 'Im Dokument-Editor öffnen',
+      'Für diesen Bereich sind keine Settings-Formulare verfügbar.',
+    areas: {
+      research: {
+        title: 'Research',
+      },
+      backToAreas: 'Zurück zu den Bereichen',
+      backToEntries: 'Zurück zur Liste',
+      addEntry: 'Hinzufügen',
+      deleteEntry: 'Löschen',
+      nameLabel: 'Name',
+      namePlaceholder: 'z.B. serper-main',
+      confirmDeleteEntry: '„{name}" löschen? Das kann nicht widerrufen werden.',
+      emptyHeadline: 'Keine Einträge in diesem Bereich',
+      emptyBody: 'In diesem Scope ist noch nichts von dieser Art konfiguriert.',
+      noneHeadline: 'Keine Bereiche',
+      noneBody: 'In diesem Build sind keine Konfigurationsbereiche registriert.',
+      save: 'Speichern',
+      entrySaved: 'Gespeichert.',
+      parseFailedRaw:
+        'Dieses Dokument ließ sich nicht so parsen, wie es seine Art erwartet — du bearbeitest stattdessen den Rohtext.',
+    },
     raw: {
       hint:
         'Freies Key/Value-Editieren für Keys, die noch kein Formular abdeckt. Werte laufen durch die Settings-Cascade (Projekt → Mandant).',

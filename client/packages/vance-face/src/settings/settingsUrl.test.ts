@@ -13,14 +13,31 @@ import {
  * the scope keyword vs. project name distinction reads back.
  */
 
+const FULL_VIEW: SettingsView = {
+  scope: 'tenant',
+  tab: 'areas',
+  form: 'llm-setup',
+  area: 'vance-research-source',
+  entry: '64a1f0c0e4b0a1a2b3c4d5e6',
+};
+
+const DEFAULTS_VIEW: SettingsView = {
+  scope: 'user',
+  tab: 'forms',
+  form: null,
+  area: null,
+  entry: null,
+};
+
 describe('parseSettingsView', () => {
-  it('reads scope, form and the raw tab', () => {
-    expect(parseSettingsView('?scope=tenant&form=llm-setup&tab=raw', 'user'))
-      .toEqual({ scope: 'tenant', form: 'llm-setup', tab: 'raw' });
+  it('reads scope, tab, form, area and entry', () => {
+    expect(parseSettingsView('?scope=tenant&tab=areas&form=llm-setup'
+      + '&area=vance-research-source&entry=64a1f0c0e4b0a1a2b3c4d5e6', 'user'))
+      .toEqual(FULL_VIEW);
   });
 
   it('falls back to the supplied default scope when the param is missing', () => {
-    expect(parseSettingsView('', 'user')).toEqual({ scope: 'user', form: null, tab: 'guided' });
+    expect(parseSettingsView('', 'user')).toEqual({ ...DEFAULTS_VIEW, scope: 'user' });
   });
 
   it('treats a blank scope param as missing', () => {
@@ -31,21 +48,35 @@ describe('parseSettingsView', () => {
     expect(parseSettingsView('?scope=research-2026', 'tenant').scope).toBe('research-2026');
   });
 
-  it('ignores unknown tab values (guided is the default)', () => {
-    expect(parseSettingsView('?scope=user&tab=nonsense', 'tenant').tab).toBe('guided');
+  it('maps unknown tab values to the forms default', () => {
+    expect(parseSettingsView('?scope=user&tab=nonsense', 'tenant').tab).toBe('forms');
+    expect(parseSettingsView('?scope=user&tab=raw', 'tenant').tab).toBe('raw');
+    expect(parseSettingsView('?scope=user&tab=areas', 'tenant').tab).toBe('areas');
+    expect(parseSettingsView('?scope=user', 'tenant').tab).toBe('forms');
   });
 });
 
 describe('serializeSettingsView / settingsHref', () => {
-  it('omits defaults: no form, guided tab', () => {
-    const view: SettingsView = { scope: 'user', form: null, tab: 'guided' };
-    expect(serializeSettingsView(view)).toBe('?scope=user');
-    expect(settingsHref(view)).toBe('/settings.html?scope=user');
+  it('omits all defaults: bare scope', () => {
+    expect(serializeSettingsView(DEFAULTS_VIEW)).toBe('?scope=user');
+    expect(settingsHref(DEFAULTS_VIEW)).toBe('/settings.html?scope=user');
+  });
+
+  it('serializes non-default tabs and the open selections', () => {
+    const view: SettingsView = { ...DEFAULTS_VIEW, scope: 'tenant', tab: 'raw' };
+    expect(serializeSettingsView(view)).toBe('?scope=tenant&tab=raw');
+    const withArea: SettingsView = {
+      ...DEFAULTS_VIEW,
+      scope: 'tenant',
+      tab: 'areas',
+      area: 'vance-research-source',
+    };
+    expect(serializeSettingsView(withArea))
+      .toBe('?scope=tenant&tab=areas&area=vance-research-source');
   });
 
   it('round-trips through parse', () => {
-    const view: SettingsView = { scope: 'research-2026', form: 'llm-setup', tab: 'raw' };
-    expect(parseSettingsView(serializeSettingsView(view), 'tenant')).toEqual(view);
+    expect(parseSettingsView(serializeSettingsView(FULL_VIEW), 'user')).toEqual(FULL_VIEW);
   });
 });
 

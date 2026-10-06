@@ -136,33 +136,48 @@ export interface SettingsScope {
   login?: string;
 }
 
-/** One row of the settings-doc inventory. */
+/** One row of a settings-area entry inventory. */
 export interface SettingsDocRow {
-  /** Stable instance name (e.g. file stem) — row key. */
+  /** Stable entry name (e.g. file stem) — row key. */
   name: string;
   /** Display title. */
   title: string;
   /** Short description line, optional. */
   description?: string;
-  /** Same vocabulary as the setting-form {@code category} for grouping. */
-  category: string;
   /** Kind id the row belongs to (the registering entry's {@link KindEntry.id}). */
   kindId: string;
-  /** Target to open the kind's normal editor — a same-origin URL (e.g. a Cortex deep link). */
-  href: string;
+  /** Document id of the entry — loaded and edited inline by the Settings page. */
+  documentId: string;
+  /** Project the document lives in (may differ from the scope project when the provider lists inherited rows). */
+  projectId: string;
+  /** Document path, optional — location-aware views use it for warnings. */
+  path?: string;
 }
 
 /**
- * Contribution of a settings-doc kind: which scope layers it serves and
- * the per-scope inventory. The host calls {@link list} for the selected
- * scope; a provider that does not serve that layer simply returns an empty
- * list.
+ * Contribution of a settings-doc kind: an area in the Settings page's
+ * "Bereiche" tab — its entry inventory per scope, plus (optional) entry
+ * creation. Opening and editing an entry is the host's job: it loads the
+ * document by {@link SettingsDocRow.documentId} and renders the kind's own
+ * view, so the provider supplies only the inventory, never a renderer.
+ *
+ * <p>Deleting an entry is host-generic (document delete by id); a provider
+ * that needs a different flow can hook the registry again later.
  */
 export interface SettingsProvider {
-  /** Panel grouping — same vocabulary as the setting-form {@code category}. */
-  category: string;
+  /**
+   * i18n key for the area label in the "Bereiche" tab (e.g.
+   * {@code settings.areas.research}). Resolved with the host's merged
+   * message catalog, so addon-registered keys work too.
+   */
+  titleKey: string;
   /** Inventory for one scope. Failures should resolve to an empty list (the host shows its own error surface). */
   list: (scope: SettingsScope) => Promise<SettingsDocRow[]>;
+  /**
+   * Creates a new entry with the given name and returns its row (the
+   * host opens it right away). Omitted ⇒ the area shows no add button.
+   */
+  create?: (scope: SettingsScope, name: string) => Promise<SettingsDocRow>;
 }
 
 declare global {

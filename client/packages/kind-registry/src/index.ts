@@ -104,6 +104,65 @@ export interface KindEntry<TDoc = unknown> {
    * generic message.
    */
   parseErrorKey?: string;
+
+  /**
+   * Present iff this kind's documents are configuration surfaces —
+   * one document of the kind configures one instance of something (a
+   * research source, a feed endpoint, a mount, …). The Settings panel
+   * lists these documents per scope next to the Setting Forms; clicking
+   * a row opens the kind's normal editor — the provider only supplies
+   * the inventory, never a renderer.
+   *
+   * <p>Registered here (and not in a parallel registry) because addons
+   * already register their kinds through this store — a settings
+   * contribution rides along with the kind entry, same
+   * {@code globalThis} mechanics.
+   */
+  settingsProvider?: SettingsProvider;
+}
+
+/**
+ * The scope a settings listing is asked for — the three persisted setting
+ * layers in their wire form (see {@code settings-system.md} §3). The
+ * {@code projectId} is what the panel passes on to the document and
+ * setting-form endpoints: {@code _tenant} for the tenant layer,
+ * {@code _user_<login>} for the user layer.
+ */
+export interface SettingsScope {
+  kind: 'tenant' | 'user' | 'project';
+  /** Project name backing the scope ({@code _tenant}, {@code _user_<login>} or a plain project). */
+  projectId: string;
+  /** The login, set for {@code kind: 'user'}. */
+  login?: string;
+}
+
+/** One row of the settings-doc inventory. */
+export interface SettingsDocRow {
+  /** Stable instance name (e.g. file stem) — row key. */
+  name: string;
+  /** Display title. */
+  title: string;
+  /** Short description line, optional. */
+  description?: string;
+  /** Same vocabulary as the setting-form {@code category} for grouping. */
+  category: string;
+  /** Kind id the row belongs to (the registering entry's {@link KindEntry.id}). */
+  kindId: string;
+  /** Target to open the kind's normal editor — a same-origin URL (e.g. a Cortex deep link). */
+  href: string;
+}
+
+/**
+ * Contribution of a settings-doc kind: which scope layers it serves and
+ * the per-scope inventory. The host calls {@link list} for the selected
+ * scope; a provider that does not serve that layer simply returns an empty
+ * list.
+ */
+export interface SettingsProvider {
+  /** Panel grouping — same vocabulary as the setting-form {@code category}. */
+  category: string;
+  /** Inventory for one scope. Failures should resolve to an empty list (the host shows its own error surface). */
+  list: (scope: SettingsScope) => Promise<SettingsDocRow[]>;
 }
 
 declare global {
@@ -154,4 +213,13 @@ export function resolveKindFor(
  */
 export function listKinds(): KindEntry[] {
   return [...store().values()];
+}
+
+/**
+ * Snapshot of all kinds that contribute a settings surface, in
+ * insertion order. The Settings panel calls each entry's
+ * {@link SettingsProvider.list} for the selected scope.
+ */
+export function listSettingsKinds(): KindEntry[] {
+  return listKinds().filter((k) => k.settingsProvider != null);
 }

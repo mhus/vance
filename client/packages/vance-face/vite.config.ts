@@ -23,6 +23,7 @@ const editorEntries = {
   // bundle cannot — see src/login/LoginApp.vue.
   login: resolve(pkgDir, 'login.html'),
   scopes: resolve(pkgDir, 'scopes.html'),
+  settings: resolve(pkgDir, 'settings.html'),
   tools: resolve(pkgDir, 'tools.html'),
   insights: resolve(pkgDir, 'insights.html'),
   runs: resolve(pkgDir, 'runs.html'),

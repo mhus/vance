@@ -38,6 +38,7 @@ export type StandaloneSurface =
   | 'login'
   | 'profile'
   | 'scopes'
+  | 'settings'
   | 'tools'
   | 'tool-templates'
   | 'setting-forms'

@@ -24,6 +24,7 @@ import {
   serializeResearchSourceDoc,
   type ResearchSourceDoc,
 } from '@/kindViews/researchSourceCodec';
+import { researchSourceSettingsProvider } from '@/kindViews/researchSourceSettingsProvider';
 import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
@@ -150,6 +151,7 @@ export function registerBuiltInKinds(): void {
     view: defineAsyncComponent(
       () => import('@/kindViews/ResearchSourceFormView.vue'),
     ),
+    settingsProvider: researchSourceSettingsProvider,
   });
   // ── Age: locked-state view for encrypted documents ────────────
   // An age-encrypted document renders here while no imported key fits

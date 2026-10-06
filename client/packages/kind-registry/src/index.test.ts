@@ -4,6 +4,7 @@ import {
   resolveKind,
   resolveKindFor,
   listKinds,
+  listSettingsKinds,
   type KindEntry,
 } from './index';
 
@@ -64,5 +65,18 @@ describe('kind-registry', () => {
     registerKind(entry('a'));
     registerKind(entry('b'));
     expect(listKinds().map((k) => k.id)).toEqual(['a', 'b']);
+  });
+
+  it('listSettingsKinds returns only entries with a settingsProvider, in insertion order', () => {
+    registerKind(entry('plain'));
+    registerKind({
+      ...entry('research'),
+      settingsProvider: {
+        category: 'research',
+        list: async () => [],
+      },
+    });
+    registerKind(entry('calendar'));
+    expect(listSettingsKinds().map((k) => k.id)).toEqual(['research']);
   });
 });

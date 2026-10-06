@@ -178,6 +178,12 @@ export interface SettingsProvider {
    * host opens it right away). Omitted ⇒ the area shows no add button.
    */
   create?: (scope: SettingsScope, name: string) => Promise<SettingsDocRow>;
+  /**
+   * i18n key for a help line under the add dialog's name input — areas
+   * whose name carries structure (e.g. {@code provider/model}) say so
+   * here. Optional; without it the dialog shows no help.
+   */
+  createHintKey?: string;
 }
 
 declare global {

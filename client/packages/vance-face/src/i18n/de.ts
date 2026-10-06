@@ -1256,6 +1256,12 @@ export default {
     mountSourceView: {
       tabLabel: 'Mount',
     },
+    modelDocView: {
+      tabLabel: 'Modell',
+    },
+    providerDocView: {
+      tabLabel: 'Provider',
+    },
     schedulerView: {
       tabLabel: 'Scheduler',
       parseError: 'Diese Scheduler-Definition ist kein gültiges YAML — im Raw-Editor korrigieren.',
@@ -2571,6 +2577,67 @@ export default {
         '{count} weitere Feld(er) dieses Dokuments bleiben unverändert — im Raw-Editor bearbeiten.',
     },
   },
+  modelDoc: {
+    sizes: {
+      SMALL: 'Klein',
+      LARGE: 'Groß',
+    },
+    capabilities: {
+      VISION: 'Bild-Eingabe (Vision)',
+      PDF: 'PDF-Eingabe',
+      THINKING: 'Denk-Modell (Thinking)',
+      MID_CONVERSATION_SYSTEM: 'System-Nachrichten im Verlauf',
+    },
+    form: {
+      draftWarning:
+        'Dieses Dokument liegt nicht unter _vance/model/ — der Modell-Katalog liest nur diesen Baum, damit bleibt das Dokument an seinem Ort inaktiv.',
+      sectionIdentity: 'Identität',
+      displayName: 'Anzeigename',
+      displayNameHelp: 'Leer = erbt aus der äußeren Schicht.',
+      wireName: 'Wire-Name',
+      wireNameHelp:
+        'Nur nötig, wenn er nicht aus dem Dateinamen folgt (z.B. Ollama-Tags „qwen3:30b“). Leer = der Pfad ist der Name.',
+      sectionLimits: 'Limiten',
+      contextWindowTokens: 'Kontextfenster (Tokens)',
+      contextWindowTokensHelp: 'Leer = der Katalog fällt auf den konservativen Default zurück.',
+      defaultMaxOutputTokens: 'Standard-Output-Obergrenze (Tokens)',
+      defaultMaxOutputTokensHelp: 'Leer = erbt.',
+      size: 'Größe',
+      sizeHelp: 'Steuert die Recipe-/Prozess-Auswahl; leer = erbt.',
+      sizeCustom: 'Eigene Größe',
+      timeoutSeconds: 'Timeout (Sekunden)',
+      timeoutSecondsHelp: 'Leer = erbt.',
+      sectionPricing: 'Preise',
+      pricingHelp:
+        'Die drei bekannten Schlüssel des pricing-Blocks; weitere Schlüssel bleiben unverändert erhalten.',
+      pricingCurrency: 'Währung',
+      pricingInputPerMTok: 'Input pro MTok',
+      pricingOutputPerMTok: 'Output pro MTok',
+      preserved:
+        '{count} weitere Feld(er) dieses Dokuments bleiben unverändert — im Raw-Editor bearbeiten.',
+    },
+  },
+  providerDoc: {
+    form: {
+      draftWarning:
+        'Dieses Dokument liegt nicht unter _vance/model/ — der Modell-Katalog liest nur diesen Baum, damit bleibt die Instanz an ihrem Ort inaktiv.',
+      sectionProvider: 'Provider-Instanz',
+      intro:
+        'Das Sidecar erklärt einmal, wie diese Instanz spricht — Modelle darunter lösen dann ohne eigene Setting.',
+      displayName: 'Anzeigename',
+      displayNameHelp: 'Leer = erbt.',
+      wireType: 'Wire-Protokoll',
+      wireTypeHelp: 'Ohne dieses Feld löst die Instanz kein Modell.',
+      wireTypeCustom: 'Wire-Protokoll-Id',
+      authType: 'Credential-Form',
+      authTypeHelp: 'Wie der Schlüssel bei Anfragen mitgegeben wird.',
+      authTypeCustom: 'Credential-Form-Id',
+      baseUrl: 'Endpunkt',
+      baseUrlHelp: 'Leer = erbt bzw. Default des Protokolls.',
+      preserved:
+        '{count} weitere Feld(er) dieses Dokuments bleiben unverändert — im Raw-Editor bearbeiten.',
+    },
+  },
   scheduler: {
     pageTitle: 'Scheduler',
     pickProject: 'Session oder Projekt links wählen, um Scheduler zu sehen.',
@@ -3593,6 +3660,11 @@ export default {
       },
       mounts: {
         title: 'Mounts',
+      },
+      models: {
+        title: 'KI-Modelle',
+        createHint:
+          'Nur den Provider-Namen für eine neue Provider-Instanz; „provider/modell“ für ein neues Modell-Dokument.',
       },
       backToAreas: 'Zurück zu den Bereichen',
       backToEntries: 'Zurück zur Liste',

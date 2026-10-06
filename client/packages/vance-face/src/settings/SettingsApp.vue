@@ -825,6 +825,9 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
           v-model="newEntryName"
           :label="t('settings.areas.nameLabel')"
           :placeholder="t('settings.areas.namePlaceholder')"
+          :help="activeArea?.settingsProvider?.createHintKey
+            ? t(activeArea.settingsProvider.createHintKey)
+            : undefined"
           @keydown.enter="addEntry"
         />
         <div class="flex justify-end gap-2">

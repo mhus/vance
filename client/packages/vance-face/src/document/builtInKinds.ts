@@ -32,6 +32,19 @@ import {
   type MountSourceDoc,
 } from '@/kindViews/mountSourceCodec';
 import { mountSourceSettingsProvider } from '@/kindViews/mountSourceSettingsProvider';
+import {
+  ModelDocParseError,
+  parseModelDoc,
+  serializeModelDoc,
+  type ModelDoc,
+} from '@/kindViews/modelDocCodec';
+import { modelCatalogSettingsProvider } from '@/kindViews/modelCatalogSettingsProvider';
+import {
+  ProviderDocParseError,
+  parseProviderDoc,
+  serializeProviderDoc,
+  type ProviderDoc,
+} from '@/kindViews/providerDocCodec';
 import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
@@ -165,6 +178,38 @@ export function registerBuiltInKinds(): void {
   // truth SourceConfigLoader + JaglanSourceFactory. Same whole-map
   // contract as the research form — the mount codec owns its fields,
   // everything else passes through; $meta.kind guaranteed on save.
+  // ── Model catalog: operator-managed model + provider documents ──
+  // _vance/model/<provider>/<slug>.yaml + _provider.yaml sidecars, server
+  // truth ModelCatalog (deep-merge per field, location-based — no kind
+  // filter in the settings listing, the provider assigns the view kind by
+  // filename). Partial documents are the point: an unset key inherits.
+  registerKind<ModelDoc>({
+    id: 'vance-model',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-model',
+    parse: parseModelDoc,
+    serialize: serializeModelDoc,
+    isParseError: (e) => e instanceof ModelDocParseError,
+    tabLabelKey: 'documents.modelDocView.tabLabel',
+    view: defineAsyncComponent(
+      () => import('@/kindViews/ModelDocFormView.vue'),
+    ),
+    settingsProvider: modelCatalogSettingsProvider,
+  });
+  // Provider sidecar (_provider.yaml): the document that makes a provider
+  // instance usable — wire protocol + credential shape. Reached through the
+  // same settings area (rows carry this kindId), never a kind filter of its
+  // own.
+  registerKind<ProviderDoc>({
+    id: 'vance-model-provider',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-model-provider',
+    parse: parseProviderDoc,
+    serialize: serializeProviderDoc,
+    isParseError: (e) => e instanceof ProviderDocParseError,
+    tabLabelKey: 'documents.providerDocView.tabLabel',
+    view: defineAsyncComponent(
+      () => import('@/kindViews/ProviderDocFormView.vue'),
+    ),
+  });
   registerKind<MountSourceDoc>({
     id: 'vance-mount-source',
     matches: (kind) => (kind ?? '').toLowerCase() === 'vance-mount-source',

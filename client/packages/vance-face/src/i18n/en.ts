@@ -1254,6 +1254,12 @@ export default {
     mountSourceView: {
       tabLabel: 'Mount',
     },
+    modelDocView: {
+      tabLabel: 'Model',
+    },
+    providerDocView: {
+      tabLabel: 'Provider',
+    },
     schedulerView: {
       tabLabel: 'Scheduler',
       parseError: 'This scheduler definition is not valid YAML — fix it in the raw editor.',
@@ -2555,6 +2561,67 @@ export default {
         '{count} further field(s) in this document are kept unchanged — edit them in the raw editor.',
     },
   },
+  modelDoc: {
+    sizes: {
+      SMALL: 'Small',
+      LARGE: 'Large',
+    },
+    capabilities: {
+      VISION: 'Image input (vision)',
+      PDF: 'PDF input',
+      THINKING: 'Thinking model',
+      MID_CONVERSATION_SYSTEM: 'System messages mid-conversation',
+    },
+    form: {
+      draftWarning:
+        'This document is not under _vance/model/ — the model catalog only reads that tree, so the document stays inert where it is.',
+      sectionIdentity: 'Identity',
+      displayName: 'Display name',
+      displayNameHelp: 'Empty = inherits from the outer layer.',
+      wireName: 'Wire name',
+      wireNameHelp:
+        'Only needed when it cannot be derived from the filename (e.g. Ollama tags "qwen3:30b"). Empty = the path is the name.',
+      sectionLimits: 'Limits',
+      contextWindowTokens: 'Context window (tokens)',
+      contextWindowTokensHelp: 'Empty = the catalog falls back to its conservative default.',
+      defaultMaxOutputTokens: 'Default output cap (tokens)',
+      defaultMaxOutputTokensHelp: 'Empty = inherits.',
+      size: 'Size',
+      sizeHelp: 'Drives recipe / process selection; empty = inherits.',
+      sizeCustom: 'Custom size',
+      timeoutSeconds: 'Timeout (seconds)',
+      timeoutSecondsHelp: 'Empty = inherits.',
+      sectionPricing: 'Pricing',
+      pricingHelp:
+        'The three known keys of the pricing block; further keys are kept unchanged.',
+      pricingCurrency: 'Currency',
+      pricingInputPerMTok: 'Input per MTok',
+      pricingOutputPerMTok: 'Output per MTok',
+      preserved:
+        '{count} further field(s) in this document are kept unchanged — edit them in the raw editor.',
+    },
+  },
+  providerDoc: {
+    form: {
+      draftWarning:
+        'This document is not under _vance/model/ — the model catalog only reads that tree, so the instance stays inert where it is.',
+      sectionProvider: 'Provider instance',
+      intro:
+        'The sidecar declares once how this instance speaks — models under it then resolve without a setting of their own.',
+      displayName: 'Display name',
+      displayNameHelp: 'Empty = inherits.',
+      wireType: 'Wire protocol',
+      wireTypeHelp: 'Without this field the instance resolves no model.',
+      wireTypeCustom: 'Wire protocol id',
+      authType: 'Credential shape',
+      authTypeHelp: 'How the key travels with requests.',
+      authTypeCustom: 'Credential shape id',
+      baseUrl: 'Endpoint',
+      baseUrlHelp: 'Empty = inherits or the protocol default.',
+      preserved:
+        '{count} further field(s) in this document are kept unchanged — edit them in the raw editor.',
+    },
+  },
   scheduler: {
     pageTitle: 'Scheduler',
     pickProject: 'Pick a session or project to see its schedulers.',
@@ -3573,6 +3640,11 @@ export default {
       },
       mounts: {
         title: 'Mounts',
+      },
+      models: {
+        title: 'AI models',
+        createHint:
+          'Just the provider name for a new provider instance; "provider/model" for a new model document.',
       },
       backToAreas: 'Back to areas',
       backToEntries: 'Back to the list',

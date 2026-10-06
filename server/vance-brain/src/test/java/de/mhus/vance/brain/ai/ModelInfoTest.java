@@ -9,29 +9,46 @@ class ModelInfoTest {
 
     private static ModelInfo model(int defaultMaxOutputTokens) {
         return new ModelInfo(
-                "openai", "deepseek-v3.2",
-                163840, defaultMaxOutputTokens, ModelSize.LARGE,
-                Set.of(), 60, 2, false, null, null, OutputTokenParam.MAX_TOKENS,
-                java.util.Set.of(), null);
+                "cortecs",
+                "deepseek-v3.2",
+                163840,
+                defaultMaxOutputTokens,
+                ModelSize.LARGE,
+                Set.of(),
+                60,
+                2,
+                false,
+                null,
+                null,
+                OutputTokenParam.MAX_TOKENS,
+                java.util.Set.of(),
+                null);
     }
 
     private static ModelInfo modelWithTimeout(int timeoutSeconds) {
         return new ModelInfo(
-                "openai", "deepseek-v3.2",
-                163840, 8192, ModelSize.LARGE,
-                Set.of(), timeoutSeconds, 2, false, null, null,
+                "cortecs",
+                "deepseek-v3.2",
+                163840,
+                8192,
+                ModelSize.LARGE,
+                Set.of(),
+                timeoutSeconds,
+                2,
+                false,
+                null,
+                null,
                 OutputTokenParam.MAX_TOKENS,
-                java.util.Set.of(), null);
+                java.util.Set.of(),
+                null);
     }
 
     @Test
     void scaledStreamTimeout_noEstimate_fallsBackToFloor() {
         ModelInfo model = modelWithTimeout(60);
 
-        assertThat(model.scaledStreamTimeoutSeconds(null, null))
-                .isEqualTo(ModelInfo.DEFAULT_STREAM_TIMEOUT_SECONDS);
-        assertThat(model.scaledStreamTimeoutSeconds(null, 0))
-                .isEqualTo(ModelInfo.DEFAULT_STREAM_TIMEOUT_SECONDS);
+        assertThat(model.scaledStreamTimeoutSeconds(null, null)).isEqualTo(ModelInfo.DEFAULT_STREAM_TIMEOUT_SECONDS);
+        assertThat(model.scaledStreamTimeoutSeconds(null, 0)).isEqualTo(ModelInfo.DEFAULT_STREAM_TIMEOUT_SECONDS);
     }
 
     @Test
@@ -57,8 +74,7 @@ class ModelInfoTest {
     @Test
     void scaledStreamTimeout_callerOverride_wins() {
         // Explicit override wins and ignores the estimate (floored at 300).
-        assertThat(modelWithTimeout(60).scaledStreamTimeoutSeconds(600, 70_000))
-                .isEqualTo(600);
+        assertThat(modelWithTimeout(60).scaledStreamTimeoutSeconds(600, 70_000)).isEqualTo(600);
     }
 
     @Test
@@ -88,8 +104,7 @@ class ModelInfoTest {
     void effectiveStreamTimeout_longSyncTimeout_winsOverFloor() {
         // A model deliberately configured slower than the floor keeps its
         // larger budget for streaming — floor is a minimum, not a cap.
-        assertThat(modelWithTimeout(600).effectiveStreamTimeoutSeconds(null))
-                .isEqualTo(600);
+        assertThat(modelWithTimeout(600).effectiveStreamTimeoutSeconds(null)).isEqualTo(600);
     }
 
     @Test
@@ -100,7 +115,6 @@ class ModelInfoTest {
 
     @Test
     void effectiveStreamTimeout_largeCallerOverride_wins() {
-        assertThat(modelWithTimeout(60).effectiveStreamTimeoutSeconds(450))
-                .isEqualTo(450);
+        assertThat(modelWithTimeout(60).effectiveStreamTimeoutSeconds(450)).isEqualTo(450);
     }
 }

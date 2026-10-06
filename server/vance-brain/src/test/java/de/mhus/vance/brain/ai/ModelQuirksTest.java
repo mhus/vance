@@ -173,7 +173,7 @@ class ModelQuirksTest {
     @Test
     void bundledFimModels_pickUpTheTemplateFromTheFamilyPattern() {
         // The wire names of the FIM-capable models that actually ship in
-        // the bundled catalog (_vance/model/openai/*). None of them sets
+        // the bundled catalog (_vance/model/cortecs/*). None of them sets
         // `fimTemplate` in its per-model YAML — the family pattern is the
         // single source, per-model YAML only when a glob misses (a renamed
         // gateway model, a new family). If one of these ever resolves

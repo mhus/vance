@@ -31,15 +31,14 @@ import org.junit.jupiter.api.Test;
  */
 class UsageAccountingChatModelTest {
 
-    private static final CallAttribution ATTRIBUTION = new CallAttribution(
-            "acme", "demo", "sess-1", "proc-1", "jeltz", "extract");
+    private static final CallAttribution ATTRIBUTION =
+            new CallAttribution("acme", "demo", "sess-1", "proc-1", "jeltz", "extract");
 
     @Test
     void booksASuccessfulCallWithTheCallerThatPays() {
         RecordingSink sink = new RecordingSink();
-        ChatModel model = accounting(
-                new FakeChatModel(request -> response(new TokenUsage(1200, 340))),
-                pricedModel(), sink);
+        ChatModel model =
+                accounting(new FakeChatModel(request -> response(new TokenUsage(1200, 340))), pricedModel(), sink);
 
         model.chat(request());
 
@@ -62,9 +61,10 @@ class UsageAccountingChatModelTest {
         // cached workload was billed for a fraction of what it sent.
         RecordingSink sink = new RecordingSink();
         ChatModel model = accounting(
-                new FakeChatModel(request -> response(new AnthropicTokenUsage(
-                        300, 120, /*cacheCreation*/ 5_000, /*cacheRead*/ 40_000))),
-                pricedModel(), sink);
+                new FakeChatModel(request ->
+                        response(new AnthropicTokenUsage(300, 120, /*cacheCreation*/ 5_000, /*cacheRead*/ 40_000))),
+                pricedModel(),
+                sink);
 
         model.chat(request());
 
@@ -80,12 +80,14 @@ class UsageAccountingChatModelTest {
         // engines recorded after the call returned, so this cost nothing on
         // paper.
         RecordingSink sink = new RecordingSink();
-        ChatModel model = accounting(new FakeChatModel(request -> {
-            throw new IllegalStateException("429 rate limited");
-        }), pricedModel(), sink);
+        ChatModel model = accounting(
+                new FakeChatModel(request -> {
+                    throw new IllegalStateException("429 rate limited");
+                }),
+                pricedModel(),
+                sink);
 
-        assertThatThrownBy(() -> model.chat(request()))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> model.chat(request())).isInstanceOf(IllegalStateException.class);
 
         assertThat(sink.calls).hasSize(1);
         UsageMeasurement m = sink.calls.get(0).measurement;
@@ -99,10 +101,13 @@ class UsageAccountingChatModelTest {
         // per attempt, each numbered — not a single row for the winner.
         RecordingSink sink = new RecordingSink();
         List<Boolean> fail = new ArrayList<>(List.of(true, true, false));
-        ChatModel model = accounting(new FakeChatModel(request -> {
-            if (fail.remove(0)) throw new IllegalStateException("503");
-            return response(new TokenUsage(10, 5));
-        }), pricedModel(), sink);
+        ChatModel model = accounting(
+                new FakeChatModel(request -> {
+                    if (fail.remove(0)) throw new IllegalStateException("503");
+                    return response(new TokenUsage(10, 5));
+                }),
+                pricedModel(),
+                sink);
 
         assertThatThrownBy(() -> model.chat(request())).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> model.chat(request())).isInstanceOf(IllegalStateException.class);
@@ -121,8 +126,7 @@ class UsageAccountingChatModelTest {
         // nothing to the report at all, and an absent row reads as "nothing
         // ran" — which is the one thing it does not mean.
         RecordingSink sink = new RecordingSink();
-        ChatModel model = accounting(
-                new FakeChatModel(request -> response(null)), pricedModel(), sink);
+        ChatModel model = accounting(new FakeChatModel(request -> response(null)), pricedModel(), sink);
 
         model.chat(request());
 
@@ -136,8 +140,12 @@ class UsageAccountingChatModelTest {
     void aSinkThatThrowsDoesNotBreakTheTurn() {
         ChatModel model = new UsageAccountingChatModel(
                 new FakeChatModel(request -> response(new TokenUsage(10, 5))),
-                ATTRIBUTION, pricedModel(), "cortecs",
-                (a, m) -> { throw new IllegalStateException("mongo down"); });
+                ATTRIBUTION,
+                pricedModel(),
+                "cortecs",
+                (a, m) -> {
+                    throw new IllegalStateException("mongo down");
+                });
 
         ChatResponse out = model.chat(request());
         assertThat(out.aiMessage().text()).isEqualTo("ok");
@@ -161,12 +169,22 @@ class UsageAccountingChatModelTest {
 
     private static ModelInfo pricedModel() {
         return new ModelInfo(
-                "openai", "kimi-k3",
-                200_000, 8192,
-                ModelSize.LARGE, Set.<ModelCapability>of(),
-                60, 2, false, null,
+                "openai",
+                "kimi-k3",
+                200_000,
+                8192,
+                ModelSize.LARGE,
+                Set.<ModelCapability>of(),
+                60,
+                2,
+                false,
+                null,
                 new ModelInfo.Pricing("EUR", 2.693, 13.464, 0.3, 3.75),
-                OutputTokenParam.MAX_TOKENS, Set.<SamplingParam>of(), null, null, false);
+                OutputTokenParam.MAX_TOKENS,
+                Set.<SamplingParam>of(),
+                null,
+                null,
+                false);
     }
 
     /** {@link ChatModel} is not a functional interface — hand-rolled stub. */

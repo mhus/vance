@@ -137,7 +137,7 @@ class WowbaggerReplyValidationTest {
     @Test
     void modelApprovedMatchesWildcardsCommaAndBareNames() {
         // Full instance:model form, bare model name, wildcards, commas, case.
-        assertThat(WowbaggerPoolService.modelApproved("openai:deepseek-v4-flash-0731", "*deepseek*"))
+        assertThat(WowbaggerPoolService.modelApproved("cortecs:deepseek-v4-flash-0731", "*deepseek*"))
                 .isTrue();
         assertThat(WowbaggerPoolService.modelApproved("coding-proxy:sipgate-coding-pro", "sipgate-coding-pro"))
                 .isTrue();

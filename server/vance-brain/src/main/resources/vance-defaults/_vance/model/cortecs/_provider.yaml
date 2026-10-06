@@ -8,12 +8,17 @@ authType: api-key
 # reads `wireType` after checking that setting, so a tenant that needs a
 # different protocol on this name can still override it.
 #
-# There are deliberately no *chat* model documents in this directory.
-# Cortecs serves a changing catalogue that we do not curate; run "Discover
-# AI Models" (Profile → Actions) after setting the key and the models land
-# under `_vance/model-auto/cortecs/`. Cortecs' /v1/models reports
-# context size, output limit and owned-by, so discovery carries those
-# observations automatically. Cortecs' /v1/models also ships a price
+# The bundled chat model documents in this directory are the curated
+# workhorses of the QA matrix (context windows, output caps, sizes,
+# capabilities, EUR pricing snapshots). They used to sit under
+# `_vance/model/openai/` while the `openai` instance was repointed at
+# cortecs.ai; they moved here when cortecs became its own instance so
+# the label prefix names the provider the model actually runs on.
+# Everything else in the cortecs catalogue comes from discovery: run
+# "Discover AI Models" (Profile → Actions) after setting the key and
+# the models land under `_vance/model-auto/cortecs/`. Cortecs' /v1/models
+# reports context size, output limit and owned-by, so discovery carries
+# those observations automatically. Cortecs' /v1/models also ships a price
 # block (EUR per MTok), which discovery writes into `_vance/model/`
 # as `auto: true` machine-owned files — no hand-typed prices. `kind`
 # and capabilities stay manual — add those by hand here when a model

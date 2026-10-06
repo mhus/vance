@@ -105,7 +105,7 @@ class WowbaggerPoolServiceTest {
         lenient()
                 .when(aiModelResolver.resolveOrDefault(eq("default:spec-fast"), eq(TENANT), eq(PROJECT), eq(PROC_ID)))
                 .thenReturn(new de.mhus.vance.brain.ai.AiModelResolver.Resolved(
-                        "openai", "openai", "deepseek-v4-flash-0731", false));
+                        "openai", "cortecs", "deepseek-v4-flash-0731", false));
         lenient()
                 .when(workspaceService.createRootDir(
                         org.mockito.ArgumentMatchers.any(de.mhus.vance.shared.workspace.RootDirSpec.class)))
@@ -203,7 +203,7 @@ class WowbaggerPoolServiceTest {
         }
         return new de.mhus.vance.brain.ai.light.LightLlmTextAnswer(
                 reply.toString(),
-                "openai:deepseek-v4-flash-0731",
+                "cortecs:deepseek-v4-flash-0731",
                 new de.mhus.vance.brain.ai.light.LightLlmJsonAnswer.Usage(100, 200));
     }
 
@@ -227,7 +227,7 @@ class WowbaggerPoolServiceTest {
             }
             return new de.mhus.vance.brain.ai.light.LightLlmTextAnswer(
                     reply.toString(),
-                    "openai:deepseek-v4-flash-0731",
+                    "cortecs:deepseek-v4-flash-0731",
                     new de.mhus.vance.brain.ai.light.LightLlmJsonAnswer.Usage(100, 200));
         });
     }
@@ -318,12 +318,12 @@ class WowbaggerPoolServiceTest {
         assertThatThrownBy(() -> pool.start(process))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("not approved")
-                .hasMessageContaining("openai:deepseek-v4-flash-0731")
+                .hasMessageContaining("cortecs:deepseek-v4-flash-0731")
                 .hasMessageContaining(WowbaggerPoolService.ALLOWED_MODELS_KEY);
 
         assertThat(pool.isRunning(PROC_ID)).isFalse();
         // The refusal is transparent: the resolved model is persisted.
-        assertThat(persistedState().getResolvedWorkerModel()).isEqualTo("openai:deepseek-v4-flash-0731");
+        assertThat(persistedState().getResolvedWorkerModel()).isEqualTo("cortecs:deepseek-v4-flash-0731");
         assertThat(pool.isWorkerModelApproved(process, persistedState())).isFalse();
         // Not a single worker call was made.
         verify(lightLlmService, org.mockito.Mockito.never())
@@ -335,7 +335,7 @@ class WowbaggerPoolServiceTest {
         stubEchoWorker();
         pool.start(process);
         // The default setUp allowlist (*deepseek*) covers the resolved model.
-        assertThat(persistedState().getResolvedWorkerModel()).isEqualTo("openai:deepseek-v4-flash-0731");
+        assertThat(persistedState().getResolvedWorkerModel()).isEqualTo("cortecs:deepseek-v4-flash-0731");
         assertThat(pool.isWorkerModelApproved(process, persistedState())).isTrue();
     }
 
@@ -449,7 +449,7 @@ class WowbaggerPoolServiceTest {
         assertThat(report.get("invalidRecords")).isEqualTo(0L);
         assertThat(report.get("chunksTotal")).isEqualTo(3);
         assertThat((java.util.List<?>) report.get("sampleRecords")).hasSize(2);
-        assertThat(report.get("workerModel")).isEqualTo("openai:deepseek-v4-flash-0731");
+        assertThat(report.get("workerModel")).isEqualTo("cortecs:deepseek-v4-flash-0731");
         assertThat(report.get("modelApproved")).isEqualTo(true);
     }
 
@@ -636,7 +636,7 @@ class WowbaggerPoolServiceTest {
             }
             return new de.mhus.vance.brain.ai.light.LightLlmTextAnswer(
                     reply.toString(),
-                    "openai:deepseek-v4-flash-0731",
+                    "cortecs:deepseek-v4-flash-0731",
                     new de.mhus.vance.brain.ai.light.LightLlmJsonAnswer.Usage(100, 200));
         });
 

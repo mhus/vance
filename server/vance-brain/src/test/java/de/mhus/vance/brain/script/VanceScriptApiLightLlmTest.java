@@ -35,7 +35,13 @@ class VanceScriptApiLightLlmTest {
         lightLlmService = mock(LightLlmService.class);
         api = new VanceScriptApi(
                 contextTools("acme", "proj", "sess", "proc", "alice"),
-                null, Set.of(), null, null, null, null, lightLlmService);
+                null,
+                Set.of(),
+                null,
+                null,
+                null,
+                null,
+                lightLlmService);
     }
 
     @Test
@@ -73,12 +79,9 @@ class VanceScriptApiLightLlmTest {
         when(lightLlmService.callForJson(any(LightLlmRequest.class)))
                 .thenReturn(Map.of("important", true, "summary", "Rechnung von xyz"));
 
-        Map<String, Object> result = api.llm.callForJson(
-                "mail-rate", "Bewerte.", Map.of("from", "a@b.c"));
+        Map<String, Object> result = api.llm.callForJson("mail-rate", "Bewerte.", Map.of("from", "a@b.c"));
 
-        assertThat(result)
-                .containsEntry("important", true)
-                .containsEntry("summary", "Rechnung von xyz");
+        assertThat(result).containsEntry("important", true).containsEntry("summary", "Rechnung von xyz");
         ArgumentCaptor<LightLlmRequest> captor = ArgumentCaptor.forClass(LightLlmRequest.class);
         verify(lightLlmService).callForJson(captor.capture());
         assertThat(captor.getValue().getTenantId()).isEqualTo("acme");
@@ -92,14 +95,13 @@ class VanceScriptApiLightLlmTest {
                 .thenReturn(new LightLlmJsonAnswer(
                         // A reply that carries its own `model` field is the
                         // case the nesting exists for.
-                        Map.of("title", "Rat beschliesst Plan", "model", "sedan"),
-                        "openai:deepseek-v4-pro"));
+                        Map.of("title", "Rat beschliesst Plan", "model", "sedan"), "cortecs:deepseek-v4-pro"));
 
-        Map<String, Object> result = api.llm.callForJsonWithModel(
-                "article-translate", "Uebersetze.", Map.of("targetLang", "de"));
+        Map<String, Object> result =
+                api.llm.callForJsonWithModel("article-translate", "Uebersetze.", Map.of("targetLang", "de"));
 
         assertThat(result).containsOnlyKeys("result", "model");
-        assertThat(result).containsEntry("model", "openai:deepseek-v4-pro");
+        assertThat(result).containsEntry("model", "cortecs:deepseek-v4-pro");
         assertThat((Map<String, Object>) result.get("result"))
                 .as("the caller's own 'model' field must survive untouched")
                 .containsEntry("model", "sedan")
@@ -133,8 +135,7 @@ class VanceScriptApiLightLlmTest {
     @Test
     void callForJson_schemaValidationExhausted_mapsToScriptHostException() {
         when(lightLlmService.callForJson(any(LightLlmRequest.class)))
-                .thenThrow(new SchemaValidationException(
-                        3, Map.of("foo", "bar"), "shape mismatch"));
+                .thenThrow(new SchemaValidationException(3, Map.of("foo", "bar"), "shape mismatch"));
 
         assertThatThrownBy(() -> api.llm.callForJson("mail-rate", "x", null))
                 .isInstanceOf(VanceScriptApi.ScriptHostException.class)
@@ -144,8 +145,7 @@ class VanceScriptApiLightLlmTest {
 
     @Test
     void call_lightLlmException_mapsToScriptHostException() {
-        when(lightLlmService.call(any(LightLlmRequest.class)))
-                .thenThrow(new LightLlmException("recipe not internal"));
+        when(lightLlmService.call(any(LightLlmRequest.class))).thenThrow(new LightLlmException("recipe not internal"));
 
         assertThatThrownBy(() -> api.llm.call("public-recipe", "x"))
                 .isInstanceOf(VanceScriptApi.ScriptHostException.class)
@@ -170,8 +170,7 @@ class VanceScriptApiLightLlmTest {
     @Test
     void call_noTenantScope_rejected() {
         VanceScriptApi noTenant = new VanceScriptApi(
-                contextTools(null, null, null, null, null),
-                null, Set.of(), null, null, null, null, lightLlmService);
+                contextTools(null, null, null, null, null), null, Set.of(), null, null, null, null, lightLlmService);
 
         assertThatThrownBy(() -> noTenant.llm.call("mail-rate", "x"))
                 .isInstanceOf(VanceScriptApi.ScriptHostException.class)
@@ -181,8 +180,7 @@ class VanceScriptApiLightLlmTest {
     @Test
     void apiWithoutLightLlmService_hasNullLlmField() {
         VanceScriptApi noLlm = new VanceScriptApi(
-                contextTools("acme", "proj", "sess", "proc", "alice"),
-                null, Set.of(), null, null, null, null, null);
+                contextTools("acme", "proj", "sess", "proc", "alice"), null, Set.of(), null, null, null, null, null);
 
         assertThat(noLlm.llm).isNull();
     }
@@ -192,8 +190,7 @@ class VanceScriptApiLightLlmTest {
     private static ContextToolsApi contextTools(
             String tenant, String project, String session, String process, String user) {
         ContextToolsApi tools = mock(ContextToolsApi.class);
-        when(tools.scope()).thenReturn(
-                new ToolInvocationContext(tenant, project, session, process, user));
+        when(tools.scope()).thenReturn(new ToolInvocationContext(tenant, project, session, process, user));
         return tools;
     }
 }

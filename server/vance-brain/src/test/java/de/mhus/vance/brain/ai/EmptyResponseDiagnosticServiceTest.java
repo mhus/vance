@@ -230,7 +230,7 @@ class EmptyResponseDiagnosticServiceTest {
 
         service()
                 .onEmptyResponseExhausted(
-                        call(), request("use doc_write", "user text", null, "doc_read"), "openai:glm-5.3", 2);
+                        call(), request("use doc_write", "user text", null, "doc_read"), "cortecs:glm-5.3", 2);
 
         ArgumentCaptor<SubmissionRequest> submitted = ArgumentCaptor.forClass(SubmissionRequest.class);
         verify(fook).submit(submitted.capture());
@@ -242,7 +242,7 @@ class EmptyResponseDiagnosticServiceTest {
                 .contains("https://gateway.example/v1");
         // Drained: a second report for the same model starts with an empty
         // store and carries no stale transcript.
-        assertThat(store.drainRecent("openai:glm-5.3")).isEmpty();
+        assertThat(store.drainRecent("cortecs:glm-5.3")).isEmpty();
     }
 
     @Test
@@ -255,7 +255,7 @@ class EmptyResponseDiagnosticServiceTest {
 
         service()
                 .onEmptyResponseExhausted(
-                        call(), request("use doc_write", "user text", null, "doc_read"), "openai:glm-5.3", 2);
+                        call(), request("use doc_write", "user text", null, "doc_read"), "cortecs:glm-5.3", 2);
 
         ArgumentCaptor<SubmissionRequest> submitted = ArgumentCaptor.forClass(SubmissionRequest.class);
         verify(fook).submit(submitted.capture());

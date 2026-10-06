@@ -98,21 +98,22 @@ class ModelCatalogTest {
     }
 
     /**
-     * `cortecs` ships as a sidecar plus exactly one hand-written image
-     * model doc (flux-2-klein-4b — invisible to discovery because Cortecs'
-     * /v1/models does not list image models). No *chat* model documents:
-     * those come from discovery, not from the bundled layer. It is the
-     * bundled example of "gateway on a foreign wire": a separate instance
-     * of the openai protocol, so its key and endpoint stay separate from
-     * the real OpenAI ones.
+     * `cortecs` is the bundled example of "gateway on a foreign wire":
+     * a separate instance of the openai protocol, so its key and endpoint
+     * stay separate from the real OpenAI ones. The bundled chat model
+     * documents are the curated QA workhorses (they moved here from
+     * `_vance/model/openai/` when cortecs became its own instance); the
+     * rest of the catalogue comes from discovery. The one hand-written
+     * image model doc (flux-2-klein-4b) exists because Cortecs'
+     * /v1/models does not list image models.
      */
     @Test
-    void bundled_cortecs_isAnOpenAiWireInstanceWithoutChatModels() {
+    void bundled_cortecs_carriesCuratedChatModels_andDiscoveryDoesTheRest() {
         assertThat(catalog.lookupProvider(null, null, "cortecs"))
                 .hasValueSatisfying(spec -> assertThat(spec.get("wireType")).isEqualTo("openai"));
         assertThat(catalog.listAll(null, null))
-                .as("cortecs serves a catalogue we do not curate — chat models come from discovery")
-                .noneMatch(m -> "cortecs".equals(m.provider()));
+                .as("the curated workhorses ship bundled under the cortecs instance")
+                .anyMatch(m -> "cortecs".equals(m.provider()) && "deepseek-v3.2".equals(m.modelName()));
         assertThat(catalog.listAllImages(null, null))
                 .as("the one hand-written image model: not in /v1/models, so discovery cannot see it")
                 .anyMatch(m -> "cortecs".equals(m.provider()) && "flux-2-klein-4b".equals(m.modelName()));
@@ -128,9 +129,9 @@ class ModelCatalogTest {
 
     @Test
     void bundled_hf_style_wire_name_loaded_from_nested_directory() {
-        // _vance/model/openai/google/gemma-4-31B-it.yaml — wire name
+        // _vance/model/cortecs/google/gemma-4-31B-it.yaml — wire name
         // recovered from the nested directory path.
-        ModelInfo info = catalog.lookupOrDefault("openai", "google/gemma-4-31B-it");
+        ModelInfo info = catalog.lookupOrDefault("cortecs", "google/gemma-4-31B-it");
         assertThat(info.contextWindowTokens()).isEqualTo(131_072);
         assertThat(info.size()).isEqualTo(ModelSize.SMALL);
     }
@@ -441,7 +442,7 @@ class ModelCatalogTest {
 
     @Test
     void bundled_glm_5_2_has_cortecs_pricing() {
-        ModelInfo info = catalog.lookupOrDefault("openai", "glm-5.2");
+        ModelInfo info = catalog.lookupOrDefault("cortecs", "glm-5.2");
         assertThat(info.pricing()).isNotNull();
         assertThat(info.pricing().currency()).isEqualTo("EUR");
         assertThat(info.pricing().inputPerMTok()).isEqualTo(1.077);
@@ -459,7 +460,7 @@ class ModelCatalogTest {
     @Test
     void bundled_cortecs_workhorses_are_priced() {
         for (String model : List.of("kimi-k3", "deepseek-v4-pro", "deepseek-v4-flash-0731", "glm-5", "glm-5.1")) {
-            ModelInfo info = catalog.lookupOrDefault("openai", model);
+            ModelInfo info = catalog.lookupOrDefault("cortecs", model);
             assertThat(info.pricing()).as("pricing for %s", model).isNotNull();
             assertThat(info.pricing().currency()).isEqualTo("EUR");
             assertThat(info.pricing().inputPerMTok()).isGreaterThan(0.0);
@@ -509,7 +510,7 @@ class ModelCatalogTest {
 
     @Test
     void project_pricing_overrides_bundled() {
-        stubModelDoc(TENANT, PROJECT, "openai/glm-5.2.yaml", """
+        stubModelDoc(TENANT, PROJECT, "cortecs/glm-5.2.yaml", """
                 pricing:
                   currency: USD
                   inputPerMTok: 0.50
@@ -517,7 +518,7 @@ class ModelCatalogTest {
                 """);
         catalog.refresh();
 
-        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "openai", "glm-5.2");
+        ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "cortecs", "glm-5.2");
         assertThat(info.pricing()).isNotNull();
         assertThat(info.pricing().currency()).isEqualTo("USD");
         assertThat(info.pricing().inputPerMTok()).isEqualTo(0.50);

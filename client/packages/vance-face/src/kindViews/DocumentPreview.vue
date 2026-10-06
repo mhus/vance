@@ -23,13 +23,15 @@ const streamUrl = computed(() =>
   props.documentId ? documentContentUrl(props.documentId, false) : '',
 );
 
-const kind = computed<'image' | 'pdf' | 'docx' | 'xlsx' | 'inline' | 'binary'>(() => {
+const kind = computed<'image' | 'pdf' | 'audio' | 'video' | 'docx' | 'xlsx' | 'inline' | 'binary'>(() => {
   if (props.inline) return 'inline';
   const mt = (props.mimeType ?? '').toLowerCase();
   if (mt === 'application/pdf') return 'pdf';
   if (mt === DOCX_MIME) return 'docx';
   if (mt === XLSX_MIME) return 'xlsx';
   if (mt.startsWith('image/')) return 'image';
+  if (mt.startsWith('audio/')) return 'audio';
+  if (mt.startsWith('video/')) return 'video';
   return 'binary';
 });
 
@@ -54,6 +56,27 @@ defineExpose({ downloadUrl });
         loading="lazy"
       />
     </div>
+
+    <!-- Audio: native browser player via <audio controls>. Same-origin
+         request carries the vance_access cookie, so the brain content
+         endpoint streams the bytes. -->
+    <audio
+      v-else-if="kind === 'audio'"
+      :src="streamUrl"
+      controls
+      preload="metadata"
+      class="document-preview__audio"
+    />
+
+    <!-- Video: native browser player via <video controls>, same
+         cookie-auth streaming as above. -->
+    <video
+      v-else-if="kind === 'video'"
+      :src="streamUrl"
+      controls
+      preload="metadata"
+      class="document-preview__video"
+    />
 
     <!-- PDF: native browser viewer via <iframe>. Same-origin request
          carries the vance_access cookie, so the brain content endpoint
@@ -94,6 +117,19 @@ defineExpose({ downloadUrl });
   max-height: 70vh;
   object-fit: contain;
   border-radius: 0.5rem;
+}
+
+.document-preview__audio {
+  width: 100%;
+  max-width: 40rem;
+}
+
+.document-preview__video {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
 }
 
 .document-preview__pdf {

@@ -8,3 +8,4 @@ version: "@project.version@"
 # space away from being read as a mapping.
 kinds:
   - "application:feeds"
+  - "vance-feed-source"

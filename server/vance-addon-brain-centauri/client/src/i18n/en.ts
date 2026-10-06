@@ -97,5 +97,32 @@ export default {
       minutes: '{n} min ago',
       hours: '{n} h ago',
     },
+    settingsArea: {
+      title: 'Feed sources',
+    },
+    protocols: {
+      ode: 'Ode (foreign file service)',
+      usgs: 'USGS earthquakes',
+      wikipedia: 'Wikipedia recent changes',
+    },
+    sourceForm: {
+      sectionSource: 'Source',
+      protocol: 'Protocol',
+      protocolHelp: 'Which feed protocol this endpoint speaks.',
+      protocolCustom: 'Protocol id',
+      protocolCustomHelp:
+        'Must match a feed protocol the server serves — an unknown id leaves the source inactive.',
+      baseUrl: 'Endpoint',
+      baseUrlHelp: 'Base URL of the service, e.g. https://earthquake.usgs.gov.',
+      apiKey: 'API key',
+      apiKeyHelp:
+        'Either a reference ({ref}) or a declared literal ({literal}). The form stores what you type — it resolves neither.',
+      enabled: 'Enabled',
+      enabledHelp: 'A disabled source stays configured but delivers no entries.',
+      draftWarning:
+        'This document is not under _vance/config/feeds/ — the feed factory only reads that folder, so the source stays inert where it is.',
+      preserved:
+        '{count} further field(s) in this document are kept unchanged — edit them in the raw editor.',
+    },
   },
 };

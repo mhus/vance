@@ -91,5 +91,32 @@ export default {
       minutes: 'vor {n} min',
       hours: 'vor {n} h',
     },
+    settingsArea: {
+      title: 'Feed-Quellen',
+    },
+    protocols: {
+      ode: 'Ode (Fremd-Dateidienst)',
+      usgs: 'USGS Erdbeben',
+      wikipedia: 'Wikipedia Letzte Änderungen',
+    },
+    sourceForm: {
+      sectionSource: 'Quelle',
+      protocol: 'Protokoll',
+      protocolHelp: 'Welches Feed-Protokoll dieser Endpunkt spricht.',
+      protocolCustom: 'Protokoll-Id',
+      protocolCustomHelp:
+        'Muss zu einem Feed-Protokoll des Servers passen — eine unbekannte Id lässt die Quelle inaktiv.',
+      baseUrl: 'Endpunkt',
+      baseUrlHelp: 'Basis-URL des Dienstes, z.B. https://earthquake.usgs.gov.',
+      apiKey: 'API-Key',
+      apiKeyHelp:
+        'Entweder eine Referenz ({ref}) oder ein erklärtes Literal ({literal}). Das Formular speichert, was Sie tippen — es löst beides nicht auf.',
+      enabled: 'Aktiv',
+      enabledHelp: 'Eine abgeschaltete Quelle bleibt konfiguriert, liefert aber keine Einträge.',
+      draftWarning:
+        'Dieses Dokument liegt nicht unter _vance/config/feeds/ — die Feed-Factory liest nur diesen Ordner, damit bleibt die Quelle an ihrem Ort inaktiv.',
+      preserved:
+        '{count} weitere Feld(er) dieses Dokuments bleiben unverändert — im Raw-Editor bearbeiten.',
+    },
   },
 };

@@ -1253,6 +1253,9 @@ export default {
     researchSourceView: {
       tabLabel: 'Suchquelle',
     },
+    mountSourceView: {
+      tabLabel: 'Mount',
+    },
     schedulerView: {
       tabLabel: 'Scheduler',
       parseError: 'Diese Scheduler-Definition ist kein gültiges YAML — im Raw-Editor korrigieren.',
@@ -2537,6 +2540,37 @@ export default {
         '{count} weitere Feld(er) dieses Dokuments bleiben unverändert — im Raw-Editor bearbeiten.',
     },
   },
+  mountSource: {
+    protocols: {
+      local: 'Lokales Verzeichnis',
+      demo: 'Demo-Quelle',
+      ode: 'Ode (Fremd-Dateidienst)',
+    },
+    form: {
+      sectionMount: 'Mount',
+      protocol: 'Protokoll',
+      protocolHelp: 'Welches Mount-Protokoll diese Quelle spricht.',
+      protocolCustom: 'Protokoll-Id',
+      protocolCustomHelp:
+        'Muss zu einem Protokoll des Servers passen — eine unbekannte Id lässt den Mount inaktiv.',
+      baseUrl: 'Endpunkt',
+      baseUrlHelp: 'Basis-URL des Dienstes. Beim lokalen Protokoll nicht nötig.',
+      apiKey: 'API-Key',
+      apiKeyHelp:
+        'Entweder eine Referenz ({ref}) oder ein erklärtes Literal ({literal}). Das Formular speichert, was Sie tippen — es löst beides nicht auf.',
+      rootDir: 'Wurzelverzeichnis',
+      rootDirHelp: 'Das Verzeichnis, das der Mount abbildet — absoluter Pfad auf dem Server.',
+      writable: 'Beschreibbar',
+      writableHelp:
+        'Wandelt Schreib- und Löschzugriffe in den gemounteten Baum frei. Standard: nur lesen.',
+      enabled: 'Aktiv',
+      enabledHelp: 'Ein abgeschalteter Mount bleibt konfiguriert, erscheint aber nicht im Baum.',
+      draftWarning:
+        'Dieses Dokument liegt nicht unter _vance/config/mounts/ — die Mount-Factory liest nur diesen Ordner, damit bleibt der Mount an seinem Ort inaktiv.',
+      preserved:
+        '{count} weitere Feld(er) dieses Dokuments bleiben unverändert — im Raw-Editor bearbeiten.',
+    },
+  },
   scheduler: {
     pageTitle: 'Scheduler',
     pickProject: 'Session oder Projekt links wählen, um Scheduler zu sehen.',
@@ -3556,6 +3590,9 @@ export default {
     areas: {
       research: {
         title: 'Research',
+      },
+      mounts: {
+        title: 'Mounts',
       },
       backToAreas: 'Zurück zu den Bereichen',
       backToEntries: 'Zurück zur Liste',

@@ -25,6 +25,13 @@ import {
   type ResearchSourceDoc,
 } from '@/kindViews/researchSourceCodec';
 import { researchSourceSettingsProvider } from '@/kindViews/researchSourceSettingsProvider';
+import {
+  MountSourceParseError,
+  parseMountSourceDoc,
+  serializeMountSourceDoc,
+  type MountSourceDoc,
+} from '@/kindViews/mountSourceCodec';
+import { mountSourceSettingsProvider } from '@/kindViews/mountSourceSettingsProvider';
 import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
@@ -152,6 +159,23 @@ export function registerBuiltInKinds(): void {
       () => import('@/kindViews/ResearchSourceFormView.vue'),
     ),
     settingsProvider: researchSourceSettingsProvider,
+  });
+  // ── Mount source: Jaglan mount definition (settings area) ─────
+  // One mounted external tree: _vance/config/mounts/<id>.yaml, server
+  // truth SourceConfigLoader + JaglanSourceFactory. Same whole-map
+  // contract as the research form — the mount codec owns its fields,
+  // everything else passes through; $meta.kind guaranteed on save.
+  registerKind<MountSourceDoc>({
+    id: 'vance-mount-source',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-mount-source',
+    parse: parseMountSourceDoc,
+    serialize: serializeMountSourceDoc,
+    isParseError: (e) => e instanceof MountSourceParseError,
+    tabLabelKey: 'documents.mountSourceView.tabLabel',
+    view: defineAsyncComponent(
+      () => import('@/kindViews/MountSourceFormView.vue'),
+    ),
+    settingsProvider: mountSourceSettingsProvider,
   });
   // ── Age: locked-state view for encrypted documents ────────────
   // An age-encrypted document renders here while no imported key fits

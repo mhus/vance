@@ -1251,6 +1251,9 @@ export default {
     researchSourceView: {
       tabLabel: 'Search source',
     },
+    mountSourceView: {
+      tabLabel: 'Mount',
+    },
     schedulerView: {
       tabLabel: 'Scheduler',
       parseError: 'This scheduler definition is not valid YAML — fix it in the raw editor.',
@@ -2521,6 +2524,37 @@ export default {
         '{count} further field(s) in this document are kept unchanged — edit them in the raw editor.',
     },
   },
+  mountSource: {
+    protocols: {
+      local: 'Local directory',
+      demo: 'Demo source',
+      ode: 'Ode (foreign file service)',
+    },
+    form: {
+      sectionMount: 'Mount',
+      protocol: 'Protocol',
+      protocolHelp: 'Which mount protocol this source speaks.',
+      protocolCustom: 'Protocol id',
+      protocolCustomHelp:
+        'Must match a protocol the server serves — an unknown id leaves the mount inactive.',
+      baseUrl: 'Endpoint',
+      baseUrlHelp: 'Base URL of the service. Not needed for the local protocol.',
+      apiKey: 'API key',
+      apiKeyHelp:
+        'Either a reference ({ref}) or a declared literal ({literal}). The form stores what you type — it resolves neither.',
+      rootDir: 'Root directory',
+      rootDirHelp: 'The directory the mount exposes — an absolute path on the server.',
+      writable: 'Writable',
+      writableHelp:
+        'Allows writes and deletes into the mounted tree. Default: read-only.',
+      enabled: 'Enabled',
+      enabledHelp: 'A disabled mount stays configured but does not appear in the tree.',
+      draftWarning:
+        'This document is not under _vance/config/mounts/ — the mount factory only reads that folder, so the mount stays inert where it is.',
+      preserved:
+        '{count} further field(s) in this document are kept unchanged — edit them in the raw editor.',
+    },
+  },
   scheduler: {
     pageTitle: 'Scheduler',
     pickProject: 'Pick a session or project to see its schedulers.',
@@ -3536,6 +3570,9 @@ export default {
     areas: {
       research: {
         title: 'Research',
+      },
+      mounts: {
+        title: 'Mounts',
       },
       backToAreas: 'Back to areas',
       backToEntries: 'Back to the list',

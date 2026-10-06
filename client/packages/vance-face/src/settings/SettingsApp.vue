@@ -22,6 +22,7 @@ import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import { useAdminProjects } from '@/composables/useAdminProjects';
 import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 import { recallProject, rememberProject } from '@/platform/lastProject';
+import { ensureAddonRemotesRegistered, ensureKindLoaded } from '@/platform/addonRegistry';
 import { getTenantId, listSettingForms, RestError } from '@vance/shared';
 import { brainFetch } from '@vance/shared';
 import { listSettingsKinds, type SettingsDocRow, type SettingsScope } from '@vance/kind-registry';
@@ -92,7 +93,17 @@ const formReloadKey = ref(0);
 // ─── Bereiche tab state ───
 
 /** Areas = settings-doc kinds, in registration order. */
-const areas = computed(() => listSettingsKinds());
+const areas = ref<ReturnType<typeof listSettingsKinds>>(listSettingsKinds());
+
+/**
+ * Re-snapshots the area list. The kind registry is a plain {@code globalThis}
+ * map — not reactive — so an addon's {@code register()} arriving after boot
+ * cannot move a computed by itself. Refreshed once the boot sweep has run
+ * the addon registers, which is the only way the list can grow mid-session.
+ */
+function refreshSettingsKinds(): void {
+  areas.value = listSettingsKinds();
+}
 const areaRows = ref<SettingsDocRow[]>([]);
 const areaLoading = ref(false);
 const areaError = ref<string | null>(null);
@@ -471,6 +482,21 @@ function onPopState(): void {
   void loadForScope();
 }
 
+/**
+ * Runs every addon register the manifest declares — the settings areas
+ * ride along with the kind entries, so the sweep is what makes addon areas
+ * appear. Failures are non-fatal by contract ({@code ensureKindLoaded}
+ * logs and moves on); the epoch bump re-evaluates the area list either
+ * way, so a failed addon simply contributes nothing.
+ */
+async function loadAddonAreaKinds(): Promise<void> {
+  const index = await ensureAddonRemotesRegistered();
+  const kindIds = [...index.keys()];
+  if (kindIds.length === 0) return;
+  await Promise.all(kindIds.map((id) => ensureKindLoaded(id)));
+  refreshSettingsKinds();
+}
+
 onMounted(async () => {
   window.addEventListener('popstate', onPopState);
   await Promise.all([
@@ -478,6 +504,11 @@ onMounted(async () => {
     adminProjects.reload(),
     profile.load().catch(() => undefined),
     projectKitsCatalog.load().catch(() => undefined),
+    // The area inventory needs the settings contributions of the addons, and
+    // those live in the lazily loaded `./register` exposes. This is the one
+    // surface that cannot wait for a kind to be opened first — so it loads
+    // every manifest-declared kind owner once at boot, this page only.
+    loadAddonAreaKinds(),
   ]);
   // URL first; a remembered project is the fallback; the tenant row is
   // the built-in default one click away at the top of the sidebar.

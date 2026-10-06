@@ -274,6 +274,18 @@ public class WizardLoader {
     }
 
     @SuppressWarnings("unchecked")
+
+    /**
+     * Edit-time validation seam over the canonical {@link #parse} —
+     * used by the {@code vance-wizard} kind handler. Runs the exact same
+     * parse {@link #listAll} would run and throws the same
+     * {@link IllegalStateException} the loader logs as WARN and skips.
+     * No persistence, no cascade — pure body grammar.
+     */
+    void validateBody(String name, String yamlContent) {
+        parse(name, yamlContent, WizardSource.VANCE);
+    }
+
     private ResolvedWizard parse(String name, String yamlContent, WizardSource source) {
         Yaml yaml = new Yaml();
         Object parsed = yaml.load(yamlContent);

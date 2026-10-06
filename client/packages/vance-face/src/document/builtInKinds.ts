@@ -51,6 +51,8 @@ import { promptSettingsProvider } from '@/kindViews/promptSettingsProvider';
 import { schedulerSettingsProvider } from '@/kindViews/schedulerSettingsProvider';
 import { workflowSettingsProvider } from '@/kindViews/workflowSettingsProvider';
 import { hookSettingsProvider } from '@/kindViews/hookSettingsProvider';
+import { guardSettingsProvider } from '@/kindViews/guardSettingsProvider';
+import { wizardSettingsProvider } from '@/kindViews/wizardSettingsProvider';
 import { isAgeDocument } from '@vance/age';
 
 export function registerBuiltInKinds(): void {
@@ -291,6 +293,27 @@ export function registerBuiltInKinds(): void {
     matches: (kind) => (kind ?? '').toLowerCase() === 'vance-hook',
     tabLabelKey: 'documents.hookView.tabLabel',
     settingsProvider: hookSettingsProvider,
+  });
+  // ── Shooty guards + wizards (settings areas, raw editors) ─────
+  // Guards: _vance/guards/<name>.js — the script library recipes
+  // reference from their guard: block. No view/codec: imperative JS,
+  // CodeEditor via mime type; GuardDocKindHandler parses it with the
+  // same parse-only GraalJS check the executor runs.
+  registerKind({
+    id: 'vance-guard',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-guard',
+    tabLabelKey: 'documents.guardView.tabLabel',
+    settingsProvider: guardSettingsProvider,
+  });
+  // Wizards: _vance/wizards/<name>.yaml — four-tier cascade with a
+  // real user layer (_user_<login>), the first area that serves it.
+  // No view/codec: localized form definition + Pebble template;
+  // WizardDocKindHandler runs the canonical WizardLoader parse.
+  registerKind({
+    id: 'vance-wizard',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'vance-wizard',
+    tabLabelKey: 'documents.wizardView.tabLabel',
+    settingsProvider: wizardSettingsProvider,
   });
   // ── Age: locked-state view for encrypted documents ────────────
   // An age-encrypted document renders here while no imported key fits

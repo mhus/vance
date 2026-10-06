@@ -16,17 +16,20 @@
  */
 const judge = vance.params.judge;
 const prompt = vance.params.prompt;
+// No top-level `return` here: GraalJS rejects it as a statement (SyntaxError)
+// and the fail-open yield points would swallow it — the guard would silently
+// never fire. The early exit is an else-branch instead.
 if (!judge || !prompt) {
-  // Misconfigured legacy guard — nothing to evaluate. Fail-open.
-  return;
-}
+  // Misconfigured guard — nothing to evaluate. Fail-open.
+  vance.log.info("completion-guard: judge/prompt params missing — nothing to evaluate");
+} else {
+  const res = vance.llm.callForJson("completion-guard", "Evaluate the guard condition.", {
+    judge: judge,
+    task: vance.guard.task,
+    output: vance.guard.output,
+  });
 
-const res = vance.llm.callForJson("completion-guard", "Evaluate the guard condition.", {
-  judge: judge,
-  task: vance.guard.task,
-  output: vance.guard.output,
-});
-
-if (res && res.fire) {
-  vance.guard.continueWith(prompt);
+  if (res && res.fire) {
+    vance.guard.continueWith(prompt);
+  }
 }

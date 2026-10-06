@@ -1274,6 +1274,12 @@ export default {
     hookView: {
       tabLabel: 'Hook',
     },
+    guardView: {
+      tabLabel: 'Guard',
+    },
+    wizardView: {
+      tabLabel: 'Wizard',
+    },
     providerDocView: {
       tabLabel: 'Provider',
     },
@@ -3711,6 +3717,16 @@ export default {
         title: 'Hooks',
         createHint:
           '„event/hook-name“ — z.B. process.completed/notify-owner. Das Event ist ein Pfadsegment, der Name klein mit _ und -.',
+      },
+      guards: {
+        title: 'Guards',
+        createHint:
+          'Kebab-Case-Name — er wird zum Dateinamen; das Recipe zitiert den Pfad im guard:-Block. Kein Top-Level-return im Skript (GraalJS lehnt es ab).',
+      },
+      wizards: {
+        title: 'Wizards',
+        createHint:
+          'Kebab-Case-Name — er wird zum Dateinamen; gleicher Name in einer inneren Ebene schattiert diesen Wizard.',
       },
       backToAreas: 'Zurück zu den Bereichen',
       backToEntries: 'Zurück zur Liste',

@@ -23,6 +23,7 @@ fields:
     help:
       de: "Strukturierte, sorgfältige Arbeit — Slartibartfast-Phasen, Planning-Schritte."
       en: "Structured, careful work — Slartibartfast phases, planning steps."
+    allowCustom: true
     choicesFrom: ai-models
     bindsTo:
       key: "ai.alias.default.analyze"
@@ -35,6 +36,7 @@ fields:
     help:
       de: "Schnelle, günstige Calls — Klassifikation, Title-Gen, Light-LLM-Service."
       en: "Quick, cheap calls — classification, title-gen, Light-LLM-Service."
+    allowCustom: true
     choicesFrom: ai-models
     bindsTo:
       key: "ai.alias.default.fast"
@@ -47,6 +49,7 @@ fields:
     help:
       de: "Deep Reasoning — Marvin-Task-Tree, lange Tool-Ketten."
       en: "Deep reasoning — Marvin task tree, long tool chains."
+    allowCustom: true
     choicesFrom: ai-models
     bindsTo:
       key: "ai.alias.default.deep"
@@ -59,6 +62,7 @@ fields:
     help:
       de: "Web-Search / Browsing — bevorzugt Modelle mit langem Kontextfenster."
       en: "Web search / browsing — prefer models with a long context window."
+    allowCustom: true
     choicesFrom: ai-models
     bindsTo:
       key: "ai.alias.default.web"
@@ -71,6 +75,7 @@ fields:
     help:
       de: "Code-lastige Arbeit — Refactoring, Codegen, Skript-Engine."
       en: "Code-heavy work — refactoring, codegen, script engine."
+    allowCustom: true
     choicesFrom: ai-models
     bindsTo:
       key: "ai.alias.default.code"
@@ -89,6 +94,7 @@ fields:
     help:
       de: "Optional. Completion-Modell (Fill-In-the-Middle) für Vorschläge an der Cursor-Position. Ungesetzt = normaler Chat-Pfad. Nur Modelle mit bekanntem FIM-Template (z.B. Qwen-Coder) sind wählbar."
       en: "Optional. Fill-In-the-Middle completion model for cursor-position suggestions. Unset = normal chat path. Only models with a known FIM template (e.g. Qwen-Coder) are selectable."
+    allowCustom: true
     choicesFrom: ai-fim-models
     bindsTo:
       key: "ai.alias.default.fim"
@@ -106,6 +112,7 @@ fields:
     help:
       de: "Schneller / günstiger Bildgenerator — Default für `image_generate` ohne explizite Quality-Wahl."
       en: "Fast / cheap image generator — default for `image_generate` without explicit quality choice."
+    allowCustom: true
     choicesFrom: ai-image-models
     bindsTo:
       key: "ai.alias.default.image"
@@ -118,6 +125,7 @@ fields:
     help:
       de: "Hochwertige Bildgenerierung — langsamer, teurer. Empfohlen für finale Assets (Cover, Logo, Marketing)."
       en: "Quality image generation — slower, more expensive. Recommended for final assets (cover art, logo, marketing)."
+    allowCustom: true
     choicesFrom: ai-image-models
     bindsTo:
       key: "ai.alias.default.image-high"
@@ -135,6 +143,7 @@ fields:
     help:
       de: "Text-to-Speech — Default für `audio_speak` ohne explizite Modell-Wahl."
       en: "Text-to-speech — default for `audio_speak` without an explicit model choice."
+    allowCustom: true
     choicesFrom: ai-tts-models
     bindsTo:
       key: "ai.alias.default.tts"
@@ -147,6 +156,7 @@ fields:
     help:
       de: "Spracherkennung — Default für `audio_transcribe`."
       en: "Speech-to-text — default for `audio_transcribe`."
+    allowCustom: true
     choicesFrom: ai-stt-models
     bindsTo:
       key: "ai.alias.default.stt"
@@ -159,6 +169,7 @@ fields:
     help:
       de: "Musik-/Audio-Generierung — Default für `audio_music`."
       en: "Music / audio generation — default for `audio_music`."
+    allowCustom: true
     choicesFrom: ai-music-models
     bindsTo:
       key: "ai.alias.default.music"

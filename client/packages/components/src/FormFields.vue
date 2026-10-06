@@ -3,6 +3,7 @@ import VButton from './VButton.vue';
 import VCheckbox from './VCheckbox.vue';
 import VInput from './VInput.vue';
 import VSelect from './VSelect.vue';
+import VCombobox from './VCombobox.vue';
 import VTextarea from './VTextarea.vue';
 import { pickLocalized } from '@vance/shared';
 import { computed, ref } from 'vue';
@@ -51,6 +52,11 @@ interface Props {
   /** Shown when the filter matches none of the choices. */
   noMatchesLabel?: string;
   /**
+   * Shown under an `allowCustom` select whose current value is not in the
+   * choices — a stale inventory entry or a hand-typed one.
+   */
+  customValueHintLabel?: string;
+  /**
    * How many are selected — a function, not a template string, because this
    * package has no message formatter to substitute a placeholder with.
    */
@@ -66,6 +72,7 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   filterLabel: 'Filter…',
   noMatchesLabel: 'No matches',
+  customValueHintLabel: 'Custom value (not in the list)',
   selectedCountLabel: () => (n: number) => `${n} selected`,
   clearSelectionLabel: 'Clear',
 });
@@ -315,6 +322,22 @@ function canRemove(field: FormFieldDto): boolean {
       />
 
       <!-- ── select ── -->
+      <!-- `allowCustom` marks the choices as an inventory hint rather than
+           a closed enum (see FormFieldDto): the field becomes a combobox
+           that also carries a hand-typed or stale value. -->
+      <VCombobox
+        v-else-if="field.type === 'select' && field.allowCustom"
+        :model-value="stringValue(field.name) || null"
+        :label="labelOf(field)"
+        :options="selectOptionsOf(field)"
+        :help="helpOf(field)"
+        :error="errorOf(field)"
+        :placeholder="field.required ? undefined : '—'"
+        :disabled="disabled"
+        :custom-value-hint="customValueHintLabel"
+        :no-matches-hint="noMatchesLabel"
+        @update:model-value="(v: string | null) => setField(field.name, v ?? '')"
+      />
       <VSelect
         v-else-if="field.type === 'select'"
         :model-value="stringValue(field.name) || null"
@@ -425,6 +448,7 @@ function canRemove(field: FormFieldDto): boolean {
             :disabled="disabled"
             :filter-label="filterLabel"
             :no-matches-label="noMatchesLabel"
+            :custom-value-hint-label="customValueHintLabel"
             :selected-count-label="selectedCountLabel"
             :clear-selection-label="clearSelectionLabel"
             @update:model-value="(sub: Record<string, FormValue>) =>

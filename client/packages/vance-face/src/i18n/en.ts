@@ -3340,6 +3340,7 @@ export default {
     namePlaceholder: 'name',
     label: 'Label',
     required: 'req',
+    allowCustom: 'custom values',
     moveUp: 'Move up',
     moveDown: 'Move down',
     remove: 'Remove',
@@ -3560,5 +3561,6 @@ export default {
     noMatches: 'Nothing matches the filter.',
     selectedCount: '{count} selected',
     clearSelection: 'Clear',
+    customValueHint: 'Not in the list — custom or outdated value.',
   },
 };

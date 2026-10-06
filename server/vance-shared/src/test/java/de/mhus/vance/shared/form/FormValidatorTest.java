@@ -17,27 +17,31 @@ class FormValidatorTest {
     @Test
     void requiredString_missing_isError() {
         FormFieldDto field = FormFieldDto.builder()
-                .name("title").type("string").required(true)
-                .label(Map.of("en", "Title")).build();
+                .name("title")
+                .type("string")
+                .required(true)
+                .label(Map.of("en", "Title"))
+                .build();
 
         assertThatThrownBy(() -> validator.validate(List.of(field), Map.of()))
                 .isInstanceOf(FormValidationException.class)
                 .satisfies(ex -> {
                     FormValidationException fve = (FormValidationException) ex;
-                    assertThat(fve.getErrors())
-                            .singleElement()
-                            .satisfies(e -> {
-                                assertThat(e.field()).isEqualTo("title");
-                                assertThat(e.error()).isEqualTo("required");
-                            });
+                    assertThat(fve.getErrors()).singleElement().satisfies(e -> {
+                        assertThat(e.field()).isEqualTo("title");
+                        assertThat(e.error()).isEqualTo("required");
+                    });
                 });
     }
 
     @Test
     void requiredString_blank_isError() {
         FormFieldDto field = FormFieldDto.builder()
-                .name("title").type("string").required(true)
-                .label(Map.of("en", "Title")).build();
+                .name("title")
+                .type("string")
+                .required(true)
+                .label(Map.of("en", "Title"))
+                .build();
 
         assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("title", "  ")))
                 .isInstanceOf(FormValidationException.class);
@@ -46,8 +50,11 @@ class FormValidatorTest {
     @Test
     void optionalField_absent_isOk() {
         FormFieldDto field = FormFieldDto.builder()
-                .name("note").type("textarea").required(false)
-                .label(Map.of("en", "Note")).build();
+                .name("note")
+                .type("textarea")
+                .required(false)
+                .label(Map.of("en", "Note"))
+                .build();
 
         assertThatCode(() -> validator.validate(List.of(field), Map.of())).doesNotThrowAnyException();
     }
@@ -55,9 +62,13 @@ class FormValidatorTest {
     @Test
     void integer_bounds_areEnforced() {
         FormFieldDto field = FormFieldDto.builder()
-                .name("priority").type("integer").required(true)
-                .integerMin(1).integerMax(5)
-                .label(Map.of("en", "Priority")).build();
+                .name("priority")
+                .type("integer")
+                .required(true)
+                .integerMin(1)
+                .integerMax(5)
+                .label(Map.of("en", "Priority"))
+                .build();
 
         assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("priority", "0")))
                 .isInstanceOf(FormValidationException.class)
@@ -74,7 +85,9 @@ class FormValidatorTest {
     @Test
     void select_rejects_unknown_choice() {
         FormFieldDto field = FormFieldDto.builder()
-                .name("tone").type("select").required(true)
+                .name("tone")
+                .type("select")
+                .required(true)
                 .label(Map.of("en", "Tone"))
                 .choices(List.of(
                         FormChoiceDto.builder().value("formal").build(),
@@ -87,34 +100,102 @@ class FormValidatorTest {
     }
 
     @Test
+    void select_allowCustom_acceptsOffListValue() {
+        // The llm-setup case: `choicesFrom: ai-models` is an inventory snapshot,
+        // and a stored alias can point at a model that has since dropped out of
+        // the catalog. With `allowCustom` the submitted string passes; the
+        // resolution fails loudly at call time instead of the form blocking.
+        FormFieldDto field = FormFieldDto.builder()
+                .name("model")
+                .type("select")
+                .required(true)
+                .allowCustom(true)
+                .label(Map.of("en", "Model"))
+                .choices(List.of(FormChoiceDto.builder()
+                        .value("anthropic:claude-sonnet-4-6")
+                        .build()))
+                .build();
+
+        assertThatCode(() -> validator.validate(List.of(field), Map.of("model", "openai:gpt-x")))
+                .doesNotThrowAnyException();
+
+        // Still a select: only strings get through.
+        assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("model", 42)))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("expected_string");
+    }
+
+    @Test
+    void select_withoutAllowCustom_staysStrict() {
+        // Closed enums (provider: anthropic/openai/…) must keep failing —
+        // allowCustom is opt-in per field, never a global switch.
+        FormFieldDto field = FormFieldDto.builder()
+                .name("provider")
+                .type("select")
+                .required(true)
+                .label(Map.of("en", "Provider"))
+                .choices(List.of(
+                        FormChoiceDto.builder().value("anthropic").build(),
+                        FormChoiceDto.builder().value("openai").build()))
+                .build();
+
+        assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("provider", "grok")))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("invalid_choice");
+    }
+
+    @Test
+    void multiSelect_allowCustomFlag_isNotHonored() {
+        // Only select opens the whitelist. multi_select entries are always
+        // validated against the declared choices.
+        FormFieldDto field = FormFieldDto.builder()
+                .name("tags")
+                .type("multi_select")
+                .required(true)
+                .allowCustom(true)
+                .label(Map.of("en", "Tags"))
+                .choices(List.of(FormChoiceDto.builder().value("a").build()))
+                .build();
+
+        assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("tags", List.of("custom"))))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("invalid_choice");
+    }
+
+    @Test
     void multiSelect_acceptsAllowedSubset() {
         FormFieldDto field = FormFieldDto.builder()
-                .name("tags").type("multi_select").required(true)
+                .name("tags")
+                .type("multi_select")
+                .required(true)
                 .label(Map.of("en", "Tags"))
                 .choices(List.of(
                         FormChoiceDto.builder().value("a").build(),
                         FormChoiceDto.builder().value("b").build()))
                 .build();
 
-        assertThatCode(() -> validator.validate(
-                List.of(field), Map.of("tags", List.of("a"))))
+        assertThatCode(() -> validator.validate(List.of(field), Map.of("tags", List.of("a"))))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void repeat_min_isEnforced() {
         FormFieldDto member = FormFieldDto.builder()
-                .name("name").type("string").required(true)
-                .label(Map.of("en", "Name")).build();
+                .name("name")
+                .type("string")
+                .required(true)
+                .label(Map.of("en", "Name"))
+                .build();
         FormFieldDto repeat = FormFieldDto.builder()
-                .name("members").type("repeat").min(2)
+                .name("members")
+                .type("repeat")
+                .min(2)
                 .label(Map.of("en", "Members"))
                 .item(List.of(member))
                 .build();
 
-        assertThatThrownBy(() -> validator.validate(
-                List.of(repeat),
-                Map.of("members", List.of(Map.of("name", "Alice")))))
+        assertThatThrownBy(() ->
+                        validator.validate(List.of(repeat), Map.of("members", List.of(Map.of("name", "Alice")))))
                 .isInstanceOf(FormValidationException.class)
                 .hasMessageContaining("too_few_entries");
     }
@@ -122,17 +203,21 @@ class FormValidatorTest {
     @Test
     void repeat_validatesNested_requiredFields() {
         FormFieldDto member = FormFieldDto.builder()
-                .name("name").type("string").required(true)
-                .label(Map.of("en", "Name")).build();
+                .name("name")
+                .type("string")
+                .required(true)
+                .label(Map.of("en", "Name"))
+                .build();
         FormFieldDto repeat = FormFieldDto.builder()
-                .name("members").type("repeat").min(1)
+                .name("members")
+                .type("repeat")
+                .min(1)
                 .label(Map.of("en", "Members"))
                 .item(List.of(member))
                 .build();
 
         assertThatThrownBy(() -> validator.validate(
-                List.of(repeat),
-                Map.of("members", List.of(Map.of(), Map.of("name", "Bob")))))
+                        List.of(repeat), Map.of("members", List.of(Map.of(), Map.of("name", "Bob")))))
                 .isInstanceOf(FormValidationException.class)
                 .satisfies(ex -> {
                     FormValidationException fve = (FormValidationException) ex;
@@ -145,8 +230,11 @@ class FormValidatorTest {
     @Test
     void boolean_acceptsStringEncoding() {
         FormFieldDto field = FormFieldDto.builder()
-                .name("active").type("boolean").required(true)
-                .label(Map.of("en", "Active")).build();
+                .name("active")
+                .type("boolean")
+                .required(true)
+                .label(Map.of("en", "Active"))
+                .build();
 
         assertThatCode(() -> validator.validate(List.of(field), Map.of("active", "true")))
                 .doesNotThrowAnyException();
@@ -164,12 +252,14 @@ class FormValidatorTest {
         // apply-time planner, which does evaluate the expression, would have
         // skipped their bindings entirely.
         FormFieldDto conditional = FormFieldDto.builder()
-                .name("baseUrl").type("string").required(true)
+                .name("baseUrl")
+                .type("string")
+                .required(true)
                 .showIf("type == 'infisical'")
-                .label(Map.of("en", "Base URL")).build();
+                .label(Map.of("en", "Base URL"))
+                .build();
 
-        assertThatCode(() -> validator.validate(
-                List.of(conditional), Map.of("type", "settings")))
+        assertThatCode(() -> validator.validate(List.of(conditional), Map.of("type", "settings")))
                 .doesNotThrowAnyException();
     }
 
@@ -178,13 +268,16 @@ class FormValidatorTest {
         // Exempt from required-presence, not from validation: a value that IS
         // there is checked as strictly as any other.
         FormFieldDto conditional = FormFieldDto.builder()
-                .name("port").type("integer").required(true)
-                .integerMin(1).integerMax(65535)
+                .name("port")
+                .type("integer")
+                .required(true)
+                .integerMin(1)
+                .integerMax(65535)
                 .showIf("type == 'infisical'")
-                .label(Map.of("en", "Port")).build();
+                .label(Map.of("en", "Port"))
+                .build();
 
-        assertThatThrownBy(() -> validator.validate(
-                List.of(conditional), Map.of("port", "99999")))
+        assertThatThrownBy(() -> validator.validate(List.of(conditional), Map.of("port", "99999")))
                 .isInstanceOf(FormValidationException.class)
                 .hasMessageContaining("above_max");
     }
@@ -195,9 +288,12 @@ class FormValidatorTest {
         // says nothing about whether the user was shown a box to fill in. Only
         // showIf exempts.
         FormFieldDto field = FormFieldDto.builder()
-                .name("token").type("string").required(true)
+                .name("token")
+                .type("string")
+                .required(true)
                 .writeIf("enabled")
-                .label(Map.of("en", "Token")).build();
+                .label(Map.of("en", "Token"))
+                .build();
 
         assertThatThrownBy(() -> validator.validate(List.of(field), Map.of()))
                 .isInstanceOf(FormValidationException.class)
@@ -209,9 +305,12 @@ class FormValidatorTest {
         // A blank expression is not a condition. Treating it as one would turn a
         // YAML typo into a silently unenforced field.
         FormFieldDto field = FormFieldDto.builder()
-                .name("title").type("string").required(true)
+                .name("title")
+                .type("string")
+                .required(true)
                 .showIf("   ")
-                .label(Map.of("en", "Title")).build();
+                .label(Map.of("en", "Title"))
+                .build();
 
         assertThatThrownBy(() -> validator.validate(List.of(field), Map.of()))
                 .isInstanceOf(FormValidationException.class)
@@ -223,12 +322,18 @@ class FormValidatorTest {
         // The exemption is per field, not per form — the unconditional half of a
         // setting form keeps its enforcement.
         FormFieldDto type = FormFieldDto.builder()
-                .name("type").type("string").required(true)
-                .label(Map.of("en", "Provider")).build();
+                .name("type")
+                .type("string")
+                .required(true)
+                .label(Map.of("en", "Provider"))
+                .build();
         FormFieldDto conditional = FormFieldDto.builder()
-                .name("baseUrl").type("string").required(true)
+                .name("baseUrl")
+                .type("string")
+                .required(true)
                 .showIf("type == 'infisical'")
-                .label(Map.of("en", "Base URL")).build();
+                .label(Map.of("en", "Base URL"))
+                .build();
 
         assertThatThrownBy(() -> validator.validate(List.of(type, conditional), Map.of()))
                 .isInstanceOf(FormValidationException.class)
@@ -240,8 +345,11 @@ class FormValidatorTest {
     @Test
     void unknownType_isError() {
         FormFieldDto field = FormFieldDto.builder()
-                .name("x").type("color-picker").required(true)
-                .label(Map.of("en", "X")).build();
+                .name("x")
+                .type("color-picker")
+                .required(true)
+                .label(Map.of("en", "X"))
+                .build();
 
         assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("x", "#ffffff")))
                 .isInstanceOf(FormValidationException.class)

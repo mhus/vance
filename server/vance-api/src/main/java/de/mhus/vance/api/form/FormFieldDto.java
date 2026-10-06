@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code password} — masked input</li>
  *   <li>{@code integer} — whole number (see {@link #integerMin}/{@link #integerMax})</li>
  *   <li>{@code boolean} — checkbox</li>
- *   <li>{@code select} — single-choice dropdown (see {@link #choices})</li>
+ *   <li>{@code select} — single-choice dropdown (see {@link #choices}, {@link #allowCustom})</li>
  *   <li>{@code multi_select} — multi-choice checkbox list (see {@link #choices})</li>
  *   <li>{@code repeat} — array of nested fields (see {@link #min}/{@link #max}/{@link #item})</li>
  * </ul>
@@ -93,6 +93,16 @@ public class FormFieldDto {
      * list, so the UI never has to know about dynamic sources.
      */
     private @Nullable String choicesFrom;
+
+    /**
+     * Select-field UI-hint: the picker also accepts a value outside
+     * {@link #choices} (typed by hand or carried over from a stale
+     * inventory entry). The {@code FormValidator} then skips the
+     * choice whitelist for this field — the value still has to be a
+     * string. Defaults to {@code false}: a {@code select} without this
+     * flag is a closed enum and stays strict.
+     */
+    private boolean allowCustom;
 
     /** UI-hint for {@code textarea}: number of visible rows. {@code null} = renderer default. */
     private @Nullable Integer rows;

@@ -13,8 +13,10 @@ import org.springframework.stereotype.Service;
  * Validates a submitted {@code Map<String, Object>} against a list of
  * {@link FormFieldDto}s before it's handed to the Pebble renderer.
  * Validation is purely structural: required-presence, type coercion,
- * integer bounds, repeat-bounds, select-whitelist. The renderer must
- * never see malformed input.
+ * integer bounds, repeat-bounds, select-whitelist. A {@code select} field
+ * with {@code allowCustom} skips the whitelist (see
+ * {@link FormFieldDto#isAllowCustom()}) — its choices are then an inventory
+ * hint, not a closed enum. The renderer must never see malformed input.
  *
  * <p>Errors are collected (not fail-fast) — the Web-UI can highlight
  * every broken field in one round-trip.
@@ -81,10 +83,7 @@ public class FormValidator {
 
     @SuppressWarnings("unchecked")
     private void validateField(
-            String path,
-            FormFieldDto field,
-            @Nullable Object raw,
-            List<FormValidationError> errors) {
+            String path, FormFieldDto field, @Nullable Object raw, List<FormValidationError> errors) {
         String type = field.getType();
         boolean missing = raw == null || (raw instanceof String s && s.isBlank());
         if (missing) {
@@ -125,7 +124,7 @@ public class FormValidator {
                     errors.add(new FormValidationError(path, "expected_string"));
                     return;
                 }
-                if (!isAllowedChoice(s, field.getChoices())) {
+                if (!field.isAllowCustom() && !isAllowedChoice(s, field.getChoices())) {
                     errors.add(new FormValidationError(path, "invalid_choice"));
                 }
             }
@@ -160,8 +159,7 @@ public class FormValidator {
                 for (int i = 0; i < rawList.size(); i++) {
                     Object entry = rawList.get(i);
                     if (!(entry instanceof Map<?, ?> entryMap)) {
-                        errors.add(new FormValidationError(
-                                path + "[" + i + "]", "expected_object"));
+                        errors.add(new FormValidationError(path + "[" + i + "]", "expected_object"));
                         continue;
                     }
                     Map<String, Object> typedEntry = new java.util.HashMap<>();
@@ -204,8 +202,12 @@ public class FormValidator {
     private static boolean isBooleanString(Object raw) {
         if (!(raw instanceof String s)) return false;
         String t = s.trim().toLowerCase();
-        return "true".equals(t) || "false".equals(t) || "1".equals(t) || "0".equals(t)
-                || "yes".equals(t) || "no".equals(t);
+        return "true".equals(t)
+                || "false".equals(t)
+                || "1".equals(t)
+                || "0".equals(t)
+                || "yes".equals(t)
+                || "no".equals(t);
     }
 
     @SuppressWarnings("unchecked")

@@ -3379,6 +3379,7 @@ export default {
     namePlaceholder: 'Name',
     label: 'Label',
     required: 'Pflicht',
+    allowCustom: 'Freitext',
     moveUp: 'Nach oben',
     moveDown: 'Nach unten',
     remove: 'Entfernen',
@@ -3580,5 +3581,6 @@ export default {
     noMatches: 'Kein Treffer für den Filter.',
     selectedCount: '{count} ausgewählt',
     clearSelection: 'Zurücksetzen',
+    customValueHint: 'Nicht in der Liste — eigener oder veralteter Wert.',
   },
 };

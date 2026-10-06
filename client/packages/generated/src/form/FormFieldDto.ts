@@ -15,6 +15,7 @@ export interface FormFieldDto {
   defaultValue?: string;
   choices: FormChoiceDto[];
   choicesFrom?: string;
+  allowCustom: boolean;
   rows?: number;
   integerMin?: number;
   integerMax?: number;

@@ -13,6 +13,7 @@ fields:
   - name: defaultWeb
     type: select
     required: false
+    allowCustom: true
     choicesFrom: research-sources
     bindsTo: { key: "research.default.web" }
     label:
@@ -33,6 +34,7 @@ fields:
   - name: defaultNews
     type: select
     required: false
+    allowCustom: true
     choicesFrom: research-sources
     bindsTo: { key: "research.default.news" }
     label:
@@ -50,6 +52,7 @@ fields:
   - name: defaultAcademic
     type: select
     required: false
+    allowCustom: true
     choicesFrom: research-sources
     bindsTo: { key: "research.default.academic" }
     label:
@@ -67,6 +70,7 @@ fields:
   - name: defaultEncyclopedia
     type: select
     required: false
+    allowCustom: true
     choicesFrom: research-sources
     bindsTo: { key: "research.default.encyclopedia" }
     label:
@@ -84,6 +88,7 @@ fields:
   - name: defaultBook
     type: select
     required: false
+    allowCustom: true
     choicesFrom: research-sources
     bindsTo: { key: "research.default.book" }
     label:
@@ -101,6 +106,7 @@ fields:
   - name: defaultImage
     type: select
     required: false
+    allowCustom: true
     choicesFrom: research-sources
     bindsTo: { key: "research.default.image" }
     label:
@@ -118,6 +124,7 @@ fields:
   - name: defaultVideo
     type: select
     required: false
+    allowCustom: true
     choicesFrom: research-sources
     bindsTo: { key: "research.default.video" }
     label:
@@ -135,6 +142,7 @@ fields:
   - name: defaultPdf
     type: select
     required: false
+    allowCustom: true
     choicesFrom: research-sources
     bindsTo: { key: "research.default.pdf" }
     label:

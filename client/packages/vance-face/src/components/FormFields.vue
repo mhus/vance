@@ -56,6 +56,7 @@ const lang = computed(() => props.preferredLang ?? locale.value);
     :disabled="disabled"
     :filter-label="t('form.filterPlaceholder')"
     :no-matches-label="t('form.noMatches')"
+    :custom-value-hint-label="t('form.customValueHint')"
     :selected-count-label="(n: number) => t('form.selectedCount', { count: n })"
     :clear-selection-label="t('form.clearSelection')"
     @update:model-value="(v: Record<string, FormValue>) => emit('update:modelValue', v)"

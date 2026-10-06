@@ -394,6 +394,12 @@ public class SettingFormLoader {
             }
         }
 
+        // Select extensions.
+        boolean allowCustom = raw.get("allowCustom") instanceof Boolean b && b;
+        if (allowCustom && !"select".equals(type)) {
+            throw new IllegalStateException("'" + path + ".allowCustom' only applies to select, got '" + type + "'");
+        }
+
         // Setting-Form extensions.
         BindsToDto bindsTo = parseBindsTo(raw.get("bindsTo"), path + ".bindsTo", type);
         String showIf = optionalString(raw.get("showIf"));
@@ -427,6 +433,7 @@ public class SettingFormLoader {
                 .label(label)
                 .help(help)
                 .required(required)
+                .allowCustom(allowCustom)
                 .defaultValue(defaultValue)
                 .choices(choices)
                 .rows(rows)

@@ -66,6 +66,7 @@ public final class FormFieldYamlParser {
         Map<String, String> help = optionalLocalizedText(raw.get("help"), path + ".help");
         boolean required = raw.get("required") instanceof Boolean b && b;
         String defaultValue = raw.get("defaultValue") == null ? null : String.valueOf(raw.get("defaultValue"));
+        boolean allowCustom = raw.get("allowCustom") instanceof Boolean b && b;
         List<FormChoiceDto> choices = parseChoices(raw.get("choices"), path + ".choices");
         Integer rows = optionalInt(raw.get("rows"), path + ".rows");
         Integer integerMin = optionalInt(raw.get("integerMin"), path + ".integerMin");
@@ -86,6 +87,7 @@ public final class FormFieldYamlParser {
                 .help(help)
                 .required(required)
                 .defaultValue(defaultValue)
+                .allowCustom(allowCustom)
                 .choices(choices)
                 .rows(rows)
                 .integerMin(integerMin)

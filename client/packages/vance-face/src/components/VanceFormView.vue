@@ -102,6 +102,7 @@ interface DesignField {
   type: string;
   labelText: string;
   required: boolean;
+  allowCustom: boolean;
   choicesText: string;
 }
 
@@ -117,6 +118,7 @@ function toDesign(f: FormFieldDto): DesignField {
     type: f.type ?? 'string',
     labelText: label.en ?? Object.values(label)[0] ?? '',
     required: !!f.required,
+    allowCustom: !!f.allowCustom && f.type === 'select',
     choicesText: choices
       .map((c) => (c.label?.en && c.label.en !== c.value ? `${c.value}|${c.label.en}` : c.value))
       .join('\n'),
@@ -142,6 +144,7 @@ function fromDesign(d: DesignField): FormFieldDto {
     type: d.type,
     label: { en: d.labelText.trim() || d.name.trim() },
     required: d.required,
+    allowCustom: d.allowCustom && d.type === 'select',
     choices,
   };
 }
@@ -157,6 +160,7 @@ function addField() {
     type: 'string',
     labelText: '',
     required: false,
+    allowCustom: false,
     choicesText: '',
   });
 }
@@ -308,6 +312,7 @@ onMounted(load);
             </select>
             <input v-model="f.labelText" class="vance-form-view__inp" :placeholder="$t('formView.label')" style="flex: 1" />
             <label class="vance-form-view__req"><input v-model="f.required" type="checkbox" /> {{ $t('formView.required') }}</label>
+            <label v-if="f.type === 'select'" class="vance-form-view__req"><input v-model="f.allowCustom" type="checkbox" /> {{ $t('formView.allowCustom') }}</label>
             <button class="vance-form-view__mini" :title="$t('formView.moveUp')" @click="moveField(i, -1)">↑</button>
             <button class="vance-form-view__mini" :title="$t('formView.moveDown')" @click="moveField(i, 1)">↓</button>
             <button class="vance-form-view__mini" :title="$t('formView.remove')" @click="removeField(i)">✕</button>

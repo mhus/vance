@@ -56,10 +56,9 @@ class SettingFormLoaderTest {
     void parse_full_form_through_vance_layer_produces_resolved_form() {
         when(documentService.findByPath(eq(TENANT), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(
-                TENANT, HomeBootstrapService.TENANT_PROJECT_NAME, "_vance/setting_forms/llm-setup.yaml"))
+                        TENANT, HomeBootstrapService.TENANT_PROJECT_NAME, "_vance/setting_forms/llm-setup.yaml"))
                 .thenReturn(Optional.of(new LookupResult(
-                        "_vance/setting_forms/llm-setup.yaml", LLM_SETUP_YAML,
-                        LookupResult.Source.VANCE, null)));
+                        "_vance/setting_forms/llm-setup.yaml", LLM_SETUP_YAML, LookupResult.Source.VANCE, null)));
 
         Optional<ResolvedSettingForm> hit = loader.load(TENANT, PROJECT, USER, "llm-setup");
 
@@ -90,9 +89,8 @@ class SettingFormLoaderTest {
                     showIf: "{% if %}{% endif %}"
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
-                .thenReturn(Optional.of(new LookupResult(
-                        "_vance/setting_forms/broken.yaml", broken,
-                        LookupResult.Source.VANCE, null)));
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/broken.yaml", broken, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(SettingFormParseException.class)
@@ -113,9 +111,8 @@ class SettingFormLoaderTest {
                     value: "{% if unclosed %}"
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
-                .thenReturn(Optional.of(new LookupResult(
-                        "_vance/setting_forms/broken.yaml", broken,
-                        LookupResult.Source.VANCE, null)));
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/broken.yaml", broken, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(SettingFormParseException.class)
@@ -134,9 +131,8 @@ class SettingFormLoaderTest {
                     label: { en: "X" }
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
-                .thenReturn(Optional.of(new LookupResult(
-                        "_vance/setting_forms/broken.yaml", yaml,
-                        LookupResult.Source.VANCE, null)));
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(SettingFormParseException.class)
@@ -159,9 +155,8 @@ class SettingFormLoaderTest {
                     bindsTo: { key: "k" }
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
-                .thenReturn(Optional.of(new LookupResult(
-                        "_vance/setting_forms/broken.yaml", yaml,
-                        LookupResult.Source.VANCE, null)));
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(SettingFormParseException.class)
@@ -192,9 +187,8 @@ class SettingFormLoaderTest {
                     value: "42"
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
-                .thenReturn(Optional.of(new LookupResult(
-                        "_vance/setting_forms/ok.yaml", yaml,
-                        LookupResult.Source.VANCE, null)));
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/ok.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         Optional<ResolvedSettingForm> hit = loader.load(TENANT, null, null, "ok");
         assertThat(hit).isPresent();
@@ -203,11 +197,14 @@ class SettingFormLoaderTest {
     @Test
     void availableIn_filter_matches_glob_patterns() {
         assertThat(SettingFormLoader.isAvailableIn(List.of("*"), "_tenant")).isTrue();
-        assertThat(SettingFormLoader.isAvailableIn(List.of("_user_*"), "_user_alice")).isTrue();
-        assertThat(SettingFormLoader.isAvailableIn(List.of("_user_*"), "research")).isFalse();
+        assertThat(SettingFormLoader.isAvailableIn(List.of("_user_*"), "_user_alice"))
+                .isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(List.of("_user_*"), "research"))
+                .isFalse();
         assertThat(SettingFormLoader.isAvailableIn(List.of("!_*"), "research")).isTrue();
         assertThat(SettingFormLoader.isAvailableIn(List.of("!_*"), "_tenant")).isFalse();
-        assertThat(SettingFormLoader.isAvailableIn(List.of("_tenant"), "_tenant")).isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(List.of("_tenant"), "_tenant"))
+                .isTrue();
     }
 
     @Test
@@ -223,13 +220,67 @@ class SettingFormLoaderTest {
                     bindsTo: { key: "k" }
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
-                .thenReturn(Optional.of(new LookupResult(
-                        "_vance/setting_forms/broken.yaml", yaml,
-                        LookupResult.Source.VANCE, null)));
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(SettingFormParseException.class)
                 .hasMessageContaining("not allowed on field-type 'multi_select'");
+    }
+
+    @Test
+    void allowCustom_flag_is_parsed_on_select_fields() {
+        String yaml = """
+                title:       { en: "X" }
+                description: { en: "X" }
+                fields:
+                  - name: model
+                    type: select
+                    label: { en: "Model" }
+                    allowCustom: true
+                    choicesFrom: ai-models
+                    bindsTo: { key: "ai.alias.default.fast" }
+                  - name: provider
+                    type: select
+                    label: { en: "Provider" }
+                    choices: [{value: anthropic}]
+                """;
+        when(documentService.lookupCascade(eq(TENANT), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/custom.yaml", yaml, LookupResult.Source.VANCE, null)));
+
+        var form = loader.load(TENANT, null, null, "custom").orElseThrow();
+
+        var model = form.fields().stream()
+                .filter(f -> f.getName().equals("model"))
+                .findFirst()
+                .orElseThrow();
+        var provider = form.fields().stream()
+                .filter(f -> f.getName().equals("provider"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(model.isAllowCustom()).isTrue();
+        assertThat(provider.isAllowCustom()).isFalse();
+    }
+
+    @Test
+    void allowCustom_on_non_select_is_rejected() {
+        String yaml = """
+                title:       { en: "X" }
+                description: { en: "X" }
+                fields:
+                  - name: note
+                    type: string
+                    label: { en: "Note" }
+                    allowCustom: true
+                """;
+        when(documentService.lookupCascade(eq(TENANT), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
+
+        assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
+                .isInstanceOf(SettingFormParseException.class)
+                .hasMessageContaining("only applies to select");
     }
 
     @Test
@@ -242,9 +293,8 @@ class SettingFormLoaderTest {
                     label: { en: "X" }
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
-                .thenReturn(Optional.of(new LookupResult(
-                        "_vance/setting_forms/broken.yaml", yaml,
-                        LookupResult.Source.VANCE, null)));
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(SettingFormParseException.class)
@@ -258,9 +308,8 @@ class SettingFormLoaderTest {
                 description: { en: "X" }
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
-                .thenReturn(Optional.of(new LookupResult(
-                        "_vance/setting_forms/broken.yaml", yaml,
-                        LookupResult.Source.VANCE, null)));
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(SettingFormParseException.class)

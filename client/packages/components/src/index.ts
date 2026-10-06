@@ -12,7 +12,7 @@ export { accentColorDotClass } from './accentColor';
 // pulls the whole module graph behind every other export into the same chunk.
 // CodeEditor's graph is CodeMirror 6 plus a dozen lezer grammars (SQL, Python,
 // Java, HTML, CSS, YAML, JS, Markdown) — measured at roughly two thirds of the
-// 913 KB shared chunk that every page preloaded, on pages like scopes.html and
+// 913 KB shared chunk that every page preloaded, on pages like
 // users.html that contain no editor at all.
 //
 // Behind `defineAsyncComponent` the barrel holds only a thunk, so the grammars

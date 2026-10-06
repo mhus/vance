@@ -10,17 +10,22 @@ import {
   VEmptyState,
   VInput,
   VModal,
+  type PickerNode,
 } from '@/components';
 import RawSettingsPanel from './RawSettingsPanel.vue';
 import AreaEntryView from './AreaEntryView.vue';
 import ProjectTab from './ProjectTab.vue';
+import GroupCard from './GroupCard.vue';
+import TenantCard from './TenantCard.vue';
 import { useProfile } from '@/composables/useProfile';
-import { useTenantProjects } from '@/composables/useTenantProjects';
+import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
+import { useAdminProjects } from '@/composables/useAdminProjects';
+import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 import { recallProject, rememberProject } from '@/platform/lastProject';
 import { getTenantId, listSettingForms, RestError } from '@vance/shared';
 import { brainFetch } from '@vance/shared';
 import { listSettingsKinds, type SettingsDocRow, type SettingsScope } from '@vance/kind-registry';
-import type { SettingFormSummaryDto } from '@vance/generated';
+import type { SettingFormSummaryDto, ProjectDto, ProjectGroupSummary } from '@vance/generated';
 import {
   parseSettingsView,
   pushSettingsView,
@@ -32,14 +37,19 @@ import {
 } from './settingsUrl';
 
 /**
- * The Settings surface — one guided place for everything configurable in a
- * scope, in three tabs:
+ * The Settings surface — one guided place for everything configurable in
+ * a scope, in four tabs:
  *
  * <ul>
  *   <li><b>Bereiche</b> — settings-doc kinds (Research, …) as areas: entry
  *     inventory with add/delete; an entry opens in its kind's own view
  *     right here, inline (no Cortex round-trip).
  *   <li><b>Settings</b> — the guided Setting Forms, grouped by category.
+ *   <li><b>Projekt/Mandant</b> (scope-gated, not for user scopes) — the
+ *     management pane port from the Scopes page: tenant and project
+ *     properties, project-group and session-group admin, project copy,
+ *     languages and the kit administration. Sidebar edit mode provides
+ *     create + drag-and-drop move.
  *   <li><b>Erweitert</b> — the free-form key/value editor.
  * </ul>
  *
@@ -51,13 +61,25 @@ import {
  */
 
 const { t } = useI18n();
-const tenantProjects = useTenantProjects();
+const adminGroups = useAdminProjectGroups();
+const adminProjects = useAdminProjects();
 const profile = useProfile();
+const projectKitsCatalog = useProjectKitsCatalog();
+
+/** Success/info banner above the tab content (created, saved, …). */
+const banner = ref<string | null>(null);
 
 /** Tenant project name backing the tenant scope (settings-system.md §3). */
 const TENANT_PROJECT = '_tenant';
 
-const view = ref<SettingsView>({ scope: TENANT_SCOPE, tab: 'forms', form: null, area: null, entry: null });
+const view = ref<SettingsView>({
+  scope: TENANT_SCOPE,
+  tab: 'forms',
+  form: null,
+  area: null,
+  entry: null,
+  group: null,
+});
 
 // ─── Forms tab state ───
 
@@ -113,24 +135,45 @@ const registryScope = computed<SettingsScope>(() => ({
   login: login.value || undefined,
 }));
 
-/** The project tab exists only for a project scope. */
+/** The properties tab exists for tenant and project scopes, not for users. */
 const isProjectScope = computed(() => scopeKeyword(view.value.scope) === null);
+const isTenantScope = computed(() => scopeKeyword(view.value.scope) === 'tenant');
+const showPropertiesTab = computed(() => isProjectScope.value || isTenantScope.value);
 
 /**
- * The tab the content renders: `project` is scope-gated — a URL that
- * carries it for a tenant/user scope (stale link, back-button) falls back
- * to the forms tab instead of rendering an empty shell.
+ * The group row selected in the sidebar (properties tab, tenant scope).
+ * Rendered only there — a stale URL `group` on other scopes is ignored.
+ */
+const activeGroup = computed(() => {
+  if (!(isTenantScope.value && effectiveTab.value === 'properties')) return null;
+  return view.value.group
+    ? (adminGroups.groups.value.find((g) => g.name === view.value.group) ?? null)
+    : null;
+});
+
+/**
+ * The tab the content renders: `properties` is scope-gated — a URL that
+ * carries it for a user scope (stale link, back-button) falls back to the
+ * forms tab instead of rendering an empty shell.
  */
 const effectiveTab = computed<SettingsView['tab']>(() =>
-  view.value.tab === 'project' && !isProjectScope.value ? 'forms' : view.value.tab);
+  view.value.tab === 'properties' && !showPropertiesTab.value
+    ? 'forms'
+    : view.value.tab);
+
+/** Properties-tab label: the scope it is on, not a generic word. */
+const propertiesTabLabel = computed(() =>
+  isProjectScope.value
+    ? t('settings.tab.project')
+    : t('settings.tab.tenant'));
 
 const tabDefs = computed(() => {
   const defs: Array<{ id: SettingsView['tab']; label: string }> = [
     { id: 'areas', label: t('settings.tab.areas') },
     { id: 'forms', label: t('settings.tab.forms') },
   ];
-  if (isProjectScope.value) {
-    defs.push({ id: 'project', label: t('settings.tab.project') });
+  if (showPropertiesTab.value) {
+    defs.push({ id: 'properties', label: propertiesTabLabel.value });
   }
   defs.push({ id: 'raw', label: t('settings.tab.raw') });
   return defs;
@@ -164,7 +207,7 @@ const breadcrumbs = computed<string[]>(() => {
 
 /** Projects selectable in the sidebar — the hub project is not a settings scope. */
 const selectableProjects = computed(() =>
-  tenantProjects.projects.value.filter((p) => !p.name.startsWith('_')));
+  adminProjects.projects.value.filter((p) => !p.name.startsWith('_')));
 
 const scopeLabel = computed<string>(() => {
   const kw = scopeKeyword(view.value.scope);
@@ -177,14 +220,36 @@ const scopeLabel = computed<string>(() => {
 /**
  * Sidebar selection for the shared ProjectListSidebar. The write side
  * turns a sidebar click into a scope navigation — ProjectListSidebar owns
- * no notion of scope keywords, it only knows project names.
+ * no notion of scope keywords, it only knows project and group names:
+ * a project row navigates to the project scope, a group row (edit mode)
+ * opens the group card in the tenant scope's properties tab, and a null
+ * selection is the tenant row.
  */
-const sidebarProject = computed<string | null>({
-  get: () => (scopeKeyword(view.value.scope) ? null : view.value.scope),
-  set: (name) => {
-    if (name && name !== view.value.scope) selectScope(name);
+const sidebarNode = computed<PickerNode | null, PickerNode | null>({
+  get: (): PickerNode | null => {
+    if (activeGroup.value) return { kind: 'group', name: activeGroup.value.name };
+    if (scopeKeyword(view.value.scope)) return null;
+    return { kind: 'project', name: view.value.scope };
+  },
+  set: (node: PickerNode | null) => {
+    if (node?.kind === 'group') selectGroup(node.name);
+    else if (node?.kind === 'project') selectScope(node.name);
+    else selectScope(TENANT_SCOPE);
   },
 });
+
+/**
+ * Kit options for the create-project modal the sidebar renders in edit
+ * mode — the tenant catalog, so admins can pick a kit at creation time
+ * (project-kits-catalog.md).
+ */
+const pickerKitOptions = computed(() => [
+  { value: '', label: t('common.projectPicker.createProject.kitNone') },
+  ...(projectKitsCatalog.catalog.value?.kits ?? []).map(entry => ({
+    value: entry.name,
+    label: entry.title || entry.name,
+  })),
+]);
 
 // ─── Loaders ───
 
@@ -241,6 +306,7 @@ async function loadForScope(): Promise<void> {
 // ─── View transitions (each one pushes history) ───
 
 function navigate(next: SettingsView): void {
+  banner.value = null;
   view.value = next;
   pushSettingsView(next);
   void loadForScope();
@@ -248,10 +314,10 @@ function navigate(next: SettingsView): void {
 
 function selectScope(scope: string): void {
   // Keep the tab (and the open area — it exists per layer) when hopping
-  // scopes; never a stale form or entry — their context shifts with the
-  // scope. The project tab is scope-gated: leaving a project with it
-  // open lands on the forms tab, not on a guarded fallback.
-  const nextTab = view.value.tab === 'project' && scopeKeyword(scope) !== null
+  // scopes; never a stale form, entry or group — their context shifts with
+  // the scope. The properties tab is scope-gated: leaving tenant/project
+  // with it open lands on the forms tab, not on a guarded fallback.
+  const nextTab = view.value.tab === 'properties' && !showPropertiesTabFor(scope)
     ? 'forms'
     : view.value.tab;
   navigate({
@@ -260,8 +326,63 @@ function selectScope(scope: string): void {
     form: null,
     area: view.value.area,
     entry: null,
+    group: null,
   });
   if (scopeKeyword(scope) === null) rememberProject(scope);
+}
+
+/** Scope-gating for a target scope (the computed answers for the current one). */
+function showPropertiesTabFor(scope: string): boolean {
+  return scopeKeyword(scope) !== 'user';
+}
+
+/** Opens a project-group row in the properties tab (tenant scope). */
+function selectGroup(name: string): void {
+  navigate({
+    scope: TENANT_SCOPE,
+    tab: 'properties',
+    form: null,
+    area: view.value.area,
+    entry: null,
+    group: name,
+  });
+}
+
+/**
+ * Create/move feedback from the sidebar's edit mode ({@code @data-changed})
+ * — ported from the Scopes page: reload, select the fresh entry, and say
+ * more than „created“ when placement is pending.
+ */
+async function onPickerDataChanged(
+  payload: { kind: 'group' | 'project'; name: string },
+): Promise<void> {
+  await Promise.all([adminGroups.reload(), adminProjects.reload()]);
+  if (payload.kind === 'group') {
+    selectGroup(payload.name);
+    banner.value = t('scopes.group.created', { name: payload.name });
+  } else {
+    selectScope(payload.name);
+    // Creation can legitimately end in "accepted, not placed" — a selector
+    // no live pod satisfies, or every matching pod full. Saying only
+    // "created" there would leave the user waiting for a start that
+    // needs a new pod first.
+    const created = adminProjects.projects.value.find(p => p.name === payload.name);
+    banner.value = created?.placementPendingSince
+      ? t('scopes.project.createdPendingPlacement', { name: payload.name })
+      : t('scopes.project.created', { name: payload.name });
+  }
+}
+
+/** GroupCard: the group is gone — stay on tenant properties, no history hole. */
+function onGroupDeleted(): void {
+  view.value = { ...view.value, group: null };
+  replaceSettingsView(view.value);
+  void adminGroups.reload();
+}
+
+/** ProjectTab: jump to the project a copy report describes. */
+function onOpenProject(name: string): void {
+  void adminProjects.reload().then(() => selectScope(name));
 }
 
 function selectTab(tab: SettingsView['tab']): void {
@@ -353,8 +474,10 @@ function onPopState(): void {
 onMounted(async () => {
   window.addEventListener('popstate', onPopState);
   await Promise.all([
-    tenantProjects.reload(),
+    adminGroups.reload(),
+    adminProjects.reload(),
     profile.load().catch(() => undefined),
+    projectKitsCatalog.load().catch(() => undefined),
   ]);
   // URL first; a remembered project is the fallback; the tenant row is
   // the built-in default one click away at the top of the sidebar.
@@ -431,18 +554,39 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         </nav>
 
         <ProjectListSidebar
-          v-model:selected-project="sidebarProject"
-          :groups="tenantProjects.groups.value"
+          v-model:selected-node="sidebarNode"
+          :groups="adminGroups.groups.value"
           :projects="selectableProjects"
-          :loading="tenantProjects.loading.value"
-          :error="tenantProjects.error.value"
+          :loading="adminGroups.loading.value || adminProjects.loading.value"
+          :error="adminGroups.error.value || adminProjects.error.value"
           :heading="t('settings.sidebar.projects')"
           :ungrouped-label="t('settings.sidebar.ungrouped')"
           :empty-headline="t('settings.sidebar.emptyHeadline')"
           :empty-body="t('settings.sidebar.emptyBody')"
+          :kit-options="pickerKitOptions"
           search-enabled
-          hide-kit-field
-        />
+          edit-enabled
+          show-group-rows
+          @data-changed="onPickerDataChanged"
+        >
+          <template #row-suffix="{ kind, item }">
+            <span
+              v-if="kind === 'group' && !(item as ProjectGroupSummary).enabled"
+              class="opacity-60 text-xs"
+            >{{ t('scopes.common.disabled') }}</span>
+            <span
+              v-else-if="kind === 'project' && (item as ProjectDto).status === 'ARCHIVED'"
+              class="opacity-60 text-xs"
+            >{{ t('scopes.common.archived') }}</span>
+            <!-- Waiting for a pod. Below ARCHIVED on purpose: an archived
+                 project is not waiting for anything, so that label wins. -->
+            <span
+              v-else-if="kind === 'project' && (item as ProjectDto).placementPendingSince"
+              class="text-xs text-warning"
+              :title="t('scopes.project.placementPendingNote')"
+            >⏳ {{ t('scopes.project.placementPendingBadge') }}</span>
+          </template>
+        </ProjectListSidebar>
       </div>
     </template>
 
@@ -453,6 +597,9 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         <span class="text-xs opacity-60 font-mono">{{ scopeInfo.referenceId }}</span>
       </div>
 
+      <VAlert v-if="banner" variant="success">
+        <span>{{ banner }}</span>
+      </VAlert>
       <div role="tablist" class="flex gap-1 border-b border-base-300">
         <button
           v-for="tabDef in tabDefs"
@@ -605,11 +752,24 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         </template>
       </template>
 
-      <!-- ─── Tab: Projekt (properties + kits) ─── -->
-      <template v-else-if="effectiveTab === 'project' && isProjectScope">
+      <!-- ─── Tab: Projekt / Mandant / Gruppe (management pane port) ─── -->
+      <template v-else-if="effectiveTab === 'properties' && showPropertiesTab">
+        <GroupCard
+          v-if="activeGroup"
+          :name="activeGroup.name"
+          :groups="adminGroups.groups.value"
+          @banner="banner = $event"
+          @deleted="onGroupDeleted"
+        />
+        <TenantCard
+          v-else-if="isTenantScope"
+          @banner="banner = $event"
+        />
         <ProjectTab
+          v-else
           :project-name="view.scope"
-          :groups="tenantProjects.groups.value"
+          :groups="adminGroups.groups.value"
+          @open-project="onOpenProject"
         />
       </template>
 

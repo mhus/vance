@@ -22,7 +22,6 @@ const editorEntries = {
   // The door. Its own entry precisely because it must boot when the shell
   // bundle cannot — see src/login/LoginApp.vue.
   login: resolve(pkgDir, 'login.html'),
-  scopes: resolve(pkgDir, 'scopes.html'),
   settings: resolve(pkgDir, 'settings.html'),
   tools: resolve(pkgDir, 'tools.html'),
   insights: resolve(pkgDir, 'insights.html'),
@@ -32,7 +31,6 @@ const editorEntries = {
   'connected-accounts': resolve(pkgDir, 'connected-accounts.html'),
   'oauth-providers': resolve(pkgDir, 'oauth-providers.html'),
   'tool-templates': resolve(pkgDir, 'tool-templates.html'),
-  'setting-forms': resolve(pkgDir, 'setting-forms.html'),
   // Generic host for federated addon "areas": addon.html?addon=<id> loads the
   // addon's ./area expose (e.g. the Simple-Auth permission-grant UI).
   addon: resolve(pkgDir, 'addon.html'),

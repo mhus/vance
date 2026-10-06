@@ -15,7 +15,7 @@ describe('editorHref', () => {
 
   it('builds standalone entries as /<surface>.html', () => {
     expect(editorHref('profile')).toBe('/profile.html');
-    expect(editorHref('scopes')).toBe('/scopes.html');
+    expect(editorHref('users')).toBe('/users.html');
     expect(editorHref('settings')).toBe('/settings.html');
   });
 

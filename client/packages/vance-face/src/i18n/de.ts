@@ -538,10 +538,10 @@ export default {
       description:
         'Einträge aus dem persönlichen Posteingang und dem Team-Posteingang jedes Teams lesen, beantworten, archivieren und delegieren.',
     },
-    scopes: {
-      title: 'Bereiche',
+    settings: {
+      title: 'Einstellungen',
       description:
-        'Mandant, Projektgruppen und Projekte verwalten. Einstellungen auf Mandanten- oder Projektebene bearbeiten.',
+        'Alles Konfigurierbare je Bereich: Setting-Forms, Bereiche, Projekt- und Mandanten-Verwaltung, Kits.',
     },
     tools: {
       title: 'Server-Tools',
@@ -567,7 +567,6 @@ export default {
   },
 
   chat: {
-    pageTitle: 'Chat',
     breadcrumb: {
       unnamedSession: 'Session',
     },
@@ -915,12 +914,6 @@ export default {
     loadingDetail: 'Lade Lauf…',
     count: '{n} Läufe',
     filter: { allSources: 'Alle Quellen' },
-    sidebar: { projectsHeading: 'Projekte', filterPlaceholder: 'Projekt filtern…' },
-    status: {
-      RUNNING: 'läuft', WAITING: 'wartet', PAUSED: 'pausiert',
-      STOPPING: 'stoppt', DONE: 'fertig', FAILED: 'fehlgeschlagen',
-      STOPPED: 'gestoppt',
-    },
     action: { PAUSE: 'Pausieren', RESUME: 'Fortsetzen', STOP: 'Stoppen' },
     link: { definition: 'Definition öffnen', session: 'Session öffnen', document: 'Dokument öffnen' },
     empty: {
@@ -1893,12 +1886,6 @@ export default {
       headline: 'Etwas auswählen',
       body:
         'Links eine Session auswählen, um sie zu inspizieren — oder aufklappen, um in ihre Prozesse zu drillen.',
-    },
-    breadcrumbs: {
-      sessionsRoot: 'Sessions',
-      sessionPrefix: 'Session: {label}',
-      processPrefix: 'Prozess: {name}',
-      processFallback: 'Prozess',
     },
     tabs: {
       overview: 'Übersicht',
@@ -2962,49 +2949,6 @@ export default {
         submitExport: 'Exportieren',
       },
     },
-    settingsPanel: {
-      title: 'Einstellungen · {type} / {id}',
-      tabRaw: 'Einstellungen',
-      tabForms: 'Formulare',
-      noSettingsHeadline: 'Keine Einstellungen',
-      noSettingsBody: 'Unten ein Schlüssel/Wert-Paar hinzufügen, um diesen Bereich zu konfigurieren.',
-      valueLabel: 'Wert',
-      explicitEmpty: '(explizit leer — erbt nicht)',
-      newPasswordLabel: 'Neues Passwort',
-      passwordEmptyToClear: '(leer lassen, um zu löschen)',
-      descriptionLabel: 'Beschreibung',
-      edit: 'Bearbeiten',
-      deleteLabel: 'Löschen',
-      confirmDelete: 'Einstellung „{key}" löschen?',
-      addTitle: 'Einstellung hinzufügen',
-      keyLabel: 'Schlüssel',
-      keyPlaceholder: 'z. B. ai.default.model',
-      typeLabel: 'Typ',
-      passwordLabel: 'Passwort',
-      descriptionOptional: 'Beschreibung (optional)',
-      add: 'Hinzufügen',
-      types: {
-        string: 'String',
-        int: 'Int',
-        long: 'Long',
-        double: 'Double',
-        boolean: 'Boolean',
-        password: 'Passwort (nur Server & Konnektoren)',
-        hidden: 'Hidden (auch für Agenten/Skripte)',
-      },
-    },
-    settingFormsPanel: {
-      emptyHeadline: 'Keine Formulare verfügbar',
-      emptyBodyProject:
-        'Formulare sind YAML-Dateien unter _vance/setting_forms/ — z.B. „LLM-Einstellungen", „Quota-Voreinstellung" oder „Jira-Anbindung". Über Kits oder Tenant-Defaults bereitgestellt.',
-      emptyBodyTenant:
-        'Formulare sind typischerweise auf Projekt-Ebene anwendbar. Links ein Projekt auswählen, um die für dieses Projekt verfügbaren Formulare zu sehen.',
-      backToList: '← Zurück zur Liste',
-    },
-    createGroup: {
-      title: 'Neue Projektgruppe',
-      nameHelp: 'Kleinbuchstaben, Ziffern, „-" oder „_" erlaubt.',
-    },
   },
 
   inbox: {
@@ -3601,6 +3545,7 @@ export default {
     tab: {
       areas: 'Bereiche',
       project: 'Projekt',
+      tenant: 'Mandant',
       forms: 'Settings',
       raw: 'Erweitert',
     },

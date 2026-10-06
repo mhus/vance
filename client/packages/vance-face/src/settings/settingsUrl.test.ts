@@ -19,6 +19,7 @@ const FULL_VIEW: SettingsView = {
   form: 'llm-setup',
   area: 'vance-research-source',
   entry: '64a1f0c0e4b0a1a2b3c4d5e6',
+  group: null,
 };
 
 const DEFAULTS_VIEW: SettingsView = {
@@ -27,6 +28,14 @@ const DEFAULTS_VIEW: SettingsView = {
   form: null,
   area: null,
   entry: null,
+  group: null,
+};
+
+const GROUP_VIEW: SettingsView = {
+  ...DEFAULTS_VIEW,
+  scope: 'tenant',
+  tab: 'properties',
+  group: 'main',
 };
 
 describe('parseSettingsView', () => {
@@ -52,7 +61,7 @@ describe('parseSettingsView', () => {
     expect(parseSettingsView('?scope=user&tab=nonsense', 'tenant').tab).toBe('forms');
     expect(parseSettingsView('?scope=user&tab=raw', 'tenant').tab).toBe('raw');
     expect(parseSettingsView('?scope=user&tab=areas', 'tenant').tab).toBe('areas');
-    expect(parseSettingsView('?scope=user&tab=project', 'tenant').tab).toBe('project');
+    expect(parseSettingsView('?scope=cluster-test&tab=properties', 'tenant').tab).toBe('properties');
     expect(parseSettingsView('?scope=user', 'tenant').tab).toBe('forms');
   });
 });
@@ -76,6 +85,10 @@ describe('serializeSettingsView / settingsHref', () => {
       .toBe('?scope=tenant&tab=areas&area=vance-research-source');
   });
 
+  it('serializes the selected group row and round-trips it', () => {
+    expect(serializeSettingsView(GROUP_VIEW)).toBe('?scope=tenant&tab=properties&group=main');
+    expect(parseSettingsView(serializeSettingsView(GROUP_VIEW), 'user')).toEqual(GROUP_VIEW);
+  });
   it('round-trips through parse', () => {
     expect(parseSettingsView(serializeSettingsView(FULL_VIEW), 'user')).toEqual(FULL_VIEW);
   });

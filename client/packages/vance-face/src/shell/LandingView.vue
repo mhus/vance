@@ -161,11 +161,11 @@ onMounted(async () => {
             </RouterLink>
           </li>
 
-          <!-- Expert tier — power-user surfaces (scopes / tools / insights). -->
+          <!-- Expert tier — power-user surfaces (settings / tools / insights). -->
           <li v-if="showExpertTiles">
-            <a class="tile-row" :href="editorHref('scopes')">
-                <div class="font-semibold">{{ $t('index.scopes.title') }}</div>
-                <div class="text-sm opacity-70">{{ $t('index.scopes.description') }}</div>
+            <a class="tile-row" :href="editorHref('settings')">
+                <div class="font-semibold">{{ $t('index.settings.title') }}</div>
+                <div class="text-sm opacity-70">{{ $t('index.settings.description') }}</div>
             </a>
           </li>
           <li v-if="showExpertTiles">

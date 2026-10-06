@@ -30,10 +30,9 @@ import type {
  * The project's kit administration — the Settings page's port of the
  * Scopes page's kit card. Same composables (`useKitAdmin`,
  * `useKitSourceProjects`), same REST surface, same i18n keys
- * (`scopes.kit.*` — they outlive the Scopes page, this component keeps
- * them alive), so behaviour is identical by construction. Built fresh
- * instead of extracted: the Strangler rule keeps `ScopesApp.vue` frozen
- * until the cutover, and the duplication dies with that page.
+ * (`scopes.kit.*` — the vocabulary of the former Scopes page's kit
+ * card, kept alive here), so behaviour is identical by construction.
+ * Built fresh instead of extracted; the Scopes page is gone.
  */
 
 const props = defineProps<{

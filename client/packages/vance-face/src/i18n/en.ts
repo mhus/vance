@@ -538,10 +538,10 @@ export default {
       description:
         "Read items from your personal inbox and the team-inbox of every team you're in. Reply, archive, delegate.",
     },
-    scopes: {
-      title: 'Scopes',
+    settings: {
+      title: 'Settings',
       description:
-        'Manage the tenant, project groups and projects. Edit settings at tenant or project scope.',
+        'Everything configurable per scope: setting forms, areas, project and tenant administration, kits.',
     },
     tools: {
       title: 'Server Tools',
@@ -567,7 +567,6 @@ export default {
   },
 
   chat: {
-    pageTitle: 'Chat',
     breadcrumb: {
       unnamedSession: 'Session',
     },
@@ -915,12 +914,6 @@ export default {
     loadingDetail: 'Loading run…',
     count: '{n} runs',
     filter: { allSources: 'All sources' },
-    sidebar: { projectsHeading: 'Projects', filterPlaceholder: 'Filter projects…' },
-    status: {
-      RUNNING: 'running', WAITING: 'waiting', PAUSED: 'paused',
-      STOPPING: 'stopping', DONE: 'done', FAILED: 'failed',
-      STOPPED: 'stopped',
-    },
     action: { PAUSE: 'Pause', RESUME: 'Resume', STOP: 'Stop' },
     link: { definition: 'Open definition', session: 'Open session', document: 'Open document' },
     empty: {
@@ -1889,12 +1882,6 @@ export default {
       headline: 'Select something',
       body:
         'Pick a session on the left to inspect, or expand to drill into its processes.',
-    },
-    breadcrumbs: {
-      sessionsRoot: 'Sessions',
-      sessionPrefix: 'Session: {label}',
-      processPrefix: 'Process: {name}',
-      processFallback: 'Process',
     },
     tabs: {
       overview: 'Overview',
@@ -2944,49 +2931,6 @@ export default {
         submitExport: 'Export',
       },
     },
-    settingsPanel: {
-      title: 'Settings · {type} / {id}',
-      tabRaw: 'Settings',
-      tabForms: 'Forms',
-      noSettingsHeadline: 'No settings',
-      noSettingsBody: 'Add a key/value below to configure this scope.',
-      valueLabel: 'Value',
-      explicitEmpty: '(explicitly empty — does not inherit)',
-      newPasswordLabel: 'New password',
-      passwordEmptyToClear: '(leave empty to clear)',
-      descriptionLabel: 'Description',
-      edit: 'Edit',
-      deleteLabel: 'Delete',
-      confirmDelete: 'Delete setting "{key}"?',
-      addTitle: 'Add setting',
-      keyLabel: 'Key',
-      keyPlaceholder: 'e.g. ai.default.model',
-      typeLabel: 'Type',
-      passwordLabel: 'Password',
-      descriptionOptional: 'Description (optional)',
-      add: 'Add',
-      types: {
-        string: 'String',
-        int: 'Int',
-        long: 'Long',
-        double: 'Double',
-        boolean: 'Boolean',
-        password: 'Password (server & connectors only)',
-        hidden: 'Hidden (agents/scripts too)',
-      },
-    },
-    settingFormsPanel: {
-      emptyHeadline: 'No forms available',
-      emptyBodyProject:
-        'Forms are YAML files under _vance/setting_forms/ — e.g. "LLM Settings", "Quota Preset", or "Jira Integration". Delivered via kits or tenant defaults.',
-      emptyBodyTenant:
-        'Forms typically apply at the project level. Pick a project on the left to see the forms available for it.',
-      backToList: '← Back to list',
-    },
-    createGroup: {
-      title: 'New project group',
-      nameHelp: "Lower-case alphanumerics, '-' or '_' allowed.",
-    },
   },
 
   inbox: {
@@ -3581,6 +3525,7 @@ export default {
     tab: {
       areas: 'Areas',
       project: 'Project',
+      tenant: 'Tenant',
       forms: 'Settings',
       raw: 'Advanced',
     },

@@ -15,12 +15,10 @@ import { SettingType } from '@vance/generated';
 import type { SettingDto } from '@vance/generated';
 
 /**
- * The advanced key/value editor for one scope — the Settings page's
- * counterpart of the Scopes page's raw-settings tab. Same backend
- * (`useScopeSettings` → `AdminSettingsController`), same wire scopes;
- * this is a fresh, self-contained component rather than an extraction,
- * because the Strangler rule is to leave `ScopesApp.vue` untouched
- * until the cutover.
+ * The advanced key/value editor for one scope — built fresh for the
+ * Settings page (the old Scopes page it replaced is gone). Same
+ * backend (`useScopeSettings` → `AdminSettingsController`), same
+ * wire scopes as its predecessor.
  *
  * <p>The listing endpoint is tenant-ADMIN enforced; for users without
  * that role the load fails with 403 and the error surface explains

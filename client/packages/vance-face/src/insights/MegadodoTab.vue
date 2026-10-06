@@ -158,9 +158,9 @@ function linkFor(row: MegadodoEventDto): string | null {
     case MegadodoRefType.USER:
       return `/users.html`;
     case MegadodoRefType.KIT:
-      // The kit card sits on the project card in scopes; it takes no
-      // query of its own, same as users.html above.
-      return `/scopes.html`;
+      // The kit card sits on the project's properties tab in the settings
+      // surface; it takes no query of its own.
+      return `/settings.html?scope=${encodeURIComponent(project)}&tab=properties`;
     default:
       return null;
   }

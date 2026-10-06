@@ -14,8 +14,9 @@ import {
  * organisation only. Every call carries the {@code projectId} (session groups
  * are scoped to (tenant, project, current user) server-side).
  *
- * Shared by scopes.html (admin CRUD), the Cortex picker (read-only), and the
- * chat picker (full: create + reorder + assign). See planning/session-groups.md.
+ * Shared by the settings page (admin CRUD), the Cortex picker
+ * (read-only), and the chat picker (full: create + reorder + assign).
+ * See planning/session-groups.md.
  */
 export function useSessionGroups(): {
   groups: Ref<SessionGroupDto[]>;

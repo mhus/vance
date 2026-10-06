@@ -20,7 +20,7 @@
  *       switching between these does <em>not</em> reload. Prefer
  *       {@code <RouterLink>}; use this function only where a real anchor is
  *       required (a new-tab target, an addon that has no router).</li>
- *   <li><b>Standalone surfaces</b> (`profile`, `scopes`, `users`, …) are their
+ *   <li><b>Standalone surfaces</b> (`profile`, `settings`, `users`, …) are their
  *       own HTML entries and a full page load is correct — for the seldom-used
  *       admin screens, the teardown on leaving is a feature.</li>
  * </ul>
@@ -37,11 +37,9 @@ export type ClusterSurface = 'home' | 'cortex' | 'chat' | 'inbox' | 'documents';
 export type StandaloneSurface =
   | 'login'
   | 'profile'
-  | 'scopes'
   | 'settings'
   | 'tools'
   | 'tool-templates'
-  | 'setting-forms'
   | 'insights'
   | 'runs'
   | 'users'

@@ -33,8 +33,8 @@ import {
 } from '@/kindRenderers/parseVanceUri';
 // KaTeX is NOT imported statically. This component sits in the shared
 // `components` barrel, which every entry preloads — a static import put a
-// 252 KB LaTeX engine on pages that can never render a formula (measured on
-// scopes.html). It is fetched the first time a math token is actually seen,
+// 252 KB LaTeX engine on pages that can never render a formula. It is
+// fetched the first time a math token is actually seen,
 // and the `katexEpoch` bump below re-renders that same node with the real
 // output once the engine is in. The stylesheet rides along with the chunk.
 type KatexApi = typeof import('katex').default;

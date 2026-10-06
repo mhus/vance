@@ -258,6 +258,12 @@ function backToFormsListing(): void {
 }
 
 function backToAreas(): void {
+  // From the entry list: up to the area list (area goes away too).
+  // From an open entry use backToEntryList — one level at a time.
+  navigate({ ...view.value, area: null, entry: null });
+}
+
+function backToEntryList(): void {
   navigate({ ...view.value, entry: null });
 }
 
@@ -445,7 +451,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         <!-- Level 3: open entry, inline view -->
         <template v-if="activeArea && activeEntry">
           <div class="flex items-center gap-2">
-            <VButton variant="ghost" size="sm" @click="backToAreas">
+            <VButton variant="ghost" size="sm" @click="backToEntryList">
               {{ t('settings.areas.backToEntries') }}
             </VButton>
           </div>
@@ -458,7 +464,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         <!-- Level 2: entry list of the open area -->
         <template v-else-if="activeArea">
           <div class="flex items-center justify-between gap-2">
-            <VButton variant="ghost" size="sm" @click="selectArea(activeArea.id)">
+            <VButton variant="ghost" size="sm" @click="backToAreas">
               {{ t('settings.areas.backToAreas') }}
             </VButton>
             <VButton

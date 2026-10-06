@@ -6,6 +6,7 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
 import de.mhus.vance.brain.ai.DiscoveredModelInfo;
+import de.mhus.vance.brain.ai.EmptyResponseEvidenceStore;
 import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
@@ -83,12 +84,14 @@ public class OpenAiProvider extends AbstractChatProvider {
 
     private final String defaultBaseUrl;
     private final boolean cacheEnabled;
+    private final EmptyResponseEvidenceStore emptyResponseEvidenceStore;
 
     public OpenAiProvider(
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
             MessageParserRegistry messageParserRegistry,
             UsageSink usageSink,
+            EmptyResponseEvidenceStore emptyResponseEvidenceStore,
             @Value("${vance.ai.openai.base-url:}") String baseUrl,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
         super(modelCatalog, responseSanitizer, messageParserRegistry, usageSink);
@@ -100,6 +103,7 @@ public class OpenAiProvider extends AbstractChatProvider {
         // which it rejects outright.
         this.defaultBaseUrl = StringUtils.isBlank(baseUrl) ? OPENAI_BASE_URL : baseUrl.trim();
         this.cacheEnabled = cacheEnabled;
+        this.emptyResponseEvidenceStore = emptyResponseEvidenceStore;
         if (!cacheEnabled) {
             log.info("OpenAI prompt-cache hints DISABLED via vance.ai.cache.enabled=false "
                     + "— server-side prefix caching still applies but won't be optimised");
@@ -149,7 +153,7 @@ public class OpenAiProvider extends AbstractChatProvider {
                 // See ToolCallContentHttpClient. The underlying client swaps
                 // to trust-all TLS when the instance's sidecar declared
                 // tlsInsecure (private-CA gateways).
-                .httpClientBuilder(toolCallBuilder(config))
+                .httpClientBuilder(toolCallBuilder(config, baseUrl))
                 // Bound the retry storm on a persistent failure. The sync
                 // model backs LightLlm helpers (follow-up, judge,
                 // discovery) — a timeout is a persistent condition, so
@@ -172,7 +176,7 @@ public class OpenAiProvider extends AbstractChatProvider {
                 .seed(seed)
                 .stop(options.getStopSequences())
                 .timeout(streamTimeout)
-                .httpClientBuilder(toolCallBuilder(config))
+                .httpClientBuilder(toolCallBuilder(config, baseUrl))
                 .logRequests(options.getLogRequests())
                 .logResponses(options.getLogRequests());
         if (!cacheParams.isEmpty()) {
@@ -266,11 +270,17 @@ public class OpenAiProvider extends AbstractChatProvider {
      * Fresh per call — langchain4j mutates the builder's timeout fields, so
      * instances must not be shared across concurrently built models.
      */
-    private static ToolCallContentHttpClientBuilder toolCallBuilder(AiChatConfig config) {
+    private ToolCallContentHttpClientBuilder toolCallBuilder(AiChatConfig config, String baseUrl) {
         HttpClientBuilder base = config.insecureTls()
                 ? new JdkHttpClientBuilder().httpClientBuilder(TlsInsecure.jdkClientBuilder())
                 : HttpClientBuilderLoader.loadHttpClientBuilder();
-        return ToolCallContentHttpClientBuilder.wrapping(base);
+        // The empty-response wire recorder rides along on every OpenAI-wire
+        // client: blank completions are rare, the capture is bounded, and
+        // the post-mortem needs frames from the very occurrence — wiring it
+        // here means no provider consumer can forget it.
+        return ToolCallContentHttpClientBuilder.wrapping(base)
+                .evidenceRecording(new ToolCallContentHttpClientBuilder.EvidenceSpec(
+                        emptyResponseEvidenceStore, baseUrl, config.modelName()));
     }
 
     /**

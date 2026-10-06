@@ -51,6 +51,7 @@ class EmptyResponseDiagnosticServiceTest {
     private MegadodoService megadodo;
     private FookService fook;
     private SettingService settings;
+    private EmptyResponseEvidenceStore store;
 
     @BeforeEach
     void setUp() {
@@ -61,6 +62,7 @@ class EmptyResponseDiagnosticServiceTest {
         // default (false) would silently disable every submission.
         when(fook.isEnabled()).thenReturn(true);
         settings = mock(SettingService.class);
+        store = new EmptyResponseEvidenceStore(Clock.fixed(NOW, ZoneOffset.UTC));
         // Build the inventory first, then stub list(): each tool() call
         // opens its own when() stub, and a stub opened inside another
         // when() call is Mockito's unfinished-stubbing trap.
@@ -110,7 +112,20 @@ class EmptyResponseDiagnosticServiceTest {
     }
 
     private EmptyResponseDiagnosticService service(Clock clock) {
-        return new EmptyResponseDiagnosticService(builtIns, megadodo, fook, settings, clock);
+        return new EmptyResponseDiagnosticService(builtIns, megadodo, fook, settings, store, clock);
+    }
+
+    /** A wire capture registered in the store, as the HTTP recorder would file it. */
+    private static EmptyResponseEvidence capture(String modelName, String frame) {
+        return new EmptyResponseEvidence(
+                NOW,
+                EmptyResponseEvidence.Kind.STREAM,
+                "https://gateway.example/v1",
+                modelName,
+                200,
+                List.of("x-request-id: req-1"),
+                List.of(frame),
+                false);
     }
 
     // ──────────────────── candidate diff ────────────────────
@@ -203,6 +218,67 @@ class EmptyResponseDiagnosticServiceTest {
                 .contains("doc_write")
                 .contains("glm-5.3")
                 .contains("origin: prompt");
+    }
+
+    @Test
+    void wireCaptures_landInTheFookTicket_transcriptsAndAll() {
+        when(settings.getStringValueCascade(anyString(), any(), any(), anyString()))
+                .thenReturn(null);
+        when(fook.submit(any())).thenReturn("sub-1");
+        store.register(capture("glm-5.3", "{\"choices\":[{\"delta\":{}}]}"));
+        store.register(capture("glm-5.3", "[DONE]"));
+
+        service()
+                .onEmptyResponseExhausted(
+                        call(), request("use doc_write", "user text", null, "doc_read"), "openai:glm-5.3", 2);
+
+        ArgumentCaptor<SubmissionRequest> submitted = ArgumentCaptor.forClass(SubmissionRequest.class);
+        verify(fook).submit(submitted.capture());
+        assertThat(submitted.getValue().getText())
+                .contains("Raw wire transcript")
+                .contains("\"delta\":{}")
+                .contains("[DONE]")
+                .contains("x-request-id: req-1")
+                .contains("https://gateway.example/v1");
+        // Drained: a second report for the same model starts with an empty
+        // store and carries no stale transcript.
+        assertThat(store.drainRecent("openai:glm-5.3")).isEmpty();
+    }
+
+    @Test
+    void wireCaptures_ofOtherModels_stayOutOfTheTicket() {
+        when(settings.getStringValueCascade(anyString(), any(), any(), anyString()))
+                .thenReturn(null);
+        when(fook.submit(any())).thenReturn("sub-1");
+        store.register(capture("glm-5.3", "{\"choices\":[{\"delta\":{}}]}"));
+        store.register(capture("some-other-model", "[DONE]"));
+
+        service()
+                .onEmptyResponseExhausted(
+                        call(), request("use doc_write", "user text", null, "doc_read"), "openai:glm-5.3", 2);
+
+        ArgumentCaptor<SubmissionRequest> submitted = ArgumentCaptor.forClass(SubmissionRequest.class);
+        verify(fook).submit(submitted.capture());
+        assertThat(submitted.getValue().getText())
+                .contains("Raw wire transcript")
+                .doesNotContain("some-other-model");
+        // The foreign capture stays in the store for its own report.
+        assertThat(store.drainRecent("openai:some-other-model")).hasSize(1);
+    }
+
+    @Test
+    void genuineBlankCase_drainsWireCaptures_andStillFilesNoTicket() {
+        when(settings.getStringValueCascade(anyString(), any(), any(), anyString()))
+                .thenReturn(null);
+        store.register(capture("mystery-model", "[DONE]"));
+
+        service().onEmptyResponseExhausted(call(), request("hello", "hi", null, "doc_read"), "openai:mystery-model", 3);
+
+        verify(fook, never()).submit(any());
+        verify(megadodo).emptyModelResponse("tenant-a", "project-b", "process-d", "openai:mystery-model", 3);
+        // The WARN log is the blank case's only transcript channel — the
+        // capture must not linger for the next report.
+        assertThat(store.drainRecent("openai:mystery-model")).isEmpty();
     }
 
     @Test

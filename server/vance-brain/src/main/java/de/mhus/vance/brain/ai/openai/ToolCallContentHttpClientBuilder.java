@@ -1,9 +1,11 @@
 package de.mhus.vance.brain.ai.openai;
 
+import de.mhus.vance.brain.ai.EmptyResponseEvidenceStore;
 import dev.langchain4j.http.client.HttpClient;
 import dev.langchain4j.http.client.HttpClientBuilder;
 import dev.langchain4j.http.client.HttpClientBuilderLoader;
 import java.time.Duration;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@link HttpClientBuilder} that wraps the classpath-default builder and
@@ -18,14 +20,39 @@ import java.time.Duration;
  * ({@link #wrappingDefault()}) because langchain4j mutates the builder's
  * timeouts, so instances must not be shared across concurrently built
  * models.
+ *
+ * <p>Optionally also chains the empty-response wire recorder in front
+ * (see {@link EmptyResponseEvidenceHttpClient}): when
+ * {@link #evidenceRecording} is set, {@link #build()} wraps the
+ * tool-call-content client in the recorder so blank completions leave a
+ * raw frame capture for the empty-response post-mortem.
  */
 public final class ToolCallContentHttpClientBuilder implements HttpClientBuilder {
-
     private final HttpClientBuilder delegate;
+    private @Nullable EvidenceSpec evidence;
 
     ToolCallContentHttpClientBuilder(HttpClientBuilder delegate) {
         this.delegate = delegate;
     }
+
+    /**
+     * Enables the empty-response wire recorder for the client about to be
+     * built. Optional — absence keeps the plain tool-call-content chain,
+     * which keeps unit tests of either concern independent of the other.
+     */
+    public ToolCallContentHttpClientBuilder evidenceRecording(EvidenceSpec spec) {
+        this.evidence = spec;
+        return this;
+    }
+
+    /**
+     * What the recorder needs at capture time: where to file captures,
+     * and which endpoint/model they belong to. The model name comes from
+     * the build config rather than the wire request — the client is built
+     * per chat, so both are already in scope and no per-request JSON
+     * extraction is needed.
+     */
+    public record EvidenceSpec(EmptyResponseEvidenceStore store, String baseUrl, String modelName) {}
 
     /** Wrap the single classpath-default builder (the JDK client in this build). */
     public static ToolCallContentHttpClientBuilder wrappingDefault() {
@@ -64,6 +91,10 @@ public final class ToolCallContentHttpClientBuilder implements HttpClientBuilder
 
     @Override
     public HttpClient build() {
-        return new ToolCallContentHttpClient(delegate.build());
+        HttpClient client = new ToolCallContentHttpClient(delegate.build());
+        EvidenceSpec spec = evidence;
+        return spec == null
+                ? client
+                : new EmptyResponseEvidenceHttpClient(client, spec.store(), spec.baseUrl(), spec.modelName());
     }
 }

@@ -140,6 +140,7 @@ public class EmptyResponseDiagnosticService {
     private final MegadodoService megadodoService;
     private final FookService fookService;
     private final SettingService settingService;
+    private final EmptyResponseEvidenceStore evidenceStore;
     private final Clock clock;
 
     @Autowired
@@ -147,8 +148,9 @@ public class EmptyResponseDiagnosticService {
             ObjectProvider<BuiltInToolSource> builtInToolSource,
             MegadodoService megadodoService,
             FookService fookService,
-            SettingService settingService) {
-        this(builtInToolSource, megadodoService, fookService, settingService, Clock.systemUTC());
+            SettingService settingService,
+            EmptyResponseEvidenceStore evidenceStore) {
+        this(builtInToolSource, megadodoService, fookService, settingService, evidenceStore, Clock.systemUTC());
     }
 
     EmptyResponseDiagnosticService(
@@ -156,6 +158,7 @@ public class EmptyResponseDiagnosticService {
             MegadodoService megadodoService,
             FookService fookService,
             SettingService settingService,
+            EmptyResponseEvidenceStore evidenceStore,
             Clock clock) {
         this(
                 new ObjectProvider<>() {
@@ -167,6 +170,7 @@ public class EmptyResponseDiagnosticService {
                 megadodoService,
                 fookService,
                 settingService,
+                evidenceStore,
                 clock);
     }
 
@@ -175,11 +179,13 @@ public class EmptyResponseDiagnosticService {
             MegadodoService megadodoService,
             FookService fookService,
             SettingService settingService,
+            EmptyResponseEvidenceStore evidenceStore,
             Clock clock) {
         this.builtInToolSource = builtInToolSource;
         this.megadodoService = megadodoService;
         this.fookService = fookService;
         this.settingService = settingService;
+        this.evidenceStore = evidenceStore;
         this.clock = clock;
     }
 
@@ -206,6 +212,17 @@ public class EmptyResponseDiagnosticService {
     public void onEmptyResponseExhausted(DiagnosticCall call, ChatRequest request, String modelLabel, int attempts) {
         try {
             Diagnosis diagnosis = diagnose(request);
+            // Raw wire captures from the HTTP layer, drained so each
+            // attaches to at most one report. Both classifications use
+            // them: the Fook ticket carries the transcript as evidence,
+            // and the genuine-blank case files no ticket, so the WARN log
+            // is the only place its raw frames ever surface. Captures for
+            // other models stay put — a drain never takes what is not
+            // provably this occurrence's.
+            List<EmptyResponseEvidence> wireEvidence = evidenceStore.drainRecent(modelLabel);
+            for (EmptyResponseEvidence capture : wireEvidence) {
+                log.warn("Empty model response on '{}' — raw wire capture:\n{}", modelLabel, capture.transcript());
+            }
             if (!diagnosis.candidates().isEmpty()) {
                 megadodoService.phantomToolCallSuspected(
                         call.tenantId(),
@@ -222,7 +239,7 @@ public class EmptyResponseDiagnosticService {
                 // window. The Megadodo row above already fired either way.
                 if (fookService.isEnabled() && gateAllows(call.tenantId(), modelLabel, diagnosis.candidates())) {
                     fookService.submit(SubmissionRequest.builder()
-                            .text(evidence(call, request, modelLabel, attempts, diagnosis))
+                            .text(evidence(call, request, modelLabel, attempts, diagnosis, wireEvidence))
                             .reporter(TicketReporter.builder()
                                     .kind(TicketReporter.Kind.SERVICE_ACCOUNT)
                                     .serviceAccount(SERVICE_ACCOUNT)
@@ -498,8 +515,18 @@ public class EmptyResponseDiagnosticService {
         }
     }
 
-    /** Free-form evidence text for the Fook triage. */
-    String evidence(DiagnosticCall call, ChatRequest request, String modelLabel, int attempts, Diagnosis diagnosis) {
+    /**
+     * Free-form evidence text for the Fook triage: the diagnosis header,
+     * the phantom-tool candidate diff, and — when the HTTP layer captured
+     * the raw frames — the wire transcript of the empty completion(s).
+     */
+    String evidence(
+            DiagnosticCall call,
+            ChatRequest request,
+            String modelLabel,
+            int attempts,
+            Diagnosis diagnosis,
+            List<EmptyResponseEvidence> wireEvidence) {
         StringBuilder out = new StringBuilder();
         out.append("Empty model response after ")
                 .append(attempts)
@@ -533,6 +560,19 @@ public class EmptyResponseDiagnosticService {
                 .append("the surface), the user asked for a tool outside this ")
                 .append("surface, or history mentions a tool the current surface ")
                 .append("no longer offers.");
+        // Wire captures are the half of the evidence the request cannot
+        // show: what the endpoint actually streamed back. One section per
+        // captured attempt (the empty budget retries register one capture
+        // each), so the triage can compare across attempts of the same
+        // request.
+        if (!wireEvidence.isEmpty()) {
+            out.append(
+                            "\n\nRaw wire transcript of the empty completion(s) — frames exactly as the endpoint delivered them:")
+                    .append('\n');
+            for (EmptyResponseEvidence capture : wireEvidence) {
+                out.append('\n').append(capture.transcript()).append('\n');
+            }
+        }
         return out.toString();
     }
 }

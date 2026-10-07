@@ -11,6 +11,9 @@ export * from './access/IntegrationTokenDto';
 export * from './access/RefreshTokenResponse';
 export * from './access/WebUiSessionData';
 
+export * from './admin/AdminActionDto';
+export * from './admin/AdminActionItemDto';
+export * from './admin/AdminActionRunResultDto';
 export * from './applications/ApplicationEntryDto';
 export * from './applications/ApplicationListResponse';
 export * from './applications/ApplicationTargetDto';

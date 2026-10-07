@@ -3294,24 +3294,6 @@ export default {
       disabled: 'deaktiviert',
       disabledTooltip: 'Team von einem Administrator deaktiviert',
     },
-    actions: {
-      title: 'Aktionen',
-      description: 'Manuelle Trigger für Brain-weite Caches und Refresh-Jobs. Erfordert Admin-Recht.',
-      refreshModelCatalog: 'KI-Modell-Katalog neu laden',
-      refreshModelCatalogDescription:
-        'Liest alle Modell-Dokumente unter _vance/model/** neu ein und baut den In-Memory-Katalog neu auf. Der Brain refresht zusätzlich automatisch alle 30 Minuten.',
-      refreshModelCatalogBusy: 'Wird neu geladen…',
-      refreshModelCatalogResult:
-        '{bundled} Bundled-Modelle, {providers} Provider, {scopes} Override-Scopes in {ms} ms neu geladen.',
-      discoverModels: 'KI-Modelle entdecken',
-      discoverModelsDescription:
-        'Geht alle Projekte des Mandanten durch, ruft das Listing-Endpoint jedes konfigurierten Providers und schreibt Pro-Modell-Dokumente unter _vance/model-auto/**. Manuelle Edits unter _vance/model/** werden nicht angefasst.',
-      discoverModelsBusy: 'Entdecke…',
-      discoverModelsResult:
-        '{written} Modell(e) gefunden über {instances} Provider-Instance(s) in {scopes} Projekt(en) ({ms} ms).',
-      discoverModelsSkipped:
-        '{count} Instance(s) übersprungen:',
-    },
   },
   workspace: {
     loadingFile: 'Datei wird geladen…',
@@ -3678,6 +3660,11 @@ export default {
       tenant: 'Mandant',
       forms: 'Settings',
       raw: 'Erweitert',
+      actions: 'Aktionen',
+    },
+    actions: {
+      run: 'Ausführen',
+      empty: 'In diesem Scope gibt es keine Aktionen.',
     },
     backToListing: 'Zurück',
     emptyHeadline: 'Hier gibt es nichts zu konfigurieren',

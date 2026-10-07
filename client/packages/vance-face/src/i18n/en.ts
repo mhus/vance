@@ -3274,24 +3274,6 @@ export default {
       disabled: 'disabled',
       disabledTooltip: 'Team disabled by an administrator',
     },
-    actions: {
-      title: 'Actions',
-      description: 'Manual triggers for brain-wide caches and refresh jobs. Requires admin permission.',
-      refreshModelCatalog: 'Refresh AI Model Catalog',
-      refreshModelCatalogDescription:
-        'Re-read all model documents under _vance/model/** and rebuild the in-memory catalog. The brain also refreshes automatically every 30 minutes.',
-      refreshModelCatalogBusy: 'Refreshing…',
-      refreshModelCatalogResult:
-        'Reloaded {bundled} bundled models, {providers} providers, {scopes} override scopes in {ms} ms.',
-      discoverModels: 'Discover AI Models',
-      discoverModelsDescription:
-        'Walk every project in this tenant, call each configured provider\'s listing endpoint, and write per-model docs under _vance/model-auto/**. Manual edits at _vance/model/** are not touched.',
-      discoverModelsBusy: 'Discovering…',
-      discoverModelsResult:
-        'Discovered {written} model(s) across {instances} provider instance(s) in {scopes} project(s) ({ms} ms).',
-      discoverModelsSkipped:
-        '{count} instance(s) skipped:',
-    },
   },
   starred: {
     resetApp: 'Reset the app — restart its program, discard runtime state',
@@ -3658,6 +3640,11 @@ export default {
       tenant: 'Tenant',
       forms: 'Settings',
       raw: 'Advanced',
+      actions: 'Actions',
+    },
+    actions: {
+      run: 'Run',
+      empty: 'No actions available in this scope.',
     },
     backToListing: 'Back',
     emptyHeadline: 'Nothing to configure here',

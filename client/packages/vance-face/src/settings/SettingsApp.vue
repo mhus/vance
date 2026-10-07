@@ -14,6 +14,7 @@ import {
   type PickerNode,
 } from '@/components';
 import RawSettingsPanel from './RawSettingsPanel.vue';
+import ActionsTab from './ActionsTab.vue';
 import AreaEntryView from './AreaEntryView.vue';
 import ProjectTab from './ProjectTab.vue';
 import GroupCard from './GroupCard.vue';
@@ -168,13 +169,17 @@ const activeGroup = computed(() => {
     : null;
 });
 
+/** The actions tab runs operator commands — tenant and project scopes only. */
+const showActionsTab = computed(() => isProjectScope.value || isTenantScope.value);
+
 /**
- * The tab the content renders: `properties` is scope-gated — a URL that
- * carries it for a user scope (stale link, back-button) falls back to the
- * forms tab instead of rendering an empty shell.
+ * The tab the content renders: `properties` and `actions` are scope-gated —
+ * a URL that carries them for a scope where they don't apply (stale link,
+ * back-button) falls back to the forms tab instead of rendering an empty shell.
  */
 const effectiveTab = computed<SettingsView['tab']>(() =>
-  view.value.tab === 'properties' && !showPropertiesTab.value
+  (view.value.tab === 'properties' && !showPropertiesTab.value)
+      || (view.value.tab === 'actions' && !showActionsTab.value)
     ? 'forms'
     : view.value.tab);
 
@@ -191,6 +196,9 @@ const tabDefs = computed(() => {
   ];
   if (showPropertiesTab.value) {
     defs.push({ id: 'properties', label: propertiesTabLabel.value });
+  }
+  if (showActionsTab.value) {
+    defs.push({ id: 'actions', label: t('settings.tab.actions') });
   }
   defs.push({ id: 'raw', label: t('settings.tab.raw') });
   return defs;
@@ -822,6 +830,14 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
           :project-name="view.scope"
           :groups="adminGroups.groups.value"
           @open-project="onOpenProject"
+        />
+      </template>
+
+      <!-- ─── Tab: Aktionen (operator actions) ─── -->
+      <template v-else-if="effectiveTab === 'actions'">
+        <ActionsTab
+          :scope-kind="scopeInfo.kind"
+          :project-id="isProjectScope ? (scopeInfo.projectId ?? null) : null"
         />
       </template>
 

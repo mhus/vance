@@ -25,8 +25,8 @@
 /** The three persisted setting layers in their wire form. */
 export type SettingsScopeKind = 'tenant' | 'user' | 'project';
 
-/** Tabs: areas (settings-doc kinds) · forms (default) · properties (tenant/group/project properties, kits) · raw (advanced). */
-export type SettingsTab = 'areas' | 'forms' | 'properties' | 'raw';
+/** Tabs: areas (settings-doc kinds) · forms (default) · properties (tenant/group/project properties, kits) · actions (operator actions) · raw (advanced). */
+export type SettingsTab = 'areas' | 'forms' | 'properties' | 'raw' | 'actions';
 
 export interface SettingsView {
   /** Scope keyword (`tenant`/`user`) or project name. */
@@ -73,7 +73,7 @@ export function parseSettingsView(
   const scope = params.get(SCOPE_PARAM)?.trim() || fallbackScope;
   const tabParam = params.get(TAB_PARAM);
   const tab: SettingsTab =
-    tabParam === 'areas' || tabParam === 'properties' || tabParam === 'raw'
+    tabParam === 'areas' || tabParam === 'properties' || tabParam === 'raw' || tabParam === 'actions'
       ? tabParam
       : 'forms';
   return {

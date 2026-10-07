@@ -166,9 +166,14 @@ function pick(doc: DocumentSearchItem): void {
   <VModal
     :model-value="open"
     :title="$t('cortex.openDocument.title')"
+    height="80vh"
     @update:model-value="(v: boolean) => emit('update:open', v)"
   >
-    <div class="space-y-2 p-2">
+    <!-- Fixed dialog height: the box must not breathe with the result
+         count — a dialog that shrinks on "no results" and jumps on every
+         re-search reads as unstable. The list gets whatever the column
+         has left and scrolls inside it. -->
+    <div class="flex h-full flex-col gap-2">
       <VInput
         ref="searchInput"
         :model-value="query"
@@ -178,13 +183,13 @@ function pick(doc: DocumentSearchItem): void {
         @keydown="onSearchKeydown"
       />
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
-      <div v-if="loading" class="py-4 text-center text-sm opacity-60">
+      <div v-if="loading" class="flex flex-1 items-center justify-center text-sm opacity-60">
         {{ $t('cortex.openDocument.searching') }}
       </div>
-      <div v-else-if="results.length === 0" class="py-4 text-center text-sm opacity-60">
+      <div v-else-if="results.length === 0" class="flex flex-1 items-center justify-center text-sm opacity-60">
         {{ $t('cortex.openDocument.noResults') }}
       </div>
-      <ul v-else class="max-h-80 overflow-y-auto text-sm">
+      <ul v-else class="min-h-0 flex-1 overflow-y-auto text-sm">
         <li
           v-for="(doc, i) in results"
           :key="doc.id"

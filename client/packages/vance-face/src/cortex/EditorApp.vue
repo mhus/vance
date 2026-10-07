@@ -77,6 +77,7 @@ import CreateDocumentModal, {
   type CreateModalResult,
 } from './components/CreateDocumentModal.vue';
 import NewFolderModal from './components/NewFolderModal.vue';
+import OpenDocumentModal from './components/OpenDocumentModal.vue';
 import TranslateDialog from './components/TranslateDialog.vue';
 import AgeTransformDialog from './components/AgeTransformDialog.vue';
 import {
@@ -401,6 +402,8 @@ const createPrefill = ref<{ path: string } | null>(null);
 
 const showNewFolder = ref(false);
 const newFolderInitial = ref('');
+
+const showOpenDocument = ref(false);
 
 // True while initial state restoration is running. While set, the
 // state-persistence watcher is muted — otherwise the per-{@code openFile}
@@ -1457,6 +1460,17 @@ function onNewFolderConfirm(path: string): void {
   showNewFolder.value = false;
 }
 
+/**
+ * Quick-open picked a document: close the dialog, hand the id to the
+ * store. The tree reveals the file itself when Auto-Target is on — same
+ * as a click in the file tree, no separate expandTo here.
+ */
+async function onOpenDocumentPick(id: string): Promise<void> {
+  showOpenDocument.value = false;
+  focusZone.value = 'main';
+  await store.openFile(id);
+}
+
 async function onDelete(id: string): Promise<void> {
   if (!confirm(msg('cortex.confirmDelete'))) return;
   await store.deleteFile(id);
@@ -1699,6 +1713,15 @@ function onKeyDown(e: KeyboardEvent): void {
   if (key === 'w' && activeTab.value) {
     e.preventDefault();
     void requestCloseTab(activeTab.value.id);
+    return;
+  }
+  // Quick-open (⌘O, with ⌘P as the muscle-memory alias every editor's
+  // quick-open uses). Both must beat the browser's own bindings — its
+  // open-file and print dialogs would otherwise swallow the intent before
+  // the Cortex ever sees it.
+  if (key === 'o' || key === 'p') {
+    e.preventDefault();
+    showOpenDocument.value = true;
     return;
   }
 }
@@ -2008,6 +2031,12 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                 <span class="flex-1">{{ $t('cortex.menu.newFolder') }}</span>
               </a>
             </li>
+            <li>
+              <a @click="closeMenus(); showOpenDocument = true">
+                <span class="flex-1">{{ $t('cortex.menu.open') }}</span>
+                <kbd class="kbd kbd-xs">⌘O</kbd>
+              </a>
+            </li>
             <li :class="{ disabled: !activeTab || !activeTab.dirty }">
               <a @click="closeMenus(); onSave()">
                 <span class="flex-1">{{ $t('cortex.menu.save') }}</span>
@@ -2268,6 +2297,13 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
     v-model:open="showNewFolder"
     :initial-path="newFolderInitial"
     @confirm="onNewFolderConfirm"
+  />
+
+  <OpenDocumentModal
+    v-if="projectId"
+    v-model:open="showOpenDocument"
+    :project-id="projectId"
+    @open="onOpenDocumentPick"
   />
 
   <ShareModal

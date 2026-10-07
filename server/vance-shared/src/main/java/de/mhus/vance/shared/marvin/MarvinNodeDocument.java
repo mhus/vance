@@ -45,12 +45,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "marvin_nodes")
 @CompoundIndexes({
-        @CompoundIndex(
-                name = "process_status_position_idx",
-                def = "{ 'processId': 1, 'status': 1, 'position': 1 }"),
-        @CompoundIndex(
-                name = "process_parent_position_idx",
-                def = "{ 'processId': 1, 'parentId': 1, 'position': 1 }")
+    @CompoundIndex(name = "process_status_position_idx", def = "{ 'processId': 1, 'status': 1, 'position': 1 }"),
+    @CompoundIndex(name = "process_parent_position_idx", def = "{ 'processId': 1, 'parentId': 1, 'position': 1 }")
 })
 @Data
 @Builder
@@ -135,6 +131,14 @@ public class MarvinNodeDocument {
      *  still in flight. Once they all terminate, the engine wakes
      *  this node in POST_CHILDREN phase. */
     private boolean awaitingPostChildren;
+
+    /**
+     * {@code true} once this node's inbox question was relayed into the
+     *  chat by the session-mode identity (decision F6) — the relay must not
+     *  repeat on every later turn while the answer stays open. Persisted so
+     *  it also survives an engine restart. Headless runs never read it.
+     */
+    private boolean chatRelayEmitted;
 
     /** Last CONCLUDE candidate — what VALIDATE inspected most
      *  recently. Retained on RETRY_CONCLUDE / NEED_MORE_DATA so

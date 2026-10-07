@@ -933,6 +933,21 @@ public class ThinkProcessService {
     }
 
     /**
+     * Re-arms the one-shot final-reply latch — the counterpart to
+     * {@link #claimFinalReplyEmission(String)}. Called by Marvin's
+     * {@code marvin_start} when a new tree run begins on a process whose
+     * previous run already consumed the latch: the new run's terminal must
+     * narrate its result exactly like the first one did. No event fires —
+     * this is pure latch bookkeeping between runs.
+     */
+    public void resetFinalReplyEmission(String id) {
+        mongoTemplate.updateFirst(
+                new Query(Criteria.where("_id").is(id)),
+                new Update().set("finalReplyEmitted", false),
+                ThinkProcessDocument.class);
+    }
+
+    /**
      * Rewrites the {@link CloseReason} on an already-CLOSED process to a
      * more specific value. Used by the archive / hard-delete cascades that
      * call {@code engine.stop} (which closes with {@code STOPPED}) and

@@ -52,7 +52,9 @@ class MarvinEnginePhaseMessageTest {
             mock(de.mhus.vance.shared.document.DocumentService.class),
             mock(org.springframework.beans.factory.ObjectProvider.class),
             mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class),
-            mock(de.mhus.vance.brain.inherit.ParentContextRenderer.class));
+            mock(de.mhus.vance.brain.inherit.ParentContextRenderer.class),
+            mock(MarvinSessionLoop.class),
+            mock(de.mhus.vance.brain.arthur.PlanModeEventEmitter.class));
 
     private static final MarvinNodeStateMachine.Counters COUNTERS = new MarvinNodeStateMachine.Counters(1, 0, 0, 0);
 

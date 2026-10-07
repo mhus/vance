@@ -1,8 +1,11 @@
 package de.mhus.vance.brain.marvin;
 
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.inbox.AnswerOutcome;
+import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.MaximegalonType;
+import de.mhus.vance.api.inbox.ResolvedBy;
 import de.mhus.vance.api.marvin.ConcludeOutput;
 import de.mhus.vance.api.marvin.NewTaskSpec;
 import de.mhus.vance.api.marvin.NodeStatus;
@@ -19,6 +22,8 @@ import de.mhus.vance.api.marvin.WorkerPhase;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.api.thinkprocess.TodoItem;
+import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
@@ -81,6 +86,17 @@ import tools.jackson.databind.ObjectMapper;
  * contract being forced on it.
  *
  * <p>See {@code specification/marvin-engine.md} for the full design.
+ *
+ * <p><b>Session mode</b> (planning/marvin-agent-identity.md): with
+ * {@code engineParams.sessionMode} the tree walk stays exactly as it
+ * is, but Marvin also becomes a chat identity via {@link MarvinSessionLoop}
+ * — the supervisor over the machine, not a node. Spawn form (decision F1)
+ * is the parent: no parent = chat form (survives run terminals, narrates
+ * the terminal result in the chat, takes the next goal via
+ * {@code marvin_start}); with a parent the process keeps the headless
+ * result contract (REPLY to the parent, close DONE) and merely becomes
+ * steerable mid-run. The headless path is untouched: every session branch
+ * sits behind {@link #sessionMode}.
  */
 @Component
 @RequiredArgsConstructor
@@ -88,7 +104,7 @@ import tools.jackson.databind.ObjectMapper;
 public class MarvinEngine implements ThinkEngine {
 
     public static final String NAME = "marvin";
-    public static final String VERSION = "2.0.0";
+    public static final String VERSION = "2.1.0";
 
     /** Recipe-name of the worker LLM that drives every WORKER node.
      *  When CALL_RECIPE targets a recipe other than this, that
@@ -135,6 +151,30 @@ public class MarvinEngine implements ThinkEngine {
             "web_search",
             "web_fetch");
 
+    /**
+     * {@code engineParams.sessionMode} (default false) — switches the
+     *  engine to the reactive identity (see class javadoc). Never changes
+     *  the tree's behavior — only who answers.
+     */
+    public static final String PARAM_SESSION_MODE = "sessionMode";
+
+    /**
+     * {@code engineParams.chatIdentity} — the persisted spawn form, written
+     *  at {@code start()} of a session-mode process: true for the chat form
+     *  (spawn without a parent; the human in the chat is the addressee —
+     *  survives run terminals), false for the worker form (ends at the
+     *  tree's terminal like the headless path). Wrapper form deliberately —
+     *  legacy documents without the key read as null, which is the worker
+     *  contract (Jackson-3 lesson, Zaphod precedent).
+     */
+    public static final String PARAM_CHAT_IDENTITY = "chatIdentity";
+
+    /** The role the {@code marvin_*} self-steering tools gate on. */
+    public static final String ROLE = "marvin";
+
+    /** Cap for the tree → TodoList projection (decision F8). */
+    private static final int MAX_TODO_ITEMS = 12;
+
     private final MarvinNodeService nodeService;
     private final MarvinProperties properties;
     private final MaximegalonService inboxItemService;
@@ -158,6 +198,8 @@ public class MarvinEngine implements ThinkEngine {
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final de.mhus.vance.brain.inherit.ParentContextSpawnHelper parentContextSpawnHelper;
     private final de.mhus.vance.brain.inherit.ParentContextRenderer parentContextRenderer;
+    private final MarvinSessionLoop sessionLoop;
+    private final de.mhus.vance.brain.arthur.PlanModeEventEmitter planModeEventEmitter;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -192,6 +234,12 @@ public class MarvinEngine implements ThinkEngine {
     @Override
     public boolean asyncSteer() {
         return true;
+    }
+
+    /** The marvin_* tools gate on this role — invisible to other engines. */
+    @Override
+    public Set<String> roles() {
+        return Set.of(ROLE);
     }
 
     /**
@@ -307,6 +355,10 @@ public class MarvinEngine implements ThinkEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (sessionMode(process)) {
+            startSessionMode(process);
+            return;
+        }
         log.info(
                 "Marvin.start tenant='{}' session='{}' id='{}' goal='{}'",
                 process.getTenantId(),
@@ -317,10 +369,59 @@ public class MarvinEngine implements ThinkEngine {
         if (goal == null || goal.isBlank()) {
             throw new IllegalStateException("Marvin.start requires process.goal — id='" + process.getId() + "'");
         }
+        createTreeAndKick(process, goal);
+    }
+
+    /**
+     * Session-mode start. Spawn form (decision F1): the PARENT decides, not
+     * the goal — a chat spawn almost always carries one (its first message
+     * became the spawn task), but only a parent means "the result belongs
+     * to another process". Worker form: auto-kick with the headless
+     * fail-fast contract. Chat form: auto-kick when a goal exists (the
+     * pre-pasted first message reaches the identity instead of sinking),
+     * park IDLE without one — the tree comes via {@code marvin_start}, no
+     * greeting turn.
+     */
+    private void startSessionMode(ThinkProcessDocument process) {
+        boolean chatForm = process.getParentProcessId() == null
+                || process.getParentProcessId().isBlank();
+        persistSpawnForm(process, chatForm);
+        log.info(
+                "Marvin.start session tenant='{}' session='{}' id='{}' form={}",
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId(),
+                chatForm ? "chat" : "worker");
+        String goal = process.getGoal();
+        if (goal == null || goal.isBlank()) {
+            if (!chatForm) {
+                // Worker contract: a delegated spawn without a goal is
+                // broken and fails at once — it must not idle forever.
+                throw new IllegalStateException("Marvin.start requires process.goal — id='" + process.getId() + "'");
+            }
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+            return;
+        }
+        createTreeAndKick(process, goal);
+    }
+
+    /** Persists the spawn form so later turns (and the tools) read the truth. */
+    private void persistSpawnForm(ThinkProcessDocument process, boolean chatIdentity) {
+        Map<String, Object> params = process.getEngineParams() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(process.getEngineParams());
+        params.put(PARAM_CHAT_IDENTITY, chatIdentity);
+        process.setEngineParams(params);
+        thinkProcessService.replaceEngineParams(process.getId(), params);
+    }
+
+    /** The shared kick: one root per process, narration latch reset for the new run. */
+    private void createTreeAndKick(ThinkProcessDocument process, String goal) {
         // The root is ALWAYS a WORKER in v2 — there's no separate
         // PLAN node anymore. The worker's SCOPE decides whether to
         // call recipes, decompose, or answer directly.
         nodeService.createRoot(process.getTenantId(), process.getId(), goal, TaskKind.WORKER, new LinkedHashMap<>());
+        thinkProcessService.resetFinalReplyEmission(process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
@@ -340,6 +441,21 @@ public class MarvinEngine implements ThinkEngine {
 
     @Override
     public void steer(ThinkProcessDocument process, ThinkEngineContext ctx, SteerMessage message) {
+        if (sessionMode(process) && message instanceof SteerMessage.UserChatInput uci) {
+            // Every sender reaches the identity — the human in the chat as
+            // well as a parent steering mid-run ("how far along?"). Blank
+            // input is dropped: nothing to say, no turn.
+            if (uci.content() == null || uci.content().isBlank()) {
+                return;
+            }
+            log.info(
+                    "Marvin id='{}' identity steer from='{}' content='{}'",
+                    process.getId(),
+                    uci.fromUser(),
+                    abbrev(uci.content()));
+            sessionLoop.turnFor(process, ctx, java.util.List.of(message));
+            return;
+        }
         if (message instanceof SteerMessage.UserChatInput uci) {
             log.info(
                     "Marvin id='{}' steer (async) from='{}' content='{}'",
@@ -369,10 +485,17 @@ public class MarvinEngine implements ThinkEngine {
             } catch (RuntimeException pe) {
                 log.debug("Marvin id='{}' plan-snapshot push failed: {}", process.getId(), pe.toString());
             }
+            // Tree → TodoList projection (decision F8): every turn, both
+            // modes — the run view shows the same open frontier.
+            updateTreeTodos(process);
         }
     }
 
     private void runTurnInner(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (sessionMode(process)) {
+            runSessionTurn(process, ctx);
+            return;
+        }
         try {
             // Bail immediately when ESC / /pause already halted this
             // process before the turn walked the tree.
@@ -382,37 +505,7 @@ public class MarvinEngine implements ThinkEngine {
                 consumePending(process, msg);
             }
 
-            // Reactivate any awaitingPostChildren parent whose children
-            // have all reached a terminal status. Without this sweep
-            // a NEEDS_SUBTASKS parent would stay DONE forever and the
-            // POST_CHILDREN phase never run.
-            reactivatePostChildrenParents(process);
-
-            Optional<MarvinNodeDocument> nextOpt =
-                    nodeService.findNextActionableNode(process.getId(), process.getEngineParams());
-            if (nextOpt.isEmpty()) {
-                emitFinalReplyIfTreeTerminal(process, ctx);
-                finalizeIdle(process);
-                return;
-            }
-            if (nodeBudgetExceeded(process)) {
-                log.warn(
-                        "Marvin id='{}' tree exceeded maxTreeNodes={} — stopping",
-                        process.getId(),
-                        properties.getMaxTreeNodes());
-                nodeService.markFailed(nextOpt.get(), "tree exceeded maxTreeNodes=" + properties.getMaxTreeNodes());
-                finalizeIdle(process);
-                return;
-            }
-
-            MarvinNodeDocument node = nextOpt.get();
-            boolean parked = executeNode(process, ctx, node);
-            if (parked) {
-                finalizeIdle(process);
-                return;
-            }
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
-            eventEmitter.scheduleTurn(process.getId());
+            walkTreeStep(process, ctx, false);
         } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
             // ESC / /pause bailed the tree walk. The task tree persists;
             // on resume the walk continues. Don't STALE-close.
@@ -427,6 +520,485 @@ public class MarvinEngine implements ThinkEngine {
             log.warn("Marvin runTurn failed id='{}': {}", process.getId(), e.toString(), e);
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
+        }
+    }
+
+    // ──────────────────── Session mode (planning/marvin-agent-identity.md) ────────────────────
+
+    /** {@code engineParams.sessionMode} — see {@link #PARAM_SESSION_MODE}. */
+    private boolean sessionMode(ThinkProcessDocument process) {
+        Object v = processParam(process, PARAM_SESSION_MODE);
+        return v instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(v));
+    }
+
+    /**
+     * The persisted spawn form (decision F1) — {@code true} = chat form. Read
+     * from the engine params written at {@code start()}; a missing value
+     * (legacy document, or a steer before the start wrote it) falls back to
+     * the parent check, which is the same decision.
+     */
+    private boolean chatIdentity(ThinkProcessDocument process) {
+        Object v = processParam(process, PARAM_CHAT_IDENTITY);
+        if (v instanceof Boolean b) {
+            return b;
+        }
+        if (v instanceof String s && !s.isBlank()) {
+            return Boolean.parseBoolean(s);
+        }
+        return process.getParentProcessId() == null
+                || process.getParentProcessId().isBlank();
+    }
+
+    /**
+     * One scheduled turn in session mode. A drained batch with chat input
+     * gets an identity turn and the tree step SKIPS this turn (decision F3)
+     * — the identity's tools (marvin_stop, a new goal) take effect before
+     * the walk continues on the next scheduled turn. A batch without chat
+     * input is the plain tree walk. The walk itself is shared with the
+     * headless path via {@link #walkTreeStep}.
+     */
+    private void runSessionTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        try {
+            de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.check(thinkProcessService, process.getId());
+            List<SteerMessage> drained = ctx.drainPending();
+            List<SteerMessage> chat = new ArrayList<>();
+            List<SteerMessage> tree = new ArrayList<>();
+            for (SteerMessage msg : drained) {
+                if (msg instanceof SteerMessage.UserChatInput) {
+                    chat.add(msg);
+                } else {
+                    tree.add(msg);
+                }
+            }
+            for (SteerMessage msg : tree) {
+                consumePending(process, msg);
+            }
+
+            if (!chat.isEmpty()) {
+                // Identity first: its answer may steer the run. turnFor sets
+                // the exit status itself (BLOCKED when the identity asked the
+                // user something); the tree resumes on the next scheduled
+                // turn.
+                sessionLoop.turnFor(process, ctx, chat);
+                if (treeIsLive(process)) {
+                    eventEmitter.scheduleTurn(process.getId());
+                }
+                return;
+            }
+
+            walkTreeStep(process, ctx, true);
+        } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
+            // ESC / /pause bailed the tree walk. The task tree persists; on
+            // resume the walk continues. Don't STALE-close.
+            if (ie.kind() == de.mhus.vance.brain.thinkengine.OrchestratorInterrupt.Kind.HALT) {
+                log.info("Marvin id='{}' interrupted (halt) — parking PAUSED", process.getId());
+                thinkProcessService.clearHalt(process.getId());
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
+            } else {
+                log.info("Marvin id='{}' interrupted (status) — leaving pause-handler status", process.getId());
+            }
+        } catch (RuntimeException e) {
+            log.warn("Marvin sessionTurn failed id='{}': {}", process.getId(), e.toString(), e);
+            thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+            throw e;
+        }
+    }
+
+    /**
+     * One DFS tree step — the shared walk for headless and session mode
+     * (extracted from {@code runTurnInner}; the headless path is
+     * behavior-identical). The session fork passes {@code sessionChat=true}:
+     * the only differences live in the terminal branch (identity narration
+     * instead of the parent REPLY, chat form only) and the parked branch
+     * (open-question relay).
+     */
+    private void walkTreeStep(ThinkProcessDocument process, ThinkEngineContext ctx, boolean sessionChat) {
+        // Reactivate any awaitingPostChildren parent whose children have all
+        // reached a terminal status. Without this sweep a NEEDS_SUBTASKS
+        // parent would stay DONE forever and the POST_CHILDREN phase never
+        // run.
+        reactivatePostChildrenParents(process);
+
+        Optional<MarvinNodeDocument> nextOpt =
+                nodeService.findNextActionableNode(process.getId(), process.getEngineParams());
+        if (nextOpt.isEmpty()) {
+            if (sessionChat && chatIdentity(process)) {
+                narrateTerminal(process, ctx);
+            } else {
+                emitFinalReplyIfTreeTerminal(process, ctx);
+            }
+            finalizeIdleSessionAware(process, sessionChat);
+            return;
+        }
+        if (nodeBudgetExceeded(process)) {
+            log.warn(
+                    "Marvin id='{}' tree exceeded maxTreeNodes={} — stopping",
+                    process.getId(),
+                    properties.getMaxTreeNodes());
+            nodeService.markFailed(nextOpt.get(), "tree exceeded maxTreeNodes=" + properties.getMaxTreeNodes());
+            finalizeIdleSessionAware(process, sessionChat);
+            return;
+        }
+
+        MarvinNodeDocument node = nextOpt.get();
+        boolean parked = executeNode(process, ctx, node);
+        if (parked) {
+            if (sessionChat) {
+                relayOpenQuestion(process, ctx, node);
+            }
+            finalizeIdleSessionAware(process, sessionChat);
+            return;
+        }
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+        eventEmitter.scheduleTurn(process.getId());
+    }
+
+    /**
+     * Post-step idle handling. Headless — and the session worker form,
+     * which ends like the headless run: a terminal tree closes the process
+     * DONE, the parent consumes the REPLY. Chat form (decision F4): the
+     * process survives its runs — park IDLE, or BLOCKED while an inbox
+     * answer keeps the tree waiting.
+     */
+    private void finalizeIdleSessionAware(ThinkProcessDocument process, boolean sessionChat) {
+        if (!(sessionChat && chatIdentity(process))) {
+            finalizeIdle(process);
+            return;
+        }
+        boolean running = nodeService.hasRunningNodes(process.getId());
+        boolean waiting = nodeService.hasWaitingNodes(process.getId());
+        if (waiting && !running) {
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
+            return;
+        }
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+    }
+
+    /**
+     * Chat-form tree terminal (decision F4): instead of the headless
+     * {@code closeProcess(DONE)}, the identity is woken once with the full
+     * {@link #summarizeForParent} synthesis as a synthetic DONE event — the
+     * loop writes the durable {@code [tree]} note and the turn narrates the
+     * result in the chat (the live finding: a parentless Marvin's result
+     * never reached the chat). Idempotent through the same
+     * {@code claimFinalReplyEmission} latch the headless REPLY uses; a new
+     * run re-arms the latch (see {@link #createTreeAndKick}).
+     */
+    private void narrateTerminal(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (!chatIdentity(process)) {
+            return;
+        }
+        if (nodeService.findRoot(process.getId()).isEmpty()) {
+            return; // no run yet — nothing to narrate
+        }
+        if (!nodeService.isTreeTerminal(process.getId())) {
+            return;
+        }
+        try {
+            ParentReport report = summarizeForParent(process, ProcessEventType.DONE);
+            String result = report == null ? null : report.humanSummary();
+            if (result == null || result.isBlank()) {
+                return;
+            }
+            if (!thinkProcessService.claimFinalReplyEmission(process.getId())) {
+                return; // already narrated for this run
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("result", result);
+            SteerMessage.ProcessEvent wake = new SteerMessage.ProcessEvent(
+                    Instant.now(),
+                    /* idempotencyKey */ null,
+                    process.getId(),
+                    ProcessEventType.DONE,
+                    "run finished — narrate the result to the user, it is your answer",
+                    payload,
+                    /* eventId */ null,
+                    /* inResponseToAt */ null);
+            sessionLoop.turnFor(process, ctx, List.of(wake));
+        } catch (RuntimeException e) {
+            log.warn("Marvin id='{}' narrateTerminal failed: {}", process.getId(), e.toString());
+        }
+    }
+
+    /**
+     * Relays a freshly opened inbox question into the chat (decision F6):
+     * the wake is a synthetic BLOCKED event — the loop writes the
+     * {@code [tree]} note and the identity tells the user. Relay-only: the
+     * answer goes through the inbox form; the identity has no tool that
+     * could write it. Idempotent via the node's {@code chatRelayEmitted}
+     * flag, persisted so a restart does not re-relay.
+     */
+    void relayOpenQuestion(ThinkProcessDocument process, ThinkEngineContext ctx, MarvinNodeDocument node) {
+        if (!chatIdentity(process)) {
+            return;
+        }
+        if (node.getStatus() != NodeStatus.WAITING || node.getInboxItemId() == null) {
+            return;
+        }
+        if (node.isChatRelayEmitted()) {
+            return;
+        }
+        node.setChatRelayEmitted(true);
+        nodeService.save(node);
+        String title = paramString(node, "title", node.getGoal());
+        String body = paramString(node, "body", null);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("question", title);
+        if (body != null && !body.isBlank()) {
+            payload.put("body", body);
+        }
+        payload.put("inboxItemId", node.getInboxItemId());
+        SteerMessage.ProcessEvent wake = new SteerMessage.ProcessEvent(
+                Instant.now(),
+                /* idempotencyKey */ null,
+                process.getId(),
+                ProcessEventType.BLOCKED,
+                "the run waits for a human answer — relay the question to the user; "
+                        + "they answer via the inbox form, never through you",
+                payload,
+                /* eventId */ null,
+                /* inResponseToAt */ null);
+        sessionLoop.turnFor(process, ctx, List.of(wake));
+    }
+
+    /** A tree exists and has not reached its terminal state. */
+    boolean treeIsLive(ThinkProcessDocument process) {
+        if (nodeService.findRoot(process.getId()).isEmpty()) {
+            return false;
+        }
+        return !nodeService.isTreeTerminal(process.getId());
+    }
+
+    /**
+     * marvin_start backend: exactly one root per process — a terminal (or
+     * absent) tree is deleted first (its result lives on in the conversation
+     * as {@code [tree]} notes and the narration), then the shared kick.
+     */
+    void startTree(ThinkProcessDocument process, String goal) {
+        nodeService.deleteTree(process.getId());
+        createTreeAndKick(process, goal);
+        updateTreeTodos(process);
+    }
+
+    /**
+     * marvin_stop backend: marks live nodes terminal (FAILED/SKIPPED with
+     * the reason), stops spawned CALL_RECIPE processes and resolves open
+     * inbox questions UNDECIDABLE so nothing keeps nagging the human.
+     * Partial results stay partial. The process stays open — the identity
+     * survives its runs; the follow-up {@code scheduleTurn} lets the walk
+     * see the terminal tree and wake the identity with the stop narration.
+     */
+    boolean stopTree(ThinkProcessDocument process) {
+        if (!treeIsLive(process)) {
+            return false;
+        }
+        String reason = "run stopped by request";
+        for (MarvinNodeDocument node : nodeService.listAll(process.getId())) {
+            NodeStatus st = node.getStatus() == null ? NodeStatus.PENDING : node.getStatus();
+            switch (st) {
+                case RUNNING, WAITING -> nodeService.markFailed(node, reason);
+                case PENDING -> nodeService.markSkipped(node, reason);
+                default -> {}
+            }
+            stopSpawnedChild(process, node);
+            resolveOpenInboxItem(process, node, reason);
+        }
+        updateTreeTodos(process);
+        appendRunNote(process, "run stopped by request — whatever the nodes produced so far is partial");
+        eventEmitter.scheduleTurn(process.getId());
+        return true;
+    }
+
+    private void stopSpawnedChild(ThinkProcessDocument process, MarvinNodeDocument node) {
+        String childId = node.getSpawnedProcessId();
+        if (childId == null || childId.isBlank()) {
+            return;
+        }
+        try {
+            thinkProcessService
+                    .findById(childId)
+                    .ifPresent(child -> thinkEngineServiceProvider.getObject().stop(child));
+        } catch (RuntimeException e) {
+            log.warn("Marvin id='{}' stopping spawned child '{}' failed: {}", process.getId(), childId, e.toString());
+        }
+    }
+
+    private void resolveOpenInboxItem(ThinkProcessDocument process, MarvinNodeDocument node, String reason) {
+        String itemId = node.getInboxItemId();
+        if (itemId == null || itemId.isBlank()) {
+            return;
+        }
+        try {
+            inboxItemService.answer(
+                    process.getTenantId(),
+                    itemId,
+                    AnswerPayload.builder()
+                            .outcome(AnswerOutcome.UNDECIDABLE)
+                            .reason(reason)
+                            .answeredBy("marvin:" + process.getId())
+                            .build(),
+                    ResolvedBy.AUTO_RESOLVER);
+        } catch (RuntimeException e) {
+            log.warn("Marvin id='{}' resolving inbox item '{}' failed: {}", process.getId(), itemId, e.toString());
+        }
+    }
+
+    /**
+     * Read-only tree snapshot for the diagnostics surface ({@code //marvin}
+     * and {@code marvin_status}). The node documents are the authority —
+     * same content as the session loop's status block, but machine-readable
+     * and uncapped.
+     */
+    public Map<String, Object> readTreeStatus(ThinkProcessDocument process) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<MarvinNodeDocument> all = nodeService.listAll(process.getId());
+        out.put("run", !all.isEmpty());
+        if (all.isEmpty()) {
+            return out;
+        }
+        MarvinNodeDocument root = null;
+        MarvinNodeDocument current = null;
+        int done = 0;
+        int running = 0;
+        int waiting = 0;
+        int pending = 0;
+        int failed = 0;
+        int skipped = 0;
+        for (MarvinNodeDocument n : all) {
+            if (n.getParentId() == null) {
+                root = n;
+            }
+            NodeStatus st = n.getStatus() == null ? NodeStatus.PENDING : n.getStatus();
+            switch (st) {
+                case PENDING -> pending++;
+                case RUNNING -> {
+                    running++;
+                    if (current == null) current = n;
+                }
+                case WAITING -> {
+                    waiting++;
+                    if (current == null) current = n;
+                }
+                case DONE -> done++;
+                case FAILED -> failed++;
+                case SKIPPED -> skipped++;
+            }
+        }
+        boolean live = pending + running + waiting > 0;
+        out.put("lifecycle", live ? "LIVE" : "FINISHED");
+        out.put("goal", root == null ? null : root.getGoal());
+        out.put("done", done);
+        out.put("running", running);
+        out.put("waiting", waiting);
+        out.put("pending", pending);
+        out.put("failed", failed);
+        out.put("skipped", skipped);
+        out.put("nodeCount", all.size());
+        if (current != null) {
+            out.put("currentNode", abbrev(current.getGoal()));
+            out.put("currentPhase", String.valueOf(current.getCurrentPhase()));
+        }
+        List<String> openQuestions = new ArrayList<>();
+        for (MarvinNodeDocument n : all) {
+            if (n.getStatus() != NodeStatus.WAITING || n.getInboxItemId() == null) continue;
+            inboxItemService
+                    .findById(process.getTenantId(), n.getInboxItemId())
+                    .filter(item -> item.getStatus() == de.mhus.vance.api.inbox.MaximegalonStatus.PENDING)
+                    .ifPresent(item -> openQuestions.add(
+                            item.getTitle() == null || item.getTitle().isBlank()
+                                    ? abbrev(n.getGoal())
+                                    : item.getTitle()));
+        }
+        out.put("openQuestions", openQuestions);
+        if (!live
+                && root != null
+                && root.getArtifacts() != null
+                && root.getArtifacts().get("result") instanceof String s
+                && !s.isBlank()) {
+            out.put("result", s);
+        }
+        return out;
+    }
+
+    /**
+     * Projects the tree into the process TodoList (decision F8): one item
+     * per node, item id = node id, mode-independent — the run view shows the
+     * same frontier for headless and session runs. Open frontier first,
+     * capped; terminal nodes trail as COMPLETED. FAILED nodes map to
+     * COMPLETED too — TodoStatus has no failed state (Zaphod convention:
+     * failures surface through notes, not the todo list). Hook is the
+     * runTurn finally, next to the plan snapshot.
+     */
+    void updateTreeTodos(ThinkProcessDocument process) {
+        try {
+            List<MarvinNodeDocument> all = nodeService.listAll(process.getId());
+            if (all.isEmpty()) {
+                return; // no tree yet — nothing to project
+            }
+            List<MarvinNodeDocument> frontier = new ArrayList<>();
+            List<MarvinNodeDocument> settled = new ArrayList<>();
+            for (MarvinNodeDocument n : all) {
+                NodeStatus st = n.getStatus() == null ? NodeStatus.PENDING : n.getStatus();
+                if (st == NodeStatus.PENDING || st == NodeStatus.RUNNING || st == NodeStatus.WAITING) {
+                    frontier.add(n);
+                } else {
+                    settled.add(n);
+                }
+            }
+            List<TodoItem> items = new ArrayList<>();
+            int shown = 0;
+            for (MarvinNodeDocument n : frontier) {
+                if (shown++ >= MAX_TODO_ITEMS) break;
+                items.add(nodeTodoItem(n));
+            }
+            for (MarvinNodeDocument n : settled) {
+                if (shown++ >= MAX_TODO_ITEMS) break;
+                items.add(nodeTodoItem(n));
+            }
+            thinkProcessService.setTodos(process.getId(), items);
+            planModeEventEmitter.emitTodosUpdated(process, items);
+        } catch (RuntimeException e) {
+            log.debug("Marvin id='{}' todo projection failed: {}", process.getId(), e.toString());
+        }
+    }
+
+    private static TodoItem nodeTodoItem(MarvinNodeDocument node) {
+        NodeStatus st = node.getStatus() == null ? NodeStatus.PENDING : node.getStatus();
+        TodoStatus status =
+                switch (st) {
+                    case PENDING -> TodoStatus.PENDING;
+                    case RUNNING, WAITING -> TodoStatus.IN_PROGRESS;
+                    case DONE, FAILED, SKIPPED -> TodoStatus.COMPLETED;
+                };
+        return TodoItem.builder()
+                .id(node.getId() == null ? "n" : node.getId())
+                .status(status)
+                .content(abbrev(node.getGoal()))
+                .activeForm(
+                        st == NodeStatus.WAITING
+                                ? "Waiting for a human answer"
+                                : st == NodeStatus.RUNNING ? "Working" : null)
+                .build();
+    }
+
+    /**
+     * Appends a run-level {@code [tree]} note to the chat history — the
+     * session loop writes the per-event notes, this is the engine's
+     * counterpart for run-level markers like a requested stop. Best effort,
+     * mirroring {@link #appendNodeNote}.
+     */
+    private void appendRunNote(ThinkProcessDocument process, String body) {
+        if (chatMessageService == null) return;
+        try {
+            chatMessageService.append(ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(ChatRole.ASSISTANT)
+                    .content("[tree] " + body)
+                    .build());
+        } catch (RuntimeException e) {
+            log.debug("Marvin id='{}' run-note append failed: {}", process.getId(), e.toString());
         }
     }
 

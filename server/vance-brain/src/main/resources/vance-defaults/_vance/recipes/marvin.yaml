@@ -9,11 +9,27 @@ description: |
   conclude. The Plan IS the Tree — every LLM call receives a live
   snapshot of the entire tree as context.
 
-  Specialist recipes (web-research, analyze, code-read) are invoked
-  via the CALL_RECIPE action and run in their native mode — Marvin
-  does NOT layer the structured output contract on top of them.
+  The tree grows dynamically: nodes decide for themselves whether to call
+  a specialist recipe, decompose into children, ask the user, or
+  conclude. The Plan IS the Tree — every LLM call receives a live
+  snapshot of the entire tree as context.
+
+  Session mode (planning/marvin-agent-identity.md): the node machine
+  works in the background and Marvin itself becomes a chat identity —
+  spawn WITHOUT a parent to talk to it directly (start a deep-think
+  run, ask how it is going, stop it, get the result narrated). A
+  spawn WITH a parent stays the steered worker: the result goes to
+  the parent as before. Specialist recipes (web-research, analyze,
+  code-read) are invoked via the CALL_RECIPE action and run in their
+  native mode — Marvin does NOT layer the structured output contract
+  on top of them.
 engine: marvin
 params:
+  # Session mode: the tree walk stays as is, but Marvin also becomes a
+  # chat identity (MarvinSessionLoop). Chat spawns (no parent) talk to the
+  # supervisor; spawned workers keep the headless result contract.
+  sessionMode: true
+  promptDocument: _vance/prompts/marvin-prompt.md
   model: default:marvin,default:analyze
   # Tree-engine sees the parent's conversation highlights so it
   # builds its sub-task goals from what the USER actually mentioned,

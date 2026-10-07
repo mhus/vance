@@ -18,6 +18,7 @@ import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -39,6 +40,24 @@ import org.springframework.stereotype.Component;
  * leaves an inbox item and waits for whoever comes by. A Vogon run belongs
  * to a person: it stands inside a conversation, it can ask there, and when
  * it is finished it answers back into it.
+ *
+ * <p><b>Dual identity</b> (planning/vogon-agent-identity.md): headless
+ * (default) Vogon is the thin binding over the runner it always was — bind,
+ * translate, never decide, never speak in the first person. With
+ * {@code engineParams.sessionMode: true} the engine gains a Ford-adapted
+ * chat identity ({@link VogonSessionLoop}) that operates the same runner:
+ * it starts and stops runs, reports what a run does, and routes plan
+ * changes to Slartibartfast. Spawn forms follow the Hactar-F1 contract: a
+ * spawn WITH a plan is the worker form (auto-kick, mid-run steerable, the
+ * process ends at the run's terminal exactly like the headless path); a
+ * spawn WITHOUT a plan is the chat form (the identity is the process'
+ * purpose; it survives run terminals — re-arm instead of close).
+ *
+ * <p>Unlike Hactar, no run service had to be built for this: the Magrathea
+ * runner already lives behind the engine lane, and its owner-notifications
+ * already wake the engine. The session fork only decides <em>who answers</em>:
+ * the gate fast-path and the mechanical run handling stay, the agent turn
+ * comes on top.
  *
  * <p>That difference cannot be expressed as a recipe. Recipes configure
  * what an engine does; they cannot decide <em>what gets bound at spawn</em>
@@ -65,8 +84,9 @@ import org.springframework.stereotype.Component;
  * nothing for it to bind to. Registering anyway would turn a switched-off
  * subsystem into a failure to boot.
  *
- * <p>See {@code specification/public/vogon-engine.md} and
- * {@code planning/vogon-magrathea-merge.md}.
+ * <p>See {@code specification/public/vogon-engine.md},
+ * {@code planning/vogon-agent-identity.md} and
+ * {@code specification/public/workflows.md}.
  */
 @Component
 @ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
@@ -75,7 +95,14 @@ import org.springframework.stereotype.Component;
 public class VogonEngine implements ThinkEngine {
 
     public static final String NAME = "vogon";
-    public static final String VERSION = "1.0.0";
+    public static final String VERSION = "1.1.0";
+
+    /**
+     * The role the {@code vogon_*} self-steering tools gate on — invisible
+     * to every other engine. The headless runner makes no LLM calls, so in
+     * practice only the session-mode identity ever sees them.
+     */
+    public static final String ROLE = "vogon";
 
     /** Plan to run, by name, resolved through the workflow cascade. */
     public static final String PARAM_WORKFLOW = "workflow";
@@ -96,6 +123,23 @@ public class VogonEngine implements ThinkEngine {
     /** The task text, always passed on so a plan can read it under its own name. */
     public static final String PARAM_TASK = "task";
 
+    /**
+     * {@code engineParams.sessionMode} (default false) — switches the engine
+     * to the reactive identity (see class javadoc). Never changes the run's
+     * behavior — only who answers.
+     */
+    public static final String PARAM_SESSION_MODE = "sessionMode";
+
+    /**
+     * {@code engineParams.chatIdentity} — the persisted spawn form, written
+     * at {@code start()} of a session-mode process: true for the chat form
+     * (spawn without a plan; survives run terminals), false for the worker
+     * form (ends at the run's terminal like the headless path). Wrapper
+     * form deliberately — legacy documents without the key read as null,
+     * which is the worker contract (Jackson-3 lesson, Zaphod precedent).
+     */
+    public static final String PARAM_CHAT_IDENTITY = "chatIdentity";
+
     private final MagratheaWorkflowService workflowService;
     private final MagratheaStateProjector projector;
     private final MagratheaGateChatAnswerService gateChatAnswerService;
@@ -104,6 +148,8 @@ public class VogonEngine implements ThinkEngine {
     private final SessionService sessionService;
     /** Optional: absent on a pod where Magrathea is switched off. */
     private final ObjectProvider<de.mhus.vance.brain.progress.ProgressEmitter> progressEmitter;
+
+    private final VogonSessionLoop sessionLoop;
 
     @Override
     public String name() {
@@ -119,7 +165,10 @@ public class VogonEngine implements ThinkEngine {
     public String description() {
         return "Runs a written plan on behalf of a person: the same state machine "
                 + "workflows use, bound to this session so it can ask in the "
-                + "conversation and answer back into it.";
+                + "conversation and answer back into it. In session mode a "
+                + "Ford-style chat agent operates the same runner: it starts and "
+                + "stops runs, reports mid-run progress, and routes plan changes "
+                + "to Slartibartfast (never editing them itself).";
     }
 
     @Override
@@ -128,13 +177,20 @@ public class VogonEngine implements ThinkEngine {
     }
 
     /**
-     * Empty, and staying empty. Vogon does not decide anything — the plan
-     * does. Every judgement in a run is made by a worker the plan spawned,
-     * with that worker's own tools.
+     * Empty, and staying empty: the engine's own LLM tool surface is the Ford
+     * default (unrestricted) — the headless path makes no LLM calls, and the
+     * session identity carries the full operator pool plus the role-gated
+     * {@code vogon_*} family.
      */
     @Override
     public Set<String> allowedTools() {
         return Set.of();
+    }
+
+    /** The vogon_* tools gate on this role — invisible to other engines. */
+    @Override
+    public Set<String> roles() {
+        return Set.of(ROLE);
     }
 
     @Override
@@ -169,12 +225,56 @@ public class VogonEngine implements ThinkEngine {
      */
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (sessionMode(process)) {
+            startSessionMode(process);
+            return;
+        }
         if (deferStart(process)) {
             log.debug("Vogon id='{}' waiting for its task before starting a plan", process.getId());
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
             return;
         }
         beginRun(process, /* taskText */ null);
+    }
+
+    /**
+     * Session-mode start. Spawn form (decision F4): WITH a declared plan the
+     * worker form runs the headless contract unchanged (defer-or-kick, the
+     * process ends at the run's terminal). WITHOUT a plan the chat form
+     * waits — Ford semantics, no greeting turn; the spawn steer or the
+     * first user message drives the first agent turn, the plan comes via
+     * {@code vogon_start}.
+     */
+    private void startSessionMode(ThinkProcessDocument process) {
+        boolean workerForm = declaredPath(process) != null || declaredName(process) != null;
+        persistSpawnForm(process, !workerForm);
+        log.info(
+                "Vogon.start session tenant='{}' session='{}' id='{}' form={}",
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId(),
+                workerForm ? "worker" : "chat");
+        if (workerForm) {
+            if (deferStart(process)) {
+                log.debug("Vogon id='{}' waiting for its task before starting a plan", process.getId());
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+                return;
+            }
+            beginRun(process, /* taskText */ null);
+            return;
+        }
+        // Chat form: the identity is the process' purpose — wait.
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+    }
+
+    /** Persists the spawn form so later turns (and the tools) read the truth. */
+    private void persistSpawnForm(ThinkProcessDocument process, boolean chatIdentity) {
+        Map<String, Object> params = process.getEngineParams() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(process.getEngineParams());
+        params.put(PARAM_CHAT_IDENTITY, chatIdentity);
+        process.setEngineParams(params);
+        thinkProcessService.replaceEngineParams(process.getId(), params);
     }
 
     /**
@@ -222,13 +322,17 @@ public class VogonEngine implements ThinkEngine {
     /**
      * Resolve what is missing, start the run, and remember it.
      *
+     * <p>Headless/worker contract: a start that fails closes the process —
+     * the caller gets the reason through the close, immediately, instead of
+     * a process that idles forever with nothing behind it. The session
+     * identity's {@code vogon_start} calls {@link #startPlan} instead,
+     * which throws without closing (the chat form survives a failed start).
+     *
      * @param taskText what the person asked for, when there is one to read
      */
     private void beginRun(ThinkProcessDocument process, @Nullable String taskText) {
-        MagratheaRunBinding binding = bindingFor(process);
-        String runId;
         try {
-            runId = startRun(process, binding, taskText);
+            startPlan(process, taskText);
         } catch (RuntimeException ex) {
             log.warn("Vogon id='{}' could not start its plan: {}", process.getId(), ex.toString());
             // A plan that cannot start is not a process that should linger:
@@ -237,6 +341,21 @@ public class VogonEngine implements ThinkEngine {
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw ex;
         }
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+    }
+
+    /**
+     * Starts the plan run and remembers its id — the shared start path for
+     * the headless spawn and the session identity's {@code vogon_start}
+     * (decision F2 Weg A: the intake stages run exactly as they do for a
+     * spawn). Throws on start failure WITHOUT closing: whether a failed
+     * start ends the process is the caller's contract.
+     *
+     * @return the workflow run id
+     */
+    String startPlan(ThinkProcessDocument process, @Nullable String taskText) {
+        MagratheaRunBinding binding = bindingFor(process);
+        String runId = startRun(process, binding, taskText);
         rememberRunId(process, runId);
         log.info(
                 "Vogon id='{}' started run '{}' (session='{}', capabilities={})",
@@ -244,7 +363,38 @@ public class VogonEngine implements ThinkEngine {
                 runId,
                 process.getSessionId(),
                 binding.capabilities());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+        return runId;
+    }
+
+    /**
+     * Whether this process owns a run that has not ended — the
+     * {@code vogon_start} gate (a new start requires the previous run
+     * stopped). The journal projection is the authority: the run is the
+     * authority on itself, and a copy kept here could only disagree.
+     */
+    boolean runIsLive(ThinkProcessDocument process) {
+        String runId = runId(process);
+        if (runId == null) return false;
+        return projector
+                .project(process.getTenantId(), process.getProjectId(), runId)
+                .map(MagratheaProcessDto::getStatus)
+                .map(status -> status != MagratheaRunStatus.DONE
+                        && status != MagratheaRunStatus.FAILED
+                        && status != MagratheaRunStatus.TERMINATED)
+                .orElse(false);
+    }
+
+    /**
+     * The keys that steer Vogon itself and never become plan parameters —
+     * the boundary the tool-side merge respects.
+     */
+    static boolean isControlKey(String key) {
+        return key.equals(PARAM_WORKFLOW)
+                || key.equals(PARAM_WORKFLOW_PATH)
+                || key.equals(PARAM_RUN_ID)
+                || key.equals(PARAM_INTAKE)
+                || key.equals(PARAM_SESSION_MODE)
+                || key.equals(PARAM_CHAT_IDENTITY);
     }
 
     private String startRun(ThinkProcessDocument process, MagratheaRunBinding binding, @Nullable String taskText) {
@@ -378,6 +528,13 @@ public class VogonEngine implements ThinkEngine {
 
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (sessionMode(process) && chatIdentity(process)) {
+            // Chat form: the run was never paused by our suspend (see there),
+            // so resume must not resume it either — a run paused on purpose
+            // (runs surface) stays paused until somebody resumes it there.
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+            return;
+        }
         withRun(process, runId -> {
             workflowService.resumeRun(process.getTenantId(), process.getProjectId(), runId);
             log.info("Vogon id='{}' resumed run '{}'", process.getId(), runId);
@@ -386,7 +543,18 @@ public class VogonEngine implements ThinkEngine {
     }
 
     /**
-     * Pauses the run <em>and</em> marks this process suspended.
+     * Pauses the run <em>and</em> marks this process suspended — the
+     * headless/worker contract.
+     *
+     * <p>Session-mode chat form (planning §3.2): the run is server-side work
+     * in the runner — suspend only parks the conversational lane; the run
+     * keeps working, exactly like a Hactar script under a suspended session.
+     * Contrast with the Wowbagger pool, which parks because its chunks are
+     * the unit of work: a Magrathea run's unit is a task, and killing
+     * tasks mid-flight on a session park would be damage, not control. Who
+     * wants the run paused says so (runs surface); the identity can offer
+     * it. The worker form keeps the headless behavior — its caller's
+     * suspend means the run too.
      *
      * <p>The status write is not bookkeeping: {@code ThinkEngineService}
      * only delegates, so the engine is what makes a suspend visible. A
@@ -396,6 +564,10 @@ public class VogonEngine implements ThinkEngine {
      */
     @Override
     public void suspend(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (sessionMode(process) && chatIdentity(process)) {
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.SUSPENDED);
+            return;
+        }
         withRun(process, runId -> {
             workflowService.pauseRun(process.getTenantId(), process.getProjectId(), runId);
             log.info("Vogon id='{}' paused run '{}'", process.getId(), runId);
@@ -404,7 +576,9 @@ public class VogonEngine implements ThinkEngine {
     }
 
     /**
-     * Stops the run <em>and</em> closes this process.
+     * Stops the run <em>and</em> closes this process — in both modes: a
+     * session/process close is a STOP, the chat identity included (decision
+     * F4: hard-stop, no drain-wait).
      *
      * <p>Outside {@code withRun} on purpose: a process whose run never
      * started has nothing to stop and still has to close, or
@@ -424,13 +598,160 @@ public class VogonEngine implements ThinkEngine {
 
     @Override
     public void steer(ThinkProcessDocument process, ThinkEngineContext ctx, SteerMessage message) {
+        if (sessionMode(process)) {
+            SessionRoute route = prepareSessionMessage(process, message);
+            if (route == SessionRoute.AGENT) {
+                sessionLoop.turnFor(process, ctx, java.util.List.of(message));
+            }
+            return;
+        }
         handle(process, message);
     }
 
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        if (sessionMode(process)) {
+            runTurnSessionMode(process, ctx);
+            return;
+        }
         for (SteerMessage message : ctx.drainPending()) {
             handle(process, message);
+        }
+    }
+
+    /**
+     * Session-mode drain loop — the Hactar shape: cooperative halt-check
+     * BEFORE draining (the pause contract), one agent turn per remaining
+     * batch, no re-drain after an interrupted turn.
+     */
+    private void runTurnSessionMode(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        while (true) {
+            if (thinkProcessService.isHaltRequested(process.getId())) {
+                log.info("Vogon id='{}' runTurn — halt requested, yielding (inbox left queued)", process.getId());
+                return;
+            }
+            java.util.List<SteerMessage> drained = ctx.drainPending();
+            if (drained.isEmpty()) {
+                return;
+            }
+            java.util.List<SteerMessage> agentBatch = new ArrayList<>();
+            boolean runBlocked = false;
+            for (SteerMessage message : drained) {
+                SessionRoute route = prepareSessionMessage(process, message);
+                switch (route) {
+                    case MECHANICAL -> {
+                        /* handled without an LLM turn */
+                    }
+                    case CLOSED -> {
+                        // Worker form at the run's terminal: the process is
+                        // closed — the batch's leftovers are dropped exactly
+                        // like the headless path drops them (parent contract).
+                        return;
+                    }
+                    case AGENT -> {
+                        if (message instanceof SteerMessage.ProcessEvent event
+                                && event.type() == ProcessEventType.BLOCKED) {
+                            runBlocked = true;
+                        }
+                        agentBatch.add(message);
+                    }
+                }
+            }
+            if (agentBatch.isEmpty()) {
+                continue;
+            }
+            VogonSessionLoop.TurnOutcome outcome = sessionLoop.turnFor(process, ctx, agentBatch);
+            if (outcome.interrupted()) {
+                // An interrupted turn ends THIS pass — no re-drain (the
+                // halt path carries the flag for the head check above, the
+                // status-exit paths would burn a fresh LLM turn on a parked
+                // process).
+                return;
+            }
+            if (runBlocked && !outcome.awaitingUserInput()) {
+                // §4.5: the turn's exit status overwrote the BLOCKED write
+                // from prepareSessionMessage — re-assert it, the
+                // notification cascade rides on the status and the run is
+                // still waiting at its gate.
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
+            }
+        }
+    }
+
+    /** How one session-mode message routes: mechanically, to the agent, or to the closed worker. */
+    private enum SessionRoute {
+        /** Handled without an LLM turn: gate answer consumed, worker intake window, ignored event. */
+        MECHANICAL,
+        /** The worker form ended at its run's terminal — process closed, drop the rest. */
+        CLOSED,
+        /** The identity turns over this message. */
+        AGENT
+    }
+
+    /**
+     * Routes one session-mode message. The mechanical paths stay in front of
+     * the agent (decision F1: a gate answer consumed by the word-list parser
+     * costs zero LLM calls and lands in the one audit trail; the worker
+     * form's intake window keeps the headless contract); everything else —
+     * questions, mid-run steers, run reports in the chat form — reaches the
+     * identity.
+     */
+    private SessionRoute prepareSessionMessage(ThinkProcessDocument process, SteerMessage message) {
+        switch (message) {
+            case SteerMessage.UserChatInput input -> {
+                String text = input.content();
+                if (text == null || text.isBlank()) {
+                    return SessionRoute.MECHANICAL;
+                }
+                String runId = runId(process);
+                if (runId == null && !chatIdentity(process)) {
+                    // Worker form, no run yet: start() deferred it, and this
+                    // message is the task — any sender may deliver it, it is
+                    // a task, not a decision (headless contract unchanged).
+                    beginRun(process, text);
+                    return SessionRoute.MECHANICAL;
+                }
+                if (runId != null && isHumanSender(input.fromUser())) {
+                    // The gate fast-path: a plain "yes" is read as the
+                    // answer, exactly like the headless path — consumed
+                    // means handled, the gate stays open otherwise.
+                    boolean answered =
+                            gateChatAnswerService.tryAnswer(process.getTenantId(), runId, text, input.fromUser());
+                    if (answered) {
+                        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+                        return SessionRoute.MECHANICAL;
+                    }
+                }
+                return SessionRoute.AGENT;
+            }
+            case SteerMessage.ProcessEvent event -> {
+                if (event.type() == null) {
+                    return SessionRoute.MECHANICAL;
+                }
+                if (!chatIdentity(process)) {
+                    // Worker form: the headless event handling — BLOCKED
+                    // parks the process on the notification status, the
+                    // terminal closes it and tells the parent. The identity
+                    // stays lazy: nobody paid for a turn.
+                    onRunReported(process, event);
+                    return isRunTerminal(event.type()) ? SessionRoute.CLOSED : SessionRoute.MECHANICAL;
+                }
+                // Chat form: the run's report is a wakeup for the identity —
+                // BLOCKED still parks the process on the notification
+                // status (§4.5), the terminal re-arms instead of closing.
+                switch (event.type()) {
+                    case BLOCKED -> thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
+                    case DONE, FAILED, STOPPED ->
+                        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+                    default ->
+                        log.trace("Vogon id='{}' passing run event {} to the identity", process.getId(), event.type());
+                }
+                return SessionRoute.AGENT;
+            }
+            default -> {
+                // ToolResults and the like are turn-local extras for the identity.
+                return SessionRoute.AGENT;
+            }
         }
     }
 
@@ -514,6 +835,10 @@ public class VogonEngine implements ThinkEngine {
         if (fromUser == null || fromUser.isBlank()) return false;
         String from = fromUser.trim();
         return !from.startsWith("process:") && !from.startsWith("_") && !from.startsWith("@");
+    }
+
+    private static boolean isRunTerminal(ProcessEventType type) {
+        return type == ProcessEventType.DONE || type == ProcessEventType.FAILED || type == ProcessEventType.STOPPED;
     }
 
     /**
@@ -626,6 +951,21 @@ public class VogonEngine implements ThinkEngine {
 
     // ──────────────────── helpers ────────────────────
 
+    /** {@code true} when this process runs the reactive identity. */
+    static boolean sessionMode(ThinkProcessDocument process) {
+        Map<String, Object> p = process.getEngineParams();
+        Object raw = p == null ? null : p.get(PARAM_SESSION_MODE);
+        if (raw instanceof Boolean b) return b;
+        return raw instanceof String s && Boolean.parseBoolean(s.trim());
+    }
+
+    /** The persisted spawn form (decision F4): true = chat form, false/absent = worker contract. */
+    public static boolean chatIdentity(ThinkProcessDocument process) {
+        Map<String, Object> p = process.getEngineParams();
+        Object raw = p == null ? null : p.get(PARAM_CHAT_IDENTITY);
+        return raw instanceof Boolean b && b;
+    }
+
     private void withRun(ThinkProcessDocument process, java.util.function.Consumer<String> action) {
         String runId = runId(process);
         if (runId == null) {
@@ -690,10 +1030,7 @@ public class VogonEngine implements ThinkEngine {
         Map<String, Object> raw = process.getEngineParams();
         if (raw == null || raw.isEmpty()) return Map.of();
         Map<String, Object> out = new LinkedHashMap<>(raw);
-        out.remove(PARAM_WORKFLOW);
-        out.remove(PARAM_WORKFLOW_PATH);
-        out.remove(PARAM_RUN_ID);
-        out.remove(PARAM_INTAKE);
+        out.keySet().removeIf(VogonEngine::isControlKey);
         return out;
     }
 

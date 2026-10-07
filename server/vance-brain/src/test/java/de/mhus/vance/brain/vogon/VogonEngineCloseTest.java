@@ -27,17 +27,18 @@ class VogonEngineCloseTest {
 
     private final MagratheaWorkflowService workflowService = mock(MagratheaWorkflowService.class);
     private final MagratheaStateProjector projector = mock(MagratheaStateProjector.class);
-    private final MagratheaGateChatAnswerService gateAnswers =
-            mock(MagratheaGateChatAnswerService.class);
+    private final MagratheaGateChatAnswerService gateAnswers = mock(MagratheaGateChatAnswerService.class);
     private final VogonIntake intake = mock(VogonIntake.class);
     private final ThinkProcessService processes = mock(ThinkProcessService.class);
     private final SessionService sessions = mock(SessionService.class);
+
     @SuppressWarnings("unchecked")
-    private final ObjectProvider<de.mhus.vance.brain.progress.ProgressEmitter> progress =
-            mock(ObjectProvider.class);
+    private final ObjectProvider<de.mhus.vance.brain.progress.ProgressEmitter> progress = mock(ObjectProvider.class);
+
+    private final VogonSessionLoop sessionLoop = mock(VogonSessionLoop.class);
 
     private final VogonEngine engine = new VogonEngine(
-            workflowService, projector, gateAnswers, intake, processes, sessions, progress);
+            workflowService, projector, gateAnswers, intake, processes, sessions, progress, sessionLoop);
 
     private static ThinkProcessDocument delegatedProcess() {
         ThinkProcessDocument p = new ThinkProcessDocument();
@@ -50,8 +51,7 @@ class VogonEngineCloseTest {
     }
 
     private static SteerMessage.ProcessEvent runReports(ProcessEventType type) {
-        return new SteerMessage.ProcessEvent(
-                Instant.now(), null, "", type, "the run says so", null, null, null);
+        return new SteerMessage.ProcessEvent(Instant.now(), null, "", type, "the run says so", null, null, null);
     }
 
     @Test
@@ -94,7 +94,8 @@ class VogonEngineCloseTest {
         // Better a parent that still points at a closed process than a
         // process that never closes at all.
         org.mockito.Mockito.doThrow(new IllegalStateException("mongo down"))
-                .when(processes).removeWorkerLink(any(), any());
+                .when(processes)
+                .removeWorkerLink(any(), any());
 
         engine.steer(delegatedProcess(), null, runReports(ProcessEventType.DONE));
 
@@ -145,17 +146,14 @@ class VogonEngineCloseTest {
         engine.suspend(running, null);
 
         verify(workflowService).pauseRun("t", "p", "run-7");
-        verify(processes).updateStatus(
-                "vogon-1", de.mhus.vance.api.thinkprocess.ThinkProcessStatus.SUSPENDED);
+        verify(processes).updateStatus("vogon-1", de.mhus.vance.api.thinkprocess.ThinkProcessStatus.SUSPENDED);
     }
 
     /** A process that has a run behind it, as every started Vogon does. */
     private ThinkProcessDocument withRun(String runId) {
         ThinkProcessDocument p = delegatedProcess();
-        p.setEngineParams(new java.util.LinkedHashMap<>(
-                java.util.Map.of(VogonEngine.PARAM_RUN_ID, runId)));
-        org.mockito.Mockito.when(processes.findById("vogon-1"))
-                .thenReturn(java.util.Optional.of(p));
+        p.setEngineParams(new java.util.LinkedHashMap<>(java.util.Map.of(VogonEngine.PARAM_RUN_ID, runId)));
+        org.mockito.Mockito.when(processes.findById("vogon-1")).thenReturn(java.util.Optional.of(p));
         return p;
     }
 }

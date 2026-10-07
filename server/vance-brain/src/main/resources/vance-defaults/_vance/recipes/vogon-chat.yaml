@@ -1,0 +1,34 @@
+# Vogon Chat default recipe — the plan operator identity
+# (planning/vogon-agent-identity.md §5).
+#
+# Session mode: the Magrathea runner works in the background, and the
+# Vogon engine itself becomes a Ford-style chat agent (VogonSessionLoop)
+# — spawn WITHOUT a plan, so the process takes the chat form (F4): it
+# survives run terminals, the user talks WITH the operator over many of
+# its runs. A worker spawn WITH a plan + sessionMode stays possible
+# per-call (mid-run steerable), but uses the plan recipe plus the
+# sessionMode param.
+
+title: "Vogon Chat — Plan Operator"
+listed: true
+category: workers
+description: |
+  The operator of written plans: start a plan ("run the waterfall
+  plan", "run plans/release.yaml"), ask how it is going mid-run, stop
+  it, read the result — and when a run waits at an approval gate it
+  tells you what is being asked, so you answer right in the
+  conversation. Plan changes go through Slartibartfast; the operator
+  never edits a plan itself. The process stays open across runs — you
+  can run the next plan (a different one too) without spawning again.
+engine: vogon
+params:
+  model: default:ford,default:analyze
+  sessionMode: true
+  # Safety-net cap for the agent's tool loop (Ford-style natural stop).
+  maxIterations: 40
+  promptDocument: _vance/prompts/vogon-prompt.md
+  manualPaths:
+    - _vance/manuals/
+tags:
+  - worker
+  - plan-operator

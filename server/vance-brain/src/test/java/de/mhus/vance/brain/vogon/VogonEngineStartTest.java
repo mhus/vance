@@ -52,17 +52,18 @@ class VogonEngineStartTest {
 
     private final MagratheaWorkflowService workflowService = mock(MagratheaWorkflowService.class);
     private final MagratheaStateProjector projector = mock(MagratheaStateProjector.class);
-    private final MagratheaGateChatAnswerService gateAnswers =
-            mock(MagratheaGateChatAnswerService.class);
+    private final MagratheaGateChatAnswerService gateAnswers = mock(MagratheaGateChatAnswerService.class);
     private final VogonIntake intake = mock(VogonIntake.class);
     private final ThinkProcessService processes = mock(ThinkProcessService.class);
     private final SessionService sessions = mock(SessionService.class);
+
     @SuppressWarnings("unchecked")
-    private final ObjectProvider<de.mhus.vance.brain.progress.ProgressEmitter> progress =
-            mock(ObjectProvider.class);
+    private final ObjectProvider<de.mhus.vance.brain.progress.ProgressEmitter> progress = mock(ObjectProvider.class);
+
+    private final VogonSessionLoop sessionLoop = mock(VogonSessionLoop.class);
 
     private final VogonEngine engine = new VogonEngine(
-            workflowService, projector, gateAnswers, intake, processes, sessions, progress);
+            workflowService, projector, gateAnswers, intake, processes, sessions, progress, sessionLoop);
 
     @BeforeEach
     void setUp() {
@@ -70,8 +71,7 @@ class VogonEngineStartTest {
         // has nothing to read; the interesting assertions here are about
         // what reaches it, not what it does.
         when(intake.resolve(any(), any(), any(), any(), any(), any(), any()))
-                .thenAnswer(inv -> VogonIntake.Outcome.of(
-                        inv.getArgument(3), inv.getArgument(4)));
+                .thenAnswer(inv -> VogonIntake.Outcome.of(inv.getArgument(3), inv.getArgument(4)));
         when(workflowService.start(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn("run-1");
     }
@@ -93,8 +93,7 @@ class VogonEngineStartTest {
         engine.start(process(Map.of(VogonEngine.PARAM_WORKFLOW, "release")), null);
 
         verify(processes).updateStatus("vogon-1", ThinkProcessStatus.IDLE);
-        verify(workflowService, never()).start(
-                any(), any(), any(), any(), any(), any(), any(), any());
+        verify(workflowService, never()).start(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -103,8 +102,7 @@ class VogonEngineStartTest {
 
         engine.start(process(Map.of(VogonEngine.PARAM_WORKFLOW, "release")), null);
 
-        verify(workflowService).start(
-                eq(TENANT), eq(PROJECT), eq("release"), any(), any(), any(), any(), any());
+        verify(workflowService).start(eq(TENANT), eq(PROJECT), eq("release"), any(), any(), any(), any(), any());
     }
 
     // ── Failing at once ────────────────────────────────────────────
@@ -117,8 +115,7 @@ class VogonEngineStartTest {
         // there is no task, so nothing ever times it out.
         when(intake.loadPlan(TENANT, PROJECT, "relase")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() ->
-                engine.start(process(Map.of(VogonEngine.PARAM_WORKFLOW, "relase")), null))
+        assertThatThrownBy(() -> engine.start(process(Map.of(VogonEngine.PARAM_WORKFLOW, "relase")), null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("relase");
 
@@ -130,8 +127,7 @@ class VogonEngineStartTest {
     void start_declaredPlanDoesNotResolve_neverAsksAModelToPickOne() {
         when(intake.loadPlan(TENANT, PROJECT, "relase")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() ->
-                engine.start(process(Map.of(VogonEngine.PARAM_WORKFLOW, "relase")), null))
+        assertThatThrownBy(() -> engine.start(process(Map.of(VogonEngine.PARAM_WORKFLOW, "relase")), null))
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(intake, never()).resolve(any(), any(), any(), any(), any(), any(), any());
@@ -141,8 +137,7 @@ class VogonEngineStartTest {
     void start_intakeNoneWithoutAPlan_failsAtOnceInsteadOfIdling() {
         // `intake: none` says this plan is never fed from prose, so nothing
         // a later message could carry would change the outcome.
-        assertThatThrownBy(() -> engine.start(
-                process(Map.of(VogonEngine.PARAM_INTAKE, VogonIntake.INTAKE_NONE)), null))
+        assertThatThrownBy(() -> engine.start(process(Map.of(VogonEngine.PARAM_INTAKE, VogonIntake.INTAKE_NONE)), null))
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(processes).closeProcess("vogon-1", CloseReason.STALE);
@@ -158,16 +153,20 @@ class VogonEngineStartTest {
         // plan parameter that happens to share the name.
         givenPlan("release");
 
-        engine.start(process(new LinkedHashMap<>(Map.of(
-                VogonEngine.PARAM_WORKFLOW, "release",
-                VogonEngine.PARAM_INTAKE, VogonIntake.INTAKE_NONE,
-                "channel", "beta"))), null);
+        engine.start(
+                process(new LinkedHashMap<>(Map.of(
+                        VogonEngine.PARAM_WORKFLOW,
+                        "release",
+                        VogonEngine.PARAM_INTAKE,
+                        VogonIntake.INTAKE_NONE,
+                        "channel",
+                        "beta"))),
+                null);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> params = ArgumentCaptor.forClass(Map.class);
-        verify(workflowService).start(
-                eq(TENANT), eq(PROJECT), eq("release"), params.capture(),
-                any(), any(), any(), any());
+        verify(workflowService)
+                .start(eq(TENANT), eq(PROJECT), eq("release"), params.capture(), any(), any(), any(), any());
         assertThat(params.getValue()).doesNotContainKey(VogonEngine.PARAM_INTAKE);
         assertThat(params.getValue()).containsEntry("channel", "beta");
     }
@@ -221,8 +220,7 @@ class VogonEngineStartTest {
 
     private static SteerMessage.UserChatInput saidBy(String fromUser, String text) {
         return new SteerMessage.UserChatInput(
-                Instant.now(), null, fromUser, null, text,
-                List.of(), false, null, null, null);
+                Instant.now(), null, fromUser, null, text, List.of(), false, null, null, null);
     }
 
     /** A plan that resolves, declaring the given parameters as required. */
@@ -232,16 +230,35 @@ class VogonEngineStartTest {
             parameters.put(key, new MagratheaParameterSpec("string", true, null));
         }
         ResolvedMagratheaWorkflow plan = new ResolvedMagratheaWorkflow(
-                name, "", MagratheaWorkflowSource.PROJECT,
-                null, null, null, null, "start",
-                parameters, Map.of("start", terminalState()),
-                MagratheaBoundsSpec.empty(), List.of(), List.of());
+                name,
+                "",
+                MagratheaWorkflowSource.PROJECT,
+                null,
+                null,
+                null,
+                null,
+                "start",
+                parameters,
+                Map.of("start", terminalState()),
+                MagratheaBoundsSpec.empty(),
+                List.of(),
+                List.of());
         when(intake.loadPlan(TENANT, PROJECT, name)).thenReturn(Optional.of(plan));
     }
 
     private static MagratheaStateSpec terminalState() {
         return new MagratheaStateSpec(
-                "start", MagratheaTaskType.TERMINAL, null, null, null, null,
-                List.of(), Map.of(), Map.of(), List.of(), MagratheaRetrySpec.none(), Map.of());
+                "start",
+                MagratheaTaskType.TERMINAL,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                MagratheaRetrySpec.none(),
+                Map.of());
     }
 }

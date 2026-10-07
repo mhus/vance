@@ -3721,6 +3721,8 @@ export default {
       noneBody: 'No configuration areas are registered in this build.',
       save: 'Save',
       entrySaved: 'Saved.',
+      apply: 'Apply',
+      openInCortex: 'Open this document in Cortex',
       parseFailedRaw:
         'This document could not be parsed as its kind expects — editing the raw text instead.',
     },

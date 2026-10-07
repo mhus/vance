@@ -14,6 +14,12 @@ import type { DocumentDto, DocumentUpdateRequest } from '@vance/generated';
  * REST. Kinds without a view/codec (or bodies that fail to parse) fall
  * back to the raw CodeEditor — the same rescue path the Cortex shell
  * takes, so an area entry is never a dead end.
+ *
+ * <p>Two save verbs, deliberately: <b>Anwenden</b> persists and stays
+ * (keep editing, try again), <b>Speichern</b> persists and emits
+ * {@code close} — the host clears the {@code entry} URL param and the
+ * list is back. A third control, the Cortex jump link, hands the very
+ * same document to the full editor: settings configures, Cortex works.
  */
 
 const props = defineProps<{
@@ -23,6 +29,10 @@ const props = defineProps<{
   kindId: string;
 }>();
 
+const emit = defineEmits<{
+  /** Saved via the Speichern verb — the host navigates back to the list. */
+  close: [];
+}>();
 const { t } = useI18n();
 
 const loading = ref(false);
@@ -50,6 +60,12 @@ const typedMode = computed(() => {
     && entry.serialize != null
     && model.value != null;
 });
+
+/** Deep link into Cortex — the same document in the full editor. */
+const cortexHref = computed<string>(() => doc.value
+  ? `/cortex?project=${encodeURIComponent(doc.value.projectId)}`
+    + `&path=${encodeURIComponent(doc.value.path)}`
+  : '#');
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -85,8 +101,9 @@ async function load(): Promise<void> {
   }
 }
 
-async function save(): Promise<void> {
-  if (!doc.value) return;
+/** Persists the current state and reports whether it landed. */
+async function save(): Promise<boolean> {
+  if (!doc.value) return false;
   saving.value = true;
   saveError.value = null;
   saved.value = false;
@@ -113,11 +130,23 @@ async function save(): Promise<void> {
         parseFailed.value = true;
       }
     }
+    return true;
   } catch (err) {
     saveError.value = err instanceof RestError ? err.message : String(err);
+    return false;
   } finally {
     saving.value = false;
   }
+}
+
+/** Anwenden — persist and stay: keep editing, try again. */
+async function apply(): Promise<void> {
+  await save();
+}
+
+/** Speichern — persist and hand the navigation back to the host. */
+async function saveAndClose(): Promise<void> {
+  if (await save()) emit('close');
 }
 
 watch(
@@ -138,12 +167,28 @@ watch(
     <template v-else-if="doc">
       <div class="flex items-center justify-between gap-2">
         <div class="font-mono text-xs opacity-60 truncate">{{ doc.path }}</div>
-        <VButton
-          variant="primary"
-          size="sm"
-          :loading="saving"
-          @click="save"
-        >{{ t('settings.areas.save') }}</VButton>
+        <div class="flex items-center gap-2">
+          <!-- Jump link: same document, full editor. Settings configures,
+               Cortex works — a handoff, not a second editor instance. -->
+          <a
+            class="text-xs underline-offset-2 hover:underline opacity-60 hover:opacity-100"
+            :href="cortexHref"
+            :title="t('settings.areas.openInCortex')"
+          >↗</a>
+          <VButton
+            variant="secondary"
+            outline
+            size="sm"
+            :loading="saving"
+            @click="apply"
+          >{{ t('settings.areas.apply') }}</VButton>
+          <VButton
+            variant="primary"
+            size="sm"
+            :loading="saving"
+            @click="saveAndClose"
+          >{{ t('settings.areas.save') }}</VButton>
+        </div>
       </div>
 
       <!-- Typed mode: the kind's own view, model in, updated model out. -->

@@ -3741,6 +3741,8 @@ export default {
       noneBody: 'In diesem Build sind keine Konfigurationsbereiche registriert.',
       save: 'Speichern',
       entrySaved: 'Gespeichert.',
+      apply: 'Anwenden',
+      openInCortex: 'Dieses Dokument im Cortex öffnen',
       parseFailedRaw:
         'Dieses Dokument ließ sich nicht so parsen, wie es seine Art erwartet — du bearbeitest stattdessen den Rohtext.',
     },

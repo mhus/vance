@@ -659,6 +659,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
           <AreaEntryView
             :document-id="activeEntry.documentId"
             :kind-id="activeEntry.kindId"
+            @close="backToEntryList"
           />
         </template>
 

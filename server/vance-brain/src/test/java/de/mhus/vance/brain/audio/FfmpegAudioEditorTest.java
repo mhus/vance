@@ -6,6 +6,9 @@ import static org.assertj.core.api.Assertions.within;
 
 import de.mhus.vance.brain.ai.audio.AudioMimeTypeSniffer;
 import de.mhus.vance.brain.ai.audio.PcmWav;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -100,6 +103,17 @@ class FfmpegAudioEditorTest {
     }
 
     @Test
+    void mix_rejects_fade_out_longer_than_base() {
+        byte[] base = sineWav(2.0, 440);
+        byte[] overlay = sineWav(0.5, 660);
+
+        assertThatThrownBy(() -> editor.mix(base, overlay, 1.0, 0.3, 0, false, 2.5, "wav"))
+                .isInstanceOf(AudioManipulationException.class)
+                .extracting(e -> ((AudioManipulationException) e).getReason())
+                .isEqualTo(AudioManipulationException.Reason.PARAMETER_INVALID);
+    }
+
+    @Test
     void concat_joins_clips() {
         byte[] a = sineWav(1.0, 440);
         byte[] b = sineWav(1.0, 660);
@@ -161,6 +175,35 @@ class FfmpegAudioEditorTest {
                 .isEqualTo(AudioManipulationException.Reason.PROCESSING_ERROR);
     }
 
+    /**
+     * The wall-clock timeout must fire for a process that never exits:
+     * reading the process output to EOF on the calling thread (the old
+     * pattern) would block forever — a hung ffmpeg could never be killed.
+     * The hanging "binary" is a shell script that ignores its arguments
+     * and sleeps; probe runs it as ffprobe.
+     */
+    @Test
+    @EnabledIf("unixShellAvailable")
+    void hanging_process_is_killed_by_the_wall_clock_timeout() throws Exception {
+        Path hang = Files.createTempFile("vance-audio-hang-", ".sh");
+        try {
+            Files.writeString(hang, "#!/bin/sh\nexec sleep 30\n");
+            Files.setPosixFilePermissions(hang, PosixFilePermissions.fromString("rwxr-xr-x"));
+            FfmpegAudioEditor hanging = new FfmpegAudioEditor("ffmpeg", hang.toString(), 1);
+            long start = System.currentTimeMillis();
+
+            assertThatThrownBy(() -> hanging.probe(new byte[0]))
+                    .isInstanceOfSatisfying(AudioManipulationException.class, e -> {
+                        assertThat(e.getReason()).isEqualTo(AudioManipulationException.Reason.PROCESSING_ERROR);
+                        assertThat(e.getMessage()).contains("timed out after 1s");
+                    });
+            // The timeout fired around the 1 s deadline — not the sleep's 30 s.
+            assertThat(System.currentTimeMillis() - start).isLessThan(10_000);
+        } finally {
+            Files.deleteIfExists(hang);
+        }
+    }
+
     @Test
     void unknown_output_format_is_rejected() {
         byte[] wav = sineWav(0.5, 440);
@@ -188,6 +231,11 @@ class FfmpegAudioEditorTest {
     /** Condition for {@link EnabledIf}: both binaries answer. */
     static boolean ffmpegAvailable() {
         return runs("ffmpeg", "-version") && runs("ffprobe", "-version");
+    }
+
+    /** Condition for the timeout test's {@link EnabledIf}: a POSIX shell exists. */
+    static boolean unixShellAvailable() {
+        return runs("/bin/sh", "-c", "exit 0");
     }
 
     private static boolean runs(String... cmd) {

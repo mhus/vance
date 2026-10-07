@@ -196,6 +196,25 @@ class AudioManipulationServiceTest {
     }
 
     @Test
+    void trim_rejects_fade_out_without_probeable_duration() {
+        DocumentDocument source = audioDoc("audio/a.wav", "audio/wav", twoSecondWav.length);
+        stubFindByPath("audio/a.wav", source);
+        stubLoadContent(source, twoSecondWav);
+        when(editor.probe(any())).thenReturn(new FfmpegAudioEditor.ProbeData(null, "wav", "pcm_s16le", 1, 24000));
+
+        assertThatThrownBy(() -> service.trim(TrimRequest.builder()
+                        .tenantId("acme")
+                        .projectId("p1")
+                        .path("audio/a.wav")
+                        .startSeconds(0.0)
+                        .fadeOutSeconds(0.5)
+                        .build()))
+                .isInstanceOf(AudioManipulationException.class)
+                .extracting(e -> ((AudioManipulationException) e).getReason())
+                .isEqualTo(AudioManipulationException.Reason.PARAMETER_INVALID);
+    }
+
+    @Test
     void source_not_found() {
         stubFindByPathEmpty("audio/missing.wav");
 
@@ -265,6 +284,30 @@ class AudioManipulationServiceTest {
     }
 
     @Test
+    void output_byte_limit_exceeded_via_scope_cascade() {
+        when(settingService.getStringValueCascade(
+                        anyString(), any(), any(), eq(AudioManipulationService.SETTING_MAX_OUTPUT_BYTES)))
+                .thenReturn("10");
+        DocumentDocument source = audioDoc("audio/a.wav", "audio/wav", twoSecondWav.length);
+        stubFindByPath("audio/a.wav", source);
+        stubLoadContent(source, twoSecondWav);
+        when(editor.trim(any(), anyDouble(), any(), anyDouble(), anyDouble(), anyString()))
+                .thenReturn(twoSecondWav);
+
+        assertThatThrownBy(() -> service.trim(TrimRequest.builder()
+                        .tenantId("acme")
+                        .projectId("p1")
+                        .processId("proc-1")
+                        .path("audio/a.wav")
+                        .startSeconds(0.0)
+                        .endSeconds(1.0)
+                        .build()))
+                .isInstanceOf(AudioManipulationException.class)
+                .extracting(e -> ((AudioManipulationException) e).getReason())
+                .isEqualTo(AudioManipulationException.Reason.LIMIT_EXCEEDED);
+    }
+
+    @Test
     void duration_limit_exceeded() {
         when(settingService.getStringValueCascade(
                         anyString(), any(), any(), eq(AudioManipulationService.SETTING_MAX_DURATION_SECONDS)))
@@ -324,6 +367,73 @@ class AudioManipulationServiceTest {
         assertThat(result.path()).isEqualTo("audio/mix.wav");
         // base is wav ⇒ output format wav ⇒ sniffed mime audio/wav.
         assertThat(result.mimeType()).isEqualTo("audio/wav");
+    }
+
+    @Test
+    void mix_rejects_fade_out_longer_than_base() {
+        DocumentDocument base = audioDoc("audio/voice.wav", "audio/wav", twoSecondWav.length);
+        DocumentDocument overlay = audioDoc("audio/music.mp3", "audio/mpeg", 500);
+        stubFindByPath("audio/voice.wav", base);
+        stubFindByPath("audio/music.mp3", overlay);
+        stubLoadContent(base, twoSecondWav);
+        stubLoadContent(overlay, twoSecondWav);
+
+        assertThatThrownBy(() -> service.mix(MixRequest.builder()
+                        .tenantId("acme")
+                        .projectId("p1")
+                        .path("audio/voice.wav")
+                        .overlayPath("audio/music.mp3")
+                        .fadeOutSeconds(2.5)
+                        .build()))
+                .isInstanceOf(AudioManipulationException.class)
+                .extracting(e -> ((AudioManipulationException) e).getReason())
+                .isEqualTo(AudioManipulationException.Reason.PARAMETER_INVALID);
+    }
+
+    @Test
+    void mix_rejects_fade_out_without_probeable_base_duration() {
+        DocumentDocument base = audioDoc("audio/voice.wav", "audio/wav", twoSecondWav.length);
+        DocumentDocument overlay = audioDoc("audio/music.mp3", "audio/mpeg", 500);
+        stubFindByPath("audio/voice.wav", base);
+        stubFindByPath("audio/music.mp3", overlay);
+        stubLoadContent(base, twoSecondWav);
+        stubLoadContent(overlay, twoSecondWav);
+        when(editor.probe(any())).thenReturn(new FfmpegAudioEditor.ProbeData(null, "wav", "pcm_s16le", 1, 24000));
+
+        assertThatThrownBy(() -> service.mix(MixRequest.builder()
+                        .tenantId("acme")
+                        .projectId("p1")
+                        .path("audio/voice.wav")
+                        .overlayPath("audio/music.mp3")
+                        .fadeOutSeconds(0.5)
+                        .build()))
+                .isInstanceOf(AudioManipulationException.class)
+                .extracting(e -> ((AudioManipulationException) e).getReason())
+                .isEqualTo(AudioManipulationException.Reason.PARAMETER_INVALID);
+    }
+
+    @Test
+    void mix_accepts_fade_out_shorter_than_base() {
+        DocumentDocument base = audioDoc("audio/voice.wav", "audio/wav", twoSecondWav.length);
+        DocumentDocument overlay = audioDoc("audio/music.mp3", "audio/mpeg", 500);
+        stubFindByPath("audio/voice.wav", base);
+        stubFindByPath("audio/music.mp3", overlay);
+        stubLoadContent(base, twoSecondWav);
+        stubLoadContent(overlay, twoSecondWav);
+        stubCreateOrReplaceBinaryEcho();
+        when(editor.mix(any(), any(), anyDouble(), anyDouble(), anyDouble(), anyBoolean(), anyDouble(), anyString()))
+                .thenReturn(twoSecondWav);
+
+        AudioOpResult result = service.mix(MixRequest.builder()
+                .tenantId("acme")
+                .userId("alice")
+                .projectId("p1")
+                .path("audio/voice.wav")
+                .overlayPath("audio/music.mp3")
+                .fadeOutSeconds(0.5)
+                .build());
+
+        assertThat(result.path()).isEqualTo("audio/voice.wav");
     }
 
     // ─────────────────── concat ───────────────────

@@ -117,6 +117,13 @@ public class AudioManipulationService {
         double available = req.getEndSeconds() != null
                 ? req.getEndSeconds() - req.getStartSeconds()
                 : (sourceDuration == null ? Double.MAX_VALUE : sourceDuration - req.getStartSeconds());
+        // A fade-out needs a known cut end. Without endSeconds and without a
+        // probeable duration the editor could only place the fade at zero —
+        // fading the whole cut — so the request is rejected up front.
+        if (req.getFadeOutSeconds() > 0 && req.getEndSeconds() == null && sourceDuration == null) {
+            throw parameterInvalid("fadeOutSeconds needs endSeconds or a source with a probeable duration — "
+                    + "the cut length is unknown");
+        }
         if (req.getFadeOutSeconds() >= available) {
             throw parameterInvalid("fadeOutSeconds (" + req.getFadeOutSeconds()
                     + ") must be smaller than the cut length (" + available + ")");
@@ -141,6 +148,7 @@ public class AudioManipulationService {
                 source,
                 req.getTargetPath(),
                 out,
+                limits,
                 outputFormat);
     }
 
@@ -164,8 +172,22 @@ public class AudioManipulationService {
         SourceDoc base = loadSource(req.getTenantId(), req.getProjectId(), req.getPath(), req.getDocumentId(), limits);
         SourceDoc overlay = loadSource(
                 req.getTenantId(), req.getProjectId(), req.getOverlayPath(), req.getOverlayDocumentId(), limits);
-        ensureDurationWithinLimit("audio_mix", startMs, base, limits);
+        Double baseDuration = ensureDurationWithinLimit("audio_mix", startMs, base, limits);
         ensureDurationWithinLimit("audio_mix", startMs, overlay, limits);
+        // The mix follows the base length (amix duration=first), so a fade-out
+        // is placed on the base timeline: it needs a probeable base duration
+        // and must stay shorter than it — otherwise afade would start at 0 and
+        // fade the whole mix to silence.
+        if (req.getFadeOutSeconds() > 0) {
+            if (baseDuration == null) {
+                throw parameterInvalid("fadeOutSeconds requires a base with a probeable duration — "
+                        + "this container's duration is unknown");
+            }
+            if (req.getFadeOutSeconds() >= baseDuration) {
+                throw parameterInvalid("fadeOutSeconds (" + req.getFadeOutSeconds()
+                        + ") must be smaller than the base length (" + baseDuration + ")");
+            }
+        }
 
         emitInitialStatus(req.getProcessId(), "audio_mix");
         String outputFormat = outputFormatOf(base.mime(), null);
@@ -188,6 +210,7 @@ public class AudioManipulationService {
                 base,
                 req.getTargetPath(),
                 out,
+                limits,
                 outputFormat);
     }
 
@@ -231,6 +254,7 @@ public class AudioManipulationService {
                 base,
                 targetPath,
                 out,
+                limits,
                 outputFormat);
     }
 
@@ -281,6 +305,7 @@ public class AudioManipulationService {
                 source,
                 req.getTargetPath(),
                 out,
+                limits,
                 format);
     }
 
@@ -289,6 +314,9 @@ public class AudioManipulationService {
     /**
      * Post-op half of the pipeline: size + duration check, mime
      * sniffing, target resolution, user-driven write, metric record.
+     * The output cap comes from the caller's op-start {@link Limits}, so
+     * every limit check cascades identically (tenant → project → process)
+     * — no re-read with a narrowed scope.
      */
     private AudioOpResult finish(
             String opName,
@@ -299,14 +327,15 @@ public class AudioManipulationService {
             SourceDoc source,
             @Nullable String targetPath,
             byte[] out,
+            Limits limits,
             String outputFormat) {
         long start = System.currentTimeMillis();
-        if (out.length > readMaxOutputBytes(tenantId, projectId, null)) {
+        if (out.length > limits.maxOutputBytes()) {
             recordOutcome(opName, "limit_exceeded", startMs);
             throw new AudioManipulationException(
                     AudioManipulationException.Reason.LIMIT_EXCEEDED,
-                    "Output size " + out.length + " bytes exceeds " + readMaxOutputBytes(tenantId, projectId, null)
-                            + " (" + SETTING_MAX_OUTPUT_BYTES + ")");
+                    "Output size " + out.length + " bytes exceeds " + limits.maxOutputBytes() + " ("
+                            + SETTING_MAX_OUTPUT_BYTES + ")");
         }
         String mime = AudioMimeTypeSniffer.sniff(out, fallbackMime(outputFormat));
         String effectiveProject = projectId == null ? "" : projectId;
@@ -573,10 +602,6 @@ public class AudioManipulationService {
                 longSetting(tenantId, projectId, processId, SETTING_MAX_INPUT_BYTES, DEFAULT_MAX_INPUT_BYTES),
                 intSetting(tenantId, projectId, processId, SETTING_MAX_DURATION_SECONDS, DEFAULT_MAX_DURATION_SECONDS),
                 longSetting(tenantId, projectId, processId, SETTING_MAX_OUTPUT_BYTES, DEFAULT_MAX_OUTPUT_BYTES));
-    }
-
-    private long readMaxOutputBytes(String tenantId, @Nullable String projectId, @Nullable String processId) {
-        return longSetting(tenantId, projectId, processId, SETTING_MAX_OUTPUT_BYTES, DEFAULT_MAX_OUTPUT_BYTES);
     }
 
     private long longSetting(

@@ -39,6 +39,10 @@ public class FfmpegAudioEditor {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
+    /** Drains ffmpeg/ffprobe output off the calling thread — see {@link #run}. */
+    private static final java.util.concurrent.ExecutorService DRAIN =
+            java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+
     /** ffprobe/ffmpeg is chatty on stderr even at error level; keep
      *  only the tail for exception messages. */
     private static final int STDERR_TAIL_LINES = 8;
@@ -170,9 +174,19 @@ public class FfmpegAudioEditor {
                 filter.append("[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[mix];");
             }
             if (fadeOutSeconds > 0) {
-                double length = baseDuration(base);
+                Double length = baseDuration(base);
+                if (length == null || fadeOutSeconds >= length) {
+                    // The service layer rejects both cases with a
+                    // PARAMETER_INVALID the caller can act on; reaching this
+                    // branch means the layering was bypassed — fail loudly
+                    // instead of fading the whole mix from zero.
+                    throw new AudioManipulationException(
+                            AudioManipulationException.Reason.PARAMETER_INVALID,
+                            "fadeOutSeconds (" + fadeOutSeconds + ") cannot be placed: base duration is "
+                                    + (length == null ? "not probeable" : length + "s"));
+                }
                 filter.append("[mix]afade=t=out:st=")
-                        .append(num(Math.max(0.0, length - fadeOutSeconds)))
+                        .append(num(length - fadeOutSeconds))
                         .append(":d=")
                         .append(num(fadeOutSeconds))
                         .append("[out]");
@@ -317,23 +331,38 @@ public class FfmpegAudioEditor {
     private String run(List<String> cmd) {
         try {
             Process process = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-            byte[] output;
-            try (var in = process.getInputStream()) {
-                output = in.readAllBytes();
-            }
+            // The drain runs on its own thread so the wall-clock timeout below
+            // can fire: reading to EOF on the calling thread would block until
+            // the process exits — and a hung ffmpeg never exits, so the
+            // timeout would be dead code. The drain thread is short-lived (it
+            // ends with the process) and carries no state; a shared
+            // per-call-thread executor is enough.
+            var output = DRAIN.submit(() -> {
+                try (var in = process.getInputStream()) {
+                    return in.readAllBytes();
+                }
+            });
+            byte[] bytes;
             if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
+                output.cancel(false);
                 process.destroyForcibly();
                 throw processingError("ffmpeg timed out after " + timeoutSeconds + "s", null);
             }
+            // The process exited, so EOF stands — the drain returns promptly.
+            bytes = output.get();
             if (process.exitValue() != 0) {
-                throw processingError(stderrTail(output), null);
+                throw processingError(stderrTail(bytes), null);
             }
-            return new String(output, StandardCharsets.UTF_8);
+            return new String(bytes, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw processingError("ffmpeg/ffprobe failed to run: " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw processingError("ffmpeg/ffprobe interrupted", e);
+        } catch (java.util.concurrent.ExecutionException e) {
+            // The drain thread died (stream error while the process was
+            // exiting) — the run itself failed either way.
+            throw processingError("ffmpeg/ffprobe output could not be read: " + e.getCause(), e);
         }
     }
 
@@ -418,9 +447,21 @@ public class FfmpegAudioEditor {
             if (chain.length() > 0) {
                 chain.append(',');
             }
-            double length = cutLength != null ? cutLength : 0.0;
+            if (cutLength == null) {
+                // The service layer rejects this up front with a
+                // PARAMETER_INVALID the caller can act on; failing loudly here
+                // keeps the editor honest even when called through another path.
+                throw new AudioManipulationException(
+                        AudioManipulationException.Reason.PARAMETER_INVALID,
+                        "fadeOutSeconds cannot be placed: the cut length is not probeable");
+            }
+            if (fadeOut >= cutLength) {
+                throw new AudioManipulationException(
+                        AudioManipulationException.Reason.PARAMETER_INVALID,
+                        "fadeOutSeconds (" + fadeOut + ") must be smaller than the cut length (" + cutLength + ")");
+            }
             chain.append("afade=t=out:st=")
-                    .append(num(Math.max(0.0, length - fadeOut)))
+                    .append(num(cutLength - fadeOut))
                     .append(":d=")
                     .append(num(fadeOut));
         }
@@ -436,9 +477,10 @@ public class FfmpegAudioEditor {
         return duration == null ? null : Math.max(0.0, duration - startSeconds);
     }
 
-    private Double baseDuration(byte[] base) {
-        Double duration = probe(base).durationSeconds();
-        return duration == null ? 0.0 : duration;
+    /** Base duration for mix fade-out placement — probed only when
+     *  needed; {@code null} when the container reports none. */
+    private @Nullable Double baseDuration(byte[] base) {
+        return probe(base).durationSeconds();
     }
 
     private static void ensureOutputFormat(String outputFormat) {

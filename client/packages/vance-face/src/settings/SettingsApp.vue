@@ -10,6 +10,7 @@ import {
   VEmptyState,
   VInput,
   VModal,
+  type FocusZone,
   type PickerNode,
 } from '@/components';
 import RawSettingsPanel from './RawSettingsPanel.vue';
@@ -74,6 +75,10 @@ const banner = ref<string | null>(null);
 /** Tenant project name backing the tenant scope (settings-system.md §3). */
 const TENANT_PROJECT = '_tenant';
 
+/* Focus-driven zone model (spec web-ui.md §7.2.1) — the same wiring
+ * every EditorShell page uses: small viewports collapse the rails to 0
+ * and the reclaim handles bring them back. */
+const focusZone = ref<FocusZone>('main');
 const view = ref<SettingsView>({
   scope: TENANT_SCOPE,
   tab: 'forms',
@@ -562,9 +567,12 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
 
 <template>
   <EditorShell
+    v-model:focus-zone="focusZone"
+    focus-model="auto"
     :title="t('settings.pageTitle')"
     :breadcrumbs="breadcrumbs"
     :show-sidebar="true"
+    :full-height="true"
     :help-path="helpPath"
   >
     <!-- ─── Sidebar: the three scope rows ─── -->
@@ -604,6 +612,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
           search-enabled
           edit-enabled
           show-group-rows
+          @focus-main="focusZone = 'main'"
           @data-changed="onPickerDataChanged"
         >
           <template #row-suffix="{ kind, item }">
@@ -628,6 +637,11 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
     </template>
 
     <!-- ─── Main: scope header + tabs ─── -->
+    <!-- full-height contract (EditorShell): the zone itself never
+         scrolls — the page carries its own scroll body, so the rails
+         keep their viewport height and the responsive collapse works. -->
+    <div class="h-full min-h-0 flex flex-col">
+    <div class="flex-1 min-h-0 overflow-y-auto">
     <div class="p-6 max-w-3xl flex flex-col gap-4">
       <div class="flex items-baseline justify-between gap-2">
         <h2 class="text-lg font-semibold">{{ scopeLabel }}</h2>
@@ -819,6 +833,8 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
           :reference-id="scopeInfo.referenceId"
         />
       </template>
+    </div>
+    </div>
     </div>
 
     <!-- ─── Bereiche: add-entry dialog ─── -->

@@ -1005,6 +1005,8 @@ export default {
       + 'diesen Ordner.',
     newDocument: '+ Neues Dokument',
     addNew: '+ Neu',
+    openCortex: 'Cortex',
+    openCortexTitle: 'Dieses Projekt im Cortex-Editor öffnen',
     dropHint: 'Dateien hier ablegen zum Hochladen',
     newFolder: 'Neuer Ordner',
     newFolderDialog: {

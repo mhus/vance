@@ -204,6 +204,19 @@ function openCreateInNotepad(): void {
   navigateTo(`/cortex?${params.toString()}`);
 }
 
+/**
+ * Into the Cortex for this project — no document opened, no create modal,
+ * the editor as it boots. Chatless (`?project=` without session) is
+ * tab-ephemeral by design, so what the reader gets is an empty editor,
+ * which is exactly the point: quick-open (⌘O) takes it from there.
+ */
+function openInCortex(): void {
+  if (!selectedProjectId.value) return;
+  const params = new URLSearchParams();
+  params.set('project', selectedProjectId.value);
+  navigateTo(`/cortex?${params.toString()}`);
+}
+
 // Server-side filter through the existing endpoint: re-load on every
 // non-trivial change with a small debounce so typing doesn't flood
 // the brain. Empty string clears the filter.
@@ -1028,6 +1041,12 @@ function confirmNewFolder(): void {
           :title="$t('documents.newDocument')"
           @click="openCreateInNotepad"
         >{{ $t('documents.addNew') }}</VButton>
+        <VButton
+          variant="secondary"
+          size="sm"
+          :title="$t('documents.openCortexTitle')"
+          @click="openInCortex"
+        >{{ $t('documents.openCortex') }}</VButton>
       </div>
 
       <!-- Installed kits — only at the project root, where "this project"

@@ -1004,6 +1004,8 @@ export default {
     newDocument: '+ New document',
     /** Short form for the toolbar button, where the full label does not fit. */
     addNew: '+ New',
+    openCortex: 'Cortex',
+    openCortexTitle: 'Open this project in the Cortex editor',
     dropHint: 'Drop files here to upload',
     newFolder: 'New folder',
     newFolderDialog: {

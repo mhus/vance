@@ -79,7 +79,7 @@ class RecipeLoaderTest {
         ResolvedRecipe recipe = loader.load("acme", "p-1", "analyze").orElseThrow();
 
         assertThat(recipe.guards())
-                .extracting(GuardConfig::trigger)
+                .extracting(g -> ((ScriptGuard) g).trigger())
                 .containsExactly(GuardPoint.START, GuardPoint.COMMAND, GuardPoint.BOTH);
         assertThat(recipe.guards().get(0).maxRounds()).isEqualTo(2); // default
         assertThat(recipe.guards().get(1).params()).containsEntry("judge", "safe?");
@@ -99,6 +99,81 @@ class RecipeLoaderTest {
         assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
                 .isInstanceOf(RecipeLoader.RecipeParseException.class)
                 .hasMessageContaining("trigger");
+    }
+
+    @Test
+    void load_guardBlock_handlerEntry_parsesWithDefaults() {
+        stubRecipe("""
+                description: Handler guards
+                engine: eddie
+                guard:
+                  - handler: fence-check
+                  - handler: exec-check
+                    trigger: stop
+                    maxRounds: 4
+                    params: { strictness: high }
+                """);
+
+        ResolvedRecipe recipe = loader.load("acme", "p-1", "analyze").orElseThrow();
+
+        // Entry 1: no trigger → all points, default maxRounds.
+        HandlerGuard all = (HandlerGuard) recipe.guards().get(0);
+        assertThat(all.handlerName()).isEqualTo("fence-check");
+        assertThat(all.trigger()).isNull();
+        assertThat(all.firesOnStart()).isTrue();
+        assertThat(all.firesOnCommand()).isTrue();
+        assertThat(all.firesOnNaturalStop()).isTrue();
+        assertThat(all.maxRounds()).isEqualTo(2);
+        // Entry 2: narrowed + configured.
+        HandlerGuard narrowed = (HandlerGuard) recipe.guards().get(1);
+        assertThat(narrowed.trigger()).isEqualTo(GuardPoint.STOP);
+        assertThat(narrowed.firesOnStart()).isFalse();
+        assertThat(narrowed.maxRounds()).isEqualTo(4);
+        assertThat(narrowed.params()).containsEntry("strictness", "high");
+    }
+
+    @Test
+    void load_guardBlock_handlerTriggerAll_meansAllPoints() {
+        stubRecipe("""
+                description: Explicit all
+                engine: eddie
+                guard:
+                  - handler: fence-check
+                    trigger: all
+                """);
+
+        ResolvedRecipe recipe = loader.load("acme", "p-1", "analyze").orElseThrow();
+
+        assertThat(((HandlerGuard) recipe.guards().get(0)).trigger()).isNull();
+    }
+
+    @Test
+    void load_guardBlock_handlerPlusScript_rejected() {
+        stubRecipe("""
+                description: Mixed sources
+                engine: eddie
+                guard:
+                  - handler: fence-check
+                    script: _vance/guards/x.js
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("only one of 'script', 'scriptBody' and 'handler'");
+    }
+
+    @Test
+    void load_guardBlock_missingSource_rejected() {
+        stubRecipe("""
+                description: Nothing
+                engine: eddie
+                guard:
+                  - params: { x: 1 }
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("requires 'script'");
     }
 
     @Test

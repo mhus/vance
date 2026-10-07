@@ -1,13 +1,14 @@
 ---
-triggers: completion guard, guard script, vance.guard, are you really done, keep working until, nudge until done, did you build, did you run tests, ask once, guardRounds, //guard, guard inline, guard script, guard status, loopValues, sessionValues, completion guard schreiben, guard einrichten, wirklich fertig, erst bauen dann fertig, nachhaken bis fertig, start guard, command guard, shooty, guard point, trigger start, trigger command, activate skill automatically, gate a command, deny a command, command safety
-summary: How to write a guard script (Shooty) — a JS script that runs at a guard point (start / command / stop / terminate) via vance.guard.*. Stop guards inject a follow-up so the engine keeps working ("are you really done?"), start guards run per user turn (e.g. auto-activate skills), command guards gate engine commands (deny = hard fail). Plus how to wire it (recipe guard: block or //guard command).
+triggers: completion guard, guard script, vance.guard, are you really done, keep working until, nudge until done, did you build, did you run tests, ask once, guardRounds, //guard, guard inline, guard script, guard status, loopValues, sessionValues, completion guard schreiben, guard einrichten, wirklich fertig, erst bauen dann fertig, nachhaken bis fertig, start guard, command guard, shooty, guard point, trigger start, trigger command, activate skill automatically, gate a command, deny a command, command safety, guard handler, java guard handler, fence-check, exec-check, bundled guard handlers, handler fence validation
+summary: How to write a guard (Shooty) — a JS script via vance.guard.* or a bundled Java handler (handler: name), running at a guard point (start / command / stop / terminate). Stop guards inject a follow-up so the engine keeps working ("are you really done?"), start guards run per user turn (e.g. auto-activate skills), command guards gate engine commands (deny = hard fail). Plus how to wire it (recipe guard: block or //guard command) and the bundled handlers (fence-check, exec-check).
 ---
-# Writing a guard script — `vance.guard.*`
+# Writing a guard — `vance.guard.*` scripts and `handler:` Java handlers
 
-A **guard** is a JS script that runs at a **guard point**. The guard
-decides what to do imperatively; the surface (`vance.guard.*`) exposes
-the point's context and actions. Present only in guard runs;
-`vance.guard` is `null` elsewhere.
+A **guard** is a JS script — or a Java **handler** bean referenced as
+`handler: <name>` (see "Bundled guard handlers" below) — that runs at a
+**guard point**. The guard decides what to do imperatively; the surface
+(`vance.guard.*` for scripts, the `GuardContext` for handlers) exposes
+the point's context and actions. `vance.guard` is `null` outside guard runs.
 
 | Point (`trigger:`) | Runs when | Actions available | Fails |
 |---|---|---|---|
@@ -153,9 +154,24 @@ guard:
                          # true  = full process tools (exec/file)
 ```
 
-Exactly one of `script` / `scriptBody`. The bundled `_vance/guards/llm-judge.js`
-is a ready-made "LLM judge + fixed prompt" stop guard — configure it via
-`params`, no JS needed.
+Exactly one of `script` / `scriptBody` / `handler`. Entries run in list
+order; scripts and handlers mix freely in one list.
+
+**Bundled guard handlers** (`handler:` — Java instead of JS, no document
+needed; without `trigger:` the handler runs at every point, its unused hooks
+are no-ops):
+
+```yaml
+guard:
+  - handler: fence-check   # output validation: unclosed/empty fenced blocks -> fix prompt
+  - handler: exec-check    # build/exec commands mentioned without a reported result -> run them
+    trigger: stop
+    params: { commands: ['\bdeploy\b'], results: ['\bdeployed\b'] }   # optional regex overrides
+```
+
+Same evaluation machinery, same scratch stores, same fail strategies as a
+script. The bundled `_vance/guards/llm-judge.js` remains the ready-made
+LLM-judge stop guard - configure it via `params`, no JS needed.
 
 **Runtime** (`//guard` command, e.g. from a skill `activate:`):
 

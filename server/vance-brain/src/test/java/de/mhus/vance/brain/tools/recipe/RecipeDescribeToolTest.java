@@ -6,7 +6,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.thinkprocess.PromptMode;
-import de.mhus.vance.brain.recipe.GuardConfig;
 import de.mhus.vance.brain.recipe.GuardPoint;
 import de.mhus.vance.brain.recipe.ProfileBlock;
 import de.mhus.vance.brain.recipe.RecipeModeBlock;
@@ -14,6 +13,7 @@ import de.mhus.vance.brain.recipe.RecipeProjectKind;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
+import de.mhus.vance.brain.recipe.ScriptGuard;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.List;
@@ -119,7 +119,7 @@ class RecipeDescribeToolTest {
                 .category("workers")
                 .webTheme("acme")
                 .tags(List.of("research"))
-                .guards(List.of(new GuardConfig("script.js", null, Map.of(), false, GuardPoint.STOP, 3)))
+                .guards(List.of(new ScriptGuard("script.js", null, Map.of(), false, GuardPoint.STOP, 3)))
                 .tenants(List.of("acme"))
                 .source(RecipeSource.PROJECT)
                 .build();

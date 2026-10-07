@@ -186,7 +186,12 @@ public class GuardCommandHandler implements EngineCommandHandler {
 
     private static boolean isRuntime(
             de.mhus.vance.brain.recipe.GuardConfig g, @Nullable String script, @Nullable String inline) {
-        return (script != null && script.equals(g.scriptPath())) || (inline != null && inline.equals(g.scriptBody()));
+        // The runtime override is always a script guard — handler entries
+        // come from the recipe only.
+        if (!(g instanceof de.mhus.vance.brain.recipe.ScriptGuard sg)) {
+            return false;
+        }
+        return (script != null && script.equals(sg.scriptPath())) || (inline != null && inline.equals(sg.scriptBody()));
     }
 
     private static boolean notBlank(@Nullable String s) {

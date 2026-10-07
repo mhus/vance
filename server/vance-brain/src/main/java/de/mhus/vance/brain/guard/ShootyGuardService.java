@@ -7,12 +7,17 @@ import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.action.ScopeLevel;
 import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.command.EngineCommandResult;
+import de.mhus.vance.brain.guard.handler.GuardContext;
+import de.mhus.vance.brain.guard.handler.GuardHandler;
+import de.mhus.vance.brain.guard.handler.GuardHandlerRegistry;
 import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.recipe.GuardConfig;
 import de.mhus.vance.brain.recipe.GuardPoint;
+import de.mhus.vance.brain.recipe.HandlerGuard;
 import de.mhus.vance.brain.recipe.RecipeResolver;
+import de.mhus.vance.brain.recipe.ScriptGuard;
 import de.mhus.vance.brain.script.GuardScriptHost;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
@@ -50,6 +55,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -85,8 +91,15 @@ import org.springframework.stereotype.Service;
  *       skill command runner aborts the remaining sequence).</li>
  * </ul>
  *
- * <p>Guards come from the recipe {@code guard:} block plus an additive
- * per-process runtime override ({@code guardScriptOverride}). Backstops:
+ * <p>A guard is either a <b>script</b> (JS, user-authored, project-specific,
+ * runs via the shared {@link ScriptExecutor}) or a <b>handler</b> (a Java
+ * {@code GuardHandler} bean referenced by name — the typed, shipped
+ * defaults). Both shapes share this service's evaluation machinery:
+ * points, fail strategies, scratch stores, round caps, re-entrancy.
+ *
+ * <p>Guards come from the recipe {@code guard:} block (script or handler
+ * entries, mixed freely in list order) plus an additive per-process runtime
+ * override ({@code guardScriptOverride}, scripts only). Backstops:
  * a per-guard {@code maxRounds} cap at the yield points against the
  * process's persistent {@code guardRounds} counter (enforced by the
  * cap-aware {@link GuardScriptHost}), the script timeout, and the
@@ -157,6 +170,9 @@ public class ShootyGuardService {
     // SkillCommandRunner → EngineCommandDispatcher → ShootyGuardService.
     // Only touched for vance.guard.activateSkill calls.
     private final ObjectProvider<SkillSteerProcessor> skillSteerProvider;
+    /** Handler-name lookup for recipe {@code handler:} guard entries. */
+    private final GuardHandlerRegistry handlerRegistry;
+
     private final MetricService metrics;
 
     /** Transient per-loop scratch: processId → flags. Bounded LRU, non-persistent. */
@@ -195,15 +211,9 @@ public class ShootyGuardService {
                 process.getGuardRounds(),
                 guards.size());
         for (GuardConfig guard : guards) {
-            boolean triggerMatch = naturalStop
-                    ? guard.trigger().firesOnNaturalStop()
-                    : guard.trigger().firesOnTerminate();
+            boolean triggerMatch = naturalStop ? guard.firesOnNaturalStop() : guard.firesOnTerminate();
             if (!triggerMatch) {
-                log.trace(
-                        "Guard id='{}' skip — trigger={} does not match naturalStop={}",
-                        process.getId(),
-                        guard.trigger(),
-                        naturalStop);
+                log.trace("Guard id='{}' skip — point mismatch for naturalStop={}", process.getId(), naturalStop);
                 continue;
             }
             if (process.getGuardRounds() >= guard.maxRounds()) {
@@ -221,11 +231,8 @@ public class ShootyGuardService {
             } catch (GuardScriptFailure e) {
                 anyError = true;
                 log.warn(
-                        "Guard id='{}' script failed ({}) — fail-open: {}",
-                        process.getId(),
-                        e.failureClass(),
-                        e.getMessage());
-                metrics.counter(METRIC, "outcome", "script_error").increment();
+                        "Guard id='{}' failed ({}) — fail-open: {}", process.getId(), e.failureClass(), e.getMessage());
+                metrics.counter(METRIC, "outcome", e.outcome()).increment();
                 continue;
             }
             if (fired != null) {
@@ -256,7 +263,15 @@ public class ShootyGuardService {
         AtomicReference<String> reason = new AtomicReference<>(null);
         int[] localRounds = {process.getGuardRounds()};
         GuardScriptHost host = stopHost(process, guard, fired, reason, localRounds);
-        runGuardScript(process, guard, naturalStop ? "stop" : "terminate", null, finalOutput, naturalStop, null, host);
+        runGuard(
+                process,
+                guard,
+                naturalStop ? GuardPoint.STOP : GuardPoint.TERMINATE,
+                null,
+                finalOutput,
+                naturalStop,
+                null,
+                host);
         if (fired.get()) {
             metrics.counter(METRIC, "outcome", "fired").increment();
             return GuardEvaluation.fired(guard, reason.get());
@@ -353,7 +368,7 @@ public class ShootyGuardService {
         boolean any = false;
         boolean anyError = false;
         for (GuardConfig guard : resolveGuards(process)) {
-            if (!guard.trigger().firesOnStart()) {
+            if (!guard.firesOnStart()) {
                 continue;
             }
             any = true;
@@ -380,15 +395,15 @@ public class ShootyGuardService {
                 }
             };
             try {
-                runGuardScript(process, guard, "start", userText, null, /*naturalStop*/ true, null, host);
+                runGuard(process, guard, GuardPoint.START, userText, null, /*naturalStop*/ true, null, host);
             } catch (GuardScriptFailure e) {
                 anyError = true;
                 log.warn(
-                        "Guard id='{}' start script failed ({}) — fail-open: {}",
+                        "Guard id='{}' start guard failed ({}) — fail-open: {}",
                         process.getId(),
                         e.failureClass(),
                         e.getMessage());
-                metrics.counter(METRIC, "outcome", "script_error").increment();
+                metrics.counter(METRIC, "outcome", e.outcome()).increment();
             }
         }
         // "passed" says every applicable guard actually passed — a script
@@ -439,7 +454,7 @@ public class ShootyGuardService {
         }
         boolean any = false;
         for (GuardConfig guard : resolveGuards(process)) {
-            if (!guard.trigger().firesOnCommand()) {
+            if (!guard.firesOnCommand()) {
                 continue;
             }
             any = true;
@@ -472,17 +487,16 @@ public class ShootyGuardService {
                 }
             };
             try {
-                runGuardScript(
-                        process, guard, "command", null, null, /*naturalStop*/ false, commandContext(command), host);
+                runGuard(process, guard, GuardPoint.COMMAND, null, null, /*naturalStop*/ false, command, host);
             } catch (GuardScriptFailure e) {
                 log.warn(
-                        "Guard id='{}' command script failed (verb='{}', {}) " + "— fail-closed, command denied: {}",
+                        "Guard id='{}' command guard failed (verb='{}', {}) — fail-closed, command denied: {}",
                         process.getId(),
                         command.name(),
                         e.failureClass(),
                         e.getMessage());
-                metrics.counter(METRIC, "outcome", "script_error").increment();
-                return EngineCommandResult.guardDenied("Guard script failed (fail-closed): " + e.getMessage());
+                metrics.counter(METRIC, "outcome", e.outcome()).increment();
+                return EngineCommandResult.guardDenied("Guard failed (fail-closed): " + e.getMessage());
             }
             String reason = denied.get();
             if (reason != null) {
@@ -526,28 +540,72 @@ public class ShootyGuardService {
 
         private final String failureClass;
 
-        GuardScriptFailure(@Nullable String failureClass, @Nullable String message) {
+        /**
+         * The metric outcome tag for this failure — {@code script_error}
+         * or {@code handler_error}, keeping the per-shape failure counts
+         * apart on the shared {@code vance.guard.evaluations} counter.
+         */
+        private final String outcome;
+
+        GuardScriptFailure(@Nullable String failureClass, @Nullable String message, String outcome) {
             super(message);
             this.failureClass = failureClass == null ? "unknown" : failureClass;
+            this.outcome = outcome;
         }
 
-        GuardScriptFailure(@Nullable String failureClass, @Nullable String message, @Nullable Throwable cause) {
+        GuardScriptFailure(
+                @Nullable String failureClass, @Nullable String message, String outcome, @Nullable Throwable cause) {
             super(message, cause);
             this.failureClass = failureClass == null ? "unknown" : failureClass;
+            this.outcome = outcome;
         }
 
         String failureClass() {
             return failureClass;
         }
+
+        String outcome() {
+            return outcome;
+        }
     }
 
     /**
-     * Runs one guard's script at {@code pointName} with the given host.
-     * Sets the re-entrancy marker for the duration of the run (the host
-     * actions and the script's own tool/LLM calls execute inside it).
-     * Throws {@link GuardScriptFailure} on any script error; a blank or
-     * missing script is a failure too — fail strategies differ per point,
-     * so the error is reported, not swallowed.
+     * Runs one guard at {@code point} with the given host — a JS
+     * script for a {@link ScriptGuard}, the corresponding
+     * {@link GuardHandler} hook for a {@link HandlerGuard}. The host
+     * is built by the per-point caller and shared by both shapes, so
+     * cap-awareness and per-point action availability are identical.
+     * Throws {@link GuardScriptFailure} on any script/handler error;
+     * the per-point fail strategy (open or closed) is decided by the
+     * caller.
+     */
+    private void runGuard(
+            ThinkProcessDocument process,
+            GuardConfig guard,
+            GuardPoint point,
+            @Nullable String task,
+            @Nullable String finalOutput,
+            boolean naturalStop,
+            @Nullable EngineCommand command,
+            GuardScriptHost host)
+            throws GuardScriptFailure {
+        if (guard instanceof ScriptGuard script) {
+            runGuardScript(process, script, point, task, finalOutput, naturalStop, command, host);
+        } else if (guard instanceof HandlerGuard handlerGuard) {
+            runGuardHandler(process, handlerGuard, point, task, finalOutput, naturalStop, command, host);
+        } else {
+            throw new IllegalStateException(
+                    "Unknown GuardConfig shape: " + guard.getClass().getName());
+        }
+    }
+
+    /**
+     * One script guard's run. Sets the re-entrancy marker for the
+     * duration of the run (the host actions and the script's own
+     * tool/LLM calls execute inside it). Throws
+     * {@link GuardScriptFailure} on any script error; a blank or missing
+     * script is a failure too — fail strategies differ per point, so the
+     * error is reported, not swallowed.
      *
      * @param task the {@code vance.guard.task} override — the turn's
      *             genuine user input at the start point; {@code null}
@@ -555,18 +613,18 @@ public class ShootyGuardService {
      */
     private void runGuardScript(
             ThinkProcessDocument process,
-            GuardConfig guard,
-            String pointName,
+            ScriptGuard guard,
+            GuardPoint point,
             @Nullable String task,
             @Nullable String finalOutput,
             boolean naturalStop,
-            @Nullable Map<String, Object> commandContext,
+            @Nullable EngineCommand command,
             GuardScriptHost host)
             throws GuardScriptFailure {
         String code = loadScript(process, guard);
         if (StringUtils.isBlank(code)) {
             throw new GuardScriptFailure(
-                    "script_missing", "script not found/empty (path='" + guard.scriptPath() + "')");
+                    "script_missing", "script not found/empty (path='" + guard.scriptPath() + "')", "script_error");
         }
 
         ScriptGuardApi guardApi = new ScriptGuardApi(
@@ -575,8 +633,8 @@ public class ShootyGuardService {
                 process.getGuardRounds(),
                 guard.maxRounds(),
                 naturalStop,
-                pointName,
-                commandContext,
+                point.name().toLowerCase(Locale.ROOT),
+                command == null ? null : commandContext(command),
                 new ScriptGuardScratchApi(loopStore(process)),
                 new ScriptGuardScratchApi(sessionStore(process)),
                 host);
@@ -598,14 +656,73 @@ public class ShootyGuardService {
         try {
             scriptExecutor.run(request);
         } catch (ScriptExecutionException e) {
-            throw new GuardScriptFailure(e.errorClass().name(), e.getMessage(), e);
+            throw new GuardScriptFailure(e.errorClass().name(), e.getMessage(), "script_error", e);
         } catch (RuntimeException e) {
-            throw new GuardScriptFailure(e.getClass().getSimpleName(), e.toString(), e);
+            throw new GuardScriptFailure(e.getClass().getSimpleName(), e.toString(), "script_error", e);
         } finally {
             IN_GUARD_RUN.remove();
         }
     }
 
+    /**
+     * One handler guard's run: resolves the bean from the
+     * {@link GuardHandlerRegistry}, builds the {@link GuardContext}
+     * (same scratch stores, same point-constrained host as a script
+     * gets) and dispatches to the point's hook. An unknown handler name
+     * is a failure — the per-point fail strategy decides open/closed,
+     * exactly like a missing script. The re-entrancy marker is set for
+     * the duration of the run, so host actions (e.g. a skill
+     * activation) bypass the COMMAND gate.
+     */
+    private void runGuardHandler(
+            ThinkProcessDocument process,
+            HandlerGuard guard,
+            GuardPoint point,
+            @Nullable String task,
+            @Nullable String finalOutput,
+            boolean naturalStop,
+            @Nullable EngineCommand command,
+            GuardScriptHost host)
+            throws GuardScriptFailure {
+        if (point == GuardPoint.BOTH) {
+            throw new IllegalStateException("BOTH is a config alias, not a runtime point");
+        }
+        GuardHandler handler = handlerRegistry.find(guard.handlerName());
+        if (handler == null) {
+            throw new GuardScriptFailure(
+                    "handler_missing",
+                    "unknown guard handler '" + guard.handlerName() + "' (available: "
+                            + String.join(", ", handlerRegistry.names()) + ")",
+                    "handler_error");
+        }
+        GuardContext ctx = new GuardContext(
+                process,
+                point,
+                task == null ? firstUserInput(process) : task,
+                finalOutput == null ? "" : finalOutput,
+                process.getGuardRounds(),
+                guard.maxRounds(),
+                naturalStop,
+                command,
+                guard.params(),
+                loopStore(process),
+                sessionStore(process),
+                host);
+        IN_GUARD_RUN.set(true);
+        try {
+            switch (point) {
+                case START -> handler.onStart(ctx);
+                case COMMAND -> handler.onCommand(ctx);
+                case STOP -> handler.onStop(ctx);
+                case TERMINATE -> handler.onTerminate(ctx);
+                default -> throw new IllegalStateException("Not a runtime point: " + point);
+            }
+        } catch (RuntimeException e) {
+            throw new GuardScriptFailure("handler_error", e.toString(), "handler_error", e);
+        } finally {
+            IN_GUARD_RUN.remove();
+        }
+    }
     /**
      * Host action backing {@code vance.guard.activateSkill} — sticky,
      * auto-trigger-style (no separate action turn; the enclosing or
@@ -698,9 +815,9 @@ public class ShootyGuardService {
         String pathOverride = process.getGuardScriptOverride();
         boolean runtimeActive = true;
         if (StringUtils.isNotBlank(bodyOverride)) {
-            out.add(GuardConfig.scriptBody(bodyOverride, false, GuardPoint.STOP, RUNTIME_MAX_ROUNDS));
+            out.add(ScriptGuard.ofBody(bodyOverride, false, GuardPoint.STOP, RUNTIME_MAX_ROUNDS));
         } else if (StringUtils.isNotBlank(pathOverride)) {
-            out.add(GuardConfig.scriptPath(pathOverride, false, GuardPoint.STOP, RUNTIME_MAX_ROUNDS));
+            out.add(ScriptGuard.ofPath(pathOverride, false, GuardPoint.STOP, RUNTIME_MAX_ROUNDS));
         } else {
             runtimeActive = false;
         }
@@ -807,7 +924,7 @@ public class ShootyGuardService {
 
     // ──────────────────── Helpers ────────────────────
 
-    private @Nullable String loadScript(ThinkProcessDocument process, GuardConfig guard) {
+    private @Nullable String loadScript(ThinkProcessDocument process, ScriptGuard guard) {
         if (guard.scriptPath() != null) {
             DocumentRef ref;
             try {
@@ -968,7 +1085,7 @@ public class ShootyGuardService {
         return goal == null ? "" : goal;
     }
 
-    private static String sourceName(ThinkProcessDocument process, GuardConfig guard) {
+    private static String sourceName(ThinkProcessDocument process, ScriptGuard guard) {
         return "guard:" + (guard.scriptPath() != null ? guard.scriptPath() : process.getId());
     }
 

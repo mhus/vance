@@ -1,75 +1,53 @@
 package de.mhus.vance.brain.recipe;
 
 import java.util.Map;
-import java.util.Objects;
-import org.apache.commons.lang3.StringUtils;
-import org.jspecify.annotations.Nullable;
 
 /**
- * One Shooty guard: a JS guard script plus the hook point it fires at
- * and its loop cap. Config-level (recipe {@code guard:} block or a
- * per-process runtime override). The script decides judge + action
- * imperatively via the {@code vance.guard.*} surface — see
- * {@code planning/shooty.md}.
+ * One Shooty guard — a JS guard script ({@link ScriptGuard}) or a Java
+ * {@code GuardHandler} bean ({@link HandlerGuard}), plus the hook points
+ * it fires at and its loop cap. Config-level: the recipe
+ * {@code guard:} block or a per-process runtime override (scripts
+ * only). See {@code specification/public/shooty.md}.
  *
- * <p>Exactly one script source is set: {@link #scriptPath} (document
- * cascade) or inline {@link #scriptBody}. {@link #params} are handed to
- * the script as {@code vance.params.*} — this is how a reusable bundled
- * guard (e.g. {@code _vance/guards/llm-judge.js}) is configured without
- * writing JS.
+ * <p>Both shapes share the evaluation machinery of the
+ * {@code ShootyGuardService} — points, fail strategies, scratch
+ * stores, round caps, re-entrancy — so a handler is a typed, testable
+ * twin of a guard script, not a second guard system. Scripts stay the
+ * surface for user-authored, project-specific guards; handlers are
+ * the shipped defaults ("batteries included", no document cascade
+ * needed).
  *
- * @param scriptPath guard-script document-cascade path (null in inline shape)
- * @param scriptBody inline guard-script body (null in path shape)
- * @param params     inputs exposed to the script as {@code vance.params.*}
- * @param allowTools grant the process's full tool surface (default: a
- *                   supervisor surface — llm/documents/process only)
- * @param trigger    the {@link GuardPoint} this guard fires at (the YAML
- *                   field keeps the name {@code trigger}; STOP/TERMINATE
- *                   additionally honor {@code maxRounds})
- * @param maxRounds  hard cap on guard injections for the process
- *                   (0 = disabled; only evaluated at STOP/TERMINATE —
- *                   START runs once per user turn, COMMAND once per
- *                   command, both bounded by the script timeout)
+ * <p>Ordering: the recipe list position is the evaluation order (at
+ * the yield point the first {@code continueWith} wins, at the command
+ * point the first denial wins) — there is deliberately no separate
+ * {@code order} field to drift against.
  */
-public record GuardConfig(
-        @Nullable String scriptPath,
-        @Nullable String scriptBody,
-        @Nullable Map<String, Object> params,
-        boolean allowTools,
-        GuardPoint trigger,
-        int maxRounds) {
+public sealed interface GuardConfig permits ScriptGuard, HandlerGuard {
 
-    public GuardConfig {
-        Objects.requireNonNull(trigger, "guard.trigger");
-        if (maxRounds < 0) {
-            throw new IllegalArgumentException("guard.maxRounds must be >= 0");
-        }
-        boolean hasPath = StringUtils.isNotBlank(scriptPath);
-        boolean hasBody = StringUtils.isNotBlank(scriptBody);
-        if (hasPath == hasBody) {
-            throw new IllegalArgumentException(
-                    "guard requires exactly one script source: either 'script' or 'scriptBody'");
-        }
-        params = params == null ? Map.of() : Map.copyOf(params);
-    }
+    /**
+     * Guard inputs — exposed as {@code vance.params.*} to a script and
+     * via {@code GuardContext.params()} to a handler. This is how a
+     * reusable guard (script or handler) is configured per recipe.
+     */
+    Map<String, Object> params();
 
-    /** Guard script from a document-cascade path. */
-    public static GuardConfig scriptPath(String scriptPath, boolean allowTools, GuardPoint trigger, int maxRounds) {
-        return new GuardConfig(scriptPath, null, Map.of(), allowTools, trigger, maxRounds);
-    }
+    /**
+     * Hard cap on guard injections for the process (0 = disabled).
+     * Only evaluated at the STOP/TERMINATE points — START runs once
+     * per user turn, COMMAND once per command, both bounded by the
+     * script timeout / handler run.
+     */
+    int maxRounds();
 
-    /** Guard script from a document-cascade path with script params. */
-    public static GuardConfig scriptPath(
-            String scriptPath,
-            @Nullable Map<String, Object> params,
-            boolean allowTools,
-            GuardPoint trigger,
-            int maxRounds) {
-        return new GuardConfig(scriptPath, null, params, allowTools, trigger, maxRounds);
-    }
+    /** Whether this guard fires at the START point (once per genuine user turn). */
+    boolean firesOnStart();
 
-    /** Guard script from an inline body. */
-    public static GuardConfig scriptBody(String scriptBody, boolean allowTools, GuardPoint trigger, int maxRounds) {
-        return new GuardConfig(null, scriptBody, Map.of(), allowTools, trigger, maxRounds);
-    }
+    /** Whether this guard gates engine-command dispatch (COMMAND point). */
+    boolean firesOnCommand();
+
+    /** Whether this guard fires on a natural stop (engine produced its output). */
+    boolean firesOnNaturalStop();
+
+    /** Whether this guard fires on an explicit terminate. */
+    boolean firesOnTerminate();
 }

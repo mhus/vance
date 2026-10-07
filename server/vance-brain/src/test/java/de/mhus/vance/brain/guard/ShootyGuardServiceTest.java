@@ -12,14 +12,19 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.command.EngineCommandResult;
+import de.mhus.vance.brain.guard.handler.GuardContext;
+import de.mhus.vance.brain.guard.handler.GuardHandler;
+import de.mhus.vance.brain.guard.handler.GuardHandlerRegistry;
 import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.recipe.GuardConfig;
 import de.mhus.vance.brain.recipe.GuardPoint;
+import de.mhus.vance.brain.recipe.HandlerGuard;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
+import de.mhus.vance.brain.recipe.ScriptGuard;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
@@ -47,6 +52,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -103,6 +109,9 @@ class ShootyGuardServiceTest {
     private ObjectProvider<ThinkEngineService> thinkEngineProvider;
 
     @Mock
+    private GuardHandlerRegistry handlerRegistry;
+
+    @Mock
     private ObjectProvider<SkillSteerProcessor> skillSteerProvider;
 
     private ShootyGuardService service;
@@ -128,7 +137,9 @@ class ShootyGuardServiceTest {
                 sessionService,
                 thinkEngineProvider,
                 skillSteerProvider,
+                handlerRegistry,
                 new MetricService(registry));
+        when(handlerRegistry.names()).thenReturn(java.util.Set.of());
         when(recipeResolver.resolve(anyString(), anyString(), anyString())).thenReturn(Optional.empty());
         when(chatMessageService.activeHistory(any(), any(), any())).thenReturn(List.of());
         when(sessionService.findBySessionId(any())).thenReturn(Optional.empty());
@@ -452,7 +463,7 @@ class ShootyGuardServiceTest {
 
     @Test
     void startGuard_firesPerGenuineUserTurn_withTurnInputAsTask() {
-        recipeWith(GuardConfig.scriptBody("vance.guard.activateSkill('review-mode');", false, GuardPoint.START, 1));
+        recipeWith(ScriptGuard.ofBody("vance.guard.activateSkill('review-mode');", false, GuardPoint.START, 1));
         AtomicReference<ScriptRequest> seen = new AtomicReference<>();
         when(scriptExecutor.run(any())).thenAnswer(inv -> {
             seen.set(inv.getArgument(0));
@@ -472,7 +483,7 @@ class ShootyGuardServiceTest {
 
     @Test
     void startGuard_ignoresGuardInjectedTurns() {
-        recipeWith(GuardConfig.scriptBody("vance.guard.activateSkill('x');", false, GuardPoint.START, 1));
+        recipeWith(ScriptGuard.ofBody("vance.guard.activateSkill('x');", false, GuardPoint.START, 1));
         SteerMessage injected = new SteerMessage.UserChatInput(
                 Instant.now(), null, ShootyGuardService.INJECT_SENDER, "[completion-guard] did you build?");
 
@@ -483,7 +494,7 @@ class ShootyGuardServiceTest {
 
     @Test
     void startGuard_stopGuard_doesNotFireAtStart() {
-        recipeWith(GuardConfig.scriptBody("vance.guard.continueWith('x');", false, GuardPoint.STOP, 1));
+        recipeWith(ScriptGuard.ofBody("vance.guard.continueWith('x');", false, GuardPoint.STOP, 1));
         SteerMessage userMsg = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "hi");
 
         service.runStartGuards(recipeProcess(), List.of(userMsg));
@@ -493,7 +504,7 @@ class ShootyGuardServiceTest {
 
     @Test
     void startGuard_scriptError_failsOpen() {
-        recipeWith(GuardConfig.scriptBody("throw new Error('x')", false, GuardPoint.START, 1));
+        recipeWith(ScriptGuard.ofBody("throw new Error('x')", false, GuardPoint.START, 1));
         when(scriptExecutor.run(any()))
                 .thenThrow(new ScriptExecutionException(ScriptExecutionException.ErrorClass.GUEST_EXCEPTION, "boom"));
         SteerMessage userMsg = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "hi");
@@ -513,7 +524,7 @@ class ShootyGuardServiceTest {
         // budget reset + loop-scratch wipe first, THEN the start guards —
         // the script starts on a clean slate. Ford and Frankie call this
         // anchor too; this is the contract that keeps them honest.
-        recipeWith(GuardConfig.scriptBody("vance.guard.activateSkill('x');", false, GuardPoint.START, 1));
+        recipeWith(ScriptGuard.ofBody("vance.guard.activateSkill('x');", false, GuardPoint.START, 1));
         ThinkProcessDocument process = ThinkProcessDocument.builder()
                 .id("p1")
                 .tenantId("acme")
@@ -552,7 +563,7 @@ class ShootyGuardServiceTest {
 
     @Test
     void startGuard_setTurnPrompt_isStoredForTheTurn() {
-        recipeWith(GuardConfig.scriptBody("vance.guard.setTurnPrompt('custom framing');", false, GuardPoint.START, 1));
+        recipeWith(ScriptGuard.ofBody("vance.guard.setTurnPrompt('custom framing');", false, GuardPoint.START, 1));
         when(scriptExecutor.run(any())).thenAnswer(inv -> {
             ScriptRequest req = inv.getArgument(0);
             req.guardApi().setTurnPrompt("custom framing");
@@ -573,7 +584,7 @@ class ShootyGuardServiceTest {
         // with a flag instead of re-stubbing: a second when(...) would
         // execute this very answer with a null matcher argument.
         AtomicBoolean setPrompt = new AtomicBoolean(true);
-        recipeWith(GuardConfig.scriptBody("vance.guard.setTurnPrompt('v1');", false, GuardPoint.START, 1));
+        recipeWith(ScriptGuard.ofBody("vance.guard.setTurnPrompt('v1');", false, GuardPoint.START, 1));
         when(scriptExecutor.run(any())).thenAnswer(inv -> {
             ScriptRequest req = inv.getArgument(0);
             if (setPrompt.get() && req != null) {
@@ -594,7 +605,7 @@ class ShootyGuardServiceTest {
 
     @Test
     void startGuard_lastSetTurnPromptWins() {
-        recipeWith(GuardConfig.scriptBody("vance.guard.setTurnPrompt('a');", false, GuardPoint.START, 1));
+        recipeWith(ScriptGuard.ofBody("vance.guard.setTurnPrompt('a');", false, GuardPoint.START, 1));
         AtomicReference<String> seen = new AtomicReference<>();
         when(scriptExecutor.run(any())).thenAnswer(inv -> {
             ScriptRequest req = inv.getArgument(0);
@@ -657,7 +668,7 @@ class ShootyGuardServiceTest {
 
     @Test
     void commandGuard_denies_withReason() {
-        recipeWith(GuardConfig.scriptBody("vance.guard.deny('unsafe');", false, GuardPoint.COMMAND, 1));
+        recipeWith(ScriptGuard.ofBody("vance.guard.deny('unsafe');", false, GuardPoint.COMMAND, 1));
         scriptDenies("mode change is unsafe here");
 
         EngineCommandResult result = service.gateCommand(recipeProcess(), command("mode.set"));
@@ -670,7 +681,7 @@ class ShootyGuardServiceTest {
 
     @Test
     void commandGuard_scriptError_failsClosed() {
-        recipeWith(GuardConfig.scriptBody("throw new Error('x')", false, GuardPoint.COMMAND, 1));
+        recipeWith(ScriptGuard.ofBody("throw new Error('x')", false, GuardPoint.COMMAND, 1));
         when(scriptExecutor.run(any()))
                 .thenThrow(new ScriptExecutionException(ScriptExecutionException.ErrorClass.GUEST_EXCEPTION, "boom"));
 
@@ -684,7 +695,7 @@ class ShootyGuardServiceTest {
 
     @Test
     void commandGuard_missingScript_failsClosed() {
-        recipeWith(GuardConfig.scriptPath("_vance/guards/missing.js", false, GuardPoint.COMMAND, 1));
+        recipeWith(ScriptGuard.ofPath("_vance/guards/missing.js", false, GuardPoint.COMMAND, 1));
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.empty());
 
         EngineCommandResult result = service.gateCommand(recipeProcess(), command("mode.set"));
@@ -695,7 +706,7 @@ class ShootyGuardServiceTest {
 
     @Test
     void commandGuard_passes_whenScriptDoesNotDeny() {
-        recipeWith(GuardConfig.scriptBody("vance.guard.command.name;", false, GuardPoint.COMMAND, 1));
+        recipeWith(ScriptGuard.ofBody("vance.guard.command.name;", false, GuardPoint.COMMAND, 1));
         AtomicReference<ScriptRequest> seen = new AtomicReference<>();
         when(scriptExecutor.run(any())).thenAnswer(inv -> {
             seen.set(inv.getArgument(0));
@@ -726,8 +737,8 @@ class ShootyGuardServiceTest {
         // start guard's script Answer re-enters gateCommand) must bypass
         // the COMMAND gate — the guard does not judge its own actions.
         recipeWith(
-                GuardConfig.scriptBody("vance.guard.activateSkill('x');", false, GuardPoint.START, 1),
-                GuardConfig.scriptBody("vance.guard.deny('unsafe');", false, GuardPoint.COMMAND, 1));
+                ScriptGuard.ofBody("vance.guard.activateSkill('x');", false, GuardPoint.START, 1),
+                ScriptGuard.ofBody("vance.guard.deny('unsafe');", false, GuardPoint.COMMAND, 1));
         AtomicReference<EngineCommandResult> gateResult = new AtomicReference<>(null);
         when(scriptExecutor.run(any())).thenAnswer(inv -> {
             ScriptRequest req = inv.getArgument(0);
@@ -743,5 +754,183 @@ class ShootyGuardServiceTest {
         // The COMMAND guard would deny — but the command originated from a
         // guard run, so the gate must have let it through (null = proceed).
         assertThat(gateResult.get()).isNull();
+    }
+    // ─────────────────── HANDLER guards ───────────────────
+
+    /**
+     * A test handler: records the hook it ran, then acts as told via
+     * the {@link GuardContext} — the Java twin of a guard script
+     * calling {@code vance.guard.*}.
+     */
+    private static class RecordingHandler implements GuardHandler {
+
+        final AtomicReference<String> hook = new AtomicReference<>(null);
+        String continuePrompt;
+        String denyReason;
+        String turnPrompt;
+        boolean throwInside;
+
+        @Override
+        public String name() {
+            return "recorder";
+        }
+
+        @Override
+        public void onStart(GuardContext ctx) {
+            hook.set("start");
+            if (turnPrompt != null) {
+                ctx.setTurnPrompt(turnPrompt);
+            }
+            if (throwInside) {
+                throw new IllegalStateException("handler boom");
+            }
+        }
+
+        @Override
+        public void onCommand(GuardContext ctx) {
+            hook.set("command");
+            if (denyReason != null) {
+                ctx.deny(denyReason);
+            }
+            if (throwInside) {
+                throw new IllegalStateException("handler boom");
+            }
+        }
+
+        @Override
+        public void onStop(GuardContext ctx) {
+            hook.set("stop");
+            if (continuePrompt != null) {
+                ctx.continueWith(continuePrompt);
+            }
+            if (throwInside) {
+                throw new IllegalStateException("handler boom");
+            }
+        }
+    }
+
+    @Test
+    void handlerGuard_stopHook_continueWith_fires() {
+        RecordingHandler handler = new RecordingHandler();
+        handler.continuePrompt = "fix the fences";
+        when(handlerRegistry.find("recorder")).thenReturn(handler);
+        recipeWith(new HandlerGuard("recorder", Map.of(), null, 3));
+
+        GuardEvaluation result = service.evaluate(recipeProcess(), "```diagram\noops", true);
+
+        assertThat(result.fired()).isTrue();
+        assertThat(result.reason()).isEqualTo("fix the fences");
+        assertThat(handler.hook.get()).isEqualTo("stop");
+        verify(thinkProcessService).incrementGuardRounds("p1");
+        verify(eventEmitter).scheduleTurn("p1");
+        // The script executor is never involved for a handler guard.
+        verify(scriptExecutor, never()).run(any());
+    }
+
+    @Test
+    void handlerGuard_withoutTrigger_runsAtStart() {
+        RecordingHandler handler = new RecordingHandler();
+        handler.turnPrompt = "custom framing";
+        when(handlerRegistry.find("recorder")).thenReturn(handler);
+        recipeWith(new HandlerGuard("recorder", Map.of(), null, 2));
+        SteerMessage userMsg = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "refactor the login");
+
+        service.runStartGuards(recipeProcess(), List.of(userMsg));
+
+        assertThat(handler.hook.get()).isEqualTo("start");
+        assertThat(service.turnPromptFor(recipeProcess())).isEqualTo("custom framing");
+    }
+
+    @Test
+    void handlerGuard_withoutTrigger_gatesCommands() {
+        RecordingHandler handler = new RecordingHandler();
+        handler.denyReason = "mode changes are locked";
+        when(handlerRegistry.find("recorder")).thenReturn(handler);
+        recipeWith(new HandlerGuard("recorder", Map.of(), null, 2));
+
+        EngineCommandResult result = service.gateCommand(recipeProcess(), command("mode.set"));
+
+        assertThat(result).isNotNull();
+        assertThat(result.deniedByGuard()).isTrue();
+        assertThat(result.message()).contains("mode changes are locked");
+    }
+
+    @Test
+    void handlerGuard_narrowedTrigger_staysAwayFromOtherPoints() {
+        RecordingHandler handler = new RecordingHandler();
+        handler.continuePrompt = "nudge";
+        when(handlerRegistry.find("recorder")).thenReturn(handler);
+        recipeWith(new HandlerGuard("recorder", Map.of(), GuardPoint.COMMAND, 2));
+
+        GuardEvaluation result = service.evaluate(recipeProcess(), "done", true);
+
+        // A command-narrowed handler is not consulted at the yield point.
+        assertThat(result.fired()).isFalse();
+        assertThat(handler.hook.get()).isNull();
+        verify(scriptExecutor, never()).run(any());
+    }
+
+    @Test
+    void handlerGuard_handlerError_failsOpen_countsHandlerError() {
+        RecordingHandler handler = new RecordingHandler();
+        handler.throwInside = true;
+        when(handlerRegistry.find("recorder")).thenReturn(handler);
+        recipeWith(new HandlerGuard("recorder", Map.of(), null, 2));
+
+        GuardEvaluation result = service.evaluate(recipeProcess(), "done", true);
+
+        assertThat(result.fired()).isFalse();
+        assertThat(outcomeCount("handler_error")).isEqualTo(1.0);
+        assertThat(outcomeCount("passed")).isZero();
+    }
+
+    @Test
+    void handlerGuard_unknownHandler_failsOpenAtStop() {
+        recipeWith(new HandlerGuard("nope", Map.of(), null, 2));
+
+        GuardEvaluation result = service.evaluate(recipeProcess(), "done", true);
+
+        assertThat(result.fired()).isFalse();
+        assertThat(outcomeCount("handler_error")).isEqualTo(1.0);
+    }
+
+    @Test
+    void handlerGuard_unknownHandler_failsClosedAtCommand() {
+        recipeWith(new HandlerGuard("nope", Map.of(), GuardPoint.COMMAND, 2));
+
+        EngineCommandResult result = service.gateCommand(recipeProcess(), command("mode.set"));
+
+        assertThat(result).isNotNull();
+        assertThat(result.deniedByGuard()).isTrue();
+        assertThat(result.message()).contains("unknown guard handler 'nope'");
+        assertThat(outcomeCount("handler_error")).isEqualTo(1.0);
+    }
+
+    @Test
+    void handlerGuard_sharesSessionScratchWithScripts() {
+        // One runtime, one scratch: a START handler's session flags are
+        // readable by a STOP script of the same session (shooty.md §4.1).
+        RecordingHandler handler = new RecordingHandler() {
+            @Override
+            public void onStart(GuardContext ctx) {
+                ctx.sessionValues().put("releaseSkl", "yes");
+            }
+        };
+        when(handlerRegistry.find("recorder")).thenReturn(handler);
+        recipeWith(
+                new HandlerGuard("recorder", Map.of(), GuardPoint.START, 2),
+                ScriptGuard.ofBody("vance.guard.continueWith('x');", false, GuardPoint.STOP, 1));
+        AtomicReference<Object> seen = new AtomicReference<>();
+        when(scriptExecutor.run(any())).thenAnswer(inv -> {
+            ScriptRequest req = inv.getArgument(0);
+            seen.set(req.guardApi().sessionValues.get("releaseSkl"));
+            return new ScriptResult(null, Duration.ZERO);
+        });
+        SteerMessage userMsg = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "hi");
+
+        service.runStartGuards(recipeProcess(), List.of(userMsg));
+        service.evaluate(recipeProcess(), "done", true);
+
+        assertThat(seen.get()).isEqualTo("yes");
     }
 }

@@ -306,8 +306,12 @@ public class RecipeLoader {
 
     /**
      * Parses the optional {@code guard:} block — a list of guard
-     * entries ({@code script}/{@code scriptBody} + optional {@code trigger} /
-     * {@code maxRounds}). See {@code planning/shooty.md} §2.
+     * entries in evaluation order: JS scripts ({@code script}/
+     * {@code scriptBody}) or Java handlers ({@code handler: <name>}),
+     * each with optional {@code trigger} / {@code maxRounds} /
+     * {@code params}. Scripts fire at exactly one point (default
+     * {@code stop}); handlers default to <b>all</b> points and rely on
+     * their no-op hooks. See {@code specification/public/shooty.md} §2/§3.
      */
     @SuppressWarnings("unchecked")
     private static List<GuardConfig> parseGuards(@Nullable Object raw) {
@@ -324,22 +328,28 @@ public class RecipeLoader {
             Map<String, Object> m = (Map<String, Object>) rawMap;
             String script = stringOrNull(m.get("script"));
             String scriptBody = stringOrNull(m.get("scriptBody"));
-            GuardPoint trigger = parseGuardTrigger(m.get("trigger"), i);
+            String handler = stringOrNull(m.get("handler"));
             int maxRounds = m.get("maxRounds") == null ? 2 : parseMaxRounds(m.get("maxRounds"));
             boolean allowTools = Boolean.TRUE.equals(m.get("allowTools"))
                     || "true".equalsIgnoreCase(String.valueOf(m.get("allowTools")));
             Map<String, Object> params = m.get("params") instanceof Map<?, ?> pm ? (Map<String, Object>) pm : Map.of();
 
-            if (script != null && scriptBody != null) {
-                throw new IllegalStateException("'guard[" + i + "]' cannot set both 'script' and 'scriptBody'");
+            int sources = (script != null ? 1 : 0) + (scriptBody != null ? 1 : 0) + (handler != null ? 1 : 0);
+            if (sources > 1) {
+                throw new IllegalStateException(
+                        "'guard[" + i + "]' can set only one of 'script', 'scriptBody' and 'handler'");
             }
             if (script != null) {
-                out.add(GuardConfig.scriptPath(script, params, allowTools, trigger, maxRounds));
+                out.add(ScriptGuard.ofPath(
+                        script, params, allowTools, parseGuardTrigger(m.get("trigger"), i), maxRounds));
             } else if (scriptBody != null) {
-                out.add(GuardConfig.scriptBody(scriptBody, allowTools, trigger, maxRounds));
+                out.add(ScriptGuard.ofBody(scriptBody, allowTools, parseGuardTrigger(m.get("trigger"), i), maxRounds));
+            } else if (handler != null) {
+                out.add(new HandlerGuard(handler, params, parseHandlerTrigger(m.get("trigger"), i), maxRounds));
             } else {
                 throw new IllegalStateException(
-                        "'guard[" + i + "]' requires 'script' (a guard-script path) or 'scriptBody'");
+                        "'guard[" + i + "]' requires 'script' (a guard-script path), 'scriptBody' "
+                                + "or 'handler' (a guard-handler name)");
             }
         }
         return List.copyOf(out);
@@ -360,6 +370,25 @@ public class RecipeLoader {
                 throw new IllegalStateException("unknown guard[" + idx + "].trigger '" + s + "' "
                         + "(start | command | stop | terminate | both)");
         };
+    }
+
+    /**
+     * Parses a handler entry's optional {@code trigger} narrowing.
+     * A handler defaults to <b>all</b> points (it implements every hook
+     * it needs, the rest stay no-ops), so an absent trigger — or
+     * {@code trigger: all}, which restates the default — is
+     * {@code null}; a specific point narrows. Unknown values reuse the
+     * script trigger's error (same vocabulary).
+     */
+    private static @Nullable GuardPoint parseHandlerTrigger(@Nullable Object raw, int idx) {
+        if (raw == null) return null;
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("'guard[" + idx + "].trigger' must be a string");
+        }
+        if ("all".equalsIgnoreCase(s.trim())) {
+            return null;
+        }
+        return parseGuardTrigger(raw, idx);
     }
 
     private static int parseMaxRounds(@Nullable Object raw) {

@@ -185,6 +185,7 @@ export default {
       file: 'File',
       newFile: 'New file…',
       newFolder: 'New folder…',
+      open: 'Open…',
       save: 'Save',
       saveAll: 'Save all',
       exportPdf: 'Export PDF…',
@@ -386,6 +387,13 @@ export default {
       pathPlaceholder: 'documents/notes',
       cancel: 'Cancel',
       create: 'Create',
+    },
+    openDocument: {
+      title: 'Open document',
+      searchPlaceholder: 'Search by path or title…',
+      searching: 'Searching…',
+      noResults: 'No matching documents.',
+      truncated: 'Showing {shown} of {total} — refine the search.',
     },
     tex: {
       previewHint: 'KaTeX preview — for full layout use "Generate PDF"',
@@ -3632,6 +3640,12 @@ export default {
   },
   settings: {
     pageTitle: 'Settings',
+    help: {
+      title: 'Help',
+      loading: 'Loading help…',
+      unavailable: 'No help for this context yet.',
+      empty: '(empty)',
+    },
     scope: {
       tenant: 'Tenant',
       user: 'My settings',

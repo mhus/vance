@@ -180,6 +180,7 @@ export default {
       file: 'Datei',
       newFile: 'Neue Datei…',
       newFolder: 'Neuer Ordner…',
+      open: 'Öffnen…',
       save: 'Speichern',
       saveAll: 'Alle speichern',
       exportPdf: 'PDF exportieren…',
@@ -385,6 +386,13 @@ export default {
       pathPlaceholder: 'documents/notes',
       cancel: 'Abbrechen',
       create: 'Anlegen',
+    },
+    openDocument: {
+      title: 'Dokument öffnen',
+      searchPlaceholder: 'Nach Pfad oder Titel suchen…',
+      searching: 'Suche…',
+      noResults: 'Keine passenden Dokumente.',
+      truncated: '{shown} von {total} — Suche verfeinern.',
     },
     tex: {
       previewHint: 'KaTeX-Vorschau — für das volle Layout „PDF erzeugen“ nutzen',
@@ -3652,6 +3660,12 @@ export default {
   },
   settings: {
     pageTitle: 'Einstellungen',
+    help: {
+      title: 'Hilfe',
+      loading: 'Lädt Hilfe…',
+      unavailable: 'Für diesen Kontext gibt es noch keine Hilfe.',
+      empty: '(leer)',
+    },
     scope: {
       tenant: 'Mandant',
       user: 'Meine Einstellungen',

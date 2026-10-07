@@ -17,6 +17,8 @@ import AreaEntryView from './AreaEntryView.vue';
 import ProjectTab from './ProjectTab.vue';
 import GroupCard from './GroupCard.vue';
 import TenantCard from './TenantCard.vue';
+import { resolveSettingsHelpPath } from './settingsHelp';
+import SettingsHelpPanel from './SettingsHelpPanel.vue';
 import { useProfile } from '@/composables/useProfile';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import { useAdminProjects } from '@/composables/useAdminProjects';
@@ -203,6 +205,10 @@ const activeEntry = computed<SettingsDocRow | null>(() => {
   if (!view.value.entry) return null;
   return areaRows.value.find((r) => r.documentId === view.value.entry) ?? null;
 });
+
+/** Help file for the right panel — flips with the open context. */
+const helpPath = computed<string>(() =>
+  resolveSettingsHelpPath(view.value, activeEntry.value?.kindId ?? null));
 
 /** Breadcrumbs: scope label, then whatever level is open below it. */
 const breadcrumbs = computed<string[]>(() => {
@@ -560,6 +566,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
     :title="t('settings.pageTitle')"
     :breadcrumbs="breadcrumbs"
     :show-sidebar="true"
+    :show-right-panel="true"
   >
     <!-- ─── Sidebar: the three scope rows ─── -->
     <template #sidebar>
@@ -845,6 +852,11 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         </div>
       </div>
     </VModal>
+
+    <!-- ─── Right panel: context help ─── -->
+    <template #right-panel>
+      <SettingsHelpPanel :help-path="helpPath" />
+    </template>
   </EditorShell>
 </template>
 

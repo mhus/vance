@@ -3660,12 +3660,6 @@ export default {
   },
   settings: {
     pageTitle: 'Einstellungen',
-    help: {
-      title: 'Hilfe',
-      loading: 'Lädt Hilfe…',
-      unavailable: 'Für diesen Kontext gibt es noch keine Hilfe.',
-      empty: '(leer)',
-    },
     scope: {
       tenant: 'Mandant',
       user: 'Meine Einstellungen',

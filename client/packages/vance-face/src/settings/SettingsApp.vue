@@ -18,7 +18,6 @@ import ProjectTab from './ProjectTab.vue';
 import GroupCard from './GroupCard.vue';
 import TenantCard from './TenantCard.vue';
 import { resolveSettingsHelpPath } from './settingsHelp';
-import SettingsHelpPanel from './SettingsHelpPanel.vue';
 import { useProfile } from '@/composables/useProfile';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import { useAdminProjects } from '@/composables/useAdminProjects';
@@ -206,7 +205,7 @@ const activeEntry = computed<SettingsDocRow | null>(() => {
   return areaRows.value.find((r) => r.documentId === view.value.entry) ?? null;
 });
 
-/** Help file for the right panel — flips with the open context. */
+/** Help path for the shell's help drawer (topbar "?") — flips with the open context. */
 const helpPath = computed<string>(() =>
   resolveSettingsHelpPath(view.value, activeEntry.value?.kindId ?? null));
 
@@ -566,7 +565,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
     :title="t('settings.pageTitle')"
     :breadcrumbs="breadcrumbs"
     :show-sidebar="true"
-    :show-right-panel="true"
+    :help-path="helpPath"
   >
     <!-- ─── Sidebar: the three scope rows ─── -->
     <template #sidebar>
@@ -852,11 +851,6 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         </div>
       </div>
     </VModal>
-
-    <!-- ─── Right panel: context help ─── -->
-    <template #right-panel>
-      <SettingsHelpPanel :help-path="helpPath" />
-    </template>
   </EditorShell>
 </template>
 

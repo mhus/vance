@@ -3640,12 +3640,6 @@ export default {
   },
   settings: {
     pageTitle: 'Settings',
-    help: {
-      title: 'Help',
-      loading: 'Loading help…',
-      unavailable: 'No help for this context yet.',
-      empty: '(empty)',
-    },
     scope: {
       tenant: 'Tenant',
       user: 'My settings',

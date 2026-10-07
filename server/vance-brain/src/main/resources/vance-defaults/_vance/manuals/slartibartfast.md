@@ -13,7 +13,8 @@ the output.
 
 | Preset | Output shape | Runs on |
 |---|---|---|
-| `slartibartfast` | Vogon plan (state machine run for a person) | Vogon |
+| `slartibartfast` | Vogon plan (state machine run for a person) | — (author-only; run via a `vogon` recipe) |
+| `vogon-architect` | Vogon plan (same shape, authoring by name) | — (author-only; run via a `vogon` recipe) |
 | `marvin-architect` | Marvin recipe (dynamic task-tree) | Marvin |
 | `zaphod-architect` | Zaphod council (multi-persona panel) | Zaphod |
 | `slart-script-author` | JS orchestration script | Hactar |
@@ -27,7 +28,16 @@ for*:
 - **`slartibartfast` (Vogon plan)** — the person starts it and waits on
   it. It can ask them questions while it runs and gives the result back
   in the conversation. Built around judgements: a worker produces, another
-  scores, the plan loops until it is good enough. Slart can run it.
+  scores, the plan loops until it is good enough. **Author-only** — it
+  validates and persists to `_vance/workflows/<name>.yaml`; starting it
+  is a separate step (a `vogon` recipe with the plan, or
+  `workflow_start`), never part of the Slart run.
+- **`vogon-architect` (same plan shape, no triggers)** — the
+  spawn-by-name variant for agents and tools: same VOGON_PLAN authoring
+  as `slartibartfast` (`planOnly: true` by construction — the decision
+  is SKIP for author-only schemas), without the DELEGATE-trigger
+  surface. Use it when a parent (Arthur, the Vogon chat operator) wants
+  a plan written, not picked by keyword.
 - **`magrathea-architect` (workflow)** — nobody is waiting. It is started
   by a scheduler, an event, a hook or a tool, and anything it needs from a
   person goes to the inbox. Built around things that must happen:

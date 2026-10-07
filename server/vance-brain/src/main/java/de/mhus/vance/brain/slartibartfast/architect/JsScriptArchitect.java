@@ -233,6 +233,14 @@ public class JsScriptArchitect implements SchemaArchitect {
     }
 
     @Override
+    public boolean supportsChildExecution() {
+        // Scripts run through the architect's directExecutionSpawn
+        // (Hactar child with the persisted scriptRef) — not the
+        // recipe resolver, but EXECUTING can start them.
+        return true;
+    }
+
+    @Override
     public String outputPathSegment() {
         return "scripts";
     }

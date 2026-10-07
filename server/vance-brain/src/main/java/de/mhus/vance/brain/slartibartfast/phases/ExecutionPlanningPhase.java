@@ -4,9 +4,11 @@ import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.ArchitectStatus;
 import de.mhus.vance.api.slartibartfast.ExecutionDecision;
 import de.mhus.vance.api.slartibartfast.LlmCallRecord;
+import de.mhus.vance.api.slartibartfast.OutputSchemaType;
 import de.mhus.vance.api.slartibartfast.PhaseIteration;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.slartibartfast.architect.SchemaArchitect;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import dev.langchain4j.data.message.AiMessage;
@@ -19,9 +21,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -50,7 +52,13 @@ import tools.jackson.databind.ObjectMapper;
  *       extracted prompt.</li>
  *   <li>Explicit no-test ("nur anlegen", "nicht ausführen",
  *       "kein Test") → {@link ExecutionDecision#SKIP}.</li>
- *   <li>Pipeline schema (VOGON / MARVIN) with concrete mission
+ *   <li>Author-only schema (VOGON_PLAN, MAGRATHEA_WORKFLOW): the
+ *       phase never consults the LLM — {@code supportsChildExecution()} is
+ *       false, EXECUTING could not start the artefact, the decision is
+ *       SKIP by construction (see the head of {@link #execute}).
+ *       The plan/workflow is started as a separate step (workflow_start,
+ *       a {@code vogon} recipe, the scheduler).</li>
+ *   <li>Pipeline schema (MARVIN) with concrete mission
  *       in the description → USE_USER_PROMPT with the whole
  *       description as goal (the description IS the work).</li>
  *   <li>Architecture schema (ZAPHOD, later PROJECT_SETUP)
@@ -65,7 +73,6 @@ import tools.jackson.databind.ObjectMapper;
  * <p>See {@code planning/slart-as-project-architect.md} §D-3.
  */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class ExecutionPlanningPhase {
 
@@ -74,6 +81,35 @@ public class ExecutionPlanningPhase {
     private static final int MAX_OUTPUT_CORRECTIONS = 2;
 
     private static final int PROMPT_PREVIEW_LIMIT = 500;
+
+    private final EngineChatFactory engineChatFactory;
+    private final LlmCallTracker llmCallTracker;
+    private final ObjectMapper objectMapper;
+    private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
+    private final Map<OutputSchemaType, SchemaArchitect> architects;
+
+    public ExecutionPlanningPhase(
+            EngineChatFactory engineChatFactory,
+            LlmCallTracker llmCallTracker,
+            ObjectMapper objectMapper,
+            de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver,
+            List<SchemaArchitect> schemaArchitects) {
+        this.engineChatFactory = engineChatFactory;
+        this.llmCallTracker = llmCallTracker;
+        this.objectMapper = objectMapper;
+        this.languageContextResolver = languageContextResolver;
+        Map<OutputSchemaType, SchemaArchitect> map = new EnumMap<>(OutputSchemaType.class);
+        for (SchemaArchitect a : schemaArchitects) {
+            SchemaArchitect existing = map.put(a.type(), a);
+            if (existing != null) {
+                throw new IllegalStateException("Duplicate SchemaArchitect beans for "
+                        + a.type() + ": "
+                        + existing.getClass().getName()
+                        + " and " + a.getClass().getName());
+            }
+        }
+        this.architects = Map.copyOf(map);
+    }
 
     private static final String SYSTEM_PROMPT = """
             You are the EXECUTION_PLANNING node of the Slartibartfast
@@ -106,7 +142,7 @@ public class ExecutionPlanningPhase {
                → decision = "USE_USER_PROMPT", prompt = X.
 
             3. User description IS a concrete mission AND schema
-               is pipeline (VOGON_PLAN / MARVIN_RECIPE).
+               is pipeline (MARVIN_RECIPE).
                Pipeline recipes are one-shot — the recipe IS the
                mission. → decision = "USE_USER_PROMPT", prompt =
                the original user description (verbatim).
@@ -147,12 +183,34 @@ public class ExecutionPlanningPhase {
             your output and asks you to correct it.
             """;
 
-    private final EngineChatFactory engineChatFactory;
-    private final LlmCallTracker llmCallTracker;
-    private final ObjectMapper objectMapper;
-    private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
-
     public void execute(ArchitectState state, ThinkProcessDocument process, ThinkEngineContext ctx) {
+        SchemaArchitect architect = architects.get(state.getOutputSchemaType());
+        if (architect != null && !architect.supportsChildExecution()) {
+            // Author-only schema (VOGON_PLAN, MAGRATHEA_WORKFLOW): EXECUTING
+            // could not start the artefact — no recipe output for the
+            // resolver, no direct engine spawn — so the decision is SKIP
+            // by construction, without spending a decision-LLM call that
+            // could route a concrete mission into an EXECUTING that fails
+            // after a successful authoring run ("persistedRecipePath has
+            // unexpected shape", the pre-merge auto-execute leftovers).
+            // The artefact is started as a separate step: workflow_start,
+            // a vogon recipe, the scheduler.
+            String reason = "Schema " + state.getOutputSchemaType().name()
+                    + " is author-only — the artefact is started as a separate "
+                    + "step (workflow_start / a vogon recipe / the scheduler), "
+                    + "never by this Slart run.";
+            state.setExecutionDecision(ExecutionDecision.SKIP);
+            state.setExecutionPrompt(null);
+            state.setExecutionDecisionReason(reason);
+            log.info(
+                    "Slartibartfast id='{}' EXECUTION_PLANNING — author-only "
+                            + "schema {}, decision SKIP without LLM call",
+                    process.getId(),
+                    state.getOutputSchemaType());
+            appendIteration(
+                    state, "execution-planning", "SKIP — " + reason, PhaseIteration.IterationOutcome.PASSED, null);
+            return;
+        }
         EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
         String modelAlias = bundle.primaryConfig().providerInstance() + ":"
                 + bundle.primaryConfig().modelName();

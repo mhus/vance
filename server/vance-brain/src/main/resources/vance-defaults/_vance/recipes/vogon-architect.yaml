@@ -1,0 +1,36 @@
+# Vogon-Plan-Author — the spawn-by-name variant of the `slartibartfast`
+# preset (planning/vogon-agent-identity.md, Lücke D): same VOGON_PLAN
+# authoring (VogonArchitect advice — judgements and iteration, the plan
+# belongs to a person), no DELEGATE-trigger surface. Built for parents
+# that name it explicitly: the Vogon chat identity ("write me a plan
+# that …"), Arthur, tools. Mirrors `slart-script-author` (the SCRIPT_JS
+# pendant): author-only — the run stops at DONE after PERSISTING, the
+# plan is persisted flat at _vance/workflows/<name>.yaml (directly
+# resolvable by name through the workflow cascade) and the DONE event
+# carries `recipePath` in its payload. Starting the plan is the caller's
+# separate step (vogon_start / a vogon recipe / workflow_start).
+
+description: |
+  Author a Vogon plan — a state-machine document a person starts and
+  waits on (worker produces, another scores, loops until good enough,
+  can ask questions at gates) — from a free-text request. Base the
+  plan on an existing one by naming it and pasting its YAML into the
+  request. Author-only: the plan is validated against the one plan
+  grammar, persisted to _vance/workflows/<name>.yaml, and the run ends
+  at DONE — it is never started by this run. Spawn it by name; use the
+  `slartibartfast` preset for the keyword-routed DELEGATE path, and
+  `magrathea-architect` when nobody is waiting (automation flavour).
+
+engine: slartibartfast
+params:
+  outputSchemaType: vogon-plan
+  # Author-only by construction: EXECUTION_PLANNING skips for
+  # author-only schemas even without this flag — planOnly documents
+  # the contract instead of relying on the skip.
+  planOnly: true
+  # Plan authoring benefits from a larger context — GATHERING reads
+  # the project's recipes and manuals in one go.
+  model: default:slartibartfast,default:analyze
+tags:
+  - architect
+  - plan-author

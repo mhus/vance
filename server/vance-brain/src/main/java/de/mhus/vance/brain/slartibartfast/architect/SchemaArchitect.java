@@ -64,10 +64,7 @@ public interface SchemaArchitect {
      *  availableRecipes} is non-empty only when
      *  {@link #wantsSubRecipeListing()} returned true and the
      *  project has recipes to list. */
-    void appendProposingContext(
-            StringBuilder sb,
-            ArchitectState state,
-            List<ResolvedRecipe> availableRecipes);
+    void appendProposingContext(StringBuilder sb, ArchitectState state, List<ResolvedRecipe> availableRecipes);
 
     // ──────────────────── VALIDATING-side ────────────────────
 
@@ -220,6 +217,26 @@ public interface SchemaArchitect {
         return true;
     }
 
+    /** Can Slart's EXECUTING phase start the produced artefact at all —
+     *  through the recipe resolver ({@code isRecipeOutput()}) or through
+     *  the architect's {@link #directExecutionSpawn}?
+     *
+     *  <p>Defaults to {@link #isRecipeOutput()}: recipe architects spawn
+     *  through the resolver. {@link JsScriptArchitect} overrides to
+     *  {@code true} (direct spawn). Author-only architects —
+     *  {@link MagratheaArchitect} and its {@code VogonArchitect} subclass —
+     *  stay {@code false}: their artefact is a named document somebody
+     *  ELSE starts ({@code workflow_start}, a {@code vogon} recipe, the
+     *  scheduler), so EXECUTION_PLANNING must not consult the decision
+     *  LLM — the decision is SKIP by construction, and a concrete mission
+     *  in the user description must not route the run into an EXECUTING
+     *  that cannot work (observed live path: plan authored and persisted,
+     *  then FAILED "persistedRecipePath has unexpected shape").
+     */
+    default boolean supportsChildExecution() {
+        return isRecipeOutput();
+    }
+
     /** Direct engine-spawn for non-recipe outputs. When the
      *  architect returns a non-null descriptor, Slart's EXECUTING
      *  phase bypasses the recipe-resolver path and spawns the
@@ -239,23 +256,18 @@ public interface SchemaArchitect {
      *  process's effective allow-set automatically by Slart's
      *  EXECUTING — the architect should NOT set it here; doing so
      *  would override the inherited surface. */
-    default @org.jspecify.annotations.Nullable DirectExecutionSpawn
-    directExecutionSpawn(ArchitectState state) {
+    default @org.jspecify.annotations.Nullable DirectExecutionSpawn directExecutionSpawn(ArchitectState state) {
         return null;
     }
 
     /** Engine + params descriptor for {@link #directExecutionSpawn}. */
-    record DirectExecutionSpawn(
-            String engineName, Map<String, Object> engineParams) {
+    record DirectExecutionSpawn(String engineName, Map<String, Object> engineParams) {
 
         public DirectExecutionSpawn {
             if (engineName == null || engineName.isBlank()) {
-                throw new IllegalArgumentException(
-                        "DirectExecutionSpawn.engineName must not be blank");
+                throw new IllegalArgumentException("DirectExecutionSpawn.engineName must not be blank");
             }
-            engineParams = engineParams == null
-                    ? Map.of()
-                    : Map.copyOf(engineParams);
+            engineParams = engineParams == null ? Map.of() : Map.copyOf(engineParams);
         }
     }
 
@@ -278,8 +290,7 @@ public interface SchemaArchitect {
     default String extractRecipeYaml(java.util.Map<String, Object> jsonRoot) {
         Object y = jsonRoot.get("yaml");
         if (!(y instanceof String yaml) || yaml.isBlank()) {
-            throw new IllegalArgumentException(
-                    "required field 'yaml' missing or blank");
+            throw new IllegalArgumentException("required field 'yaml' missing or blank");
         }
         return yaml;
     }
@@ -301,8 +312,7 @@ public interface SchemaArchitect {
     default String extractRecipeName(java.util.Map<String, Object> jsonRoot) {
         Object n = jsonRoot.get("name");
         if (!(n instanceof String name) || name.isBlank()) {
-            throw new IllegalArgumentException(
-                    "required field 'name' missing or blank");
+            throw new IllegalArgumentException("required field 'name' missing or blank");
         }
         return name;
     }

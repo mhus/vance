@@ -33,6 +33,7 @@ class ScriptGuardApiTest {
                 true,
                 "stop",
                 null,
+                null,
                 new ScriptGuardScratchApi(new LinkedHashMap<>()),
                 new ScriptGuardScratchApi(new LinkedHashMap<>()),
                 host);
@@ -47,6 +48,7 @@ class ScriptGuardApiTest {
                 false,
                 "command",
                 java.util.Map.of("name", "mode.set", "args", java.util.Map.of("text", "review")),
+                null,
                 new ScriptGuardScratchApi(new LinkedHashMap<>()),
                 new ScriptGuardScratchApi(new LinkedHashMap<>()),
                 host);

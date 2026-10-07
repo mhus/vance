@@ -34,7 +34,9 @@ import org.jspecify.annotations.Nullable;
  *                      point) or was terminated (TERMINATE point)
  * @param command       the gated command at the COMMAND point;
  *                      {@code null} everywhere else
- * @param params        this guard's recipe {@code params}
+ * @param tool          the gated exec-run call at the TOOL point
+ *                      ({@code exec_run} or a {@code work_}/{@code client_}
+ *                      backend); {@code null} everywhere else
  * @param loopValues    the per-process loop scratch (wiped at each
  *                      genuine user turn) — the same store a script's
  *                      {@code vance.guard.loopValues} uses, so scripts
@@ -53,6 +55,7 @@ public record GuardContext(
         int maxRounds,
         boolean naturalStop,
         @Nullable EngineCommand command,
+        @Nullable GuardToolCall tool,
         Map<String, Object> params,
         Map<String, Object> loopValues,
         Map<String, Object> sessionValues,
@@ -79,7 +82,7 @@ public record GuardContext(
         return actions.continueWith(prompt);
     }
 
-    /** Veto the gated command (COMMAND only); fail-closed by contract. */
+    /** Veto the gated command or exec-run tool call (COMMAND/TOOL only); fail-closed by contract. */
     public boolean deny(String reason) {
         return actions.deny(reason);
     }

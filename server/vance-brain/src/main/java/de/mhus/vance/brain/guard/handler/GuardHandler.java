@@ -16,13 +16,13 @@ package de.mhus.vance.brain.guard.handler;
  * implementations stand in for the ones it does not need. Judge and
  * action stay imperative in the handler method — a handler that finds
  * a problem calls {@link GuardContext#continueWith(String)} (STOP/
- * TERMINATE), {@link GuardContext#deny(String)} (COMMAND) or one of
+ * TERMINATE), {@link GuardContext#deny(String)} (COMMAND/TOOL) or one of
  * the other point actions, exactly like {@code vance.guard.*} in a
  * script.
  *
  * <p>Handlers run through the same evaluation machinery as scripts:
  * per-point fail strategy (fail-open at START/STOP, fail-closed at
- * COMMAND), cap-aware {@code continueWith} against the process's
+ * COMMAND/TOOL), cap-aware {@code continueWith} against the process's
  * {@code guardRounds} counter, the shared per-process / per-session
  * scratch stores, and the re-entrancy marker (a handler does not guard
  * its own actions).
@@ -57,10 +57,19 @@ public interface GuardHandler {
 
     /**
      * The COMMAND hook — gates an engine command before its handler
-     * runs. Fail-closed: a handler error (or {@code deny}) fails the
-     * command hard.
+     * runs. Fail-closed: a handler error (or {@code deny}) fails
+     * the command hard.
      */
     default void onCommand(GuardContext ctx) {}
+
+    /**
+     * The TOOL hook — gates an exec-run tool call ({@code exec_run}
+     * and its {@code work_}/{@code client_} backends) before it
+     * executes. Fail-closed like COMMAND: a handler error (or
+     * {@link GuardContext#deny(String)}) fails the tool call with a
+     * caller-visible error.
+     */
+    default void onTool(GuardContext ctx) {}
 
     /**
      * The STOP hook — fires when the engine produced its final output

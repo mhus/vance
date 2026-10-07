@@ -1,6 +1,6 @@
 ---
-triggers: completion guard, guard script, vance.guard, are you really done, keep working until, nudge until done, did you build, did you run tests, ask once, guardRounds, //guard, guard inline, guard script, guard status, loopValues, sessionValues, completion guard schreiben, guard einrichten, wirklich fertig, erst bauen dann fertig, nachhaken bis fertig, start guard, command guard, shooty, guard point, trigger start, trigger command, activate skill automatically, gate a command, deny a command, command safety, guard handler, java guard handler, fence-check, exec-check, bundled guard handlers, handler fence validation
-summary: How to write a guard (Shooty) — a JS script via vance.guard.* or a bundled Java handler (handler: name), running at a guard point (start / command / stop / terminate). Stop guards inject a follow-up so the engine keeps working ("are you really done?"), start guards run per user turn (e.g. auto-activate skills), command guards gate engine commands (deny = hard fail). Plus how to wire it (recipe guard: block or //guard command) and the bundled handlers (fence-check, exec-check).
+triggers: completion guard, guard script, vance.guard, are you really done, keep working until, nudge until done, did you build, did you run tests, ask once, guardRounds, //guard, guard inline, guard script, guard status, loopValues, sessionValues, completion guard schreiben, guard einrichten, wirklich fertig, erst bauen dann fertig, nachhaken bis fertig, start guard, command guard, shooty, guard point, trigger start, trigger command, activate skill automatically, gate a command, deny a command, command safety, guard handler, java guard handler, fence-check, exec-check, exec-danger, bundled guard handlers, handler fence validation, tool guard, trigger tool, gate an exec, deny a tool call, is this command dangerous, dangerous command check
+summary: How to write a guard (Shooty) — a JS script via vance.guard.* or a bundled Java handler (handler: name), running at a guard point (start / command / tool / stop / terminate). Stop guards inject a follow-up so the engine keeps working ("are you really done?"), start guards run per user turn (e.g. auto-activate skills), command guards gate engine commands and tool guards gate exec_run calls (deny = hard fail). Plus how to wire it (recipe guard: block or //guard command) and the bundled handlers (fence-check, exec-check, exec-danger).
 ---
 # Writing a guard — `vance.guard.*` scripts and `handler:` Java handlers
 
@@ -16,6 +16,7 @@ the point's context and actions. `vance.guard` is `null` outside guard runs.
 | `terminate` | explicit terminate (e.g. `_terminate`) | `continueWith(prompt)` | open |
 | `start` | once per genuine user turn | `activateSkill(...)`, `setTurnPrompt(text)` | open |
 | `command` | before an engine command runs | `deny(reason)` | **closed, hard** |
+| `tool` | before an exec-run tool call executes (`exec_run` and its work_/client_ backends) | `deny(reason)` — e.g. judge if the command is dangerous | **closed, hard** |
 
 The scratch stores (`loopValues` / `sessionValues`) are shared across all
 points of a process — a start guard's flags are readable by its stop guard.
@@ -167,8 +168,18 @@ guard:
   - handler: exec-check    # build/exec commands mentioned without a reported result -> run them
     trigger: stop
     params: { commands: ['\bdeploy\b'], results: ['\bdeployed\b'] }   # optional regex overrides
+  - handler: exec-danger  # TOOL point: denies clearly catastrophic exec_run commands
+    trigger: tool
+    params: { patterns: ['\bgit\s+push\s+.*--force\b'] }   # replaces the danger defaults
 ```
 
+`exec-danger` runs at the `tool` point: it scans the `command` arg of every
+`exec_run` call (including the work_/client_ backends) and denies clearly
+catastrophic shell commands (`rm -rf /`, fork bombs, raw-device writes,
+`curl ... | sh`, `shutdown`) — the denial reaches the model as a tool error,
+so it can rewrite the command. Its `patterns` param REPLACES the default
+danger list; debatable commands (`rm -rf` on a scratch dir, force pushes)
+stay out of the defaults on purpose.
 Same evaluation machinery, same scratch stores, same fail strategies as a
 script. The bundled `_vance/guards/llm-judge.js` remains the ready-made
 LLM-judge stop guard - configure it via `params`, no JS needed.

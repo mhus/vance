@@ -45,6 +45,12 @@ public sealed interface GuardConfig permits ScriptGuard, HandlerGuard {
     /** Whether this guard gates engine-command dispatch (COMMAND point). */
     boolean firesOnCommand();
 
+    /**
+     * Whether this guard gates exec-run tool calls before they execute
+     * (TOOL point, fail-closed like COMMAND).
+     */
+    boolean firesOnTool();
+
     /** Whether this guard fires on a natural stop (engine produced its output). */
     boolean firesOnNaturalStop();
 

@@ -35,24 +35,24 @@ class ToolDispatcherHintTest {
 
     @BeforeEach
     void setUp() {
-        PermissionService permissions =
-                new PermissionService(List.of(new RecordingPermissionResolver()));
+        PermissionService permissions = new PermissionService(List.of(new RecordingPermissionResolver()));
 
         failing = mock(Tool.class);
         when(failing.name()).thenReturn("fake.edit");
-        when(failing.troubleshootingHint())
-                .thenReturn("file missing = file_read first");
-        when(failing.invoke(any(), any()))
-                .thenThrow(new ToolException("Edit failed: no such file /tmp/x.vue"));
+        when(failing.troubleshootingHint()).thenReturn("file missing = file_read first");
+        when(failing.invoke(any(), any())).thenThrow(new ToolException("Edit failed: no such file /tmp/x.vue"));
 
         ToolSource src = mock(ToolSource.class);
         when(src.find(eq("fake.edit"), any())).thenReturn(Optional.of(failing));
         when(src.sourceId()).thenReturn("test");
 
-        dispatcher = new ToolDispatcher(List.of(src), permissions,
+        dispatcher = new ToolDispatcher(
+                List.of(src),
+                permissions,
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
-                mock(de.mhus.vance.shared.team.TeamService.class));
+                mock(de.mhus.vance.shared.team.TeamService.class),
+                mock(ToolGuardGate.class));
     }
 
     private ToolInvocationContext ctx() {
@@ -64,8 +64,7 @@ class ToolDispatcherHintTest {
         assertThatThrownBy(() -> dispatcher.invoke("fake.edit", Map.of(), ctx()))
                 .isInstanceOf(ToolException.class)
                 .hasMessage("Edit failed: no such file /tmp/x.vue")
-                .satisfies(e -> assertThat(((ToolException) e).getHint())
-                        .isEqualTo("file missing = file_read first"));
+                .satisfies(e -> assertThat(((ToolException) e).getHint()).isEqualTo("file missing = file_read first"));
     }
 
     @Test

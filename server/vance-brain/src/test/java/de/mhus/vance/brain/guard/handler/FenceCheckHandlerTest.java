@@ -54,6 +54,7 @@ class FenceCheckHandlerTest {
                 2,
                 true,
                 null,
+                null,
                 Map.of(),
                 new ConcurrentHashMap<>(),
                 new ConcurrentHashMap<>(),

@@ -3,7 +3,6 @@ package de.mhus.vance.brain.script;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -56,12 +55,13 @@ class GraaljsScriptExecutorBindingsTest {
         when(src.tools(any())).thenReturn(List.<Tool>of());
         when(src.find(any(), any())).thenReturn(Optional.empty());
         ToolDispatcher dispatcher = new ToolDispatcher(
-                List.of(src), new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
+                List.of(src),
+                new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
-                mock(de.mhus.vance.shared.team.TeamService.class));
-        ToolInvocationContext ctx = new ToolInvocationContext(
-                "acme", "proj-1", "sess-1", "proc-1", "alice");
+                mock(de.mhus.vance.shared.team.TeamService.class),
+                mock(de.mhus.vance.brain.tools.ToolGuardGate.class));
+        ToolInvocationContext ctx = new ToolInvocationContext("acme", "proj-1", "sess-1", "proc-1", "alice");
         return new ContextToolsApi(dispatcher, ctx, Set.of());
     }
 
@@ -70,8 +70,7 @@ class GraaljsScriptExecutorBindingsTest {
         Map<String, Object> bindings = new LinkedHashMap<>();
         bindings.put("a", 5L);
         bindings.put("b", 7L);
-        ScriptRequest req = new ScriptRequest(
-                "js", "a + b", "test", tools(), Duration.ofSeconds(5), bindings);
+        ScriptRequest req = new ScriptRequest("js", "a + b", "test", tools(), Duration.ofSeconds(5), bindings);
 
         ScriptResult result = executor.run(req);
 
@@ -80,8 +79,7 @@ class GraaljsScriptExecutorBindingsTest {
 
     @Test
     void run_emptyBindings_runsCleanly() {
-        ScriptRequest req = new ScriptRequest(
-                "js", "1 + 2", "test", tools(), Duration.ofSeconds(5), Map.of());
+        ScriptRequest req = new ScriptRequest("js", "1 + 2", "test", tools(), Duration.ofSeconds(5), Map.of());
 
         assertThat(executor.run(req).value()).isEqualTo(3L);
     }
@@ -93,9 +91,8 @@ class GraaljsScriptExecutorBindingsTest {
         shipped.put("age", 30);
         Map<String, Object> bindings = Map.of("user", shipped);
 
-        ScriptRequest req = new ScriptRequest(
-                "js", "user.name + ':' + user.age", "test", tools(),
-                Duration.ofSeconds(5), bindings);
+        ScriptRequest req =
+                new ScriptRequest("js", "user.name + ':' + user.age", "test", tools(), Duration.ofSeconds(5), bindings);
 
         assertThat(executor.run(req).value()).isEqualTo("alice:30");
     }
@@ -107,9 +104,7 @@ class GraaljsScriptExecutorBindingsTest {
         // for an optional input should see undefined / null.
         Map<String, Object> bindings = new HashMap<>();
         bindings.put("maybe", null);
-        ScriptRequest req = new ScriptRequest(
-                "js", "maybe == null", "test", tools(),
-                Duration.ofSeconds(5), bindings);
+        ScriptRequest req = new ScriptRequest("js", "maybe == null", "test", tools(), Duration.ofSeconds(5), bindings);
 
         assertThat(executor.run(req).value()).isEqualTo(true);
     }
@@ -118,8 +113,7 @@ class GraaljsScriptExecutorBindingsTest {
     void scriptRequest_reservedBindingName_rejected() {
         Map<String, Object> bindings = new LinkedHashMap<>();
         bindings.put("vance", "hijack");
-        assertThatThrownBy(() -> new ScriptRequest(
-                        "js", "vance", "test", tools(), Duration.ofSeconds(5), bindings))
+        assertThatThrownBy(() -> new ScriptRequest("js", "vance", "test", tools(), Duration.ofSeconds(5), bindings))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("vance");
     }
@@ -127,8 +121,7 @@ class GraaljsScriptExecutorBindingsTest {
     @Test
     void scriptRequest_nullBindings_rejected() {
         assertThatThrownBy(() -> new ScriptRequest(
-                        "js", "1", "test", tools(), Duration.ofSeconds(5),
-                        (Map<String, Object>) null))
+                        "js", "1", "test", tools(), Duration.ofSeconds(5), (Map<String, Object>) null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("bindings");
     }
@@ -137,8 +130,7 @@ class GraaljsScriptExecutorBindingsTest {
     void scriptRequest_legacyConstructor_stillWorks() {
         // 5-arg shape used by existing JavaScriptTool / runFile call
         // sites must still compile and run with no bindings.
-        ScriptRequest req = new ScriptRequest(
-                "js", "21 * 2", "test", tools(), Duration.ofSeconds(5));
+        ScriptRequest req = new ScriptRequest("js", "21 * 2", "test", tools(), Duration.ofSeconds(5));
 
         assertThat(req.bindings()).isEmpty();
         assertThat(req.recipeName()).isNull();
@@ -150,9 +142,7 @@ class GraaljsScriptExecutorBindingsTest {
         // 7-arg form: recipe name propagates through to the script
         // as vance.context.recipe.
         ScriptRequest req = new ScriptRequest(
-                "js", "vance.context.recipe", "test",
-                tools(), Duration.ofSeconds(5), Map.of(),
-                "script-developer");
+                "js", "vance.context.recipe", "test", tools(), Duration.ofSeconds(5), Map.of(), "script-developer");
 
         assertThat(executor.run(req).value()).isEqualTo("script-developer");
     }
@@ -160,9 +150,8 @@ class GraaljsScriptExecutorBindingsTest {
     @Test
     void run_recipeName_omitted_returnsNull() {
         // 6-arg legacy form (no recipe) — script sees null.
-        ScriptRequest req = new ScriptRequest(
-                "js", "vance.context.recipe", "test",
-                tools(), Duration.ofSeconds(5), Map.of());
+        ScriptRequest req =
+                new ScriptRequest("js", "vance.context.recipe", "test", tools(), Duration.ofSeconds(5), Map.of());
 
         assertThat(executor.run(req).value()).isNull();
     }
@@ -179,12 +168,12 @@ class GraaljsScriptExecutorBindingsTest {
                 + " userId: vance.context.userId,"
                 + " recipe: vance.context.recipe"
                 + "})";
-        ScriptRequest req = new ScriptRequest(
-                "js", code, "test",
-                tools(), Duration.ofSeconds(5), Map.of(), "my-recipe");
+        ScriptRequest req =
+                new ScriptRequest("js", code, "test", tools(), Duration.ofSeconds(5), Map.of(), "my-recipe");
 
         Object value = executor.run(req).value();
-        assertThat(value).asString()
+        assertThat(value)
+                .asString()
                 .contains("\"tenantId\":\"acme\"")
                 .contains("\"projectId\":\"proj-1\"")
                 .contains("\"sessionId\":\"sess-1\"")

@@ -177,6 +177,24 @@ class RecipeLoaderTest {
     }
 
     @Test
+    void load_guardBlock_toolTrigger_parses() {
+        stubRecipe("""
+                description: Tool guard
+                engine: eddie
+                guard:
+                  - handler: exec-danger
+                    trigger: tool
+                """);
+
+        ResolvedRecipe recipe = loader.load("acme", "p-1", "analyze").orElseThrow();
+
+        HandlerGuard guard = (HandlerGuard) recipe.guards().get(0);
+        assertThat(guard.trigger()).isEqualTo(GuardPoint.TOOL);
+        assertThat(guard.firesOnTool()).isTrue();
+        assertThat(guard.firesOnCommand()).isFalse();
+    }
+
+    @Test
     void load_promptPrefixUnderParams_isNotAPrompt() {
         // The shape that cost coding.yaml and trillian-worker-void.yaml their
         // entire prompt: indented one level too far, accepted in silence.

@@ -25,7 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -114,8 +113,7 @@ public final class ScriptHarness {
             ContextToolsApi tools = buildRecordingTools();
             Map<String, Object> bindings = new LinkedHashMap<>();
             bindings.put("args", args);
-            ScriptRequest req = new ScriptRequest(
-                    "js", code, sourceName, tools, timeout, bindings);
+            ScriptRequest req = new ScriptRequest("js", code, sourceName, tools, timeout, bindings);
             return executor.run(req);
         } finally {
             scriptLog.detachAppender(logAppender);
@@ -159,8 +157,7 @@ public final class ScriptHarness {
         ToolSource src = mock(ToolSource.class);
         when(src.sourceId()).thenReturn("harness");
         List<Tool> fakes = new ArrayList<>();
-        for (Map.Entry<String, Function<Map<String, Object>, Map<String, Object>>> e
-                : toolMocks.entrySet()) {
+        for (Map.Entry<String, Function<Map<String, Object>, Map<String, Object>>> e : toolMocks.entrySet()) {
             fakes.add(new RecordingTool(e.getKey(), e.getValue(), toolCalls));
         }
         when(src.tools(any())).thenReturn(fakes);
@@ -169,10 +166,12 @@ public final class ScriptHarness {
             return fakes.stream().filter(t -> t.name().equals(name)).findFirst();
         });
         ToolDispatcher dispatcher = new ToolDispatcher(
-                List.of(src), new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
+                List.of(src),
+                new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
-                mock(de.mhus.vance.shared.team.TeamService.class));
+                mock(de.mhus.vance.shared.team.TeamService.class),
+                mock(de.mhus.vance.brain.tools.ToolGuardGate.class));
         // ContextToolsApi's allow-filter set: include every mocked tool
         // by name so vance.tools.call(...) doesn't get filtered out.
         Set<String> allowed = new LinkedHashSet<>(toolMocks.keySet());
@@ -180,8 +179,7 @@ public final class ScriptHarness {
     }
 
     /** One recorded {@code vance.tools.call} invocation. */
-    public record ToolCall(String name, Map<String, Object> params) {
-    }
+    public record ToolCall(String name, Map<String, Object> params) {}
 
     /** A Tool implementation that records the params + delegates to
      *  the test-supplied response function. Returns whatever the
@@ -191,32 +189,41 @@ public final class ScriptHarness {
         private final Function<Map<String, Object>, Map<String, Object>> body;
         private final List<ToolCall> sink;
 
-        RecordingTool(String name,
-                Function<Map<String, Object>, Map<String, Object>> body,
-                List<ToolCall> sink) {
+        RecordingTool(String name, Function<Map<String, Object>, Map<String, Object>> body, List<ToolCall> sink) {
             this.name = name;
             this.body = body;
             this.sink = sink;
         }
 
-        @Override public String name() { return name; }
-        @Override public String description() { return "harness:" + name; }
-        @Override public boolean primary() { return true; }
-        @Override public Map<String, Object> paramsSchema() {
+        @Override
+        public String name() {
+            return name;
+        }
+
+        @Override
+        public String description() {
+            return "harness:" + name;
+        }
+
+        @Override
+        public boolean primary() {
+            return true;
+        }
+
+        @Override
+        public Map<String, Object> paramsSchema() {
             return Map.of("type", "object");
         }
 
         @Override
         public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-            Map<String, Object> captured = params == null
-                    ? Map.of() : Map.copyOf(params);
+            Map<String, Object> captured = params == null ? Map.of() : Map.copyOf(params);
             sink.add(new ToolCall(name, captured));
             try {
                 Map<String, Object> reply = body.apply(captured);
                 return reply == null ? Map.of() : reply;
             } catch (RuntimeException e) {
-                throw new ToolException(
-                        "harness mock for '" + name + "' threw: " + e.getMessage(), e);
+                throw new ToolException("harness mock for '" + name + "' threw: " + e.getMessage(), e);
             }
         }
     }
@@ -228,10 +235,9 @@ public final class ScriptHarness {
         private String code;
         private String sourceName = "harness:<inline>";
         private Map<String, Object> args = Map.of();
-        private ToolInvocationContext scope = new ToolInvocationContext(
-                "acme", "test-proj", "test-sess", "test-proc-" + shortId(), "tester");
-        private final Map<String, Function<Map<String, Object>, Map<String, Object>>> toolMocks
-                = new LinkedHashMap<>();
+        private ToolInvocationContext scope =
+                new ToolInvocationContext("acme", "test-proj", "test-sess", "test-proc-" + shortId(), "tester");
+        private final Map<String, Function<Map<String, Object>, Map<String, Object>>> toolMocks = new LinkedHashMap<>();
         private Duration timeout = Duration.ofSeconds(10);
 
         public Builder script(String inlineCode) {
@@ -266,17 +272,14 @@ public final class ScriptHarness {
          * to a Java Map by the executor) and returns the tool-result.
          * Returning {@code null} is treated as an empty map.
          */
-        public Builder mockTool(
-                String name,
-                Function<Map<String, Object>, Map<String, Object>> response) {
+        public Builder mockTool(String name, Function<Map<String, Object>, Map<String, Object>> response) {
             this.toolMocks.put(name, response);
             return this;
         }
 
         public ScriptHarness build() {
             if (code == null || code.isBlank()) {
-                throw new IllegalStateException(
-                        "ScriptHarness needs either .script(inlineCode) or .scriptFile(path)");
+                throw new IllegalStateException("ScriptHarness needs either .script(inlineCode) or .scriptFile(path)");
             }
             return new ScriptHarness(this);
         }

@@ -78,6 +78,11 @@ public record ScriptGuard(
     }
 
     @Override
+    public boolean firesOnTool() {
+        return trigger.firesOnTool();
+    }
+
+    @Override
     public boolean firesOnNaturalStop() {
         return trigger.firesOnNaturalStop();
     }

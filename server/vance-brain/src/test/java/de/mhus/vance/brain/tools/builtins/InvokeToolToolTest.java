@@ -62,11 +62,13 @@ class InvokeToolToolTest {
         when(src.find(eq("target.tool"), any())).thenReturn(Optional.of(allowedTarget));
         when(src.tools(any())).thenReturn(List.of(invokeTool, gatedTool, allowedTarget));
 
-        dispatcher = new ToolDispatcher(List.of(src),
+        dispatcher = new ToolDispatcher(
+                List.of(src),
                 new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
-                mock(de.mhus.vance.shared.team.TeamService.class));
+                mock(de.mhus.vance.shared.team.TeamService.class),
+                mock(de.mhus.vance.brain.tools.ToolGuardGate.class));
     }
 
     @Test
@@ -74,33 +76,27 @@ class InvokeToolToolTest {
         // Allow-set contains invoke_tool but NOT gated.tool.
         ContextToolsApi api = new ContextToolsApi(dispatcher, CTX, Set.of("invoke_tool"));
 
-        assertThatThrownBy(() -> api.invoke("invoke_tool",
-                Map.of("name", "gated.tool", "params", Map.of())))
+        assertThatThrownBy(() -> api.invoke("invoke_tool", Map.of("name", "gated.tool", "params", Map.of())))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("not available to this engine");
 
         // The gated tool must never have been dispatched.
-        org.mockito.Mockito.verify(gatedTool, org.mockito.Mockito.never())
-                .invoke(any(), any());
-        org.mockito.Mockito.verify(gatedTool, org.mockito.Mockito.never())
-                .invoke(any(), any(), any());
+        org.mockito.Mockito.verify(gatedTool, org.mockito.Mockito.never()).invoke(any(), any());
+        org.mockito.Mockito.verify(gatedTool, org.mockito.Mockito.never()).invoke(any(), any(), any());
     }
 
     @Test
     void invokeTool_dispatchesToolInsideEngineAllowSet() {
-        ContextToolsApi api =
-                new ContextToolsApi(dispatcher, CTX, Set.of("invoke_tool", "target.tool"));
+        ContextToolsApi api = new ContextToolsApi(dispatcher, CTX, Set.of("invoke_tool", "target.tool"));
 
-        Map<String, Object> result = api.invoke("invoke_tool",
-                Map.of("name", "target.tool", "params", Map.of()));
+        Map<String, Object> result = api.invoke("invoke_tool", Map.of("name", "target.tool", "params", Map.of()));
 
         assertThat(result).containsEntry("ran", true);
     }
 
     @Test
     void invokeTool_withoutBus_failsClosed() {
-        assertThatThrownBy(() -> new InvokeToolTool().invoke(
-                Map.of("name", "gated.tool"), CTX))
+        assertThatThrownBy(() -> new InvokeToolTool().invoke(Map.of("name", "gated.tool"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("requires an engine tool surface");
     }
@@ -109,8 +105,7 @@ class InvokeToolToolTest {
     void invokeTool_cannotInvokeItself() {
         ContextToolsApi api = new ContextToolsApi(dispatcher, CTX, Set.of("invoke_tool"));
 
-        assertThatThrownBy(() -> api.invoke("invoke_tool",
-                Map.of("name", "invoke_tool", "params", Map.of())))
+        assertThatThrownBy(() -> api.invoke("invoke_tool", Map.of("name", "invoke_tool", "params", Map.of())))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("cannot invoke itself");
     }

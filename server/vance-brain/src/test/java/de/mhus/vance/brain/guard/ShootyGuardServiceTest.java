@@ -798,6 +798,17 @@ class ShootyGuardServiceTest {
         }
 
         @Override
+        public void onTool(GuardContext ctx) {
+            hook.set("tool");
+            if (denyReason != null) {
+                ctx.deny(denyReason);
+            }
+            if (throwInside) {
+                throw new IllegalStateException("handler boom");
+            }
+        }
+
+        @Override
         public void onStop(GuardContext ctx) {
             hook.set("stop");
             if (continuePrompt != null) {
@@ -932,5 +943,95 @@ class ShootyGuardServiceTest {
         service.evaluate(recipeProcess(), "done", true);
 
         assertThat(seen.get()).isEqualTo("yes");
+    }
+
+    // ─────────────────── TOOL point ───────────────────
+
+    @Test
+    void toolGuard_handlerDeny_failsClosed() {
+        RecordingHandler handler = new RecordingHandler();
+        handler.denyReason = "rm -rf / would wipe the workspace root";
+        when(handlerRegistry.find("recorder")).thenReturn(handler);
+        recipeWith(new HandlerGuard("recorder", Map.of(), null, 2));
+
+        String denial = service.gateTool(recipeProcess(), "exec_run", Map.of("command", "rm -rf /"));
+
+        assertThat(denial).contains("rm -rf / would wipe the workspace root");
+        assertThat(handler.hook.get()).isEqualTo("tool");
+        assertThat(outcomeCount("denied")).isEqualTo(1.0);
+    }
+
+    @Test
+    void toolGuard_narrowedCommandHandler_staysAway() {
+        RecordingHandler handler = new RecordingHandler();
+        when(handlerRegistry.find("recorder")).thenReturn(handler);
+        recipeWith(new HandlerGuard("recorder", Map.of(), GuardPoint.COMMAND, 2));
+
+        assertThat(service.gateTool(recipeProcess(), "exec_run", Map.of("command", "ls")))
+                .isNull();
+        assertThat(handler.hook.get()).isNull();
+    }
+
+    @Test
+    void toolGuard_unknownHandler_failsClosed() {
+        recipeWith(new HandlerGuard("nope", Map.of(), null, 2));
+
+        String denial = service.gateTool(recipeProcess(), "exec_run", Map.of("command", "ls"));
+
+        assertThat(denial).contains("unknown guard handler 'nope'");
+        assertThat(outcomeCount("handler_error")).isEqualTo(1.0);
+    }
+
+    @Test
+    void toolGuard_scriptSeesToolContext() {
+        recipeWith(ScriptGuard.ofBody("vance.guard.tool.name;", false, GuardPoint.TOOL, 1));
+        AtomicReference<ScriptRequest> seen = new AtomicReference<>();
+        when(scriptExecutor.run(any())).thenAnswer(inv -> {
+            seen.set(inv.getArgument(0));
+            return new ScriptResult(null, Duration.ZERO);
+        });
+
+        String denial = service.gateTool(recipeProcess(), "work_exec_run", Map.of("command", "ls -la"));
+
+        assertThat(denial).isNull();
+        assertThat(seen.get().guardApi().point).isEqualTo("tool");
+        assertThat(seen.get().guardApi().tool.get("name")).isEqualTo("work_exec_run");
+        assertThat(seen.get().guardApi().tool.get("args")).isEqualTo(Map.of("command", "ls -la"));
+    }
+
+    @Test
+    void toolGuard_guardOriginatedExec_bypassesTheGate() {
+        // Re-entrancy: an exec call fired from inside a guard run (here: a
+        // START script's Answer re-enters gateTool while the marker is set)
+        // must bypass the TOOL gate — the guard does not judge its own actions.
+        recipeWith(
+                ScriptGuard.ofBody("vance.guard.activateSkill('x');", false, GuardPoint.START, 1),
+                new HandlerGuard("recorder", Map.of(), GuardPoint.TOOL, 1));
+        RecordingHandler handler = new RecordingHandler();
+        handler.denyReason = "nope";
+        when(handlerRegistry.find("recorder")).thenReturn(handler);
+        AtomicReference<String> denial = new AtomicReference<>(null);
+        when(scriptExecutor.run(any())).thenAnswer(inv -> {
+            ScriptRequest req = inv.getArgument(0);
+            if ("start".equals(req.guardApi().point)) {
+                denial.set(service.gateTool(recipeProcess(), "exec_run", Map.of("command", "ls")));
+            }
+            return new ScriptResult(null, Duration.ZERO);
+        });
+        SteerMessage userMsg = new SteerMessage.UserChatInput(Instant.now(), null, "alice", "hi");
+
+        service.runStartGuards(recipeProcess(), List.of(userMsg));
+
+        // The TOOL handler would deny — but the exec call originated from a
+        // guard run, so the gate must have let it through (null = proceed).
+        assertThat(denial.get()).isNull();
+    }
+
+    @Test
+    void toolGuard_noToolGuards_proceed() {
+        // Only the runtime STOP override exists — the exec call passes.
+        assertThat(service.gateTool(guarded(0), "exec_run", Map.of("command", "ls")))
+                .isNull();
+        verify(scriptExecutor, never()).run(any());
     }
 }

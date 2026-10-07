@@ -1,9 +1,5 @@
 package de.mhus.vance.brain.tools;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.toolpack.ToolException;
-
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.api.tools.ToolSpec;
@@ -15,6 +11,9 @@ import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -46,6 +45,12 @@ public class ToolDispatcher {
     private final AgrajagChecker agrajagChecker;
     private final ToolHealthService toolHealthService;
     private final TeamService teamService;
+    /**
+     * Shooty TOOL-point gate (shooty.md §2.4) — gates exec-run tool calls
+     * before they execute. Chain is {@code ObjectProvider}-backed (see
+     * {@link ToolGuardGate}) to stay cycle-free.
+     */
+    private final ToolGuardGate toolGuardGate;
 
     /**
      * Short-TTL cache of a user's team names, keyed by {@code tenant\0user}.
@@ -61,7 +66,8 @@ public class ToolDispatcher {
 
     @jakarta.annotation.PostConstruct
     public void postConstruct() {
-        log.info("ToolDispatcher sources: {}",
+        log.info(
+                "ToolDispatcher sources: {}",
                 sources.stream().map(ToolSource::sourceId).toList());
     }
 
@@ -97,8 +103,7 @@ public class ToolDispatcher {
      * a caller-visible message. Anything else thrown by the tool is
      * wrapped so the caller always sees a {@code ToolException}.
      */
-    public Map<String, Object> invoke(
-            String name, Map<String, Object> params, ToolInvocationContext ctx) {
+    public Map<String, Object> invoke(String name, Map<String, Object> params, ToolInvocationContext ctx) {
         return invoke(name, params, ctx, null);
     }
 
@@ -109,28 +114,33 @@ public class ToolDispatcher {
      * no surface should be exposed.
      */
     public Map<String, Object> invoke(
-            String name,
-            Map<String, Object> params,
-            ToolInvocationContext ctx,
-            @Nullable ContextToolsApi tools) {
-        Resolved r = resolve(name, ctx).orElseThrow(
-                () -> new ToolException("Unknown tool: " + name));
+            String name, Map<String, Object> params, ToolInvocationContext ctx, @Nullable ContextToolsApi tools) {
+        Resolved r = resolve(name, ctx).orElseThrow(() -> new ToolException("Unknown tool: " + name));
+        // Shooty TOOL point (shooty.md §2.4): exec-run calls are gated
+        // before anything executes; a denial is a hard, caller-visible
+        // tool error the model can react to.
+        String guardDenial = toolGuardGate.gate(name, params, ctx);
+        if (guardDenial != null) {
+            throw new ToolException("Tool '" + name + "' denied by guard: " + guardDenial);
+        }
         permissionService.enforce(securityContextOf(ctx), resourceOf(ctx), Action.EXECUTE);
         try {
-            Map<String, Object> result = tools == null
-                    ? r.tool().invoke(params, ctx)
-                    : r.tool().invoke(params, ctx, tools);
+            Map<String, Object> result =
+                    tools == null ? r.tool().invoke(params, ctx) : r.tool().invoke(params, ctx, tools);
             // Auto-clear any health entry / cooldowns this caller may have
             // triggered earlier — the tool just proved it works.
             noteSuccess(name, ctx);
             return result;
         } catch (ToolException e) {
-            log.warn("Tool '{}' raised ToolException tenant='{}' project='{}' session='{}' process='{}': {}",
-                    name, ctx == null ? null : ctx.tenantId(),
+            log.warn(
+                    "Tool '{}' raised ToolException tenant='{}' project='{}' session='{}' process='{}': {}",
+                    name,
+                    ctx == null ? null : ctx.tenantId(),
                     ctx == null ? null : ctx.projectId(),
                     ctx == null ? null : ctx.sessionId(),
                     ctx == null ? null : ctx.processId(),
-                    e.getMessage(), e);
+                    e.getMessage(),
+                    e);
             triage(name, e, ctx);
             throw withHint(r.tool(), e);
         } catch (de.mhus.vance.shared.document.DocumentService.DocumentLockedException e) {
@@ -150,22 +160,26 @@ public class ToolDispatcher {
                     + " (full set: [" + lockedFor + "]). Ask the user to unlock "
                     + "via the document properties panel, or call doc_lock_remove "
                     + "if you have a clear reason.";
-            log.info("Tool '{}' rejected by document lock blocked={} lockedFor={}",
-                    name, e.getBlockedRole(), e.getLockedFor());
+            log.info(
+                    "Tool '{}' rejected by document lock blocked={} lockedFor={}",
+                    name,
+                    e.getBlockedRole(),
+                    e.getLockedFor());
             ToolException te = new ToolException(msg, e);
             triage(name, te, ctx);
             throw withHint(r.tool(), te);
         } catch (RuntimeException e) {
-            log.warn("Tool '{}' raised RuntimeException tenant='{}' project='{}' session='{}' process='{}': {}",
-                    name, ctx == null ? null : ctx.tenantId(),
+            log.warn(
+                    "Tool '{}' raised RuntimeException tenant='{}' project='{}' session='{}' process='{}': {}",
+                    name,
+                    ctx == null ? null : ctx.tenantId(),
                     ctx == null ? null : ctx.projectId(),
                     ctx == null ? null : ctx.sessionId(),
                     ctx == null ? null : ctx.processId(),
-                    e.toString(), e);
+                    e.toString(),
+                    e);
             triage(name, e, ctx);
-            throw withHint(r.tool(),
-                    new ToolException(
-                            "Tool '" + name + "' failed: " + e.getMessage(), e));
+            throw withHint(r.tool(), new ToolException("Tool '" + name + "' failed: " + e.getMessage(), e));
         }
     }
 
@@ -183,8 +197,7 @@ public class ToolDispatcher {
      * {@link ToolErrorPayload}. A {@code null}/blank hint is a no-op —
      * the original exception passes through verbatim.
      */
-    private static ToolException withHint(
-            de.mhus.vance.toolpack.Tool tool, ToolException original) {
+    private static ToolException withHint(de.mhus.vance.toolpack.Tool tool, ToolException original) {
         String hint = tool.troubleshootingHint();
         if (hint == null || hint.isBlank()) return original;
         if (original.getHint() != null) return original;
@@ -203,20 +216,16 @@ public class ToolDispatcher {
         try {
             agrajagChecker.handle(name, error, ctx);
         } catch (RuntimeException secondary) {
-            log.warn("AgrajagChecker raised during triage of tool='{}': {}",
-                    name, secondary.toString());
+            log.warn("AgrajagChecker raised during triage of tool='{}': {}", name, secondary.toString());
         }
     }
 
     /** Auto-clear matching cooldowns + flip DOWN→OK on successful calls. */
     private void noteSuccess(String name, ToolInvocationContext ctx) {
         try {
-            toolHealthService.noteSuccessfulCall(
-                    ctx.tenantId(), ctx.sessionId(), ctx.userId(),
-                    ctx.projectId(), name);
+            toolHealthService.noteSuccessfulCall(ctx.tenantId(), ctx.sessionId(), ctx.userId(), ctx.projectId(), name);
         } catch (RuntimeException secondary) {
-            log.warn("ToolHealth auto-clear failed for tool='{}': {}",
-                    name, secondary.toString());
+            log.warn("ToolHealth auto-clear failed for tool='{}': {}", name, secondary.toString());
         }
     }
 
@@ -235,8 +244,7 @@ public class ToolDispatcher {
         if (ctx.userId() == null || ctx.userId().isBlank()) {
             return SecurityContext.SYSTEM;
         }
-        return SecurityContext.user(ctx.userId(), ctx.tenantId(),
-                teamsOf(ctx.tenantId(), ctx.userId()));
+        return SecurityContext.user(ctx.userId(), ctx.tenantId(), teamsOf(ctx.tenantId(), ctx.userId()));
     }
 
     private List<String> teamsOf(String tenantId, String userId) {
@@ -259,8 +267,7 @@ public class ToolDispatcher {
      */
     private static Resource resourceOf(ToolInvocationContext ctx) {
         if (ctx.processId() != null && ctx.sessionId() != null && ctx.projectId() != null) {
-            return new Resource.ThinkProcess(
-                    ctx.tenantId(), ctx.projectId(), ctx.sessionId(), ctx.processId());
+            return new Resource.ThinkProcess(ctx.tenantId(), ctx.projectId(), ctx.sessionId(), ctx.processId());
         }
         if (ctx.sessionId() != null && ctx.projectId() != null) {
             return new Resource.Session(ctx.tenantId(), ctx.projectId(), ctx.sessionId());

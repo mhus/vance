@@ -71,8 +71,7 @@ class ScriptedToolFactoryTest {
 
     @Test
     void create_missingSourceAndPath_rejected() {
-        ServerToolDocument doc = serverTool("add", Map.of(
-                "inputs", List.of(numberInput("a"))));
+        ServerToolDocument doc = serverTool("add", Map.of("inputs", List.of(numberInput("a"))));
 
         assertThatThrownBy(() -> factory.create(doc))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -82,10 +81,12 @@ class ScriptedToolFactoryTest {
 
     @Test
     void create_bothSourceAndPath_rejected() {
-        ServerToolDocument doc = serverTool("add", Map.of(
-                "inputs", List.of(numberInput("a")),
-                "source", "a",
-                "scriptPath", "scripts/foo.js"));
+        ServerToolDocument doc = serverTool(
+                "add",
+                Map.of(
+                        "inputs", List.of(numberInput("a")),
+                        "source", "a",
+                        "scriptPath", "scripts/foo.js"));
 
         assertThatThrownBy(() -> factory.create(doc))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -95,10 +96,12 @@ class ScriptedToolFactoryTest {
 
     @Test
     void create_unknownEngine_rejected() {
-        ServerToolDocument doc = serverTool("add", Map.of(
-                "engine", "python",
-                "inputs", List.of(numberInput("a")),
-                "source", "a"));
+        ServerToolDocument doc = serverTool(
+                "add",
+                Map.of(
+                        "engine", "python",
+                        "inputs", List.of(numberInput("a")),
+                        "source", "a"));
 
         assertThatThrownBy(() -> factory.create(doc))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -117,9 +120,7 @@ class ScriptedToolFactoryTest {
 
     @Test
     void create_inputWithoutName_rejected() {
-        ServerToolDocument doc = serverTool("add", Map.of(
-                "inputs", List.of(Map.of("type", "number")),
-                "source", "1"));
+        ServerToolDocument doc = serverTool("add", Map.of("inputs", List.of(Map.of("type", "number")), "source", "1"));
 
         assertThatThrownBy(() -> factory.create(doc))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -128,9 +129,8 @@ class ScriptedToolFactoryTest {
 
     @Test
     void create_inputWithUnknownType_rejected() {
-        ServerToolDocument doc = serverTool("add", Map.of(
-                "inputs", List.of(Map.of("name", "a", "type", "bigdecimal")),
-                "source", "a"));
+        ServerToolDocument doc =
+                serverTool("add", Map.of("inputs", List.of(Map.of("name", "a", "type", "bigdecimal")), "source", "a"));
 
         assertThatThrownBy(() -> factory.create(doc))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -139,9 +139,8 @@ class ScriptedToolFactoryTest {
 
     @Test
     void create_duplicateInputNames_rejected() {
-        ServerToolDocument doc = serverTool("add", Map.of(
-                "inputs", List.of(numberInput("a"), numberInput("a")),
-                "source", "a"));
+        ServerToolDocument doc =
+                serverTool("add", Map.of("inputs", List.of(numberInput("a"), numberInput("a")), "source", "a"));
 
         assertThatThrownBy(() -> factory.create(doc))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -150,9 +149,8 @@ class ScriptedToolFactoryTest {
 
     @Test
     void create_reservedInputNameVance_rejected() {
-        ServerToolDocument doc = serverTool("add", Map.of(
-                "inputs", List.of(Map.of("name", "vance", "type", "string")),
-                "source", "vance"));
+        ServerToolDocument doc = serverTool(
+                "add", Map.of("inputs", List.of(Map.of("name", "vance", "type", "string")), "source", "vance"));
 
         assertThatThrownBy(() -> factory.create(doc))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -164,11 +162,15 @@ class ScriptedToolFactoryTest {
 
     @Test
     void create_paramsSchemaReflectsInputs() {
-        ServerToolDocument doc = serverTool("add", Map.of(
-                "inputs", List.of(
-                        Map.of("name", "a", "type", "number", "description", "first"),
-                        Map.of("name", "b", "type", "number", "required", false)),
-                "source", "a + (b || 0)"));
+        ServerToolDocument doc = serverTool(
+                "add",
+                Map.of(
+                        "inputs",
+                        List.of(
+                                Map.of("name", "a", "type", "number", "description", "first"),
+                                Map.of("name", "b", "type", "number", "required", false)),
+                        "source",
+                        "a + (b || 0)"));
 
         Tool tool = single(factory.create(doc));
         Map<String, Object> schema = tool.paramsSchema();
@@ -188,9 +190,7 @@ class ScriptedToolFactoryTest {
 
     @Test
     void create_emptyInputs_schemaHasNoRequired() {
-        ServerToolDocument doc = serverTool("now", Map.of(
-                "inputs", List.of(),
-                "source", "Date.now()"));
+        ServerToolDocument doc = serverTool("now", Map.of("inputs", List.of(), "source", "Date.now()"));
 
         Tool tool = single(factory.create(doc));
         Map<String, Object> schema = tool.paramsSchema();
@@ -205,15 +205,11 @@ class ScriptedToolFactoryTest {
 
     @Test
     void invoke_inlineSource_bindsInputsAndReturnsValue() {
-        ServerToolDocument doc = serverTool("add", Map.of(
-                "inputs", List.of(numberInput("a"), numberInput("b")),
-                "source", "a + b"));
+        ServerToolDocument doc =
+                serverTool("add", Map.of("inputs", List.of(numberInput("a"), numberInput("b")), "source", "a + b"));
         Tool tool = single(factory.create(doc));
 
-        Map<String, Object> result = tool.invoke(
-                Map.of("a", 5, "b", 7),
-                ctx(),
-                tools());
+        Map<String, Object> result = tool.invoke(Map.of("a", 5, "b", 7), ctx(), tools());
 
         assertThat(result).containsEntry("value", 12L);
         assertThat(result).containsKey("durationMs");
@@ -221,9 +217,7 @@ class ScriptedToolFactoryTest {
 
     @Test
     void invoke_missingRequiredInput_throwsToolException() {
-        ServerToolDocument doc = serverTool("add", Map.of(
-                "inputs", List.of(numberInput("a")),
-                "source", "a"));
+        ServerToolDocument doc = serverTool("add", Map.of("inputs", List.of(numberInput("a")), "source", "a"));
         Tool tool = single(factory.create(doc));
 
         assertThatThrownBy(() -> tool.invoke(Map.of(), ctx(), tools()))
@@ -233,10 +227,13 @@ class ScriptedToolFactoryTest {
 
     @Test
     void invoke_optionalInputAbsent_passesNullBinding() {
-        ServerToolDocument doc = serverTool("greet", Map.of(
-                "inputs", List.of(Map.of(
-                        "name", "name", "type", "string", "required", false)),
-                "source", "name == null ? 'anon' : name"));
+        ServerToolDocument doc = serverTool(
+                "greet",
+                Map.of(
+                        "inputs",
+                        List.of(Map.of("name", "name", "type", "string", "required", false)),
+                        "source",
+                        "name == null ? 'anon' : name"));
         Tool tool = single(factory.create(doc));
 
         Map<String, Object> result = tool.invoke(Map.of(), ctx(), tools());
@@ -246,9 +243,7 @@ class ScriptedToolFactoryTest {
 
     @Test
     void invoke_scriptRaisesError_returnsErrorMap() {
-        ServerToolDocument doc = serverTool("boom", Map.of(
-                "inputs", List.of(),
-                "source", "throw new Error('kaboom')"));
+        ServerToolDocument doc = serverTool("boom", Map.of("inputs", List.of(), "source", "throw new Error('kaboom')"));
         Tool tool = single(factory.create(doc));
 
         Map<String, Object> result = tool.invoke(Map.of(), ctx(), tools());
@@ -259,16 +254,12 @@ class ScriptedToolFactoryTest {
 
     @Test
     void invoke_scriptPath_loadsViaCascadeAndExecutes() {
-        ServerToolDocument doc = serverTool("doubler", Map.of(
-                "inputs", List.of(numberInput("x")),
-                "scriptPath", "scripts/doubler.js"));
+        ServerToolDocument doc =
+                serverTool("doubler", Map.of("inputs", List.of(numberInput("x")), "scriptPath", "scripts/doubler.js"));
 
         when(documentService.lookupCascade(eq("acme"), eq("proj-1"), eq("scripts/doubler.js")))
-                .thenReturn(Optional.of(new LookupResult(
-                        "scripts/doubler.js",
-                        "x * 2",
-                        LookupResult.Source.PROJECT,
-                        null)));
+                .thenReturn(Optional.of(
+                        new LookupResult("scripts/doubler.js", "x * 2", LookupResult.Source.PROJECT, null)));
 
         Tool tool = single(factory.create(doc));
         Map<String, Object> result = tool.invoke(Map.of("x", 21), ctx(), tools());
@@ -278,12 +269,9 @@ class ScriptedToolFactoryTest {
 
     @Test
     void invoke_scriptPathNotFound_throwsToolException() {
-        ServerToolDocument doc = serverTool("missing", Map.of(
-                "inputs", List.of(),
-                "scriptPath", "scripts/missing.js"));
+        ServerToolDocument doc = serverTool("missing", Map.of("inputs", List.of(), "scriptPath", "scripts/missing.js"));
 
-        when(documentService.lookupCascade(any(), any(), any()))
-                .thenReturn(Optional.empty());
+        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.empty());
 
         Tool tool = single(factory.create(doc));
 
@@ -325,10 +313,12 @@ class ScriptedToolFactoryTest {
         when(src.tools(any())).thenReturn(List.<Tool>of());
         when(src.find(any(), any())).thenReturn(Optional.empty());
         ToolDispatcher dispatcher = new ToolDispatcher(
-                List.of(src), new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
+                List.of(src),
+                new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
-                mock(de.mhus.vance.shared.team.TeamService.class));
+                mock(de.mhus.vance.shared.team.TeamService.class),
+                mock(de.mhus.vance.brain.tools.ToolGuardGate.class));
         return new ContextToolsApi(dispatcher, ctx(), Set.of());
     }
 }

@@ -366,9 +366,10 @@ public class RecipeLoader {
             case "both" -> GuardPoint.BOTH;
             case "start" -> GuardPoint.START;
             case "command", "exec" -> GuardPoint.COMMAND;
+            case "tool" -> GuardPoint.TOOL;
             default ->
                 throw new IllegalStateException("unknown guard[" + idx + "].trigger '" + s + "' "
-                        + "(start | command | stop | terminate | both)");
+                        + "(start | command | tool | stop | terminate | both)");
         };
     }
 

@@ -10,6 +10,7 @@ import de.mhus.vance.brain.command.EngineCommandResult;
 import de.mhus.vance.brain.guard.handler.GuardContext;
 import de.mhus.vance.brain.guard.handler.GuardHandler;
 import de.mhus.vance.brain.guard.handler.GuardHandlerRegistry;
+import de.mhus.vance.brain.guard.handler.GuardToolCall;
 import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.progress.ProgressEmitter;
@@ -89,6 +90,10 @@ import org.springframework.stereotype.Service;
  *       runs (fail-<b>closed</b>, hard: a denied or failing script fails
  *       the command with {@link EngineCommandResult#guardDenied}, and the
  *       skill command runner aborts the remaining sequence).</li>
+ *   <li><b>TOOL</b> — gates exec-run tool calls ({@code exec_run} and its
+ *       {@code work_}/{@code client_} backends) before they execute
+ *       (fail-<b>closed</b>, hard: a denial or a failing guard fails the
+ *       call with a caller-visible tool error).</li>
  * </ul>
  *
  * <p>A guard is either a <b>script</b> (JS, user-authored, project-specific,
@@ -271,6 +276,7 @@ public class ShootyGuardService {
                 finalOutput,
                 naturalStop,
                 null,
+                null,
                 host);
         if (fired.get()) {
             metrics.counter(METRIC, "outcome", "fired").increment();
@@ -395,7 +401,7 @@ public class ShootyGuardService {
                 }
             };
             try {
-                runGuard(process, guard, GuardPoint.START, userText, null, /*naturalStop*/ true, null, host);
+                runGuard(process, guard, GuardPoint.START, userText, null, /*naturalStop*/ true, null, null, host);
             } catch (GuardScriptFailure e) {
                 anyError = true;
                 log.warn(
@@ -487,7 +493,7 @@ public class ShootyGuardService {
                 }
             };
             try {
-                runGuard(process, guard, GuardPoint.COMMAND, null, null, /*naturalStop*/ false, command, host);
+                runGuard(process, guard, GuardPoint.COMMAND, null, null, /*naturalStop*/ false, command, null, host);
             } catch (GuardScriptFailure e) {
                 log.warn(
                         "Guard id='{}' command guard failed (verb='{}', {}) — fail-closed, command denied: {}",
@@ -513,6 +519,82 @@ public class ShootyGuardService {
     }
 
     /**
+     * The TOOL point: gates an exec-run tool call ({@code exec_run}
+     * or a {@code work_}/{@code client_} backend) before it executes.
+     * Returns {@code null} when the call may proceed; a non-null value
+     * is the caller-visible denial reason (the dispatcher turns it into
+     * a hard tool error the model sees).
+     *
+     * <p>Fail-closed like COMMAND: a guard that denies (via
+     * {@code vance.guard.deny} / {@code GuardContext.deny}), errors or
+     * is missing fails the call. No round cap — the point fires once per
+     * tool call; the backstop is the script timeout.
+     *
+     * <p>Re-entrancy: skipped when {@link #inGuardRun()} — a guard does
+     * not judge its own actions (exec calls an {@code allowTools} guard
+     * script makes, tool calls a handler fires).
+     */
+    public @Nullable String gateTool(ThinkProcessDocument process, String toolName, Map<String, Object> args) {
+        if (inGuardRun()) {
+            return null;
+        }
+        boolean any = false;
+        for (GuardConfig guard : resolveGuards(process)) {
+            if (!guard.firesOnTool()) {
+                continue;
+            }
+            any = true;
+            AtomicReference<String> denied = new AtomicReference<>(null);
+            GuardToolCall call = new GuardToolCall(toolName, args);
+            GuardScriptHost host = new GuardScriptHost() {
+                @Override
+                public boolean continueWith(String prompt) {
+                    throw unavailable("continueWith", "tool");
+                }
+
+                @Override
+                public boolean deny(String reason) {
+                    denied.compareAndSet(null, reason);
+                    log.info("Guard denied tool id='{}' tool='{}' reason='{}'", process.getId(), toolName, reason);
+                    return true;
+                }
+
+                @Override
+                public boolean activateSkill(String skillName, @Nullable String skillArgs) {
+                    return ShootyGuardService.this.activateSkill(process, skillName, skillArgs);
+                }
+
+                @Override
+                public void setTurnPrompt(String text) {
+                    throw unavailable("setTurnPrompt", "tool");
+                }
+            };
+            try {
+                runGuard(process, guard, GuardPoint.TOOL, null, null, /*naturalStop*/ false, null, call, host);
+            } catch (GuardScriptFailure e) {
+                log.warn(
+                        "Guard id='{}' tool guard failed (tool='{}', {}) — fail-closed, tool call denied: {}",
+                        process.getId(),
+                        toolName,
+                        e.failureClass(),
+                        e.getMessage());
+                metrics.counter(METRIC, "outcome", e.outcome()).increment();
+                return "Guard failed (fail-closed): " + e.getMessage();
+            }
+            String reason = denied.get();
+            if (reason != null) {
+                metrics.counter(METRIC, "outcome", "denied").increment();
+                return reason;
+            }
+        }
+        if (any) {
+            log.trace("Guard tool id='{}' tool='{}' — all applicable guards passed", process.getId(), toolName);
+            metrics.counter(METRIC, "outcome", "passed").increment();
+        }
+        return null;
+    }
+
+    /**
      * The turn-prompt replacement a START guard set for this process's
      * current turn, or {@code null} when the prompt is not manipulated
      * (the default). Read by {@link GuardTurnContextHandler} before each
@@ -527,6 +609,14 @@ public class ShootyGuardService {
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put("name", command.name());
         ctx.put("args", command.args());
+        return ctx;
+    }
+
+    /** The {@code vance.guard.tool} context: {@code {name, args}}. */
+    private static Map<String, Object> toolContext(GuardToolCall call) {
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put("name", call.name());
+        ctx.put("args", call.args());
         return ctx;
     }
 
@@ -587,12 +677,13 @@ public class ShootyGuardService {
             @Nullable String finalOutput,
             boolean naturalStop,
             @Nullable EngineCommand command,
+            @Nullable GuardToolCall tool,
             GuardScriptHost host)
             throws GuardScriptFailure {
         if (guard instanceof ScriptGuard script) {
-            runGuardScript(process, script, point, task, finalOutput, naturalStop, command, host);
+            runGuardScript(process, script, point, task, finalOutput, naturalStop, command, tool, host);
         } else if (guard instanceof HandlerGuard handlerGuard) {
-            runGuardHandler(process, handlerGuard, point, task, finalOutput, naturalStop, command, host);
+            runGuardHandler(process, handlerGuard, point, task, finalOutput, naturalStop, command, tool, host);
         } else {
             throw new IllegalStateException(
                     "Unknown GuardConfig shape: " + guard.getClass().getName());
@@ -619,6 +710,7 @@ public class ShootyGuardService {
             @Nullable String finalOutput,
             boolean naturalStop,
             @Nullable EngineCommand command,
+            @Nullable GuardToolCall tool,
             GuardScriptHost host)
             throws GuardScriptFailure {
         String code = loadScript(process, guard);
@@ -635,6 +727,7 @@ public class ShootyGuardService {
                 naturalStop,
                 point.name().toLowerCase(Locale.ROOT),
                 command == null ? null : commandContext(command),
+                tool == null ? null : toolContext(tool),
                 new ScriptGuardScratchApi(loopStore(process)),
                 new ScriptGuardScratchApi(sessionStore(process)),
                 host);
@@ -682,6 +775,7 @@ public class ShootyGuardService {
             @Nullable String finalOutput,
             boolean naturalStop,
             @Nullable EngineCommand command,
+            @Nullable GuardToolCall tool,
             GuardScriptHost host)
             throws GuardScriptFailure {
         if (point == GuardPoint.BOTH) {
@@ -704,6 +798,7 @@ public class ShootyGuardService {
                 guard.maxRounds(),
                 naturalStop,
                 command,
+                tool,
                 guard.params(),
                 loopStore(process),
                 sessionStore(process),
@@ -713,6 +808,7 @@ public class ShootyGuardService {
             switch (point) {
                 case START -> handler.onStart(ctx);
                 case COMMAND -> handler.onCommand(ctx);
+                case TOOL -> handler.onTool(ctx);
                 case STOP -> handler.onStop(ctx);
                 case TERMINATE -> handler.onTerminate(ctx);
                 default -> throw new IllegalStateException("Not a runtime point: " + point);

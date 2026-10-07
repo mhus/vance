@@ -63,8 +63,8 @@ class GraaljsScriptExecutorRequireTest {
 
     @Test
     void require_resolvesPackage_fromWorkspaceNodeModules(@TempDir Path tmp) throws IOException {
-        Path workspaceRoot = installFakePackage(tmp, "greeter",
-                "module.exports = { hi: function(name) { return 'hi ' + name; } };");
+        Path workspaceRoot =
+                installFakePackage(tmp, "greeter", "module.exports = { hi: function(name) { return 'hi ' + name; } };");
         ScriptExecutor executor = newExecutor(workspaceRoot, true);
 
         String code = """
@@ -77,16 +77,14 @@ class GraaljsScriptExecutorRequireTest {
                     return g.hi('alice');
                 })();
                 """;
-        ScriptRequest req = new ScriptRequest(
-                "js", code, "require-test", tools(workspaceRoot), Duration.ofSeconds(10));
+        ScriptRequest req = new ScriptRequest("js", code, "require-test", tools(workspaceRoot), Duration.ofSeconds(10));
 
         assertThat(executor.run(req).value()).isEqualTo("hi alice");
     }
 
     @Test
     void require_missingPackage_failsFastWithCapabilityError(@TempDir Path tmp) throws IOException {
-        Path workspaceRoot = installFakePackage(tmp, "greeter",
-                "module.exports = {};");
+        Path workspaceRoot = installFakePackage(tmp, "greeter", "module.exports = {};");
         ScriptExecutor executor = newExecutor(workspaceRoot, true);
 
         // @requires names a package that is NOT installed.
@@ -97,8 +95,7 @@ class GraaljsScriptExecutorRequireTest {
                  */
                 (function () { return 1; })();
                 """;
-        ScriptRequest req = new ScriptRequest(
-                "js", code, "require-test", tools(workspaceRoot), Duration.ofSeconds(10));
+        ScriptRequest req = new ScriptRequest("js", code, "require-test", tools(workspaceRoot), Duration.ofSeconds(10));
 
         assertThatThrownBy(() -> executor.run(req))
                 .isInstanceOf(ScriptExecutionException.class)
@@ -106,10 +103,8 @@ class GraaljsScriptExecutorRequireTest {
     }
 
     @Test
-    void workspaceRoot_whenRequireDisabled_failsFastWithCapabilityError(
-            @TempDir Path tmp) throws IOException {
-        Path workspaceRoot = installFakePackage(tmp, "anything",
-                "module.exports = 1;");
+    void workspaceRoot_whenRequireDisabled_failsFastWithCapabilityError(@TempDir Path tmp) throws IOException {
+        Path workspaceRoot = installFakePackage(tmp, "anything", "module.exports = 1;");
         ScriptExecutor executor = newExecutor(workspaceRoot, false);
 
         String code = """
@@ -118,8 +113,8 @@ class GraaljsScriptExecutorRequireTest {
                  */
                 (function () { return 1; })();
                 """;
-        ScriptRequest req = new ScriptRequest(
-                "js", code, "disabled-test", tools(workspaceRoot), Duration.ofSeconds(10));
+        ScriptRequest req =
+                new ScriptRequest("js", code, "disabled-test", tools(workspaceRoot), Duration.ofSeconds(10));
 
         assertThatThrownBy(() -> executor.run(req))
                 .isInstanceOf(ScriptExecutionException.class)
@@ -131,13 +126,11 @@ class GraaljsScriptExecutorRequireTest {
         // No @workspaceRoot, no @requires — feature toggle is on but
         // the script doesn't ask for require, so the executor falls
         // through to the IOAccess.NONE path. require is undefined.
-        Path workspaceRoot = installFakePackage(tmp, "greeter",
-                "module.exports = {};");
+        Path workspaceRoot = installFakePackage(tmp, "greeter", "module.exports = {};");
         ScriptExecutor executor = newExecutor(workspaceRoot, true);
 
         String code = "(function () { return typeof require; })();";
-        ScriptRequest req = new ScriptRequest(
-                "js", code, "no-require", tools(workspaceRoot), Duration.ofSeconds(10));
+        ScriptRequest req = new ScriptRequest("js", code, "no-require", tools(workspaceRoot), Duration.ofSeconds(10));
 
         assertThat(executor.run(req).value()).isEqualTo("undefined");
     }
@@ -145,12 +138,12 @@ class GraaljsScriptExecutorRequireTest {
     // ──────────────────── helpers ────────────────────
 
     /** Lays out tmp/<workspace>/node_modules/<pkg>/{package.json,index.js}. */
-    private static Path installFakePackage(Path tmp, String pkg, String indexJsBody)
-            throws IOException {
+    private static Path installFakePackage(Path tmp, String pkg, String indexJsBody) throws IOException {
         Path workspace = tmp.resolve("_jsengine");
         Path pkgDir = workspace.resolve("node_modules").resolve(pkg);
         Files.createDirectories(pkgDir);
-        Files.writeString(pkgDir.resolve("package.json"),
+        Files.writeString(
+                pkgDir.resolve("package.json"),
                 "{\"name\":\"" + pkg + "\",\"version\":\"1.0.0\",\"main\":\"index.js\"}",
                 StandardCharsets.UTF_8);
         Files.writeString(pkgDir.resolve("index.js"), indexJsBody, StandardCharsets.UTF_8);
@@ -189,12 +182,13 @@ class GraaljsScriptExecutorRequireTest {
         when(src.tools(any())).thenReturn(List.<Tool>of());
         when(src.find(any(), any())).thenReturn(Optional.empty());
         ToolDispatcher dispatcher = new ToolDispatcher(
-                List.of(src), new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
+                List.of(src),
+                new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
-                mock(de.mhus.vance.shared.team.TeamService.class));
-        ToolInvocationContext ctx = new ToolInvocationContext(
-                "acme", "proj-1", "sess-1", "proc-1", null);
+                mock(de.mhus.vance.shared.team.TeamService.class),
+                mock(de.mhus.vance.brain.tools.ToolGuardGate.class));
+        ToolInvocationContext ctx = new ToolInvocationContext("acme", "proj-1", "sess-1", "proc-1", null);
         return new ContextToolsApi(dispatcher, ctx, Set.of());
     }
 }

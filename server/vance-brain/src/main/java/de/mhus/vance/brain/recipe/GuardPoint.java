@@ -5,7 +5,8 @@ package de.mhus.vance.brain.recipe;
  * trigger model. {@code STOP}/{@code TERMINATE} are the classic completion
  * yield points (engine produced its output / explicit terminate);
  * {@code START} fires once per genuine user turn, {@code COMMAND} gates
- * engine-command dispatch. See {@code planning/shooty.md} §2.
+ * engine-command dispatch, {@code TOOL} gates exec-run tool calls before
+ * they execute. See {@code specification/public/shooty.md} §2.
  */
 public enum GuardPoint {
 
@@ -20,6 +21,14 @@ public enum GuardPoint {
 
     /** Fire on an explicit terminate (e.g. Frankie's {@code _terminate}). */
     TERMINATE,
+
+    /**
+     * Gate an exec-run tool call ({@code exec_run} and its
+     * {@code work_}/{@code client_} backends) before it executes —
+     * fail-closed like COMMAND. The v3.2 scope is exec-run only;
+     * other tool families may join later.
+     */
+    TOOL,
 
     /** Fire on either stop or terminate (legacy alias for the yield pair). */
     BOTH;
@@ -38,5 +47,9 @@ public enum GuardPoint {
 
     public boolean firesOnCommand() {
         return this == COMMAND;
+    }
+
+    public boolean firesOnTool() {
+        return this == TOOL;
     }
 }

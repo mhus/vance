@@ -57,10 +57,10 @@ class ScriptWorkflowSurfaceJsTest {
                 new PermissionService(List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
-                mock(de.mhus.vance.shared.team.TeamService.class));
-        return new ContextToolsApi(dispatcher,
-                new ToolInvocationContext("acme", "proj-1", "sess-1", "proc-1", "alice"),
-                Set.of());
+                mock(de.mhus.vance.shared.team.TeamService.class),
+                mock(de.mhus.vance.brain.tools.ToolGuardGate.class));
+        return new ContextToolsApi(
+                dispatcher, new ToolInvocationContext("acme", "proj-1", "sess-1", "proc-1", "alice"), Set.of());
     }
 
     private static ScriptRequest request(String code) {
@@ -68,8 +68,8 @@ class ScriptWorkflowSurfaceJsTest {
     }
 
     private static ScriptWorkflowRun run() {
-        return new ScriptWorkflowRun("run-7", "release", "build", "task-3", "mara",
-                Map.of("version", "1.0.0"), Map.of("sha", "abc"));
+        return new ScriptWorkflowRun(
+                "run-7", "release", "build", "task-3", "mara", Map.of("version", "1.0.0"), Map.of("sha", "abc"));
     }
 
     @Test
@@ -80,8 +80,7 @@ class ScriptWorkflowSurfaceJsTest {
 
     @Test
     void current_readsAsAPlainObject_insideAWorkflowTask() {
-        ScriptRequest req = request(
-                "vance.workflow.current.workflowName + '/' + vance.workflow.current.state"
+        ScriptRequest req = request("vance.workflow.current.workflowName + '/' + vance.workflow.current.state"
                         + " + '#' + vance.workflow.current.taskId")
                 .withWorkflowRun(run());
 
@@ -90,8 +89,7 @@ class ScriptWorkflowSurfaceJsTest {
 
     @Test
     void current_exposesParamsAndVars() {
-        ScriptRequest req = request(
-                "vance.workflow.current.params.version + '@' + vance.workflow.current.vars.sha")
+        ScriptRequest req = request("vance.workflow.current.params.version + '@' + vance.workflow.current.vars.sha")
                 .withWorkflowRun(run());
 
         assertThat(executor.run(req).value()).isEqualTo("1.0.0@abc");
@@ -102,8 +100,7 @@ class ScriptWorkflowSurfaceJsTest {
         // The guest may not fake a variable write; the journal is the
         // only writer and the return value the only channel back.
         ScriptRequest req = request(
-                "try { vance.workflow.current.vars.sha = 'forged'; 'written'; }"
-                        + " catch (e) { 'refused'; }")
+                        "try { vance.workflow.current.vars.sha = 'forged'; 'written'; }" + " catch (e) { 'refused'; }")
                 .withWorkflowRun(run());
 
         assertThat(executor.run(req).value()).isEqualTo("refused");
@@ -127,15 +124,14 @@ class ScriptWorkflowSurfaceJsTest {
         // than reaching past the tool layer into the service.
         ScriptHarness harness = ScriptHarness.builder()
                 .script("vance.workflow.start({ name: 'release' }).workflowRunId")
-                .mockTool("workflow_start", params -> Map.of(
-                        "workflowRunId", "run-42",
-                        "workflowName", params.get("name")))
+                .mockTool(
+                        "workflow_start",
+                        params -> Map.of("workflowRunId", "run-42", "workflowName", params.get("name")))
                 .build();
 
         ScriptResult result = harness.run();
 
         assertThat(result.value()).isEqualTo("run-42");
-        assertThat(harness.lastCall("workflow_start").params())
-                .containsEntry("name", "release");
+        assertThat(harness.lastCall("workflow_start").params()).containsEntry("name", "release");
     }
 }

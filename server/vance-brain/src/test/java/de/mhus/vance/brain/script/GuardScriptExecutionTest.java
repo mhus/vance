@@ -109,7 +109,8 @@ class GuardScriptExecutionTest {
                 new PermissionService(List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
-                mock(de.mhus.vance.shared.team.TeamService.class));
+                mock(de.mhus.vance.shared.team.TeamService.class),
+                mock(de.mhus.vance.brain.tools.ToolGuardGate.class));
         ToolInvocationContext ctx = new ToolInvocationContext("acme", "proj-1", "sess-1", "proc-1", "alice");
         return new ContextToolsApi(dispatcher, ctx, Set.of());
     }
@@ -139,6 +140,7 @@ class GuardScriptExecutionTest {
                 true,
                 point,
                 commandContext,
+                null,
                 new ScriptGuardScratchApi(loopBacking),
                 new ScriptGuardScratchApi(sessionBacking),
                 host);

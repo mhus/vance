@@ -56,6 +56,11 @@ public record HandlerGuard(
     }
 
     @Override
+    public boolean firesOnTool() {
+        return trigger == null || trigger.firesOnTool();
+    }
+
+    @Override
     public boolean firesOnNaturalStop() {
         return trigger == null || trigger.firesOnNaturalStop();
     }

@@ -1090,7 +1090,7 @@ public final class VanceScriptApi {
 
         /**
          * The guard point this run evaluates at:
-         * {@code 'start' | 'command' | 'stop' | 'terminate'}.
+         * {@code 'start' | 'command' | 'stop' | 'terminate' | 'tool'}.
          */
         @HostAccess.Export
         public final String point;
@@ -1102,6 +1102,14 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public final @Nullable Map<String, Object> command;
 
+        /**
+         * The exec-run tool call under judgment at the {@code tool}
+         * point: {@code { name, args }} — for {@code exec_run} the
+         * {@code command} string lives in {@code args.command}.
+         * {@code null} at every other point.
+         */
+        @HostAccess.Export
+        public final @Nullable Map<String, Object> tool;
         /** Per-process / per-loop scratch store (reset on a genuine user turn). */
         @HostAccess.Export
         public final ScriptGuardScratchApi loopValues;
@@ -1120,6 +1128,7 @@ public final class VanceScriptApi {
                 boolean naturalStop,
                 String point,
                 @Nullable Map<String, Object> command,
+                @Nullable Map<String, Object> tool,
                 ScriptGuardScratchApi loopValues,
                 ScriptGuardScratchApi sessionValues,
                 GuardScriptHost host) {
@@ -1130,6 +1139,7 @@ public final class VanceScriptApi {
             this.naturalStop = naturalStop;
             this.point = point == null ? "" : point;
             this.command = command;
+            this.tool = tool;
             this.loopValues = Objects.requireNonNull(loopValues, "loopValues");
             this.sessionValues = Objects.requireNonNull(sessionValues, "sessionValues");
             this.host = Objects.requireNonNull(host, "host");

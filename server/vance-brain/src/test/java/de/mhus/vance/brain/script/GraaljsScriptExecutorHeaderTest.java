@@ -65,8 +65,7 @@ class GraaljsScriptExecutorHeaderTest {
         // header that exceeds the cap; the warn-log is fire-and-
         // forget. (For the actual clamp behaviour see
         // header_timeout_under_cap_passes_through below.)
-        ScriptResult r = exec.run(new ScriptRequest(
-                "js", code, "test", tools(), Duration.ofSeconds(5)));
+        ScriptResult r = exec.run(new ScriptRequest("js", code, "test", tools(), Duration.ofSeconds(5)));
         assertThat(r.value()).isEqualTo(42L);
     }
 
@@ -86,12 +85,11 @@ class GraaljsScriptExecutorHeaderTest {
         // The 100-second header is above the test's patience — clamp
         // via a tight settings cap instead so the test runs in <1s.
         props.getTimeout().setMax(Duration.ofMillis(200));
-        assertThatThrownBy(() -> exec.run(new ScriptRequest(
-                "js", code, "test", tools(), Duration.ofSeconds(5))))
+        assertThatThrownBy(() -> exec.run(new ScriptRequest("js", code, "test", tools(), Duration.ofSeconds(5))))
                 .isInstanceOf(ScriptExecutionException.class)
-                .satisfies(e -> assertThat(
-                        ((ScriptExecutionException) e).errorClass())
-                        .isIn(ScriptExecutionException.ErrorClass.TIMEOUT,
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
+                        .isIn(
+                                ScriptExecutionException.ErrorClass.TIMEOUT,
                                 ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED));
     }
 
@@ -106,8 +104,7 @@ class GraaljsScriptExecutorHeaderTest {
                 "ok"
                 """;
         ContextToolsApi tools = toolsWithAllowed(Set.of("doc_write"));
-        ScriptResult r = exec.run(new ScriptRequest(
-                "js", code, "test", tools, Duration.ofSeconds(5)));
+        ScriptResult r = exec.run(new ScriptRequest("js", code, "test", tools, Duration.ofSeconds(5)));
         assertThat(r.value()).isEqualTo("ok");
     }
 
@@ -122,11 +119,9 @@ class GraaljsScriptExecutorHeaderTest {
                 "should not reach here"
                 """;
         ContextToolsApi tools = toolsWithAllowed(Set.of("doc_write"));
-        assertThatThrownBy(() -> exec.run(new ScriptRequest(
-                "js", code, "test", tools, Duration.ofSeconds(5))))
+        assertThatThrownBy(() -> exec.run(new ScriptRequest("js", code, "test", tools, Duration.ofSeconds(5))))
                 .isInstanceOf(ScriptExecutionException.class)
-                .satisfies(e -> assertThat(
-                        ((ScriptExecutionException) e).errorClass())
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
                         .isEqualTo(ScriptExecutionException.ErrorClass.MISSING_CAPABILITY))
                 .hasMessageContaining("process_run");
     }
@@ -144,8 +139,7 @@ class GraaljsScriptExecutorHeaderTest {
                 """;
         // With enforceRequires=false the executor accepts the script
         // and defers any runtime tool-call check to the dispatcher.
-        ScriptResult r = exec.run(new ScriptRequest(
-                "js", code, "test", tools(), Duration.ofSeconds(5)));
+        ScriptResult r = exec.run(new ScriptRequest("js", code, "test", tools(), Duration.ofSeconds(5)));
         assertThat(r.value()).isEqualTo("ran anyway");
     }
 
@@ -155,9 +149,7 @@ class GraaljsScriptExecutorHeaderTest {
         // run with the defaults — no surprises for legacy scripts.
         ScriptEngineProperties props = props(Duration.ofSeconds(5), 1_000_000L);
         GraaljsScriptExecutor exec = new GraaljsScriptExecutor(engine, props);
-        ScriptResult r = exec.run(new ScriptRequest(
-                "js", "var x = 1 + 1; x", "test", tools(),
-                Duration.ofSeconds(5)));
+        ScriptResult r = exec.run(new ScriptRequest("js", "var x = 1 + 1; x", "test", tools(), Duration.ofSeconds(5)));
         assertThat(r.value()).isEqualTo(2L);
     }
 
@@ -168,8 +160,7 @@ class GraaljsScriptExecutorHeaderTest {
         props.getResult().setDefault(10L); // effective node cap = 10
         GraaljsScriptExecutor exec = new GraaljsScriptExecutor(engine, props);
         String code = "Array.from({length: 500}, (_, i) => i)";
-        assertThatThrownBy(() -> exec.run(new ScriptRequest(
-                "js", code, "test", tools(), Duration.ofSeconds(5))))
+        assertThatThrownBy(() -> exec.run(new ScriptRequest("js", code, "test", tools(), Duration.ofSeconds(5))))
                 .isInstanceOf(ScriptExecutionException.class)
                 .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
                         .isEqualTo(ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED))
@@ -188,8 +179,7 @@ class GraaljsScriptExecutorHeaderTest {
                  */
                 Array.from({length: 50}, (_, i) => i)
                 """;
-        assertThatThrownBy(() -> exec.run(new ScriptRequest(
-                "js", code, "test", tools(), Duration.ofSeconds(5))))
+        assertThatThrownBy(() -> exec.run(new ScriptRequest("js", code, "test", tools(), Duration.ofSeconds(5))))
                 .isInstanceOf(ScriptExecutionException.class)
                 .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
                         .isEqualTo(ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED));
@@ -201,8 +191,7 @@ class GraaljsScriptExecutorHeaderTest {
         props.getResult().setMaxDepth(8); // shallow so the cycle trips fast
         GraaljsScriptExecutor exec = new GraaljsScriptExecutor(engine, props);
         String code = "const a = {}; a.self = a; a";
-        assertThatThrownBy(() -> exec.run(new ScriptRequest(
-                "js", code, "test", tools(), Duration.ofSeconds(5))))
+        assertThatThrownBy(() -> exec.run(new ScriptRequest("js", code, "test", tools(), Duration.ofSeconds(5))))
                 .isInstanceOf(ScriptExecutionException.class)
                 .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
                         .isEqualTo(ScriptExecutionException.ErrorClass.RESOURCE_EXHAUSTED))
@@ -214,8 +203,7 @@ class GraaljsScriptExecutorHeaderTest {
         ScriptEngineProperties props = props(Duration.ofSeconds(5), 100_000_000L);
         GraaljsScriptExecutor exec = new GraaljsScriptExecutor(engine, props);
         String code = "[1, 2, {a: 3}]";
-        ScriptResult r = exec.run(new ScriptRequest(
-                "js", code, "test", tools(), Duration.ofSeconds(5)));
+        ScriptResult r = exec.run(new ScriptRequest("js", code, "test", tools(), Duration.ofSeconds(5)));
         assertThat(r.value()).isEqualTo(List.of(1L, 2L, java.util.Map.of("a", 3L)));
     }
 
@@ -238,12 +226,13 @@ class GraaljsScriptExecutorHeaderTest {
         when(src.tools(any())).thenReturn(List.<Tool>of());
         when(src.find(any(), any())).thenReturn(Optional.empty());
         ToolDispatcher dispatcher = new ToolDispatcher(
-                List.of(src), new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
+                List.of(src),
+                new PermissionService(java.util.List.of(new RecordingPermissionResolver())),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
-                mock(de.mhus.vance.shared.team.TeamService.class));
-        ToolInvocationContext ctx = new ToolInvocationContext(
-                "acme", "proj-1", "sess-1", "proc-1", "alice");
+                mock(de.mhus.vance.shared.team.TeamService.class),
+                mock(de.mhus.vance.brain.tools.ToolGuardGate.class));
+        ToolInvocationContext ctx = new ToolInvocationContext("acme", "proj-1", "sess-1", "proc-1", "alice");
         return new ContextToolsApi(dispatcher, ctx, allowed);
     }
 }

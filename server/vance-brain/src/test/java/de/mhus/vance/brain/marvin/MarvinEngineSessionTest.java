@@ -106,6 +106,19 @@ class MarvinEngineSessionTest {
 
     // ── helpers ─────────────────────────────────────────────────────
 
+    // ── Tool surface (F5) ────────────────────────────────────────────
+
+    /**
+     * The live bug (vance-brain1.log): the identity's prompt announced
+     * marvin_start, but allowedTools() — the surface filter for the whole
+     * process — didn't carry it, so the call answered "not available to
+     * this engine". The marvin_* tools must be in the allowed set.
+     */
+    @Test
+    void allowedToolsCarryTheIdentityTools() {
+        assertThat(engine.allowedTools()).contains("marvin_start", "marvin_stop", "marvin_status");
+    }
+
     private static ThinkProcessDocument sessionProcess(String parentProcessId, String goal) {
         ThinkProcessDocument p = new ThinkProcessDocument();
         p.setId("marvin-1");

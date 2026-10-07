@@ -140,7 +140,16 @@ public class MarvinEngine implements ThinkEngine {
     /** Marvin's discovery tool cut — same as v1; available only to
      *  the very rare case where marvin-worker itself runs without a
      *  recipe override. The bulk of tool use happens inside
-     *  CALL_RECIPE sub-processes. */
+     *  CALL_RECIPE sub-processes.
+     *
+     *  <p>The {@code marvin_*} self-steering tools must be in this set
+     *  too (decision F5): {@code allowedTools()} is the surface filter for
+     *  the WHOLE process, identity included, and a tool outside it answers
+     *  "not available to this engine" (observed live — the identity's
+     *  prompt announced marvin_start, the manifest didn't carry it). The
+     *  headless phase machine stays unaffected: its LLM calls pass no tool
+     *  specifications at all, so a phase worker can never invoke these.
+     */
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             "whoami",
             "current_time",
@@ -149,7 +158,10 @@ public class MarvinEngine implements ThinkEngine {
             "manual_list",
             "manual_read",
             "web_search",
-            "web_fetch");
+            "web_fetch",
+            "marvin_start",
+            "marvin_stop",
+            "marvin_status");
 
     /**
      * {@code engineParams.sessionMode} (default false) — switches the

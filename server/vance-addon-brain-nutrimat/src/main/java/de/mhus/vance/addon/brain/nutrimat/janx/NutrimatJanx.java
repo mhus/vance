@@ -8,6 +8,7 @@ import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.guard.ShootyGuardService;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
+import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.prak.HistoryStrengthFilter;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.ClientTurnContextResolver;
@@ -31,9 +32,11 @@ import tools.jackson.databind.ObjectMapper;
  * other nature is measured against.
  *
  * <p>The loop: dispatch tool calls as long as the model emits them; the first
- * assistant message without a tool call <em>is</em> the reply. Budget
- * exhaustion falls back to the best free text seen as a hard-failure outcome
- * (a worker closes {@code INCOMPLETE}); an LLM collapse recovers the same way.
+ * assistant message without a tool call <em>is</em> the reply. No iteration
+ * budget — an uncapped loop runs until the natural stop; the wallclock net is
+ * the runaway bound, and its recovery carries the best free text out as a
+ * hard-failure outcome (a worker closes {@code INCOMPLETE}); an LLM collapse
+ * recovers the same way.
  * One opt-in deviation from a dumb copy: the data-relay-gap validation
  * correction of the Ford baseline rides along via {@code params.validation}.
  *
@@ -65,7 +68,8 @@ public class NutrimatJanx extends AbstractNutrimat {
             HistoryStrengthFilter historyStrengthFilter,
             ClientTurnContextResolver clientTurnContextResolver,
             TurnContextHandlerRegistry turnContextHandlers,
-            ShootyGuardService guardService) {
+            ShootyGuardService guardService,
+            NotificationService notifications) {
         super(
                 thinkProcessService,
                 objectMapper,
@@ -88,7 +92,8 @@ public class NutrimatJanx extends AbstractNutrimat {
                 historyStrengthFilter,
                 clientTurnContextResolver,
                 turnContextHandlers,
-                guardService);
+                guardService,
+                notifications);
     }
 
     @Override

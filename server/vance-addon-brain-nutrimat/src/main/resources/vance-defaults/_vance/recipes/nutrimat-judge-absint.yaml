@@ -1,0 +1,70 @@
+description: |
+  Internal LightLlmService config profile used by the Nutrimat loop
+  nature `absint` at every natural-stop candidate. The call decides
+  nothing — it must produce a non-empty report of what the model did in
+  this loop round. The report is recorded in the process's loop state
+  and notified to the client; a call that fails or comes back empty
+  degrades to the draft text.
+
+  NOT spawnable — marked `internal: true` so the standard recipe
+  selector skips it.
+
+  Pebble variables:
+    userGoal       — the user's most recent message in this turn
+    draftText      — the text the model wants to end the round on
+    iterations     — how many iterations have been consumed so far
+
+  Output: ONE JSON object, no markdown fences, no prose around it.
+engine: jeltz
+internal: true
+params:
+  # Primary on the fast tier. The comma form is an alias-resolution
+  # cascade (first DEFINED alias wins), NOT a runtime fallback — the
+  # chain fallback is the list below (LightLlm reads the same param).
+  model: default:fast,default:analyze
+  # Degraded-but-available fallback: if the fast tier is broken at the
+  # provider, retry on the analyze tier rather than losing the report.
+  fallbackModels:
+    - default:analyze
+  maxAttempts: 2
+  temperature: 0.1
+promptPrefix: |
+  You are Vance's Nutrimat loop reporter. The worker loop just stopped
+  calling tools and is about to end its round. You do not decide
+  anything — you must account for what the model actually did in this
+  loop round.
+
+  ## User's request
+
+  {{ userGoal }}
+
+  ## The model's text this round
+
+  {{ draftText }}
+
+  ## Status
+
+  - iterations consumed: {{ iterations }}
+
+  ## Rules
+
+  - The `report` states what was DONE in this loop round: which tools
+    were called, what data was read or produced, what the round
+    achieved toward the user's request. It is an account, not a plan
+    and not a promise — actions the model only announced are NOT
+    "done".
+  - Write the report in FIRST PERSON, as the worker itself ("I read
+    the pom.xml and extracted the module list …"), in the same
+    language as the user's request.
+  - Keep it short: one to three sentences, plain text, no markdown
+    fences, no decorations. The report must never be empty — if the
+    round achieved nothing concrete, say exactly that.
+
+  ## Output shape
+
+  Reply with exactly ONE JSON object, no prose around it:
+
+      { "report": "<first-person account of what this loop round did>" }
+tags:
+  - internal
+  - nutrimat-judge

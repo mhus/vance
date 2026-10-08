@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.ExhaustionDecision;
 import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.LoopState;
 import de.mhus.vance.addon.brain.nutrimat.NutrimatJudge;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -23,10 +25,10 @@ class NutrimatClubmateTest {
     // Positional nulls on purpose — a constructor change must break compile.
     private final NutrimatClubmate engine = new NutrimatClubmate(
             null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, judge);
+            null, null, null, null, null, judge);
 
     private static LoopState state() {
-        return new LoopState(null, null, "explain the project layout", 10, 10, "partial progress", 0, 0, 1, false);
+        return new LoopState(null, null, "explain the project layout", 10, 10, "partial progress", 0, 0, 1, 0, false);
     }
 
     @Test
@@ -53,5 +55,26 @@ class NutrimatClubmateTest {
         // NOT a hard failure: the judge vouched for the answer, so the turn
         // ends normally (worker → IDLE) instead of closing INCOMPLETE.
         assertThat(d.hardFailure()).isFalse();
+    }
+
+    @Test
+    void roundNarration_showsBudgetAndExtensions() {
+        LoopState plain = new LoopState(null, null, "goal", 2, 40, "", 0, 0, 0, 0, false);
+        LoopState extended = new LoopState(null, null, "goal", 2, 40, "", 0, 0, 0, 2, false);
+
+        assertThat(engine.roundNarration(plain, "")).isEqualTo("round 3/40");
+        // The extension marker is the live signal that the judge granted a fresh budget.
+        assertThat(engine.roundNarration(extended, "")).isEqualTo("round 3/40 (extended 2×)");
+    }
+
+    @Test
+    void iterationBudget_isTheNatureOwnedJudgeBudget() {
+        ThinkProcessDocument withRecipe = new ThinkProcessDocument();
+        withRecipe.setEngineParams(Map.of("maxIterations", 30));
+
+        // The budget is clubmate's own property — deliberately tighter than
+        // redbull's: the judge only speaks at exhaustion.
+        assertThat(engine.iterationBudget(withRecipe)).isEqualTo(30);
+        assertThat(engine.iterationBudget(new ThinkProcessDocument())).isEqualTo(12);
     }
 }

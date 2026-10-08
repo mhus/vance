@@ -1,4 +1,4 @@
-package de.mhus.vance.addon.brain.nutrimat.salitos;
+package de.mhus.vance.addon.brain.nutrimat.absint;
 
 import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat;
 import de.mhus.vance.addon.brain.nutrimat.NutrimatJudge;
@@ -29,29 +29,38 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Nature {@code salitos} — the loop with the "done or keep going?" decision
- * (the Arthur-shaped question, asked of a judge instead of encoded in a typed
- * action): at every natural-stop candidate, a schema-bound LightLlm call
- * judges the draft answer — accept it as the reply, or push the model to
- * continue working.
+ * Nature {@code absint} — the stop with the mandatory self-accounting: at every
+ * natural-stop candidate a schema-bound LightLlm call must produce a non-empty
+ * report of what this loop did. The agent decides nothing — whether to keep
+ * running is {@code salitos}' axis, not this one — the stop is accepted as the
+ * reply, but it never goes unaccounted: the report is appended to the persisted
+ * loop state ({@code nutrimatState.roundReports}, like the turn counter) and
+ * pushed to the client as a notification.
  *
- * <p>Exactly one axis differs from {@code janx}: the stop is a decision, not
- * a given. The decision budget ({@code params.maxDecisions}, default 3) caps
- * how often the judge may say "continue" per turn — a judge that never sees a
- * finished answer must not spin the turn until the wallclock net; the
- * iteration cap still bounds every round it grants.
+ * <p>Exactly one axis differs from {@code salitos}: both fire one cheap LLM
+ * call at every natural stop, but the call reports instead of deciding. The
+ * comparison {@code salitos} vs. {@code absint} measures exactly that framing
+ * — verdict vs. account. The loop mechanics, the budget shape and the stop
+ * semantics (accept, no decision budget) are identical to {@code janx}'s.
  *
- * <p>Salitos — the beer you keep ordering because the evening isn't over yet.
+ * <p>The report is never blank by contract: a judge call that fails or comes
+ * back empty degrades to the model's draft text, and a blank draft degrades to
+ * a fixed fallback sentence — the accounting obligation survives the judge.
+ *
+ * <p>Absinth — the drink you have to account for the next morning.
  */
 @Component
-public class NutrimatSalitos extends AbstractNutrimat {
+public class NutrimatAbsint extends AbstractNutrimat {
 
-    /** Judge rounds per turn unless the recipe sets {@code params.maxDecisions}. */
-    private static final int DEFAULT_MAX_DECISIONS = 3;
+    /**
+     * Cap on the round-note snippet — the note is a dimmed progress line,
+     * the model's full text lives in the working log (interim messages).
+     */
+    private static final int NARRATION_SNIPPET_LIMIT = 160;
 
     private final NutrimatJudge judge;
 
-    public NutrimatSalitos(
+    public NutrimatAbsint(
             ThinkProcessService thinkProcessService,
             ObjectMapper objectMapper,
             StreamingProperties streamingProperties,
@@ -105,41 +114,48 @@ public class NutrimatSalitos extends AbstractNutrimat {
 
     @Override
     protected String natureId() {
-        return "salitos";
+        return "absint";
     }
 
     @Override
     protected String loopType() {
-        return "stop-as-a-decision — a judge decides done vs. continue at every natural stop";
+        return "stop with a mandatory round report — every natural stop is accounted for, recorded and notified";
     }
 
     /**
-     * The decision point of this nature: the model stopped calling tools, and
-     * instead of accepting that as the reply (janx), the judge decides whether
-     * the work is actually finished. Every verdict is published, not just
-     * applied — the nature sends it through the report channel ({@link #report},
-     * same channel as {@code absint}'s accounts: recorded in the loop state,
-     * notified to the client). Once the decision budget is
-     * spent, the draft is accepted silently — no judge was asked, nothing to
-     * publish — the loop ends on an answer, never on a question loop.
+     * The round note carries the model's own words: what it last said it is
+     * doing is the live story of this loop — a bare counter (or a budget
+     * figure, which this axis does not have) would say nothing. Text-less
+     * rounds fall back to the plain counter.
+     */
+    @Override
+    protected String roundNarration(LoopState state, String lastRoundText) {
+        String round = "round " + (state.iterationsConsumed() + 1);
+        if (lastRoundText == null || lastRoundText.isBlank()) {
+            return round;
+        }
+        String text = lastRoundText.strip();
+        return round + ": "
+                + (text.length() > NARRATION_SNIPPET_LIMIT ? text.substring(0, NARRATION_SNIPPET_LIMIT) + "…" : text);
+    }
+
+    /**
+     * The reporting point of this nature: the model stopped calling tools, and
+     * instead of deciding anything (janx accepts silently, salitos judges), the
+     * loop demands an account of what this round did. The nature sends the
+     * account through the report channel ({@link #report} — recorded in the
+     * loop state, notified to the client); the stop is accepted as the reply
+     * either way.
      */
     @Override
     protected StopDecision onNaturalStopCandidate(LoopState state, AiMessage reply) {
-        int maxDecisions = paramInt(state.process(), "maxDecisions", DEFAULT_MAX_DECISIONS);
-        if (state.stopCandidates() > maxDecisions) {
-            return StopDecision.accept();
-        }
         String draft = reply.text() == null ? "" : reply.text();
-        NutrimatJudge.ContinueJudgment verdict =
-                judge.judgeContinue(state.process(), state.userGoal(), draft, state.iterationsConsumed());
-        String published = "stop verdict: " + (verdict.done() ? "done" : "continue") + " — " + verdict.reason();
-        // Every verdict is published, not just applied — the nature owns the
-        // timing via the report channel (the base records and notifies); the
-        // decision itself stays pure.
-        report(state, published);
-        if (verdict.done()) {
-            return StopDecision.accept();
-        }
-        return StopDecision.continueLoop(verdict.nudge());
+        NutrimatJudge.RoundReport roundReport =
+                judge.reportRound(state.process(), state.userGoal(), draft, state.iterationsConsumed());
+        // The nature owns the accounting timing — here: an account is due at
+        // every stop. The base records it into the loop state and notifies the
+        // client; the decision stays pure.
+        report(state, roundReport.report());
+        return StopDecision.accept();
     }
 }

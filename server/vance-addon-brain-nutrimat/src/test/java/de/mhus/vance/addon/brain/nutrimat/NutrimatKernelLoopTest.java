@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,10 +15,12 @@ import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.LoopState;
 import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.LoopStats;
 import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.StopDecision;
 import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.TurnOutcome;
+import de.mhus.vance.api.notification.NotificationSeverity;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
+import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry;
@@ -64,6 +67,7 @@ class NutrimatKernelLoopTest {
     private final ContextToolsApi tools = mock(ContextToolsApi.class);
     private final AiChat aiChat = mock(AiChat.class);
     private final StreamingChatModel streamingModel = mock(StreamingChatModel.class);
+    private final NotificationService notifications = mock(NotificationService.class);
 
     private final ThinkProcessDocument process = new ThinkProcessDocument();
     private final List<ChatResponse> script = new ArrayList<>();
@@ -100,6 +104,15 @@ class NutrimatKernelLoopTest {
     // stream plumbing and the turn-context handlers; everything else stays
     // null.
     private AbstractNutrimat engine(Function<AiMessage, StopDecision> stopPolicy) {
+        return engine(stopPolicy, 0, null);
+    }
+
+    /**
+     * The anonymous test nature: {@code budget} drives iterationBudget
+     * (0 = uncapped), {@code reportText} makes the stop hook send one report
+     * through the report channel — the two nature policies under test.
+     */
+    private AbstractNutrimat engine(Function<AiMessage, StopDecision> stopPolicy, int budget, String reportText) {
         return new AbstractNutrimat(
                 thinkProcessService,
                 new ObjectMapper(),
@@ -122,7 +135,8 @@ class NutrimatKernelLoopTest {
                 null,
                 null,
                 turnContextHandlers,
-                null) {
+                null,
+                notifications) {
             @Override
             protected String natureId() {
                 return "janx";
@@ -134,19 +148,26 @@ class NutrimatKernelLoopTest {
             }
 
             @Override
+            protected int iterationBudget(ThinkProcessDocument process) {
+                return budget;
+            }
+
+            @Override
             protected StopDecision onNaturalStopCandidate(LoopState state, AiMessage reply) {
+                if (reportText != null) {
+                    report(state, reportText);
+                }
                 return stopPolicy.apply(reply);
             }
         };
     }
 
-    private static LoopInputs inputs(AiChat chat, ContextToolsApi toolApi, int maxIterations) {
+    private static LoopInputs inputs(AiChat chat, ContextToolsApi toolApi) {
         return new LoopInputs(
                 chat,
                 List.of(),
                 toolApi,
                 new ArrayList<ChatMessage>(List.of(UserMessage.from("build the thing"))),
-                maxIterations,
                 false,
                 "test-alias",
                 "build the thing");
@@ -183,7 +204,7 @@ class NutrimatKernelLoopTest {
         script.add(response(AiMessage.from("the final answer")));
 
         TurnOutcome outcome =
-                engine(a -> StopDecision.accept()).runLoop(process, ctx, inputs(aiChat, tools, 4), new LoopStats());
+                engine(a -> StopDecision.accept()).runLoop(process, ctx, inputs(aiChat, tools), new LoopStats());
 
         assertThat(outcome.finalText()).isEqualTo("the final answer");
         List<ChatMessageDocument> docs = appended();
@@ -206,7 +227,7 @@ class NutrimatKernelLoopTest {
         AbstractNutrimat engine = engine(
                 a -> stops.incrementAndGet() == 1 ? StopDecision.continueLoop("not done yet") : StopDecision.accept());
 
-        engine.runLoop(process, ctx, inputs(aiChat, tools, 4), new LoopStats());
+        engine.runLoop(process, ctx, inputs(aiChat, tools), new LoopStats());
 
         // A pushed-back stop candidate is intermediate by definition: its
         // text enters the working log, and it does so BEFORE the decision
@@ -219,17 +240,111 @@ class NutrimatKernelLoopTest {
     }
 
     @Test
+    void report_recordsIntoThePersistedLoopState() {
+        script.add(response(AiMessage.from("the final answer")));
+
+        engine(a -> StopDecision.accept(), 0, "I read the pom.xml and listed the modules")
+                .runLoop(process, ctx, inputs(aiChat, tools), new LoopStats());
+
+        // The report channel is base mechanics: the nature's report lands in
+        // nutrimatState.roundReports — persisted live (appendRoundReport), not
+        // deferred to the turn end.
+        assertThat(process.getEngineParams().get("nutrimatState"))
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("roundReports", java.util.List.of("I read the pom.xml and listed the modules"));
+    }
+
+    @Test
+    void report_publishesTheReportToTheSession() {
+        script.add(response(AiMessage.from("the final answer")));
+
+        engine(a -> StopDecision.accept(), 0, "I read the pom.xml and listed the modules")
+                .runLoop(process, ctx, inputs(aiChat, tools), new LoopStats());
+
+        // Recorded AND pinged: the notify side-channel carries the report to
+        // the session's clients.
+        verify(notifications).publish(process, "I read the pom.xml and listed the modules", NotificationSeverity.INFO);
+    }
+
+    @Test
+    void report_truncatesLongReportsForThePing() {
+        script.add(response(AiMessage.from("final answer")));
+
+        engine(a -> StopDecision.accept(), 0, "x".repeat(200))
+                .runLoop(process, ctx, inputs(aiChat, tools), new LoopStats());
+
+        // The notification is a short ping (≤120 chars recommended); the
+        // recorded report keeps the full text.
+        verify(notifications).publish(process, "x".repeat(120) + "…", NotificationSeverity.INFO);
+    }
+
+    @Test
+    void report_hiddenProcessRecordsButStaysSilent() {
+        process.setHiddenFromUi(true);
+        script.add(response(AiMessage.from("final answer")));
+
+        engine(a -> StopDecision.accept(), 0, "I worked silently")
+                .runLoop(process, ctx, inputs(aiChat, tools), new LoopStats());
+
+        // Same audience guard as the loop narration: hidden processes record
+        // their reports but do not ping the session.
+        assertThat(process.getEngineParams().get("nutrimatState"))
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("roundReports", java.util.List.of("I worked silently"));
+        verify(notifications, never()).publish(any(), anyString(), any());
+    }
+
+    @Test
     void exhausted_persistsEveryIntermediateRound() {
         script.add(response(toolRound("r1 text")));
         script.add(response(toolRound("r2 text is the longer one")));
 
-        TurnOutcome outcome =
-                engine(a -> StopDecision.accept()).runLoop(process, ctx, inputs(aiChat, tools, 2), new LoopStats());
+        TurnOutcome outcome = engine(a -> StopDecision.accept(), 2, null)
+                .runLoop(process, ctx, inputs(aiChat, tools), new LoopStats());
 
         List<String> contents = contents(appended());
         assertThat(contents).contains("r1 text", "r2 text is the longer one");
         // janx's exhausted policy carries the best partial work out as the
         // recovered text — that is the outcome, not a second working-log row.
         assertThat(outcome.recovered()).isTrue();
+    }
+
+    @Test
+    void loopNarration_defaultIsTheBareCounter_noteWordingIsNatureOwned() {
+        script.add(response(AiMessage.from("the final answer")));
+
+        engine(a -> StopDecision.accept()).runLoop(process, ctx, inputs(aiChat, tools), new LoopStats());
+
+        // The base class carries no budget vocabulary — the plain counter is
+        // the default; redbull/clubmate override with their budget wording.
+        assertThat(contents(appended())).contains("[janx] round 1");
+    }
+
+    @Test
+    void loopNarration_roundsMode_suppressesDecisionsButKeepsRoundNotes() {
+        process.setEngineParams(Map.of("loopNarration", "rounds"));
+        script.add(response(AiMessage.from("the final answer")));
+
+        engine(a -> StopDecision.accept()).runLoop(process, ctx, inputs(aiChat, tools), new LoopStats());
+
+        List<String> contents = contents(appended());
+        // Round notes pass …
+        assertThat(contents).contains("[janx] round 1");
+        // … decision notes are exactly the noise the mode suppresses.
+        assertThat(contents).noneMatch(c -> c.contains("stop decision"));
+    }
+
+    @Test
+    void loopNarration_offMode_emitsNoNotes() {
+        process.setEngineParams(Map.of("loopNarration", "off"));
+        script.add(response(toolRound("round one text")));
+        script.add(response(AiMessage.from("the final answer")));
+
+        engine(a -> StopDecision.accept()).runLoop(process, ctx, inputs(aiChat, tools), new LoopStats());
+
+        List<String> contents = contents(appended());
+        assertThat(contents).noneMatch(c -> c.startsWith("[janx]"));
+        // The working log is independent of the narration knob.
+        assertThat(contents).contains("round one text");
     }
 }

@@ -69,7 +69,8 @@ class NutrimatDrainLoopTest {
                     null,
                     null,
                     null,
-                    guardService) {
+                    guardService,
+                    null) {
                 @Override
                 protected String natureId() {
                     return "redbull";

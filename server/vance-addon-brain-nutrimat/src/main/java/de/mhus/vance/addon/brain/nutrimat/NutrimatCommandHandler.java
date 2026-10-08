@@ -110,8 +110,14 @@ public class NutrimatCommandHandler implements EngineCommandHandler {
                 .findFirst()
                 .orElse("(unknown nature)");
 
-        int maxIterations = effectiveInt(process, "maxIterations", AbstractNutrimat.MAX_TOOL_ITERATIONS);
-        String maxIterationsSource = sourceOf(process, "maxIterations");
+        // The iteration budget is nature property (redbull/clubmate); 0 means
+        // the loop is uncapped — the wallclock net bounds it.
+        int maxIterations = natures.stream()
+                .filter(n -> n.name().equals(engine))
+                .map(n -> n.iterationBudget(process))
+                .findFirst()
+                .orElse(0);
+        String maxIterationsSource = maxIterations == 0 ? "(none)" : sourceOf(process, "maxIterations");
         int maxDecisions = effectiveInt(process, "maxDecisions", DEFAULT_MAX_DECISIONS);
         String maxDecisionsSource = sourceOf(process, "maxDecisions");
         boolean validation = effectiveBool(process, "validation", false);
@@ -129,11 +135,12 @@ public class NutrimatCommandHandler implements EngineCommandHandler {
                 .append(", recipe ")
                 .append(process.getRecipeName() == null ? "-" : process.getRecipeName())
                 .append(")\n")
-                .append("  budget:    maxIterations=")
-                .append(maxIterations)
-                .append(" (")
-                .append(maxIterationsSource)
-                .append(")\n")
+                .append("  budget:    ")
+                .append(
+                        maxIterations > 0
+                                ? "maxIterations=" + maxIterations + " (" + maxIterationsSource + ")"
+                                : "— (no iteration cap, wallclock-bounded)")
+                .append('\n')
                 .append("  decisions: maxDecisions=")
                 .append(maxDecisions)
                 .append(" (")
@@ -179,6 +186,19 @@ public class NutrimatCommandHandler implements EngineCommandHandler {
         String key = KNOBS.get(knob);
         if (key == null) {
             return EngineCommandResult.error("Unknown knob '" + knob + "' — known: maxturns, maxdecisions, validation");
+        }
+        // maxturns is the budget knob — only a nature with an iteration
+        // budget (redbull, clubmate) has one; an uncapped loop would silently
+        // ignore the override.
+        if ("maxIterations".equals(key)
+                && natures.stream()
+                                .filter(n -> n.name().equals(process.getThinkEngine()))
+                                .map(n -> n.iterationBudget(process))
+                                .findFirst()
+                                .orElse(0)
+                        == 0) {
+            return EngineCommandResult.error(
+                    "this nature has no iteration budget — maxturns applies to budget natures (redbull, clubmate)");
         }
         if (tokens.length == 2) {
             // No value: clear the runtime override, back to the recipe default.

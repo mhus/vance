@@ -9,6 +9,7 @@ import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.guard.ShootyGuardService;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
+import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.prak.HistoryStrengthFilter;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.ClientTurnContextResolver;
@@ -21,6 +22,7 @@ import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry;
 import de.mhus.vance.shared.memory.MemoryService;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import org.springframework.stereotype.Component;
@@ -43,6 +45,10 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Component
 public class NutrimatClubmate extends AbstractNutrimat {
+
+    /** Round cap when neither recipe nor runtime override sets one — the
+     * judge only fires at exhaustion, so the default is deliberately tight. */
+    private static final int DEFAULT_JUDGE_BUDGET = 12;
 
     private final NutrimatJudge judge;
 
@@ -69,6 +75,7 @@ public class NutrimatClubmate extends AbstractNutrimat {
             ClientTurnContextResolver clientTurnContextResolver,
             TurnContextHandlerRegistry turnContextHandlers,
             ShootyGuardService guardService,
+            NotificationService notifications,
             NutrimatJudge judge) {
         super(
                 thinkProcessService,
@@ -92,7 +99,8 @@ public class NutrimatClubmate extends AbstractNutrimat {
                 historyStrengthFilter,
                 clientTurnContextResolver,
                 turnContextHandlers,
-                guardService);
+                guardService,
+                notifications);
         this.judge = judge;
     }
 
@@ -104,6 +112,24 @@ public class NutrimatClubmate extends AbstractNutrimat {
     @Override
     protected String loopType() {
         return "exhausted budget with a judge at exhaustion (extend vs. synthesize)";
+    }
+
+    /** clubmate's own budget: the judge only speaks at exhaustion, so the
+     * cap is deliberately smaller than redbull's — the recipe's
+     * {@code params.maxIterations} (override &gt; recipe &gt; this default). */
+    @Override
+    protected int iterationBudget(ThinkProcessDocument process) {
+        return paramInt(process, "maxIterations", DEFAULT_JUDGE_BUDGET);
+    }
+
+    /**
+     * Budget rounds plus the judge's extensions — the extension marker is
+     * the live signal that the judge granted a fresh budget.
+     */
+    @Override
+    protected String roundNarration(LoopState state, String lastRoundText) {
+        return "round " + (state.iterationsConsumed() + 1) + "/" + state.iterationBudget()
+                + (state.extensions() > 0 ? " (extended " + state.extensions() + "×)" : "");
     }
 
     /** The judge decides: fresh budget and keep going, or stop with an answer. */

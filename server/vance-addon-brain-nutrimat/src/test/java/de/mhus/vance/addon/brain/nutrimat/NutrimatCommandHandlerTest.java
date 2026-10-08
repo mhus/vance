@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,6 +16,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.Map;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -26,22 +28,24 @@ import org.springframework.beans.factory.ObjectProvider;
 class NutrimatCommandHandlerTest {
 
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
-    private final NutrimatCommandHandler handler = new NutrimatCommandHandler(thinkProcessService, natures());
 
     /** Lazy provider like in production — the handler never touches the natures eagerly. */
     @SuppressWarnings("unchecked")
-    private static ObjectProvider<AbstractNutrimat> natures() {
-        ObjectProvider<AbstractNutrimat> provider = mock(ObjectProvider.class);
+    private final ObjectProvider<AbstractNutrimat> provider = mock(ObjectProvider.class);
+
+    private final NutrimatCommandHandler handler = new NutrimatCommandHandler(thinkProcessService, provider);
+
+    @BeforeEach
+    void setUp() {
         when(provider.stream()).thenAnswer(inv -> Stream.of(new FakeNature()));
-        return provider;
     }
 
-    /** Minimal nature so the status line has a loop type. */
+    /** Minimal budget nature so the status and set knobs have something to read. */
     private static class FakeNature extends AbstractNutrimat {
         FakeNature() {
             super(
                     null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null);
+                    null, null, null, null, null, null, null);
         }
 
         @Override
@@ -52,6 +56,24 @@ class NutrimatCommandHandlerTest {
         @Override
         protected String loopType() {
             return "natural-stop tool loop (the Ford baseline)";
+        }
+
+        @Override
+        protected int iterationBudget(ThinkProcessDocument process) {
+            return paramInt(process, "maxIterations", 40);
+        }
+    }
+
+    /** A nature without a budget — the loop runs until the natural stop. */
+    private static class CaplessNature extends FakeNature {
+        @Override
+        protected String natureId() {
+            return "salitos";
+        }
+
+        @Override
+        protected int iterationBudget(ThinkProcessDocument process) {
+            return 0;
         }
     }
 
@@ -130,5 +152,32 @@ class NutrimatCommandHandlerTest {
         EngineCommandResult result = handler.handle(process, command("status"));
 
         assertThat(result.message()).contains("only in a Nutrimat process");
+    }
+
+    @Test
+    void caplessNature_statusShowsNoIterationCap() {
+        when(provider.stream()).thenAnswer(inv -> Stream.of(new CaplessNature()));
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setId("p-2");
+        process.setThinkEngine("nutrimat-salitos");
+
+        EngineCommandResult result = handler.handle(process, command("status"));
+
+        // No budget nature: the loop runs until the natural stop, the
+        // wallclock net is the only bound — and maxturns makes no sense.
+        assertThat(result.message()).contains("no iteration cap");
+    }
+
+    @Test
+    void caplessNature_setMaxturnsIsRejected() {
+        when(provider.stream()).thenAnswer(inv -> Stream.of(new CaplessNature()));
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setId("p-3");
+        process.setThinkEngine("nutrimat-salitos");
+
+        EngineCommandResult result = handler.handle(process, command("set maxturns 30"));
+
+        assertThat(result.message()).contains("no iteration budget");
+        verify(thinkProcessService, never()).setEngineParamOverride(anyString(), anyString(), any());
     }
 }

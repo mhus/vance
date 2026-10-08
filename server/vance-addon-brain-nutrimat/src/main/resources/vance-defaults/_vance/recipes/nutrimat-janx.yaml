@@ -33,8 +33,6 @@ params:
   # chain entries exhausted' killed every turn after exhausted).
   fallbackModels:
     - default:fast
-  # Safety-net cap only — a healthy turn natural-stops well before this.
-  maxIterations: 40
 tags:
   - nutrimat
   - experimental

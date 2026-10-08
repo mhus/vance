@@ -99,4 +99,41 @@ class NutrimatJudgeTest {
         assertThat(v.done()).isTrue();
         assertThat(v.reason()).isEqualTo("judge-llm-failed");
     }
+
+    @Test
+    void reportRound_carriesTheAccount() {
+        when(lightLlm.callForJson(any())).thenReturn(Map.of("report", "I read the pom and listed the modules"));
+
+        NutrimatJudge.RoundReport v = judge.reportRound(process(), "goal", "draft", 4);
+
+        assertThat(v.report()).isEqualTo("I read the pom and listed the modules");
+    }
+
+    @Test
+    void reportRound_emptyReportDegradesToTheDraftText() {
+        // The account is never blank by contract — the obligation survives the judge.
+        when(lightLlm.callForJson(any())).thenReturn(Map.of("report", "   "));
+
+        NutrimatJudge.RoundReport v = judge.reportRound(process(), "goal", "the draft text", 4);
+
+        assertThat(v.report()).isEqualTo("the draft text");
+    }
+
+    @Test
+    void reportRound_llmFailureDegradesToTheDraftText() {
+        when(lightLlm.callForJson(any())).thenThrow(new LightLlmException("provider down"));
+
+        NutrimatJudge.RoundReport v = judge.reportRound(process(), "goal", "the draft text", 4);
+
+        assertThat(v.report()).isEqualTo("the draft text");
+    }
+
+    @Test
+    void reportRound_blankEverythingStillYieldsAFallbackSentence() {
+        when(lightLlm.callForJson(any())).thenThrow(new LightLlmException("provider down"));
+
+        NutrimatJudge.RoundReport v = judge.reportRound(process(), "goal", "", 4);
+
+        assertThat(v.report()).isNotBlank();
+    }
 }

@@ -9,6 +9,7 @@ import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.guard.ShootyGuardService;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
+import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.prak.HistoryStrengthFilter;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.ClientTurnContextResolver;
@@ -21,6 +22,7 @@ import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry;
 import de.mhus.vance.shared.memory.MemoryService;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import org.springframework.stereotype.Component;
@@ -45,6 +47,9 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class NutrimatRedbull extends AbstractNutrimat {
 
+    /** Hard round cap when neither recipe nor runtime override sets one. */
+    private static final int DEFAULT_HARD_LIMIT = 40;
+
     public NutrimatRedbull(
             ThinkProcessService thinkProcessService,
             ObjectMapper objectMapper,
@@ -67,7 +72,8 @@ public class NutrimatRedbull extends AbstractNutrimat {
             HistoryStrengthFilter historyStrengthFilter,
             ClientTurnContextResolver clientTurnContextResolver,
             TurnContextHandlerRegistry turnContextHandlers,
-            ShootyGuardService guardService) {
+            ShootyGuardService guardService,
+            NotificationService notifications) {
         super(
                 thinkProcessService,
                 objectMapper,
@@ -90,7 +96,8 @@ public class NutrimatRedbull extends AbstractNutrimat {
                 historyStrengthFilter,
                 clientTurnContextResolver,
                 turnContextHandlers,
-                guardService);
+                guardService,
+                notifications);
     }
 
     @Override
@@ -115,6 +122,22 @@ public class NutrimatRedbull extends AbstractNutrimat {
         return "hard budget — exhaustion raises the exhausted error (no judge, no rescue)";
     }
 
+    /** redbull's own budget: a hard round cap — the recipe's
+     * {@code params.maxIterations} (override &gt; recipe &gt; this default). */
+    @Override
+    protected int iterationBudget(ThinkProcessDocument process) {
+        return paramInt(process, "maxIterations", DEFAULT_HARD_LIMIT);
+    }
+
+    /**
+     * Rounds count against the hard budget — the "round 3/40" note is the
+     * loop's lifeline here (the budget IS the semantics of this nature).
+     */
+    @Override
+    protected String roundNarration(LoopState state, String lastRoundText) {
+        return "round " + (state.iterationsConsumed() + 1) + "/" + state.iterationBudget();
+    }
+
     /**
      * The exhausted policy of this nature, in its historical shape: an
      * <em>exception</em>. The turn shell maps it onto a visible failure; the
@@ -122,7 +145,7 @@ public class NutrimatRedbull extends AbstractNutrimat {
      */
     @Override
     protected ExhaustionDecision onExhausted(LoopState state) {
-        throw new NutrimatExhaustedException("exhausted — the loop hit its hard limit of " + state.maxIterations()
+        throw new NutrimatExhaustedException("exhausted — the loop hit its hard limit of " + state.iterationBudget()
                 + " processing steps (maxIterations) after " + state.iterationsConsumed()
                 + " iterations and produced no answer. Hard stop by design: no continuation, "
                 + "no partial-work rescue. Start a fresh worker with a tighter scope or a "

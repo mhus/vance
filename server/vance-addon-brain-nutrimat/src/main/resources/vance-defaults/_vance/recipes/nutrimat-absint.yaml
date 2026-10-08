@@ -1,21 +1,22 @@
-# Nutrimat loop-lab experiment: nature `salitos` — the stop is a decision.
-# At every natural-stop candidate a LightLlm judge decides done vs.
-# continue. Exactly one axis away from `janx`. See
+# Nutrimat loop-lab experiment: nature `absint` — the stop with the
+# mandatory self-accounting. At every natural-stop candidate a LightLlm call
+# must produce a non-empty report of what this loop did; the report is
+# appended to the persisted loop state and notified to the client. Exactly
+# one axis away from `salitos` (report instead of verdict). See
 # specification/public/nutrimat-engine.md.
-title: "Nutrimat salitos — stop decided by a judge"
+title: "Nutrimat absint — stop with mandatory round report"
 listed: true
 category: experimental
 description: |
-  Experimental loop-lab worker. Nature `salitos` runs the natural-stop
-  tool loop, but the stop is not a given: whenever the model stops
-  calling tools, a judge (a single cheap LLM call, recipe
-  `nutrimat-judge-salitos`) looks at the draft answer and decides
-  whether the work is actually finished — or whether to push the model
-  to continue working. The comparison `janx` vs. `salitos` measures
-  exactly that decision point (the Arthur-shaped "done or keep going?"
-  question). `maxDecisions` caps how often the judge may say "continue"
-  per turn.
-engine: nutrimat-salitos
+  Experimental loop-lab worker. Nature `absint` runs the same natural-stop
+  tool loop as `janx`/`salitos`, and like `salitos` it fires one cheap LLM
+  call at every natural stop — but the call decides nothing: it must
+  produce a non-empty account of what this loop did (recipe
+  `nutrimat-judge-absint`). The report is recorded in the process's loop
+  state (`nutrimatState.roundReports`, appended like the turn counter) and
+  pushed to the client as a notification. The comparison `salitos` vs.
+  `absint` measures exactly that framing — verdict vs. account.
+engine: nutrimat-absint
 # Chat look for sessions on this recipe: warm red transcript with the
 # exclamation-mark frieze (_vance/chat-themes/nutrimat.css) — the shared
 # "this is an experiment" signal. Applies when this recipe runs as the
@@ -34,8 +35,6 @@ params:
   # chain entries exhausted' killed every turn after exhausted).
   fallbackModels:
     - default:fast
-  # Judge rounds per turn; after this the draft is accepted.
-  maxDecisions: 3
 tags:
   - nutrimat
   - experimental

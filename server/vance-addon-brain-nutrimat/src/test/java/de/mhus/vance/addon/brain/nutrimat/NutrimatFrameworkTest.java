@@ -23,7 +23,7 @@ class NutrimatFrameworkTest {
         GoodNature() {
             super(
                     null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null);
+                    null, null, null, null, null, null, null);
         }
 
         @Override
@@ -42,7 +42,7 @@ class NutrimatFrameworkTest {
         BadNature() {
             super(
                     null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null);
+                    null, null, null, null, null, null, null);
         }
 
         @Override
@@ -110,6 +110,14 @@ class NutrimatFrameworkTest {
         past.setEngineParams(
                 java.util.Map.of("nutrimatState", java.util.Map.of("awaitingUserContinue", false, "turns", 3)));
         assertThat(AbstractNutrimat.awaitingUserContinue(past)).isFalse();
+    }
+
+    @Test
+    void iterationBudget_defaultsToUncapped() {
+        // The base knows no budget — only a nature (redbull, clubmate) gives
+        // its loop one; an uncapped loop runs until the natural stop and is
+        // bounded by the wallclock net.
+        assertThat(new GoodNature().iterationBudget(new ThinkProcessDocument())).isZero();
     }
 
     void workerContract_isFordShaped() {

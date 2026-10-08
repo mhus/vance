@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.nutrimat;
 
 import de.mhus.vance.api.chat.ChatMessageChunkData;
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.notification.NotificationSeverity;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
@@ -20,6 +21,7 @@ import de.mhus.vance.brain.guard.ShootyGuardService;
 import de.mhus.vance.brain.memory.CompactionResult;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
+import de.mhus.vance.brain.notification.NotificationService;
 import de.mhus.vance.brain.prak.HistoryStrengthFilter;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.ClientTurnContextResolver;
@@ -96,17 +98,29 @@ import tools.jackson.databind.ObjectMapper;
  * infrastructure only (AiChat, chat log, memory compaction, guards). See
  * {@code planning/nutrimat-engine.md}.
  *
- * <p><b>Loop policy hooks</b> (override to change the loop, nothing else):
+ * <p><b>The base owns the mechanics, the nature owns the loop.</b> Rounds
+ * (streaming one LLM call, dispatching tools, working log, interrupts, the
+ * wallclock runaway net) are base machinery; the loop SHAPE — iteration
+ * budget, stop policy, report timing, round-note wording — is nature policy
+ * through the hooks below. A nature cannot break the worker contract.
  * <ul>
+ *   <li>{@link #iterationBudget} — the nature's budget, or {@code 0} for an
+ *       uncapped loop (rounds until the natural stop, wallclock-bounded).
+ *       Budget semantics live in {@code redbull} and {@code clubmate},
+ *       separately — the base knows no budget.</li>
  *   <li>{@link #onNaturalStopCandidate} — the model stopped calling tools:
  *       accept the text as the reply, push a correction, or decide
  *       "continue working" (the {@code salitos} question).</li>
- *   <li>{@link #onExhausted} — the iteration budget ran out: synthesize,
- *       extend with a fresh budget ({@code clubmate}'s judge), or throw
- *       {@link NutrimatExhaustedException} for a hard, visible failure
- *       ({@code redbull}).</li>
+ *   <li>{@link #onExhausted} — a budget segment ran out (budget natures
+ *       only): synthesize, extend with a fresh budget ({@code clubmate}'s
+ *       judge), or throw {@link NutrimatExhaustedException} for a hard,
+ *       visible failure ({@code redbull}).</li>
  *   <li>{@link #onLlmFailure} — the provider call collapsed: same decision
  *       vocabulary.</li>
+ *   <li>{@link #report} — the accounting channel: the nature sends a report
+ *       whenever one is due ({@code absint} at every stop, {@code salitos}
+ *       with its verdict); the base records and notifies.</li>
+ *   <li>{@link #roundNarration} — the wording of the per-round live note.</li>
  * </ul>
  */
 @Slf4j
@@ -133,7 +147,6 @@ public abstract class AbstractNutrimat implements ThinkEngine {
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/nutrimat-prompt.md";
 
     /** Safety-net cap on tool-call iterations per budget (recipe {@code params.maxIterations}). */
-    protected static final int MAX_TOOL_ITERATIONS = 40;
 
     /** Wall-clock safety-net for a single streaming LLM call. */
     private static final long STREAM_TIMEOUT_MINUTES = 20;
@@ -145,6 +158,20 @@ public abstract class AbstractNutrimat implements ThinkEngine {
      * to press ESC. Mirrors the structured engines' net.
      */
     protected static final long TURN_WALLCLOCK_MINUTES = 30;
+
+    /**
+     * Cap on the persisted round-report list ({@code nutrimatState.roundReports})
+     * — appended per stop candidate, so a long-lived run must not grow the
+     * document without bound. Newest reports win.
+     */
+    private static final int MAX_ROUND_REPORTS = 50;
+
+    /**
+     * Notify texts are short attention pings (≤120 chars recommended, see
+     * {@code specification/public/user-notification-channel.md} §3) — the
+     * recorded round report keeps the full text.
+     */
+    private static final int NOTIFY_TEXT_LIMIT = 120;
 
     // ──────────────────── Validation heuristic ────────────────────
     // Opt-in via params.validation == true. One check: reply-too-brief-
@@ -240,6 +267,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
     private final ClientTurnContextResolver clientTurnContextResolver;
     private final TurnContextHandlerRegistry turnContextHandlers;
     private final ShootyGuardService guardService;
+    private final NotificationService notifications;
 
     protected AbstractNutrimat(
             ThinkProcessService thinkProcessService,
@@ -263,7 +291,8 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             HistoryStrengthFilter historyStrengthFilter,
             ClientTurnContextResolver clientTurnContextResolver,
             TurnContextHandlerRegistry turnContextHandlers,
-            ShootyGuardService guardService) {
+            ShootyGuardService guardService,
+            NotificationService notifications) {
         this.thinkProcessService = thinkProcessService;
         this.objectMapper = objectMapper;
         this.streamingProperties = streamingProperties;
@@ -286,6 +315,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
         this.clientTurnContextResolver = clientTurnContextResolver;
         this.turnContextHandlers = turnContextHandlers;
         this.guardService = guardService;
+        this.notifications = notifications;
     }
 
     // ──────────────────── Nature identity ────────────────────
@@ -548,7 +578,6 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                     toolSpecs,
                     tools,
                     messages,
-                    paramInt(process, "maxIterations", MAX_TOOL_ITERATIONS),
                     paramBool(process, "validation", false),
                     config.providerInstance() + ":" + config.modelName(),
                     userInput);
@@ -587,8 +616,9 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             // get the FAILED ProcessEvent rendered) — spell out that this is a
             // force-abort and the text below is partial-not-answer.
             if (hardFailure && outcome.wrapPartial() && process.getParentProcessId() != null) {
-                finalText = "⚠️ TASK FAILED — this worker hit its hard limit and was "
-                        + "force-stopped (" + in.maxIterations() + " processing steps, maxIterations). "
+                finalText = "⚠️ TASK FAILED — this worker was "
+                        + "force-stopped after " + stats.iterationsConsumed
+                        + " processing steps (budget or wallclock net). "
                         + "It is now CLOSED and cannot be resumed. The task is UNFINISHED: "
                         + "the text below is PARTIAL progress only, NOT an answer — do not "
                         + "treat it as done, and do not assume the remaining steps ran. To "
@@ -665,9 +695,11 @@ public abstract class AbstractNutrimat implements ThinkEngine {
      * {@code while} — bounded by the per-turn wallclock net, never by a fixed
      * extension ceiling (the hook decides).
      */
-    // Package-private: the kernel loop is the seat of the loop semantics
-    // (working-log persistence, stop decisions, budget) — NutrimatKernelLoopTest
-    // drives it with a scripted streaming model instead of a live LLM.
+    // Package-private: the kernel owns the round MECHANICS (streaming, tool
+    // dispatch, working log, interrupts, wallclock net) — the loop SHAPE
+    // (iteration budget, stop policy, report timing) is nature policy.
+    // NutrimatKernelLoopTest drives it with a scripted streaming model
+    // instead of a live LLM.
     TurnOutcome runLoop(ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in, LoopStats stats) {
         StringBuilder finalText = new StringBuilder();
         // Best Free-Text seen so far across all iterations — last-resort
@@ -677,135 +709,174 @@ public abstract class AbstractNutrimat implements ThinkEngine {
         int corrections = 0;
         int stopCandidates = 0;
         Instant turnStart = Instant.now();
-        int budget = in.maxIterations();
+        // The loop shape is nature policy: its iteration budget, or 0 for a
+        // nature without one — uncapped rounds run until the natural stop,
+        // and the wallclock net below bounds every loop alike.
+        int budget = iterationBudget(process);
+        int consumedInBudget = 0;
         int consumed = 0;
         String userGoal = in.userGoal().isBlank() ? "(no user message in this turn)" : in.userGoal();
+        String lastRoundText = "";
 
         while (true) {
-            for (int iter = 0; iter < budget; iter++) {
-                // Loop narration — a dimmed interim note per iteration so the
-                // user can follow the loop live (experiment observability).
-                // Never enters the LLM context: interim replies are pure
-                // user-progress channel, parent-inbox routing is skipped.
-                narrate(
-                        ctx,
-                        process,
-                        "round " + (stats.iterationsConsumed + 1) + "/" + budget
-                                + (stats.extensions > 0 ? " (extended " + stats.extensions + "×)" : ""));
-                // Mid-loop interrupt — checked before the next LLM call so
-                // ESC / /pause stops a running tool loop promptly.
-                InterruptKind kind = checkInterrupt(process);
-                if (kind != InterruptKind.NONE) {
-                    return TurnOutcome.interrupted(kind == InterruptKind.FORCE_PAUSE);
-                }
-
-                ChatRequest.Builder req =
-                        ChatRequest.builder().messages(turnContextHandlers.apply(in.messages(), ctx, process));
-                if (!in.toolSpecs().isEmpty()) {
-                    req.toolSpecifications(in.toolSpecs());
-                }
-
-                AiMessage reply;
-                try {
-                    reply = streamOneIteration(in.aiChat(), req.build(), ctx, process, in.modelAlias())
-                            .message();
-                } catch (RuntimeException e) {
-                    ExhaustionDecision d = onLlmFailure(
+            // Loop narration — a dimmed interim note per iteration so the
+            // user can follow the loop live (experiment observability).
+            // The note's wording is nature-owned (roundNarration): a round
+            // means different things per nature — a budget step for the
+            // hard-limit loops, the model's own words for absint. Never
+            // enters the LLM context: interim replies are pure
+            // user-progress channel, parent-inbox routing is skipped.
+            narrateRound(
+                    ctx,
+                    process,
+                    roundNarration(
                             state(
                                     process,
                                     ctx,
                                     userGoal,
                                     consumed,
                                     in,
+                                    budget,
                                     bestFreeText,
                                     toolDataChars,
                                     corrections,
-                                    stopCandidates),
-                            e);
-                    if (d.kind() == ExhaustionDecision.Kind.EXTEND && wallclockOk(turnStart)) {
-                        consumed++;
-                        stats.iterationsConsumed = consumed;
-                        in.messages().add(UserMessage.from(nudgeText(d)));
-                        stats.extensions++;
-                        continue;
-                    }
-                    return toOutcome(d, process, bestFreeText);
-                }
-                consumed++;
-                stats.iterationsConsumed = consumed;
+                                    stopCandidates,
+                                    stats.extensions),
+                            lastRoundText));
+            // Mid-loop interrupt — checked before the next LLM call so
+            // ESC / /pause stops a running tool loop promptly.
+            InterruptKind kind = checkInterrupt(process);
+            if (kind != InterruptKind.NONE) {
+                return TurnOutcome.interrupted(kind == InterruptKind.FORCE_PAUSE);
+            }
+            // Wallclock net — the base's runaway protection for one turn:
+            // an uncapped loop (a nature without a budget) has no other bound.
+            if (!wallclockOk(turnStart)) {
+                log.warn(
+                        "Nutrimat[{}] id='{}' wallclock net reached after {} rounds — ending the turn with the best partial",
+                        natureId(),
+                        process.getId(),
+                        consumed);
+                narrate(
+                        ctx,
+                        process,
+                        "wallclock net reached after " + consumed + " rounds — ending with the best partial work");
+                return TurnOutcome.recovered(
+                        bestFreeText.isBlank()
+                                ? "The run exceeded its " + TURN_WALLCLOCK_MINUTES + "-minute wallclock budget."
+                                : bestFreeText);
+            }
 
-                String replyText = reply.text();
-                if (replyText != null && replyText.length() > bestFreeText.length()) {
-                    bestFreeText = replyText;
-                }
+            ChatRequest.Builder req =
+                    ChatRequest.builder().messages(turnContextHandlers.apply(in.messages(), ctx, process));
+            if (!in.toolSpecs().isEmpty()) {
+                req.toolSpecifications(in.toolSpecs());
+            }
 
-                if (!reply.hasToolExecutionRequests()) {
-                    stopCandidates++;
-                    stats.stopCandidates = stopCandidates;
-                    // Natural-stop candidate: the first assistant message
-                    // without a tool call. The nature decides what it is.
-                    LoopState st = state(
-                            process,
-                            ctx,
-                            userGoal,
-                            consumed,
-                            in,
-                            bestFreeText,
-                            toolDataChars,
-                            corrections,
-                            stopCandidates);
-                    StopDecision d = onNaturalStopCandidate(st, reply);
-                    if (d.kind() != StopDecision.Kind.ACCEPT) {
-                        // The judge pushed the loop on — the draft is
-                        // intermediate working state, never the reply.
-                        // Persist it before the decision note so the
-                        // transcript keeps the round's text above the
-                        // note that judged it.
-                        appendInterimRoundText(ctx, process, replyText);
-                    }
-                    narrate(
-                            ctx,
-                            process,
-                            "stop decision: " + d.kind().name().toLowerCase(java.util.Locale.ROOT)
-                                    + (d.kind() == StopDecision.Kind.ACCEPT
-                                            ? " — the model's text is the reply"
-                                            : " — " + nonBlankOr(d.message(), "")));
-                    switch (d.kind()) {
-                        case ACCEPT -> {
-                            if (replyText != null) {
-                                finalText.append(replyText);
-                            }
-                            if (in.validation() && corrections > 0) {
-                                log.info(
-                                        "Nutrimat[{}] id='{}' validation: completed after {} correction(s)",
-                                        natureId(),
-                                        process.getId(),
-                                        corrections);
-                            }
-                            // awaiting by role: a worker (has a parent) is
-                            // done → IDLE so the parent can steer again; a
-                            // primary (no parent) awaits the user's next
-                            // message → BLOCKED.
-                            boolean awaiting = process.getParentProcessId() == null;
-                            return TurnOutcome.terminal(finalText.toString(), awaiting);
-                        }
-                        case CORRECT -> {
-                            in.messages().add(reply);
-                            in.messages()
-                                    .add(SystemMessage.from(nonBlankOr(
-                                            d.message(), "Continue working — the turn is not complete yet.")));
-                            corrections++;
-                        }
-                        case CONTINUE -> {
-                            in.messages().add(reply);
-                            in.messages()
-                                    .add(UserMessage.from(nonBlankOr(
-                                            d.message(), "Continue working toward the goal; do not stop yet.")));
-                        }
-                    }
+            AiMessage reply;
+            try {
+                reply = streamOneIteration(in.aiChat(), req.build(), ctx, process, in.modelAlias())
+                        .message();
+            } catch (RuntimeException e) {
+                ExhaustionDecision d = onLlmFailure(
+                        state(
+                                process,
+                                ctx,
+                                userGoal,
+                                consumed,
+                                in,
+                                budget,
+                                bestFreeText,
+                                toolDataChars,
+                                corrections,
+                                stopCandidates,
+                                stats.extensions),
+                        e);
+                if (d.kind() == ExhaustionDecision.Kind.EXTEND && wallclockOk(turnStart)) {
+                    consumed++;
+                    stats.iterationsConsumed = consumed;
+                    in.messages().add(UserMessage.from(nudgeText(d)));
+                    stats.extensions++;
                     continue;
                 }
+                return toOutcome(d, process, bestFreeText);
+            }
+            consumed++;
+            stats.iterationsConsumed = consumed;
 
+            String replyText = reply.text();
+            if (replyText != null && replyText.length() > bestFreeText.length()) {
+                bestFreeText = replyText;
+            }
+            lastRoundText = replyText == null ? "" : replyText;
+
+            if (!reply.hasToolExecutionRequests()) {
+                stopCandidates++;
+                stats.stopCandidates = stopCandidates;
+                // Natural-stop candidate: the first assistant message
+                // without a tool call. The nature decides what it is.
+                LoopState st = state(
+                        process,
+                        ctx,
+                        userGoal,
+                        consumed,
+                        in,
+                        budget,
+                        bestFreeText,
+                        toolDataChars,
+                        corrections,
+                        stopCandidates,
+                        stats.extensions);
+                StopDecision d = onNaturalStopCandidate(st, reply);
+                if (d.kind() != StopDecision.Kind.ACCEPT) {
+                    // The judge pushed the loop on — the draft is
+                    // intermediate working state, never the reply.
+                    // Persist it before the decision note so the
+                    // transcript keeps the round's text above the
+                    // note that judged it.
+                    appendInterimRoundText(ctx, process, replyText);
+                }
+                narrate(
+                        ctx,
+                        process,
+                        "stop decision: " + d.kind().name().toLowerCase(java.util.Locale.ROOT)
+                                + (d.kind() == StopDecision.Kind.ACCEPT
+                                        ? " — the model's text is the reply"
+                                        : " — " + nonBlankOr(d.message(), "")));
+                switch (d.kind()) {
+                    case ACCEPT -> {
+                        if (replyText != null) {
+                            finalText.append(replyText);
+                        }
+                        if (in.validation() && corrections > 0) {
+                            log.info(
+                                    "Nutrimat[{}] id='{}' validation: completed after {} correction(s)",
+                                    natureId(),
+                                    process.getId(),
+                                    corrections);
+                        }
+                        // awaiting by role: a worker (has a parent) is
+                        // done → IDLE so the parent can steer again; a
+                        // primary (no parent) awaits the user's next
+                        // message → BLOCKED.
+                        boolean awaiting = process.getParentProcessId() == null;
+                        return TurnOutcome.terminal(finalText.toString(), awaiting);
+                    }
+                    case CORRECT -> {
+                        in.messages().add(reply);
+                        in.messages()
+                                .add(SystemMessage.from(
+                                        nonBlankOr(d.message(), "Continue working — the turn is not complete yet.")));
+                        corrections++;
+                    }
+                    case CONTINUE -> {
+                        in.messages().add(reply);
+                        in.messages()
+                                .add(UserMessage.from(
+                                        nonBlankOr(d.message(), "Continue working toward the goal; do not stop yet.")));
+                    }
+                }
+            } else {
                 // Tool calls present — the round is intermediate by
                 // definition: persist its text into the working log, then
                 // dispatch. The model decides it's done by NOT calling a
@@ -819,42 +890,59 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                 }
             }
 
-            // Budget exhausted — the nature's exhausted policy decides.
-            narrate(ctx, process, "budget exhausted after " + consumed + " iterations — asking the loop policy");
-            LoopState st = state(
-                    process, ctx, userGoal, consumed, in, bestFreeText, toolDataChars, corrections, stopCandidates);
-            ExhaustionDecision d = onExhausted(st);
-            narrate(
-                    ctx,
-                    process,
-                    "exhausted policy: "
-                            + switch (d.kind()) {
-                                case EXTEND -> "extend";
-                                case SYNTHESIZE -> d.hardFailure() ? "synthesize (hard failure)" : "synthesize";
-                                case HARD_ERROR -> "hard error";
-                            }
-                            + nonBlankOr(d.reason() == null ? "" : " — " + d.reason(), ""));
-            if (d.kind() == ExhaustionDecision.Kind.EXTEND && wallclockOk(turnStart)) {
-                in.messages().add(UserMessage.from(nudgeText(d)));
-                stats.extensions++;
-                continue;
+            // The round consumed budget — only a nature with an iteration
+            // budget (redbull, clubmate) ever reaches its exhausted policy.
+            consumedInBudget++;
+            if (budget > 0 && consumedInBudget >= budget) {
+                narrate(ctx, process, "budget exhausted after " + consumed + " iterations — asking the loop policy");
+                LoopState st = state(
+                        process,
+                        ctx,
+                        userGoal,
+                        consumed,
+                        in,
+                        budget,
+                        bestFreeText,
+                        toolDataChars,
+                        corrections,
+                        stopCandidates,
+                        stats.extensions);
+                ExhaustionDecision d = onExhausted(st);
+                narrate(
+                        ctx,
+                        process,
+                        "exhausted policy: "
+                                + switch (d.kind()) {
+                                    case EXTEND -> "extend";
+                                    case SYNTHESIZE -> d.hardFailure() ? "synthesize (hard failure)" : "synthesize";
+                                    case HARD_ERROR -> "hard error";
+                                }
+                                + nonBlankOr(d.reason() == null ? "" : " — " + d.reason(), ""));
+                if (d.kind() == ExhaustionDecision.Kind.EXTEND && wallclockOk(turnStart)) {
+                    in.messages().add(UserMessage.from(nudgeText(d)));
+                    stats.extensions++;
+                    // A fresh budget — the segment counter starts over, the
+                    // turn's totals (consumed, extensions) keep counting.
+                    consumedInBudget = 0;
+                    continue;
+                }
+                if (d.kind() == ExhaustionDecision.Kind.EXTEND) {
+                    // Wallclock net tripped: stop extending, synthesize what we
+                    // have — the turn must not outlive the net.
+                    log.warn(
+                            "Nutrimat[{}] id='{}' wallclock net reached — refusing further extensions",
+                            natureId(),
+                            process.getId());
+                    return TurnOutcome.recovered(
+                            bestFreeText.isBlank()
+                                    ? "The run exceeded its " + TURN_WALLCLOCK_MINUTES + "-minute wallclock budget."
+                                    : bestFreeText);
+                }
+                // SYNTHESIZE — hardFailure marks whether this is a graceful
+                // synthesis (clubmate's judge: normal terminal) or a fallback
+                // after a failure (the Ford recovery: worker closes INCOMPLETE).
+                return toOutcome(d, process, bestFreeText);
             }
-            if (d.kind() == ExhaustionDecision.Kind.EXTEND) {
-                // Wallclock net tripped: stop extending, synthesize what we
-                // have — the turn must not outlive the net.
-                log.warn(
-                        "Nutrimat[{}] id='{}' wallclock net reached — refusing further extensions",
-                        natureId(),
-                        process.getId());
-                return TurnOutcome.recovered(
-                        bestFreeText.isBlank()
-                                ? "The run exceeded its " + TURN_WALLCLOCK_MINUTES + "-minute wallclock budget."
-                                : bestFreeText);
-            }
-            // SYNTHESIZE — hardFailure marks whether this is a graceful
-            // synthesis (clubmate's judge: normal terminal) or a fallback after a
-            // failure (janx: Ford's recovered outcome, worker closes INCOMPLETE).
-            return toOutcome(d, process, bestFreeText);
         }
     }
 
@@ -886,20 +974,23 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             String userGoal,
             int consumed,
             LoopInputs in,
+            int budget,
             String bestFreeText,
             int toolDataChars,
             int corrections,
-            int stopCandidates) {
+            int stopCandidates,
+            int extensions) {
         return new LoopState(
                 process,
                 ctx,
                 userGoal,
                 consumed,
-                in.maxIterations(),
+                budget,
                 bestFreeText,
                 toolDataChars,
                 corrections,
                 stopCandidates,
+                extensions,
                 in.validation());
     }
 
@@ -924,8 +1015,21 @@ public abstract class AbstractNutrimat implements ThinkEngine {
     }
 
     /**
-     * The iteration budget ran out. The default is Ford's recovery: carry the
-     * best free text out as a hard-failure outcome (a worker then closes
+     * The nature's iteration budget — how many rounds one budget segment
+     * spans, or {@code 0} for a nature without one: an uncapped loop runs
+     * until the natural stop, bounded only by the wallclock net. Budget
+     * semantics are nature policy ({@code redbull}'s hard limit,
+     * {@code clubmate}'s judge-guarded budget); the base knows no budget.
+     * Only a nature with a budget ever reaches {@link #onExhausted}.
+     */
+    protected int iterationBudget(ThinkProcessDocument process) {
+        return 0;
+    }
+
+    /**
+     * The iteration budget ran out — only a budget nature reaches this
+     * ({@link #iterationBudget} &gt; 0). The default is Ford's recovery: carry
+     * the best free text out as a hard-failure outcome (a worker then closes
      * {@code INCOMPLETE}). Alternatives: {@link ExhaustionDecision#extend}
      * with a fresh budget ({@code clubmate}), or throw
      * {@link NutrimatExhaustedException} for a visible hard error
@@ -933,7 +1037,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
      */
     protected ExhaustionDecision onExhausted(LoopState state) {
         String text = state.bestFreeText().isBlank()
-                ? "The run exceeded its hard limit of " + state.maxIterations()
+                ? "The run exceeded its hard limit of " + state.iterationBudget()
                         + " processing steps (maxIterations) without producing an answer."
                 : state.bestFreeText();
         return ExhaustionDecision.synthesize(text, true);
@@ -994,19 +1098,54 @@ public abstract class AbstractNutrimat implements ThinkEngine {
     private static final String NARRATION_ROUNDS = "rounds";
 
     /**
+     * Narration for a loop <b>decision</b> (stop verdict, exhausted policy,
+     * continue-gate) — shown in {@code all} mode only: the {@code rounds}
+     * mode is the "no decision noise" setting and suppresses exactly these.
+     */
+    private void narrate(ThinkEngineContext ctx, ThinkProcessDocument process, String text) {
+        if (text == null || text.isBlank()) return;
+        String mode = narrationMode(process);
+        if (NARRATION_OFF.equals(mode) || NARRATION_ROUNDS.equals(mode)) return;
+        emitNarration(ctx, process, text);
+    }
+
+    /**
+     * Narration for one loop round ({@link #roundNarration}) — shown in
+     * {@code all} and {@code rounds} modes.
+     */
+    private void narrateRound(ThinkEngineContext ctx, ThinkProcessDocument process, String text) {
+        if (text == null || text.isBlank()) return;
+        if (NARRATION_OFF.equals(narrationMode(process))) return;
+        emitNarration(ctx, process, text);
+    }
+
+    private String narrationMode(ThinkProcessDocument process) {
+        return paramString(process, "loopNarration", "all").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * The live note for one loop round — nature-owned wording, because a
+     * round means different things per nature: {@code redbull} and {@code
+     * clubmate} count against a hard budget ("round 3/40", extensions
+     * marked), {@code absint} narrates the model's own words. Called at the
+     * start of each iteration, before the LLM call: {@code state} carries
+     * the loop position, {@code lastRoundText} is the model's free text of
+     * the previous round (blank on the first round and after text-less
+     * rounds). A blank return emits no note.
+     */
+    protected String roundNarration(LoopState state, String lastRoundText) {
+        return "round " + (state.iterationsConsumed() + 1);
+    }
+
+    /**
      * Emits one dimmed interim note ({@code KIND_INTERIM}) on the user-
      * progress channel — visible in the chat transcript, never part of the
      * LLM context, never routed to the parent's inbox (see
      * {@code ProgressEmitter.emitInterimReply}). Recipe knob
      * {@code params.loopNarration}: {@code all} (default — rounds and every
-     * loop decision), {@code rounds} (round counters only), {@code off}.
+     * loop decision), {@code rounds} (round notes only), {@code off}.
      */
-    private void narrate(ThinkEngineContext ctx, ThinkProcessDocument process, String text) {
-        if (text == null || text.isBlank()) return;
-        String mode = paramString(process, "loopNarration", "all").toLowerCase(java.util.Locale.ROOT);
-        if (NARRATION_OFF.equals(mode)) return;
-        // rounds-mode: only the round counters pass, loop decisions are suppressed
-        if (NARRATION_ROUNDS.equals(mode) && !text.startsWith("round ")) return;
+    private void emitNarration(ThinkEngineContext ctx, ThinkProcessDocument process, String text) {
         // Persist as an interim-kind assistant note (audit/scrollback) — the
         // interim marker filters it out of every LLM-replay / compaction /
         // Prak / RAG path, so the narration never becomes model context.
@@ -1026,6 +1165,65 @@ public abstract class AbstractNutrimat implements ThinkEngine {
         if (!process.isHiddenFromUi()) {
             ctx.emitInterimReply("[" + natureId() + "] " + text, null);
         }
+    }
+
+    /**
+     * The report channel — base mechanics, nature-owned timing: a nature
+     * calls this whenever an account is due ({@code absint} at every natural
+     * stop, {@code salitos} with its judge verdict). The text is appended to
+     * the persisted loop state ({@code nutrimatState.roundReports}, capped,
+     * live — visible in {@code //nutrimat status} mid-turn) and pushed to the
+     * client as a notification. Never blocks the turn.
+     */
+    protected void report(LoopState state, String text) {
+        if (text == null || text.isBlank()) return;
+        appendRoundReport(state.process(), text);
+        notifyRoundReport(state.process(), text);
+    }
+
+    /** Appends one report to the persisted round-report list — observability,
+     *  never business logic: a persist failure is logged and swallowed. */
+    private void appendRoundReport(ThinkProcessDocument process, String text) {
+        try {
+            Map<String, Object> params = new java.util.LinkedHashMap<>();
+            if (process.getEngineParams() != null) {
+                params.putAll(process.getEngineParams());
+            }
+            Map<String, Object> state = new java.util.LinkedHashMap<>();
+            if (params.get("nutrimatState") instanceof Map<?, ?> prev) {
+                for (Map.Entry<?, ?> e : prev.entrySet()) {
+                    if (e.getKey() instanceof String k) state.put(k, e.getValue());
+                }
+            }
+            List<String> reports = new ArrayList<>();
+            if (state.get("roundReports") instanceof List<?> prevReports) {
+                for (Object r : prevReports) {
+                    if (r instanceof String s && !s.isBlank()) reports.add(s);
+                }
+            }
+            reports.add(text);
+            if (reports.size() > MAX_ROUND_REPORTS) {
+                reports = new ArrayList<>(reports.subList(reports.size() - MAX_ROUND_REPORTS, reports.size()));
+            }
+            state.put("roundReports", reports);
+            writeNutrimatState(process, state);
+        } catch (RuntimeException e) {
+            log.debug(
+                    "Nutrimat[{}] id='{}' round-report persist failed: {}", natureId(), process.getId(), e.toString());
+        }
+    }
+
+    /**
+     * Pushes a report on the notify side-channel — session-bound, transient,
+     * no replay (see
+     * {@code specification/public/user-notification-channel.md}). Same audience
+     * guard as the narration: a process hidden from the UI records its
+     * reports but stays silent.
+     */
+    private void notifyRoundReport(ThinkProcessDocument process, String report) {
+        if (process.isHiddenFromUi()) return;
+        String text = report.length() > NOTIFY_TEXT_LIMIT ? report.substring(0, NOTIFY_TEXT_LIMIT) + "…" : report;
+        notifications.publish(process, text, NotificationSeverity.INFO);
     }
 
     /**
@@ -1100,6 +1298,22 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             state.put("stopCandidates", stats.stopCandidates);
             state.put("extensions", stats.extensions);
             state.put("turns", turns);
+            // Round reports were persisted live by report() (nature-timed
+            // accounting) — carry the run's list over into the fresh turn
+            // state, capped to the newest MAX_ROUND_REPORTS entries.
+            if (params.get("nutrimatState") instanceof Map<?, ?> prev
+                    && prev.get("roundReports") instanceof List<?> prevReports) {
+                List<String> reports = new ArrayList<>();
+                for (Object r : prevReports) {
+                    if (r instanceof String s && !s.isBlank()) reports.add(s);
+                }
+                if (reports.size() > MAX_ROUND_REPORTS) {
+                    reports = new ArrayList<>(reports.subList(reports.size() - MAX_ROUND_REPORTS, reports.size()));
+                }
+                if (!reports.isEmpty()) {
+                    state.put("roundReports", reports);
+                }
+            }
             // redbull's continue-gate: a hard-failure turn on a primary parks the
             // process "awaiting user input" — background events are discarded
             // until an explicit user message starts the next loop run.
@@ -1155,7 +1369,6 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             List<ToolSpecification> toolSpecs,
             ContextToolsApi tools,
             List<ChatMessage> messages,
-            int maxIterations,
             boolean validation,
             String modelAlias,
             String userGoal) {}
@@ -1170,12 +1383,16 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             ThinkEngineContext ctx,
             String userGoal,
             int iterationsConsumed,
-            int maxIterations,
+            /** The nature's iteration budget — 0 means the loop is uncapped
+             *  (rounds until the natural stop; the wallclock net bounds it). */
+            int iterationBudget,
             String bestFreeText,
             int toolDataChars,
             int corrections,
             /** How many natural-stop candidates this turn has seen. */
             int stopCandidates,
+            /** How many judge-approved budget extensions this turn has seen. */
+            int extensions,
             /** Whether the recipe opted into the data-relay validation check. */
             boolean validationRequested) {}
 

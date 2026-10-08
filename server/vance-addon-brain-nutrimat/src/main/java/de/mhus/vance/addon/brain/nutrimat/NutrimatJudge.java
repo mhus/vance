@@ -21,12 +21,16 @@ import org.springframework.stereotype.Service;
  *   <li><b>natural-stop candidate</b> ({@code salitos}): the model stopped
  *       calling tools — accept the draft as the reply, or push it to continue
  *       working.</li>
+ *   <li><b>self-accounting</b> ({@code absint}): the model stopped calling
+ *       tools — produce a non-empty report of what this loop did; the stop
+ *       itself is accepted, nobody decides about continuing.</li>
  * </ul>
  *
  * <p>Deliberately an own implementation, not the productive strand's
  * {@code ActionLoopJudgeService} (independence is the lab's premise) — the
- * mechanism is a blueprint, the policy lives here and in the two internal
- * judge recipes ({@code nutrimat-judge-clubmate}, {@code nutrimat-judge-salitos}).
+ * mechanism is a blueprint, the policy lives here and in the internal
+ * judge recipes ({@code nutrimat-judge-clubmate}, {@code nutrimat-judge-salitos},
+ * {@code nutrimat-judge-absint}).
  *
  * <p>Failure policy: a judge that cannot deliver never blocks the turn. The
  * exhausted judge degrades to {@code synthesize} with the gathered text, the
@@ -40,6 +44,7 @@ public class NutrimatJudge {
 
     static final String EXHAUSTED_RECIPE = "nutrimat-judge-clubmate";
     static final String CONTINUE_RECIPE = "nutrimat-judge-salitos";
+    static final String REPORT_RECIPE = "nutrimat-judge-absint";
 
     /** Same loose shape the discovery/judge calls use — validated semantically below. */
     private static final Map<String, Object> SCHEMA = Map.of("type", "object");
@@ -51,6 +56,12 @@ public class NutrimatJudge {
 
     /** Verdict at a natural-stop candidate: the draft is done, or not yet. */
     public record ContinueJudgment(boolean done, String nudge, String reason) {}
+
+    /**
+     * Non-empty account of what this loop round did ({@code absint}) — the
+     * contract guarantees a usable report even when the judge call degrades.
+     */
+    public record RoundReport(String report) {}
 
     /**
      * {@code clubmate}'s decision point. {@code extend=true} carries a nudge for
@@ -149,6 +160,49 @@ public class NutrimatJudge {
         }
         log.info("NutrimatJudge id='{}' continue-judge decision=done reason='{}'", process.getId(), reason);
         return new ContinueJudgment(true, "", reason == null ? "done" : reason);
+    }
+
+    /**
+     * {@code absint}'s reporting point — fired at every natural-stop candidate
+     * instead of a done/continue verdict. The call must deliver a non-empty
+     * account of what this loop did; a judge that cannot deliver never blocks
+     * the turn: it degrades to the draft text (or the fixed fallback), so
+     * the report is never blank.
+     */
+    public RoundReport reportRound(ThinkProcessDocument process, String userGoal, String draftText, int iterations) {
+        Map<String, Object> vars = new LinkedHashMap<>();
+        vars.put("userGoal", userGoal == null ? "" : userGoal);
+        vars.put("draftText", draftText == null ? "" : draftText);
+        vars.put("iterations", iterations);
+
+        Map<String, Object> raw;
+        try {
+            raw = lightLlm.callForJson(LightLlmRequest.builder()
+                    .recipeName(REPORT_RECIPE)
+                    .userPrompt("Account for the loop round above.")
+                    .pebbleVars(vars)
+                    .schema(SCHEMA)
+                    .tenantId(process.getTenantId())
+                    .projectId(process.getProjectId())
+                    .processId(process.getId())
+                    .build());
+        } catch (LightLlmException e) {
+            // SchemaValidationException extends LightLlmException — one catch
+            // covers "schema budget exhausted" and "recipe/provider broken".
+            log.warn(
+                    "NutrimatJudge id='{}' round-report LLM failed ({}) — degrading to the draft text",
+                    process.getId(),
+                    e.toString());
+            return new RoundReport(safeGathered(draftText));
+        }
+
+        String report = stringOrNull(raw.get("report"));
+        if (report == null) {
+            log.warn("NutrimatJudge id='{}' round-report empty — degrading to the draft text", process.getId());
+            return new RoundReport(safeGathered(draftText));
+        }
+        log.info("NutrimatJudge id='{}' round-report chars={}", process.getId(), report.length());
+        return new RoundReport(report);
     }
 
     /** Never block the turn: when the judge has nothing, carry the gathered text. */

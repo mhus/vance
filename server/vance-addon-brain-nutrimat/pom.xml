@@ -10,7 +10,7 @@
 
     <artifactId>vance-addon-brain-nutrimat</artifactId>
     <name>vance-addon-brain-nutrimat</name>
-    <description>Nutrimat — experimental loop laboratory. One engine framework (AbstractNutrimat) with loop-type natures (janx, redbull, clubmate, salitos) behind the closed Ford-style worker contract. Deliberately independent of the productive engine strand: loop logic is adapted, not shared. See planning/nutrimat-engine.md.</description>
+    <description>Nutrimat — experimental loop laboratory. One engine framework (AbstractNutrimat) with loop-type natures (janx, redbull, clubmate, absint, salitos) behind the closed Ford-style worker contract. Deliberately independent of the productive engine strand: loop logic is adapted, not shared. See planning/nutrimat-engine.md.</description>
     <packaging>jar</packaging>
 
     <dependencies>

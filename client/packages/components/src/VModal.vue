@@ -123,6 +123,7 @@ onUnmounted(() => {
       </div>
 
       <footer v-if="$slots.actions" class="modal-action shrink-0">
+        <slot name="actions" />
       </footer>
     </div>
   </dialog>

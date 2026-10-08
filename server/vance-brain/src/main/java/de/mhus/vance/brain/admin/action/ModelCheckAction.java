@@ -67,7 +67,10 @@ public class ModelCheckAction implements AdminAction {
     private static final String PING_PROMPT = "Hallo";
     private static final int MAX_CONCURRENT_PINGS = 5;
     private static final Duration PING_DEADLINE = Duration.ofSeconds(20);
-    private static final int PING_MAX_TOKENS = 64;
+    // Reasoning models burn invisible reasoning tokens before the first
+    // visible character — a 64-token probe reads as "empty" (finish=LENGTH)
+    // on glm-5.3 & co. 1024 keeps the probe cheap but lets a reasoner answer.
+    private static final int PING_MAX_TOKENS = 1024;
 
     private final SettingService settingService;
     private final AiModelResolver aiModelResolver;

@@ -1,20 +1,20 @@
-# Nutrimat loop-lab experiment: nature `mate` — the exhausted loop with a
+# Nutrimat loop-lab experiment: nature `clubmate` — the exhausted loop with a
 # judge. At budget exhaustion a LightLlm judge decides: fresh budget and
 # keep going ("extend"), or synthesize the answer. Exactly one axis away
 # from `redbull`. See specification/public/nutrimat-engine.md.
-title: "Nutrimat mate — exhausted loop with judge"
+title: "Nutrimat clubmate — exhausted loop with judge"
 listed: true
 category: experimental
 description: |
-  Experimental loop-lab worker. Nature `mate` runs the same natural-stop
+  Experimental loop-lab worker. Nature `clubmate` runs the same natural-stop
   tool loop as `janx`/`redbull`, but when the iteration budget runs out,
-  a judge (a single cheap LLM call, recipe `nutrimat-judge-mate`)
+  a judge (a single cheap LLM call, recipe `nutrimat-judge-clubmate`)
   decides whether the loop earned a fresh budget and should keep going,
   or whether the answer gets synthesized from what has been gathered.
-  The comparison `redbull` vs. `mate` measures exactly the judge. The
+  The comparison `redbull` vs. `clubmate` measures exactly the judge. The
   smaller `maxIterations` here is deliberate — the judge only fires at
   exhaustion; tune it per experiment.
-engine: nutrimat-mate
+engine: nutrimat-clubmate
 # Chat look for sessions on this recipe: warm red transcript with the
 # exclamation-mark frieze (_vance/chat-themes/nutrimat.css) — the shared
 # "this is an experiment" signal. Applies when this recipe runs as the

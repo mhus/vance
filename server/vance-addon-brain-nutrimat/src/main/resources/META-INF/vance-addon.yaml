@@ -2,7 +2,7 @@ id: nutrimat
 version: "@project.version@"
 
 # Brain-only experimental engine addon: the Nutrimat loop laboratory
-# (AbstractNutrimat + loop natures janx / redbull / mate / salitos). No
+# (AbstractNutrimat + loop natures janx / redbull / clubmate / salitos). No
 # document kinds, no client remote — the user-facing surface is the
 # recipe picker (category "experimental") plus the worker contract other
 # orchestrators spawn through. See specification/public/nutrimat-engine.md.

@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
  * that decides "continue or stop" at the two decision points the lab explores:
  *
  * <ul>
- *   <li><b>exhaustion</b> ({@code mate}): the iteration budget ran out —
+ *   <li><b>exhaustion</b> ({@code clubmate}): the iteration budget ran out —
  *       grant a fresh budget and keep looping, or synthesize the answer from
  *       what has been gathered.</li>
  *   <li><b>natural-stop candidate</b> ({@code salitos}): the model stopped
@@ -26,7 +26,7 @@ import org.springframework.stereotype.Service;
  * <p>Deliberately an own implementation, not the productive strand's
  * {@code ActionLoopJudgeService} (independence is the lab's premise) — the
  * mechanism is a blueprint, the policy lives here and in the two internal
- * judge recipes ({@code nutrimat-judge-mate}, {@code nutrimat-judge-salitos}).
+ * judge recipes ({@code nutrimat-judge-clubmate}, {@code nutrimat-judge-salitos}).
  *
  * <p>Failure policy: a judge that cannot deliver never blocks the turn. The
  * exhausted judge degrades to {@code synthesize} with the gathered text, the
@@ -38,7 +38,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class NutrimatJudge {
 
-    static final String EXHAUSTED_RECIPE = "nutrimat-judge-mate";
+    static final String EXHAUSTED_RECIPE = "nutrimat-judge-clubmate";
     static final String CONTINUE_RECIPE = "nutrimat-judge-salitos";
 
     /** Same loose shape the discovery/judge calls use — validated semantically below. */
@@ -53,7 +53,7 @@ public class NutrimatJudge {
     public record ContinueJudgment(boolean done, String nudge, String reason) {}
 
     /**
-     * {@code mate}'s decision point. {@code extend=true} carries a nudge for
+     * {@code clubmate}'s decision point. {@code extend=true} carries a nudge for
      * the next round in {@code text}; {@code extend=false} carries the answer
      * to surface in {@code text}.
      */

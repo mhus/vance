@@ -1,4 +1,4 @@
-package de.mhus.vance.addon.brain.nutrimat.mate;
+package de.mhus.vance.addon.brain.nutrimat.clubmate;
 
 import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat;
 import de.mhus.vance.addon.brain.nutrimat.NutrimatJudge;
@@ -27,14 +27,14 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Nature {@code mate} — the exhausted loop with a judge: when the iteration
+ * Nature {@code clubmate} — the exhausted loop with a judge: when the iteration
  * budget runs out, a single schema-bound LightLlm call decides whether the
  * loop earned a fresh budget ({@code extend}) or whether the answer gets
  * synthesized from what has been gathered ({@code synthesize}).
  *
  * <p>Exactly one axis differs from {@code redbull}: at exhaustion a judge
  * decides instead of the run failing. The loop mechanics, the budget shape
- * and the prompts are identical — a {@code redbull}-vs-{@code mate}
+ * and the prompts are identical — a {@code redbull}-vs-{@code clubmate}
  * comparison measures the judge and nothing else. Extensions carry no fixed
  * ceiling (the judge may keep granting while the loop stays healthy); the
  * per-turn wallclock net bounds a runaway judge.
@@ -42,11 +42,11 @@ import tools.jackson.databind.ObjectMapper;
  * <p>Club-Mate keeps the night going — the loop that asks before it drops.
  */
 @Component
-public class NutrimatMate extends AbstractNutrimat {
+public class NutrimatClubmate extends AbstractNutrimat {
 
     private final NutrimatJudge judge;
 
-    public NutrimatMate(
+    public NutrimatClubmate(
             ThinkProcessService thinkProcessService,
             ObjectMapper objectMapper,
             StreamingProperties streamingProperties,
@@ -98,7 +98,7 @@ public class NutrimatMate extends AbstractNutrimat {
 
     @Override
     protected String natureId() {
-        return "mate";
+        return "clubmate";
     }
 
     @Override

@@ -111,7 +111,7 @@ promptPrefix: |
       "remember for this project", "our convention is…".
     - **Loop experiment** — a Nutrimat loop-lab recipe: a worker recipe
       pinning one loop nature (`nutrimat-janx`, `nutrimat-redbull`,
-      `nutrimat-mate`, `nutrimat-salitos`) with its own model/budget/prompt.
+      `nutrimat-clubmate`, `nutrimat-salitos`) with its own model/budget/prompt.
       "set up a loop experiment", "compare the exhausted loop against the
       judge loop", "I want a nutrimat worker with a tiny budget".
 

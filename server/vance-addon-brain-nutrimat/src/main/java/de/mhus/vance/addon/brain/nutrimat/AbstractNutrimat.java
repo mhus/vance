@@ -78,7 +78,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Nutrimat — the turn shell and loop laboratory base. Every loop nature
- * ({@code janx}, {@code redbull}, {@code mate}, {@code salitos}, …) extends
+ * ({@code janx}, {@code redbull}, {@code clubmate}, {@code salitos}, …) extends
  * this class and is registered as its own {@link ThinkEngine} bean under the
  * name {@code nutrimat-<nature>}.
  *
@@ -102,7 +102,7 @@ import tools.jackson.databind.ObjectMapper;
  *       accept the text as the reply, push a correction, or decide
  *       "continue working" (the {@code salitos} question).</li>
  *   <li>{@link #onExhausted} — the iteration budget ran out: synthesize,
- *       extend with a fresh budget ({@code mate}'s judge), or throw
+ *       extend with a fresh budget ({@code clubmate}'s judge), or throw
  *       {@link NutrimatExhaustedException} for a hard, visible failure
  *       ({@code redbull}).</li>
  *   <li>{@link #onLlmFailure} — the provider call collapsed: same decision
@@ -852,7 +852,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                                 : bestFreeText);
             }
             // SYNTHESIZE — hardFailure marks whether this is a graceful
-            // synthesis (mate's judge: normal terminal) or a fallback after a
+            // synthesis (clubmate's judge: normal terminal) or a fallback after a
             // failure (janx: Ford's recovered outcome, worker closes INCOMPLETE).
             return toOutcome(d, process, bestFreeText);
         }
@@ -927,7 +927,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
      * The iteration budget ran out. The default is Ford's recovery: carry the
      * best free text out as a hard-failure outcome (a worker then closes
      * {@code INCOMPLETE}). Alternatives: {@link ExhaustionDecision#extend}
-     * with a fresh budget ({@code mate}), or throw
+     * with a fresh budget ({@code clubmate}), or throw
      * {@link NutrimatExhaustedException} for a visible hard error
      * ({@code redbull}).
      */
@@ -955,7 +955,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
      * <p>Default {@code false} (Ford-like: a primary hard failure parks
      * BLOCKED and every pending message wakes it). {@code redbull} overrides
      * to {@code true} — its "Hard stop by design" promise must survive the
-     * wake-up mechanics. {@code mate} keeps the default: its exhausted path
+     * wake-up mechanics. {@code clubmate} keeps the default: its exhausted path
      * is judge-mediated (extend or synthesize), not a hard stop.
      */
     protected boolean exhaustedStopsUntilUserInput() {
@@ -1211,7 +1211,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             @Nullable String reason,
             boolean hardFailure) {
         public enum Kind {
-            /** Grant a fresh budget and keep looping ({@code mate}'s judge). */
+            /** Grant a fresh budget and keep looping ({@code clubmate}'s judge). */
             EXTEND,
             /** End the turn with the given text. */
             SYNTHESIZE,

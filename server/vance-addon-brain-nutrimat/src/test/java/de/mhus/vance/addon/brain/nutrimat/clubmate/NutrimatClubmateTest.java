@@ -1,4 +1,4 @@
-package de.mhus.vance.addon.brain.nutrimat.mate;
+package de.mhus.vance.addon.brain.nutrimat.clubmate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -16,12 +16,12 @@ import org.junit.jupiter.api.Test;
  * The single axis this nature owns: at exhaustion a judge decides between
  * "fresh budget, keep going" and "synthesize the answer".
  */
-class NutrimatMateTest {
+class NutrimatClubmateTest {
 
     private final NutrimatJudge judge = mock(NutrimatJudge.class);
 
     // Positional nulls on purpose — a constructor change must break compile.
-    private final NutrimatMate engine = new NutrimatMate(
+    private final NutrimatClubmate engine = new NutrimatClubmate(
             null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
             null, null, null, null, judge);
 

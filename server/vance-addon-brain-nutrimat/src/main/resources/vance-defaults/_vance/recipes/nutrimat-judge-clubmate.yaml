@@ -1,6 +1,6 @@
 description: |
   Internal LightLlmService config profile used by the Nutrimat loop
-  nature `mate` when its iteration budget is exhausted. The judge
+  nature `clubmate` when its iteration budget is exhausted. The judge
   decides whether to extend the loop (grant a fresh budget) or to
   synthesize an answer from what has already been gathered.
 

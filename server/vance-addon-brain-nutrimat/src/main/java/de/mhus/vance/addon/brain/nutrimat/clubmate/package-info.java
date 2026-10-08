@@ -2,4 +2,4 @@
  * Nature placeholder.
  */
 @org.jspecify.annotations.NullMarked
-package de.mhus.vance.addon.brain.nutrimat.mate;
+package de.mhus.vance.addon.brain.nutrimat.clubmate;

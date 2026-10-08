@@ -64,7 +64,7 @@ class TrillianSessionLifecycleHookTest {
     de.mhus.vance.brain.trillian.nature.TrillianNature nature;
 
     @Mock
-    de.mhus.vance.shared.project.ProjectService projectService;
+    TrillianHubSweeper hubSweeper;
 
     TrillianSessionLifecycleHook hook;
 
@@ -83,6 +83,7 @@ class TrillianSessionLifecycleHookTest {
         when(userService.findByTenantAndName(TENANT, ACCOUNT))
                 .thenAnswer(inv -> java.util.Optional.of(new de.mhus.vance.shared.user.UserDocument()));
         when(nature.id()).thenReturn("adam");
+        when(hubSweeper.sweepUserHub(any(), any())).thenReturn(true);
         hook = new TrillianSessionLifecycleHook(
                 thinkProcessService,
                 sessionService,
@@ -90,8 +91,40 @@ class TrillianSessionLifecycleHookTest {
                 lifecycleProvider,
                 permissionProvider,
                 new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(List.of(nature)),
-                projectService);
+                hubSweeper);
         givenControlProcessLinkingTo(PEER);
+    }
+
+    @Test
+    void closingControl_sweepsTheHubBeforeTheAccount() {
+        hook.onSessionClosed(session(CONTROL));
+
+        // Loop session, schedules and goals live in the hub; the next
+        // Trillian minted under this name must not inherit them.
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(hubSweeper, userService);
+        order.verify(hubSweeper).sweepUserHub(TENANT, "_user_" + ACCOUNT);
+        order.verify(userService).delete(TENANT, ACCOUNT);
+    }
+
+    @Test
+    void closingControl_keepsTheAccount_whenTheHubSweepDidNotFinish() {
+        when(hubSweeper.sweepUserHub(any(), any())).thenReturn(false);
+
+        hook.onSessionClosed(session(CONTROL));
+
+        // The account holds the name until a re-run finishes the sweep.
+        verify(userService, never()).delete(TENANT, ACCOUNT);
+        verify(permissionBootstrap).revokeAll(TENANT, ACCOUNT);
+    }
+
+    @Test
+    void closingControl_closesSessionsTheTrillianOpenedElsewhere() {
+        SessionDocument outgoing = session("sess-outgoing");
+        when(sessionService.listForUser(TENANT, ACCOUNT)).thenReturn(List.of(outgoing));
+
+        hook.onSessionClosed(session(CONTROL));
+
+        verify(lifecycleService).closeWithCascade("sess-outgoing");
     }
 
     @Test

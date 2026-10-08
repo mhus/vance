@@ -29,8 +29,11 @@ public class ScheduleAddTool implements Tool {
         properties.put(
                 "name",
                 Map.of(
-                        "type", "string",
-                        "description", "Stable entry name, unique per Trillian (e.g. 'morning-briefing')."));
+                        "type",
+                        "string",
+                        "description",
+                        "Stable entry name, unique per Trillian: lowercase letters, digits, '-' and '_'"
+                                + " (e.g. 'morning-briefing')."));
         properties.put(
                 "payload",
                 Map.of(
@@ -65,6 +68,7 @@ public class ScheduleAddTool implements Tool {
     }
 
     private final TrillianScheduleStore scheduleStore;
+    private final de.mhus.vance.brain.trillian.TrillianAgendaService agendaService;
 
     @Override
     public String name() {
@@ -101,7 +105,12 @@ public class ScheduleAddTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        String name = stringOrThrow(params, "name");
+        String name;
+        try {
+            name = TrillianScheduleStore.requireValidName(stringOrThrow(params, "name"));
+        } catch (IllegalArgumentException e) {
+            throw new ToolException("schedule_add: " + e.getMessage(), e);
+        }
         String payload = stringOrThrow(params, "payload");
         String every = stringOrNull(params, "every");
         String label = stringOrNull(params, "label");
@@ -123,7 +132,10 @@ public class ScheduleAddTool implements Tool {
             scheduleStore.save(ctx.tenantId(), ctx.projectId(), schedule);
         } catch (IllegalArgumentException e) {
             throw new ToolException("schedule_add: " + e.getMessage(), e);
+        } catch (RuntimeException e) {
+            throw new ToolException("schedule_add: could not store '" + name + "' — " + e.getMessage(), e);
         }
+        agendaService.refreshScheduleMarker(ctx.processId());
         return Map.of("name", name, "due", due.toString(), "next", every == null ? "" : every, "status", "scheduled");
     }
 

@@ -61,6 +61,18 @@ public class TrillianWakeupService {
     public static final String PARAM_WAKEUP_STEP = "trillianWakeupStep";
 
     /**
+     * engineParamOverrides key: epoch millis of the earliest enabled schedule
+     * in the loop's home. Independent of the ladder — an appointment fires on
+     * the scan grid, also while a worker runs and the ladder is disarmed.
+     * {@value #NO_SCHEDULE} means "computed, nothing scheduled"; an absent
+     * key means "never computed" and makes the heartbeat compute it.
+     */
+    public static final String PARAM_NEXT_SCHEDULE_AT = "trillianNextScheduleAt";
+
+    /** Marker value for "computed, no enabled schedule". */
+    public static final long NO_SCHEDULE = -1L;
+
+    /**
      * Minutes between self-checks, per consecutive quiet round. Starts at
      * ten rather than five: the first wakeup after a task is rarely the
      * useful one, and a Trillian that stirs every five minutes reads as
@@ -162,6 +174,29 @@ public class TrillianWakeupService {
         return at == null ? null : Instant.ofEpochMilli(at);
     }
 
+    /** Sets the schedule marker; {@code null} records "nothing scheduled". */
+    public void setScheduleMarker(String loopProcessId, @Nullable Instant earliestDue) {
+        thinkProcessService.setEngineParamOverride(
+                loopProcessId, PARAM_NEXT_SCHEDULE_AT, earliestDue == null ? NO_SCHEDULE : earliestDue.toEpochMilli());
+    }
+
+    /** Whether the schedule marker was ever computed for this loop. */
+    public boolean hasScheduleMarker(ThinkProcessDocument loop) {
+        return longOverride(loop, PARAM_NEXT_SCHEDULE_AT) != null;
+    }
+
+    /** The earliest schedule due on this loop, or {@code null}. */
+    public @Nullable Instant scheduleMarker(ThinkProcessDocument loop) {
+        Long at = longOverride(loop, PARAM_NEXT_SCHEDULE_AT);
+        return at == null || at < 0 ? null : Instant.ofEpochMilli(at);
+    }
+
+    /** Whether one of the loop's schedules has come due. */
+    public boolean isScheduleDue(ThinkProcessDocument loop, Instant now) {
+        Instant at = scheduleMarker(loop);
+        return at != null && !at.isAfter(now);
+    }
+
     /** Whether this loop's self-check is due. */
     public boolean isDue(ThinkProcessDocument loop, Instant now) {
         Long at = longOverride(loop, PARAM_NEXT_WAKEUP_AT);
@@ -236,9 +271,12 @@ public class TrillianWakeupService {
         return raw instanceof Number n ? n.longValue() : null;
     }
 
-    /** Loop processes of a project — the only ones that wake themselves. */
-    public List<ThinkProcessDocument> loopsOf(String tenantId, String projectId, int limit) {
-        return thinkProcessService.findByProjectAndEngines(
-                tenantId, projectId, List.of(TrillianUserEngine.NAME), limit);
+    /**
+     * Every live loop process in the cluster — the only processes that wake
+     * themselves. One indexed query per tick, independent of how many
+     * projects exist (the loops sit in podless hubs, D2).
+     */
+    public List<ThinkProcessDocument> liveLoops(int limit) {
+        return thinkProcessService.findLiveByEngine(TrillianUserEngine.NAME, limit);
     }
 }

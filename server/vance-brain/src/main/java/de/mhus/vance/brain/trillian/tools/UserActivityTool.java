@@ -137,6 +137,11 @@ public class UserActivityTool implements Tool {
         List<Map<String, Object>> workers = new ArrayList<>();
         Instant now = Instant.now();
         for (ThinkProcessDocument worker : thinkProcessService.findByParentProcessId(peer.getId())) {
+            // Live only: the loop outlives many tasks, and the closed ones
+            // are history, not activity.
+            if (worker.getStatus() == de.mhus.vance.api.thinkprocess.ThinkProcessStatus.CLOSED) {
+                continue;
+            }
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("name", worker.getName());
             row.put(
@@ -166,9 +171,8 @@ public class UserActivityTool implements Tool {
      * not the ones it thinks it remembers.
      */
     private List<Map<String, Object>> recentActivityOf(ThinkProcessDocument peer) {
-        List<ChatMessageDocument> all =
-                chatMessageService.activeHistoryWithInterim(peer.getTenantId(), peer.getSessionId(), peer.getId());
-        List<ChatMessageDocument> tail = all.subList(Math.max(0, all.size() - RECENT_LINES), all.size());
+        List<ChatMessageDocument> tail = chatMessageService.recentActive(
+                peer.getTenantId(), peer.getSessionId(), peer.getId(), /*after*/ null, RECENT_LINES, true);
         List<Map<String, Object>> rows = new ArrayList<>(tail.size());
         for (ChatMessageDocument m : tail) {
             Map<String, Object> row = new LinkedHashMap<>();
@@ -182,7 +186,7 @@ public class UserActivityTool implements Tool {
         return rows;
     }
 
-    private static String truncate(String text, int limit) {
+    private static String truncate(@Nullable String text, int limit) {
         if (text == null) {
             return "";
         }

@@ -52,21 +52,28 @@ public class TrillianModelGate {
 
     /**
      * Resolves the loop's model spec and refuses it when the allowlist does
-     * not cover it. Called before the loop is started — a refused model
-     * means the loop does not run and the operator gets a message naming
-     * both the model and the setting.
+     * not cover it. Called before anything of the loop is minted — a refused
+     * model means the loop does not run and the operator gets a message
+     * naming both the model and the setting.
+     *
+     * <p>Two projects, two questions. The model is resolved where the loop
+     * will run ({@code loopProjectId}, the hub — its alias settings are the
+     * ones the loop will see). The allowlist is read over account hub →
+     * {@code controlProjectId} → {@code _vance} (D8: user → project →
+     * tenant): the project the Trillian was started in is the project layer.
      *
      * @throws IllegalStateException when the resolved model is not approved
      */
     public void checkLoopModel(
             String tenantId,
-            @Nullable String projectId,
             String accountId,
-            @Nullable String processId,
+            @Nullable String controlProjectId,
+            @Nullable String loopProjectId,
             @Nullable String modelSpec) {
-        AiModelResolver.Resolved resolved = aiModelResolver.resolveOrDefault(modelSpec, tenantId, projectId, processId);
+        AiModelResolver.Resolved resolved =
+                aiModelResolver.resolveOrDefault(modelSpec, tenantId, loopProjectId, /*processId*/ null);
         String model = resolved.providerInstance() + ":" + resolved.modelName();
-        String allowlist = allowlistFor(tenantId, accountId, projectId);
+        String allowlist = allowlistFor(tenantId, accountId, controlProjectId);
         if (!ModelAllowlist.approved(model, allowlist)) {
             throw new IllegalStateException("Trillian user-loop model '" + model
                     + "' is not approved by setting '" + ALLOWED_MODELS_KEY

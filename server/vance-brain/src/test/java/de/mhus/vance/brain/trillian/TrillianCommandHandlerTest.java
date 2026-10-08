@@ -37,6 +37,9 @@ class TrillianCommandHandlerTest {
     @Mock
     org.springframework.beans.factory.ObjectProvider<TrillianSessionBootstrapper> sessionBootstrapper;
 
+    @Mock
+    de.mhus.vance.shared.thinkprocess.ThinkProcessService thinkProcessService;
+
     @InjectMocks
     TrillianCommandHandler handler;
 
@@ -339,6 +342,23 @@ class TrillianCommandHandlerTest {
 
         assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
         verify(api, never()).pausePeer(any());
+    }
+
+    @Test
+    void aGatedLoop_saysWhyThereIsNoWorkingSide() {
+        // The pair is a Trillian-Control whose loop a gate held back — not a
+        // session without Trillian.
+        when(api.findPeer("control-proc")).thenReturn(Optional.empty());
+        ThinkProcessDocument gated = control();
+        gated.setThinkEngine(TrillianSessionBootstrapper.CONTROL_ENGINE_NAME);
+        gated.setEngineParamOverrides(new java.util.LinkedHashMap<>(
+                java.util.Map.of(TrillianSessionBootstrapper.PARAM_GATE_DENIED, "model 'x:y' is not approved")));
+        when(thinkProcessService.findById("control-proc")).thenReturn(Optional.of(gated));
+
+        EngineCommandResult result = handler.handle(gated, command("info"));
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
+        assertThat(result.message()).contains("not approved");
     }
 
     @Test

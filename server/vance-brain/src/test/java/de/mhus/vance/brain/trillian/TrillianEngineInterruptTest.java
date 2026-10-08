@@ -252,10 +252,18 @@ class TrillianEngineInterruptTest {
                 promptComposer(),
                 natureRegistry(),
                 wakeupService,
+                leaseGranting(),
+                mock(org.springframework.beans.factory.ObjectProvider.class),
                 trillianApi,
                 modelCatalog(),
                 memoryContextLoader(),
                 compactionService());
+    }
+
+    private static TrillianWakeupClaimService leaseGranting() {
+        TrillianWakeupClaimService claims = mock(TrillianWakeupClaimService.class);
+        lenient().when(claims.acquireLease(any(), any())).thenReturn(true);
+        return claims;
     }
 
     private EngineChatFactory engineChatFactory() {

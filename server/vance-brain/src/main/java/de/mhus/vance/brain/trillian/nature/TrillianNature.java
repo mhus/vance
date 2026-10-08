@@ -105,19 +105,6 @@ public interface TrillianNature {
     }
 
     /**
-     * What this Trillian is called in conversation.
-     *
-     * <p>Defaults to {@code "Trillian"} — the engine's own name, correct
-     * for any Nature that does not name its instances. A Nature that
-     * gives each Trillian a given name returns it here, so the human
-     * meets "Ada is ready" rather than a class name.
-     *
-     * <p>Takes the attribute map because that is where a name lives if it
-     * lives anywhere: the human can change it with
-     * {@code //trillian attr set name}, and the call name has to follow
-     * without anything else being told.
-     */
-    /**
      * How sociable a session this Trillian opens in a project should be
      * (A6). Asked per {@code session_open}; a derived Nature may fix a
      * constant or vary it by purpose and project. The model never chooses —
@@ -133,6 +120,19 @@ public interface TrillianNature {
         return CollabMode.JOIN;
     }
 
+    /**
+     * What this Trillian is called in conversation.
+     *
+     * <p>Defaults to {@code "Trillian"} — the engine's own name, correct
+     * for any Nature that does not name its instances. A Nature that
+     * gives each Trillian a given name returns it here, so the human
+     * meets "Ada is ready" rather than a class name.
+     *
+     * <p>Takes the attribute map because that is where a name lives if it
+     * lives anywhere: the human can change it with
+     * {@code //trillian attr set name}, and the call name has to follow
+     * without anything else being told.
+     */
     default String callName(Map<String, Object> attributes) {
         return "Trillian";
     }
@@ -178,6 +178,21 @@ public interface TrillianNature {
      * the wakeup that already happened.
      */
     default void selfCheckDelivered(ThinkProcessDocument loop, List<SelfCheckFinding> findings) {}
+
+    /**
+     * Whether silence itself may wake this Trillian (A5, {@code [bored]}):
+     * once the loop has been quiet for an hour and its home holds standing
+     * goals ({@code _vance/trillian/goals.yaml}), the self-check carries a
+     * {@code [bored]} finding and the loop spends a turn on those goals.
+     *
+     * <p>Opt-in, default {@code false}. A bored turn spends idle tokens on
+     * purpose — the opposite of the empty-discard economics every other
+     * finding keeps — so a Nature has to say it wants initiative. A watchdog
+     * Nature stays silent until something real happens.
+     */
+    default boolean acceptsBoredFindings() {
+        return false;
+    }
 
     // ─── Attribute durability ─────────────────────────────────────
 

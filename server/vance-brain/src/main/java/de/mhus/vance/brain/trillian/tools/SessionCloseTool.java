@@ -3,13 +3,10 @@ package de.mhus.vance.brain.trillian.tools;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.trillian.TrillianUserEngine;
 import de.mhus.vance.shared.session.SessionDocument;
-import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -33,7 +30,7 @@ public class SessionCloseTool implements Tool {
                                     "description", "A session you opened with session_open.")),
             "required", List.of("sessionId"));
 
-    private final SessionService sessionService;
+    private final de.mhus.vance.brain.trillian.TrillianOwnSessions ownSessions;
     /** Breaks cycles through the session lifecycle service. */
     private final ObjectProvider<SessionLifecycleService> lifecycleProvider;
 
@@ -44,7 +41,7 @@ public class SessionCloseTool implements Tool {
 
     @Override
     public String description() {
-        return "Leave a session you opened: it closes with its processes. " + "Your own sessions only.";
+        return "Leave a session you opened with session_open: it closes with its processes.";
     }
 
     @Override
@@ -70,21 +67,8 @@ public class SessionCloseTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         Object raw = params == null ? null : params.get("sessionId");
-        if (!(raw instanceof String sessionId) || sessionId.isBlank()) {
-            throw new ToolException("'sessionId' is required");
-        }
-        Optional<SessionDocument> sessionOpt = sessionService.findBySessionId(sessionId.trim());
-        if (sessionOpt.isEmpty()) {
-            throw new ToolException("Session '" + sessionId + "' not found");
-        }
-        SessionDocument session = sessionOpt.get();
-        if (!session.getTenantId().equals(ctx.tenantId())) {
-            throw new ToolException("Session '" + sessionId + "' is in another tenant");
-        }
-        if (ctx.userId() == null || !ctx.userId().equals(session.getUserId())) {
-            throw new ToolException("Session '" + sessionId + "' is not yours — only sessions "
-                    + "this Trillian opened itself can be closed");
-        }
+        SessionDocument session = ownSessions.requireOwn(
+                raw instanceof String sid ? sid : null, ctx, de.mhus.vance.shared.permission.Action.EXECUTE);
         lifecycleProvider.getObject().closeWithCascade(session.getSessionId());
         return Map.of("sessionId", session.getSessionId(), "status", "closed");
     }

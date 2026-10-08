@@ -347,6 +347,16 @@ public class TrillianNatureAdam extends TrillianNatureBase {
      * cannot see — a promise made in conversation, "I'll come back to this
      * on Friday" — needs a written list, which is a separate matter.
      */
+    /**
+     * Adam keeps a journal and a persona across restarts — the Nature meant
+     * to have a life of its own, so silence with standing goals is a reason
+     * to act (A5).
+     */
+    @Override
+    public boolean acceptsBoredFindings() {
+        return true;
+    }
+
     @Override
     public List<SelfCheckFinding> selfCheckFindings(ThinkProcessDocument loop) {
         List<SelfCheckFinding> findings = new java.util.ArrayList<>(unreadInboxFindings(loop));

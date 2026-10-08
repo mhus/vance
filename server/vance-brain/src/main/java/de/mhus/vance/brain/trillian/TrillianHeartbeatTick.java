@@ -6,9 +6,8 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
 import de.mhus.vance.brain.trillian.nature.SelfCheckFinding;
+import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.shared.megadodo.MegadodoService;
-import de.mhus.vance.shared.project.ProjectDocument;
-import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
@@ -23,22 +22,28 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Wakes Trillian user-loops whose self-check has come due.
+ * Wakes Trillian user-loops whose self-check or whose schedule has come due.
  *
  * <p>Coarse on purpose. The goal is that a Trillian looks around
  * regularly, not that it looks at 14:03:00 — so this scans on a plain
  * fixed delay, never catches up on missed rounds, and lets drift
  * accumulate. That tolerance is what keeps the whole thing to one query
- * and no scheduler state: the due time lives on the process, so a brain
+ * and no scheduler state: the due times live on the process, so a brain
  * restart resumes the schedule rather than losing it.
  *
+ * <p><b>Two clocks, one wake.</b> The self-check ladder (10/20/40/60 min,
+ * measured in silence) decides when the loop looks around; the schedule
+ * marker (earliest enabled appointment in the home, A4) decides when an
+ * appointment is up. Appointments are independent of the ladder: they fire
+ * on the scan grid, also while a worker runs and the ladder is disarmed — a
+ * 09:00 stand-up must not wait for the loop's next look around.
+ *
  * <p><b>Every pod scans, one pod fires.</b> The loop homes are podless hubs
- * (D2), so there is no owner pod to scan on behalf of — every pod sees the
- * same loops and the {@link TrillianWakeupClaimService} decides who wakes
- * one: three pods noticing the same appointment produce one turn, not
- * three. The claim keys on the due slot, so a pod that dies before waking
- * loses one round, not the appointment — the loop is still due when the
- * slot's TTL frees it again.
+ * (D2), so there is no owner pod to scan on behalf of — every pod reads the
+ * live loops with one indexed query, and the {@link TrillianWakeupClaimService}
+ * decides who wakes one: three pods noticing the same appointment produce one
+ * turn, not three. The claim keys on the due slot, so a pod that dies before
+ * waking loses that slot for the claim TTL (an hour), not the appointment.
  */
 @Component
 @ConditionalOnProperty(value = "vance.trillian.heartbeat.enabled", havingValue = "true", matchIfMissing = true)
@@ -46,10 +51,9 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class TrillianHeartbeatTick {
 
-    /** Cap per project — a sanity bound, not an expected number. */
-    private static final int MAX_LOOPS_PER_PROJECT = 32;
+    /** Sanity bound on live loops per scan — not an expected number. */
+    private static final int MAX_LOOPS = 1000;
 
-    private final ProjectService projectService;
     private final ClusterService clusterService;
     private final ThinkProcessService thinkProcessService;
     private final TrillianWakeupService wakeupService;
@@ -70,87 +74,96 @@ public class TrillianHeartbeatTick {
         int adopted = 0;
         int quiet = 0;
         int woken = 0;
-        // D2: every pod scans the podless homes (plus any legacy loop still
-        // sitting in a project owned here); the wake claim decides who fires.
-        List<ProjectDocument> projects = new java.util.ArrayList<>(projectService.findPodlessActive());
-        for (ProjectDocument owned : projectService.findRunningByHomePodId(clusterService.selfPodId())) {
-            boolean known = projects.stream()
-                    .anyMatch(p -> p.getName().equals(owned.getName())
-                            && p.getTenantId().equals(owned.getTenantId()));
-            if (!known) {
-                projects.add(owned);
+        for (ThinkProcessDocument loop : wakeupService.liveLoops(MAX_LOOPS)) {
+            loops++;
+            // Overlap-skip: a loop that is mid-turn sees its inbox when the
+            // turn drains; a wakeup now would be a second turn for nothing.
+            if (loop.getStatus() != ThinkProcessStatus.IDLE) {
+                continue;
             }
-        }
-        for (ProjectDocument project : projects) {
-            for (ThinkProcessDocument loop :
-                    wakeupService.loopsOf(project.getTenantId(), project.getName(), MAX_LOOPS_PER_PROJECT)) {
-                loops++;
-                if (loop.getStatus() != ThinkProcessStatus.IDLE) {
+            // A loop whose schedule marker was never computed (fresh loop,
+            // rebuilt loop) gets it now — one listing of its home, once.
+            if (!wakeupService.hasScheduleMarker(loop)) {
+                agendaService.refreshScheduleMarker(loop);
+                loop = thinkProcessService.findById(loop.getId()).orElse(loop);
+            }
+            boolean scheduleDue = wakeupService.isScheduleDue(loop, now);
+            // An IDLE loop with no appointment has fallen out of the
+            // schedule and cannot get back in on its own: arming
+            // happens at the loop's yield point, and it will not yield
+            // again until something wakes it. That happens whenever
+            // the world changed after the last yield — a worker that
+            // was RUNNING (and therefore suppressed the alarm) parked
+            // itself, say. Adopting it here is what keeps the watcher
+            // watched; arm() still refuses while a worker is running.
+            if (!wakeupService.isArmed(loop)) {
+                adopted++;
+                log.trace(
+                        "Trillian heartbeat: loop id='{}' is IDLE without an "
+                                + "appointment — adopting it into the schedule",
+                        loop.getId());
+                wakeupService.arm(loop, zone);
+                if (!scheduleDue) {
                     continue;
                 }
-                // An IDLE loop with no appointment has fallen out of the
-                // schedule and cannot get back in on its own: arming
-                // happens at the loop's yield point, and it will not yield
-                // again until something wakes it. That happens whenever
-                // the world changed after the last yield — a worker that
-                // was RUNNING (and therefore suppressed the alarm) parked
-                // itself, say. Adopting it here is what keeps the watcher
-                // watched; arm() still refuses while a worker is running.
-                if (!wakeupService.isArmed(loop)) {
-                    adopted++;
-                    log.trace(
-                            "Trillian heartbeat: loop id='{}' is IDLE without an "
-                                    + "appointment — adopting it into the schedule",
-                            loop.getId());
+            }
+            boolean ladderDue = wakeupService.isDue(loop, now);
+            if (!ladderDue && !scheduleDue) {
+                continue;
+            }
+            due++;
+            TrillianNature nature = natureOf(loop);
+            // Ask what there is to see *before* spending a turn. Nothing to
+            // look at means the wakeup costs a query and no tokens — which
+            // is what makes an hourly rhythm affordable at all. A pure
+            // appointment wake carries only the appointments.
+            List<SelfCheckFinding> findings = ladderDue ? findingsOf(loop, nature) : scheduleFindingsOf(loop);
+            if (ladderDue) {
+                // The ladder wake is also where hand-edited schedule
+                // documents are noticed: the marker is recomputed here.
+                agendaService.refreshScheduleMarker(loop);
+            }
+            if (findings.isEmpty()) {
+                quiet++;
+                log.trace(
+                        "Trillian heartbeat: loop id='{}' due but nothing to look at " + "— re-arming without a turn",
+                        loop.getId());
+                if (ladderDue) {
                     wakeupService.arm(loop, zone);
-                    continue;
+                } else {
+                    // The marker said due, the documents disagree (edited
+                    // or removed meanwhile): recompute instead of retrying.
+                    agendaService.refreshScheduleMarker(loop);
                 }
-                if (!wakeupService.isDue(loop, now)) {
-                    continue;
-                }
-                due++;
-                // Ask the Nature what it sees *before* spending a turn.
-                // Nothing to look at means the wakeup costs one query and
-                // no tokens — which is what makes an hourly rhythm
-                // affordable at all.
-                List<SelfCheckFinding> findings = findingsOf(loop);
-                if (findings.isEmpty()) {
-                    quiet++;
-                    log.trace(
-                            "Trillian heartbeat: loop id='{}' due but nothing to look at "
-                                    + "— re-arming without a turn",
-                            loop.getId());
-                    wakeupService.arm(loop, zone);
-                    continue;
-                }
-                // Minted here rather than inside wake(): the same id is the
-                // command's idempotency key and the feed row's trace, so
-                // the row and the turn it caused can be put next to each
-                // other afterwards.
-                // Cross-pod arbiter (D2): exactly one pod turns a due
-                // appointment into a wakeup.
-                Instant dueAt = wakeupService.nextWakeupAt(loop);
-                if (dueAt == null || !wakeupClaimService.claim(loop.getTenantId(), loop.getId(), dueAt)) {
-                    continue;
-                }
-                String wakeupId = "wakeup-" + loop.getId() + "-" + now.toEpochMilli();
-                if (wake(loop, wakeupId, findings)) {
-                    woken++;
-                    // Only now: the Nature's bookkeeping is about findings
-                    // that were reported, and a wakeup that did not happen
-                    // must not spend a budget or end an episode.
-                    recordInFeed(loop, wakeupId, findings);
-                    delivered(loop, findings);
-                }
+                continue;
+            }
+            // Cross-pod arbiter (D2): exactly one pod turns a due
+            // appointment into a wakeup.
+            Instant slotAt = ladderDue ? wakeupService.nextWakeupAt(loop) : wakeupService.scheduleMarker(loop);
+            String slot = (ladderDue ? "w" : "s") + (slotAt == null ? now.toEpochMilli() : slotAt.toEpochMilli());
+            if (!wakeupClaimService.claim(loop.getTenantId(), loop.getId(), slot)) {
+                continue;
+            }
+            // Minted here rather than inside wake(): the same id is the
+            // command's idempotency key and the feed row's trace, so
+            // the row and the turn it caused can be put next to each
+            // other afterwards.
+            String wakeupId = "wakeup-" + loop.getId() + "-" + now.toEpochMilli();
+            if (wake(loop, wakeupId, findings)) {
+                woken++;
+                // Only now: the bookkeeping is about findings that were
+                // reported, and a wakeup that did not happen must not spend
+                // a budget, end an episode or advance an appointment.
+                recordInFeed(loop, wakeupId, findings);
+                delivered(loop, nature, findings);
             }
         }
         // Traced every round, including the empty one: the silent path is
         // the normal one, and without a line for it there is no way to
         // tell a working heartbeat from a dead one.
         log.trace(
-                "Trillian heartbeat node='{}' projects={} loops={} adopted={} due={} " + "quiet={} woken={}",
+                "Trillian heartbeat node='{}' loops={} adopted={} due={} quiet={} woken={}",
                 clusterService.selfNodeName(),
-                projects.size(),
                 loops,
                 adopted,
                 due,
@@ -159,21 +172,30 @@ public class TrillianHeartbeatTick {
     }
 
     /**
-     * Hands the loop a self-check and clears the due marker.
-     *
-     * <p>The marker is cleared first: a wakeup that fails to schedule
-     * should cost one round, not turn into a tight loop of retries on
-     * every tick. The next arming happens at the loop's own yield point.
+     * Everything the loop could be woken for on a ladder wake: the home's
+     * appointments (and {@code [bored]} when the Nature opted in), then the
+     * Nature's own findings.
      */
-    private List<SelfCheckFinding> findingsOf(ThinkProcessDocument loop) {
+    private List<SelfCheckFinding> findingsOf(ThinkProcessDocument loop, TrillianNature nature) {
         try {
-            List<SelfCheckFinding> findings = new java.util.ArrayList<>(agendaService.findings(loop));
-            findings.addAll(natureOf(loop).selfCheckFindings(loop));
+            List<SelfCheckFinding> findings =
+                    new java.util.ArrayList<>(agendaService.findings(loop, nature.acceptsBoredFindings()));
+            findings.addAll(nature.selfCheckFindings(loop));
             return findings;
         } catch (RuntimeException e) {
             // A Nature that throws must not stop the heartbeat for every
             // other Trillian on this pod.
             log.warn("Trillian heartbeat: findings for loop '{}' failed: {}", loop.getId(), e.toString());
+            return List.of();
+        }
+    }
+
+    /** Only the due appointments — the content of a schedule wake. */
+    private List<SelfCheckFinding> scheduleFindingsOf(ThinkProcessDocument loop) {
+        try {
+            return agendaService.scheduleFindings(loop);
+        } catch (RuntimeException e) {
+            log.warn("Trillian heartbeat: schedules of loop '{}' failed: {}", loop.getId(), e.toString());
             return List.of();
         }
     }
@@ -186,13 +208,17 @@ public class TrillianHeartbeatTick {
      * the self-check in its inbox, so a Nature that fails here leaves a
      * budget unspent, which is the harmless direction.
      */
-    private void delivered(ThinkProcessDocument loop, List<SelfCheckFinding> findings) {
+    private void delivered(ThinkProcessDocument loop, TrillianNature nature, List<SelfCheckFinding> findings) {
         try {
-            natureOf(loop).selfCheckDelivered(loop, findings);
-            agendaService.delivered(loop);
+            nature.selfCheckDelivered(loop, findings);
         } catch (RuntimeException e) {
             log.warn(
                     "Trillian heartbeat: recording the self-check of loop '{}' failed: {}", loop.getId(), e.toString());
+        }
+        try {
+            agendaService.delivered(loop, findings);
+        } catch (RuntimeException e) {
+            log.warn("Trillian heartbeat: advancing the schedules of loop '{}' failed: {}", loop.getId(), e.toString());
         }
     }
 
@@ -232,13 +258,20 @@ public class TrillianHeartbeatTick {
         return name == null ? null : name.toString();
     }
 
-    private de.mhus.vance.brain.trillian.nature.TrillianNature natureOf(ThinkProcessDocument loop) {
+    private TrillianNature natureOf(ThinkProcessDocument loop) {
         Object nature = loop.getEngineParams() == null
                 ? null
                 : loop.getEngineParams().get(TrillianSessionBootstrapper.PARAM_NATURE);
         return natureRegistry.resolve(nature == null ? null : nature.toString());
     }
 
+    /**
+     * Hands the loop a self-check and clears the due marker.
+     *
+     * <p>The marker is cleared first: a wakeup that fails to schedule
+     * should cost one round, not turn into a tight loop of retries on
+     * every tick. The next arming happens at the loop's own yield point.
+     */
     private boolean wake(ThinkProcessDocument loop, String wakeupId, List<SelfCheckFinding> findings) {
         try {
             wakeupService.disarm(loop);

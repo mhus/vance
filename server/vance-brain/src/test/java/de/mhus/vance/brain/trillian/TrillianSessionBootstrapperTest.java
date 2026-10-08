@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -88,6 +89,12 @@ class TrillianSessionBootstrapperTest {
     de.mhus.vance.shared.home.HomeBootstrapService homeBootstrapService;
 
     @Mock
+    de.mhus.vance.shared.project.ProjectService projectService;
+
+    @Mock
+    TrillianWakeupClaimService claimService;
+
+    @Mock
     TrillianModelGate modelGate;
 
     @Mock
@@ -114,11 +121,14 @@ class TrillianSessionBootstrapperTest {
                 chatMessageService,
                 natureRegistry(),
                 homeBootstrapService,
+                projectService,
+                claimService,
                 modelGate,
                 activationGate,
                 permissionBootstrapProvider);
 
         when(activationGate.loopsEnabled(anyString(), any(), any())).thenReturn(true);
+        when(claimService.acquireLease(anyString(), any())).thenReturn(true);
         when(userService.existsByTenantAndName(anyString(), anyString())).thenReturn(false);
         de.mhus.vance.shared.project.ProjectDocument home = new de.mhus.vance.shared.project.ProjectDocument();
         home.setName(PROJECT);
@@ -183,7 +193,7 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void bootstrap_grantsTheMintedAccountAdminOnTheControlProject() {
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess());
+        bootstrap(controlSession(), controlProcess());
 
         ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
         verify(permissionBootstrap).grantProjectAdmin(eq(TENANT), eq(PROJECT), username.capture());
@@ -192,7 +202,7 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void bootstrap_scopesTheGrantToOneProject_neverTheWholeTenant() {
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess());
+        bootstrap(controlSession(), controlProcess());
 
         // Cross-project spawning stays denied until someone grants it
         // explicitly — an ephemeral, LLM-driven account must not hold
@@ -202,11 +212,19 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void bootstrap_ownsTheUserSessionByAccountName_notMongoId() {
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess());
+        bootstrap(controlSession(), controlProcess());
 
         ArgumentCaptor<String> owner = ArgumentCaptor.forClass(String.class);
         verify(sessionService)
-                .create(eq(TENANT), owner.capture(), eq(PROJECT), any(), anyString(), anyString(), any(), eq(true));
+                .create(
+                        eq(TENANT),
+                        owner.capture(),
+                        startsWith("_user__trillian-void-"),
+                        any(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        eq(true));
         org.assertj.core.api.Assertions.assertThat(owner.getValue())
                 .startsWith("_trillian-void-")
                 .isNotEqualTo("mongo-object-id");
@@ -214,7 +232,7 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void bootstrap_grantsTheSameNameItPutsOnTheSession() {
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess());
+        bootstrap(controlSession(), controlProcess());
 
         ArgumentCaptor<String> granted = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> owner = ArgumentCaptor.forClass(String.class);
@@ -229,7 +247,7 @@ class TrillianSessionBootstrapperTest {
     void bootstrap_suppressesTheLoopWhenTheActivationGateIsClosed() {
         when(activationGate.loopsEnabled(anyString(), any(), any())).thenReturn(false);
 
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess());
+        bootstrap(controlSession(), controlProcess());
 
         // No account minted, no home ensured, no user session — and the
         // control chat says why once, naming the setting to flip.
@@ -244,7 +262,7 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void bootstrap_announcesTheWorkerIdentityAsAPersistentChatMessage() {
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess());
+        bootstrap(controlSession(), controlProcess());
 
         ArgumentCaptor<ChatMessageDocument> message = ArgumentCaptor.forClass(ChatMessageDocument.class);
         verify(chatMessageService).append(message.capture());
@@ -264,11 +282,15 @@ class TrillianSessionBootstrapperTest {
     void announceFailure_doesNotAbortTheBootstrap() {
         org.mockito.Mockito.when(chatMessageService.append(any())).thenThrow(new IllegalStateException("mongo down"));
 
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess());
+        bootstrap(controlSession(), controlProcess());
 
         // The pair is wired regardless — losing the announcement must not
         // cost the session its worker.
-        verify(thinkProcessService).replaceEngineParams(eq("control-process-id"), any());
+        verify(thinkProcessService, org.mockito.Mockito.atLeastOnce())
+                .replaceEngineParams(
+                        eq("control-process-id"),
+                        org.mockito.ArgumentMatchers.argThat(
+                                p -> p.containsKey(TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID)));
     }
 
     @Test
@@ -305,11 +327,13 @@ class TrillianSessionBootstrapperTest {
                 chatMessageService,
                 new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(java.util.List.of(named)),
                 homeBootstrapService,
+                projectService,
+                claimService,
                 modelGate,
                 activationGate,
                 permissionBootstrapProvider);
 
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess("adam"));
+        bootstrap(controlSession(), controlProcess("adam"));
 
         ArgumentCaptor<de.mhus.vance.shared.chat.ChatMessageDocument> message =
                 ArgumentCaptor.forClass(de.mhus.vance.shared.chat.ChatMessageDocument.class);
@@ -331,16 +355,24 @@ class TrillianSessionBootstrapperTest {
         SessionDocument session = controlSession();
         session.setProjectId("_user_marvin");
 
-        bootstrapper.maybeBootstrap(session, controlProcess());
+        bootstrap(session, controlProcess());
 
         verify(userService).createServiceAccount(anyString(), anyString(), any(), any(), any());
         verify(sessionService)
-                .create(eq(TENANT), anyString(), eq(PROJECT), any(), anyString(), anyString(), any(), eq(true));
+                .create(
+                        eq(TENANT),
+                        anyString(),
+                        startsWith("_user__trillian-"),
+                        any(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        eq(true));
     }
 
     @Test
     void workerRecipe_isDerivedFromTheNature() {
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess("a"));
+        bootstrap(controlSession(), controlProcess("a"));
 
         // The loop's prompt reads this instead of naming a recipe in
         // prose, so a new Nature brings its own worker without forking
@@ -373,7 +405,7 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void workerRecipe_defaultsToTheVoidNature() {
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess());
+        bootstrap(controlSession(), controlProcess());
 
         ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
         verify(thinkProcessService)
@@ -403,7 +435,7 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void theAccountName_carriesTheNatureAsItsOwnPart() {
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess("alpha"));
+        bootstrap(controlSession(), controlProcess("alpha"));
 
         ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
         verify(userService).createServiceAccount(anyString(), name.capture(), any(), any(), any());
@@ -416,7 +448,7 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void theAccountName_staysAServiceAccount() {
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess("alpha"));
+        bootstrap(controlSession(), controlProcess("alpha"));
 
         ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
         verify(userService).createServiceAccount(anyString(), name.capture(), any(), any(), any());
@@ -429,7 +461,7 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void theTitle_isSeededButNotTheIdentity() {
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess("alpha"));
+        bootstrap(controlSession(), controlProcess("alpha"));
 
         ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> title = ArgumentCaptor.forClass(String.class);
@@ -475,11 +507,13 @@ class TrillianSessionBootstrapperTest {
                 chatMessageService,
                 new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(java.util.List.of(persistent)),
                 homeBootstrapService,
+                projectService,
+                claimService,
                 modelGate,
                 activationGate,
                 permissionBootstrapProvider);
 
-        bootstrapper.maybeBootstrap(controlSession(), controlProcess("adam"));
+        bootstrap(controlSession(), controlProcess("adam"));
 
         ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
         verify(thinkProcessService)
@@ -513,15 +547,122 @@ class TrillianSessionBootstrapperTest {
     }
 
     @Test
+    void aRefusedModel_mintsNothing() {
+        // The gate used to run after the mint: every control turn then left
+        // another account with project-ADMIN and another hub behind.
+        org.mockito.Mockito.doThrow(new IllegalStateException("model 'x:y' is not approved"))
+                .when(modelGate)
+                .checkLoopModel(anyString(), anyString(), any(), any(), any());
+
+        bootstrap(controlSession(), controlProcess());
+
+        verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
+        verify(homeBootstrapService, never()).ensureHome(anyString(), anyString());
+        verify(permissionBootstrap, never()).grantProjectAdmin(any(), any(), any());
+    }
+
+    @Test
+    void theModelGate_readsTheControlProjectAsItsProjectLayer() {
+        bootstrap(controlSession(), controlProcess());
+
+        // D8: user (hub) -> project -> tenant. The project layer is the
+        // project the Trillian was started in; the model itself resolves
+        // where the loop will run (the hub).
+        verify(modelGate)
+                .checkLoopModel(
+                        eq(TENANT), startsWith("_trillian-void-"), eq(PROJECT), startsWith("_user__trillian-"), any());
+    }
+
+    @Test
+    void theMintedName_isRecordedBeforeAnythingElseCanFail() {
+        when(homeBootstrapService.ensureHome(anyString(), anyString())).thenThrow(new IllegalStateException("db down"));
+
+        bootstrap(controlSession(), controlProcess());
+
+        // The next attempt adopts this account instead of minting another.
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
+        verify(thinkProcessService).replaceEngineParams(eq("control-process-id"), params.capture());
+        org.assertj.core.api.Assertions.assertThat(params.getValue())
+                .containsKey(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);
+    }
+
+    @Test
+    void aBootstrapHeldElsewhere_isLeftToItsHolder() {
+        when(claimService.acquireLease(anyString(), any())).thenReturn(false);
+
+        bootstrap(controlSession(), controlProcess());
+
+        verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
+        verify(sessionService, never())
+                .create(anyString(), anyString(), anyString(), any(), anyString(), anyString(), any(), anyBoolean());
+    }
+
+    @Test
+    void aNameWhoseHubStillExists_isNotHandedOutAgain() {
+        // A hub sweep that did not finish leaves rows the next holder of
+        // the name would inherit.
+        when(projectService.existsByTenantAndName(eq(TENANT), startsWith("_user__trillian-")))
+                .thenReturn(true, false);
+
+        bootstrap(controlSession(), controlProcess());
+
+        verify(projectService, org.mockito.Mockito.times(2))
+                .existsByTenantAndName(eq(TENANT), startsWith("_user__trillian-"));
+    }
+
+    @Test
+    void ensureUserLoop_rebuild_carriesTheDepartingLoopsAttributes() {
+        // Parking and unwiring used to be two writes from one stale copy —
+        // the second erased what the first had parked.
+        ThinkProcessDocument control = controlProcess();
+        Map<String, Object> wired = new java.util.LinkedHashMap<>();
+        wired.put(TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID, "old-loop");
+        wired.put(TrillianSessionBootstrapper.PARAM_PEER_SESSION_ID, "old-session");
+        wired.put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-void-0001");
+        control.setEngineParams(wired);
+        control.setSessionId("sess_control");
+        ThinkProcessDocument oldLoop = new ThinkProcessDocument();
+        oldLoop.setId("old-loop");
+        oldLoop.setStatus(de.mhus.vance.api.thinkprocess.ThinkProcessStatus.CLOSED);
+        Map<String, Object> loopParams = new java.util.LinkedHashMap<>();
+        loopParams.put(TrillianInternalApi.PARAM_ATTRIBUTES, Map.of("persona", "kept"));
+        oldLoop.setEngineParams(loopParams);
+        when(thinkProcessService.findById("control-process-id")).thenReturn(Optional.of(control));
+        when(thinkProcessService.findById("old-loop")).thenReturn(Optional.of(oldLoop));
+        when(sessionService.findBySessionId("sess_control")).thenReturn(Optional.of(controlSession()));
+
+        bootstrapper.ensureUserLoop(control);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> params = paramsCaptor();
+        verify(thinkProcessService, org.mockito.Mockito.atLeastOnce())
+                .replaceEngineParams(eq("control-process-id"), params.capture());
+        Map<String, Object> unwired = params.getAllValues().get(0);
+        org.assertj.core.api.Assertions.assertThat(unwired)
+                .doesNotContainKey(TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID)
+                .containsEntry(TrillianSessionBootstrapper.PARAM_CARRIED_ATTRIBUTES, Map.of("persona", "kept"));
+    }
+
+    @Test
     void nonControlProcess_isNotBootstrapped() {
         ThinkProcessDocument arthur = new ThinkProcessDocument();
         arthur.setId("chat");
         arthur.setThinkEngine("arthur");
 
-        bootstrapper.maybeBootstrap(controlSession(), arthur);
+        bootstrap(controlSession(), arthur);
 
         verify(permissionBootstrap, never()).grantProjectAdmin(any(), any(), any());
         verify(userService, never()).createServiceAccount(any(), any(), any(), any(), any());
+    }
+
+    /**
+     * The bootstrap decides on a freshly read process; the read returns the
+     * document the test hands in.
+     */
+    private void bootstrap(SessionDocument session, ThinkProcessDocument control) {
+        when(thinkProcessService.findById(control.getId())).thenReturn(Optional.of(control));
+        bootstrapper.maybeBootstrap(session, control);
     }
 
     private static SessionDocument controlSession() {

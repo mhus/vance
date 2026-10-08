@@ -134,6 +134,7 @@ public class TrillianControlEngine implements ThinkEngine {
         base.add("user_attr_clear");
         base.add("user_attr_list");
         base.add("user_project_request");
+        base.add("user_activity");
         ENGINE_DEFAULT_TOOLS = java.util.Collections.unmodifiableSet(base);
     }
 
@@ -285,7 +286,14 @@ public class TrillianControlEngine implements ThinkEngine {
         // (handler/engine -> bootstrapper -> ThinkEngineService -> engines).
         TrillianSessionBootstrapper bootstrapper = sessionBootstrapper.getIfAvailable();
         if (bootstrapper != null) {
-            bootstrapper.ensureUserLoop(process);
+            // Outside the try below, so a failure here must not escape: the
+            // status is RUNNING already and only that finally resets it.
+            try {
+                bootstrapper.ensureUserLoop(process);
+            } catch (RuntimeException e) {
+                log.warn(
+                        "TrillianControl: ensuring the user-loop of id='{}' failed: {}", process.getId(), e.toString());
+            }
         }
         ThinkProcessStatus exitStatus = ThinkProcessStatus.IDLE;
         long turnStartMs = System.currentTimeMillis();

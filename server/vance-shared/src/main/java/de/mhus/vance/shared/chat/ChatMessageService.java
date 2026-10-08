@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.BulkOperations;
@@ -492,6 +493,51 @@ public class ChatMessageService {
                 .limit(1);
         ChatMessageDocument hit = mongoTemplate.findOne(q, ChatMessageDocument.class);
         return Optional.ofNullable(hit == null ? null : hit.getCreatedAt());
+    }
+
+    /**
+     * The newest {@code limit} messages of a think-process's chat — active
+     * (not archived, not removed), optionally only those created after
+     * {@code after} — in chronological order. {@code withInterim} keeps the
+     * live-only working-log notes.
+     *
+     * <p>For readers that want "what was said lately" without replaying a
+     * history of unbounded length: a tool showing another session's
+     * conversation to a model, an activity snapshot.
+     */
+    public List<ChatMessageDocument> recentActive(
+            String tenantId,
+            String sessionId,
+            String thinkProcessId,
+            @Nullable Instant after,
+            int limit,
+            boolean withInterim) {
+        Criteria c = Criteria.where("tenantId")
+                .is(tenantId)
+                .and("sessionId")
+                .is(sessionId)
+                .and("thinkProcessId")
+                .is(thinkProcessId)
+                .and("archivedInMemoryId")
+                .is(null);
+        if (after != null) {
+            c = c.and("createdAt").gt(after);
+        }
+        int bound = Math.max(1, limit);
+        // Over-fetch: interim and removed rows are filtered in Java.
+        Query q = new Query(c).with(Sort.by(Sort.Direction.DESC, "createdAt")).limit(bound * 3);
+        List<ChatMessageDocument> newestFirst = new ArrayList<>();
+        for (ChatMessageDocument m : mongoTemplate.find(q, ChatMessageDocument.class)) {
+            if (m.isRemoved() || (!withInterim && m.isInterim())) {
+                continue;
+            }
+            newestFirst.add(m);
+            if (newestFirst.size() >= bound) {
+                break;
+            }
+        }
+        java.util.Collections.reverse(newestFirst);
+        return newestFirst;
     }
 
     /**

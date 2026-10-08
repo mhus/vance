@@ -66,7 +66,7 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
     private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
 
     private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
-    private final de.mhus.vance.shared.project.ProjectService projectService;
+    private final TrillianHubSweeper hubSweeper;
 
     @Override
     public void onSessionClosed(SessionDocument session) {
@@ -125,16 +125,28 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             } catch (RuntimeException e) {
                 log.warn("Trillian: revoking grants of '{}' failed: {}", account, e.toString());
             }
-            // The home goes with the account (D1): schedules, goals and
-            // stored attributes live in `_user_<trillian>`, and a hub whose
-            // user is gone is unreachable by design. Same ordering rule as
-            // the maintenance path — keyed by the account name, so it goes
-            // before the name does.
+            // Sessions it opened elsewhere (session_open) run as this
+            // account in other people's projects; left open, their engines
+            // keep working for a subject that is about to stop existing.
+            closeOutgoingSessions(session.getTenantId(), account);
+            // The home goes with the account (D1): loop session, chat,
+            // schedules, goals and settings live in `_user_<trillian>`.
+            // Swept, not just unlisted — rows keyed by the hub name would
+            // otherwise be inherited by the next Trillian minted under it.
+            // Keyed by the account name, so it goes before the name does;
+            // a sweep that did not finish keeps the account, which keeps
+            // the name taken until a re-run (or `user delete`) finishes.
+            boolean hubGone;
             try {
-                projectService.deleteUserHub(
+                hubGone = hubSweeper.sweepUserHub(
                         session.getTenantId(), de.mhus.vance.shared.home.HomeBootstrapService.hubProjectName(account));
             } catch (RuntimeException e) {
-                log.warn("Trillian: deleting hub of '{}' failed: {}", account, e.toString());
+                log.warn("Trillian: sweeping hub of '{}' failed: {}", account, e.toString());
+                hubGone = false;
+            }
+            if (!hubGone) {
+                log.warn("Trillian: hub of '{}' not fully swept — keeping the account as name reservation", account);
+                return;
             }
             // Presence check rather than catching UserNotFoundException:
             // on the ordinary path this runs twice, and the second pass
@@ -152,6 +164,24 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
                 log.warn("Trillian: deleting account '{}' failed: {}", account, e.toString());
             }
         });
+    }
+
+    /** Closes every live session the account owns, wherever it is. */
+    private void closeOutgoingSessions(String tenantId, String account) {
+        for (SessionDocument owned : sessionService.listForUser(tenantId, account)) {
+            if (owned.getStatus() == de.mhus.vance.api.session.SessionStatus.CLOSED) {
+                continue;
+            }
+            try {
+                lifecycleProvider.getObject().closeWithCascade(owned.getSessionId());
+            } catch (RuntimeException e) {
+                log.warn(
+                        "Trillian: closing session '{}' of '{}' failed: {}",
+                        owned.getSessionId(),
+                        account,
+                        e.toString());
+            }
+        }
     }
 
     @Override

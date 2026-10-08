@@ -4,7 +4,6 @@ import de.mhus.vance.brain.trillian.TrillianUserEngine;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
-import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -12,7 +11,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -36,12 +34,18 @@ public class SessionReadTool implements Tool {
                             "since",
                                     Map.of(
                                             "type", "string",
-                                            "description", "Optional ISO-8601 instant — only lines after it.")),
+                                            "description", "Optional ISO-8601 instant — only lines after it."),
+                            "limit",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "How many of the newest lines (default 30, max 100).")),
             "required", List.of("sessionId"));
 
     private static final int LINE_LIMIT = 400;
+    private static final int DEFAULT_LINES = 30;
+    private static final int MAX_LINES = 100;
 
-    private final SessionService sessionService;
+    private final de.mhus.vance.brain.trillian.TrillianOwnSessions ownSessions;
     private final ChatMessageService chatMessageService;
 
     @Override
@@ -51,9 +55,9 @@ public class SessionReadTool implements Tool {
 
     @Override
     public String description() {
-        return "Read what has been said in a session you opened — who wrote "
-                + "what, in order. Use it to catch up on answers; the reply "
-                + "events only tell you that something arrived.";
+        return "Read what has been said lately in a session you opened with session_open — "
+                + "who wrote what, in order (newest lines, capped). Use it to catch up on "
+                + "answers; the reply events only carry a preview.";
     }
 
     @Override
@@ -78,21 +82,27 @@ public class SessionReadTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        SessionDocument session = ownSession(params, ctx);
+        Object raw = params == null ? null : params.get("sessionId");
+        SessionDocument session = ownSessions.requireOwn(
+                raw instanceof String sid ? sid : null, ctx, de.mhus.vance.shared.permission.Action.READ);
         if (session.getChatProcessId() == null) {
             throw new ToolException("session_read: session has no chat process");
         }
-        String since = stringOrNull(params, "since");
+        java.time.Instant since = sinceOf(params);
+        int limit = limitOf(params);
         List<Map<String, Object>> lines = new ArrayList<>();
-        for (ChatMessageDocument m : chatMessageService.activeHistoryWithInterim(
-                session.getTenantId(), session.getSessionId(), session.getChatProcessId())) {
-            if (m.getCreatedAt() != null
-                    && since != null
-                    && !m.getCreatedAt().isAfter(java.time.Instant.parse(since))) {
-                continue;
-            }
+        for (ChatMessageDocument m : chatMessageService.recentActive(
+                session.getTenantId(),
+                session.getSessionId(),
+                session.getChatProcessId(),
+                since,
+                limit,
+                /*withInterim*/ false)) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("role", m.getRole() == null ? null : m.getRole().name());
+            if (m.getSenderUserId() != null) {
+                row.put("from", m.getSenderUserId());
+            }
             if (m.getCreatedAt() != null) {
                 row.put("at", m.getCreatedAt().toString());
             }
@@ -106,28 +116,21 @@ public class SessionReadTool implements Tool {
         return out;
     }
 
-    private SessionDocument ownSession(Map<String, Object> params, ToolInvocationContext ctx) {
-        Object raw = params == null ? null : params.get("sessionId");
-        if (!(raw instanceof String sessionId) || sessionId.isBlank()) {
-            throw new ToolException("'sessionId' is required");
+    private static java.time.@org.jspecify.annotations.Nullable Instant sinceOf(Map<String, Object> params) {
+        Object raw = params == null ? null : params.get("since");
+        if (!(raw instanceof String s) || s.isBlank()) {
+            return null;
         }
-        Optional<SessionDocument> sessionOpt = sessionService.findBySessionId(sessionId.trim());
-        if (sessionOpt.isEmpty()) {
-            throw new ToolException("Session '" + sessionId + "' not found");
+        try {
+            return java.time.Instant.parse(s.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new ToolException("session_read: 'since' must be an ISO-8601 instant like 2026-10-08T09:00:00Z", e);
         }
-        SessionDocument session = sessionOpt.get();
-        if (!session.getTenantId().equals(ctx.tenantId())) {
-            throw new ToolException("Session '" + sessionId + "' is in another tenant");
-        }
-        if (!ctx.userId().equals(session.getUserId())) {
-            throw new ToolException("Session '" + sessionId + "' is not yours — only sessions "
-                    + "this Trillian opened itself can be read");
-        }
-        return session;
     }
 
-    private static String stringOrNull(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        return raw instanceof String s && !s.isBlank() ? s.trim() : null;
+    private static int limitOf(Map<String, Object> params) {
+        Object raw = params == null ? null : params.get("limit");
+        int n = raw instanceof Number num ? num.intValue() : DEFAULT_LINES;
+        return Math.max(1, Math.min(n, MAX_LINES));
     }
 }

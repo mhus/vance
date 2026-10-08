@@ -1,12 +1,16 @@
 package de.mhus.vance.shared.trillian;
 
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.permission.PermissionBootstrap;
 import de.mhus.vance.shared.project.maintenance.ProjectDataHandler;
+import de.mhus.vance.shared.project.maintenance.UserHubSweeper;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -48,13 +52,17 @@ import org.springframework.stereotype.Component;
  * set is small — but a release that failed earlier shows up here as an extra
  * name, and picking "the current generation" would step right over it.
  *
- * <h2>What it does not do</h2>
+ * <h2>The hub goes first</h2>
  *
- * <p>The Nature's stored attributes and journal ({@code _vance/trillian/…}) are
- * <em>not</em> discarded here, although the session path does discard them.
- * They are ordinary documents in this project, so the documents handler removes
- * them a few steps later. Calling into the Nature would mean reaching for a
- * brain component from a process that may not have one — for no effect.
+ * <p>A Trillian's durable state does not live in this project: the loop
+ * session, its chat, the attributes, schedules and goals sit in the account's
+ * own hub ({@code _user__trillian-…}). Deleting the account and leaving the hub
+ * would strand all of that under a name the next Trillian can be minted with —
+ * schedules that fire included. So every account's hub is swept through the
+ * {@link UserHubSweeper} before the account goes. When a sweep does not finish,
+ * the account is <b>kept</b>: it holds the name, and {@code user delete} on it
+ * is the repair path (its hub handler runs the same sweep). The handler then
+ * fails, so the run reports the project as incomplete.
  *
  * <p><b>Rename does nothing</b>, and that is a real answer rather than a gap:
  * the account name carries no project name, its grant is carried over by the
@@ -77,6 +85,12 @@ public class TrillianProjectDataHandler implements ProjectDataHandler {
 
     /** Absent unless a grant-storing permission provider is loaded. */
     private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
+
+    /**
+     * Sweeps an account's hub. Lazy: in the shell the sweeper is built on the
+     * collector that injects this very handler.
+     */
+    private final ObjectProvider<UserHubSweeper> hubSweeperProvider;
 
     @Override
     public String id() {
@@ -102,19 +116,49 @@ public class TrillianProjectDataHandler implements ProjectDataHandler {
     @Override
     public long count(String tenantId, String projectId) {
         return accountNames(tenantId, projectId).stream()
-                .filter(account -> userService.findByTenantAndName(tenantId, account).isPresent())
+                .filter(account ->
+                        userService.findByTenantAndName(tenantId, account).isPresent())
                 .count();
     }
 
     @Override
     public long delete(String tenantId, String projectId) {
         long released = 0;
+        List<String> kept = new ArrayList<>();
         for (String account : accountNames(tenantId, projectId)) {
+            if (!sweepHub(tenantId, account)) {
+                kept.add(account);
+                continue;
+            }
             if (releaseAccount(tenantId, account)) {
                 released++;
             }
         }
+        if (!kept.isEmpty()) {
+            throw new IllegalStateException("hub of Trillian account(s) " + kept + " was not fully swept — the"
+                    + " account(s) were kept; run 'user delete' on each to finish");
+        }
         return released;
+    }
+
+    /**
+     * Removes the account's hub with everything in it. {@code true} when the
+     * hub is gone (or was never there); {@code false} when the sweep failed or
+     * this process has no sweeper — in both cases the account must stay.
+     */
+    private boolean sweepHub(String tenantId, String account) {
+        String hub = HomeBootstrapService.hubProjectName(account);
+        UserHubSweeper sweeper = hubSweeperProvider.getIfAvailable();
+        if (sweeper == null) {
+            log.warn("Trillian: no hub sweeper in this process — keeping account '{}' and hub '{}'", account, hub);
+            return false;
+        }
+        try {
+            return sweeper.sweepUserHub(tenantId, hub);
+        } catch (RuntimeException e) {
+            log.warn("Trillian: sweeping hub '{}' failed: {}", hub, e.toString());
+            return false;
+        }
     }
 
     /**

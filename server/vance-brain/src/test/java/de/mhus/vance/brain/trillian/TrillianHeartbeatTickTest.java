@@ -14,8 +14,6 @@ import de.mhus.vance.brain.trillian.nature.SelfCheckFinding;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
 import de.mhus.vance.shared.megadodo.MegadodoService;
-import de.mhus.vance.shared.project.ProjectDocument;
-import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
@@ -39,9 +37,6 @@ import org.mockito.quality.Strictness;
 class TrillianHeartbeatTickTest {
 
     private static final String LOOP = "loop-1";
-
-    @Mock
-    ProjectService projectService;
 
     @Mock
     ClusterService clusterService;
@@ -74,15 +69,13 @@ class TrillianHeartbeatTickTest {
 
     @BeforeEach
     void setUp() {
-        when(clusterService.selfPodId()).thenReturn("pod-a");
-        when(projectService.findRunningByHomePodId("pod-a"))
-                .thenReturn(List.of(
-                        ProjectDocument.builder().tenantId("acme").name("proj").build()));
         when(natureRegistry.resolve(any())).thenReturn(nature);
         when(wakeupClaimService.claim(any(), any(), any())).thenReturn(true);
-        org.mockito.Mockito.lenient().when(wakeupService.nextWakeupAt(any())).thenReturn(java.time.Instant.now());
+        when(wakeupService.nextWakeupAt(any())).thenReturn(java.time.Instant.now());
+        when(wakeupService.hasScheduleMarker(any())).thenReturn(true);
+        when(agendaService.findings(any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(List.of());
         tick = new TrillianHeartbeatTick(
-                projectService,
                 clusterService,
                 thinkProcessService,
                 wakeupService,
@@ -202,6 +195,70 @@ class TrillianHeartbeatTickTest {
         verify(eventEmitter, never()).scheduleTurn(anyString());
     }
 
+    @Test
+    void aDueSchedule_wakesTheLoopEvenWhenTheLadderIsNotDue() {
+        // A 09:00 appointment must not wait for the loop's next look
+        // around — schedules fire on the scan grid (plan §4.4).
+        givenLoop(ThinkProcessStatus.IDLE);
+        when(wakeupService.isArmed(any())).thenReturn(true);
+        when(wakeupService.isDue(any(), any())).thenReturn(false);
+        when(wakeupService.isScheduleDue(any(), any())).thenReturn(true);
+        when(wakeupService.scheduleMarker(any())).thenReturn(java.time.Instant.ofEpochMilli(1000));
+        List<SelfCheckFinding> due = List.of(
+                new SelfCheckFinding(SelfCheckFinding.Kind.SCHEDULE_DUE, "standup", "standup", "daily stand-up"));
+        when(agendaService.scheduleFindings(any())).thenReturn(due);
+        when(thinkProcessService.appendPending(eq(LOOP), any())).thenReturn(true);
+
+        tick.tick();
+
+        verify(eventEmitter).scheduleTurn(LOOP);
+        verify(wakeupClaimService).claim("acme", LOOP, "s1000");
+        verify(agendaService).delivered(any(), eq(due));
+        // Only the appointment: the Nature's look-around belongs to the ladder.
+        verify(nature, never()).selfCheckFindings(any());
+    }
+
+    @Test
+    void aDueSchedule_fires_whileTheLadderIsDisarmedByARunningWorker() {
+        // A running worker keeps the ladder off; appointments do not care.
+        givenLoop(ThinkProcessStatus.IDLE);
+        when(wakeupService.isArmed(any())).thenReturn(false);
+        when(wakeupService.isScheduleDue(any(), any())).thenReturn(true);
+        when(wakeupService.scheduleMarker(any())).thenReturn(java.time.Instant.ofEpochMilli(2000));
+        when(agendaService.scheduleFindings(any()))
+                .thenReturn(List.of(new SelfCheckFinding(
+                        SelfCheckFinding.Kind.SCHEDULE_DUE, "standup", "standup", "daily stand-up")));
+        when(thinkProcessService.appendPending(eq(LOOP), any())).thenReturn(true);
+
+        tick.tick();
+
+        verify(eventEmitter).scheduleTurn(LOOP);
+    }
+
+    @Test
+    void aLoopWithoutScheduleMarker_getsItComputed() {
+        givenLoop(ThinkProcessStatus.IDLE);
+        when(wakeupService.hasScheduleMarker(any())).thenReturn(false);
+        when(wakeupService.isArmed(any())).thenReturn(true);
+
+        tick.tick();
+
+        verify(agendaService).refreshScheduleMarker(any(ThinkProcessDocument.class));
+    }
+
+    @Test
+    void aLostClaim_wakesNothing() {
+        // Another pod won this slot and fires; this one must not.
+        givenDueLoop();
+        when(nature.selfCheckFindings(any())).thenReturn(List.of(finding()));
+        when(wakeupClaimService.claim(any(), any(), any())).thenReturn(false);
+
+        tick.tick();
+
+        verify(thinkProcessService, never()).appendPending(anyString(), any());
+        verify(eventEmitter, never()).scheduleTurn(anyString());
+    }
+
     private void givenDueLoop() {
         givenLoop(ThinkProcessStatus.IDLE);
         when(wakeupService.isArmed(any())).thenReturn(true);
@@ -215,8 +272,7 @@ class TrillianHeartbeatTickTest {
         loop.setProjectId("proj");
         loop.setStatus(status);
         loop.getEngineParams().put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-void-1535");
-        when(wakeupService.loopsOf(eq("acme"), eq("proj"), org.mockito.ArgumentMatchers.anyInt()))
-                .thenReturn(List.of(loop));
+        when(wakeupService.liveLoops(org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of(loop));
     }
 
     private static SelfCheckFinding finding() {

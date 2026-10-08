@@ -35,13 +35,17 @@ import org.jspecify.annotations.Nullable;
  * arguments. Neither may fail because the work was already done.
  *
  *
- * <p><b>Who collects these.</b> Only the admin shell: the collector
- * ({@code ProjectMaintenanceService}, {@code vance-anus}) is the sole
- * injection point for {@code List<ProjectDataHandler>}. A brain instantiates
- * every handler bean — {@code vance-shared} is on its component-scan path —
- * and never calls one. That is on purpose, not an oversight: the operations
- * these handlers serve have no REST surface and no LLM tool, because their
- * gates (a typed confirmation, a pod drain) only exist at a terminal.
+ * <p><b>Who collects these.</b> The admin shell: the collector
+ * ({@code ProjectMaintenanceService}, {@code vance-anus}) is the injection
+ * point for {@code List<ProjectDataHandler>}. The operations these handlers
+ * serve have no REST surface and no LLM tool, because their gates (a typed
+ * confirmation, a pod drain) only exist at a terminal.
+ *
+ * <p><b>One named exception in the brain:</b> {@code TrillianHubSweeper}
+ * runs the handlers on a Trillian's hub ({@code _user__trillian-…}) when its
+ * control session ends — the human's close of that session is the gate, and
+ * the sweeper refuses every project that is not a Trillian hub (see
+ * {@link UserHubSweeper}).
  *
  * <p>The handler still lives here rather than in the shell, and the reason is
  * change locality: when a field is renamed or a scope re-interpreted, the
@@ -150,8 +154,7 @@ public interface ProjectDataHandler {
      * for the case that decides the matter on disk: a directory already sitting
      * under the new name.
      */
-    default @Nullable String renameBlocker(
-            String tenantId, String projectId, String newProjectId) {
+    default @Nullable String renameBlocker(String tenantId, String projectId, String newProjectId) {
         return null;
     }
 }

@@ -1,0 +1,52 @@
+# Trillian User — Nature void, working style "operator" (P7)
+#
+# The user-loop of trillian-operator. Same engine and Nature as
+# trillian-user-void, plus the foreign_* document tools: the loop reads,
+# searches and copies across projects itself. Writing *inside* another
+# project is not part of this surface — that stays with a worker spawned
+# there (cross_process_create), which holds that project's rights and
+# context.
+
+description: |
+  Trillian User loop — operator style. Does small cross-project document
+  work directly with the foreign_* tools; spawns workers for longer jobs.
+
+engine: trillian-user
+
+params:
+  nature: 'void'
+  model: trillian-void:analyze,trillian:analyze,default:analyze,default:fast
+  fallbackModels:
+    - default:fast
+
+allowedToolsAdd:
+  - foreign_project_list
+  - foreign_doc_list
+  - foreign_doc_search
+  - foreign_doc_read
+  - foreign_doc_copy
+
+promptPrefix: |
+
+  ## Your working style: operator
+
+  Unlike other Trillians, you may do small document jobs yourself:
+  `foreign_project_list`, `foreign_doc_list`, `foreign_doc_search`,
+  `foreign_doc_read` and `foreign_doc_copy` work across projects you have
+  access to. Use them when a task is "look something up" or "bring this
+  document over" — one or two calls, no worker. Your own project is your
+  home, so always name the destination:
+  `foreign_doc_copy(..., toProjectId=<the project the task is about>)`.
+  Load `manual_read('foreign-projects')` before the first call.
+
+  Everything longer — editing inside a project, code, scripts, several
+  steps — still goes to a worker (`cross_process_create`). The rule "you
+  don't read or write files directly" in your base instructions means
+  files and execution; documents through the `foreign_*` tools are yours.
+
+tags:
+  - trillian
+  - user
+  - worker
+  - orchestrator
+  - operator

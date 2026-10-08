@@ -1,23 +1,20 @@
 package de.mhus.vance.brain.trillian;
 
 import de.mhus.vance.api.chat.ChatRole;
-import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
 import de.mhus.vance.brain.trillian.nature.CollabMode;
-import de.mhus.vance.brain.trillian.nature.TrillianNature;
-import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
-import de.mhus.vance.brain.trillian.tools.SessionOpenTool;
 import de.mhus.vance.shared.chat.ChatMessageAppendedEvent;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
@@ -27,13 +24,29 @@ import org.springframework.stereotype.Component;
  * reaches the loop as a {@code <session-reply>} event, so a shared session
  * is a conversation and not a monologue.
  *
- * <p><b>Collab-gated.</b> Only {@link CollabMode#JOIN} flows back;
- * {@code WATCH} sessions stay visible without disturbing the loop — the
- * noise level is the Nature's decision, not the model's.
+ * <p><b>Only verified own sessions.</b> The marker in the client name is a
+ * claim anybody can make at the WS handshake; the session's owner has to be
+ * the account it names ({@link TrillianOwnSessions#verifiedMarker}).
+ *
+ * <p><b>Collab-gated by the mode chosen at open time.</b>
+ * {@link CollabMode#JOIN} and {@code SOLO} flow back; {@code WATCH} sessions
+ * stay visible without disturbing the loop.
+ *
+ * <p><b>Only the conversation, never the echo.</b> Forwarded are the chat
+ * process's final answers and lines a <em>human</em> wrote — not interim
+ * working notes, not lines of worker processes inside that session, not the
+ * Trillian's own messages (and nothing without a sender: a line nobody
+ * claims cannot be told apart from the Trillian's own input).
+ *
+ * <p><b>To the loop that is alive now.</b> The loop session is fluid (D1); the
+ * target is resolved from the account at delivery time, so a rebuilt loop
+ * keeps hearing its sessions. Delivery goes through the engine-message
+ * router; several lines arriving before the loop runs are drained together
+ * in one turn.
  *
  * <p>Cheap by contract: this runs synchronously on the appending engine's
- * lane, so it looks up two documents and queues one message. The turn it
- * may cause is scheduled, not run.
+ * lane. The role filter comes before any lookup, so the common case (a
+ * message in an ordinary session) costs one session read.
  */
 @Component
 @RequiredArgsConstructor
@@ -48,32 +61,43 @@ public class TrillianSessionReplyListener {
 
     public static final String PARAM_PREVIEW = "preview";
 
+    /** ExternalCommand param: who said it — the engine, or a human's login. */
+    public static final String PARAM_FROM = "from";
+
     private static final int PREVIEW_LIMIT = 240;
 
     private final SessionService sessionService;
-    private final ThinkProcessService thinkProcessService;
-    private final ProcessEventEmitter eventEmitter;
-    private final TrillianNatureRegistry natureRegistry;
+    private final TrillianOwnSessions ownSessions;
+    private final EngineMessageRouter messageRouter;
 
     @EventListener
     public void onChatMessageAppended(ChatMessageAppendedEvent event) {
         ChatMessageDocument message = event.message();
+        if ((message.getRole() != ChatRole.ASSISTANT && message.getRole() != ChatRole.USER)
+                || message.isInterim()
+                || message.isRemoved()) {
+            return;
+        }
         try {
             SessionDocument session =
                     sessionService.findBySessionId(message.getSessionId()).orElse(null);
             if (session == null) {
                 return;
             }
-            String clientName = session.getClientName() == null ? "" : session.getClientName();
-            if (!clientName.startsWith(SessionOpenTool.CLIENT_NAME_PREFIX)) {
+            TrillianOwnSessions.Marker marker =
+                    TrillianOwnSessions.verifiedMarker(session).orElse(null);
+            if (marker == null || marker.mode() == CollabMode.WATCH) {
                 return;
             }
-            String loopId = clientName.substring(SessionOpenTool.CLIENT_NAME_PREFIX.length());
-            if (!worthForwarding(message, session)) {
+            String from = forwardableSender(message, session, marker.account());
+            if (from == null) {
                 return;
             }
-            ThinkProcessDocument loop = thinkProcessService.findById(loopId).orElse(null);
-            if (loop == null || !joinMode(loop, session)) {
+            ThinkProcessDocument loop = ownSessions
+                    .liveLoopOf(session.getTenantId(), marker.account())
+                    .orElse(null);
+            if (loop == null || loop.getId() == null) {
+                log.trace("Trillian: no live loop for '{}' — session reply dropped", marker.account());
                 return;
             }
             SteerMessage.ExternalCommand reply = new SteerMessage.ExternalCommand(
@@ -82,41 +106,32 @@ public class TrillianSessionReplyListener {
                     COMMAND_SESSION_REPLY,
                     Map.of(
                             PARAM_SESSION_ID, session.getSessionId(),
+                            PARAM_FROM, from,
                             PARAM_PREVIEW, preview(message.getContent())));
-            if (thinkProcessService.appendPending(loopId, SteerMessageCodec.toDocument(reply))) {
-                eventEmitter.scheduleTurn(loopId);
-            }
+            messageRouter.dispatch(/*sender*/ null, loop.getId(), SteerMessageCodec.toDocument(reply));
         } catch (RuntimeException e) {
             log.warn("Trillian: session-reply flow-back failed: {}", e.toString());
         }
     }
 
     /**
-     * Engine answers always matter; a chat line matters when it is not the
-     * Trillian's own — its own sends come back through the same append path
-     * and would echo into its inbox.
+     * Who said it, when it is worth forwarding: {@code "engine"} for the chat
+     * process's answer, the human's login for a human's line; {@code null}
+     * for everything else (worker lines, the Trillian's own input, unclaimed
+     * lines).
      */
-    private static boolean worthForwarding(ChatMessageDocument message, SessionDocument session) {
-        if (message.getRole() == ChatRole.ASSISTANT) {
-            return true;
+    static @Nullable String forwardableSender(ChatMessageDocument message, SessionDocument session, String account) {
+        if (session.getChatProcessId() == null || !session.getChatProcessId().equals(message.getThinkProcessId())) {
+            return null;
         }
-        if (message.getRole() != ChatRole.USER) {
-            return false;
+        if (message.getRole() == ChatRole.ASSISTANT) {
+            return "engine";
         }
         String sender = message.getSenderUserId();
-        return sender == null || !sender.equals(session.getUserId());
+        return sender == null || sender.equals(account) ? null : sender;
     }
 
-    private boolean joinMode(ThinkProcessDocument loop, SessionDocument session) {
-        try {
-            TrillianNature nature = natureRegistry.resolve(TrillianSessionBootstrapper.readNature(loop));
-            return nature.sessionCollab(loop, session.getProjectId(), null) == CollabMode.JOIN;
-        } catch (RuntimeException e) {
-            return false;
-        }
-    }
-
-    private static String preview(String content) {
+    private static String preview(@Nullable String content) {
         String flat = content == null ? "" : content.strip();
         int nl = flat.indexOf('\n');
         String line = nl < 0 ? flat : flat.substring(0, nl);

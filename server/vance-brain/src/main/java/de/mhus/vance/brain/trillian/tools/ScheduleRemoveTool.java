@@ -27,6 +27,7 @@ public class ScheduleRemoveTool implements Tool {
             "required", List.of("name"));
 
     private final TrillianScheduleStore scheduleStore;
+    private final de.mhus.vance.brain.trillian.TrillianAgendaService agendaService;
 
     @Override
     public String name() {
@@ -69,7 +70,12 @@ public class ScheduleRemoveTool implements Tool {
         if (scheduleStore.find(ctx.tenantId(), ctx.projectId(), key).isEmpty()) {
             throw new ToolException("schedule_remove: no entry named '" + key + "'");
         }
-        scheduleStore.delete(ctx.tenantId(), ctx.projectId(), key);
+        try {
+            scheduleStore.delete(ctx.tenantId(), ctx.projectId(), key);
+        } catch (RuntimeException e) {
+            throw new ToolException("schedule_remove: could not remove '" + key + "' — " + e.getMessage(), e);
+        }
+        agendaService.refreshScheduleMarker(ctx.processId());
         return Map.of("name", key, "status", "removed");
     }
 }

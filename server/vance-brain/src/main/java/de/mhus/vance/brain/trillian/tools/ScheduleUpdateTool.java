@@ -61,6 +61,7 @@ public class ScheduleUpdateTool implements Tool {
     }
 
     private final TrillianScheduleStore scheduleStore;
+    private final de.mhus.vance.brain.trillian.TrillianAgendaService agendaService;
 
     @Override
     public String name() {
@@ -129,7 +130,10 @@ public class ScheduleUpdateTool implements Tool {
                     new TrillianScheduleStore.Schedule(key, label, due, next, payload, enabled, current.lastRun()));
         } catch (IllegalArgumentException e) {
             throw new ToolException("schedule_update: " + e.getMessage(), e);
+        } catch (RuntimeException e) {
+            throw new ToolException("schedule_update: could not store '" + key + "' — " + e.getMessage(), e);
         }
+        agendaService.refreshScheduleMarker(ctx.processId());
         return Map.of("name", key, "due", due.toString(), "enabled", enabled);
     }
 

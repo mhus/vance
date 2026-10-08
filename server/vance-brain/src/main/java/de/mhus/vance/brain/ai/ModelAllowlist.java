@@ -38,15 +38,30 @@ public final class ModelAllowlist {
             if (pattern.equals("*")) {
                 return true;
             }
-            // \Q...\E quoting breaks when the pattern itself contains \E — escape
-            // it first (same move as Pattern.quote), then splice the wildcards.
-            String quoted = pattern.replace("\\E", "\\\\E\\Q");
-            Pattern regex = Pattern.compile("\\Q" + quoted.replace("*", "\\E.*\\Q") + "\\E");
+            Pattern regex = toRegex(pattern);
             if (regex.matcher(resolvedModel.toLowerCase()).matches()
                     || regex.matcher(bare.toLowerCase()).matches()) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Literal segments quoted one by one ({@link Pattern#quote} handles
+     * quote terminators inside the literal), joined by {@code .*} per wildcard.
+     */
+    private static Pattern toRegex(String pattern) {
+        String[] literals = pattern.split("\\*", -1);
+        StringBuilder regex = new StringBuilder();
+        for (int i = 0; i < literals.length; i++) {
+            if (i > 0) {
+                regex.append(".*");
+            }
+            if (!literals[i].isEmpty()) {
+                regex.append(Pattern.quote(literals[i]));
+            }
+        }
+        return Pattern.compile(regex.toString());
     }
 }

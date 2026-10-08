@@ -44,13 +44,14 @@ import org.springframework.stereotype.Component;
  *
  * <p>On a Trillian-Control session this:
  * <ol>
- *   <li>Mints a fresh {@code _trillian-<nature>-<instance>} service account.</li>
- *   <li>Resolves the {@value #USER_RECIPE_NAME} recipe to get the
- *       configured user-engine + params.</li>
- *   <li>Creates a <b>separate session</b> owned by the new service-
- *       account, in the same project as Control, marked
- *       {@code system=true} and using a headless profile (no bound
- *       WS connection).</li>
+ *   <li>Checks the kill switch and the loop's model gate — before anything
+ *       is minted, so a refusal leaves nothing behind.</li>
+ *   <li>Mints (or adopts) the {@code _trillian-<nature>-<instance>} service
+ *       account, ensures its hub {@code _user_<account>} and grants it
+ *       project-ADMIN on the control session's project.</li>
+ *   <li>Creates a <b>separate session</b> owned by the service account in
+ *       its hub, marked {@code system=true} and using a headless profile
+ *       (no bound WS connection).</li>
  *   <li>Spawns the {@value #USER_PROCESS_NAME} primary process inside
  *       that user-session, with {@code parentProcessId} pointing at
  *       the control-process (cross-session parent — the standard
@@ -182,6 +183,13 @@ public class TrillianSessionBootstrapper {
     private static final int MAX_NAMING_ATTEMPTS = 16;
     private static final int INSTANCE_BOUND = 10_000;
 
+    /**
+     * How long a bootstrap may hold its lease before another pod may take it
+     * over — generously above a bootstrap's real length (a few writes and a
+     * process start), so only a dead holder is ever overtaken.
+     */
+    private static final java.time.Duration BOOTSTRAP_LEASE_TTL = java.time.Duration.ofMinutes(2);
+
     private static final String CLIENT_NAME = "trillian-bootstrap";
     private static final String CLIENT_VERSION = "0.1.0";
 
@@ -194,6 +202,10 @@ public class TrillianSessionBootstrapper {
     private final ChatMessageService chatMessageService;
     private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
     private final de.mhus.vance.shared.home.HomeBootstrapService homeBootstrapService;
+    private final de.mhus.vance.shared.project.ProjectService projectService;
+
+    /** Cross-pod lease: one bootstrap per control process at a time. */
+    private final TrillianWakeupClaimService claimService;
 
     /** P2/D8: relaxed model gate for the unattended loop. */
     private final TrillianModelGate modelGate;
@@ -217,14 +229,14 @@ public class TrillianSessionBootstrapper {
      * <p>Recoverable: failure here is logged but doesn't throw —
      * the control-session is still alive for the human; a future
      * re-bootstrap or manual cleanup is the recovery path.
+     *
+     * <p>Serialised per control process <b>across pods</b>: the control
+     * engine's first turn, the command handler and the session-create path
+     * all bootstrap the pair, and the wiring params are check-then-act. A
+     * caller that does not get the lease leaves the build to its holder.
      */
-    // synchronized: the control engine's first turn and the session-create
-    // path both bootstrap the pair, and check-then-act on the wiring params
-    // is not atomic — without this, one control session can get two loops.
-
-    public synchronized void maybeBootstrap(
-            SessionDocument controlSession, @Nullable ThinkProcessDocument controlProcess) {
-        if (controlProcess == null) {
+    public void maybeBootstrap(SessionDocument controlSession, @Nullable ThinkProcessDocument controlProcess) {
+        if (controlProcess == null || controlProcess.getId() == null) {
             return;
         }
         // Detect by engine, not recipe name — that way the trillian
@@ -233,7 +245,29 @@ public class TrillianSessionBootstrapper {
         if (!CONTROL_ENGINE_NAME.equals(controlProcess.getThinkEngine())) {
             return;
         }
+        String lease = bootstrapLeaseKey(controlProcess);
+        if (!claimService.acquireLease(lease, BOOTSTRAP_LEASE_TTL)) {
+            log.debug("Trillian bootstrap of control id='{}' is running elsewhere — skipping", controlProcess.getId());
+            return;
+        }
+        try {
+            bootstrapLeased(controlSession, controlProcess.getId());
+        } finally {
+            claimService.releaseLease(lease);
+        }
+    }
 
+    /**
+     * The bootstrap proper, under the lease. Decides on a freshly read
+     * process: the document a caller holds may predate the wiring another
+     * caller wrote while this one waited.
+     */
+    private void bootstrapLeased(SessionDocument controlSession, String controlProcessId) {
+        ThinkProcessDocument controlProcess =
+                thinkProcessService.findById(controlProcessId).orElse(null);
+        if (controlProcess == null) {
+            return;
+        }
         // Idempotency: peerSessionId already wired?
         Object peerSessRaw = controlProcess.getEngineParams() == null
                 ? null
@@ -241,11 +275,7 @@ public class TrillianSessionBootstrapper {
         if (peerSessRaw instanceof String peerSess && !peerSess.isBlank()) {
             // Adopt only a pair that is actually alive — a stale wire to a
             // closed loop session must rebuild, not adopt.
-            Optional<SessionDocument> wired = sessionService.findBySessionId(peerSess);
-            boolean alive = wired.isPresent()
-                    && wired.get().getStatus() != SessionStatus.CLOSED
-                    && wired.get().getStatus() != SessionStatus.ARCHIVED;
-            if (alive) {
+            if (sessionAlive(peerSess)) {
                 log.debug(
                         "Trillian user-session '{}' already wired for control id='{}' — adopting",
                         peerSess,
@@ -256,7 +286,8 @@ public class TrillianSessionBootstrapper {
                     "Trillian user-session '{}' wired on control id='{}' is gone — rebuilding",
                     peerSess,
                     controlProcess.getId());
-            unwirePeer(controlProcess);
+            unwirePeer(controlProcess.getId(), /*carriedAttributes*/ null);
+            controlProcess = thinkProcessService.findById(controlProcessId).orElse(controlProcess);
         }
 
         try {
@@ -296,64 +327,18 @@ public class TrillianSessionBootstrapper {
         //    account name and the two follow-up recipes derive from it.
         String nature = readNature(controlProcess);
 
-        // 2. Reuse the account of a previous incarnation, or mint one.
-        //    After a reactivate the old chat-process is still around,
-        //    renamed and closed, and it remembers which account this
+        // 2. Reuse the account of a previous incarnation, or pick a fresh
+        //    name. After a reactivate (or a rebuild of the fluid loop) a
+        //    process of this session remembers which account this
         //    session's Trillian was. Reusing it is what makes archiving
         //    reversible: same identity, same attributes, same grants —
         //    a Trillian that came back rather than a stranger wearing
-        //    its session.
-        String trillianName = previousAccount;
-        boolean adopted = trillianName != null;
-        if (!adopted) {
-            trillianName = pickUniqueTrillianName(controlSession.getTenantId(), nature);
-        }
-        if (adopted) {
-            log.info(
-                    "Adopted Trillian service-account '{}' for reactivated control session '{}'",
-                    trillianName,
-                    controlSession.getSessionId());
-        } else {
-            // The title is a starting point, not an identity: it is what
-            // the UI shows, and a human may rename it (//trillian name).
-            // The account name never changes, so the two are independent
-            // — which is the point of not deriving the display name from
-            // the account on the fly.
-            UserDocument trillian = userService.createServiceAccount(
-                    controlSession.getTenantId(),
-                    trillianName,
-                    /*passwordHash*/ null,
-                    /*title*/ "Trillian " + accountSuffix(trillianName),
-                    /*email*/ null);
-            log.info(
-                    "Minted Trillian service-account '{}' id='{}' for control session '{}'",
-                    trillian.getName(),
-                    trillian.getId(),
-                    controlSession.getSessionId());
-        }
-        final String trillianNameFinal = trillianName;
-
-        // 2c. The Trillian's own home. Every account has one
-        //     (`_user_<login>`) — the hub is where the loop session lives,
-        //     where its attributes and schedules are filed, and what outlives
-        //     a merely archived control session. ensureHome is idempotent, so
-        //     an adopted account adopts its hub along with it.
-        final String homeProject = homeBootstrapService
-                .ensureHome(controlSession.getTenantId(), trillianNameFinal)
-                .getName();
-
-        // 2b. Seed the account's authority. Without a grant the account
-        //     exists but may do nothing: every tool call goes through
-        //     ToolDispatcher -> PermissionService.enforce(EXECUTE), which
-        //     resolves to WRITER-on-project. Scope is deliberately the
-        //     control session's project — Trillian stands in for the human
-        //     in the project they started it in, and nowhere else. Spawning
-        //     into other projects (cross_process_create) therefore stays
-        //     denied until someone grants that explicitly.
-        if (!adopted) {
-            permissionBootstrapProvider.ifAvailable(pb -> pb.grantProjectAdmin(
-                    controlSession.getTenantId(), controlSession.getProjectId(), trillianNameFinal));
-        }
+        //    its session. Picking a name writes nothing: every refusal
+        //    below happens before anything is minted.
+        final boolean adopted = previousAccount != null;
+        final String trillianName =
+                adopted ? previousAccount : pickUniqueTrillianName(controlSession.getTenantId(), nature);
+        final String homeProject = de.mhus.vance.shared.home.HomeBootstrapService.hubProjectName(trillianName);
 
         // 3. Resolve the user recipe — the Nature variant of the loop.
         String userRecipeName = userRecipeNameOf(controlProcess, nature);
@@ -368,13 +353,14 @@ public class TrillianSessionBootstrapper {
         // (default '*'), and loop-only at that: a refused model must not
         // cost the operator their control session — the loop simply does
         // not start and the chat says why. Self-healing: fix the setting
-        // and the next turn builds the loop.
+        // and the next turn builds the loop. Before the mint, so a refusal
+        // leaves no account behind (it would otherwise mint one per turn).
         try {
             modelGate.checkLoopModel(
                     controlSession.getTenantId(),
+                    trillianName,
+                    controlSession.getProjectId(),
                     homeProject,
-                    trillianNameFinal,
-                    /*processId*/ null,
                     de.mhus.vance.brain.ai.AiModelResolver.parseModelSpec(applied.params()));
         } catch (IllegalStateException denied) {
             suppressLoop(controlSession, controlProcess, denied.getMessage());
@@ -387,6 +373,55 @@ public class TrillianSessionBootstrapper {
                 .orElseThrow(() -> new IllegalStateException("Recipe '" + userRecipeNameFinal
                         + "' references unknown engine '" + applied.engine()
                         + "' — known: " + thinkEngineService.listEngines()));
+
+        // 2b. Mint — only now that nothing can refuse any more. The name is
+        //     recorded on the control process right away: anything that
+        //     fails after this point adopts the account on the next attempt
+        //     instead of minting another one.
+        if (adopted) {
+            log.info(
+                    "Adopted Trillian service-account '{}' for control session '{}'",
+                    trillianName,
+                    controlSession.getSessionId());
+        } else {
+            // The title is a starting point, not an identity: it is what
+            // the UI shows, and a human may rename it (//trillian name).
+            // The account name never changes, so the two are independent
+            // — which is the point of not deriving the display name from
+            // the account on the fly.
+            UserDocument trillian = userService.createServiceAccount(
+                    controlSession.getTenantId(),
+                    trillianName,
+                    /*passwordHash*/ null,
+                    /*title*/ "Trillian " + accountSuffix(trillianName),
+                    /*email*/ null);
+            recordAccount(controlProcess.getId(), trillianName);
+            log.info(
+                    "Minted Trillian service-account '{}' id='{}' for control session '{}'",
+                    trillian.getName(),
+                    trillian.getId(),
+                    controlSession.getSessionId());
+        }
+
+        // 2c. The Trillian's own home. Every account has one
+        //     (`_user_<login>`) — the hub is where the loop session lives,
+        //     where its attributes and schedules are filed, and what outlives
+        //     a merely archived control session. ensureHome is idempotent, so
+        //     an adopted account adopts its hub along with it.
+        homeBootstrapService.ensureHome(controlSession.getTenantId(), trillianName);
+
+        // 2d. Seed the account's authority. Without a grant the account
+        //     exists but may do nothing: every tool call goes through
+        //     ToolDispatcher -> PermissionService.enforce(EXECUTE), which
+        //     resolves to WRITER-on-project. Scope is deliberately the
+        //     control session's project — Trillian stands in for the human
+        //     in the project they started it in, and nowhere else. Spawning
+        //     into other projects (cross_process_create) therefore stays
+        //     denied until someone grants that explicitly. Every time, not
+        //     only on mint: grants are idempotent, and an attempt that died
+        //     between mint and grant must not leave an account without one.
+        permissionBootstrapProvider.ifAvailable(
+                pb -> pb.grantProjectAdmin(controlSession.getTenantId(), controlSession.getProjectId(), trillianName));
 
         // 4. Create the headless user-session owned by the service-
         //    account. system=true marks it as auto-managed (UI may
@@ -407,7 +442,7 @@ public class TrillianSessionBootstrapper {
                 "Trillian user-session created id='{}' owner='{}' project='{}'",
                 userSession.getSessionId(),
                 trillianName,
-                controlSession.getProjectId());
+                homeProject);
 
         // 5. Spawn the primary user-process in the user-session.
         //    parentProcessId = controlProcess.id makes terminal events
@@ -475,6 +510,9 @@ public class TrillianSessionBootstrapper {
             log.warn(
                     "Concurrent Trillian-User process create in session '{}'; aborting bootstrap",
                     userSession.getSessionId());
+            // The session was created a moment ago and holds nothing; left
+            // behind it would be an empty loop session in the hub forever.
+            sessionService.delete(userSession.getSessionId());
             return;
         }
 
@@ -551,11 +589,6 @@ public class TrillianSessionBootstrapper {
     }
 
     /**
-     * Write the minted worker identity into the control chat as a persistent
-     * assistant message. Best-effort — a failure here must not abort a
-     * bootstrap that is otherwise complete, so it is logged and swallowed.
-     */
-    /**
      * The model gate refused the loop: say so once in the control chat and
      * remember the reason, so the next turn can tell a new refusal from one
      * the operator has already seen. The control conversation stays fully
@@ -595,6 +628,11 @@ public class TrillianSessionBootstrapper {
         }
     }
 
+    /**
+     * Write the minted worker identity into the control chat as a persistent
+     * assistant message. Best-effort — a failure here must not abort a
+     * bootstrap that is otherwise complete, so it is logged and swallowed.
+     */
     private void announceIdentity(
             SessionDocument controlSession, ThinkProcessDocument controlProcess, String trillianName, String callName) {
         try {
@@ -716,7 +754,11 @@ public class TrillianSessionBootstrapper {
     private String pickUniqueTrillianName(String tenantId, String nature) {
         for (int i = 0; i < MAX_NAMING_ATTEMPTS; i++) {
             String name = ACCOUNT_PREFIX + nature + "-" + String.format("%04d", random.nextInt(INSTANCE_BOUND));
-            if (!userService.existsByTenantAndName(tenantId, name)) {
+            // A name whose hub still exists is taken too: a hub sweep that
+            // did not finish leaves rows the next holder would inherit.
+            if (!userService.existsByTenantAndName(tenantId, name)
+                    && !projectService.existsByTenantAndName(
+                            tenantId, de.mhus.vance.shared.home.HomeBootstrapService.hubProjectName(name))) {
                 return name;
             }
         }
@@ -750,31 +792,59 @@ public class TrillianSessionBootstrapper {
      * peer (turn head, command handler). Returns {@code true} when a live
      * loop exists afterwards.
      */
-    public synchronized boolean ensureUserLoop(ThinkProcessDocument controlProcess) {
-        if (!CONTROL_ENGINE_NAME.equals(controlProcess.getThinkEngine())) {
+    public boolean ensureUserLoop(ThinkProcessDocument controlProcess) {
+        if (controlProcess.getId() == null || !CONTROL_ENGINE_NAME.equals(controlProcess.getThinkEngine())) {
             return false;
         }
         Optional<SessionDocument> controlSession = sessionService.findBySessionId(controlProcess.getSessionId());
         if (controlSession.isEmpty()) {
             return false;
         }
-        Optional<ThinkProcessDocument> loop = findPeerProcess(controlProcess);
-        if (loop.isPresent() && isAlive(loop.get()) && peerSessionAlive(controlProcess)) {
-            return true;
+        String lease = bootstrapLeaseKey(controlProcess);
+        if (!claimService.acquireLease(lease, BOOTSTRAP_LEASE_TTL)) {
+            // Someone else is building (or checking) this pair right now;
+            // answer from what is wired at this moment and do not rebuild.
+            return thinkProcessService
+                    .findById(controlProcess.getId())
+                    .map(this::pairAlive)
+                    .orElse(false);
         }
-        // Fluid, not fatal: park whatever the departing loop still carries,
-        // unwire, and let the bootstrap build a fresh one.
-        loop.ifPresent(old -> parkAttributes(controlProcess, old));
-        unwirePeer(controlProcess);
-        log.info("Trillian: user-loop of control '{}' is gone — rebuilding", controlProcess.getId());
-        // Re-read: unwirePeer wrote fresh params and the doc in hand still
-        // carries the dead pair — maybeBootstrap would adopt it.
-        ThinkProcessDocument fresh =
-                thinkProcessService.findById(controlProcess.getId()).orElse(controlProcess);
-        maybeBootstrap(controlSession.get(), fresh);
-        ThinkProcessDocument after =
-                thinkProcessService.findById(controlProcess.getId()).orElse(controlProcess);
-        return findPeerProcess(after).filter(p -> isAlive(p)).isPresent();
+        try {
+            // Decide on a fresh read: the document in hand may predate a
+            // wiring another caller wrote while this one waited for the lease.
+            ThinkProcessDocument fresh =
+                    thinkProcessService.findById(controlProcess.getId()).orElse(null);
+            if (fresh == null) {
+                return false;
+            }
+            if (pairAlive(fresh)) {
+                return true;
+            }
+            // Fluid, not fatal: carry whatever the departing loop still
+            // holds, unwire — one write, so the carried attributes and the
+            // unwiring cannot overwrite each other — and build a fresh one.
+            Map<String, Object> carried = findPeerProcess(fresh)
+                    .map(TrillianInternalApi::readAttributes)
+                    .orElse(Map.of());
+            unwirePeer(fresh.getId(), carried.isEmpty() ? null : carried);
+            log.info("Trillian: user-loop of control '{}' is gone — rebuilding", fresh.getId());
+            bootstrapLeased(controlSession.get(), fresh.getId());
+            return thinkProcessService
+                    .findById(fresh.getId())
+                    .flatMap(this::findPeerProcess)
+                    .filter(TrillianSessionBootstrapper::isAlive)
+                    .isPresent();
+        } finally {
+            claimService.releaseLease(lease);
+        }
+    }
+
+    /** Whether the wired loop process and its session are both alive. */
+    private boolean pairAlive(ThinkProcessDocument controlProcess) {
+        Optional<ThinkProcessDocument> loop = findPeerProcess(controlProcess);
+        return loop.isPresent()
+                && isAlive(loop.get())
+                && findUserSessionId(controlProcess).map(this::sessionAlive).orElse(false);
     }
 
     /** The wired user-loop process, if the reference still resolves. */
@@ -790,45 +860,58 @@ public class TrillianSessionBootstrapper {
         return process.getStatus() != null && process.getStatus() != ThinkProcessStatus.CLOSED;
     }
 
-    private boolean peerSessionAlive(ThinkProcessDocument controlProcess) {
-        Optional<String> sid = findUserSessionId(controlProcess);
-        if (sid.isEmpty()) {
-            return false;
-        }
-        Optional<SessionDocument> s = sessionService.findBySessionId(sid.get());
+    private boolean sessionAlive(String sessionId) {
+        Optional<SessionDocument> s = sessionService.findBySessionId(sessionId);
         return s.isPresent()
                 && s.get().getStatus() != SessionStatus.CLOSED
                 && s.get().getStatus() != SessionStatus.ARCHIVED;
     }
 
     /**
-     * Parks the departing loop's attributes on the control process, so the
-     * rebuild picks them up through the existing {@link
-     * #PARAM_CARRIED_ATTRIBUTES} path. Best-effort: attributes that cannot be
-     * read any more are gone, and that is the smaller loss of the two.
+     * Drops the peer wiring, keeping {@code trillianUserName} for adoption.
+     * Reads the params fresh and writes once; {@code carriedAttributes}, when
+     * given, is parked in the same write for the rebuild to pick up through
+     * {@link #PARAM_CARRIED_ATTRIBUTES}.
      */
-    private void parkAttributes(ThinkProcessDocument controlProcess, ThinkProcessDocument oldLoop) {
-        Map<String, Object> attrs = TrillianInternalApi.readAttributes(oldLoop);
-        if (attrs.isEmpty()) {
+    private void unwirePeer(String controlProcessId, @Nullable Map<String, Object> carriedAttributes) {
+        ThinkProcessDocument fresh =
+                thinkProcessService.findById(controlProcessId).orElse(null);
+        if (fresh == null) {
             return;
         }
         Map<String, Object> params = new LinkedHashMap<>();
-        if (controlProcess.getEngineParams() != null) {
-            params.putAll(controlProcess.getEngineParams());
+        if (fresh.getEngineParams() != null) {
+            params.putAll(fresh.getEngineParams());
         }
-        params.put(PARAM_CARRIED_ATTRIBUTES, attrs);
-        thinkProcessService.replaceEngineParams(controlProcess.getId(), params);
-    }
-
-    /** Drops the peer wiring, keeping {@code trillianUserName} for adoption. */
-    private void unwirePeer(ThinkProcessDocument controlProcess) {
-        if (controlProcess.getEngineParams() == null) {
-            return;
-        }
-        Map<String, Object> params = new LinkedHashMap<>(controlProcess.getEngineParams());
         params.remove(PARAM_PEER_PROCESS_ID);
         params.remove(PARAM_PEER_SESSION_ID);
-        thinkProcessService.replaceEngineParams(controlProcess.getId(), params);
+        if (carriedAttributes != null) {
+            params.put(PARAM_CARRIED_ATTRIBUTES, carriedAttributes);
+        }
+        thinkProcessService.replaceEngineParams(controlProcessId, params);
+    }
+
+    /**
+     * Records the freshly minted account on the control process at once, so
+     * a bootstrap that fails after the mint adopts it next time instead of
+     * minting another one.
+     */
+    private void recordAccount(String controlProcessId, String trillianName) {
+        ThinkProcessDocument fresh =
+                thinkProcessService.findById(controlProcessId).orElse(null);
+        if (fresh == null) {
+            return;
+        }
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (fresh.getEngineParams() != null) {
+            params.putAll(fresh.getEngineParams());
+        }
+        params.put(PARAM_TRILLIAN_USER_NAME, trillianName);
+        thinkProcessService.replaceEngineParams(controlProcessId, params);
+    }
+
+    private static String bootstrapLeaseKey(ThinkProcessDocument controlProcess) {
+        return "bootstrap/" + controlProcess.getTenantId() + "/" + controlProcess.getId();
     }
 
     /**

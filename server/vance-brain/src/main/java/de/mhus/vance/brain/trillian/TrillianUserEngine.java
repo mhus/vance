@@ -149,10 +149,29 @@ public class TrillianUserEngine implements ThinkEngine {
         base.add("task_failed");
         base.add("task_needs_input");
         base.add("peer_read_chat_memory");
+        // Durable appointments in the own hub (A4) — role-gated, so they
+        // must be in the base set to be visible at all.
+        base.add("schedule_add");
+        base.add("schedule_list");
+        base.add("schedule_update");
+        base.add("schedule_remove");
+        // Outgoing sessions under the own identity (A6) — same reason.
+        base.add("session_open");
+        base.add("session_send");
+        base.add("session_read");
+        base.add("session_list");
+        base.add("session_close");
         ENGINE_DEFAULT_TOOLS = java.util.Collections.unmodifiableSet(base);
     }
 
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/trillian-user-prompt.md";
+
+    /**
+     * How long a turn may hold the cluster-wide turn lease before another
+     * pod may take it over — far above a real turn, so only a holder that
+     * died is ever overtaken.
+     */
+    private static final java.time.Duration TURN_LEASE_TTL = java.time.Duration.ofMinutes(30);
 
     private static final String ENGINE_FALLBACK_PROMPT = "You are Trillian-User. You receive task_request events from "
             + "your paired Trillian-Control. For each task you spawn a "
@@ -174,6 +193,12 @@ public class TrillianUserEngine implements ThinkEngine {
     private final SystemPromptComposer systemPromptComposer;
     private final TrillianNatureRegistry natureRegistry;
     private final TrillianWakeupService wakeupService;
+    private final TrillianWakeupClaimService claimService;
+
+    /** Lazy: the emitter sits on the engine-service chain that resolves this engine. */
+    private final org.springframework.beans.factory.ObjectProvider<de.mhus.vance.brain.thinkengine.ProcessEventEmitter>
+            eventEmitterProvider;
+
     private final TrillianInternalApi trillianApi;
     private final ModelCatalog modelCatalog;
     private final MemoryContextLoader memoryContextLoader;
@@ -288,6 +313,41 @@ public class TrillianUserEngine implements ThinkEngine {
      */
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        // The loop lives in a podless hub (D2): a self-check claimed on one
+        // pod, a session reply delivered on another — both would run a turn
+        // on their own lane, and the lane serialises per pod only. The
+        // lease makes it one turn at a time cluster-wide. A pod that does
+        // not get it leaves its inbox to the running turn, which drains it.
+        String lease = turnLeaseKey(process);
+        if (!claimService.acquireLease(lease, TURN_LEASE_TTL)) {
+            log.debug("TrillianUser id='{}' is turning on another pod — leaving the inbox to it", process.getId());
+            return;
+        }
+        boolean completed = false;
+        try {
+            runTurnLeased(process, ctx);
+            completed = true;
+        } finally {
+            claimService.releaseLease(lease);
+            // Something may have arrived after the last drain while another
+            // pod skipped its turn on this lease; nobody else will look.
+            // Only after a turn that completed — a failing turn would
+            // otherwise reschedule itself forever.
+            try {
+                if (completed && thinkProcessService.hasPending(process.getId())) {
+                    eventEmitterProvider.getObject().scheduleTurn(process.getId());
+                }
+            } catch (RuntimeException e) {
+                log.warn("TrillianUser id='{}' could not re-check its inbox: {}", process.getId(), e.toString());
+            }
+        }
+    }
+
+    private static String turnLeaseKey(ThinkProcessDocument process) {
+        return "turn/" + process.getTenantId() + "/" + process.getId();
+    }
+
+    private void runTurnLeased(ThinkProcessDocument process, ThinkEngineContext ctx) {
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         TrillianNature nature = natureRegistry.resolve(readNature(process));
         ThinkProcessStatus exitStatus = ThinkProcessStatus.IDLE;
@@ -852,8 +912,15 @@ public class TrillianUserEngine implements ThinkEngine {
                         ec.params() == null ? null : ec.params().get(TrillianSessionReplyListener.PARAM_SESSION_ID);
                 Object preview =
                         ec.params() == null ? null : ec.params().get(TrillianSessionReplyListener.PARAM_PREVIEW);
-                return "<session-reply session=\"" + escapeAttr(String.valueOf(replySession)) + "\">"
-                        + escapeText(String.valueOf(preview)) + "</session-reply>";
+                Object from = ec.params() == null ? null : ec.params().get(TrillianSessionReplyListener.PARAM_FROM);
+                // The line was written by the project's engine or by a human
+                // in a shared session — somebody else's words either way, so
+                // they are quoted and the provenance is said once.
+                return "<session-reply session=\"" + escapeAttr(String.valueOf(replySession)) + "\" from=\""
+                        + escapeAttr(from == null ? "engine" : String.valueOf(from)) + "\">"
+                        + ForeignPromptText.PROVENANCE_NOTE + " "
+                        + escapeText(ForeignPromptText.quoted(preview == null ? null : String.valueOf(preview)))
+                        + "</session-reply>";
             }
             return "<external-command command=\""
                     + escapeAttr(ec.command()) + "\">"

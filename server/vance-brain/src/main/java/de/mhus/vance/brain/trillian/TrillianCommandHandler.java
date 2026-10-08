@@ -68,10 +68,24 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         // (handler/engine -> bootstrapper -> ThinkEngineService -> engines).
         TrillianSessionBootstrapper bootstrapper = sessionBootstrapper.getIfAvailable();
         if (bootstrapper != null) {
-            bootstrapper.ensureUserLoop(process);
+            try {
+                bootstrapper.ensureUserLoop(process);
+            } catch (RuntimeException e) {
+                log.warn("//trillian: ensuring the user-loop of id='{}' failed: {}", process.getId(), e.toString());
+            }
         }
         Optional<ThinkProcessDocument> peerOpt = api.findPeer(process.getId());
         if (peerOpt.isEmpty()) {
+            // A Trillian-Control whose loop is held back by a gate is still a
+            // Trillian-Control; say why there is no working side.
+            Object denied = thinkProcessService
+                    .findById(process.getId())
+                    .map(ThinkProcessDocument::getEngineParamOverrides)
+                    .map(o -> o.get(TrillianSessionBootstrapper.PARAM_GATE_DENIED))
+                    .orElse(null);
+            if (denied != null && TrillianSessionBootstrapper.CONTROL_ENGINE_NAME.equals(process.getThinkEngine())) {
+                return EngineCommandResult.error("The Trillian's working side is not running: " + denied);
+            }
             return EngineCommandResult.error("No Trillian worker paired with this process — //trillian only works "
                     + "in a Trillian-Control session");
         }

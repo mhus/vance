@@ -44,7 +44,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
             name = "tenant_session_name_idx",
             def = "{ 'tenantId': 1, 'sessionId': 1, 'name': 1 }",
             unique = true),
-    @CompoundIndex(name = "tenant_session_status_idx", def = "{ 'tenantId': 1, 'sessionId': 1, 'status': 1 }")
+    @CompoundIndex(name = "tenant_session_status_idx", def = "{ 'tenantId': 1, 'sessionId': 1, 'status': 1 }"),
+    @CompoundIndex(name = "engine_status_idx", def = "{ 'thinkEngine': 1, 'status': 1 }")
 })
 @Data
 @Builder

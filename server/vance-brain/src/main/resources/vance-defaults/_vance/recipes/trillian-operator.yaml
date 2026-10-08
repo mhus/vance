@@ -1,0 +1,60 @@
+# Trillian Control — Nature void, working style "operator" (P7)
+#
+# Same Nature and control side as trillian-void; what differs is the
+# working side. Its user-loop recipe (trillian-user-operator) carries the
+# foreign_* document tools, so small cross-project jobs — look something
+# up in project X, copy a finding over — are done by the loop itself
+# instead of by a spawned worker. Long or parallel work still goes to
+# workers; the recipe decides the tool surface, the turn does not choose
+# a working style (Trillian Next-Gen §5).
+#
+# The working style is pinned through params.userRecipe — the same seam a
+# Nature uses for its own loop recipe, so nothing in the bootstrap has to
+# know this variant exists.
+
+description: |
+  Trillian Control — Nature void with a direct-working loop: reads,
+  searches and copies documents across projects itself (foreign_* tools)
+  and spawns workers only for longer jobs.
+
+engine: trillian-control
+
+listed: true
+category: agents
+title: Trillian void (operator)
+
+params:
+  nature: 'void'
+  userRecipe: 'trillian-user-operator'
+  model: trillian-admin:analyze,trillian:analyze,default:analyze,default:fast
+  fallbackModels:
+    - default:fast
+
+profiles:
+  foot:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: NONE
+      onSuspend: KEEP
+      idleTimeoutMs: 3600000
+      suspendKeepDurationMs: 86400000
+  web:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: NONE
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000
+      suspendKeepDurationMs: 86400000
+  default:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: NONE
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000
+      suspendKeepDurationMs: 86400000
+
+tags:
+  - trillian
+  - control
+  - chat
+  - operator

@@ -47,6 +47,14 @@ public class TrillianScheduleStore {
     /** Floor for recurring entries: at most every five minutes. */
     public static final long MIN_EVERY_SECONDS = 300;
 
+    /**
+     * A schedule name is one path segment: lowercase, digits, {@code -} and
+     * {@code _}. A {@code /} would file the document in a sub-folder whose
+     * name the store cannot recover — the fire would then be written next to
+     * the original, and the original would stay due forever.
+     */
+    private static final java.util.regex.Pattern NAME = java.util.regex.Pattern.compile("[a-z0-9][a-z0-9_-]{0,63}");
+
     private static final String HEADER = """
             # Trillian schedule — an appointment the loop keeps for itself.
             #
@@ -76,10 +84,30 @@ public class TrillianScheduleStore {
         return FOLDER + name + ".yaml";
     }
 
+    /**
+     * Validates a schedule name — see {@link #NAME}.
+     *
+     * @throws IllegalArgumentException with a message the model can act on
+     */
+    public static String requireValidName(@Nullable String name) {
+        String n = name == null ? "" : name.trim();
+        if (!NAME.matcher(n).matches()) {
+            throw new IllegalArgumentException("Schedule name '" + n + "' is invalid — use lowercase letters,"
+                    + " digits, '-' and '_' (max 64 characters, no '/')");
+        }
+        return n;
+    }
+
     /** All schedules filed under this project, broken ones skipped. */
     public List<Schedule> list(String tenantId, String projectId) {
         List<Schedule> out = new ArrayList<>();
         for (DocumentDocument doc : documentService.listUnderFolder(tenantId, projectId, FOLDER)) {
+            // Only the folder itself: a document in a sub-folder (hand-filed)
+            // has no name this store can write back to.
+            if (doc.getPath() == null
+                    || doc.getPath().substring(FOLDER.length()).contains("/")) {
+                continue;
+            }
             Schedule s = parse(doc);
             if (s != null) {
                 out.add(s);
@@ -100,38 +128,37 @@ public class TrillianScheduleStore {
     }
 
     /**
-     * Writes the schedule document. The recurrence floor is enforced here:
-     * an {@code every} under five minutes is rejected, not silently rounded.
+     * Writes the schedule document. The name and the recurrence floor are
+     * enforced here: an {@code every} under five minutes is rejected, not
+     * silently rounded. A failed write throws — a caller that reports
+     * "scheduled" must not do so for an appointment that was never stored.
      */
     public void save(String tenantId, String projectId, Schedule schedule) {
+        requireValidName(schedule.name());
         if (schedule.next() != null && parseEverySeconds(schedule.next()) < MIN_EVERY_SECONDS) {
             throw new IllegalArgumentException("Schedule '" + schedule.name() + "': recurrence '" + schedule.next()
                     + "' is under the 5-minute floor");
         }
-        try {
-            documentService.upsertText(
-                    tenantId,
-                    projectId,
-                    pathFor(schedule.name()),
-                    DOC_TITLE_PREFIX + schedule.name(),
-                    TAGS,
-                    HEADER + "\n" + dump(schedule),
-                    /*createdBy*/ null,
-                    WriteActor.SYSTEM);
-        } catch (RuntimeException e) {
-            log.warn("Trillian: could not persist schedule '{}': {}", schedule.name(), e.toString());
-        }
+        documentService.upsertText(
+                tenantId,
+                projectId,
+                pathFor(schedule.name()),
+                DOC_TITLE_PREFIX + schedule.name(),
+                TAGS,
+                HEADER + "\n" + dump(schedule),
+                /*createdBy*/ null,
+                WriteActor.SYSTEM);
     }
 
-    public void delete(String tenantId, String projectId, String name) {
-        try {
-            documentService.findByPath(tenantId, projectId, pathFor(name)).ifPresent(doc -> {
-                documentService.delete(doc.getId(), WriteActor.SYSTEM);
-                log.info("Trillian: removed schedule {}", pathFor(name));
-            });
-        } catch (RuntimeException e) {
-            log.warn("Trillian: could not remove schedule '{}': {}", name, e.toString());
+    /** Removes the schedule; {@code false} when there was none. */
+    public boolean delete(String tenantId, String projectId, String name) {
+        Optional<DocumentDocument> doc = documentService.findByPath(tenantId, projectId, pathFor(name));
+        if (doc.isEmpty()) {
+            return false;
         }
+        documentService.delete(doc.get().getId(), WriteActor.SYSTEM);
+        log.info("Trillian: removed schedule {}", pathFor(name));
+        return true;
     }
 
     /**
@@ -164,9 +191,11 @@ public class TrillianScheduleStore {
             if (n <= 0) {
                 throw new IllegalArgumentException("Recurrence '" + every + "' must be positive");
             }
-            return n * factor;
+            return Math.multiplyExact(n, factor);
         } catch (NumberFormatException ex) {
             throw new IllegalArgumentException("Recurrence '" + every + "' is not a number", ex);
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Recurrence '" + every + "' is too large", ex);
         }
     }
 
@@ -186,11 +215,23 @@ public class TrillianScheduleStore {
                 log.warn("Trillian: schedule '{}' has no due — ignoring", name);
                 return null;
             }
+            String next = str(map.get("next"));
+            if (next != null) {
+                // Checked here, not first at fire time: a recurrence that
+                // cannot be computed would make the entry fire on every
+                // wakeup without ever re-anchoring.
+                try {
+                    parseEverySeconds(next);
+                } catch (IllegalArgumentException e) {
+                    log.warn("Trillian: schedule '{}' has an unusable next '{}' — ignoring", name, next);
+                    return null;
+                }
+            }
             return new Schedule(
                     name,
                     str(map.get("label")),
                     due,
-                    str(map.get("next")),
+                    next,
                     str(map.get("payload")),
                     !Boolean.FALSE.equals(map.get("enabled")),
                     instantOf(map.get("lastRun")));
@@ -205,13 +246,18 @@ public class TrillianScheduleStore {
         return file.endsWith(".yaml") ? file.substring(0, file.length() - 5) : file;
     }
 
-    private static @Nullable String str(Object v) {
+    private static @Nullable String str(@Nullable Object v) {
         return v == null ? null : v.toString();
     }
 
-    private static @Nullable Instant instantOf(Object v) {
+    private static @Nullable Instant instantOf(@Nullable Object v) {
         if (v == null) {
             return null;
+        }
+        // An unquoted ISO timestamp in hand-edited YAML is loaded as a Date
+        // (YAML 1.1 timestamp), and its toString is not ISO.
+        if (v instanceof java.util.Date date) {
+            return date.toInstant();
         }
         try {
             return Instant.parse(v.toString().trim());

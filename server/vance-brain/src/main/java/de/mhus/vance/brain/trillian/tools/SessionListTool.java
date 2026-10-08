@@ -2,7 +2,6 @@ package de.mhus.vance.brain.trillian.tools;
 
 import de.mhus.vance.brain.trillian.TrillianUserEngine;
 import de.mhus.vance.shared.session.SessionDocument;
-import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -24,7 +23,7 @@ public class SessionListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of("type", "object", "properties", Map.of());
 
-    private final SessionService sessionService;
+    private final de.mhus.vance.brain.trillian.TrillianOwnSessions ownSessions;
 
     @Override
     public String name() {
@@ -63,14 +62,13 @@ public class SessionListTool implements Tool {
             throw new ToolException("session_list requires a user scope");
         }
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (SessionDocument s : sessionService.listForUser(ctx.tenantId(), ctx.userId())) {
-            String clientName = s.getClientName() == null ? "" : s.getClientName();
-            if (!clientName.startsWith(SessionOpenTool.CLIENT_NAME_PREFIX)) {
-                continue;
-            }
+        for (SessionDocument s : ownSessions.openSessionsOf(ctx.tenantId(), ctx.userId())) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("sessionId", s.getSessionId());
             row.put("projectId", s.getProjectId());
+            row.put(
+                    "collab",
+                    de.mhus.vance.brain.trillian.TrillianOwnSessions.modeOf(s).name());
             if (s.getDisplayName() != null) {
                 row.put("displayName", s.getDisplayName());
             }

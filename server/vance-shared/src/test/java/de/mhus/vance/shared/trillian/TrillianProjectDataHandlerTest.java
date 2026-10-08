@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.trillian;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -8,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.permission.PermissionBootstrap;
+import de.mhus.vance.shared.project.maintenance.UserHubSweeper;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.user.UserDocument;
@@ -31,15 +33,61 @@ class TrillianProjectDataHandlerTest {
     private final PermissionBootstrap permissionBootstrap = mock(PermissionBootstrap.class);
 
     @SuppressWarnings("unchecked")
-    private final ObjectProvider<PermissionBootstrap> bootstrapProvider =
-            mock(ObjectProvider.class);
+    private final ObjectProvider<PermissionBootstrap> bootstrapProvider = mock(ObjectProvider.class);
 
-    private final TrillianProjectDataHandler handler = new TrillianProjectDataHandler(
-            thinkProcessService, userService, bootstrapProvider);
+    private final UserHubSweeper hubSweeper = mock(UserHubSweeper.class);
+
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<UserHubSweeper> sweeperProvider = mock(ObjectProvider.class);
+
+    private final TrillianProjectDataHandler handler =
+            new TrillianProjectDataHandler(thinkProcessService, userService, bootstrapProvider, sweeperProvider);
 
     TrillianProjectDataHandlerTest() {
         // ObjectProvider.ifAvailable(consumer) — hand the mock through.
         doAnswerWithBootstrap();
+        when(sweeperProvider.getIfAvailable()).thenReturn(hubSweeper);
+        when(hubSweeper.sweepUserHub(
+                        org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(true);
+    }
+
+    @Test
+    void delete_sweepsTheAccountsHubBeforeTheAccount() {
+        givenControlProcesses(control("_trillian-void-a7f3"));
+        givenExistingUsers("_trillian-void-a7f3");
+
+        handler.delete("acme", "p1");
+
+        // The loop, its schedules and goals live in the hub — an account
+        // removed without it leaves them to the next holder of the name.
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(hubSweeper, userService);
+        order.verify(hubSweeper).sweepUserHub("acme", "_user__trillian-void-a7f3");
+        order.verify(userService).delete("acme", "_trillian-void-a7f3");
+    }
+
+    @Test
+    void delete_keepsTheAccount_whenItsHubCannotBeSwept() {
+        givenControlProcesses(control("_trillian-void-a7f3"));
+        givenExistingUsers("_trillian-void-a7f3");
+        when(hubSweeper.sweepUserHub("acme", "_user__trillian-void-a7f3")).thenReturn(false);
+
+        // The account holds the name; with it gone the hub's rows would be
+        // inherited by the next Trillian minted under it.
+        assertThatThrownBy(() -> handler.delete("acme", "p1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("_trillian-void-a7f3");
+        verify(userService, never()).delete("acme", "_trillian-void-a7f3");
+    }
+
+    @Test
+    void delete_keepsTheAccount_whenNoSweeperIsLoaded() {
+        givenControlProcesses(control("_trillian-void-a7f3"));
+        givenExistingUsers("_trillian-void-a7f3");
+        when(sweeperProvider.getIfAvailable()).thenReturn(null);
+
+        assertThatThrownBy(() -> handler.delete("acme", "p1")).isInstanceOf(IllegalStateException.class);
+        verify(userService, never()).delete("acme", "_trillian-void-a7f3");
     }
 
     @Test
@@ -72,8 +120,7 @@ class TrillianProjectDataHandlerTest {
     @Test
     void delete_isIdempotent_onAnAccountThatIsAlreadyGone() {
         givenControlProcesses(control("_trillian-void-a7f3"));
-        when(userService.findByTenantAndName("acme", "_trillian-void-a7f3"))
-                .thenReturn(Optional.empty());
+        when(userService.findByTenantAndName("acme", "_trillian-void-a7f3")).thenReturn(Optional.empty());
 
         assertThat(handler.delete("acme", "p1")).isZero();
 
@@ -87,8 +134,7 @@ class TrillianProjectDataHandlerTest {
     void delete_continues_whenOneAccountCannotBeRemoved() {
         givenControlProcesses(control("_trillian-void-bad"), control("_trillian-void-ok"));
         givenExistingUsers("_trillian-void-bad", "_trillian-void-ok");
-        doThrow(new IllegalStateException("mongo down"))
-                .when(userService).delete("acme", "_trillian-void-bad");
+        doThrow(new IllegalStateException("mongo down")).when(userService).delete("acme", "_trillian-void-bad");
 
         // A project delete must not stall on one uncleanable account.
         assertThat(handler.delete("acme", "p1")).isEqualTo(1);
@@ -103,16 +149,15 @@ class TrillianProjectDataHandlerTest {
         givenControlProcesses(bare);
 
         assertThat(handler.delete("acme", "p1")).isZero();
-        verify(userService, never()).delete(org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString());
+        verify(userService, never())
+                .delete(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
     void count_onlyCountsAccountsThatStillExist() {
         givenControlProcesses(control("_trillian-void-gone"), control("_trillian-void-here"));
         givenExistingUsers("_trillian-void-here");
-        when(userService.findByTenantAndName("acme", "_trillian-void-gone"))
-                .thenReturn(Optional.empty());
+        when(userService.findByTenantAndName("acme", "_trillian-void-gone")).thenReturn(Optional.empty());
 
         assertThat(handler.count("acme", "p1")).isEqualTo(1);
     }
@@ -123,41 +168,42 @@ class TrillianProjectDataHandlerTest {
         // by the permission-grants handler and its attribute document by the
         // documents handler.
         assertThat(handler.rename("acme", "p1", "p2")).isZero();
-        verify(thinkProcessService, never()).findAllByProjectAndEngine(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString());
+        verify(thinkProcessService, never())
+                .findAllByProjectAndEngine(
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
     }
 
     // ─── Fixtures ──────────────────────────────────────────────────────────
 
     private void givenControlProcesses(ThinkProcessDocument... processes) {
-        when(thinkProcessService.findAllByProjectAndEngine(
-                "acme", "p1", TrillianProcessKeys.CONTROL_ENGINE_NAME))
+        when(thinkProcessService.findAllByProjectAndEngine("acme", "p1", TrillianProcessKeys.CONTROL_ENGINE_NAME))
                 .thenReturn(List.of(processes));
     }
 
     private void givenExistingUsers(String... names) {
         for (String name : names) {
             when(userService.findByTenantAndName("acme", name))
-                    .thenReturn(Optional.of(UserDocument.builder()
-                            .tenantId("acme").name(name).build()));
+                    .thenReturn(Optional.of(
+                            UserDocument.builder().tenantId("acme").name(name).build()));
         }
     }
 
     private static ThinkProcessDocument control(String account) {
         return ThinkProcessDocument.builder()
                 .thinkEngine(TrillianProcessKeys.CONTROL_ENGINE_NAME)
-                .engineParams(Map.of(
-                        TrillianProcessKeys.PARAM_TRILLIAN_USER_NAME, account))
+                .engineParams(Map.of(TrillianProcessKeys.PARAM_TRILLIAN_USER_NAME, account))
                 .build();
     }
 
     @SuppressWarnings("unchecked")
     private void doAnswerWithBootstrap() {
         org.mockito.Mockito.doAnswer(invocation -> {
-            ((Consumer<PermissionBootstrap>) invocation.getArgument(0)).accept(permissionBootstrap);
-            return null;
-        }).when(bootstrapProvider).ifAvailable(org.mockito.ArgumentMatchers.any());
+                    ((Consumer<PermissionBootstrap>) invocation.getArgument(0)).accept(permissionBootstrap);
+                    return null;
+                })
+                .when(bootstrapProvider)
+                .ifAvailable(org.mockito.ArgumentMatchers.any());
     }
 }

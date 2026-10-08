@@ -423,6 +423,25 @@ public class ThinkProcessService {
     }
 
     /**
+     * Every process running {@code thinkEngine} that is not {@code CLOSED},
+     * across all tenants, capped at {@code limit}.
+     *
+     * <p>For cluster-wide heartbeats of engines whose processes live in
+     * podless projects (the Trillian user-loop sits in its account's hub):
+     * there is no owner pod to scan per project, and walking every project
+     * to find the handful of live loops costs a query per project per tick.
+     * Backed by the {@code engine_status_idx}.
+     */
+    public List<ThinkProcessDocument> findLiveByEngine(String thinkEngine, int limit) {
+        Query query = new Query(Criteria.where("thinkEngine")
+                        .is(thinkEngine)
+                        .and("status")
+                        .ne(ThinkProcessStatus.CLOSED))
+                .limit(Math.max(1, limit));
+        return mongoTemplate.find(query, ThinkProcessDocument.class);
+    }
+
+    /**
      * The Mongo ids of every process in the given sessions — ids only, no
      * limit.
      *

@@ -22,8 +22,11 @@ import tools.jackson.databind.ObjectMapper;
 @ExtendWith(MockitoExtension.class)
 class McpServerServiceTest {
 
-    @Mock ServerToolService serverToolService;
-    @Mock ToolDispatcher toolDispatcher;
+    @Mock
+    ServerToolService serverToolService;
+
+    @Mock
+    ToolDispatcher toolDispatcher;
 
     McpServerService service;
 
@@ -37,7 +40,7 @@ class McpServerServiceTest {
         String body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
                 + "\"params\":{\"protocolVersion\":\"2025-06-18\"}}";
 
-        McpServerService.Outcome out = service.handle(body, "acme", "_tenant", "_showcase");
+        McpProtocol.Outcome out = service.handle(body, "acme", "_tenant", "_showcase");
 
         Map<String, Object> result = resultOf(out);
         assertThat(result).containsEntry("protocolVersion", "2025-06-18");
@@ -49,23 +52,28 @@ class McpServerServiceTest {
     void initialize_withoutParams_fallsBackToServerProtocolVersion() {
         String body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}";
 
-        McpServerService.Outcome out = service.handle(body, "acme", "_tenant", "_showcase");
+        McpProtocol.Outcome out = service.handle(body, "acme", "_tenant", "_showcase");
 
-        assertThat(resultOf(out)).containsEntry("protocolVersion", McpServerService.PROTOCOL_VERSION);
+        assertThat(resultOf(out)).containsEntry("protocolVersion", McpProtocol.PROTOCOL_VERSION);
     }
 
     @Test
     void toolsList_mapsCatalogueToMcpToolShape() {
-        Tool tool = stubTool("doc_write", "Create a document",
-                Map.of("type", "object",
-                        "properties", Map.of("path", Map.of("type", "string")),
-                        "required", List.of("path")));
+        Tool tool = stubTool(
+                "doc_write",
+                "Create a document",
+                Map.of(
+                        "type",
+                        "object",
+                        "properties",
+                        Map.of("path", Map.of("type", "string")),
+                        "required",
+                        List.of("path")));
         when(serverToolService.listAll(eq("acme"), eq("proj"), any(ToolInvocationContext.class)))
                 .thenReturn(List.of(tool));
 
-        McpServerService.Outcome out = service.handle(
-                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}",
-                "acme", "proj", "_showcase");
+        McpProtocol.Outcome out =
+                service.handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}", "acme", "proj", "_showcase");
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> tools =
@@ -84,9 +92,8 @@ class McpServerServiceTest {
         Tool tool = stubTool("noop", "No params", Map.of());
         when(serverToolService.listAll(any(), any(), any())).thenReturn(List.of(tool));
 
-        McpServerService.Outcome out = service.handle(
-                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}",
-                "acme", "proj", "_showcase");
+        McpProtocol.Outcome out =
+                service.handle("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}", "acme", "proj", "_showcase");
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> tools =
@@ -103,7 +110,7 @@ class McpServerServiceTest {
 
         String body = "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"doc_write\",\"arguments\":{\"path\":\"notes.md\"}}}";
-        McpServerService.Outcome out = service.handle(body, "acme", "proj", "_showcase");
+        McpProtocol.Outcome out = service.handle(body, "acme", "proj", "_showcase");
 
         Map<String, Object> result = resultOf(out);
         assertThat(result).containsEntry("isError", false);
@@ -117,7 +124,7 @@ class McpServerServiceTest {
 
         String body = "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"doc_write\",\"arguments\":{}}}";
-        McpServerService.Outcome out = service.handle(body, "acme", "proj", "_showcase");
+        McpProtocol.Outcome out = service.handle(body, "acme", "proj", "_showcase");
 
         Map<String, Object> result = resultOf(out);
         assertThat(result).containsEntry("isError", true);
@@ -128,7 +135,7 @@ class McpServerServiceTest {
     void toolsCall_missingName_returnsInvalidParamsError() {
         String body = "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{}}";
 
-        McpServerService.Outcome out = service.handle(body, "acme", "proj", "_showcase");
+        McpProtocol.Outcome out = service.handle(body, "acme", "proj", "_showcase");
 
         assertThat(errorCodeOf(out)).isEqualTo(-32602);
     }
@@ -137,7 +144,7 @@ class McpServerServiceTest {
     void unknownMethod_returnsMethodNotFound() {
         String body = "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"resources/list\"}";
 
-        McpServerService.Outcome out = service.handle(body, "acme", "proj", "_showcase");
+        McpProtocol.Outcome out = service.handle(body, "acme", "proj", "_showcase");
 
         assertThat(errorCodeOf(out)).isEqualTo(-32601);
     }
@@ -146,7 +153,7 @@ class McpServerServiceTest {
     void notification_isAcknowledgedWithNoContent() {
         String body = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}";
 
-        McpServerService.Outcome out = service.handle(body, "acme", "proj", "_showcase");
+        McpProtocol.Outcome out = service.handle(body, "acme", "proj", "_showcase");
 
         assertThat(out.noContent()).isTrue();
         assertThat(out.body()).isNull();
@@ -154,7 +161,7 @@ class McpServerServiceTest {
 
     @Test
     void malformedJson_returnsParseError() {
-        McpServerService.Outcome out = service.handle("{not json", "acme", "proj", "_showcase");
+        McpProtocol.Outcome out = service.handle("{not json", "acme", "proj", "_showcase");
 
         assertThat(errorCodeOf(out)).isEqualTo(-32700);
     }
@@ -162,13 +169,13 @@ class McpServerServiceTest {
     // ──────────────────── helpers ────────────────────
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> resultOf(McpServerService.Outcome out) {
+    private static Map<String, Object> resultOf(McpProtocol.Outcome out) {
         assertThat(out.body()).isNotNull();
         assertThat(out.body()).doesNotContainKey("error");
         return (Map<String, Object>) out.body().get("result");
     }
 
-    private static int errorCodeOf(McpServerService.Outcome out) {
+    private static int errorCodeOf(McpProtocol.Outcome out) {
         assertThat(out.body()).isNotNull();
         @SuppressWarnings("unchecked")
         Map<String, Object> error = (Map<String, Object>) out.body().get("error");

@@ -48,25 +48,22 @@ public class McpServerController {
     private final McpServerService service;
     private final RequestAuthority authority;
 
-    @PostMapping(
-            value = "/brain/{tenant}/mcp",
-            produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/brain/{tenant}/mcp", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> rpc(
             @PathVariable("tenant") String tenant,
             @RequestParam(value = "projectId", required = false) @Nullable String projectId,
             @RequestBody String body,
             HttpServletRequest request) {
 
-        String project = (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.TENANT_PROJECT_NAME
-                : projectId;
+        String project =
+                (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
 
         // Endpoint-level gate: the caller must at least READ the target
         // project. Per-tool EXECUTE checks run inside ToolDispatcher.
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
 
         String username = (String) request.getAttribute(AccessFilterBase.ATTR_USERNAME);
-        McpServerService.Outcome outcome = service.handle(body, tenant, project, username);
+        McpProtocol.Outcome outcome = service.handle(body, tenant, project, username);
         if (outcome.noContent()) {
             return ResponseEntity.accepted().build();
         }

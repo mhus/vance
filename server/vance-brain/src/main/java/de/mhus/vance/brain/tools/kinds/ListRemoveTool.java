@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.ListCodec;
 import de.mhus.vance.shared.document.kind.ListDocument;
 import de.mhus.vance.shared.document.kind.ListItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,23 +34,35 @@ public class ListRemoveTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "list_remove"; }
+    @Override
+    public String name() {
+        return "list_remove";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Remove the item at `index` from a `kind: list` document. "
                 + "Returns the removed text and the new count.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-list", "eddie", "write", "document"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-list", "eddie", "write", "document");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "list");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "list");
         int index = KindToolSupport.requireInt(params, "index");
         ListDocument list = ListCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<ListItem> items = new ArrayList<>(list.items());
@@ -59,8 +72,6 @@ public class ListRemoveTool implements Tool {
         ListItem removed = items.remove(index);
         ListDocument updated = new ListDocument(list.kind(), items, list.extra());
         support.writeBody(doc, ListCodec.serialize(updated, doc.getMimeType()), ctx);
-        return Map.of("documentId", doc.getId(),
-                "removedText", removed.text(),
-                "count", items.size());
+        return Map.of("documentId", doc.getId(), "removedText", removed.text(), "count", items.size());
     }
 }

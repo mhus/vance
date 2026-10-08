@@ -9,6 +9,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,7 +107,7 @@ public class ResearchDocumentTool implements Tool {
     @Override
     public Set<String> labels() {
         // No "read-only" label → safety() reports MUTATING (this creates a doc).
-        return Set.of("research", "documents", "write");
+        return Set.of(ToolLabels.WORKER, "research", "documents", "write");
     }
 
     @Override

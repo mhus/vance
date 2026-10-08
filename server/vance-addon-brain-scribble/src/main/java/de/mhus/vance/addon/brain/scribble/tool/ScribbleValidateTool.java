@@ -8,6 +8,7 @@ import de.mhus.vance.shared.document.kind.validate.Finding;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -69,7 +70,7 @@ public class ScribbleValidateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "read", "document", "scribble");
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "scribble");
     }
 
     @Override

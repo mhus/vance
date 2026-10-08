@@ -6,6 +6,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,25 +27,36 @@ import org.springframework.stereotype.Component;
 public class CanvasValidateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string",
-                        "description", "Path of a kind: canvas document (e.g. "
-                                + "'design/ideen.canvas.yaml')."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "path",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Path of a kind: canvas document (e.g. " + "'design/ideen.canvas.yaml')."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path"));
 
     private final EddieContext eddieContext;
     private final CanvasValidationService validationService;
 
-    public CanvasValidateTool(EddieContext eddieContext,
-                              CanvasValidationService validationService) {
+    public CanvasValidateTool(EddieContext eddieContext, CanvasValidationService validationService) {
         this.eddieContext = eddieContext;
         this.validationService = validationService;
     }
 
-    @Override public String name() { return "canvas_validate"; }
+    @Override
+    public String name() {
+        return "canvas_validate";
+    }
 
     @Override
     public String description() {
@@ -55,15 +67,25 @@ public class CanvasValidateTool implements Tool {
                 + "building/editing a canvas to self-check.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public boolean contributesPrak() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "read-only", "document", "canvas");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read-only", "document", "canvas");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -74,8 +96,11 @@ public class CanvasValidateTool implements Tool {
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         CanvasValidationService.Result result =
                 validationService.validate(ctx.tenantId(), project.getName(), path.trim());
-        log.info("CanvasValidateTool path='{}' ok={} findings={}",
-                path, result.ok(), result.findings().size());
+        log.info(
+                "CanvasValidateTool path='{}' ok={} findings={}",
+                path,
+                result.ok(),
+                result.findings().size());
         return result.toMap();
     }
 }

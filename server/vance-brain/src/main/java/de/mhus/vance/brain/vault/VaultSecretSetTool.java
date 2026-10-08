@@ -6,6 +6,7 @@ import de.mhus.vance.shared.vault.VaultService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,7 +93,7 @@ public class VaultSecretSetTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("vault", "secret");
+        return Set.of(ToolLabels.OPERATOR, "vault", "secret");
     }
 
     @Override

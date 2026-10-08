@@ -6,6 +6,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -86,7 +87,7 @@ public class ComposeRunTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write");
+        return Set.of(ToolLabels.WORKER, "write");
     }
 
     @Override

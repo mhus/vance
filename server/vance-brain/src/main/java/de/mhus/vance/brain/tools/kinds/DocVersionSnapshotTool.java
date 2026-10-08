@@ -5,6 +5,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,10 @@ public class DocVersionSnapshotTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_version_snapshot"; }
+    @Override
+    public String name() {
+        return "doc_version_snapshot";
+    }
 
     @Override
     public String description() {
@@ -51,23 +55,27 @@ public class DocVersionSnapshotTool implements Tool {
                 + "by path or id.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
-        return Set.of("doc-management", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "write", "document");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.loadDocumentForWrite(
-                params, ctx, de.mhus.vance.shared.permission.Action.WRITE);
+        DocumentDocument doc = support.loadDocumentForWrite(params, ctx, de.mhus.vance.shared.permission.Action.WRITE);
         DocumentService.CreateVersionResult result;
         try {
-            result = support.documentService().createVersionNow(
-                    doc.getId(), support.writeActor(ctx, doc));
+            result = support.documentService().createVersionNow(doc.getId(), support.writeActor(ctx, doc));
         } catch (IllegalArgumentException e) {
             throw new ToolException(e.getMessage(), e);
         }

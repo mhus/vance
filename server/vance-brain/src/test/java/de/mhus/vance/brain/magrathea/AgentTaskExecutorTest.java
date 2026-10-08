@@ -11,9 +11,10 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.magrathea.MagratheaWorkflowSource;
+import de.mhus.vance.api.thinkprocess.PromptMode;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
-import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
@@ -27,7 +28,6 @@ import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import de.mhus.vance.api.thinkprocess.PromptMode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,13 +46,19 @@ class AgentTaskExecutorTest {
     private final EngineMessageRouter messageRouter = mock(EngineMessageRouter.class);
     private final MagratheaTimeoutScheduler timeoutScheduler = mock(MagratheaTimeoutScheduler.class);
     private final AgentTaskExecutor executor = new AgentTaskExecutor(
-            recipeResolver, thinkProcessService, thinkEngineService,
-            sessionResolver, taskService, laneScheduler,
-            routerProvider(messageRouter), timeoutScheduler, mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class));
+            recipeResolver,
+            thinkProcessService,
+            thinkEngineService,
+            sessionResolver,
+            taskService,
+            laneScheduler,
+            routerProvider(messageRouter),
+            timeoutScheduler,
+            mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class));
 
     @SuppressWarnings("unchecked")
-    private static org.springframework.beans.factory.ObjectProvider<EngineMessageRouter>
-            routerProvider(EngineMessageRouter router) {
+    private static org.springframework.beans.factory.ObjectProvider<EngineMessageRouter> routerProvider(
+            EngineMessageRouter router) {
         var provider = mock(org.springframework.beans.factory.ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(router);
         return provider;
@@ -85,12 +91,12 @@ class AgentTaskExecutorTest {
         ThinkProcessDocument spawned = new ThinkProcessDocument();
         spawned.setId("proc-1");
         when(thinkProcessService.create(
-                any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any()))
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        any()))
                 .thenReturn(spawned);
 
-        Optional<TaskOutcome> outcome = executor.execute(ctx(agentState("jeltz",
-                Map.of("prompt", "hi", "schema", Map.of()))));
+        Optional<TaskOutcome> outcome =
+                executor.execute(ctx(agentState("jeltz", Map.of("prompt", "hi", "schema", Map.of()))));
 
         assertThat(outcome).isEmpty(); // async
         verify(taskService).linkSubProcess("task-1", "proc-1");
@@ -121,10 +127,8 @@ class AgentTaskExecutorTest {
         // before this lane task releases — off-lane it raced the turn, and a
         // turn that ends IDLE completes the workflow task: the step reported
         // success while the prompt went to an already-closed process.
-        java.util.concurrent.atomic.AtomicBoolean onLane =
-                new java.util.concurrent.atomic.AtomicBoolean();
-        java.util.concurrent.atomic.AtomicBoolean seededOnLane =
-                new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean onLane = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean seededOnLane = new java.util.concurrent.atomic.AtomicBoolean();
         when(laneScheduler.submit(any(String.class), any(java.util.concurrent.Callable.class)))
                 .thenAnswer(inv -> {
                     java.util.concurrent.Callable<?> c = inv.getArgument(1);
@@ -156,8 +160,8 @@ class AgentTaskExecutorTest {
         // worker" — and the turn-end completion rule depends on it not being.
         stubResolver("ford", Map.of("model", "default:fast"));
         ThinkEngine engine = mockEngine("ford", "1");
-        when(engine.allowedTools()).thenReturn(
-                new java.util.LinkedHashSet<>(List.of("process_spawn", "doc_read", "web_search")));
+        when(engine.allowedTools())
+                .thenReturn(new java.util.LinkedHashSet<>(List.of("process_spawn", "doc_read", "web_search")));
         when(thinkEngineService.resolve("ford")).thenReturn(Optional.of(engine));
         SessionDocument session = new SessionDocument();
         session.setSessionId("sess-1");
@@ -166,15 +170,64 @@ class AgentTaskExecutorTest {
         spawned.setId("proc-1");
         var tools = org.mockito.ArgumentCaptor.forClass(java.util.Set.class);
         when(thinkProcessService.create(
-                any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), tools.capture()))
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        tools.capture()))
                 .thenReturn(spawned);
 
         executor.execute(ctx(agentState("ford", Map.of())));
 
-        assertThat(tools.getValue())
-                .doesNotContain("process_spawn")
-                .contains("doc_read", "web_search");
+        assertThat(tools.getValue()).doesNotContain("process_spawn").contains("doc_read", "web_search");
+    }
+
+    @Test
+    void spawn_switchesTheToolPoolOff_soDelegationCannotComeBack() {
+        // The worker pool adds labelled tools per turn on top of the
+        // allow-set; without the switch process_spawn would return through
+        // it and undo the strip above.
+        stubResolver("ford", Map.of("model", "default:fast"));
+        ThinkEngine engine = mockEngine("ford", "1");
+        when(engine.allowedTools()).thenReturn(new java.util.LinkedHashSet<>(List.of("process_spawn", "doc_read")));
+        when(thinkEngineService.resolve("ford")).thenReturn(Optional.of(engine));
+        SessionDocument session = new SessionDocument();
+        session.setSessionId("sess-1");
+        when(sessionResolver.resolve(any(), any(), any(), any())).thenReturn(session);
+        ThinkProcessDocument spawned = new ThinkProcessDocument();
+        spawned.setId("proc-1");
+        var params = org.mockito.ArgumentCaptor.forClass(Map.class);
+        when(thinkProcessService.create(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        params.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any()))
+                .thenReturn(spawned);
+
+        executor.execute(ctx(agentState("ford", Map.of())));
+
+        assertThat(params.getValue())
+                .containsEntry(ThinkEngine.PARAM_TOOL_POOL, Boolean.FALSE)
+                .containsEntry("model", "default:fast");
     }
 
     @Test
@@ -192,13 +245,20 @@ class AgentTaskExecutorTest {
         // Fail-soft: a missing router must not turn into a failed task — the
         // process is already spawned and linked at that point.
         var executorWithoutRouter = new AgentTaskExecutor(
-                recipeResolver, thinkProcessService, thinkEngineService,
-                sessionResolver, taskService, laneScheduler, routerProvider(null), timeoutScheduler, mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class));
+                recipeResolver,
+                thinkProcessService,
+                thinkEngineService,
+                sessionResolver,
+                taskService,
+                laneScheduler,
+                routerProvider(null),
+                timeoutScheduler,
+                mock(de.mhus.vance.brain.inherit.ParentContextSpawnHelper.class));
         stubResolver("ford", Map.of("prompt", "hi"));
         stubSpawn("ford");
 
-        assertThat(executorWithoutRouter.execute(
-                ctx(agentState("ford", Map.of("prompt", "hi"))))).isEmpty();
+        assertThat(executorWithoutRouter.execute(ctx(agentState("ford", Map.of("prompt", "hi")))))
+                .isEmpty();
     }
 
     @Test
@@ -214,8 +274,7 @@ class AgentTaskExecutorTest {
     @Test
     void unknown_recipe_returns_failure() {
         when(recipeResolver.applyDefaulting(any(), any(), eq("ghost"), any(), any()))
-                .thenThrow(new de.mhus.vance.brain.recipe.RecipeResolver
-                        .UnknownRecipeException("ghost"));
+                .thenThrow(new de.mhus.vance.brain.recipe.RecipeResolver.UnknownRecipeException("ghost"));
 
         Optional<TaskOutcome> outcome = executor.execute(ctx(agentState("ghost", Map.of())));
 
@@ -255,10 +314,12 @@ class AgentTaskExecutorTest {
         ThinkProcessDocument spawned = new ThinkProcessDocument();
         spawned.setId("proc-1");
         when(thinkProcessService.create(
-                any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any()))
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        any()))
                 .thenReturn(spawned);
-        doThrow(new RuntimeException("engine start failed")).when(thinkEngineService).start(spawned);
+        doThrow(new RuntimeException("engine start failed"))
+                .when(thinkEngineService)
+                .start(spawned);
 
         Optional<TaskOutcome> outcome = executor.execute(ctx(agentState("jeltz", Map.of())));
 
@@ -267,8 +328,7 @@ class AgentTaskExecutorTest {
         // The unstarted process must not linger as an orphan, and it must
         // be unlinked so the completion listener won't match it later.
         verify(taskService).unlinkSubProcess("task-1");
-        verify(thinkProcessService).closeProcess(
-                "proc-1", de.mhus.vance.api.thinkprocess.CloseReason.ABANDONED);
+        verify(thinkProcessService).closeProcess("proc-1", de.mhus.vance.api.thinkprocess.CloseReason.ABANDONED);
     }
 
     // ─────── helpers ───────
@@ -283,8 +343,8 @@ class AgentTaskExecutorTest {
         ThinkProcessDocument spawned = new ThinkProcessDocument();
         spawned.setId("proc-1");
         when(thinkProcessService.create(
-                any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any()))
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        any()))
                 .thenReturn(spawned);
     }
 
@@ -294,7 +354,8 @@ class AgentTaskExecutorTest {
 
     private void stubResolver(String recipeName, Map<String, Object> params) {
         AppliedRecipe applied = new AppliedRecipe(
-                recipeName, recipeName,
+                recipeName,
+                recipeName,
                 params,
                 /*promptOverride*/ null,
                 /*promptOverrideAppend*/ null,
@@ -325,8 +386,13 @@ class AgentTaskExecutorTest {
         return new MagratheaStateSpec(
                 "plan",
                 MagratheaTaskType.AGENT_TASK,
-                null, null, null, null, java.util.List.of(),
-                Map.of(), Map.of(),
+                null,
+                null,
+                null,
+                null,
+                java.util.List.of(),
+                Map.of(),
+                Map.of(),
                 List.of(),
                 MagratheaRetrySpec.none(),
                 spec);
@@ -334,11 +400,29 @@ class AgentTaskExecutorTest {
 
     private static MagratheaTaskContext ctx(MagratheaStateSpec state) {
         return new MagratheaTaskContext(
-                "acme", "proj", "r1", "task-1", "alice",
-                new ResolvedMagratheaWorkflow("noop", "", MagratheaWorkflowSource.PROJECT,
-                        null, null, null, null, "start",
-                        Map.of(), Map.of(), MagratheaBoundsSpec.empty(), List.of(), List.of()),
-                state, Map.of(), Map.of(),
-                null, null);
+                "acme",
+                "proj",
+                "r1",
+                "task-1",
+                "alice",
+                new ResolvedMagratheaWorkflow(
+                        "noop",
+                        "",
+                        MagratheaWorkflowSource.PROJECT,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "start",
+                        Map.of(),
+                        Map.of(),
+                        MagratheaBoundsSpec.empty(),
+                        List.of(),
+                        List.of()),
+                state,
+                Map.of(),
+                Map.of(),
+                null,
+                null);
     }
 }

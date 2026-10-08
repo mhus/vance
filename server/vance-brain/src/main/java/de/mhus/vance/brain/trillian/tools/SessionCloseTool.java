@@ -5,6 +5,7 @@ import de.mhus.vance.brain.trillian.TrillianUserEngine;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -56,7 +57,7 @@ public class SessionCloseTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.INTERNAL, "executive");
     }
 
     @Override

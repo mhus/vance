@@ -6,6 +6,7 @@ import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,7 +57,7 @@ public class ScribblePdfTools {
 
         @Override
         public Set<String> labels() {
-            return Set.of("eddie", "read", "document", "scribble", "export");
+            return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "scribble", "export");
         }
 
         @Override

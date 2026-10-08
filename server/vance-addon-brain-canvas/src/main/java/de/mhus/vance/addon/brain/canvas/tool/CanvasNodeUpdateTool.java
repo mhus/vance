@@ -6,6 +6,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,31 +20,43 @@ import org.springframework.stereotype.Component;
 public class CanvasNodeUpdateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string", "description", "Canvas document path."));
-                put("id", Map.of("type", "string", "description", "Node id to update."));
-                put("patch", Map.of("type", "object",
-                        "description", "Fields to overwrite on the node (x, y, w, h, color, "
-                                + "text, ref, href, title, label, …). Merged over the existing "
-                                + "node; `id` cannot be changed. To move a node, patch `x`/`y`."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path", "id", "patch"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("path", Map.of("type", "string", "description", "Canvas document path."));
+                    put("id", Map.of("type", "string", "description", "Node id to update."));
+                    put(
+                            "patch",
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "description",
+                                    "Fields to overwrite on the node (x, y, w, h, color, "
+                                            + "text, ref, href, title, label, …). Merged over the existing "
+                                            + "node; `id` cannot be changed. To move a node, patch `x`/`y`."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path", "id", "patch"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
     private final CanvasService canvasService;
 
-    public CanvasNodeUpdateTool(EddieContext eddieContext,
-                                DocumentService documentService,
-                                CanvasService canvasService) {
+    public CanvasNodeUpdateTool(
+            EddieContext eddieContext, DocumentService documentService, CanvasService canvasService) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.canvasService = canvasService;
     }
 
-    @Override public String name() { return "canvas_node_update"; }
+    @Override
+    public String name() {
+        return "canvas_node_update";
+    }
 
     @Override
     public String description() {
@@ -51,18 +64,24 @@ public class CanvasNodeUpdateTool implements Tool {
                 + "type-specific fields. Patching `x`/`y` moves the node.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "canvas");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "canvas");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        CanvasToolSupport.Resolved r =
-                CanvasToolSupport.resolveByPath(eddieContext, documentService, params, ctx);
+        CanvasToolSupport.Resolved r = CanvasToolSupport.resolveByPath(eddieContext, documentService, params, ctx);
         String id = CanvasToolSupport.paramString(params, "id");
         if (id == null) throw new ToolException("id is required");
         Map<String, Object> patch = CanvasToolSupport.paramMap(params, "patch");

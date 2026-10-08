@@ -10,6 +10,7 @@ import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -105,7 +106,7 @@ public class InboxListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override

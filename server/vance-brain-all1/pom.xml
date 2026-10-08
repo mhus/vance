@@ -172,6 +172,15 @@
             <version>${project.version}</version>
             <scope>runtime</scope>
         </dependency>
+
+        <!-- ToolReleaseDecisionTest: the one module that sees brain plus every
+             addon on one classpath, so the release-decision check covers all
+             built-in tools. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

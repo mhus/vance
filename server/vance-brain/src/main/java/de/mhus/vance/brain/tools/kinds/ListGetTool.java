@@ -1,11 +1,12 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.ListCodec;
 import de.mhus.vance.shared.document.kind.ListDocument;
 import de.mhus.vance.shared.document.kind.ListItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,22 +27,34 @@ public class ListGetTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "list_get"; }
+    @Override
+    public String name() {
+        return "list_get";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Read all items from a `kind: list` document. Identify the document by id or by (projectId, path).";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("kind-list", "eddie", "read-only"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
 
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-list", "eddie", "read-only");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "list");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "list");
         ListDocument list = ListCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<Map<String, Object>> items = new ArrayList<>(list.items().size());
         for (int i = 0; i < list.items().size(); i++) {

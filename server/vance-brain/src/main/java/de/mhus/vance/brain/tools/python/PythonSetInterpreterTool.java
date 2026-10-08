@@ -1,12 +1,12 @@
 package de.mhus.vance.brain.tools.python;
 
 import de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver;
-import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,17 +25,22 @@ public class PythonSetInterpreterTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "pythonPath", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Path to the new Python interpreter (e.g. "
-                                            + "'/usr/bin/python3.12'). Required."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional Python RootDir name. Defaults to "
-                                            + "the current process's working RootDir.")),
+            "properties",
+                    Map.of(
+                            "pythonPath",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Path to the new Python interpreter (e.g. "
+                                                    + "'/usr/bin/python3.12'). Required."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional Python RootDir name. Defaults to "
+                                                    + "the current process's working RootDir.")),
             "required", List.of("pythonPath"));
 
     private final WorkspaceService workspaceService;
@@ -64,7 +69,7 @@ public class PythonSetInterpreterTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write", "side-effect");
+        return Set.of(ToolLabels.WORKER, "write", "side-effect");
     }
 
     @Override
@@ -80,12 +85,10 @@ public class PythonSetInterpreterTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String pythonPath = requireString(params, "pythonPath");
-        String dirName = WorkspaceDirResolver.resolve(
-                workspaceService, ctx, stringOrNull(params, "dirName"));
+        String dirName = WorkspaceDirResolver.resolve(workspaceService, ctx, stringOrNull(params, "dirName"));
 
         try {
-            workspaceService.rebuildPythonVenv(
-                    ctx.tenantId(), ctx.projectId(), dirName, pythonPath);
+            workspaceService.rebuildPythonVenv(ctx.tenantId(), ctx.projectId(), dirName, pythonPath);
         } catch (WorkspaceException e) {
             throw new ToolException(e.getMessage(), e);
         }

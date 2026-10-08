@@ -1,14 +1,11 @@
 package de.mhus.vance.brain.tools.eddie;
 
+import de.mhus.vance.brain.eddie.activity.EddieActivityService;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.activity.EntityRef;
 import de.mhus.vance.shared.activity.EddieActivityKind;
-import de.mhus.vance.brain.eddie.activity.EddieActivityService;
+import de.mhus.vance.shared.activity.EntityRef;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -16,6 +13,10 @@ import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,17 +54,23 @@ public class ProjectChatSendTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional. Defaults to the active "
-                                    + "project (project_switch)."),
-                    "message", Map.of(
-                            "type", "string",
-                            "description", "What to tell the project's Arthur. "
-                                    + "Treat it like a user message — be "
-                                    + "explicit, name the goal, ask for the "
-                                    + "data to be included in the reply.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional. Defaults to the active " + "project (project_switch)."),
+                            "message",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "What to tell the project's Arthur. "
+                                                    + "Treat it like a user message — be "
+                                                    + "explicit, name the goal, ask for the "
+                                                    + "data to be included in the reply.")),
             "required", List.of("message"));
 
     private final EddieContext eddieContext;
@@ -100,7 +107,7 @@ public class ProjectChatSendTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("eddie", "executive");
+        return java.util.Set.of(ToolLabels.INTERNAL, "eddie", "executive");
     }
 
     @Override
@@ -112,16 +119,15 @@ public class ProjectChatSendTool implements Tool {
         // EXECUTE, not READ: dispatching USER_CHAT_INPUT steers the target
         // project's running Arthur — an operate-on-process action. A READER-only
         // share must not be able to drive a foreign project's chat.
-        ProjectDocument project = eddieContext.resolveProject(
-                params, ctx, false, de.mhus.vance.shared.permission.Action.EXECUTE);
+        ProjectDocument project =
+                eddieContext.resolveProject(params, ctx, false, de.mhus.vance.shared.permission.Action.EXECUTE);
 
         // Resolve the chat-process for this project. We pick the most
         // recently created session whose chatProcessId is set — that's
         // what project_create produces. If we ever support multiple
         // sessions per worker project we'll thread a sessionId param
         // through here.
-        List<SessionDocument> sessions = sessionService.listForProject(
-                ctx.tenantId(), project.getName());
+        List<SessionDocument> sessions = sessionService.listForProject(ctx.tenantId(), project.getName());
         SessionDocument session = sessions.stream()
                 .filter(s -> s.getChatProcessId() != null)
                 .reduce((a, b) -> {
@@ -131,16 +137,15 @@ public class ProjectChatSendTool implements Tool {
                     if (bi == null) return a;
                     return ai.isAfter(bi) ? a : b;
                 })
-                .orElseThrow(() -> new ToolException(
-                        "No chat-process found in project '"
-                                + project.getName() + "'. Call project_create "
-                                + "first."));
+                .orElseThrow(() -> new ToolException("No chat-process found in project '"
+                        + project.getName() + "'. Call project_create "
+                        + "first."));
 
-        ThinkProcessDocument chat = thinkProcessService.findById(session.getChatProcessId())
-                .orElseThrow(() -> new ToolException(
-                        "Session '" + session.getSessionId()
-                                + "' references missing chat-process '"
-                                + session.getChatProcessId() + "'"));
+        ThinkProcessDocument chat = thinkProcessService
+                .findById(session.getChatProcessId())
+                .orElseThrow(() -> new ToolException("Session '" + session.getSessionId()
+                        + "' references missing chat-process '"
+                        + session.getChatProcessId() + "'"));
 
         PendingMessageDocument msg = PendingMessageDocument.builder()
                 .type(PendingMessageType.USER_CHAT_INPUT)
@@ -156,20 +161,24 @@ public class ProjectChatSendTool implements Tool {
         // durably accepted the message.
         if (!messageRouter.dispatch(ctx.processId(), chat.getId(), msg)) {
             throw new ToolException(
-                    "Failed to deliver message to chat-process "
-                            + chat.getId() + " (router rejected dispatch)");
+                    "Failed to deliver message to chat-process " + chat.getId() + " (router rejected dispatch)");
         }
 
-        log.info("project_chat_send: tenant='{}' project='{}' chat='{}' chars={}",
-                ctx.tenantId(), project.getName(), chat.getId(), message.length());
+        log.info(
+                "project_chat_send: tenant='{}' project='{}' chat='{}' chars={}",
+                ctx.tenantId(),
+                project.getName(),
+                chat.getId(),
+                message.length());
 
         activityService.append(
-                ctx.tenantId(), ctx.userId(),
-                ctx.sessionId(), ctx.processId(),
+                ctx.tenantId(),
+                ctx.userId(),
+                ctx.sessionId(),
+                ctx.processId(),
                 EddieActivityKind.PROCESS_STEERED,
                 "Arthur in `" + project.getName() + "` angesprochen",
-                List.of(EntityRef.project(project.getName()),
-                        EntityRef.process(chat.getId(), chat.getName())));
+                List.of(EntityRef.project(project.getName()), EntityRef.process(chat.getId(), chat.getName())));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("projectId", project.getName());

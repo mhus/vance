@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentNote;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,29 +36,54 @@ public class DocNoteUpdateTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("noteId", Map.of("type", "string",
-                "description", "Id of the note to update — get it from doc_note_list."));
-        p.put("text", Map.of("type", "string",
-                "description", "New note text. Omit to leave unchanged."));
-        p.put("done", Map.of("type", "boolean",
-                "description", "Mark the note done (true) or open (false). Omit to leave unchanged."));
-        p.put("line", Map.of("type", "integer",
-                "description", "New 1-based line anchor. Pass 0 to clear the anchor entirely. "
-                        + "Omit to leave unchanged."));
+        p.put(
+                "noteId",
+                Map.of("type", "string", "description", "Id of the note to update — get it from doc_note_list."));
+        p.put("text", Map.of("type", "string", "description", "New note text. Omit to leave unchanged."));
+        p.put(
+                "done",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "Mark the note done (true) or open (false). Omit to leave unchanged."));
+        p.put(
+                "line",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "New 1-based line anchor. Pass 0 to clear the anchor entirely. " + "Omit to leave unchanged."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_note_update"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_note_update";
+    }
+
+    @Override
+    public String description() {
         return "Patch fields on an existing sticky-note: text, done flag, or line anchor. At least "
                 + "one field must be provided. Use line=0 to clear the line anchor.";
     }
-    @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("text-edit", "write", "document", "note"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "text-edit", "write", "document", "note");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -68,8 +94,7 @@ public class DocNoteUpdateTool implements Tool {
         Integer rawLine = KindToolSupport.paramInt(params, "line");
 
         if (newText == null && newDone == null && rawLine == null) {
-            throw new ToolException(
-                    "doc_note_update needs at least one of text/done/line — nothing to patch");
+            throw new ToolException("doc_note_update needs at least one of text/done/line — nothing to patch");
         }
 
         // Translate 0 → MIN_VALUE (the service's sentinel for "clear the anchor").
@@ -79,11 +104,9 @@ public class DocNoteUpdateTool implements Tool {
         }
 
         Optional<DocumentNote> result = support.documentService()
-                .updateNote(doc.getId(), noteId, newText, newDone, newLine, null, null,
-                        support.writeActor(ctx, doc));
+                .updateNote(doc.getId(), noteId, newText, newDone, newLine, null, null, support.writeActor(ctx, doc));
         if (result.isEmpty()) {
-            throw new ToolException("Note id='" + noteId + "' not found on document "
-                    + support.identify(doc));
+            throw new ToolException("Note id='" + noteId + "' not found on document " + support.identify(doc));
         }
         support.emitNotesInvalidate(doc, ctx);
 

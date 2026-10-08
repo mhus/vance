@@ -5,6 +5,7 @@ import de.mhus.vance.api.kit.ToolTemplateCatalogEntry;
 import de.mhus.vance.shared.kit.catalog.ToolTemplateCatalogService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,9 +36,13 @@ public class ToolTemplateListTool implements Tool {
 
     private final ToolTemplateCatalogService catalogService;
 
-    @Override public String name() { return "tool_template_list"; }
+    @Override
+    public String name() {
+        return "tool_template_list";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "List the tool-templates curated for this tenant (Jira, IMAP, "
                 + "SMTP, …). Returns each entry's name (the lookup key for "
                 + "tool_template_describe / tool_template_apply), title, "
@@ -46,9 +51,20 @@ public class ToolTemplateListTool implements Tool {
                 + "guessing kit URLs.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("tool-template", "read-only"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "tool-template", "read-only");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

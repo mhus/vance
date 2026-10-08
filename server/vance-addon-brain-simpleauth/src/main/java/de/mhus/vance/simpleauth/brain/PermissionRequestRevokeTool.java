@@ -5,6 +5,7 @@ import de.mhus.vance.simpleauth.GrantSubjectType;
 import de.mhus.vance.simpleauth.PermissionRequestOperation;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,7 +55,7 @@ public class PermissionRequestRevokeTool implements Tool {
      */
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.OPERATOR, "executive");
     }
 
     @Override
@@ -65,19 +66,29 @@ public class PermissionRequestRevokeTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("scopeType", Map.of("type", "string", "enum", List.of("TENANT", "PROJECT"),
-                "description", "TENANT or PROJECT."));
-        props.put("scopeId", Map.of("type", "string",
-                "description", "Project name for PROJECT scope (defaults to the current "
-                        + "project). Ignored for TENANT."));
-        props.put("subjectType", Map.of("type", "string", "enum", List.of("USER", "TEAM"),
-                "description", "USER or TEAM."));
+        props.put(
+                "scopeType",
+                Map.of("type", "string", "enum", List.of("TENANT", "PROJECT"), "description", "TENANT or PROJECT."));
+        props.put(
+                "scopeId",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Project name for PROJECT scope (defaults to the current " + "project). Ignored for TENANT."));
+        props.put(
+                "subjectType",
+                Map.of("type", "string", "enum", List.of("USER", "TEAM"), "description", "USER or TEAM."));
         props.put("subjectId", Map.of("type", "string", "description", "Username or team name."));
-        props.put("reason", Map.of("type", "string",
-                "description", "Why the access should be removed. Shown to the approver as "
-                        + "your stated reason."));
-        return Map.of("type", "object", "properties", props,
-                "required", List.of("scopeType", "subjectType", "subjectId"));
+        props.put(
+                "reason",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Why the access should be removed. Shown to the approver as " + "your stated reason."));
+        return Map.of(
+                "type", "object", "properties", props, "required", List.of("scopeType", "subjectType", "subjectId"));
     }
 
     @Override
@@ -88,7 +99,14 @@ public class PermissionRequestRevokeTool implements Tool {
         String subjectId = GrantToolSupport.req(params, "subjectId");
         String reason = GrantToolSupport.str(params, "reason");
 
-        return support.raise(ctx, PermissionRequestOperation.REVOKE,
-                scopeType, scopeId, subjectType, subjectId, /*role*/ null, reason);
+        return support.raise(
+                ctx,
+                PermissionRequestOperation.REVOKE,
+                scopeType,
+                scopeId,
+                subjectType,
+                subjectId, /*role*/
+                null,
+                reason);
     }
 }

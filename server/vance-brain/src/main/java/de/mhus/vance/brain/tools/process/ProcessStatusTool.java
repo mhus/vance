@@ -1,11 +1,12 @@
 package de.mhus.vance.brain.tools.process;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,10 +25,12 @@ public class ProcessStatusTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Process name within the current session.")),
+            "properties",
+                    Map.of(
+                            "name",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Process name within the current session.")),
             "required", List.of("name"));
 
     private final ThinkProcessService thinkProcessService;
@@ -62,7 +65,7 @@ public class ProcessStatusTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -77,16 +80,17 @@ public class ProcessStatusTool implements Tool {
         }
         ThinkProcessDocument doc = thinkProcessService
                 .findByName(ctx.tenantId(), sessionId, name)
-                .or(() -> thinkProcessService.findById(name)
-                        .filter(p -> ctx.tenantId().equals(p.getTenantId())
-                                && sessionId.equals(p.getSessionId())))
-                .orElseThrow(() -> new ToolException(
-                        "Process '" + name + "' not found in current session"));
+                .or(() -> thinkProcessService
+                        .findById(name)
+                        .filter(p -> ctx.tenantId().equals(p.getTenantId()) && sessionId.equals(p.getSessionId())))
+                .orElseThrow(() -> new ToolException("Process '" + name + "' not found in current session"));
 
-        int totalMessages = chatMessageService.history(
-                ctx.tenantId(), sessionId, doc.getId()).size();
-        int activeMessages = chatMessageService.activeHistory(
-                ctx.tenantId(), sessionId, doc.getId()).size();
+        int totalMessages = chatMessageService
+                .history(ctx.tenantId(), sessionId, doc.getId())
+                .size();
+        int activeMessages = chatMessageService
+                .activeHistory(ctx.tenantId(), sessionId, doc.getId())
+                .size();
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", doc.getName());

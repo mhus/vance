@@ -4,6 +4,7 @@ import de.mhus.vance.brain.ursahooks.UrsaHookService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,23 +16,36 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class HookRefreshTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<>(),
-            "required", List.of());
+    private static final Map<String, Object> SCHEMA =
+            Map.of("type", "object", "properties", new LinkedHashMap<>(), "required", List.of());
 
     private final UrsaHookService ursaHookService;
 
-    @Override public String name() { return "hook_refresh"; }
+    @Override
+    public String name() {
+        return "hook_refresh";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Force a full re-read of all hooks for this project. Useful "
                 + "after bulk document edits outside the tool path.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("admin", "hook"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "admin", "hook");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

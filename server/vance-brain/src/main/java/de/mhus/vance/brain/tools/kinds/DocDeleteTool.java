@@ -1,8 +1,9 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,16 +28,32 @@ public class DocDeleteTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_delete"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_delete";
+    }
+
+    @Override
+    public String description() {
         return "Soft-delete a document by moving it to the project's trash folder "
                 + "(`_vance/trash/<UUID>_<name>`). The id stays valid for `doc_restore`. "
                 + "For permanent removal use `doc_purge`.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

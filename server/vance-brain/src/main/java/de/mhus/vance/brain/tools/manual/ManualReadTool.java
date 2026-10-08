@@ -1,13 +1,14 @@
 package de.mhus.vance.brain.tools.manual;
 
 import de.mhus.vance.brain.skill.SkillResolver;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,12 +36,14 @@ public class ManualReadTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Manual name without the .md suffix, "
-                                            + "e.g. 'getting-started'.")),
+            "properties",
+                    Map.of(
+                            "name",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Manual name without the .md suffix, " + "e.g. 'getting-started'.")),
             "required", List.of("name"));
 
     private final DocumentService documentService;
@@ -78,7 +81,7 @@ public class ManualReadTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -98,8 +101,7 @@ public class ManualReadTool implements Tool {
             throw new ToolException("Invalid manual name: " + rawName);
         }
 
-        List<String> folders = ManualPaths.readFor(
-                ctx, thinkProcessService, skillResolver, sessionService);
+        List<String> folders = ManualPaths.readFor(ctx, thinkProcessService, skillResolver, sessionService);
         if (folders.isEmpty()) {
             throw new ToolException("No manualPaths configured in the recipe.");
         }
@@ -113,8 +115,7 @@ public class ManualReadTool implements Tool {
         String candidate = toBareStem(name);
         for (String folder : folders) {
             String path = folder + candidate + MD_SUFFIX;
-            Optional<LookupResult> hit = documentService.lookupCascade(
-                    ctx.tenantId(), ctx.projectId(), path);
+            Optional<LookupResult> hit = documentService.lookupCascade(ctx.tenantId(), ctx.projectId(), path);
             if (hit.isPresent()) {
                 LookupResult result = hit.get();
                 String content = result.content() == null ? "" : result.content();
@@ -128,8 +129,7 @@ public class ManualReadTool implements Tool {
             }
         }
         throw new ToolException(
-                "Manual not found: '" + rawName + "'. Use manual_list to "
-                        + "see what's available in: " + folders);
+                "Manual not found: '" + rawName + "'. Use manual_list to " + "see what's available in: " + folders);
     }
 
     /**

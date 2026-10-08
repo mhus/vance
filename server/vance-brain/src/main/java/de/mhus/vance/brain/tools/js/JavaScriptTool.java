@@ -8,6 +8,7 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,16 +32,19 @@ public class JavaScriptTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "code", Map.of(
-                            "type", "string",
-                            "description",
-                                    "JavaScript source. The value of the LAST "
-                                            + "expression is returned."),
-                    "timeoutMs", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Wall-clock timeout in milliseconds (default 5000, max 30000).")),
+            "properties",
+                    Map.of(
+                            "code",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "JavaScript source. The value of the LAST " + "expression is returned."),
+                            "timeoutMs",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description",
+                                                    "Wall-clock timeout in milliseconds (default 5000, max 30000).")),
             "required", List.of("code"));
 
     private final ScriptExecutor scriptExecutor;
@@ -71,7 +75,7 @@ public class JavaScriptTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("executive", "side-effect");
+        return java.util.Set.of(ToolLabels.WORKER, "executive", "side-effect");
     }
 
     @Override
@@ -87,8 +91,7 @@ public class JavaScriptTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         throw new ToolException(
-                "execute_javascript requires the bound tools surface — "
-                        + "call via the engine's ContextToolsApi");
+                "execute_javascript requires the bound tools surface — " + "call via the engine's ContextToolsApi");
     }
 
     @Override
@@ -101,8 +104,8 @@ public class JavaScriptTool implements Tool {
         }
         Duration timeout = resolveTimeout(params);
         try {
-            ScriptResult result = scriptExecutor.run(
-                    new ScriptRequest("js", code, "execute_javascript", tools, timeout));
+            ScriptResult result =
+                    scriptExecutor.run(new ScriptRequest("js", code, "execute_javascript", tools, timeout));
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("value", result.value());
             out.put("durationMs", result.duration().toMillis());

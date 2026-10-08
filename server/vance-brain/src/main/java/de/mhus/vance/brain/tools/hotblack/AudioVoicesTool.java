@@ -7,6 +7,7 @@ import de.mhus.vance.brain.hotblack.HotblackService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -71,7 +72,7 @@ public class AudioVoicesTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override

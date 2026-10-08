@@ -1,9 +1,10 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.FolderInfo;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,37 +19,63 @@ public class DocListFoldersTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of("type", "string",
-                            "description", "Optional project name. Defaults to the active project."),
-                    "pathPrefix", Map.of("type", "string",
-                            "description", "Optional parent folder path; empty/omitted lists "
-                                    + "folders at every depth.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults to the active project."),
+                            "pathPrefix",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional parent folder path; empty/omitted lists "
+                                                    + "folders at every depth.")),
             "required", List.of());
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_list_folders"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_list_folders";
+    }
+
+    @Override
+    public String description() {
         return "List virtual folders inside a project. Folders are derived from document paths — "
                 + "no separate folder entity exists. Optional `parentPath` restricts the listing "
                 + "to that subtree.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public boolean contributesPrak() {
+
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean contributesPrak() {
         // Listing — folder names only, no insight.
         return false;
     }
-    @Override public Set<String> labels() { return Set.of("folders", "eddie", "read-only"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "folders", "eddie", "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
         String parent = KindToolSupport.paramStringAliased(params, "pathPrefix", "parentPath");
-        List<FolderInfo> folders = support.documentService()
-                .extractFolders(ctx.tenantId(), project.getName(), parent);
+        List<FolderInfo> folders = support.documentService().extractFolders(ctx.tenantId(), project.getName(), parent);
         List<Map<String, Object>> rows = new ArrayList<>(folders.size());
         for (FolderInfo f : folders) {
             Map<String, Object> r = new LinkedHashMap<>();

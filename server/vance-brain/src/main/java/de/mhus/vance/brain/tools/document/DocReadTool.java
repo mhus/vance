@@ -8,6 +8,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.core.ContentHashes;
 import java.io.IOException;
 import java.io.InputStream;
@@ -98,7 +99,7 @@ public class DocReadTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only", "document");
+        return Set.of(ToolLabels.WORKER, "read-only", "document");
     }
 
     @Override

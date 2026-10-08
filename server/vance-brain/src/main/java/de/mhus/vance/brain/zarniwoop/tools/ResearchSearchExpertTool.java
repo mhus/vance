@@ -5,6 +5,7 @@ import de.mhus.vance.brain.zarniwoop.ZarniwoopService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.research.SearchHit;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchRequest;
@@ -187,7 +188,7 @@ public class ResearchSearchExpertTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override

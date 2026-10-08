@@ -5,6 +5,7 @@ import de.mhus.vance.shared.inbox.MaximegalonMessage;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,25 +35,35 @@ public class ThreadGetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "threadId", Map.of(
-                            "type", "string",
-                            "description", "From inbox_list."),
-                    "messageOffset", Map.of(
-                            "type", "integer",
-                            "description", "Where to start in the clarification, "
-                                    + "oldest first. Default 0."),
-                    "messageLimit", Map.of(
-                            "type", "integer",
-                            "description", "How many contributions to return. "
-                                    + "Default 20, capped at 50.")),
+            "properties",
+                    Map.of(
+                            "threadId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "From inbox_list."),
+                            "messageOffset",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Where to start in the clarification, " + "oldest first. Default 0."),
+                            "messageLimit",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "How many contributions to return. " + "Default 20, capped at 50.")),
             "required", List.of("threadId"));
 
     private final InboxToolSupport support;
 
-    @Override public String name() { return "thread_get"; }
+    @Override
+    public String name() {
+        return "thread_get";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Read one inbox thread: the matter itself, its state, and the contributions "
                 + "made towards settling it. A thread is a single matter heading for at most "
                 + "one decision, NOT an open-ended chat and NOT an email conversation — it "
@@ -60,21 +71,41 @@ public class ThreadGetTool implements Tool {
                 + "does not answer the question.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return true; }
-    @Override public Set<String> labels() { return Set.of("read-only"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only");
+    }
+
+    @Override
+    public String searchHint() {
         return "Read one inbox thread and the discussion on it";
     }
 
-    @Override public String troubleshootingHint() {
+    @Override
+    public String troubleshootingHint() {
         return "Thread ids come from inbox_list. Reading a thread never answers it — if a "
                 + "person has to decide, say so instead of deciding for them.";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -82,11 +113,9 @@ public class ThreadGetTool implements Tool {
         String threadId = requiredString(params, "threadId");
         MaximegalonDocument doc = support.loadVisible(tenantId, threadId, ctx);
 
-        List<MaximegalonMessage> all = doc.getMessages() == null
-                ? List.of() : doc.getMessages();
+        List<MaximegalonMessage> all = doc.getMessages() == null ? List.of() : doc.getMessages();
         int offset = Math.max(0, intParam(params, "messageOffset", 0));
-        int limit = Math.min(Math.max(1, intParam(params, "messageLimit", DEFAULT_LIMIT)),
-                MAX_LIMIT);
+        int limit = Math.min(Math.max(1, intParam(params, "messageLimit", DEFAULT_LIMIT)), MAX_LIMIT);
         // Past the end is not an error — an empty page with a correct
         // omittedMessages tells the caller exactly where it is.
         int from = Math.min(offset, all.size());

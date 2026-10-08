@@ -9,6 +9,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,21 +37,32 @@ public class LinksListTool implements Tool {
     private static final int MAX_LIMIT = 500;
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "The link-list folder (holding _app.yaml)."));
-                put("group", Map.of("type", "string",
-                        "description", "Only this group. Empty string selects the "
-                                + "entries that are in no group."));
-                put("query", Map.of("type", "string",
-                        "description", "Case-insensitive substring filter over title, "
-                                + "URL, teaser, note and tags."));
-                put("limit", Map.of("type", "integer",
-                        "description", "Maximum entries to return. Default 50."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "The link-list folder (holding _app.yaml)."));
+                    put(
+                            "group",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Only this group. Empty string selects the " + "entries that are in no group."));
+                    put(
+                            "query",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Case-insensitive substring filter over title, " + "URL, teaser, note and tags."));
+                    put("limit", Map.of("type", "integer", "description", "Maximum entries to return. Default 50."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final LinksStore store;
@@ -60,7 +72,10 @@ public class LinksListTool implements Tool {
         this.store = store;
     }
 
-    @Override public String name() { return "links_list"; }
+    @Override
+    public String name() {
+        return "links_list";
+    }
 
     @Override
     public String description() {
@@ -71,13 +86,20 @@ public class LinksListTool implements Tool {
                 + "use web_fetch on a URL to read the page itself.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "read", "document", "links");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "links");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -93,8 +115,7 @@ public class LinksListTool implements Tool {
         LinksConfig config =
                 store.load(ctx.tenantId(), project.getName(), folder).config();
 
-        List<LinkEntry> source = group == null
-                ? config.entries() : config.entriesOf(group);
+        List<LinkEntry> source = group == null ? config.entries() : config.entriesOf(group);
         List<Map<String, Object>> rows = new ArrayList<>();
         int matched = 0;
         for (LinkEntry e : source) {
@@ -104,8 +125,12 @@ public class LinksListTool implements Tool {
             rows.add(row(e));
         }
 
-        log.info("LinksListTool folder='{}' group='{}' returned={}/{}",
-                folder, group == null ? "*" : group, rows.size(), matched);
+        log.info(
+                "LinksListTool folder='{}' group='{}' returned={}/{}",
+                folder,
+                group == null ? "*" : group,
+                rows.size(),
+                matched);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("folder", LinksStore.normaliseFolder(folder));
@@ -113,8 +138,9 @@ public class LinksListTool implements Tool {
         result.put("total", matched);
         result.put("entries", rows);
         if (matched > rows.size()) {
-            result.put("truncated", "Showing " + rows.size() + " of " + matched
-                    + " — raise 'limit' or narrow with 'group'/'query'.");
+            result.put(
+                    "truncated",
+                    "Showing " + rows.size() + " of " + matched + " — raise 'limit' or narrow with 'group'/'query'.");
         }
         return result;
     }

@@ -2,11 +2,12 @@ package de.mhus.vance.brain.frankie.tools;
 
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -38,23 +39,31 @@ public class TodoCreateTool implements Tool {
 
     private static final Map<String, Object> ITEM_SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "content", Map.of(
-                            "type", "string",
-                            "description", "Imperative form, e.g. 'Migrate token storage'."),
-                    "activeForm", Map.of(
-                            "type", "string",
-                            "description", "Optional present-continuous form for UI spinner.")),
+            "properties",
+                    Map.of(
+                            "content",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Imperative form, e.g. 'Migrate token storage'."),
+                            "activeForm",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional present-continuous form for UI spinner.")),
             "required", List.of("content"));
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "items", Map.of(
-                            "type", "array",
-                            "description", "New items to append. IDs are server-assigned and "
-                                    + "appear in the prompt block after creation.",
-                            "items", ITEM_SCHEMA)),
+            "properties",
+                    Map.of(
+                            "items",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "description",
+                                    "New items to append. IDs are server-assigned and "
+                                            + "appear in the prompt block after creation.",
+                                    "items",
+                                    ITEM_SCHEMA)),
             "required", List.of("items"));
 
     private final ThinkProcessService thinkProcessService;
@@ -90,7 +99,7 @@ public class TodoCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write");
+        return Set.of(ToolLabels.INTERNAL, "write");
     }
 
     @Override
@@ -112,7 +121,8 @@ public class TodoCreateTool implements Tool {
             return out;
         }
 
-        List<TodoItem> existing = thinkProcessService.findById(processId)
+        List<TodoItem> existing = thinkProcessService
+                .findById(processId)
                 .map(ThinkProcessDocument::getTodos)
                 .orElse(List.of());
 
@@ -150,15 +160,16 @@ public class TodoCreateTool implements Tool {
             }
         }
         if (toAdd.isEmpty()) {
-            log.info("todo_create process='{}' all {} item(s) already in plan — skipped",
-                    processId, skipped);
+            log.info("todo_create process='{}' all {} item(s) already in plan — skipped", processId, skipped);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("ok", true);
             out.put("created", List.of());
             out.put("skipped", skipped);
-            out.put("note", "all items already in the plan (deduped) — nothing created. "
-                    + "Use todo_update to change status or todo_remove to drop items; "
-                    + "do NOT re-send the whole plan.");
+            out.put(
+                    "note",
+                    "all items already in the plan (deduped) — nothing created. "
+                            + "Use todo_update to change status or todo_remove to drop items; "
+                            + "do NOT re-send the whole plan.");
             return out;
         }
 
@@ -173,8 +184,9 @@ public class TodoCreateTool implements Tool {
         // semantics (Foot renders an "answer ok to approve" banner on it,
         // unconditionally), which is wrong for Frankie's CRUD-style TodoList
         // where no approval exists. See specification/public/frankie-engine.md §9.
-        thinkProcessService.findById(processId).ifPresent(refreshed ->
-                planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos()));
+        thinkProcessService
+                .findById(processId)
+                .ifPresent(refreshed -> planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos()));
 
         log.info("todo_create process='{}' added={}", processId, assigned.size());
 
@@ -203,10 +215,7 @@ public class TodoCreateTool implements Tool {
                 continue;
             }
             String activeForm = stringOrNull(m.get("activeForm"));
-            out.add(TodoItem.builder()
-                    .content(content)
-                    .activeForm(activeForm)
-                    .build());
+            out.add(TodoItem.builder().content(content).activeForm(activeForm).build());
         }
         return out;
     }

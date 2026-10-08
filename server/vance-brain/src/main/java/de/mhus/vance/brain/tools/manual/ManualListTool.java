@@ -1,20 +1,20 @@
 package de.mhus.vance.brain.tools.manual;
 
 import de.mhus.vance.brain.skill.SkillResolver;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -81,7 +81,7 @@ public class ManualListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -89,8 +89,7 @@ public class ManualListTool implements Tool {
         if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
             throw new ToolException("manual_list requires a tenant scope");
         }
-        List<String> folders = ManualPaths.readFor(
-                ctx, thinkProcessService, skillResolver, sessionService);
+        List<String> folders = ManualPaths.readFor(ctx, thinkProcessService, skillResolver, sessionService);
         if (folders.isEmpty()) {
             Map<String, Object> empty = new LinkedHashMap<>();
             empty.put("manuals", List.of());
@@ -103,8 +102,8 @@ public class ManualListTool implements Tool {
         Set<String> seen = new LinkedHashSet<>();
         List<Map<String, Object>> rows = new ArrayList<>();
         for (String folder : folders) {
-            Map<String, LookupResult> hits = documentService.listByPrefixCascade(
-                    ctx.tenantId(), ctx.projectId(), folder);
+            Map<String, LookupResult> hits =
+                    documentService.listByPrefixCascade(ctx.tenantId(), ctx.projectId(), folder);
             for (Map.Entry<String, LookupResult> e : hits.entrySet()) {
                 String path = e.getKey();
                 if (!path.endsWith(MD_SUFFIX)) continue;

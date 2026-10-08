@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.GraphCodec;
 import de.mhus.vance.shared.document.kind.GraphDocument;
 import de.mhus.vance.shared.document.kind.GraphNode;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,19 +35,34 @@ public class GraphAddNodeTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "graph_add_node"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "graph_add_node";
+    }
+
+    @Override
+    public String description() {
         return "Add a node with the given unique id (and optional label/color) to a `kind: graph` document.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-graph", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "graph");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "graph");
         String id = KindToolSupport.requireString(params, "id");
         String label = KindToolSupport.paramString(params, "label");
         String color = KindToolSupport.paramString(params, "color");
@@ -61,8 +77,6 @@ public class GraphAddNodeTool implements Tool {
         nodes.add(new GraphNode(id, label, color, null, new LinkedHashMap<>()));
         GraphDocument updated = new GraphDocument(g.kind(), g.graph(), nodes, g.edges(), g.extra());
         support.writeBody(doc, GraphCodec.serialize(updated, doc.getMimeType()), ctx);
-        return Map.of("documentId", doc.getId(),
-                "addedNode", id,
-                "nodeCount", nodes.size());
+        return Map.of("documentId", doc.getId(), "addedNode", id, "nodeCount", nodes.size());
     }
 }

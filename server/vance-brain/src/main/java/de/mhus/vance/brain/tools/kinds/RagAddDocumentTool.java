@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.brain.rag.RagService;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.rag.RagDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,26 +31,49 @@ public class RagAddDocumentTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("ragName", Map.of("type", "string",
-                "description", "Target RAG name within the current project."));
+        p.put("ragName", Map.of("type", "string", "description", "Target RAG name within the current project."));
         return p;
     }
 
     private final KindToolSupport support;
     private final RagService ragService;
 
-    @Override public String name() { return "rag_add_document"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "rag_add_document";
+    }
+
+    @Override
+    public String description() {
         return "Index a Vance document (by id or path) into a RAG. Uses the document id as the "
                 + "RAG sourceRef so re-ingest replaces prior chunks of the same document — "
                 + "idempotent on repeated calls.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("rag-bridge", "eddie", "write", "document"); }
-    @Override public boolean deferred() { return true; }
-    @Override public String searchHint() { return "RAG vector-collection management (rare)"; }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "rag-bridge", "eddie", "write", "document");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "RAG vector-collection management (rare)";
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -64,12 +88,12 @@ public class RagAddDocumentTool implements Tool {
         DocumentDocument fresh = support.buffer().read(ctx.processId(), doc.getId());
         if (fresh == null) throw new ToolException("Document disappeared during indexing");
 
-        RagDocument rag = ragService.findByName(ctx.tenantId(), projectId, ragName)
-                .orElseThrow(() -> new ToolException("Unknown RAG '" + ragName
-                        + "' in project '" + projectId + "'"));
+        RagDocument rag = ragService
+                .findByName(ctx.tenantId(), projectId, ragName)
+                .orElseThrow(() -> new ToolException("Unknown RAG '" + ragName + "' in project '" + projectId + "'"));
         long replaced = ragService.removeBySource(rag.getId(), fresh.getId());
-        RagService.IngestResult result = ragService.addText(
-                rag.getId(), fresh.getId(), support.readBody(fresh, ctx), null);
+        RagService.IngestResult result =
+                ragService.addText(rag.getId(), fresh.getId(), support.readBody(fresh, ctx), null);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rag", rag.getName());

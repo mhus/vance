@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.document;
 
 import de.mhus.vance.brain.tools.eddie.EddieContext;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -38,40 +39,57 @@ public class DocConcatTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name. Defaults "
-                                    + "to the active project. Sources and "
-                                    + "target both live in this project."),
-                    "sources", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description", "Ordered list of source document "
-                                    + "paths to concatenate."),
-                    "newPath", Map.of(
-                            "type", "string",
-                            "description", "Path of the document to write. Must "
-                                    + "not exist yet."),
-                    "separator", Map.of(
-                            "type", "string",
-                            "description", "String inserted between source "
-                                    + "bodies. Default: '\\n\\n'."),
-                    "header", Map.of(
-                            "type", "string",
-                            "description", "Optional text prepended before "
-                                    + "the first source body."),
-                    "footer", Map.of(
-                            "type", "string",
-                            "description", "Optional text appended after "
-                                    + "the last source body."),
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Optional title for the target."),
-                    "tags", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description", "Optional tag list for the target.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults "
+                                                    + "to the active project. Sources and "
+                                                    + "target both live in this project."),
+                            "sources",
+                                    Map.of(
+                                            "type",
+                                            "array",
+                                            "items",
+                                            Map.of("type", "string"),
+                                            "description",
+                                            "Ordered list of source document " + "paths to concatenate."),
+                            "newPath",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Path of the document to write. Must " + "not exist yet."),
+                            "separator",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "String inserted between source " + "bodies. Default: '\\n\\n'."),
+                            "header",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional text prepended before " + "the first source body."),
+                            "footer",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional text appended after " + "the last source body."),
+                            "title",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional title for the target."),
+                            "tags",
+                                    Map.of(
+                                            "type", "array",
+                                            "items", Map.of("type", "string"),
+                                            "description", "Optional tag list for the target.")),
             "required", List.of("sources", "newPath"));
 
     private final EddieContext eddieContext;
@@ -104,7 +122,7 @@ public class DocConcatTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write", "document");
+        return java.util.Set.of(ToolLabels.WORKER, "write", "document");
     }
 
     @Override
@@ -115,11 +133,9 @@ public class DocConcatTool implements Tool {
         }
         // newPath like doc_move / doc_copy / doc_restore; `target` meant an
         // edge endpoint in the graph and relations tools.
-        String target = de.mhus.vance.brain.tools.kinds.KindToolSupport
-                .paramStringAliased(params, "newPath", "target");
+        String target = de.mhus.vance.brain.tools.kinds.KindToolSupport.paramStringAliased(params, "newPath", "target");
         if (target == null) throw new ToolException("'target' is required");
-        String separator = params != null && params.get("separator") instanceof String s
-                ? s : DEFAULT_SEPARATOR;
+        String separator = params != null && params.get("separator") instanceof String s ? s : DEFAULT_SEPARATOR;
         String header = paramString(params, "header");
         String footer = paramString(params, "footer");
         String title = paramString(params, "title");
@@ -132,11 +148,10 @@ public class DocConcatTool implements Tool {
         List<Map<String, Object>> sourceMeta = new ArrayList<>(sources.size());
         for (int i = 0; i < sources.size(); i++) {
             String path = sources.get(i);
-            DocumentDocument doc = documentService.findByPath(
-                            ctx.tenantId(), project.getName(), path)
+            DocumentDocument doc = documentService
+                    .findByPath(ctx.tenantId(), project.getName(), path)
                     .orElseThrow(() -> new ToolException(
-                            "Source document '" + path + "' not found in project '"
-                                    + project.getName() + "'"));
+                            "Source document '" + path + "' not found in project '" + project.getName() + "'"));
             AgeDocumentGuard.requireReadable(doc);
             String text = loadAsText(doc);
             if (i > 0 || header != null) body.append(separator);
@@ -177,14 +192,11 @@ public class DocConcatTool implements Tool {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Failed to read source document '" + doc.getPath()
-                            + "': " + e.getMessage(), e);
+            throw new ToolException("Failed to read source document '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
-    private static @org.jspecify.annotations.Nullable String paramString(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String paramString(Map<String, Object> params, String key) {
         if (params == null) return null;
         Object v = params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;

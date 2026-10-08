@@ -5,6 +5,7 @@ import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -51,10 +52,13 @@ public class ToolListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "prefix", Map.of(
-                            "type", "string",
-                            "description",
+            "properties",
+                    Map.of(
+                            "prefix",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
                                     "Optional case-insensitive name prefix "
                                             + "(e.g. 'doc_', 'jira_rest__'). "
                                             + "Omit to list everything.")),
@@ -102,7 +106,7 @@ public class ToolListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -115,8 +119,7 @@ public class ToolListTool implements Tool {
     }
 
     @Override
-    public Map<String, Object> invoke(
-            Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
+    public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
         String prefix = params == null ? null : asString(params.get("prefix"));
         // Scope to what the engine can actually invoke, so we never
         // advertise a tool whose call would hard-fail with "not available
@@ -129,7 +132,8 @@ public class ToolListTool implements Tool {
         for (ToolDispatcher.Resolved r : dispatcher.getObject().resolveAll(ctx)) {
             String name = r.tool().name();
             if (!invocable.isEmpty() && !invocable.contains(name)) continue;
-            entries.add(new Entry(name, inContext(name, r.tool(), surface), r.tool().promptHint()));
+            entries.add(
+                    new Entry(name, inContext(name, r.tool(), surface), r.tool().promptHint()));
         }
         return buildListing(entries, prefix);
     }
@@ -140,11 +144,9 @@ public class ToolListTool implements Tool {
      * deferred bucket (and vice versa), and only the bound surface knows
      * which bucket the LLM is actually seeing this turn.
      */
-    private static boolean inContext(
-            String name, Tool tool, @Nullable ContextToolsApi surface) {
+    private static boolean inContext(String name, Tool tool, @Nullable ContextToolsApi surface) {
         if (surface == null) return tool.primary() && !tool.deferred();
-        return surface.primary().contains(name)
-                || surface.activatedDeferred().contains(name);
+        return surface.primary().contains(name) || surface.activatedDeferred().contains(name);
     }
 
     /** One dispatchable tool as the pure listing step sees it. */
@@ -155,9 +157,8 @@ public class ToolListTool implements Tool {
      * and pack-hint dedup are unit-testable without a live dispatcher.
      */
     static Map<String, Object> buildListing(List<Entry> entries, @Nullable String prefix) {
-        String needle = prefix == null || prefix.isBlank()
-                ? null
-                : prefix.strip().toLowerCase();
+        String needle =
+                prefix == null || prefix.isBlank() ? null : prefix.strip().toLowerCase();
         List<Entry> matching = entries.stream()
                 .filter(e -> needle == null || e.name().toLowerCase().startsWith(needle))
                 .sorted(Comparator.comparing(Entry::name))

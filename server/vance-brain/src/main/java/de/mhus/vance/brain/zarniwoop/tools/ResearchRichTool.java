@@ -4,6 +4,7 @@ import de.mhus.vance.brain.zarniwoop.ZarniwoopService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.research.SearchHit;
 import de.mhus.vance.toolpack.research.SearchModality;
 import de.mhus.vance.toolpack.research.SearchRequest;
@@ -49,10 +50,13 @@ public class ResearchRichTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "query", Map.of(
-                            "type", "string",
-                            "description",
+            "properties",
+                    Map.of(
+                            "query",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
                                     "Natural-language topic — the same string the user "
                                             + "typed, e.g. 'Lissabon', 'Quantum computing intro'. "
                                             + "The tool splits it across web/image/video/pdf "
@@ -90,7 +94,7 @@ public class ResearchRichTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -106,25 +110,20 @@ public class ResearchRichTool implements Tool {
             throw new ToolException("research tools require a project scope");
         }
 
-        SearchScope scope = new SearchScope(
-                ctx.tenantId(), ctx.projectId(), ctx.processId(), ctx.userId());
+        SearchScope scope = new SearchScope(ctx.tenantId(), ctx.projectId(), ctx.processId(), ctx.userId());
 
         // Parallel fan-out over the four modalities. Local pool so the
         // threads die with the call — no shared executor lifecycle.
         ExecutorService pool = Executors.newFixedThreadPool(4);
         try {
-            CompletableFuture<SearchResult> text = fan(pool,
-                    () -> zarniwoopService.search(
-                            req(query, SearchModality.WEB, N_TEXT), scope, ctx));
-            CompletableFuture<SearchResult> images = fan(pool,
-                    () -> zarniwoopService.search(
-                            req(query, SearchModality.IMAGE, N_IMAGES), scope, ctx));
-            CompletableFuture<SearchResult> videos = fan(pool,
-                    () -> zarniwoopService.search(
-                            req(query, SearchModality.VIDEO, N_VIDEOS), scope, ctx));
-            CompletableFuture<SearchResult> pdfs = fan(pool,
-                    () -> zarniwoopService.search(
-                            req(query, SearchModality.PDF, N_PDFS), scope, ctx));
+            CompletableFuture<SearchResult> text =
+                    fan(pool, () -> zarniwoopService.search(req(query, SearchModality.WEB, N_TEXT), scope, ctx));
+            CompletableFuture<SearchResult> images =
+                    fan(pool, () -> zarniwoopService.search(req(query, SearchModality.IMAGE, N_IMAGES), scope, ctx));
+            CompletableFuture<SearchResult> videos =
+                    fan(pool, () -> zarniwoopService.search(req(query, SearchModality.VIDEO, N_VIDEOS), scope, ctx));
+            CompletableFuture<SearchResult> pdfs =
+                    fan(pool, () -> zarniwoopService.search(req(query, SearchModality.PDF, N_PDFS), scope, ctx));
             CompletableFuture.allOf(text, images, videos, pdfs).join();
 
             Map<String, Object> out = new LinkedHashMap<>();
@@ -140,12 +139,10 @@ public class ResearchRichTool implements Tool {
     }
 
     private static SearchRequest req(String query, SearchModality modality, int num) {
-        return new SearchRequest(query, modality, SearchTier.NORMAL, num,
-                null, null, Map.of());
+        return new SearchRequest(query, modality, SearchTier.NORMAL, num, null, null, Map.of());
     }
 
-    private CompletableFuture<SearchResult> fan(
-            ExecutorService pool, Supplier<SearchResult> call) {
+    private CompletableFuture<SearchResult> fan(ExecutorService pool, Supplier<SearchResult> call) {
         return CompletableFuture.supplyAsync(call, pool).exceptionally(t -> {
             Throwable cause = t.getCause() == null ? t : t.getCause();
             log.warn("research_rich: sub-search failed: {}", cause.toString());

@@ -1,13 +1,14 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.MindmapCodec;
 import de.mhus.vance.shared.document.kind.TreeCodec;
 import de.mhus.vance.shared.document.kind.TreeDocument;
 import de.mhus.vance.shared.document.kind.TreeItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,31 +28,49 @@ public class TreeAddSiblingTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("path", Map.of("type", "string",
-                "description", "Comma-separated index path of the reference item. "
-                        + "Sibling is inserted directly after it."));
+        p.put(
+                "path",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Comma-separated index path of the reference item. "
+                                + "Sibling is inserted directly after it."));
         p.put("text", Map.of("type", "string", "description", "Text of the new sibling."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "tree_add_sibling"; }
+    @Override
+    public String name() {
+        return "tree_add_sibling";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Add a sibling immediately after the item at `path`. Returns the new node's path.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-tree", "eddie", "write", "document"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-tree", "eddie", "write", "document");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
+        DocumentDocument doc =
+                support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
         int[] refPath = TreePath.parse(KindToolSupport.requireString(params, "path"));
         if (refPath.length == 0) {
             throw new ToolException("path must point at an existing item, not the root");
@@ -78,7 +97,6 @@ public class TreeAddSiblingTool implements Tool {
                 : TreeCodec.serialize(updated, doc.getMimeType());
         support.writeBody(doc, body, ctx);
 
-        return Map.of("documentId", doc.getId(),
-                "newPath", TreePath.format(newPath));
+        return Map.of("documentId", doc.getId(), "newPath", TreePath.format(newPath));
     }
 }

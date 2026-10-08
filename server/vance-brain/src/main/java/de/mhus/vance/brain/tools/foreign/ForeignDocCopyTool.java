@@ -8,6 +8,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -32,34 +33,69 @@ public class ForeignDocCopyTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "fromProjectId", Map.of("type", "string",
-                            "description", "Source project name (required)."),
-                    "fromPath", Map.of("type", "string",
-                            "description", "Path of the source document (required)."),
-                    "toProjectId", Map.of("type", "string",
-                            "description", "Destination project name. Defaults to your current project."),
-                    "toPath", Map.of("type", "string",
-                            "description", "Destination path. Defaults to the source path. Must not exist."),
-                    "title", Map.of("type", "string",
-                            "description", "Optional title for the copy. Defaults to the source's title.")),
+            "properties",
+                    Map.of(
+                            "fromProjectId", Map.of("type", "string", "description", "Source project name (required)."),
+                            "fromPath",
+                                    Map.of("type", "string", "description", "Path of the source document (required)."),
+                            "toProjectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Destination project name. Defaults to your current project."),
+                            "toPath",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Destination path. Defaults to the source path. Must not exist."),
+                            "title",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional title for the copy. Defaults to the source's title.")),
             "required", List.of("fromProjectId", "fromPath"));
 
     private final ForeignAccessSupport foreign;
 
-    @Override public String name() { return "foreign_doc_copy"; }
+    @Override
+    public String name() {
+        return "foreign_doc_copy";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Copy a document from another project into (by default) your current project. "
                 + "`toProjectId` overrides the destination. Needs read access to the source and "
                 + "create access to the destination. Fresh copy — new id, no lineage link.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public Set<String> labels() { return Set.of("write", "cross-project", "document"); }
-    @Override public String searchHint() { return "Copy a document from another project into this one"; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "write", "cross-project", "document");
+    }
+
+    @Override
+    public String searchHint() {
+        return "Copy a document from another project into this one";
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -73,11 +109,10 @@ public class ForeignDocCopyTool implements Tool {
         }
         DocumentDocument source = foreign.documents()
                 .findByPath(ctx.tenantId(), sourceProject.getName(), fromPath)
-                .orElseThrow(() -> new ToolException("Document '" + fromPath
-                        + "' not found in project '" + sourceProject.getName() + "'"));
+                .orElseThrow(() -> new ToolException(
+                        "Document '" + fromPath + "' not found in project '" + sourceProject.getName() + "'"));
 
-        ProjectDocument target = foreign.resolveTarget(
-                KindToolSupport.paramString(params, "toProjectId"), ctx);
+        ProjectDocument target = foreign.resolveTarget(KindToolSupport.paramString(params, "toProjectId"), ctx);
         String toPath = KindToolSupport.paramString(params, "toPath");
         if (toPath == null) toPath = fromPath;
         if (ForeignAccessSupport.reserved(toPath)) {
@@ -87,16 +122,17 @@ public class ForeignDocCopyTool implements Tool {
 
         DocumentDocument copy;
         try {
-            copy = foreign.documents().create(
-                    ctx.tenantId(),
-                    target.getName(),
-                    toPath,
-                    title != null ? title : source.getTitle(),
-                    source.getTags() != null ? List.copyOf(source.getTags()) : null,
-                    source.getMimeType(),
-                    new ByteArrayInputStream(foreign.readText(source).getBytes(StandardCharsets.UTF_8)),
-                    ctx.userId(),
-                    foreign.writeActor(ctx, toPath));
+            copy = foreign.documents()
+                    .create(
+                            ctx.tenantId(),
+                            target.getName(),
+                            toPath,
+                            title != null ? title : source.getTitle(),
+                            source.getTags() != null ? List.copyOf(source.getTags()) : null,
+                            source.getMimeType(),
+                            new ByteArrayInputStream(foreign.readText(source).getBytes(StandardCharsets.UTF_8)),
+                            ctx.userId(),
+                            foreign.writeActor(ctx, toPath));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }

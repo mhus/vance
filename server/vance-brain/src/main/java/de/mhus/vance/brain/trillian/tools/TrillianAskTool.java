@@ -10,6 +10,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,25 +76,33 @@ public class TrillianAskTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "question", Map.of(
-                            "type", "string",
-                            "description", "What you need to know, in one or two "
-                                    + "sentences. Say what you already established and "
-                                    + "what you would do with each possible answer — "
-                                    + "whoever reads it cannot see your work."),
-                    "blocker", Map.of(
-                            "type", "string",
-                            "enum", List.of(BLOCKER_STATE, BLOCKER_DECISION),
-                            "description", "What is in your way. 'state' — something "
-                                    + "about the world that could change on its own or "
-                                    + "by someone else's hand: a locked file, a missing "
-                                    + "document, a service that was down. 'decision' — a "
-                                    + "choice only a human can make, which stays open "
-                                    + "however long you wait. Answer honestly: a 'state' "
-                                    + "gets re-checked for you before anyone is "
-                                    + "disturbed, and claiming it for a decision only "
-                                    + "wastes a turn confirming what you already know.")),
+            "properties",
+                    Map.of(
+                            "question",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "What you need to know, in one or two "
+                                                    + "sentences. Say what you already established and "
+                                                    + "what you would do with each possible answer — "
+                                                    + "whoever reads it cannot see your work."),
+                            "blocker",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of(BLOCKER_STATE, BLOCKER_DECISION),
+                                            "description",
+                                            "What is in your way. 'state' — something "
+                                                    + "about the world that could change on its own or "
+                                                    + "by someone else's hand: a locked file, a missing "
+                                                    + "document, a service that was down. 'decision' — a "
+                                                    + "choice only a human can make, which stays open "
+                                                    + "however long you wait. Answer honestly: a 'state' "
+                                                    + "gets re-checked for you before anyone is "
+                                                    + "disturbed, and claiming it for a decision only "
+                                                    + "wastes a turn confirming what you already know.")),
             "required", List.of("question", "blocker"));
 
     /**
@@ -102,12 +111,11 @@ public class TrillianAskTool implements Tool {
      * will come from — the model has to read it as "the world replied",
      * not as another thought of its own.
      */
-    static final String WAITING_RECEIPT =
-            "Your question was delivered to the orchestrator and you are now waiting "
-                    + "for an answer. Do not ask it again and do not restate the problem — "
-                    + "if this is still the last thing in your history, the answer has "
-                    + "simply not arrived yet. When it does, it appears as a new message "
-                    + "and you continue from where you stopped.";
+    static final String WAITING_RECEIPT = "Your question was delivered to the orchestrator and you are now waiting "
+            + "for an answer. Do not ask it again and do not restate the problem — "
+            + "if this is still the last thing in your history, the answer has "
+            + "simply not arrived yet. When it does, it appears as a new message "
+            + "and you continue from where you stopped.";
 
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
@@ -116,6 +124,12 @@ public class TrillianAskTool implements Tool {
     @Override
     public String name() {
         return "trillian_ask";
+    }
+
+    @Override
+    public java.util.Set<String> labels() {
+
+        return java.util.Set.of(ToolLabels.INTERNAL);
     }
 
     @Override
@@ -140,8 +154,7 @@ public class TrillianAskTool implements Tool {
     }
 
     @Override
-    public Map<String, Object> invoke(
-            @Nullable Map<String, Object> params, ToolInvocationContext ctx) {
+    public Map<String, Object> invoke(@Nullable Map<String, Object> params, ToolInvocationContext ctx) {
         Object raw = params == null ? null : params.get("question");
         if (!(raw instanceof String question) || question.isBlank()) {
             throw new ToolException("'question' is required and must be a non-empty string");
@@ -151,7 +164,8 @@ public class TrillianAskTool implements Tool {
             throw new ToolException("trillian_ask is only available inside a Trillian worker");
         }
 
-        @Nullable ThinkProcessDocument process =
+        @Nullable
+        ThinkProcessDocument process =
                 thinkProcessService.findById(ctx.processId()).orElse(null);
 
         // The marker has to be set before the engine reaches its exit
@@ -159,15 +173,13 @@ public class TrillianAskTool implements Tool {
         // finished one. It stays set while the worker is parked and is
         // cleared by TrillianWorkerEngine when the worker runs again,
         // which is what makes "is a question open?" answerable.
-        thinkProcessService.setEngineParamOverride(
-                ctx.processId(), TrillianWorkerEngine.PARAM_ASK_PENDING, true);
+        thinkProcessService.setEngineParamOverride(ctx.processId(), TrillianWorkerEngine.PARAM_ASK_PENDING, true);
         // Whether a second attempt could mean anything is knowable now and
         // not later: the worker just met the obstacle. Reconstructing it
         // from the question text afterwards would be guesswork, and the
         // default falls to 'decision' because a pointless retry costs more
         // than a skipped one.
-        thinkProcessService.setEngineParamOverride(
-                ctx.processId(), PARAM_ASK_BLOCKER, blocker(params));
+        thinkProcessService.setEngineParamOverride(ctx.processId(), PARAM_ASK_BLOCKER, blocker(params));
         startOrContinueEpisode(ctx.processId(), process, text);
 
         // Persist and then hand the question to the parent.
@@ -211,10 +223,11 @@ public class TrillianAskTool implements Tool {
                         .build());
             }
         } catch (RuntimeException e) {
-            log.warn("trillian_ask: could not deliver the question of process='{}': {}",
-                    ctx.processId(), e.toString());
+            log.warn("trillian_ask: could not deliver the question of process='{}': {}", ctx.processId(), e.toString());
         }
-        log.info("Trillian worker id='{}' asks: {}", ctx.processId(),
+        log.info(
+                "Trillian worker id='{}' asks: {}",
+                ctx.processId(),
                 text.length() > 120 ? text.substring(0, 120) + "…" : text);
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -222,8 +235,10 @@ public class TrillianAskTool implements Tool {
         // that this one parks rather than closes.
         out.put(FrankieTermination.RESULT_TERMINATE_KEY, true);
         out.put("status", "asked");
-        out.put("note", "You are now waiting. The answer will arrive as a new "
-                + "message and you continue from here — do not repeat the work.");
+        out.put(
+                "note",
+                "You are now waiting. The answer will arrive as a new "
+                        + "message and you continue from here — do not repeat the work.");
         return out;
     }
 
@@ -243,8 +258,7 @@ public class TrillianAskTool implements Tool {
      * nothing else distinguishes a re-ask after a nudge from a new
      * question raised in the same turn the previous answer arrived.
      */
-    private void startOrContinueEpisode(
-            String processId, @Nullable ThinkProcessDocument process, String question) {
+    private void startOrContinueEpisode(String processId, @Nullable ThinkProcessDocument process, String question) {
         String fingerprint = fingerprintOf(question);
         if (fingerprint.equals(currentQuestion(process))) {
             return;
@@ -255,8 +269,7 @@ public class TrillianAskTool implements Tool {
     }
 
     private static @Nullable String currentQuestion(@Nullable ThinkProcessDocument process) {
-        Map<String, Object> overrides =
-                process == null ? null : process.getEngineParamOverrides();
+        Map<String, Object> overrides = process == null ? null : process.getEngineParamOverrides();
         Object raw = overrides == null ? null : overrides.get(PARAM_ASK_QUESTION);
         return raw instanceof String s ? s : null;
     }
@@ -268,16 +281,13 @@ public class TrillianAskTool implements Tool {
      * string hash is enough.
      */
     static String fingerprintOf(String question) {
-        String normalised = question.replaceAll("\\s+", " ").strip()
-                .toLowerCase(java.util.Locale.ROOT);
+        String normalised = question.replaceAll("\\s+", " ").strip().toLowerCase(java.util.Locale.ROOT);
         return Integer.toHexString(normalised.hashCode());
     }
 
     /** {@code state} only when it says so; everything else is a decision. */
     private static String blocker(@Nullable Map<String, Object> params) {
         Object raw = params == null ? null : params.get("blocker");
-        return raw instanceof String b && BLOCKER_STATE.equalsIgnoreCase(b.strip())
-                ? BLOCKER_STATE
-                : BLOCKER_DECISION;
+        return raw instanceof String b && BLOCKER_STATE.equalsIgnoreCase(b.strip()) ? BLOCKER_STATE : BLOCKER_DECISION;
     }
 }

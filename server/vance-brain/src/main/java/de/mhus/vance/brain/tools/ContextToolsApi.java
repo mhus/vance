@@ -1391,6 +1391,40 @@ public final class ContextToolsApi implements ToolBus {
             @org.jspecify.annotations.Nullable Set<String> engineRoles,
             @org.jspecify.annotations.Nullable ToolBudget budget,
             ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints) {
+        return classify(
+                dispatcher,
+                ctx,
+                base,
+                filter,
+                activatedDeferred,
+                profile,
+                engineRoles,
+                /*toolPoolLabels*/ Set.of(),
+                budget,
+                familyHints);
+    }
+
+    /**
+     * Variant with a tool pool (see {@code ThinkEngine#toolPoolLabels()}):
+     * every dispatchable tool carrying one of {@code toolPoolLabels} joins
+     * a restricted {@code base} as <em>deferred</em> — the base stays the
+     * engine's core (the manifest), the pool is reachable through the
+     * discovery block. Pool tools pass the same role gate, profile gate and
+     * {@code allowedToolsRemove} as everything else; an {@code allowedToolsAdd}
+     * entry naming one promotes it like any base tool. Empty labels or an
+     * unrestricted (empty) base make the pool a no-op.
+     */
+    public static Classification classify(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            Set<String> base,
+            de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter filter,
+            Set<String> activatedDeferred,
+            @org.jspecify.annotations.Nullable String profile,
+            @org.jspecify.annotations.Nullable Set<String> engineRoles,
+            @org.jspecify.annotations.Nullable Set<String> toolPoolLabels,
+            @org.jspecify.annotations.Nullable ToolBudget budget,
+            ToolTriage.@org.jspecify.annotations.Nullable Hints familyHints) {
         Set<String> remove = filter == null ? Set.of() : Set.copyOf(filter.remove());
         Set<String> add = filter == null ? Set.of() : Set.copyOf(filter.add());
         Set<String> defer = filter == null ? Set.of() : Set.copyOf(filter.defer());
@@ -1438,6 +1472,22 @@ public final class ContextToolsApi implements ToolBus {
         // deferred() default, so a 29-tool MCP pack becomes reachable
         // via tool_list without flooding every turn's manifest.
         Set<String> pool = new LinkedHashSet<>(base);
+
+        // Tool pool: labelled tools join a restricted base, deferred. Runs
+        // before the add admission so an add entry naming a pool tool reads
+        // as "promote" (it is part of the surface), not as a widening.
+        Set<String> admittedByPool = new LinkedHashSet<>();
+        if (toolPoolLabels != null && !toolPoolLabels.isEmpty()) {
+            for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
+                String name = r.tool().name();
+                if (pool.contains(name) || !rolesPermit(r, effectiveRoles)) continue;
+                Set<String> labels = r.tool().labels();
+                if (labels == null || java.util.Collections.disjoint(labels, toolPoolLabels)) continue;
+                pool.add(name);
+                admittedByPool.add(name);
+            }
+        }
+
         Set<String> admittedByAdd = new LinkedHashSet<>();
         for (String name : add) {
             if (pool.contains(name)) continue;
@@ -1498,7 +1548,7 @@ public final class ContextToolsApi implements ToolBus {
             boolean isDeferred;
             if (add.contains(name) && !admittedByAdd.contains(name)) {
                 isDeferred = false;
-            } else if (defer.contains(name)) {
+            } else if (defer.contains(name) || admittedByPool.contains(name)) {
                 isDeferred = true;
             } else {
                 isDeferred = dispatcher

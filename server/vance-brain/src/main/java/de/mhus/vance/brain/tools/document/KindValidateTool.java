@@ -7,6 +7,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,35 +32,63 @@ import org.springframework.stereotype.Component;
 public class KindValidateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("content", Map.of("type", "string",
-                        "description", "The content to check, e.g. what you just "
-                                + "generated (PRE-write self-check). Give exactly one "
-                                + "of content / path."));
-                put("path", Map.of("type", "string",
-                        "description", "Path of an already-saved document to check "
-                                + "(POST-write self-check). Give exactly one of "
-                                + "content / path."));
-                put("kind", Map.of("type", "string",
-                        "description", "Optional. The document kind to validate "
-                                + "against; inferred from the $meta.kind header when "
-                                + "omitted. Set it only for bare content without a "
-                                + "header."));
-                put("projectId", Map.of("type", "string", "description", "Project id of the document to validate. Omit to use the caller's current project."));
-            }},
-            "required", List.of());
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "content",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "The content to check, e.g. what you just "
+                                            + "generated (PRE-write self-check). Give exactly one "
+                                            + "of content / path."));
+                    put(
+                            "path",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Path of an already-saved document to check "
+                                            + "(POST-write self-check). Give exactly one of "
+                                            + "content / path."));
+                    put(
+                            "kind",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional. The document kind to validate "
+                                            + "against; inferred from the $meta.kind header when "
+                                            + "omitted. Set it only for bare content without a "
+                                            + "header."));
+                    put(
+                            "projectId",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Project id of the document to validate. Omit to use the caller's current project."));
+                }
+            },
+            "required",
+            List.of());
 
     private final EddieContext eddieContext;
     private final KindValidationService validationService;
 
-    public KindValidateTool(EddieContext eddieContext,
-                            KindValidationService validationService) {
+    public KindValidateTool(EddieContext eddieContext, KindValidationService validationService) {
         this.eddieContext = eddieContext;
         this.validationService = validationService;
     }
 
-    @Override public String name() { return "kind_validate"; }
+    @Override
+    public String name() {
+        return "kind_validate";
+    }
 
     @Override
     public String description() {
@@ -72,14 +101,20 @@ public class KindValidateTool implements Tool {
                 + "error. Use it to self-check before telling the user it's done.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only", "document");
+        return Set.of(ToolLabels.WORKER, "read-only", "document");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -98,14 +133,15 @@ public class KindValidateTool implements Tool {
 
         KindValidationResult result;
         if (hasPath) {
-            result = validationService.validateByPath(
-                    ctx.tenantId(), projectId, ((String) rawPath).trim());
+            result = validationService.validateByPath(ctx.tenantId(), projectId, ((String) rawPath).trim());
         } else {
-            result = validationService.validateContent(
-                    ctx.tenantId(), projectId, kind, (String) rawContent, null);
+            result = validationService.validateContent(ctx.tenantId(), projectId, kind, (String) rawContent, null);
         }
-        log.info("KindValidateTool mode={} target='{}' ok={} findings={}",
-                hasPath ? "path" : "content", result.target(), result.ok(),
+        log.info(
+                "KindValidateTool mode={} target='{}' ok={} findings={}",
+                hasPath ? "path" : "content",
+                result.target(),
+                result.ok(),
                 result.findings().size());
         return result.toMap();
     }

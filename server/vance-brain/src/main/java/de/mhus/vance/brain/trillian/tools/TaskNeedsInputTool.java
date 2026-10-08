@@ -5,6 +5,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,13 +26,16 @@ public class TaskNeedsInputTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "taskId", Map.of(
-                            "type", "string",
-                            "description", "The taskId from the original task_request event."),
-                    "question", Map.of(
-                            "type", "string",
-                            "description", "The clarification question for the human.")),
+            "properties",
+                    Map.of(
+                            "taskId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "The taskId from the original task_request event."),
+                            "question",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "The clarification question for the human.")),
             "required", List.of("taskId", "question"));
 
     private final TrillianInternalApi api;
@@ -60,7 +64,7 @@ public class TaskNeedsInputTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.INTERNAL, "executive");
     }
 
     @Override
@@ -79,8 +83,7 @@ public class TaskNeedsInputTool implements Tool {
         Optional<ThinkProcessDocument> peerOpt = api.findPeer(ctx.processId());
         if (peerOpt.isEmpty()) {
             throw new ToolException(
-                    "No Trillian Control peer found — this tool is only available "
-                            + "inside a Trillian-User worker");
+                    "No Trillian Control peer found — this tool is only available " + "inside a Trillian-User worker");
         }
         ThinkProcessDocument peer = peerOpt.get();
         Optional<String> eventId = api.dispatchTaskEvent(

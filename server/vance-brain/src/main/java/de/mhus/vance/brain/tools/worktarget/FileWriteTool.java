@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.worktarget;
 
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -61,7 +62,7 @@ public class FileWriteTool extends AbstractWorkTargetTool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write", "side-effect");
+        return java.util.Set.of(ToolLabels.WORKER, "write", "side-effect");
     }
 
     @Override

@@ -4,6 +4,7 @@ import de.mhus.vance.addon.brain.finance.report.FinanceReportProcessor;
 import de.mhus.vance.addon.brain.finance.report.FinanceReportRegistry;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,8 +16,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class FinanceReportProcessorsTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object", "properties", new LinkedHashMap<String, Object>());
+    private static final Map<String, Object> SCHEMA =
+            Map.of("type", "object", "properties", new LinkedHashMap<String, Object>());
 
     private final FinanceReportRegistry registry;
 
@@ -24,7 +25,10 @@ public class FinanceReportProcessorsTool implements Tool {
         this.registry = registry;
     }
 
-    @Override public String name() { return "finance_report_processors"; }
+    @Override
+    public String name() {
+        return "finance_report_processors";
+    }
 
     @Override
     public String description() {
@@ -32,11 +36,20 @@ public class FinanceReportProcessorsTool implements Tool {
                 + "for finance_report_generate.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public Set<String> labels() { return Set.of("eddie", "read", "document", "finance"); }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "finance");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

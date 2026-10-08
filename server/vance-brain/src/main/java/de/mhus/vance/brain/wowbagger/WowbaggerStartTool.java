@@ -4,6 +4,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -61,7 +62,7 @@ public class WowbaggerStartTool extends WowbaggerBaseTool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write", "side-effect");
+        return java.util.Set.of(ToolLabels.INTERNAL, "write", "side-effect");
     }
 
     @Override

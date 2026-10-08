@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.workspace;
 
+import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.workspace.WorkspaceException;
-import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,17 +34,22 @@ public class WorkspaceListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional RootDir name. Defaults to the "
-                                            + "current process's temp RootDir."),
-                    "path", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Subdirectory inside the RootDir to list. "
-                                            + "Default: the RootDir root.")),
+            "properties",
+                    Map.of(
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional RootDir name. Defaults to the "
+                                                    + "current process's temp RootDir."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Subdirectory inside the RootDir to list. "
+                                                    + "Default: the RootDir root.")),
             "required", List.of());
 
     private final WorkspaceService workspace;
@@ -82,15 +88,14 @@ public class WorkspaceListTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("read-only", "side-effect");
+        return java.util.Set.of(ToolLabels.WORKER, "read-only", "side-effect");
     }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
         String subPath = stringOrNull(params, "path");
-        WorkspaceSubPath.requirePresent(
-                workspace, ctx, dirName, subPath, /*requireDirectory*/ true);
+        WorkspaceSubPath.requirePresent(workspace, ctx, dirName, subPath, /*requireDirectory*/ true);
         String prefix = WorkspaceSubPath.prefix(subPath);
         List<String> all;
         try {

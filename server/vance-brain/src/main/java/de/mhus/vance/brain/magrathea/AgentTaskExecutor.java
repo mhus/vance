@@ -1,10 +1,10 @@
 package de.mhus.vance.brain.magrathea;
 
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
-import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
@@ -56,10 +56,7 @@ import org.springframework.stereotype.Component;
  * takes its prompt from {@code engineParams} and ignores the queue.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class AgentTaskExecutor implements MagratheaTypeExecutor {
@@ -75,6 +72,7 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
      * parses them.
      */
     private static final String SPEC_INHERIT_CONTEXT = "inheritContext";
+
     private static final String INHERIT_NONE = "none";
 
     /** {@code fromUser} on the seeded initial message — a run, not a person. */
@@ -91,6 +89,7 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
     private final de.mhus.vance.brain.scheduling.LaneScheduler laneScheduler;
     /** Lazy like the other consumers — the router pulls in the whole engine stack. */
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
+
     private final MagratheaTimeoutScheduler timeoutScheduler;
     /** Wraps a worker prompt with the owning process's context — see inheritContext. */
     private final de.mhus.vance.brain.inherit.ParentContextSpawnHelper parentContextSpawnHelper;
@@ -125,32 +124,24 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
         MagratheaStateSpec state = context.state();
         String recipeName = state.specString(SPEC_RECIPE);
         if (recipeName == null) {
-            return Optional.of(TaskOutcome.failure(
-                    "agent_task '" + state.name() + "' is missing required 'recipe:' field"));
+            return Optional.of(
+                    TaskOutcome.failure("agent_task '" + state.name() + "' is missing required 'recipe:' field"));
         }
         Map<String, Object> callerParams = readParamsMap(state);
 
         AppliedRecipe applied;
         try {
             applied = recipeResolver.applyDefaulting(
-                    context.tenantId(),
-                    context.projectId(),
-                    recipeName,
-                    /* connectionProfile */ null,
-                    callerParams);
+                    context.tenantId(), context.projectId(), recipeName, /* connectionProfile */ null, callerParams);
         } catch (RuntimeException ex) {
-            log.warn("Magrathea agent_task '{}' recipe resolve failed: {}",
-                    state.name(), ex.getMessage());
-            return Optional.of(TaskOutcome.failure(
-                    "Recipe '" + recipeName + "' resolve failed: " + ex.getMessage()));
+            log.warn("Magrathea agent_task '{}' recipe resolve failed: {}", state.name(), ex.getMessage());
+            return Optional.of(TaskOutcome.failure("Recipe '" + recipeName + "' resolve failed: " + ex.getMessage()));
         }
 
-        ThinkEngine engine = thinkEngineService.resolve(applied.engine())
-                .orElse(null);
+        ThinkEngine engine = thinkEngineService.resolve(applied.engine()).orElse(null);
         if (engine == null) {
             return Optional.of(TaskOutcome.failure(
-                    "Recipe '" + recipeName + "' references unknown engine '"
-                            + applied.engine() + "'"));
+                    "Recipe '" + recipeName + "' references unknown engine '" + applied.engine() + "'"));
         }
 
         // A bound run works inside the session it belongs to; only a run
@@ -182,16 +173,14 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
                     /*title*/ "Magrathea " + context.workflow().name() + "/" + state.name(),
                     /*goal*/ state.description(),
                     /*parentProcessId*/ null,
-                    applied.params(),
+                    withoutToolPool(applied.params()),
                     applied.name(),
                     applied.promptOverride(),
                     applied.promptMode(),
                     withoutDelegation(applied, engine));
         } catch (RuntimeException ex) {
-            log.warn("Magrathea agent_task '{}' ThinkProcess create failed: {}",
-                    state.name(), ex.getMessage());
-            return Optional.of(TaskOutcome.failure(
-                    "ThinkProcess create failed: " + ex.getMessage()));
+            log.warn("Magrathea agent_task '{}' ThinkProcess create failed: {}", state.name(), ex.getMessage());
+            return Optional.of(TaskOutcome.failure("ThinkProcess create failed: " + ex.getMessage()));
         }
 
         // Link sub-process id to the task BEFORE start so a fast-finishing
@@ -214,13 +203,18 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
         boolean[] steeredHolder = new boolean[1];
         Throwable startFailure = null;
         try {
-            laneScheduler.submit(spawned.getId(), () -> {
-                thinkEngineService.start(spawned);
-                steeredHolder[0] = pushInitialMessage(
-                        applied, spawned.getId(), state.name(),
-                        state.specString(SPEC_INHERIT_CONTEXT), context.ownerProcessId());
-                return null;
-            }).get();
+            laneScheduler
+                    .submit(spawned.getId(), () -> {
+                        thinkEngineService.start(spawned);
+                        steeredHolder[0] = pushInitialMessage(
+                                applied,
+                                spawned.getId(),
+                                state.name(),
+                                state.specString(SPEC_INHERIT_CONTEXT),
+                                context.ownerProcessId());
+                        return null;
+                    })
+                    .get();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             startFailure = ie;
@@ -228,8 +222,7 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
             startFailure = ee.getCause() == null ? ee : ee.getCause();
         }
         if (startFailure != null) {
-            log.warn("Magrathea agent_task '{}' engine.start failed: {}",
-                    state.name(), startFailure.getMessage());
+            log.warn("Magrathea agent_task '{}' engine.start failed: {}", state.name(), startFailure.getMessage());
             // Unlink before closing so the completion listener won't match
             // the abandoned process to this task, then close it so it does
             // not linger as an unstarted orphan (holding a session slot).
@@ -237,22 +230,28 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
             // terminal outcome.
             taskService.unlinkSubProcess(context.taskId());
             try {
-                thinkProcessService.closeProcess(
-                        spawned.getId(), de.mhus.vance.api.thinkprocess.CloseReason.ABANDONED);
+                thinkProcessService.closeProcess(spawned.getId(), de.mhus.vance.api.thinkprocess.CloseReason.ABANDONED);
             } catch (RuntimeException closeEx) {
-                log.warn("Magrathea agent_task '{}' could not close orphaned process '{}': {}",
-                        state.name(), spawned.getId(), closeEx.toString());
+                log.warn(
+                        "Magrathea agent_task '{}' could not close orphaned process '{}': {}",
+                        state.name(),
+                        spawned.getId(),
+                        closeEx.toString());
             }
-            return Optional.of(TaskOutcome.failure(
-                    "Engine start failed: " + startFailure.getMessage()));
+            return Optional.of(TaskOutcome.failure("Engine start failed: " + startFailure.getMessage()));
         }
 
         // Deadline before the wait: from here the task is asynchronous and
         // only the timer can end it if the agent never comes back.
         timeoutScheduler.arm(context, state);
 
-        log.info("Magrathea agent_task '{}' spawned recipe='{}' engine='{}' subProcessId='{}' steered={}",
-                state.name(), recipeName, applied.engine(), spawned.getId(), steeredHolder[0]);
+        log.info(
+                "Magrathea agent_task '{}' spawned recipe='{}' engine='{}' subProcessId='{}' steered={}",
+                state.name(),
+                recipeName,
+                applied.engine(),
+                spawned.getId(),
+                steeredHolder[0]);
 
         // Async — listener fires the TaskCompletedEvent when the sub-process closes.
         return Optional.empty();
@@ -278,10 +277,23 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
      * {@code workflow_task} sub-run. Both show up in the plan and count
      * against its bounds.
      */
+    /**
+     * Params with the worker tool pool switched off — the pool adds
+     * labelled tools per turn on top of the allow-set and would hand
+     * {@code process_spawn} straight back to the agent that
+     * {@link #withoutDelegation} just took it from.
+     */
+    private static java.util.Map<String, Object> withoutToolPool(
+            java.util.@org.jspecify.annotations.Nullable Map<String, Object> params) {
+        java.util.Map<String, Object> out =
+                params == null ? new java.util.LinkedHashMap<>() : new java.util.LinkedHashMap<>(params);
+        out.put(ThinkEngine.PARAM_TOOL_POOL, Boolean.FALSE);
+        return out;
+    }
+
     private static Set<String> withoutDelegation(AppliedRecipe applied, ThinkEngine engine) {
-        Set<String> effective = applied.effectiveAllowedTools() != null
-                ? applied.effectiveAllowedTools()
-                : engine.allowedTools();
+        Set<String> effective =
+                applied.effectiveAllowedTools() != null ? applied.effectiveAllowedTools() : engine.allowedTools();
         if (effective == null) return null;
         Set<String> reduced = new LinkedHashSet<>(effective);
         return reduced.removeAll(DELEGATION_TOOLS) ? Set.copyOf(reduced) : effective;
@@ -335,8 +347,11 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
 
         EngineMessageRouter router = messageRouterProvider.getIfAvailable();
         if (router == null) {
-            log.warn("Magrathea agent_task '{}' — EngineMessageRouter unavailable, "
-                    + "initial prompt not delivered to process '{}'", stateName, processId);
+            log.warn(
+                    "Magrathea agent_task '{}' — EngineMessageRouter unavailable, "
+                            + "initial prompt not delivered to process '{}'",
+                    stateName,
+                    processId);
             return false;
         }
         boolean delivered = router.dispatch(
@@ -349,8 +364,10 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
                         .content(prompt)
                         .build());
         if (!delivered) {
-            log.warn("Magrathea agent_task '{}' — initial prompt dispatch failed for process '{}'",
-                    stateName, processId);
+            log.warn(
+                    "Magrathea agent_task '{}' — initial prompt dispatch failed for process '{}'",
+                    stateName,
+                    processId);
         }
         return delivered;
     }
@@ -362,7 +379,6 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
         if (raw instanceof Map<?, ?> m) {
             return (Map<String, Object>) m;
         }
-        throw new IllegalArgumentException(
-                "agent_task '" + state.name() + "' params must be a map");
+        throw new IllegalArgumentException("agent_task '" + state.name() + "' params must be a map");
     }
 }

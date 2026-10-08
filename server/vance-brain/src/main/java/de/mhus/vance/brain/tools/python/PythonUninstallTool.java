@@ -11,6 +11,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -82,7 +83,7 @@ public class PythonUninstallTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write", "side-effect");
+        return Set.of(ToolLabels.WORKER, "write", "side-effect");
     }
 
     @Override

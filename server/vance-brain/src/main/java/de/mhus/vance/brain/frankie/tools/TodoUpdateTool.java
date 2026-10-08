@@ -9,6 +9,7 @@ import de.mhus.vance.shared.thinkprocess.TodoPatch;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,29 +38,36 @@ public class TodoUpdateTool implements Tool {
 
     private static final Map<String, Object> ITEM_SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "Id of the existing TodoItem."),
-                    "status", Map.of(
-                            "type", "string",
-                            "enum", List.of("PENDING", "IN_PROGRESS", "COMPLETED"),
-                            "description", "Optional new status."),
-                    "content", Map.of(
-                            "type", "string",
-                            "description", "Optional new content (imperative form)."),
-                    "activeForm", Map.of(
-                            "type", "string",
-                            "description", "Optional new present-continuous form.")),
+            "properties",
+                    Map.of(
+                            "id",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Id of the existing TodoItem."),
+                            "status",
+                                    Map.of(
+                                            "type", "string",
+                                            "enum", List.of("PENDING", "IN_PROGRESS", "COMPLETED"),
+                                            "description", "Optional new status."),
+                            "content",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional new content (imperative form)."),
+                            "activeForm",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional new present-continuous form.")),
             "required", List.of("id"));
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "items", Map.of(
-                            "type", "array",
-                            "description", "Per-item partial mutate. id required, other fields optional.",
-                            "items", ITEM_SCHEMA)),
+            "properties",
+                    Map.of(
+                            "items",
+                            Map.of(
+                                    "type", "array",
+                                    "description", "Per-item partial mutate. id required, other fields optional.",
+                                    "items", ITEM_SCHEMA)),
             "required", List.of("items"));
 
     private final ThinkProcessService thinkProcessService;
@@ -97,7 +105,7 @@ public class TodoUpdateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write");
+        return Set.of(ToolLabels.INTERNAL, "write");
     }
 
     @Override
@@ -123,12 +131,17 @@ public class TodoUpdateTool implements Tool {
         if (changed) {
             cleared = maybeAutoClear(processId);
             if (!cleared) {
-                thinkProcessService.findById(processId).ifPresent(refreshed ->
-                        planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos()));
+                thinkProcessService
+                        .findById(processId)
+                        .ifPresent(refreshed -> planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos()));
             }
         }
-        log.info("todo_update process='{}' applied={} changed={} cleared={}",
-                processId, patches.size(), changed, cleared);
+        log.info(
+                "todo_update process='{}' applied={} changed={} cleared={}",
+                processId,
+                patches.size(),
+                changed,
+                cleared);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);

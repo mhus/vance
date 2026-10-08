@@ -6,6 +6,7 @@ import de.mhus.vance.shared.team.TeamService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -86,7 +87,7 @@ public class TeamListTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("eddie", "read-only");
+        return java.util.Set.of(ToolLabels.WORKER, "eddie", "read-only");
     }
 
     @Override

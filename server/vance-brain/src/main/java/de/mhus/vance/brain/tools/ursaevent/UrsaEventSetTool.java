@@ -4,6 +4,7 @@ import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,28 +33,36 @@ import org.springframework.stereotype.Component;
 public class UrsaEventSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("name", Map.of(
-                "type", "string",
-                "description", "Event name — lowercase, alphanumeric + '_-', max 64 chars."));
-        props.put("yaml", Map.of(
-                "type", "string",
-                "description", "Full YAML body. Must include exactly one of "
-                        + "'recipe', 'workflow', 'script'. Optional fields: "
-                        + "description, enabled, methods, auth, params, "
-                        + "initialMessage, runAs, tags. See specification/events.md."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", props,
-                "required", List.of("name", "yaml"));
+        props.put(
+                "name",
+                Map.of(
+                        "type", "string",
+                        "description", "Event name — lowercase, alphanumeric + '_-', max 64 chars."));
+        props.put(
+                "yaml",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Full YAML body. Must include exactly one of "
+                                + "'recipe', 'workflow', 'script'. Optional fields: "
+                                + "description, enabled, methods, auth, params, "
+                                + "initialMessage, runAs, tags. See specification/events.md."));
+        SCHEMA = Map.of("type", "object", "properties", props, "required", List.of("name", "yaml"));
     }
 
     private final UrsaEventToolSupport support;
 
-    @Override public String name() { return "event_set"; }
+    @Override
+    public String name() {
+        return "event_set";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Create or replace an event in the current project. Idempotent: "
                 + "if an event with this name already exists locally its YAML "
                 + "is overwritten (the previous version is auto-archived). "
@@ -62,9 +71,20 @@ public class UrsaEventSetTool implements Tool {
                 + "'created: true|false'.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write", "events"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "write", "events");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

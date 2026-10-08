@@ -5,6 +5,7 @@ import static de.mhus.vance.brain.tools.defaults.DefaultsListTool.CLASSPATH_ROOT
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -75,7 +76,7 @@ public class DefaultsReadTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("defaults");
+        return Set.of(ToolLabels.WORKER, "defaults");
     }
 
     @Override

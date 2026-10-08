@@ -9,6 +9,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,23 +52,29 @@ public class TrillianDoneTool implements Tool {
     private final ThinkProcessService thinkProcessService;
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("summary", Map.of(
-                "type", "string",
-                "description", "1-3 sentence statement of what you accomplished. "
-                        + "This becomes the DONE event's humanSummary and is what "
-                        + "Trillian-User sees as the result of your work — make "
-                        + "it concrete and self-contained."));
-        properties.put("data", Map.of(
-                "type", "object",
-                "description", "Optional structured payload (e.g. {count: 5, "
-                        + "files: [...]}) for Trillian-User to consume "
-                        + "programmatically. Free-form — use what fits."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("summary"));
+        properties.put(
+                "summary",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "1-3 sentence statement of what you accomplished. "
+                                + "This becomes the DONE event's humanSummary and is what "
+                                + "Trillian-User sees as the result of your work — make "
+                                + "it concrete and self-contained."));
+        properties.put(
+                "data",
+                Map.of(
+                        "type",
+                        "object",
+                        "description",
+                        "Optional structured payload (e.g. {count: 5, "
+                                + "files: [...]}) for Trillian-User to consume "
+                                + "programmatically. Free-form — use what fits."));
+        SCHEMA = Map.of("type", "object", "properties", properties, "required", List.of("summary"));
     }
 
     @Override
@@ -96,7 +103,7 @@ public class TrillianDoneTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.INTERNAL, "executive");
     }
 
     @Override
@@ -114,8 +121,8 @@ public class TrillianDoneTool implements Tool {
         // generic engine summary.
         if (ctx.processId() != null && ctx.sessionId() != null) {
             try {
-                ThinkProcessDocument process = thinkProcessService.findById(ctx.processId())
-                        .orElse(null);
+                ThinkProcessDocument process =
+                        thinkProcessService.findById(ctx.processId()).orElse(null);
                 if (process != null) {
                     chatMessageService.append(ChatMessageDocument.builder()
                             .tenantId(process.getTenantId())
@@ -126,9 +133,10 @@ public class TrillianDoneTool implements Tool {
                             .build());
                 }
             } catch (RuntimeException e) {
-                log.warn("trillian_done: failed to persist summary as assistant message "
-                                + "for process='{}': {}",
-                        ctx.processId(), e.toString());
+                log.warn(
+                        "trillian_done: failed to persist summary as assistant message " + "for process='{}': {}",
+                        ctx.processId(),
+                        e.toString());
                 // Don't fail the tool call — the _terminate signal
                 // still goes through and the worker closes cleanly.
             }

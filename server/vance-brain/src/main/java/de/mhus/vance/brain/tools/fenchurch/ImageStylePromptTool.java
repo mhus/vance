@@ -4,6 +4,7 @@ import de.mhus.vance.brain.fenchurch.FenchurchStyleService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,11 +26,12 @@ public class ImageStylePromptTool implements Tool {
 
     private final FenchurchStyleService styleService;
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of());
+    private static final Map<String, Object> SCHEMA = Map.of("type", "object", "properties", Map.of());
 
-    @Override public String name() { return "image_style_prompt"; }
+    @Override
+    public String name() {
+        return "image_style_prompt";
+    }
 
     @Override
     public String description() {
@@ -43,20 +45,30 @@ public class ImageStylePromptTool implements Tool {
                 + "already in effect.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("read-only"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
             throw new ToolException("image_style_prompt requires a tenant scope");
         }
-        List<FenchurchStyleService.Layer> layers = styleService.readLayers(
-                ctx.tenantId(), ctx.userId(), ctx.projectId(), ctx.processId());
+        List<FenchurchStyleService.Layer> layers =
+                styleService.readLayers(ctx.tenantId(), ctx.userId(), ctx.projectId(), ctx.processId());
         String merged = styleService.composeMergedPrompt(layers);
-        List<FenchurchStyleService.Layer> effective =
-                FenchurchStyleService.applyNoneCutoff(layers);
+        List<FenchurchStyleService.Layer> effective = FenchurchStyleService.applyNoneCutoff(layers);
 
         List<Map<String, Object>> layerView = new ArrayList<>(effective.size());
         for (FenchurchStyleService.Layer l : effective) {

@@ -92,6 +92,33 @@ public interface ThinkEngine {
     }
 
     /**
+     * Recipe/engine param that switches the tool pool off for one process
+     * ({@code toolPool: false}). Spawn paths that narrow a worker on purpose
+     * (Zaphod heads, Magrathea agent tasks — no delegation) set it, so the
+     * pool cannot hand back what they removed; a recipe sets it to keep a
+     * worker deliberately lean.
+     */
+    String PARAM_TOOL_POOL = "toolPool";
+
+    /**
+     * Tool labels whose tools join this engine's surface on top of
+     * {@link #allowedTools()}. The allow-set stays the engine's core — the
+     * tools in the manifest; every tool carrying one of these labels is
+     * added per turn as <em>deferred</em> (name + hint, schema on demand),
+     * role/profile-gated and subject to the recipe's
+     * {@code allowedToolsRemove}. Resolved on every turn, never frozen at
+     * spawn, so a tool released later reaches running processes too.
+     *
+     * <p>Default empty: no pool. The worker engines return
+     * {@link de.mhus.vance.toolpack.ToolLabels#WORKER} — a tool author
+     * releases a tool for workers once, by label, instead of every engine
+     * naming it. See {@code specification/public/server-tools.md} §15.
+     */
+    default Set<String> toolPoolLabels() {
+        return Set.of();
+    }
+
+    /**
      * Returns engine-owned default configuration that bypasses the
      * recipe system. When present, spawners (notably the
      * {@code SessionChatBootstrapper}) skip recipe resolution and

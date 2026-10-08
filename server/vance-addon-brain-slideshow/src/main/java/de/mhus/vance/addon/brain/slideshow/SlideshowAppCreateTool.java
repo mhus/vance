@@ -6,6 +6,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,45 +35,80 @@ import org.springframework.stereotype.Component;
 public class SlideshowAppCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "Folder for the slideshow app. "
-                                + "Manifest lives at <folder>/_app.yaml."));
-                put("title", Map.of("type", "string"));
-                put("description", Map.of("type", "string"));
-                put("order", Map.of("type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "Optional explicit slide order — "
-                                + "list of paths relative to the folder. "
-                                + "Sorted alphabetically by filename when omitted."));
-                put("captions", Map.of("type", "object",
-                        "description", "Optional per-slide caption map "
-                                + "(relative-path → caption text). "
-                                + "Filename stem is used when missing."));
-                put("autoplaySeconds", Map.of("type", "integer",
-                        "description", "Auto-advance interval in seconds. "
-                                + "0 / missing = manual navigation only."));
-                put("aspectRatio", Map.of("type", "string",
-                        "description", "Optional viewport hint, e.g. '16:9'. "
-                                + "Default lets each slide use its own ratio."));
-                put("overwrite", Map.of("type", "boolean",
-                        "description", "Allow replacing an existing _app.yaml. "
-                                + "Default false."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Folder for the slideshow app. " + "Manifest lives at <folder>/_app.yaml."));
+                    put("title", Map.of("type", "string"));
+                    put("description", Map.of("type", "string"));
+                    put(
+                            "order",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "Optional explicit slide order — "
+                                            + "list of paths relative to the folder. "
+                                            + "Sorted alphabetically by filename when omitted."));
+                    put(
+                            "captions",
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "description",
+                                    "Optional per-slide caption map "
+                                            + "(relative-path → caption text). "
+                                            + "Filename stem is used when missing."));
+                    put(
+                            "autoplaySeconds",
+                            Map.of(
+                                    "type",
+                                    "integer",
+                                    "description",
+                                    "Auto-advance interval in seconds. " + "0 / missing = manual navigation only."));
+                    put(
+                            "aspectRatio",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional viewport hint, e.g. '16:9'. "
+                                            + "Default lets each slide use its own ratio."));
+                    put(
+                            "overwrite",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Allow replacing an existing _app.yaml. " + "Default false."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final SlideshowApplication slideshowApplication;
 
-    public SlideshowAppCreateTool(EddieContext eddieContext,
-                                  SlideshowApplication slideshowApplication) {
+    public SlideshowAppCreateTool(EddieContext eddieContext, SlideshowApplication slideshowApplication) {
         this.eddieContext = eddieContext;
         this.slideshowApplication = slideshowApplication;
     }
 
-    @Override public String name() { return "slideshow_app_create"; }
+    @Override
+    public String name() {
+        return "slideshow_app_create";
+    }
 
     @Override
     public String description() {
@@ -84,11 +120,14 @@ public class SlideshowAppCreateTool implements Tool {
                 + "open the interactive viewer with one click.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "slideshow", "application");
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "slideshow", "application");
     }
 
     @Override
@@ -112,15 +151,21 @@ public class SlideshowAppCreateTool implements Tool {
         copyIfPresent(params, createParams, "aspectRatio");
 
         VanceApplication.CreateContext cc = new VanceApplication.CreateContext(
-                ctx.tenantId(), project.getName(), normaliseFolder(folder),
-                ctx.userId(), ctx.processId(),
+                ctx.tenantId(),
+                project.getName(),
+                normaliseFolder(folder),
+                ctx.userId(),
+                ctx.processId(),
                 paramBoolean(params, "overwrite"),
                 createParams);
 
         VanceApplication.CreateResult result = slideshowApplication.create(cc);
 
-        log.info("SlideshowAppCreateTool tenant='{}' folder='{}' manifestPath='{}'",
-                ctx.tenantId(), folder, result.manifestPath());
+        log.info(
+                "SlideshowAppCreateTool tenant='{}' folder='{}' manifestPath='{}'",
+                ctx.tenantId(),
+                folder,
+                result.manifestPath());
 
         return result.toMap();
     }

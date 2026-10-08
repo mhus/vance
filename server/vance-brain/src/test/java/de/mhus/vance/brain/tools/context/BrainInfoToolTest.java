@@ -57,7 +57,7 @@ class BrainInfoToolTest {
         assertThat(tool.name()).isEqualTo("brain_info");
         assertThat(tool.primary()).isFalse();
         assertThat(tool.deferred()).isTrue();
-        assertThat(tool.labels()).containsExactly("read-only");
+        assertThat(tool.labels()).containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "read-only");
         assertThat(tool.contributesPrak()).isFalse();
     }
 

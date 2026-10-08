@@ -5,6 +5,7 @@ import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,24 +49,26 @@ public class KitMigrateLegacyTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("project", Map.of(
-                "type", "string",
-                "description", "Project to migrate. Defaults to the current project."));
-        properties.put("keep_as_kit_source", Map.of(
-                "type", "boolean",
-                "description",
-                "Also mark the project as the source of this kit, i.e. keep it exportable. "
-                        + "Default false — under the old model every tracked install wrote a "
-                        + "manifest, so its presence does not mean anyone authors the kit here."));
-        return Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of());
+        properties.put(
+                "project",
+                Map.of(
+                        "type", "string",
+                        "description", "Project to migrate. Defaults to the current project."));
+        properties.put(
+                "keep_as_kit_source",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "Also mark the project as the source of this kit, i.e. keep it exportable. "
+                                + "Default false — under the old model every tracked install wrote a "
+                                + "manifest, so its presence does not mean anyone authors the kit here."));
+        return Map.of("type", "object", "properties", properties, "required", List.of());
     }
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.OPERATOR, "executive");
     }
 
     @Override
@@ -83,13 +86,14 @@ public class KitMigrateLegacyTool implements Tool {
         if (ctx.tenantId() == null) {
             throw new ToolException("kit_migrate_legacy requires a tenant scope");
         }
-        String projectId = KitToolSupport.requireProjectAuthorized(ctx,
+        String projectId = KitToolSupport.requireProjectAuthorized(
+                ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.ADMIN);
+                permissionService,
+                contextFactory,
+                de.mhus.vance.shared.permission.Action.ADMIN);
         KitLegacyMigrator.Result result = kitService.migrateLegacy(
-                ctx.tenantId(), projectId,
-                KitToolSupport.optionalBoolean(params, "keep_as_kit_source"),
-                ctx.userId());
+                ctx.tenantId(), projectId, KitToolSupport.optionalBoolean(params, "keep_as_kit_source"), ctx.userId());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("project", projectId);
@@ -97,9 +101,11 @@ public class KitMigrateLegacyTool implements Tool {
         out.put("message", result.message());
         if (result.kitId() != null) out.put("kitId", result.kitId());
         if (result.migrated()) {
-            out.put("counts", Map.of(
-                    "documents", result.documents(),
-                    "settings", result.settings()));
+            out.put(
+                    "counts",
+                    Map.of(
+                            "documents", result.documents(),
+                            "settings", result.settings()));
         }
         return out;
     }

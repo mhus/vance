@@ -5,6 +5,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,25 +49,36 @@ public class DocGetSelectionTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("fromChar", Map.of("type", "integer",
-                "description", "0-based start character offset. Omit (with `toChar`) to use "
-                        + "the selection that arrived with the current message."));
-        p.put("toChar", Map.of("type", "integer",
-                "description", "End character offset (exclusive). Omit to use the "
-                        + "current message's selection."));
-        p.put("head", Map.of("type", "integer",
-                "description", "Return only the first N characters of the selection."));
-        p.put("tail", Map.of("type", "integer",
-                "description", "Return only the last N characters of the selection."));
+        p.put(
+                "fromChar",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "0-based start character offset. Omit (with `toChar`) to use "
+                                + "the selection that arrived with the current message."));
+        p.put(
+                "toChar",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "End character offset (exclusive). Omit to use the " + "current message's selection."));
+        p.put("head", Map.of("type", "integer", "description", "Return only the first N characters of the selection."));
+        p.put("tail", Map.of("type", "integer", "description", "Return only the last N characters of the selection."));
         return p;
     }
 
     private final KindToolSupport support;
     private final CortexTurnSelectionHolder selectionHolder;
 
-    @Override public String name() { return "doc_get_selection"; }
+    @Override
+    public String name() {
+        return "doc_get_selection";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Read the text the user has selected in the chat-bound Cortex document. "
                 + "Call with NO arguments to read the selection that came with the current "
                 + "message — that's what the user means by \"the selected part\" / \"diesen "
@@ -76,13 +88,20 @@ public class DocGetSelectionTool implements Tool {
                 + "with no args when no selection was sent this turn.";
     }
 
-    @Override public boolean primary() { return true; }
-
-    @Override public Set<String> labels() {
-        return Set.of("text-search", "read-only", "eddie", "cortex");
+    @Override
+    public boolean primary() {
+        return true;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "text-search", "read-only", "eddie", "cortex");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

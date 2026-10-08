@@ -9,6 +9,7 @@ import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -50,11 +51,15 @@ public class ToolDescriptionTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "names", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description",
+            "properties",
+                    Map.of(
+                            "names",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
                                     "Tool names to describe. Pass all the "
                                             + "candidates you are weighing in "
                                             + "one call (e.g. every sub-tool of "
@@ -107,7 +112,7 @@ public class ToolDescriptionTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -116,20 +121,15 @@ public class ToolDescriptionTool implements Tool {
     }
 
     @Override
-    public Map<String, Object> invoke(
-            Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
+    public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
         List<String> requested = parseNames(params == null ? null : params.get("names"));
         if (requested.isEmpty()) {
             throw new ToolException(
-                    "'names' is required — pass one or more tool names "
-                            + "(use tool_list to see what exists)");
+                    "'names' is required — pass one or more tool names " + "(use tool_list to see what exists)");
         }
-        List<String> names = requested.size() > MAX_BATCH
-                ? requested.subList(0, MAX_BATCH)
-                : requested;
-        List<String> skipped = requested.size() > MAX_BATCH
-                ? List.copyOf(requested.subList(MAX_BATCH, requested.size()))
-                : List.of();
+        List<String> names = requested.size() > MAX_BATCH ? requested.subList(0, MAX_BATCH) : requested;
+        List<String> skipped =
+                requested.size() > MAX_BATCH ? List.copyOf(requested.subList(MAX_BATCH, requested.size())) : List.of();
 
         // Same sight-line as tool_list: a name the engine cannot invoke
         // is reported as unknown rather than described. Otherwise a
@@ -152,12 +152,10 @@ public class ToolDescriptionTool implements Tool {
             // surface built without classify (raw allow-set, sub-tool
             // paths) — "what parameters do you take?" must never fail on
             // the discovery pair itself.
-            boolean visible = invocable.isEmpty()
-                    || invocable.contains(name)
-                    || ContextToolsApi.MANDATORY_TOOLS.contains(name);
-            Optional<ToolDispatcher.Resolved> resolved = visible
-                    ? dispatcher.getObject().resolve(name, ctx)
-                    : Optional.empty();
+            boolean visible =
+                    invocable.isEmpty() || invocable.contains(name) || ContextToolsApi.MANDATORY_TOOLS.contains(name);
+            Optional<ToolDispatcher.Resolved> resolved =
+                    visible ? dispatcher.getObject().resolve(name, ctx) : Optional.empty();
             if (resolved.isEmpty()) {
                 unknown.add(name);
                 continue;
@@ -176,8 +174,7 @@ public class ToolDescriptionTool implements Tool {
         if (!unknown.isEmpty()) out.put("unknown", unknown);
         if (!skipped.isEmpty()) {
             out.put("skipped", skipped);
-            out.put("skippedReason",
-                    "more than " + MAX_BATCH + " names per call — ask again for the rest");
+            out.put("skippedReason", "more than " + MAX_BATCH + " names per call — ask again for the rest");
         }
         return out;
     }
@@ -193,7 +190,8 @@ public class ToolDescriptionTool implements Tool {
     private @Nullable String usageRole(@Nullable String processId) {
         if (processId == null || processId.isBlank()) return null;
         try {
-            return thinkProcessService.findById(processId)
+            return thinkProcessService
+                    .findById(processId)
                     .map(ToolUsageService::roleOf)
                     .orElse(null);
         } catch (RuntimeException e) {
@@ -203,7 +201,10 @@ public class ToolDescriptionTool implements Tool {
     }
 
     private Map<String, Object> describe(
-            ToolDispatcher.Resolved r, String name, ToolInvocationContext ctx, ToolBus bus,
+            ToolDispatcher.Resolved r,
+            String name,
+            ToolInvocationContext ctx,
+            ToolBus bus,
             @Nullable String usageRole) {
         Tool tool = r.tool();
         // Engine-context deferral wins over the tool's static default:
@@ -212,9 +213,8 @@ public class ToolDescriptionTool implements Tool {
         // Only the bound ContextToolsApi knows which bucket the tool
         // currently sits in for this turn — that's the bucket the LLM
         // sees, so that's the one activation must follow.
-        boolean wasDeferred = bus instanceof ContextToolsApi tools
-                ? tools.deferred().contains(name)
-                : tool.deferred();
+        boolean wasDeferred =
+                bus instanceof ContextToolsApi tools ? tools.deferred().contains(name) : tool.deferred();
         boolean activated = false;
         if (wasDeferred && ctx.processId() != null && !ctx.processId().isBlank()) {
             activated = thinkProcessService.activateDeferredTool(ctx.processId(), name);
@@ -227,8 +227,7 @@ public class ToolDescriptionTool implements Tool {
         // The role comes from the process, not from the ToolInvocationContext
         // (which carries no recipe) — resolved once per batch by the caller,
         // since it is the same for every name in this invocation.
-        toolUsageService.recordDiscovery(
-                ctx.tenantId(), ctx.projectId(), usageRole, name, ToolFamily.of(name));
+        toolUsageService.recordDiscovery(ctx.tenantId(), ctx.projectId(), usageRole, name, ToolFamily.of(name));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", tool.name());
         out.put("description", tool.description());

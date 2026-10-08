@@ -6,6 +6,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,51 +26,90 @@ import org.springframework.stereotype.Component;
 public class DesktopAppCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "Folder for the desktop. Apps under "
-                                + "it are listed. Manifest lives at "
-                                + "<folder>/_app.yaml."));
-                put("title", Map.of("type", "string"));
-                put("description", Map.of("type", "string"));
-                put("recurse", Map.of("type", "boolean",
-                        "description", "false (default) = only direct child "
-                                + "apps; true = the whole subtree."));
-                put("root", Map.of("type", "string",
-                        "description", "Scan root. '.' or absent = the "
-                                + "desktop folder; a leading '/' = a "
-                                + "project-absolute path."));
-                put("include", Map.of("type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "If non-empty, ONLY these app types "
-                                + "are shown."));
-                put("exclude", Map.of("type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "App types to hide. (Other "
-                                + "common-desktops are always excluded.)"));
-                put("order", Map.of("type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "App types to place first, in this "
-                                + "order. The rest follow by folder name."));
-                put("overwrite", Map.of("type", "boolean",
-                        "description", "Allow replacing an existing "
-                                + "_app.yaml. Default false."));
-                put("projectId", Map.of("type", "string",
-                        "description", "Default: active project."));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Folder for the desktop. Apps under "
+                                            + "it are listed. Manifest lives at "
+                                            + "<folder>/_app.yaml."));
+                    put("title", Map.of("type", "string"));
+                    put("description", Map.of("type", "string"));
+                    put(
+                            "recurse",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "false (default) = only direct child " + "apps; true = the whole subtree."));
+                    put(
+                            "root",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Scan root. '.' or absent = the "
+                                            + "desktop folder; a leading '/' = a "
+                                            + "project-absolute path."));
+                    put(
+                            "include",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "If non-empty, ONLY these app types " + "are shown."));
+                    put(
+                            "exclude",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "App types to hide. (Other " + "common-desktops are always excluded.)"));
+                    put(
+                            "order",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "App types to place first, in this " + "order. The rest follow by folder name."));
+                    put(
+                            "overwrite",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Allow replacing an existing " + "_app.yaml. Default false."));
+                    put("projectId", Map.of("type", "string", "description", "Default: active project."));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final DesktopApplication desktopApplication;
 
-    public DesktopAppCreateTool(EddieContext eddieContext,
-                                DesktopApplication desktopApplication) {
+    public DesktopAppCreateTool(EddieContext eddieContext, DesktopApplication desktopApplication) {
         this.eddieContext = eddieContext;
         this.desktopApplication = desktopApplication;
     }
 
-    @Override public String name() { return "desktop_app_create"; }
+    @Override
+    public String name() {
+        return "desktop_app_create";
+    }
 
     @Override
     public String description() {
@@ -79,11 +119,14 @@ public class DesktopAppCreateTool implements Tool {
                 + "this instead of hand-writing _app.yaml.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "common-desktop", "application");
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "common-desktop", "application");
     }
 
     @Override
@@ -108,15 +151,21 @@ public class DesktopAppCreateTool implements Tool {
         copyIfPresent(params, createParams, "order");
 
         VanceApplication.CreateContext cc = new VanceApplication.CreateContext(
-                ctx.tenantId(), project.getName(), normaliseFolder(folder),
-                ctx.userId(), ctx.processId(),
+                ctx.tenantId(),
+                project.getName(),
+                normaliseFolder(folder),
+                ctx.userId(),
+                ctx.processId(),
                 paramBoolean(params, "overwrite"),
                 createParams);
 
         VanceApplication.CreateResult result = desktopApplication.create(cc);
 
-        log.info("DesktopAppCreateTool tenant='{}' folder='{}' manifestPath='{}'",
-                ctx.tenantId(), folder, result.manifestPath());
+        log.info(
+                "DesktopAppCreateTool tenant='{}' folder='{}' manifestPath='{}'",
+                ctx.tenantId(),
+                folder,
+                result.manifestPath());
 
         return result.toMap();
     }

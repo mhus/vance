@@ -8,6 +8,7 @@ import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -73,6 +74,12 @@ public class ToolHealthSetUnavailableTool implements Tool {
     @Override
     public String name() {
         return "tool_health_set_unavailable";
+    }
+
+    @Override
+    public Set<String> labels() {
+
+        return Set.of(ToolLabels.INTERNAL);
     }
 
     @Override

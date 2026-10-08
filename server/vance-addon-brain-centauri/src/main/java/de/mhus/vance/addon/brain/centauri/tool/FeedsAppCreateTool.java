@@ -7,6 +7,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,33 +33,53 @@ import org.springframework.stereotype.Component;
 public class FeedsAppCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "Target folder (e.g. 'apps/morning'). "
-                                + "_app.yaml is written inside it."));
-                put("title", Map.of("type", "string"));
-                put("description", Map.of("type", "string"));
-                put("streams", Map.of("type", "array",
-                        "description", "Streams to read, each "
-                                + "`{ source: '<endpoint id>', selector?: '<selector>' }`. "
-                                + "A bare string is accepted and means that source's default "
-                                + "stream. Source ids come from the configured endpoints — call "
-                                + "no source you have not seen in the project's settings. "
-                                + "May be empty; streams can be added later in the feed's "
-                                + "configuration tab.",
-                        "items", Map.of("type", "object")));
-                put("since", Map.of("type", "string",
-                        "description", "Time window, relative: '-7d', '-12h', '-30m'. "
-                                + "Relative on purpose — a fixed date quietly stops matching "
-                                + "as it ages."));
-                put("pageSize", Map.of("type", "integer",
-                        "description", "Entries per page. Default 20."));
-                put("overwrite", Map.of("type", "boolean",
-                        "description", "Replace an existing manifest. Default false."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Target folder (e.g. 'apps/morning'). " + "_app.yaml is written inside it."));
+                    put("title", Map.of("type", "string"));
+                    put("description", Map.of("type", "string"));
+                    put(
+                            "streams",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "description",
+                                    "Streams to read, each "
+                                            + "`{ source: '<endpoint id>', selector?: '<selector>' }`. "
+                                            + "A bare string is accepted and means that source's default "
+                                            + "stream. Source ids come from the configured endpoints — call "
+                                            + "no source you have not seen in the project's settings. "
+                                            + "May be empty; streams can be added later in the feed's "
+                                            + "configuration tab.",
+                                    "items",
+                                    Map.of("type", "object")));
+                    put(
+                            "since",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Time window, relative: '-7d', '-12h', '-30m'. "
+                                            + "Relative on purpose — a fixed date quietly stops matching "
+                                            + "as it ages."));
+                    put("pageSize", Map.of("type", "integer", "description", "Entries per page. Default 20."));
+                    put(
+                            "overwrite",
+                            Map.of("type", "boolean", "description", "Replace an existing manifest. Default false."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final FeedsApplication application;
@@ -68,7 +89,10 @@ public class FeedsAppCreateTool implements Tool {
         this.application = application;
     }
 
-    @Override public String name() { return "feeds_app_create"; }
+    @Override
+    public String name() {
+        return "feeds_app_create";
+    }
 
     @Override
     public String description() {
@@ -79,13 +103,20 @@ public class FeedsAppCreateTool implements Tool {
                 + "created here.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "feeds");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "feeds");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -104,8 +135,7 @@ public class FeedsAppCreateTool implements Tool {
         appParams.remove("projectId");
 
         VanceApplication.CreateContext cc = new VanceApplication.CreateContext(
-                ctx.tenantId(), project.getName(), folder,
-                ctx.userId(), ctx.processId(), overwrite, appParams);
+                ctx.tenantId(), project.getName(), folder, ctx.userId(), ctx.processId(), overwrite, appParams);
         VanceApplication.CreateResult result = application.create(cc);
 
         log.info("FeedsAppCreateTool folder='{}' project='{}'", folder, project.getName());

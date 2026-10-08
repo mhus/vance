@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.GraphCodec;
 import de.mhus.vance.shared.document.kind.GraphDocument;
 import de.mhus.vance.shared.document.kind.GraphEdge;
 import de.mhus.vance.shared.document.kind.GraphNode;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,19 +27,34 @@ public class GraphGetTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "graph_get"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "graph_get";
+    }
+
+    @Override
+    public String description() {
         return "Read a `kind: graph` document. Returns the directed flag, all nodes (id/label/color/position), and all edges (source/target/label/color).";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie", "read-only"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-graph", "eddie", "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "graph");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "graph");
         GraphDocument g = GraphCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<Map<String, Object>> nodes = new ArrayList<>();
         for (GraphNode n : g.nodes()) {
@@ -46,7 +62,10 @@ public class GraphGetTool implements Tool {
             m.put("id", n.id());
             if (n.label() != null) m.put("label", n.label());
             if (n.color() != null) m.put("color", n.color());
-            if (n.position() != null) m.put("position", Map.of("x", n.position().x(), "y", n.position().y()));
+            if (n.position() != null)
+                m.put(
+                        "position",
+                        Map.of("x", n.position().x(), "y", n.position().y()));
             nodes.add(m);
         }
         List<Map<String, Object>> edges = new ArrayList<>();

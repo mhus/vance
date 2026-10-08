@@ -775,6 +775,19 @@ public class ZaphodEngine implements ThinkEngine {
      * unrestricted engine default downstream (see
      * {@code ThinkEngineService}), re-granting {@code process_spawn}.
      */
+    /**
+     * Head params with the worker tool pool switched off. The pool adds
+     * labelled tools per turn on top of the allow-set — it would hand the
+     * orchestration family straight back to a head that
+     * {@link #restrictHeadTools} just stripped it from.
+     */
+    static java.util.Map<String, Object> withoutToolPool(java.util.@Nullable Map<String, Object> params) {
+        java.util.Map<String, Object> out =
+                params == null ? new java.util.LinkedHashMap<>() : new java.util.LinkedHashMap<>(params);
+        out.put(ThinkEngine.PARAM_TOOL_POOL, Boolean.FALSE);
+        return out;
+    }
+
     static Set<String> restrictHeadTools(@Nullable Set<String> effective, ThinkEngine engine) {
         Set<String> base = effective != null ? effective : engine.allowedTools();
         Set<String> restricted = new LinkedHashSet<>(base);
@@ -830,7 +843,7 @@ public class ZaphodEngine implements ThinkEngine {
                         "Zaphod head: " + head.getName(),
                         process.getGoal(),
                         process.getId(),
-                        applied.params(),
+                        withoutToolPool(applied.params()),
                         applied.name(),
                         applied.promptOverride(),
                         applied.promptOverrideAppend(),

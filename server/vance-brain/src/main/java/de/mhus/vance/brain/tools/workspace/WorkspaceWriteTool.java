@@ -5,6 +5,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.core.ContentHashes;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -116,7 +117,7 @@ public class WorkspaceWriteTool implements Tool {
         // returned "path" as a WORKSPACE:<processId>/<path> resource key
         // — see HistoryTagBuilder.LABEL_WORKSPACE and
         // planning/process-history-search.md §5.1.
-        return java.util.Set.of("write", "side-effect", "workspace");
+        return java.util.Set.of(ToolLabels.WORKER, "write", "side-effect", "workspace");
     }
 
     @Override

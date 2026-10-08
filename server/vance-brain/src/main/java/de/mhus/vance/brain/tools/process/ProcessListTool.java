@@ -1,11 +1,12 @@
 package de.mhus.vance.brain.tools.process;
 
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,12 +26,16 @@ public class ProcessListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "includeTerminated", Map.of(
-                            "type", "boolean",
-                            "description", "Include processes in terminal states "
-                                    + "(STOPPED, DONE, STALE). Default false — those are "
-                                    + "audit-only and clutter the live view.")),
+            "properties",
+                    Map.of(
+                            "includeTerminated",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Include processes in terminal states "
+                                            + "(STOPPED, DONE, STALE). Default false — those are "
+                                            + "audit-only and clutter the live view.")),
             "required", List.of());
 
     private final ThinkProcessService thinkProcessService;
@@ -42,8 +47,7 @@ public class ProcessListTool implements Tool {
 
     @Override
     public String description() {
-        return "List all think-processes in the current session — name, "
-                + "engine, status, optional goal.";
+        return "List all think-processes in the current session — name, " + "engine, status, optional goal.";
     }
 
     @Override
@@ -64,7 +68,7 @@ public class ProcessListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -73,11 +77,9 @@ public class ProcessListTool implements Tool {
         if (sessionId == null) {
             throw new ToolException("process_list requires a session scope");
         }
-        boolean includeTerminated = params != null
-                && Boolean.TRUE.equals(params.get("includeTerminated"));
+        boolean includeTerminated = params != null && Boolean.TRUE.equals(params.get("includeTerminated"));
 
-        List<ThinkProcessDocument> docs = thinkProcessService.findBySession(
-                ctx.tenantId(), sessionId);
+        List<ThinkProcessDocument> docs = thinkProcessService.findBySession(ctx.tenantId(), sessionId);
         List<Map<String, Object>> rows = new ArrayList<>(docs.size());
         int hidden = 0;
         for (ThinkProcessDocument doc : docs) {

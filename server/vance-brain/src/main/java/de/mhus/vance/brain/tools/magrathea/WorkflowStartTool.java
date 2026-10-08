@@ -8,6 +8,7 @@ import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,53 +41,64 @@ import org.springframework.stereotype.Component;
  * label is set so dynamic-tool-bundle policies can gate it.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 @de.mhus.vance.toolpack.SpawnTool
 public class WorkflowStartTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("name", Map.of(
-                "type", "string",
-                "description", "Workflow definition name — resolved against the "
-                        + "project's _vance/workflows/<name>.yaml cascade "
-                        + "(project before tenant). Use 'path' instead for a plan "
-                        + "stored anywhere else."));
-        props.put("path", Map.of(
-                "type", "string",
-                "description", "Document path of the plan inside this project, "
-                        + "e.g. 'workflows/helloworld.yaml'. Starts exactly that "
-                        + "document — no cascade, no copying required. Give either "
-                        + "'name' or 'path', not both. The document must be trusted "
-                        + "to execute: under _vance/workflows/, or marked "
-                        + "'$meta.privileged: true' by an administrator. A plan you "
-                        + "wrote yourself is not startable this way."));
-        props.put("params", Map.of(
-                "type", "object",
-                "description", "Free-form caller params, validated against the "
-                        + "workflow's parameters: block. Missing required params "
-                        + "fail the start."));
+        props.put(
+                "name",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Workflow definition name — resolved against the "
+                                + "project's _vance/workflows/<name>.yaml cascade "
+                                + "(project before tenant). Use 'path' instead for a plan "
+                                + "stored anywhere else."));
+        props.put(
+                "path",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Document path of the plan inside this project, "
+                                + "e.g. 'workflows/helloworld.yaml'. Starts exactly that "
+                                + "document — no cascade, no copying required. Give either "
+                                + "'name' or 'path', not both. The document must be trusted "
+                                + "to execute: under _vance/workflows/, or marked "
+                                + "'$meta.privileged: true' by an administrator. A plan you "
+                                + "wrote yourself is not startable this way."));
+        props.put(
+                "params",
+                Map.of(
+                        "type",
+                        "object",
+                        "description",
+                        "Free-form caller params, validated against the "
+                                + "workflow's parameters: block. Missing required params "
+                                + "fail the start."));
         // Neither is required on its own — invoke() enforces exactly one,
         // which a JSON schema cannot say without anyOf that models read
         // poorly. A clear error beats a clever schema here.
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", props,
-                "required", List.of());
+        SCHEMA = Map.of("type", "object", "properties", props, "required", List.of());
     }
 
     private final MagratheaWorkflowService workflowService;
     private final DocumentService documentService;
 
-    @Override public String name() { return "workflow_start"; }
+    @Override
+    public String name() {
+        return "workflow_start";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Start a workflow run, unattended. Address the plan either by "
                 + "'name' (resolved against _vance/workflows/<name>.yaml, project "
                 + "before tenant) or by 'path' (any document in this project) — "
@@ -98,10 +110,25 @@ public class WorkflowStartTool implements Tool {
                 + "the 'vogon' recipe instead. See manual_read('plans').";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write", "workflow", "side-effect"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "write", "workflow", "side-effect");
+    }
 
     @Override
     public String searchHint() {
@@ -124,14 +151,12 @@ public class WorkflowStartTool implements Tool {
             name = null;
         }
         if (name == null && path == null) {
-            throw new ToolException(
-                    "Give either 'name' (a plan under _vance/workflows/) or "
-                            + "'path' (a plan document anywhere in this project)");
+            throw new ToolException("Give either 'name' (a plan under _vance/workflows/) or "
+                    + "'path' (a plan document anywhere in this project)");
         }
         if (name != null && path != null) {
             throw new ToolException(
-                    "Give either 'name' or 'path', not both — they are two ways to "
-                            + "address one plan");
+                    "Give either 'name' or 'path', not both — they are two ways to " + "address one plan");
         }
         Map<String, Object> callerParams = readParamsMap(params);
         if (path != null) {
@@ -143,8 +168,7 @@ public class WorkflowStartTool implements Tool {
             runId = path != null
                     ? workflowService.startFromDocument(
                             ctx.tenantId(), ctx.projectId(), path, callerParams, ctx.userId())
-                    : workflowService.start(
-                            ctx.tenantId(), ctx.projectId(), name, callerParams, ctx.userId());
+                    : workflowService.start(ctx.tenantId(), ctx.projectId(), name, callerParams, ctx.userId());
         } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
             throw new ToolException(ex.getMessage(), ex);
         } catch (MagratheaWorkflowParseException ex) {
@@ -184,22 +208,20 @@ public class WorkflowStartTool implements Tool {
         if (path.startsWith(MagratheaWorkflowLoader.WORKFLOW_PATH_PREFIX)) {
             return;
         }
-        DocumentDocument doc = documentService.findByPath(tenantId, projectId, path)
-                .orElseThrow(() -> new ToolException(
-                        "No document at '" + path + "' in project '" + projectId + "'"));
+        DocumentDocument doc = documentService
+                .findByPath(tenantId, projectId, path)
+                .orElseThrow(() -> new ToolException("No document at '" + path + "' in project '" + projectId + "'"));
         if (!doc.isPrivileged()) {
-            throw new ToolException(
-                    "Refusing to start '" + path + "': a plan started from a tool must be "
-                            + "trusted to execute. Either move it to "
-                            + MagratheaWorkflowLoader.WORKFLOW_PATH_PREFIX
-                            + "<name>.yaml and start it by 'name', or have an administrator "
-                            + "mark it with '$meta.privileged: true'. A person can start any "
-                            + "plan document from the workflow screen.");
+            throw new ToolException("Refusing to start '" + path + "': a plan started from a tool must be "
+                    + "trusted to execute. Either move it to "
+                    + MagratheaWorkflowLoader.WORKFLOW_PATH_PREFIX
+                    + "<name>.yaml and start it by 'name', or have an administrator "
+                    + "mark it with '$meta.privileged: true'. A person can start any "
+                    + "plan document from the workflow screen.");
         }
     }
 
-    private static @org.jspecify.annotations.Nullable String trimmedOrNull(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String trimmedOrNull(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         if (!(raw instanceof String s)) return null;
         String t = s.trim();

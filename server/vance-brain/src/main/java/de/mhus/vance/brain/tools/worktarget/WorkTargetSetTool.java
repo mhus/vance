@@ -7,6 +7,7 @@ import de.mhus.vance.shared.worktarget.WorkTargetKind;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -111,7 +112,7 @@ public class WorkTargetSetTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write", "side-effect");
+        return java.util.Set.of(ToolLabels.WORKER, "write", "side-effect");
     }
 
     @Override

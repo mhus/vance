@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.workspace;
 
+import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.workspace.WorkspaceException;
-import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,15 +23,19 @@ public class WorkspaceDeleteTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Relative path inside the RootDir."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional RootDir name. Defaults to the "
-                                            + "current process's temp RootDir.")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Relative path inside the RootDir."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional RootDir name. Defaults to the "
+                                                    + "current process's temp RootDir.")),
             "required", List.of("path"));
 
     private final WorkspaceService workspace;
@@ -58,7 +63,7 @@ public class WorkspaceDeleteTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write", "side-effect");
+        return java.util.Set.of(ToolLabels.WORKER, "write", "side-effect");
     }
 
     @Override

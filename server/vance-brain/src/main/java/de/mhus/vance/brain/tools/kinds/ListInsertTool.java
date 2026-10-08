@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.ListCodec;
 import de.mhus.vance.shared.document.kind.ListDocument;
 import de.mhus.vance.shared.document.kind.ListItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,31 +28,42 @@ public class ListInsertTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("index", Map.of("type", "integer",
-                "description", "Insert position. 0 = prepend, items.size = append."));
+        p.put("index", Map.of("type", "integer", "description", "Insert position. 0 = prepend, items.size = append."));
         p.put("text", Map.of("type", "string", "description", "The new item's text."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "list_insert"; }
+    @Override
+    public String name() {
+        return "list_insert";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Insert a new item at position `index` in a `kind: list` document. "
                 + "Use 0 to prepend, items.size to append.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-list", "eddie", "write", "document"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-list", "eddie", "write", "document");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "list");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "list");
         int index = KindToolSupport.requireInt(params, "index");
         String text = KindToolSupport.requireRawString(params, "text");
         ListDocument list = ListCodec.parse(support.readBody(doc, ctx), doc.getMimeType());

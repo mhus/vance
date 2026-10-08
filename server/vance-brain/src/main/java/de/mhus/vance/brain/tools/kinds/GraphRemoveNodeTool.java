@@ -1,13 +1,14 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.GraphCodec;
 import de.mhus.vance.shared.document.kind.GraphDocument;
 import de.mhus.vance.shared.document.kind.GraphEdge;
 import de.mhus.vance.shared.document.kind.GraphNode;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,22 +34,45 @@ public class GraphRemoveNodeTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "graph_remove_node"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "graph_remove_node";
+    }
+
+    @Override
+    public String description() {
         return "Remove the node with the given id from a `kind: graph` document. "
                 + "All incident edges (incoming and outgoing) are dropped too.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie", "write", "document"); }
-    @Override public boolean deferred() { return true; }
-    @Override public String searchHint() { return "Graph topology mutation (rare)"; }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-graph", "eddie", "write", "document");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Graph topology mutation (rare)";
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "graph");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "graph");
         String id = KindToolSupport.requireString(params, "id");
         GraphDocument g = GraphCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         boolean exists = g.nodes().stream().anyMatch(n -> n.id().equals(id));
@@ -60,10 +84,16 @@ public class GraphRemoveNodeTool implements Tool {
         edges.removeIf(e -> e.source().equals(id) || e.target().equals(id));
         GraphDocument updated = new GraphDocument(g.kind(), g.graph(), nodes, edges, g.extra());
         support.writeBody(doc, GraphCodec.serialize(updated, doc.getMimeType()), ctx);
-        return Map.of("documentId", doc.getId(),
-                "removedNode", id,
-                "removedIncidentEdges", edgesBefore - edges.size(),
-                "nodeCount", nodes.size(),
-                "edgeCount", edges.size());
+        return Map.of(
+                "documentId",
+                doc.getId(),
+                "removedNode",
+                id,
+                "removedIncidentEdges",
+                edgesBefore - edges.size(),
+                "nodeCount",
+                nodes.size(),
+                "edgeCount",
+                edges.size());
     }
 }

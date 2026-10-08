@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.scratchpad;
 
+import de.mhus.vance.shared.memory.MemoryDocument;
+import de.mhus.vance.shared.memory.ScratchpadService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.memory.MemoryDocument;
-import de.mhus.vance.shared.memory.ScratchpadService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,13 +23,16 @@ public class ScratchpadSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Slot name. Re-using a title overwrites that slot."),
-                    "content", Map.of(
-                            "type", "string",
-                            "description", "Slot content. Plain text or markdown.")),
+            "properties",
+                    Map.of(
+                            "title",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Slot name. Re-using a title overwrites that slot."),
+                            "content",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Slot content. Plain text or markdown.")),
             "required", List.of("title", "content"));
 
     private final ScratchpadService scratchpad;
@@ -73,7 +77,7 @@ public class ScratchpadSetTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write");
+        return java.util.Set.of(ToolLabels.WORKER, "write");
     }
 
     @Override

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.exec;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -38,25 +39,32 @@ public class ExecCheckTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "Job id returned by work_exec_run."),
-                    "ifRunning", Map.of(
-                            "type", "string",
-                            "enum", List.of("extend", "kill", "wait"),
-                            "description",
-                                    "Force-decision verb that applies only when the "
-                                            + "job is still RUNNING. 'extend' pushes "
-                                            + "the deadline (requires extendSeconds), "
-                                            + "'kill' terminates, 'wait' is a no-op "
-                                            + "observation. Pick consciously — there "
-                                            + "is no default."),
-                    "extendSeconds", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Required when ifRunning='extend'. New lease "
-                                            + "length from now, in seconds.")),
+            "properties",
+                    Map.of(
+                            "id",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Job id returned by work_exec_run."),
+                            "ifRunning",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "enum",
+                                            List.of("extend", "kill", "wait"),
+                                            "description",
+                                            "Force-decision verb that applies only when the "
+                                                    + "job is still RUNNING. 'extend' pushes "
+                                                    + "the deadline (requires extendSeconds), "
+                                                    + "'kill' terminates, 'wait' is a no-op "
+                                                    + "observation. Pick consciously — there "
+                                                    + "is no default."),
+                            "extendSeconds",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Required when ifRunning='extend'. New lease "
+                                                    + "length from now, in seconds.")),
             "required", List.of("id", "ifRunning"));
 
     private final ExecManager execManager;
@@ -89,7 +97,7 @@ public class ExecCheckTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.WORKER, "executive");
     }
 
     @Override
@@ -100,26 +108,21 @@ public class ExecCheckTool implements Tool {
         }
         Object rawIf = params == null ? null : params.get("ifRunning");
         if (!(rawIf instanceof String ifRunning) || ifRunning.isBlank()) {
-            throw new ToolException(
-                    "'ifRunning' is required (one of: extend, kill, wait)");
+            throw new ToolException("'ifRunning' is required (one of: extend, kill, wait)");
         }
         String decision = ifRunning.trim().toLowerCase();
-        if (!decision.equals("extend")
-                && !decision.equals("kill")
-                && !decision.equals("wait")) {
-            throw new ToolException(
-                    "'ifRunning' must be one of: extend, kill, wait (got '"
-                            + ifRunning + "')");
+        if (!decision.equals("extend") && !decision.equals("kill") && !decision.equals("wait")) {
+            throw new ToolException("'ifRunning' must be one of: extend, kill, wait (got '" + ifRunning + "')");
         }
 
-        ExecJob job = execManager.get(ctx.tenantId(), ctx.projectId(), id)
-                .orElseThrow(() -> new ToolException(
-                        "Unknown exec job: '" + id + "' (not in this project)"));
+        ExecJob job = execManager
+                .get(ctx.tenantId(), ctx.projectId(), id)
+                .orElseThrow(() -> new ToolException("Unknown exec job: '" + id + "' (not in this project)"));
 
         // Terminal jobs: 'ifRunning' is moot, surface the final state.
         if (job.isTerminal()) {
-            Map<String, Object> out = new LinkedHashMap<>(
-                    ExecJobRenderer.render(job, properties.getInlineOutputCharCap()));
+            Map<String, Object> out =
+                    new LinkedHashMap<>(ExecJobRenderer.render(job, properties.getInlineOutputCharCap()));
             out.put("decision", decision);
             out.put("terminal", true);
             return out;
@@ -133,19 +136,15 @@ public class ExecCheckTool implements Tool {
         };
     }
 
-    private Map<String, Object> doExtend(
-            ToolInvocationContext ctx, ExecJob job, Map<String, Object> params) {
+    private Map<String, Object> doExtend(ToolInvocationContext ctx, ExecJob job, Map<String, Object> params) {
         Object rawSec = params.get("extendSeconds");
         long extendSeconds = rawSec instanceof Number n ? n.longValue() : -1L;
         if (extendSeconds <= 0) {
-            throw new ToolException(
-                    "'extendSeconds' must be a positive integer when ifRunning='extend'");
+            throw new ToolException("'extendSeconds' must be a positive integer when ifRunning='extend'");
         }
         boolean extended = execManager.extendDeadline(
-                ctx.tenantId(), ctx.projectId(), job.id(),
-                Duration.ofSeconds(extendSeconds));
-        Map<String, Object> out = new LinkedHashMap<>(
-                ExecJobRenderer.render(job, properties.getInlineOutputCharCap()));
+                ctx.tenantId(), ctx.projectId(), job.id(), Duration.ofSeconds(extendSeconds));
+        Map<String, Object> out = new LinkedHashMap<>(ExecJobRenderer.render(job, properties.getInlineOutputCharCap()));
         out.put("decision", "extend");
         out.put("terminal", false);
         if (extended) {
@@ -165,8 +164,7 @@ public class ExecCheckTool implements Tool {
 
     private Map<String, Object> doKill(ToolInvocationContext ctx, ExecJob job) {
         boolean killed = execManager.kill(ctx.tenantId(), ctx.projectId(), job.id());
-        Map<String, Object> out = new LinkedHashMap<>(
-                ExecJobRenderer.render(job, properties.getInlineOutputCharCap()));
+        Map<String, Object> out = new LinkedHashMap<>(ExecJobRenderer.render(job, properties.getInlineOutputCharCap()));
         out.put("decision", "kill");
         out.put("killApplied", killed);
         out.put("terminal", job.isTerminal());
@@ -174,8 +172,7 @@ public class ExecCheckTool implements Tool {
     }
 
     private Map<String, Object> doWait(ExecJob job) {
-        Map<String, Object> out = new LinkedHashMap<>(
-                ExecJobRenderer.render(job, properties.getInlineOutputCharCap()));
+        Map<String, Object> out = new LinkedHashMap<>(ExecJobRenderer.render(job, properties.getInlineOutputCharCap()));
         out.put("decision", "wait");
         out.put("terminal", false);
         Instant deadline = job.deadline();

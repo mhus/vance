@@ -4,6 +4,7 @@ import de.mhus.vance.brain.ursascheduler.UrsaSchedulerService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,24 +16,37 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class UrsaSchedulerRefreshTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<>(),
-            "required", List.of());
+    private static final Map<String, Object> SCHEMA =
+            Map.of("type", "object", "properties", new LinkedHashMap<>(), "required", List.of());
 
     private final UrsaSchedulerService schedulerService;
 
-    @Override public String name() { return "scheduler_refresh"; }
+    @Override
+    public String name() {
+        return "scheduler_refresh";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Re-read every scheduler in the current project from the "
                 + "document layer and re-register them with the cron registry. "
                 + "Use after bulk edits made outside the scheduler tools.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("admin", "scheduler"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "admin", "scheduler");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

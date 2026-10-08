@@ -6,6 +6,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -82,7 +83,7 @@ public class DocGrepTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("text-search", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "text-search", "eddie", "read-only");
     }
 
     @Override

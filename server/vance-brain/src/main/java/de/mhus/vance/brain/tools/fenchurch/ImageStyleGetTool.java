@@ -4,6 +4,7 @@ import de.mhus.vance.brain.fenchurch.FenchurchStyleService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -28,11 +29,12 @@ public class ImageStyleGetTool implements Tool {
 
     private final FenchurchStyleService styleService;
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of());
+    private static final Map<String, Object> SCHEMA = Map.of("type", "object", "properties", Map.of());
 
-    @Override public String name() { return "image_style_get"; }
+    @Override
+    public String name() {
+        return "image_style_get";
+    }
 
     @Override
     public String description() {
@@ -43,9 +45,20 @@ public class ImageStyleGetTool implements Tool {
                 + "the next image, use `image_style_prompt`.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("read-only"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -53,8 +66,7 @@ public class ImageStyleGetTool implements Tool {
             throw new ToolException("image_style_get requires a tenant scope");
         }
         String prefix = styleService.readScope(
-                ctx.tenantId(), FenchurchStyleService.Scope.SESSION,
-                ctx.userId(), ctx.projectId(), ctx.processId());
+                ctx.tenantId(), FenchurchStyleService.Scope.SESSION, ctx.userId(), ctx.projectId(), ctx.processId());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("scope", FenchurchStyleService.Scope.SESSION.name().toLowerCase(Locale.ROOT));
         out.put("prefix", prefix);

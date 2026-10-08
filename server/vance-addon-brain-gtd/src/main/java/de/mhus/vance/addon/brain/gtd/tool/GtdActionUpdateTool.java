@@ -9,6 +9,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,30 +31,50 @@ import org.springframework.stereotype.Component;
 public class GtdActionUpdateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string", "description", "GTD root folder."));
-                put("path", Map.of("type", "string", "description", "Full document path of the action."));
-                put("when", Map.of("type", "string",
-                        "description", "'' (Anytime) | today | someday | ISO date. Sets the bucket."));
-                put("bucket", Map.of("type", "string",
-                        "description", "inbox | trash | today | anytime | someday. The only way "
-                                + "to reach the two folder buckets: inbox (unprocessed) and "
-                                + "trash (put away). Mutually exclusive with `when` — pass one "
-                                + "or the other; for Upcoming pass when=<yyyy-MM-dd>. `trash` "
-                                + "leaves `when` alone and remembers the folder, so moving the "
-                                + "action back out restores it there."));
-                put("deadline", Map.of("type", "string"));
-                put("contexts", Map.of("type", "array", "items", Map.of("type", "string")));
-                put("done", Map.of("type", "boolean"));
-                put("title", Map.of("type", "string"));
-                put("body", Map.of("type", "string"));
-                put("project", Map.of("type", "string",
-                        "description", "Re-file into projects/<name>/. Pass \"\" to file it "
-                                + "back out into actions/. Omit to leave the folder alone."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder", "path"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "GTD root folder."));
+                    put("path", Map.of("type", "string", "description", "Full document path of the action."));
+                    put(
+                            "when",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "'' (Anytime) | today | someday | ISO date. Sets the bucket."));
+                    put(
+                            "bucket",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "inbox | trash | today | anytime | someday. The only way "
+                                            + "to reach the two folder buckets: inbox (unprocessed) and "
+                                            + "trash (put away). Mutually exclusive with `when` — pass one "
+                                            + "or the other; for Upcoming pass when=<yyyy-MM-dd>. `trash` "
+                                            + "leaves `when` alone and remembers the folder, so moving the "
+                                            + "action back out restores it there."));
+                    put("deadline", Map.of("type", "string"));
+                    put("contexts", Map.of("type", "array", "items", Map.of("type", "string")));
+                    put("done", Map.of("type", "boolean"));
+                    put("title", Map.of("type", "string"));
+                    put("body", Map.of("type", "string"));
+                    put(
+                            "project",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Re-file into projects/<name>/. Pass \"\" to file it "
+                                            + "back out into actions/. Omit to leave the folder alone."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder", "path"));
 
     private final EddieContext eddieContext;
     private final GtdService gtdService;
@@ -63,7 +84,10 @@ public class GtdActionUpdateTool implements Tool {
         this.gtdService = gtdService;
     }
 
-    @Override public String name() { return "gtd_action_update"; }
+    @Override
+    public String name() {
+        return "gtd_action_update";
+    }
 
     @Override
     public String description() {
@@ -78,9 +102,20 @@ public class GtdActionUpdateTool implements Tool {
                 + "alone. Run app_rebuild afterwards to refresh the views.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("eddie", "write", "document", "gtd"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "gtd");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -92,10 +127,16 @@ public class GtdActionUpdateTool implements Tool {
                     + "both decide the bucket, and there is no rule for which wins.");
         }
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        DocumentDocument doc = gtdService.updateAction(ctx.tenantId(), project.getName(), path,
-                paramString(params, "when"), paramString(params, "deadline"),
-                paramStringList(params, "contexts"), paramBoolean(params, "done"),
-                paramString(params, "title"), paramString(params, "body"));
+        DocumentDocument doc = gtdService.updateAction(
+                ctx.tenantId(),
+                project.getName(),
+                path,
+                paramString(params, "when"),
+                paramString(params, "deadline"),
+                paramStringList(params, "contexts"),
+                paramBoolean(params, "done"),
+                paramString(params, "title"),
+                paramString(params, "body"));
         if (bucketName != null) {
             GtdBucket bucket = GtdBucket.fromWire(bucketName);
             if (bucket == null || bucket == GtdBucket.UPCOMING) {
@@ -105,9 +146,10 @@ public class GtdActionUpdateTool implements Tool {
             }
             String folder = paramString(params, "folder");
             if (folder == null) throw new ToolException("folder is required");
-            GtdConfig config = gtdService.scan(ctx.tenantId(), project.getName(), folder).config();
-            doc = gtdService.move(ctx.tenantId(), project.getName(), folder, config,
-                    doc.getPath(), bucket, null, ctx.userId());
+            GtdConfig config =
+                    gtdService.scan(ctx.tenantId(), project.getName(), folder).config();
+            doc = gtdService.move(
+                    ctx.tenantId(), project.getName(), folder, config, doc.getPath(), bucket, null, ctx.userId());
         }
         // Re-filing is a relocation, not a field patch — and here absent has to
         // mean something different from empty: omitting `project` leaves the
@@ -116,9 +158,16 @@ public class GtdActionUpdateTool implements Tool {
             String folder = paramString(params, "folder");
             if (folder == null) throw new ToolException("folder is required");
             Object raw = params.get("project");
-            GtdConfig config = gtdService.scan(ctx.tenantId(), project.getName(), folder).config();
-            doc = gtdService.assignProject(ctx.tenantId(), project.getName(), folder, config,
-                    doc.getPath(), raw == null ? "" : raw.toString().trim(), ctx.userId());
+            GtdConfig config =
+                    gtdService.scan(ctx.tenantId(), project.getName(), folder).config();
+            doc = gtdService.assignProject(
+                    ctx.tenantId(),
+                    project.getName(),
+                    folder,
+                    config,
+                    doc.getPath(),
+                    raw == null ? "" : raw.toString().trim(),
+                    ctx.userId());
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", doc.getPath());
@@ -130,17 +179,20 @@ public class GtdActionUpdateTool implements Tool {
         Object v = params == null ? null : params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
+
     private static @Nullable Boolean paramBoolean(Map<String, Object> params, String key) {
         Object v = params == null ? null : params.get(key);
         if (v instanceof Boolean b) return b;
         if (v instanceof String s && !s.isBlank()) return Boolean.parseBoolean(s);
         return null;
     }
+
     private static @Nullable List<String> paramStringList(Map<String, Object> params, String key) {
         Object v = params == null ? null : params.get(key);
         if (v instanceof List<?> list) {
             List<String> out = new ArrayList<>();
-            for (Object o : list) if (o != null && !o.toString().isBlank()) out.add(o.toString().trim());
+            for (Object o : list)
+                if (o != null && !o.toString().isBlank()) out.add(o.toString().trim());
             return out;
         }
         if (v instanceof String s && !s.isBlank()) {

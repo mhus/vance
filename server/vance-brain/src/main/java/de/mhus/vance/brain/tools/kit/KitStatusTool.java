@@ -8,6 +8,7 @@ import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,11 +27,14 @@ public class KitStatusTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "project", Map.of(
-                            "type", "string",
-                            "description",
-                            "Project to inspect. Defaults to the current project.")),
+            "properties",
+                    Map.of(
+                            "project",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Project to inspect. Defaults to the current project.")),
             "required", List.of());
 
     private final KitService kitService;
@@ -60,7 +64,7 @@ public class KitStatusTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -68,9 +72,12 @@ public class KitStatusTool implements Tool {
         if (ctx.tenantId() == null) {
             throw new ToolException("kit_status requires a tenant scope");
         }
-        String projectId = KitToolSupport.requireProjectAuthorized(ctx,
+        String projectId = KitToolSupport.requireProjectAuthorized(
+                ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.READ);
+                permissionService,
+                contextFactory,
+                de.mhus.vance.shared.permission.Action.READ);
         List<KitInstalledRecordDto> installed = kitService.status(ctx.tenantId(), projectId);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("project", projectId);
@@ -86,9 +93,17 @@ public class KitStatusTool implements Tool {
             }
             entry.put("origin", originMap(record.getOrigin()));
             KitArtefactsDto artefacts = record.getArtefacts();
-            entry.put("counts", Map.of(
-                    "documents", artefacts == null ? 0 : artefacts.getDocuments().size(),
-                    "settings", artefacts == null ? 0 : artefacts.getSettings().size()));
+            entry.put(
+                    "counts",
+                    Map.of(
+                            "documents",
+                                    artefacts == null
+                                            ? 0
+                                            : artefacts.getDocuments().size(),
+                            "settings",
+                                    artefacts == null
+                                            ? 0
+                                            : artefacts.getSettings().size()));
             if (record.isHasEncryptedSecrets()) {
                 entry.put("hasEncryptedSecrets", true);
             }
@@ -101,9 +116,11 @@ public class KitStatusTool implements Tool {
         KitManifestDto manifest = kitService.authoringManifest(ctx.tenantId(), projectId);
         out.put("isKitSource", manifest != null);
         if (manifest != null) {
-            out.put("kitSource", Map.of(
-                    "name", manifest.getKit().getName(),
-                    "origin", originMap(manifest.getOrigin())));
+            out.put(
+                    "kitSource",
+                    Map.of(
+                            "name", manifest.getKit().getName(),
+                            "origin", originMap(manifest.getOrigin())));
         }
         return out;
     }

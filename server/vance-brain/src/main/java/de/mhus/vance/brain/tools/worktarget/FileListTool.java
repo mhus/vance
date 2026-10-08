@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.worktarget;
 
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -19,35 +20,57 @@ public class FileListTool extends AbstractWorkTargetTool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Directory to list. CLIENT: absolute or working-dir "
-                                            + "relative; WORK: relative to the RootDir. "
-                                            + "Default: the root."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "WORK only: override the active RootDir for this "
-                                            + "call. Ignored when the active target is CLIENT.")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Directory to list. CLIENT: absolute or working-dir "
+                                                    + "relative; WORK: relative to the RootDir. "
+                                                    + "Default: the root."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "WORK only: override the active RootDir for this "
+                                                    + "call. Ignored when the active target is CLIENT.")),
             "required", List.of());
 
-    public FileListTool(WorkTargetDispatcher dispatcher) { super(dispatcher); }
+    public FileListTool(WorkTargetDispatcher dispatcher) {
+        super(dispatcher);
+    }
 
-    @Override public String name() { return "file_list"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "file_list";
+    }
+
+    @Override
+    public String description() {
         return "List one directory level at the active work target. Returns "
                 + "entry names, directories marked with a trailing '/'. Use "
                 + "file_find for a recursive listing. Dispatches to "
                 + "client_file_list (CLIENT) or work_file_list (WORK).";
     }
-    @Override public boolean contributesPrak() {
+
+    @Override
+    public boolean contributesPrak() {
         // Filesystem listing — entries only, no synthesised insight.
         return false;
     }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public java.util.Set<String> labels() { return java.util.Set.of("read-only"); }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of(ToolLabels.WORKER, "read-only");
+    }
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
@@ -55,6 +78,13 @@ public class FileListTool extends AbstractWorkTargetTool {
                 + "is listed, use file_find to recurse.";
     }
 
-    @Override protected String clientBackend() { return "client_file_list"; }
-    @Override protected String workBackend()   { return "work_file_list"; }
+    @Override
+    protected String clientBackend() {
+        return "client_file_list";
+    }
+
+    @Override
+    protected String workBackend() {
+        return "work_file_list";
+    }
 }

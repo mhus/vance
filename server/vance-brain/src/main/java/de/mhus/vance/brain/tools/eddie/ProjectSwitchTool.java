@@ -9,6 +9,7 @@ import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,7 +70,7 @@ public class ProjectSwitchTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("eddie", "write");
+        return java.util.Set.of(ToolLabels.INTERNAL, "eddie", "write");
     }
 
     @Override

@@ -4,6 +4,7 @@ import de.mhus.vance.brain.wakeup.WakeupRegistry;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -94,7 +95,7 @@ public class WakeupInTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.WORKER, "executive");
     }
 
     @Override

@@ -4,6 +4,7 @@ import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.core.ContentHashes;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,7 +67,7 @@ public class DocReadLinesTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("text-search", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "text-search", "eddie", "read-only");
     }
 
     @Override

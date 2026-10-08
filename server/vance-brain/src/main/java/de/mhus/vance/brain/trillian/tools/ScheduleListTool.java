@@ -4,6 +4,7 @@ import de.mhus.vance.brain.trillian.TrillianScheduleStore;
 import de.mhus.vance.brain.trillian.TrillianUserEngine;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,7 +46,7 @@ public class ScheduleListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.INTERNAL, "read-only");
     }
 
     @Override

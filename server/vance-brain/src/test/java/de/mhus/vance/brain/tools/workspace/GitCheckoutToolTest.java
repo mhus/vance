@@ -128,7 +128,8 @@ class GitCheckoutToolTest {
         assertThat(tool.name()).isEqualTo("git_checkout");
         assertThat(tool.primary()).isFalse();
         assertThat(tool.deferred()).isTrue();
-        assertThat(tool.labels()).containsExactlyInAnyOrder("write", "side-effect");
+        assertThat(tool.labels())
+                .containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "write", "side-effect");
     }
 
     // ──────────────────── helpers ────────────────────

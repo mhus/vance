@@ -1,18 +1,19 @@
 package de.mhus.vance.brain.tools.template;
 
 import de.mhus.vance.api.kit.ToolTemplateCatalogEntry;
-import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.brain.kit.TemplateApplier;
 import de.mhus.vance.brain.permission.SecurityContextFactory;
+import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.kit.catalog.ToolTemplateCatalogService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.settings.SettingWriteOrigin;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,28 +52,44 @@ public class ToolTemplateApplyTool implements Tool {
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "required", List.of("name", "projectId", "inputs"),
-            "properties", Map.of(
-                    "name", Map.of("type", "string",
-                            "description", "Template name from tool_template_list."),
-                    "projectId", Map.of("type", "string",
-                            "description", "Target project — usually the current project. "
-                                    + "Tool documents land here; cascade into _tenant when "
-                                    + "appropriate by passing '_tenant'."),
-                    "inputs", Map.of("type", "object",
-                            "description", "Field name → value. PASSWORD inputs in plaintext "
-                                    + "(server encrypts before persistence). Get the expected "
-                                    + "fields from tool_template_describe."),
-                    "token", Map.of("type", "string",
-                            "description", "Optional auth token if the kit's git source needs one.")));
+            "properties",
+                    Map.of(
+                            "name", Map.of("type", "string", "description", "Template name from tool_template_list."),
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Target project — usually the current project. "
+                                                    + "Tool documents land here; cascade into _tenant when "
+                                                    + "appropriate by passing '_tenant'."),
+                            "inputs",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Field name → value. PASSWORD inputs in plaintext "
+                                                    + "(server encrypts before persistence). Get the expected "
+                                                    + "fields from tool_template_describe."),
+                            "token",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional auth token if the kit's git source needs one.")));
 
     private final ToolTemplateCatalogService catalogService;
     private final KitService kitService;
     private final PermissionService permissionService;
     private final SecurityContextFactory contextFactory;
 
-    @Override public String name() { return "tool_template_apply"; }
+    @Override
+    public String name() {
+        return "tool_template_apply";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Apply a tool-template with user-supplied inputs. Validates the "
                 + "inputs against the template's schema, substitutes "
                 + "{{var:fieldName}} in the kit's documents, persists "
@@ -82,9 +99,20 @@ public class ToolTemplateApplyTool implements Tool {
                 + "Atlassian in Connected Accounts') for the agent to surface.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("tool-template", "write", "side-effect"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "tool-template", "write", "side-effect");
+    }
 
     @SuppressWarnings("unchecked")
     @Override
@@ -114,18 +142,21 @@ public class ToolTemplateApplyTool implements Tool {
 
         ToolTemplateCatalogEntry entry = catalogService.findByName(ctx.tenantId(), templateName);
         if (entry == null) {
-            throw new ToolException("Template '" + templateName
-                    + "' is not in the tenant catalog.");
+            throw new ToolException("Template '" + templateName + "' is not in the tenant catalog.");
         }
 
         TemplateApplier.ApplyResult result;
         try {
             result = kitService.applyTemplate(
-                    ctx.tenantId(), projectId, entry.getSource(),
-                    inputs, token, ctx.userId(), SettingWriteOrigin.AGENT);
+                    ctx.tenantId(),
+                    projectId,
+                    entry.getSource(),
+                    inputs,
+                    token,
+                    ctx.userId(),
+                    SettingWriteOrigin.AGENT);
         } catch (KitException e) {
-            log.warn("apply template '{}' for project='{}' failed: {}",
-                    templateName, projectId, e.getMessage());
+            log.warn("apply template '{}' for project='{}' failed: {}", templateName, projectId, e.getMessage());
             throw new ToolException("apply failed: " + e.getMessage(), e);
         }
 

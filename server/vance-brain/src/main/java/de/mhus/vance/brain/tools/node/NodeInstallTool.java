@@ -8,6 +8,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,27 +35,35 @@ public class NodeInstallTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "package", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Single npm package spec (e.g. 'lodash', "
-                                            + "'dayjs@^1.11', '@types/node'). "
-                                            + "Provide this OR 'packages'."),
-                    "packages", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description",
-                                    "Multiple npm specs installed in one npm "
-                                            + "invocation. Faster than chaining "
-                                            + "node_install. Provide this OR 'package'."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional Node RootDir name. When omitted the "
-                                            + "canonical project Node workspace is used and "
-                                            + "created if needed — no node_create call is "
-                                            + "required first.")),
+            "properties",
+                    Map.of(
+                            "package",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Single npm package spec (e.g. 'lodash', "
+                                                    + "'dayjs@^1.11', '@types/node'). "
+                                                    + "Provide this OR 'packages'."),
+                            "packages",
+                                    Map.of(
+                                            "type",
+                                            "array",
+                                            "items",
+                                            Map.of("type", "string"),
+                                            "description",
+                                            "Multiple npm specs installed in one npm "
+                                                    + "invocation. Faster than chaining "
+                                                    + "node_install. Provide this OR 'package'."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional Node RootDir name. When omitted the "
+                                                    + "canonical project Node workspace is used and "
+                                                    + "created if needed — no node_create call is "
+                                                    + "required first.")),
             "required", List.of());
 
     private final WorkspaceService workspaceService;
@@ -84,7 +93,7 @@ public class NodeInstallTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write", "side-effect");
+        return Set.of(ToolLabels.WORKER, "write", "side-effect");
     }
 
     @Override
@@ -145,18 +154,17 @@ public class NodeInstallTool implements Tool {
     }
 
     private RootDirHandle resolveRootDir(
-            String tenantId, String projectId,
-            @Nullable Map<String, Object> params, ToolInvocationContext ctx) {
-        String dirName = params == null ? null : (params.get("dirName") instanceof String s
-                ? s : null);
+            String tenantId, String projectId, @Nullable Map<String, Object> params, ToolInvocationContext ctx) {
+        String dirName = params == null ? null : (params.get("dirName") instanceof String s ? s : null);
         if (dirName != null && !dirName.isBlank()) {
-            return workspaceService.getRootDir(tenantId, projectId, dirName)
-                    .orElseThrow(() -> new ToolException(
-                            "Node RootDir '" + dirName + "' not found in project "
-                                    + projectId));
+            return workspaceService
+                    .getRootDir(tenantId, projectId, dirName)
+                    .orElseThrow(() ->
+                            new ToolException("Node RootDir '" + dirName + "' not found in project " + projectId));
         }
         String creator = StringUtils.defaultIfBlank(ctx.processId(), ctx.sessionId());
-        String workingDir = creator == null ? null
+        String workingDir = creator == null
+                ? null
                 : workspaceService.getWorkingDir(tenantId, projectId, creator).orElse(null);
         if (workingDir == null) {
             // No working dir set — use the canonical Node workspace and
@@ -165,13 +173,12 @@ public class NodeInstallTool implements Tool {
             // to know about; a JS script declaring @requires implies the
             // workspace, so creating it is bookkeeping, not a decision.
             return TypedRootDirProvisioner.ensure(
-                    workspaceService, ctx, NodeHandler.TYPE, NodeHandler.DEFAULT_LABEL,
-                    Map.of());
+                    workspaceService, ctx, NodeHandler.TYPE, NodeHandler.DEFAULT_LABEL, Map.of());
         }
-        RootDirHandle working = workspaceService.getRootDir(tenantId, projectId, workingDir)
-                .orElseThrow(() -> new ToolException(
-                        "Working RootDir '" + workingDir
-                                + "' not found in project " + projectId));
+        RootDirHandle working = workspaceService
+                .getRootDir(tenantId, projectId, workingDir)
+                .orElseThrow(() ->
+                        new ToolException("Working RootDir '" + workingDir + "' not found in project " + projectId));
         if (NodeHandler.TYPE.equals(working.getType())) {
             return working;
         }
@@ -179,7 +186,6 @@ public class NodeInstallTool implements Tool {
         // RootDir). Installing there would put node_modules somewhere the
         // script engine never looks, so fall through to the canonical one.
         return TypedRootDirProvisioner.ensure(
-                workspaceService, ctx, NodeHandler.TYPE, NodeHandler.DEFAULT_LABEL,
-                Map.of());
+                workspaceService, ctx, NodeHandler.TYPE, NodeHandler.DEFAULT_LABEL, Map.of());
     }
 }

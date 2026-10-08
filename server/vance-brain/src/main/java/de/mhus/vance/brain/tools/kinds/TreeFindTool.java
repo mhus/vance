@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.MindmapCodec;
 import de.mhus.vance.shared.document.kind.TreeCodec;
 import de.mhus.vance.shared.document.kind.TreeDocument;
 import de.mhus.vance.shared.document.kind.TreeItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,30 +28,44 @@ public class TreeFindTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("query", Map.of("type", "string",
-                "description", "Substring to search for in item text (case-insensitive)."));
+        p.put(
+                "query",
+                Map.of("type", "string", "description", "Substring to search for in item text (case-insensitive)."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "tree_find"; }
+    @Override
+    public String name() {
+        return "tree_find";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Find paths to items whose text contains the query (case-insensitive). "
                 + "Each match returns the comma-separated index path and the matching text.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-tree", "eddie", "read-only"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-tree", "eddie", "read-only");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
+        DocumentDocument doc =
+                support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
         String query = KindToolSupport.requireString(params, "query");
         TreeDocument tree = "mindmap".equals(doc.getKind())
                 ? MindmapCodec.parse(support.readBody(doc, ctx), doc.getMimeType())
@@ -64,8 +79,6 @@ public class TreeFindTool implements Tool {
             m.put("text", item.text());
             matches.add(m);
         }
-        return Map.of("documentId", doc.getId(),
-                "matchCount", matches.size(),
-                "matches", matches);
+        return Map.of("documentId", doc.getId(), "matchCount", matches.size(), "matches", matches);
     }
 }

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.marvin;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
@@ -57,7 +58,7 @@ public class MarvinStopTool extends MarvinBaseTool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write", "side-effect");
+        return java.util.Set.of(ToolLabels.INTERNAL, "write", "side-effect");
     }
 
     @Override

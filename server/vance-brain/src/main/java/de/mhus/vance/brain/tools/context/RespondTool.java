@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.context;
 
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,21 +46,28 @@ public class RespondTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    PARAM_MESSAGE, Map.of(
-                            "type", "string",
-                            "description", "User-facing reply text. "
-                                    + "Markdown allowed. This becomes the assistant "
-                                    + "chat-message for this turn."),
-                    PARAM_AWAITING_USER_INPUT, Map.of(
-                            "type", "boolean",
-                            "description", "true (default) when you expect the "
-                                    + "user to respond next — engine goes BLOCKED. "
-                                    + "false when you've kicked off background work "
-                                    + "(e.g. spawned a worker via process_create) and "
-                                    + "do not need the user to react — engine goes "
-                                    + "IDLE and auto-wakes on the worker's "
-                                    + "ProcessEvent.")),
+            "properties",
+                    Map.of(
+                            PARAM_MESSAGE,
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "User-facing reply text. "
+                                                    + "Markdown allowed. This becomes the assistant "
+                                                    + "chat-message for this turn."),
+                            PARAM_AWAITING_USER_INPUT,
+                                    Map.of(
+                                            "type",
+                                            "boolean",
+                                            "description",
+                                            "true (default) when you expect the "
+                                                    + "user to respond next — engine goes BLOCKED. "
+                                                    + "false when you've kicked off background work "
+                                                    + "(e.g. spawned a worker via process_create) and "
+                                                    + "do not need the user to react — engine goes "
+                                                    + "IDLE and auto-wakes on the worker's "
+                                                    + "ProcessEvent.")),
             "required", List.of(PARAM_MESSAGE));
 
     @Override
@@ -87,7 +95,7 @@ public class RespondTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("executive");
+        return java.util.Set.of(ToolLabels.INTERNAL, "executive");
     }
 
     @Override

@@ -8,6 +8,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,22 +29,28 @@ public class NodeUninstallTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "package", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Single npm package name. Provide this OR 'packages'."),
-                    "packages", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description",
-                                    "Multiple package names removed in one npm "
-                                            + "invocation. Provide this OR 'package'."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional Node RootDir name. Defaults to the "
-                                            + "current process's working RootDir.")),
+            "properties",
+                    Map.of(
+                            "package",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Single npm package name. Provide this OR 'packages'."),
+                            "packages",
+                                    Map.of(
+                                            "type",
+                                            "array",
+                                            "items",
+                                            Map.of("type", "string"),
+                                            "description",
+                                            "Multiple package names removed in one npm "
+                                                    + "invocation. Provide this OR 'package'."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional Node RootDir name. Defaults to the "
+                                                    + "current process's working RootDir.")),
             "required", List.of());
 
     private final WorkspaceService workspaceService;
@@ -56,8 +63,7 @@ public class NodeUninstallTool implements Tool {
 
     @Override
     public String description() {
-        return "Remove one or more npm packages from the named Node RootDir "
-                + "(npm uninstall --save).";
+        return "Remove one or more npm packages from the named Node RootDir " + "(npm uninstall --save).";
     }
 
     @Override
@@ -72,7 +78,7 @@ public class NodeUninstallTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write", "side-effect");
+        return Set.of(ToolLabels.WORKER, "write", "side-effect");
     }
 
     @Override
@@ -130,39 +136,34 @@ public class NodeUninstallTool implements Tool {
     }
 
     private RootDirHandle resolveRootDir(
-            String tenantId, String projectId,
-            @Nullable Map<String, Object> params, ToolInvocationContext ctx) {
-        String dirName = params == null ? null : (params.get("dirName") instanceof String s
-                ? s : null);
+            String tenantId, String projectId, @Nullable Map<String, Object> params, ToolInvocationContext ctx) {
+        String dirName = params == null ? null : (params.get("dirName") instanceof String s ? s : null);
         if (dirName != null && !dirName.isBlank()) {
-            return workspaceService.getRootDir(tenantId, projectId, dirName)
-                    .orElseThrow(() -> new ToolException(
-                            "Node RootDir '" + dirName + "' not found in project " + projectId));
+            return workspaceService
+                    .getRootDir(tenantId, projectId, dirName)
+                    .orElseThrow(() ->
+                            new ToolException("Node RootDir '" + dirName + "' not found in project " + projectId));
         }
         String creator = StringUtils.defaultIfBlank(ctx.processId(), ctx.sessionId());
-        Optional<String> workingDir = creator == null
-                ? Optional.empty()
-                : workspaceService.getWorkingDir(tenantId, projectId, creator);
+        Optional<String> workingDir =
+                creator == null ? Optional.empty() : workspaceService.getWorkingDir(tenantId, projectId, creator);
         if (workingDir.isEmpty()) {
             // Refusing is right here — with no Node workspace nothing is
             // installed, and provisioning one just to uninstall from it
             // would be busywork. The message must not send the caller to
             // node_create though: that step is no longer part of any path.
             RootDirHandle canonical = TypedRootDirProvisioner.find(
-                    workspaceService, tenantId, projectId,
-                    NodeHandler.TYPE, NodeHandler.DEFAULT_LABEL);
+                    workspaceService, tenantId, projectId, NodeHandler.TYPE, NodeHandler.DEFAULT_LABEL);
             if (canonical == null) {
-                throw new ToolException(
-                        "No Node workspace exists in project " + projectId
-                                + " — nothing is installed, so there is nothing "
-                                + "to uninstall.");
+                throw new ToolException("No Node workspace exists in project " + projectId
+                        + " — nothing is installed, so there is nothing "
+                        + "to uninstall.");
             }
             return canonical;
         }
-        return workspaceService.getRootDir(tenantId, projectId, workingDir.get())
+        return workspaceService
+                .getRootDir(tenantId, projectId, workingDir.get())
                 .orElseThrow(() -> new ToolException(
-                        "Working RootDir '" + workingDir.get()
-                                + "' not found in project " + projectId));
+                        "Working RootDir '" + workingDir.get() + "' not found in project " + projectId));
     }
-
 }

@@ -24,15 +24,19 @@ class ZaphodHeadToolRestrictionTest {
         // Recipe made a tool adjustment → effective set is materialised
         // (non-null). The engine argument must never be consulted here.
         Set<String> effective = new LinkedHashSet<>(Set.of(
-                "respond", "doc_read", "process_spawn", "process_steer",
-                "cross_process_create", "hactar_run", "process_status"));
+                "respond",
+                "doc_read",
+                "process_spawn",
+                "process_steer",
+                "cross_process_create",
+                "hactar_run",
+                "process_status"));
 
         Set<String> restricted = ZaphodEngine.restrictHeadTools(effective, null);
 
         assertThat(restricted)
                 .contains("respond", "doc_read", "process_status")
-                .doesNotContain("process_spawn", "process_steer",
-                        "cross_process_create", "hactar_run");
+                .doesNotContain("process_spawn", "process_steer", "cross_process_create", "hactar_run");
     }
 
     @Test
@@ -41,14 +45,11 @@ class ZaphodHeadToolRestrictionTest {
         // adjustment. The exclusion must still bite against the engine's
         // own default set — otherwise the head keeps process_spawn.
         ThinkEngine engine = mock(ThinkEngine.class);
-        when(engine.allowedTools()).thenReturn(Set.of(
-                "respond", "process_spawn", "process_stop"));
+        when(engine.allowedTools()).thenReturn(Set.of("respond", "process_spawn", "process_stop"));
 
         Set<String> restricted = ZaphodEngine.restrictHeadTools(null, engine);
 
-        assertThat(restricted)
-                .contains("respond")
-                .doesNotContain("process_spawn", "process_stop");
+        assertThat(restricted).contains("respond").doesNotContain("process_spawn", "process_stop");
     }
 
     @Test
@@ -56,14 +57,25 @@ class ZaphodHeadToolRestrictionTest {
         // Read-only process introspection cannot fan out and stays —
         // over-stripping would break head recipes that legitimately
         // glance at process state.
-        Set<String> effective = Set.of(
-                "process_list", "process_status", "process_history_text",
-                "process_spawn");
+        Set<String> effective = Set.of("process_list", "process_status", "process_history_text", "process_spawn");
 
         Set<String> restricted = ZaphodEngine.restrictHeadTools(effective, null);
 
         assertThat(restricted)
                 .contains("process_list", "process_status", "process_history_text")
                 .doesNotContain("process_spawn");
+    }
+
+    @Test
+    void withoutToolPool_switchesThePoolOff_andKeepsTheRecipeParams() {
+        // The pool would otherwise hand the stripped orchestration family
+        // back per turn.
+        java.util.Map<String, Object> params = ZaphodEngine.withoutToolPool(java.util.Map.of("model", "default:fast"));
+
+        assertThat(params)
+                .containsEntry(de.mhus.vance.brain.thinkengine.ThinkEngine.PARAM_TOOL_POOL, Boolean.FALSE)
+                .containsEntry("model", "default:fast");
+        assertThat(ZaphodEngine.withoutToolPool(null))
+                .containsEntry(de.mhus.vance.brain.thinkengine.ThinkEngine.PARAM_TOOL_POOL, Boolean.FALSE);
     }
 }

@@ -1,8 +1,9 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,26 +29,40 @@ public class DocRemoveTagTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_remove_tag"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_remove_tag";
+    }
+
+    @Override
+    public String description() {
         return "Remove a tag from a document. No-op when the tag isn't there.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("tags", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "tags", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument doc = support.loadDocumentForWrite(params, ctx, de.mhus.vance.shared.permission.Action.WRITE);
         String tag = KindToolSupport.requireString(params, "tag");
-        List<String> tags = doc.getTags() == null
-                ? new ArrayList<>()
-                : new ArrayList<>(doc.getTags());
+        List<String> tags = doc.getTags() == null ? new ArrayList<>() : new ArrayList<>(doc.getTags());
         boolean removed = tags.remove(tag);
         support.buffer().flush(ctx.processId(), doc.getId());
-        DocumentDocument saved = support.documentService().update(
-                doc.getId(), null, tags, null, null, support.writeActor(ctx, doc));
+        DocumentDocument saved =
+                support.documentService().update(doc.getId(), null, tags, null, null, support.writeActor(ctx, doc));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", saved.getId());
         out.put("tag", tag);

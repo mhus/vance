@@ -8,6 +8,7 @@ import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,7 +86,7 @@ public class AiModelsDiscoverTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("admin", "aimodels");
+        return Set.of(ToolLabels.OPERATOR, "admin", "aimodels");
     }
 
     @Override

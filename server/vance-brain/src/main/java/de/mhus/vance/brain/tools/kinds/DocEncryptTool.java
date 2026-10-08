@@ -9,6 +9,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -137,7 +138,7 @@ public class DocEncryptTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write", "document", "eddie");
+        return Set.of(ToolLabels.WORKER, "write", "document", "eddie");
     }
 
     @Override

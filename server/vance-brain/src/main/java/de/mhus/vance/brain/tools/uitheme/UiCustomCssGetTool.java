@@ -5,6 +5,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -57,7 +58,7 @@ public class UiCustomCssGetTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("uitheme", "read");
+        return Set.of(ToolLabels.OPERATOR, "uitheme", "read");
     }
 
     @Override

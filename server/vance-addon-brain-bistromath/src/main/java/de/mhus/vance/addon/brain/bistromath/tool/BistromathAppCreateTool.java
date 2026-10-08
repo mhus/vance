@@ -7,6 +7,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,30 +33,43 @@ import org.springframework.stereotype.Component;
 public class BistromathAppCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "Target folder (e.g. 'apps/invoices'). "
-                                + "_app.yaml, main.yaml (the view) and main.js (the "
-                                + "program) are written inside it."));
-                put("title", Map.of("type", "string"));
-                put("description", Map.of("type", "string"));
-                put("overwrite", Map.of("type", "boolean",
-                        "description", "Replace an existing manifest. Default false."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Target folder (e.g. 'apps/invoices'). "
+                                            + "_app.yaml, main.yaml (the view) and main.js (the "
+                                            + "program) are written inside it."));
+                    put("title", Map.of("type", "string"));
+                    put("description", Map.of("type", "string"));
+                    put(
+                            "overwrite",
+                            Map.of("type", "boolean", "description", "Replace an existing manifest. Default false."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final BistromathApplication application;
 
-    public BistromathAppCreateTool(EddieContext eddieContext,
-                                   BistromathApplication application) {
+    public BistromathAppCreateTool(EddieContext eddieContext, BistromathApplication application) {
         this.eddieContext = eddieContext;
         this.application = application;
     }
 
-    @Override public String name() { return "bistromath_app_create"; }
+    @Override
+    public String name() {
+        return "bistromath_app_create";
+    }
 
     @Override
     public String description() {
@@ -70,13 +84,20 @@ public class BistromathAppCreateTool implements Tool {
                 + "run app_rebuild to check them.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "bistromath");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "bistromath");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -91,9 +112,8 @@ public class BistromathAppCreateTool implements Tool {
         appParams.remove("overwrite");
         appParams.remove("projectId");
 
-        VanceApplication.CreateResult result = application.create(
-                new VanceApplication.CreateContext(ctx.tenantId(), project.getName(), folder,
-                        ctx.userId(), ctx.processId(), overwrite, appParams));
+        VanceApplication.CreateResult result = application.create(new VanceApplication.CreateContext(
+                ctx.tenantId(), project.getName(), folder, ctx.userId(), ctx.processId(), overwrite, appParams));
 
         log.info("BistromathAppCreateTool folder='{}'", folder);
         return result.toMap();

@@ -7,6 +7,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,7 +70,7 @@ public class ScribbleCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "scribble");
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "scribble");
     }
 
     @Override

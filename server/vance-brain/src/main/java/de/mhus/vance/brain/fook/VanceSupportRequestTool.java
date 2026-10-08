@@ -5,6 +5,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,14 +73,12 @@ public class VanceSupportRequestTool implements Tool {
      *  Bounded LRU so finished processes' counters can't accumulate without
      *  limit; evicting a long-idle process's counter is safe (it's done). */
     private final Map<String, AtomicInteger> callCountByProcess =
-            java.util.Collections.synchronizedMap(
-                    new java.util.LinkedHashMap<>(256, 0.75f, true) {
-                        @Override
-                        protected boolean removeEldestEntry(
-                                Map.Entry<String, AtomicInteger> eldest) {
-                            return size() > MAX_TRACKED_PROCESSES;
-                        }
-                    });
+            java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, AtomicInteger> eldest) {
+                    return size() > MAX_TRACKED_PROCESSES;
+                }
+            });
 
     // ─── metadata ───────────────────────────────────────────────────
 
@@ -116,7 +115,7 @@ public class VanceSupportRequestTool implements Tool {
     public Set<String> labels() {
         // "write" because it persists a ticket; "side-effect" because
         // it sends an inbox notification. Plan-mode strips both.
-        return Set.of("write", "side-effect");
+        return Set.of(ToolLabels.WORKER, "write", "side-effect");
     }
 
     @Override
@@ -127,7 +126,8 @@ public class VanceSupportRequestTool implements Tool {
     private static Map<String, Object> buildSchema() {
         Map<String, Object> textProp = new LinkedHashMap<>();
         textProp.put("type", "string");
-        textProp.put("description",
+        textProp.put(
+                "description",
                 "Required. The whole report goes here, free-form. Be "
                         + "concrete: what happened, what you expected, "
                         + "steps to reproduce if applicable. Markdown is "
@@ -153,21 +153,20 @@ public class VanceSupportRequestTool implements Tool {
      * successful call. Each alias hit is logged at INFO so we can
      * spot if the description tweak isn't enough and re-tune.
      */
-    private static final List<String> TEXT_ALIASES =
-            List.of("description", "message", "body", "report", "content");
+    private static final List<String> TEXT_ALIASES = List.of("description", "message", "body", "report", "content");
 
     // ─── invoke ─────────────────────────────────────────────────────
 
     @Override
-    public Map<String, Object> invoke(
-            Map<String, Object> params, ToolInvocationContext ctx) {
+    public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (!enabled) {
             // Feedback disabled brain-wide: don't queue, don't burn the
             // per-process budget, and tell the model plainly so it
             // doesn't retry.
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("status", "disabled");
-            out.put("note",
+            out.put(
+                    "note",
                     "Feedback (Fook) is disabled on this brain — your report "
                             + "was NOT submitted. Do not retry. Let the user "
                             + "know that in-app feedback/support reporting is "
@@ -176,33 +175,28 @@ public class VanceSupportRequestTool implements Tool {
         }
         String processId = ctx.processId();
         if (processId == null || processId.isBlank()) {
-            throw new ToolException(
-                    "vance_support_request must be called from a think-process");
+            throw new ToolException("vance_support_request must be called from a think-process");
         }
         if (ctx.userId() == null || ctx.userId().isBlank()) {
-            throw new ToolException(
-                    "vance_support_request needs an authenticated userId");
+            throw new ToolException("vance_support_request needs an authenticated userId");
         }
         if (ctx.tenantId() == null || ctx.tenantId().isBlank()) {
-            throw new ToolException(
-                    "vance_support_request needs a tenantId");
+            throw new ToolException("vance_support_request needs a tenantId");
         }
 
         // Rate-limit: count BEFORE doing any other work so a barrage
         // of bad params doesn't burn through the budget. Increment is
         // atomic; we roll back the increment when over the cap so
         // future legit calls don't get blocked by the failed attempts.
-        AtomicInteger counter = callCountByProcess.computeIfAbsent(
-                processId, k -> new AtomicInteger(0));
+        AtomicInteger counter = callCountByProcess.computeIfAbsent(processId, k -> new AtomicInteger(0));
         int after = counter.incrementAndGet();
         if (after > MAX_CALLS_PER_PROCESS) {
             counter.decrementAndGet();
-            throw new ToolException(
-                    "Submission budget exhausted (max "
-                            + MAX_CALLS_PER_PROCESS + " per process). "
-                            + "If you're hitting this, review your previous "
-                            + "submissions — they may already cover what "
-                            + "you're trying to report.");
+            throw new ToolException("Submission budget exhausted (max "
+                    + MAX_CALLS_PER_PROCESS + " per process). "
+                    + "If you're hitting this, review your previous "
+                    + "submissions — they may already cover what "
+                    + "you're trying to report.");
         }
 
         String text = readTextOrAlias(params, processId);
@@ -223,7 +217,8 @@ public class VanceSupportRequestTool implements Tool {
         out.put("submissionId", submissionId);
         out.put("status", "queued");
         out.put("remainingBudget", MAX_CALLS_PER_PROCESS - after);
-        out.put("note",
+        out.put(
+                "note",
                 "Fook is triaging your submission asynchronously. The "
                         + "user will receive an inbox item with the "
                         + "outcome (new ticket / merged into existing / "
@@ -236,8 +231,7 @@ public class VanceSupportRequestTool implements Tool {
     private TicketContext buildContext(ToolInvocationContext ctx) {
         String recipe = null;
         String engine = null;
-        Optional<ThinkProcessDocument> process =
-                thinkProcessService.findById(ctx.processId());
+        Optional<ThinkProcessDocument> process = thinkProcessService.findById(ctx.processId());
         if (process.isPresent()) {
             recipe = process.get().getRecipeName();
             engine = process.get().getThinkEngine();
@@ -257,17 +251,15 @@ public class VanceSupportRequestTool implements Tool {
             for (String alias : TEXT_ALIASES) {
                 Object aliasVal = params.get(alias);
                 if (aliasVal != null && !aliasVal.toString().isBlank()) {
-                    log.info("vance_support_request process='{}' accepted alias '{}' for 'text'",
-                            processId, alias);
+                    log.info("vance_support_request process='{}' accepted alias '{}' for 'text'", processId, alias);
                     raw = aliasVal;
                     break;
                 }
             }
         }
         if (raw == null) {
-            throw new ToolException(
-                    "'text' is required (a single string parameter named 'text'"
-                            + " — do not call it 'description', 'message', or 'body')");
+            throw new ToolException("'text' is required (a single string parameter named 'text'"
+                    + " — do not call it 'description', 'message', or 'body')");
         }
         String s = raw.toString();
         if (s.isBlank()) {

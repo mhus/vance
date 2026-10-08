@@ -8,6 +8,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -85,7 +86,7 @@ public class WorkPageBlockAppendTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "workpage");
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "workpage");
     }
 
     @Override

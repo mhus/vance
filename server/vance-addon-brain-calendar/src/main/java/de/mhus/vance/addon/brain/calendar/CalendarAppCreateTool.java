@@ -6,7 +6,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import java.util.ArrayList;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,141 +33,221 @@ import org.springframework.stereotype.Component;
 public class CalendarAppCreateTool implements Tool {
 
     private static final Map<String, Object> LANE_ITEM_SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("name", Map.of(
-                        "type", "string",
-                        "description", "Lane id — short, "
-                                + "filesystem-safe (lowercase, "
-                                + "alphanumeric, dashes). Becomes "
-                                + "the sub-folder name."));
-                put("title", Map.of(
-                        "type", "string",
-                        "description", "Display label. Defaults to "
-                                + "the lane name."));
-                put("color", Map.of(
-                        "type", "string",
-                        "description", "Palette name (blue/green/red/"
-                                + "orange/yellow/purple/pink/teal/"
-                                + "gray) or any CSS color."));
-                put("order", Map.of(
-                        "type", "integer",
-                        "description", "Sort position in Gantt. "
-                                + "Auto-assigned when missing."));
-            }},
-            "required", List.of("name"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "name",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Lane id — short, "
+                                            + "filesystem-safe (lowercase, "
+                                            + "alphanumeric, dashes). Becomes "
+                                            + "the sub-folder name."));
+                    put(
+                            "title",
+                            Map.of("type", "string", "description", "Display label. Defaults to " + "the lane name."));
+                    put(
+                            "color",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Palette name (blue/green/red/"
+                                            + "orange/yellow/purple/pink/teal/"
+                                            + "gray) or any CSS color."));
+                    put(
+                            "order",
+                            Map.of(
+                                    "type",
+                                    "integer",
+                                    "description",
+                                    "Sort position in Gantt. " + "Auto-assigned when missing."));
+                }
+            },
+            "required",
+            List.of("name"));
 
     private static final Map<String, Object> EVENT_ITEM_SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("title", Map.of("type", "string",
-                        "description", "Event title. Required."));
-                put("start", Map.of("type", "string",
-                        "description", "ISO-8601 date or date-time. Required. "
-                                + "All-day: '2026-06-12'. Timed: '2026-06-12T09:00' "
-                                + "or with offset '2026-06-12T09:00:00+02:00'."));
-                put("end", Map.of("type", "string",
-                        "description", "ISO-8601 end. Same format as start."));
-                put("allDay", Map.of("type", "boolean",
-                        "description", "True for full-day events. "
-                                + "start/end must be date-only strings then."));
-                put("lane", Map.of("type", "string",
-                        "description", "Lane name this event belongs to "
-                                + "(e.g. 'design', 'backend'). Auto-creates "
-                                + "the lane if it's not in `lanes`. Default "
-                                + "lane is 'common' (for cross-team events "
-                                + "like Sprint Planning, Standups, Reviews)."));
-                put("recurrence", Map.of("type", "string",
-                        "description", "RFC 5545 RRULE, e.g. "
-                                + "'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;UNTIL=20260626T000000Z'."));
-                put("location", Map.of("type", "string"));
-                put("attendees", Map.of("type", "array",
-                        "items", Map.of("type", "string")));
-                put("tags", Map.of("type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "Free-form tags. `milestone`/`critical` "
-                                + "make events stand out in the Gantt."));
-                put("color", Map.of("type", "string"));
-                put("notes", Map.of("type", "string"));
-            }},
-            "required", List.of("title", "start"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("title", Map.of("type", "string", "description", "Event title. Required."));
+                    put(
+                            "start",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "ISO-8601 date or date-time. Required. "
+                                            + "All-day: '2026-06-12'. Timed: '2026-06-12T09:00' "
+                                            + "or with offset '2026-06-12T09:00:00+02:00'."));
+                    put("end", Map.of("type", "string", "description", "ISO-8601 end. Same format as start."));
+                    put(
+                            "allDay",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "True for full-day events. " + "start/end must be date-only strings then."));
+                    put(
+                            "lane",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Lane name this event belongs to "
+                                            + "(e.g. 'design', 'backend'). Auto-creates "
+                                            + "the lane if it's not in `lanes`. Default "
+                                            + "lane is 'common' (for cross-team events "
+                                            + "like Sprint Planning, Standups, Reviews)."));
+                    put(
+                            "recurrence",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "RFC 5545 RRULE, e.g. "
+                                            + "'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;UNTIL=20260626T000000Z'."));
+                    put("location", Map.of("type", "string"));
+                    put("attendees", Map.of("type", "array", "items", Map.of("type", "string")));
+                    put(
+                            "tags",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "Free-form tags. `milestone`/`critical` " + "make events stand out in the Gantt."));
+                    put("color", Map.of("type", "string"));
+                    put("notes", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("title", "start"));
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of(
-                        "type", "string",
-                        "description", "Folder for the new calendar "
-                                + "app. Created as needed. The "
-                                + "manifest will live at "
-                                + "<folder>/_app.yaml."));
-                put("title", Map.of(
-                        "type", "string",
-                        "description", "Display title for the app "
-                                + "(shown in Gantt header etc.)."));
-                put("description", Map.of(
-                        "type", "string",
-                        "description", "Optional description."));
-                put("lanes", Map.of(
-                        "type", "array",
-                        "items", LANE_ITEM_SCHEMA,
-                        "description", "Lanes for the planning suite. "
-                                + "Each lane becomes a sub-folder. "
-                                + "Order in this list = render order "
-                                + "in the Gantt (overridable per "
-                                + "lane via `order`). Lanes referenced "
-                                + "by events but not listed here are "
-                                + "auto-added with defaults. "
-                                + "ACCEPTS SHORTHAND: each entry can "
-                                + "be either an object "
-                                + "({name, title?, color?, order?}) "
-                                + "OR just the lane-name as a string "
-                                + "— e.g. lanes=['design','backend'] "
-                                + "is equivalent to "
-                                + "lanes=[{name:'design'},{name:'backend'}]."));
-                put("events", Map.of(
-                        "type", "array",
-                        "items", EVENT_ITEM_SCHEMA,
-                        "description", "ONE-SHOT FORM. When you pass "
-                                + "events here, the tool writes the "
-                                + "manifest, dispatches events to "
-                                + "their lanes' source files, AND "
-                                + "auto-runs app_rebuild — all in "
-                                + "this single call. The result's "
-                                + "`artefacts` array carries the "
-                                + "Gantt + Conflicts paths to embed "
-                                + "in chat. Use this for full sprint-"
-                                + "plan setup in one tool call."));
-                put("window", Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                                "from", Map.of("type", "string",
-                                        "description", "ISO date, e.g. 2026-06-01."),
-                                "until", Map.of("type", "string",
-                                        "description", "ISO date.")),
-                        "description", "Optional date window for the "
-                                + "Gantt rendering."));
-                put("overwrite", Map.of(
-                        "type", "boolean",
-                        "description", "Allow replacing an existing "
-                                + "_app.yaml at this path. Default "
-                                + "false — fails if the file exists."));
-                put("projectId", Map.of(
-                        "type", "string",
-                        "description", "Default: active project."));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Folder for the new calendar "
+                                            + "app. Created as needed. The "
+                                            + "manifest will live at "
+                                            + "<folder>/_app.yaml."));
+                    put(
+                            "title",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Display title for the app " + "(shown in Gantt header etc.)."));
+                    put(
+                            "description",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Optional description."));
+                    put(
+                            "lanes",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    LANE_ITEM_SCHEMA,
+                                    "description",
+                                    "Lanes for the planning suite. "
+                                            + "Each lane becomes a sub-folder. "
+                                            + "Order in this list = render order "
+                                            + "in the Gantt (overridable per "
+                                            + "lane via `order`). Lanes referenced "
+                                            + "by events but not listed here are "
+                                            + "auto-added with defaults. "
+                                            + "ACCEPTS SHORTHAND: each entry can "
+                                            + "be either an object "
+                                            + "({name, title?, color?, order?}) "
+                                            + "OR just the lane-name as a string "
+                                            + "— e.g. lanes=['design','backend'] "
+                                            + "is equivalent to "
+                                            + "lanes=[{name:'design'},{name:'backend'}]."));
+                    put(
+                            "events",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    EVENT_ITEM_SCHEMA,
+                                    "description",
+                                    "ONE-SHOT FORM. When you pass "
+                                            + "events here, the tool writes the "
+                                            + "manifest, dispatches events to "
+                                            + "their lanes' source files, AND "
+                                            + "auto-runs app_rebuild — all in "
+                                            + "this single call. The result's "
+                                            + "`artefacts` array carries the "
+                                            + "Gantt + Conflicts paths to embed "
+                                            + "in chat. Use this for full sprint-"
+                                            + "plan setup in one tool call."));
+                    put(
+                            "window",
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "properties",
+                                    Map.of(
+                                            "from",
+                                                    Map.of(
+                                                            "type",
+                                                            "string",
+                                                            "description",
+                                                            "ISO date, e.g. 2026-06-01."),
+                                            "until", Map.of("type", "string", "description", "ISO date.")),
+                                    "description",
+                                    "Optional date window for the " + "Gantt rendering."));
+                    put(
+                            "overwrite",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Allow replacing an existing "
+                                            + "_app.yaml at this path. Default "
+                                            + "false — fails if the file exists."));
+                    put(
+                            "projectId",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Default: active project."));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final CalendarsApplication calendarsApplication;
 
-    public CalendarAppCreateTool(EddieContext eddieContext,
-                                 CalendarsApplication calendarsApplication) {
+    public CalendarAppCreateTool(EddieContext eddieContext, CalendarsApplication calendarsApplication) {
         this.eddieContext = eddieContext;
         this.calendarsApplication = calendarsApplication;
     }
 
-    @Override public String name() { return "calendar_app_create"; }
+    @Override
+    public String name() {
+        return "calendar_app_create";
+    }
 
     @Override
     public String description() {
@@ -183,11 +263,14 @@ public class CalendarAppCreateTool implements Tool {
                 + "— pass them here instead.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "calendar", "application");
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "calendar", "application");
     }
 
     @Override
@@ -210,16 +293,21 @@ public class CalendarAppCreateTool implements Tool {
         copyIfPresent(params, createParams, "events");
 
         VanceApplication.CreateContext cc = new VanceApplication.CreateContext(
-                ctx.tenantId(), project.getName(), normaliseFolder(folder),
-                ctx.userId(), ctx.processId(),
+                ctx.tenantId(),
+                project.getName(),
+                normaliseFolder(folder),
+                ctx.userId(),
+                ctx.processId(),
                 paramBoolean(params, "overwrite"),
                 createParams);
 
         VanceApplication.CreateResult result = calendarsApplication.create(cc);
 
-        log.info("CalendarAppCreateTool tenant='{}' folder='{}' "
-                        + "lanes={} manifestPath='{}'",
-                ctx.tenantId(), folder, result.lanes().size(),
+        log.info(
+                "CalendarAppCreateTool tenant='{}' folder='{}' " + "lanes={} manifestPath='{}'",
+                ctx.tenantId(),
+                folder,
+                result.lanes().size(),
                 result.manifestPath());
 
         return result.toMap();

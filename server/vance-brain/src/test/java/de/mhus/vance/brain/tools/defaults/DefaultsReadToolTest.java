@@ -84,7 +84,7 @@ class DefaultsReadToolTest {
 
     @Test
     void labels_andName() {
-        assertThat(tool.labels()).containsExactly("defaults");
+        assertThat(tool.labels()).containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "defaults");
         assertThat(tool.primary()).isFalse();
         assertThat(tool.name()).isEqualTo("defaults_read");
     }

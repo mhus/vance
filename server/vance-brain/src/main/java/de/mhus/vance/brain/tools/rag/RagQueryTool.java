@@ -1,11 +1,12 @@
 package de.mhus.vance.brain.tools.rag;
 
 import de.mhus.vance.brain.rag.RagService;
+import de.mhus.vance.shared.rag.RagBackend.SearchHit;
+import de.mhus.vance.shared.rag.RagDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.rag.RagBackend.SearchHit;
-import de.mhus.vance.shared.rag.RagDocument;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,17 +28,23 @@ public class RagQueryTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "RAG name within the current project."),
-                    "query", Map.of(
-                            "type", "string",
-                            "description", "Natural-language query."),
-                    "topK", Map.of(
-                            "type", "integer",
-                            "description", "Number of hits to return (1–"
-                                    + MAX_TOP_K + ", default " + DEFAULT_TOP_K + ").")),
+            "properties",
+                    Map.of(
+                            "name",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "RAG name within the current project."),
+                            "query",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Natural-language query."),
+                            "topK",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Number of hits to return (1–" + MAX_TOP_K + ", default " + DEFAULT_TOP_K
+                                                    + ").")),
             "required", List.of("name", "query"));
 
     private final RagService ragService;
@@ -66,7 +73,7 @@ public class RagQueryTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("read-only");
+        return java.util.Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -79,9 +86,9 @@ public class RagQueryTool implements Tool {
         String query = stringOrThrow(params, "query");
         int topK = clampTopK(params == null ? null : params.get("topK"));
 
-        RagDocument rag = ragService.findByName(ctx.tenantId(), projectId, name)
-                .orElseThrow(() -> new ToolException("Unknown RAG '" + name
-                        + "' in project '" + projectId + "'"));
+        RagDocument rag = ragService
+                .findByName(ctx.tenantId(), projectId, name)
+                .orElseThrow(() -> new ToolException("Unknown RAG '" + name + "' in project '" + projectId + "'"));
         try {
             List<SearchHit> hits = ragService.query(rag.getId(), query, topK);
             List<Map<String, Object>> rows = new ArrayList<>(hits.size());
@@ -91,7 +98,8 @@ public class RagQueryTool implements Tool {
                 row.put("sourceRef", hit.chunk().getSourceRef());
                 row.put("position", hit.chunk().getPosition());
                 row.put("content", hit.chunk().getContent());
-                if (hit.chunk().getMetadata() != null && !hit.chunk().getMetadata().isEmpty()) {
+                if (hit.chunk().getMetadata() != null
+                        && !hit.chunk().getMetadata().isEmpty()) {
                     row.put("metadata", hit.chunk().getMetadata());
                 }
                 rows.add(row);

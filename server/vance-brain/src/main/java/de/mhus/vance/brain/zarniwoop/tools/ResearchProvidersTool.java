@@ -5,6 +5,7 @@ import de.mhus.vance.brain.zarniwoop.ZarniwoopException;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
 import de.mhus.vance.toolpack.research.QuotaStatus;
 import de.mhus.vance.toolpack.research.SearchProviderInstance;
@@ -84,7 +85,7 @@ public class ResearchProvidersTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override

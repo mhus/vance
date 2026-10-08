@@ -4,6 +4,7 @@ import de.mhus.vance.shared.settings.TimezoneResolver;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -80,7 +81,7 @@ public class CurrentTimeTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override

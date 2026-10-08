@@ -7,6 +7,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,16 +21,26 @@ import org.springframework.stereotype.Component;
 public class CanvasCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string",
-                        "description", "Target document path (without leading slash). "
-                                + "Auto-suffixed with `.canvas.yaml` if no extension is given."));
-                put("title", Map.of("type", "string"));
-                put("description", Map.of("type", "string"));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "path",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Target document path (without leading slash). "
+                                            + "Auto-suffixed with `.canvas.yaml` if no extension is given."));
+                    put("title", Map.of("type", "string"));
+                    put("description", Map.of("type", "string"));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path"));
 
     private final EddieContext eddieContext;
     private final CanvasService canvasService;
@@ -39,7 +50,10 @@ public class CanvasCreateTool implements Tool {
         this.canvasService = canvasService;
     }
 
-    @Override public String name() { return "canvas_create"; }
+    @Override
+    public String name() {
+        return "canvas_create";
+    }
 
     @Override
     public String description() {
@@ -49,13 +63,20 @@ public class CanvasCreateTool implements Tool {
                 + "nodes with `canvas_node_add` and connect them with `canvas_edge_add`.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "canvas");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "canvas");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -65,8 +86,8 @@ public class CanvasCreateTool implements Tool {
         String description = CanvasToolSupport.paramString(params, "description");
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        DocumentDocument stored = canvasService.create(
-                ctx.tenantId(), project.getName(), path, title, description, ctx.userId());
+        DocumentDocument stored =
+                canvasService.create(ctx.tenantId(), project.getName(), path, title, description, ctx.userId());
 
         log.info("CanvasCreateTool path='{}' title='{}'", stored.getPath(), title);
 
@@ -74,8 +95,7 @@ public class CanvasCreateTool implements Tool {
         result.put("path", stored.getPath());
         result.put("id", stored.getId());
         if (title != null) result.put("title", title);
-        result.put("nextStep", "Add nodes via `canvas_node_add`, connect them via "
-                + "`canvas_edge_add`.");
+        result.put("nextStep", "Add nodes via `canvas_node_add`, connect them via " + "`canvas_edge_add`.");
         return result;
     }
 }

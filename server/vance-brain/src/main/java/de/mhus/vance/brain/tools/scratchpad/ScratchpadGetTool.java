@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.scratchpad;
 
+import de.mhus.vance.shared.memory.MemoryDocument;
+import de.mhus.vance.shared.memory.ScratchpadService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.memory.MemoryDocument;
-import de.mhus.vance.shared.memory.ScratchpadService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,10 +24,12 @@ public class ScratchpadGetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Slot name to read.")),
+            "properties",
+                    Map.of(
+                            "title",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Slot name to read.")),
             "required", List.of("title"));
 
     private final ScratchpadService scratchpad;
@@ -60,7 +63,7 @@ public class ScratchpadGetTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -81,8 +84,9 @@ public class ScratchpadGetTool implements Tool {
             out.put("found", true);
             out.put("content", doc.getContent());
             out.put("memoryId", doc.getId());
-            out.put("createdAt", doc.getCreatedAt() == null
-                    ? null : doc.getCreatedAt().toString());
+            out.put(
+                    "createdAt",
+                    doc.getCreatedAt() == null ? null : doc.getCreatedAt().toString());
         } else {
             out.put("found", false);
             out.put("content", "");

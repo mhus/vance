@@ -1,11 +1,12 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.ListCodec;
 import de.mhus.vance.shared.document.kind.ListDocument;
 import de.mhus.vance.shared.document.kind.ListItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,22 +33,34 @@ public class ListAppendTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "list_append"; }
+    @Override
+    public String name() {
+        return "list_append";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Append a new item with the given text to the end of a `kind: list` document.";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("kind-list", "eddie", "write", "document"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
 
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-list", "eddie", "write", "document");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "list");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "list");
         String text = KindToolSupport.requireRawString(params, "text");
         ListDocument list = ListCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<ListItem> items = new ArrayList<>(list.items());

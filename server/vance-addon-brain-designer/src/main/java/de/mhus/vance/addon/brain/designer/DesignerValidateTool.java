@@ -5,6 +5,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +68,7 @@ public class DesignerValidateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "read", "document", "designer", "validate");
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "designer", "validate");
     }
 
     @Override

@@ -4,6 +4,7 @@ import de.mhus.vance.api.hactar.HactarState;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +42,11 @@ public class HactarStatusTool extends HactarBaseTool {
     @Override
     public String name() {
         return "hactar_status";
+    }
+
+    @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of(ToolLabels.INTERNAL, "read-only");
     }
 
     @Override

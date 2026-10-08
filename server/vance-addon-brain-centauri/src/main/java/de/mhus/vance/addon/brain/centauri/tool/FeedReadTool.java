@@ -14,6 +14,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.feed.FeedDirection;
 import de.mhus.vance.toolpack.feed.FeedFilter;
 import de.mhus.vance.toolpack.feed.FeedItem;
@@ -163,7 +164,7 @@ public class FeedReadTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "read-only", "feeds");
+        return Set.of(ToolLabels.WORKER, "eddie", "read-only", "feeds");
     }
 
     @Override

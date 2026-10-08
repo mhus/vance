@@ -8,6 +8,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,32 +28,40 @@ import org.springframework.stereotype.Component;
 public class JournalQueryTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "The journal root folder (contains _app.yaml)."));
-                put("from", Map.of("type", "string", "description", "ISO date lower bound (inclusive)."));
-                put("to", Map.of("type", "string", "description", "ISO date upper bound (inclusive)."));
-                put("mood", Map.of("type", "string"));
-                put("tag", Map.of("type", "string"));
-                put("limit", Map.of("type", "integer", "description", "Max entries (default 30)."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of("type", "string", "description", "The journal root folder (contains _app.yaml)."));
+                    put("from", Map.of("type", "string", "description", "ISO date lower bound (inclusive)."));
+                    put("to", Map.of("type", "string", "description", "ISO date upper bound (inclusive)."));
+                    put("mood", Map.of("type", "string"));
+                    put("tag", Map.of("type", "string"));
+                    put("limit", Map.of("type", "integer", "description", "Max entries (default 30)."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final JournalFolderReader folderReader;
     private final JournalService journalService;
 
-    public JournalQueryTool(EddieContext eddieContext,
-                            JournalFolderReader folderReader,
-                            JournalService journalService) {
+    public JournalQueryTool(
+            EddieContext eddieContext, JournalFolderReader folderReader, JournalService journalService) {
         this.eddieContext = eddieContext;
         this.folderReader = folderReader;
         this.journalService = journalService;
     }
 
-    @Override public String name() { return "journal_query"; }
+    @Override
+    public String name() {
+        return "journal_query";
+    }
 
     @Override
     public String description() {
@@ -61,13 +70,20 @@ public class JournalQueryTool implements Tool {
                 + "title + mood + tags per entry (no body).";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "read", "document", "journal");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "journal");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -111,7 +127,11 @@ public class JournalQueryTool implements Tool {
         Object v = params.get(key);
         if (v instanceof Number n) return n.intValue();
         if (v instanceof String s) {
-            try { return Integer.parseInt(s.trim()); } catch (NumberFormatException ignored) { /* keep */ }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+                /* keep */
+            }
         }
         return fallback;
     }

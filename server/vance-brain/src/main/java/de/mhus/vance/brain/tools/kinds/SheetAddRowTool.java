@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.SheetCodec;
 import de.mhus.vance.shared.document.kind.SheetDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,26 +24,46 @@ public class SheetAddRowTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "sheet_add_row"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "sheet_add_row";
+    }
+
+    @Override
+    public String description() {
         return "Append one row to the sheet's visible row count. Cells in the new row are empty until set via sheet_set_cell.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-sheet", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "sheet");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "sheet");
         SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
-        int currentRows = sheet.rows() == null
-                ? Math.max(highestRow(sheet), 1)
-                : sheet.rows();
+        int currentRows = sheet.rows() == null ? Math.max(highestRow(sheet), 1) : sheet.rows();
         int newRows = currentRows + 1;
-        SheetDocument updated = new SheetDocument(sheet.kind(), sheet.schema(),
-                newRows, sheet.cells(), sheet.columns(), sheet.rowHeights(), sheet.rowBorders(), sheet.extra());
+        SheetDocument updated = new SheetDocument(
+                sheet.kind(),
+                sheet.schema(),
+                newRows,
+                sheet.cells(),
+                sheet.columns(),
+                sheet.rowHeights(),
+                sheet.rowBorders(),
+                sheet.extra());
         support.writeBody(doc, SheetCodec.serialize(updated, doc.getMimeType()), ctx);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", doc.getId());

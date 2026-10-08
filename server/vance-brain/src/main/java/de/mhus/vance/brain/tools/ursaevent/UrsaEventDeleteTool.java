@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.ursaevent;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,31 +21,46 @@ import org.springframework.stereotype.Component;
 public class UrsaEventDeleteTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("name", Map.of(
-                "type", "string",
-                "description", "Event name (without .yaml suffix)."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", props,
-                "required", List.of("name"));
+        props.put(
+                "name",
+                Map.of(
+                        "type", "string",
+                        "description", "Event name (without .yaml suffix)."));
+        SCHEMA = Map.of("type", "object", "properties", props, "required", List.of("name"));
     }
 
     private final UrsaEventToolSupport support;
 
-    @Override public String name() { return "event_delete"; }
+    @Override
+    public String name() {
+        return "event_delete";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Delete the project-local copy of an event. Cascade-resolved "
                 + "tenant entries with the same name are untouched. Response "
                 + "carries 'deleted: true|false' (false → no local entry "
                 + "existed; the cascade entry, if any, remains visible).";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write", "events"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "write", "events");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

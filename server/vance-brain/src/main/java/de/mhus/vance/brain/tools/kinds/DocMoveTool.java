@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,23 +30,40 @@ public class DocMoveTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("newPath", Map.of("type", "string",
-                "description", "New path within the same project. Must not already exist."));
+        p.put(
+                "newPath",
+                Map.of("type", "string", "description", "New path within the same project. Must not already exist."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_move"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_move";
+    }
+
+    @Override
+    public String description() {
         return "Rename or move a document to a new path within the same project. The document id "
                 + "stays the same; only `path` and `name` change. Pending buffered writes are "
                 + "flushed first so the rename doesn't lose in-flight content.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -56,8 +74,8 @@ public class DocMoveTool implements Tool {
         support.buffer().flush(ctx.processId(), doc.getId());
         DocumentDocument moved;
         try {
-            moved = support.documentService().update(doc.getId(), null, null, null, newPath,
-                    support.writeActor(ctx, doc));
+            moved = support.documentService()
+                    .update(doc.getId(), null, null, null, newPath, support.writeActor(ctx, doc));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }

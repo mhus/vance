@@ -3,12 +3,13 @@ package de.mhus.vance.brain.tools.worktarget;
 import de.mhus.vance.brain.daemon.DaemonRegistry;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import de.mhus.vance.shared.worktarget.WorkTarget;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.shared.worktarget.WorkTarget;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -88,14 +89,14 @@ public class WorkTargetGetTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("read-only");
+        return java.util.Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        ThinkProcessDocument process = thinkProcessService.findById(ctx.processId())
-                .orElseThrow(() -> new ToolException(
-                        "work_target_get: process '" + ctx.processId() + "' not found"));
+        ThinkProcessDocument process = thinkProcessService
+                .findById(ctx.processId())
+                .orElseThrow(() -> new ToolException("work_target_get: process '" + ctx.processId() + "' not found"));
         WorkTarget current = workTargetService.current(process);
 
         Map<String, Object> available = new LinkedHashMap<>();

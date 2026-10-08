@@ -5,6 +5,7 @@ import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.starred.StarredItem;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -25,7 +26,7 @@ import org.springframework.stereotype.Component;
 public class StarredToolSupport {
 
     /** Labels every tool in this family carries, plus its own read/write label. */
-    static final Set<String> BASE_LABELS = Set.of("starred", "document");
+    static final Set<String> BASE_LABELS = Set.of(ToolLabels.WORKER, "starred", "document");
 
     private final SecurityContextFactory contextFactory;
 
@@ -40,9 +41,8 @@ public class StarredToolSupport {
     public String requireUser(ToolInvocationContext ctx) {
         String user = ctx.userId();
         if (user == null || user.isBlank()) {
-            throw new ToolException(
-                    "No user is bound to this process — a starred list belongs to a person. "
-                            + "Run this from a user session.");
+            throw new ToolException("No user is bound to this process — a starred list belongs to a person. "
+                    + "Run this from a user session.");
         }
         return user;
     }

@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.GraphCodec;
 import de.mhus.vance.shared.document.kind.GraphConfig;
 import de.mhus.vance.shared.document.kind.GraphDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,34 +26,57 @@ public class GraphSetDirectedTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("directed", Map.of("type", "boolean",
-                "description", "true to render arrows on edges, false for plain lines."));
+        p.put(
+                "directed",
+                Map.of("type", "boolean", "description", "true to render arrows on edges, false for plain lines."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "graph_set_directed"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "graph_set_directed";
+    }
+
+    @Override
+    public String description() {
         return "Set the document-level `directed` flag on a `kind: graph` document. "
                 + "Affects rendering only; edges are unchanged.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie", "write", "document"); }
-    @Override public boolean deferred() { return true; }
-    @Override public String searchHint() { return "Graph topology mutation (rare)"; }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-graph", "eddie", "write", "document");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Graph topology mutation (rare)";
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "graph");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "graph");
         Boolean directed = KindToolSupport.paramBoolean(params, "directed");
         if (directed == null) throw new ToolException("Missing or non-boolean parameter 'directed'");
         GraphDocument g = GraphCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
-        GraphDocument updated = new GraphDocument(g.kind(), new GraphConfig(directed),
-                g.nodes(), g.edges(), g.extra());
+        GraphDocument updated = new GraphDocument(g.kind(), new GraphConfig(directed), g.nodes(), g.edges(), g.extra());
         support.writeBody(doc, GraphCodec.serialize(updated, doc.getMimeType()), ctx);
         return Map.of("documentId", doc.getId(), "directed", directed);
     }

@@ -5,6 +5,7 @@ import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,27 +22,32 @@ import org.springframework.stereotype.Component;
 public class KitExportTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("project", Map.of("type", "string",
-                "description", "Project to export from. Defaults to the current project."));
-        properties.put("url", Map.of("type", "string",
-                "description", "Target repo URL. Defaults to manifest.origin.url."));
-        properties.put("path", Map.of("type", "string",
-                "description", "Sub-path inside the repo. Defaults to manifest.origin.path."));
-        properties.put("branch", Map.of("type", "string",
-                "description", "Branch to push. Defaults to manifest.origin.branch."));
-        properties.put("token", Map.of("type", "string",
-                "description", "Auth token for HTTPS pushes."));
-        properties.put("vault_password", Map.of("type", "string",
-                "description",
-                "Vault passphrase used to re-encrypt PASSWORD-settings into the export."));
-        properties.put("commit_message", Map.of("type", "string",
-                "description", "Commit message. Defaults to vance-export: <kit>@<sha>."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of());
+        properties.put(
+                "project",
+                Map.of("type", "string", "description", "Project to export from. Defaults to the current project."));
+        properties.put(
+                "url", Map.of("type", "string", "description", "Target repo URL. Defaults to manifest.origin.url."));
+        properties.put(
+                "path",
+                Map.of("type", "string", "description", "Sub-path inside the repo. Defaults to manifest.origin.path."));
+        properties.put(
+                "branch",
+                Map.of("type", "string", "description", "Branch to push. Defaults to manifest.origin.branch."));
+        properties.put("token", Map.of("type", "string", "description", "Auth token for HTTPS pushes."));
+        properties.put(
+                "vault_password",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Vault passphrase used to re-encrypt PASSWORD-settings into the export."));
+        properties.put(
+                "commit_message",
+                Map.of("type", "string", "description", "Commit message. Defaults to vance-export: <kit>@<sha>."));
+        SCHEMA = Map.of("type", "object", "properties", properties, "required", List.of());
     }
 
     private final KitService kitService;
@@ -72,7 +78,7 @@ public class KitExportTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("executive");
+        return java.util.Set.of(ToolLabels.OPERATOR, "executive");
     }
 
     @Override
@@ -90,9 +96,12 @@ public class KitExportTool implements Tool {
         if (ctx.tenantId() == null) {
             throw new ToolException("kit_export requires a tenant scope");
         }
-        String projectId = KitToolSupport.requireProjectAuthorized(ctx,
+        String projectId = KitToolSupport.requireProjectAuthorized(
+                ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.ADMIN);
+                permissionService,
+                contextFactory,
+                de.mhus.vance.shared.permission.Action.ADMIN);
         KitExportRequestDto request = KitExportRequestDto.builder()
                 .projectId(projectId)
                 .url(KitToolSupport.requireRemoteUrlIfPresent(
@@ -103,7 +112,6 @@ public class KitExportTool implements Tool {
                 .vaultPassword(KitToolSupport.optionalString(params, "vault_password"))
                 .commitMessage(KitToolSupport.optionalString(params, "commit_message"))
                 .build();
-        return KitToolSupport.resultToMap(
-                kitService.export(ctx.tenantId(), request, ctx.userId()));
+        return KitToolSupport.resultToMap(kitService.export(ctx.tenantId(), request, ctx.userId()));
     }
 }

@@ -25,6 +25,7 @@ import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.thinkengine.WorkerEngineTools;
 import de.mhus.vance.brain.thinkengine.loop.EngineLoopProperties;
 import de.mhus.vance.brain.thinkengine.loop.LoopLimits;
 import de.mhus.vance.brain.thinkengine.loop.SafetyStop;
@@ -197,104 +198,18 @@ public class Ford implements ThinkEngine {
     }
 
     /**
-     * Engine-default tool baseline. Until 2026-06-21 Ford returned
-     * an empty set ("no restriction" — the LLM saw every primary
-     * tool in the tenant). That worked, but the manifest was big
-     * enough that Gemini-Flash-class models lost focus and called
-     * variants of the same operation interchangeably (see live tests
-     * with the work-target wrappers).
-     *
-     * <p>Ford now follows the Frankie pattern: a curated default
-     * set plus the {@link de.mhus.vance.brain.tools.worktarget.BaseEngineTools#WORK_TARGET}
-     * layer. Domain tools that a specific recipe needs
-     * ({@code python_*}, {@code research_*}, mutating {@code doc_*})
-     * are pulled in by that recipe via {@code allowedToolsAdd}.
+     * The shared worker core ({@link WorkerEngineTools#CORE}) — the manifest.
+     * Everything else a worker may use comes in through the pool below.
      */
-    private static final Set<String> ENGINE_DEFAULT_TOOLS;
-
-    static {
-        java.util.LinkedHashSet<String> base = new java.util.LinkedHashSet<>();
-        // Discovery / introspection — Ford's bread-and-butter loop
-        base.add("tool_list");
-        base.add("tool_description");
-        base.add("how_do_i");
-        base.add("manual_read");
-        base.add("manual_list");
-        base.add("recipe_describe");
-        base.add("tool_result_read");
-        // Sub-worker spawn — Ford recipes occasionally delegate
-        base.add("process_spawn");
-        base.add("process_status");
-        // User-facing signal
-        base.add("vance_notify");
-        // Basics
-        base.add("current_time");
-        base.add("whoami");
-        // Free-form notes across turns. They have to be named here,
-        // because computeAllowed is (engineDefault ∪ recipe.add) ∖
-        // recipe.remove and anything missing from a non-empty engine
-        // default is excluded outright, not merely undiscovered. Cost is
-        // a name + hint line each rather than a schema each, because all
-        // four declare deferred()==true — primary() alone would not do
-        // it here, since classify() reads deferred() and never asks
-        // primary() on a restricted engine.
-        // Ford's processes are short-lived and slots are process-scoped
-        // (planning/scratchpad-review.md §7.2 R2), so the notes rarely
-        // outlive the task — the point here is that a Ford worker can
-        // park an intermediate finding at all instead of losing it to
-        // compaction mid-task.
-        base.add("scratchpad_set");
-        base.add("scratchpad_get");
-        base.add("scratchpad_list");
-        base.add("scratchpad_delete");
-        // Read-side document operations — common across Ford recipes
-        // (code-read, analyze, quick-lookup). Mutating doc_* / kit_*
-        // / scratch-write paths stay opt-in per recipe.
-        base.add("doc_read");
-        base.add("doc_read_lines");
-        base.add("doc_info");
-        base.add("doc_summary");
-        base.add("doc_list");
-        base.add("doc_list_folders");
-        base.add("doc_list_in_folder");
-        base.add("doc_list_by_tag");
-        base.add("doc_find");
-        base.add("doc_grep");
-        base.add("doc_grep_path");
-        base.add("doc_link");
-        // Research — analyze / web-research / quick-lookup all need
-        // these; pulling them into the default avoids per-recipe
-        // duplication.
-        base.add("web_fetch");
-        base.add("web_search");
-        base.add("research_search");
-        base.add("research_investigate");
-        base.add("research_rich");
-        base.add("research_providers");
-        base.add("memory_search");
-        // Settings read — same rationale as Frankie's baseline: the
-        // read-side counterpart of the creator's `@settings` family,
-        // for workers and analysis recipes instead of setup agents.
-        // Deferred (name + hint via tool_list, schema on demand) and
-        // permission-gated per call (READ on the target project's setting
-        // resource; ADMIN for an explicit `_tenant` read). Lets a Ford
-        // agent answer runtime-config questions — which layer holds
-        // `ai.alias.default.code`, whether a provider apiKey is set, or a
-        // HIDDEN value a tool call needs — without bouncing to the
-        // operator. setting_set stays creator-domain (`@settings`).
-        base.add("setting_get");
-        // Generic file/exec dispatch layer (BaseEngineTools.WORK_TARGET)
-        // — 12 primary wrappers + 2 meta tools + 24 deferred backends.
-        // Recipes pick the active target via params.workTarget and
-        // can defer the backend names out of the LLM manifest with
-        // allowedToolsDefer (see coding.yaml as the reference).
-        base.addAll(de.mhus.vance.brain.tools.worktarget.BaseEngineTools.WORK_TARGET);
-        ENGINE_DEFAULT_TOOLS = java.util.Collections.unmodifiableSet(base);
-    }
-
     @Override
     public Set<String> allowedTools() {
-        return ENGINE_DEFAULT_TOOLS;
+        return WorkerEngineTools.CORE;
+    }
+
+    /** Tools released for workers by label, deferred on top of the core. */
+    @Override
+    public Set<String> toolPoolLabels() {
+        return WorkerEngineTools.POOL_LABELS;
     }
 
     // ──────────────────── Lifecycle ────────────────────

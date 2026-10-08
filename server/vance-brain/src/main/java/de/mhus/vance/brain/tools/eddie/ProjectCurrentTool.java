@@ -1,9 +1,10 @@
 package de.mhus.vance.brain.tools.eddie;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,7 +54,7 @@ public class ProjectCurrentTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "read-only");
+        return Set.of(ToolLabels.INTERNAL, "eddie", "read-only");
     }
 
     @Override
@@ -64,18 +65,16 @@ public class ProjectCurrentTool implements Tool {
         // sessions, where there is no switch step) → null. Without
         // the ctx fallback, this tool reports "no project active"
         // even though the LLM is clearly operating inside one.
-        String name = eddieContext.readActiveProject(ctx)
-                .orElseGet(() -> {
-                    String bound = ctx.projectId();
-                    return (bound == null || bound.isBlank()) ? null : bound;
-                });
+        String name = eddieContext.readActiveProject(ctx).orElseGet(() -> {
+            String bound = ctx.projectId();
+            return (bound == null || bound.isBlank()) ? null : bound;
+        });
         Map<String, Object> out = new LinkedHashMap<>();
         if (name == null) {
             out.put("active", null);
             return out;
         }
-        Optional<ProjectDocument> project =
-                projectService.findByTenantAndName(ctx.tenantId(), name);
+        Optional<ProjectDocument> project = projectService.findByTenantAndName(ctx.tenantId(), name);
         if (project.isEmpty()) {
             // Slot points to a project that vanished — surface that
             // so Eddie can apologise / pick a new one.

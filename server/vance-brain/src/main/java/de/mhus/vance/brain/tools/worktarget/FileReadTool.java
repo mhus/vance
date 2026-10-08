@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.worktarget;
 
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -84,7 +85,7 @@ public class FileReadTool extends AbstractWorkTargetTool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("read-only");
+        return java.util.Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override

@@ -6,6 +6,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +68,7 @@ public class ScribbleOcrTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "read", "document", "scribble");
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "scribble");
     }
 
     @Override

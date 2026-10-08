@@ -8,6 +8,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,46 +22,64 @@ import org.springframework.stereotype.Component;
 public class WorkPageBlockInsertTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string"));
-                put("anchor", Map.of("type", "object",
-                        "description", "Either `{ index: N }` (zero-based, N may "
-                                + "equal block-count for insert-at-end) or "
-                                + "`{ heading: \"text\" }` (insert AT that heading's "
-                                + "position; throws on duplicate headings)."));
-                put("block", Map.of("type", "object"));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path", "anchor", "block"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("path", Map.of("type", "string"));
+                    put(
+                            "anchor",
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "description",
+                                    "Either `{ index: N }` (zero-based, N may "
+                                            + "equal block-count for insert-at-end) or "
+                                            + "`{ heading: \"text\" }` (insert AT that heading's "
+                                            + "position; throws on duplicate headings)."));
+                    put("block", Map.of("type", "object"));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path", "anchor", "block"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
     private final WorkPageService workPageService;
 
-    public WorkPageBlockInsertTool(EddieContext eddieContext,
-                                 DocumentService documentService,
-                                 WorkPageService workPageService) {
+    public WorkPageBlockInsertTool(
+            EddieContext eddieContext, DocumentService documentService, WorkPageService workPageService) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.workPageService = workPageService;
     }
 
-    @Override public String name() { return "workpage_block_insert"; }
+    @Override
+    public String name() {
+        return "workpage_block_insert";
+    }
 
     @Override
     public String description() {
-        return "Insert a block at a specific position. anchor is "
-                + "{ index: N } or { heading: \"text\" }.";
+        return "Insert a block at a specific position. anchor is " + "{ index: N } or { heading: \"text\" }.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "workpage");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "workpage");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -72,12 +91,14 @@ public class WorkPageBlockInsertTool implements Tool {
         if (blockRaw == null) throw new ToolException("block is required");
         Block block = WorkPageService.buildBlock(blockRaw);
 
-        WorkPageToolSupport.Resolved r = WorkPageToolSupport.resolveByPath(
-                eddieContext, documentService, params, ctx);
+        WorkPageToolSupport.Resolved r = WorkPageToolSupport.resolveByPath(eddieContext, documentService, params, ctx);
         DocumentDocument updated = workPageService.insertBlock(r.doc(), anchor, block);
 
-        log.info("WorkPageBlockInsertTool path='{}' anchor='{}' type='{}'",
-                updated.getPath(), anchor, block.getClass().getSimpleName());
+        log.info(
+                "WorkPageBlockInsertTool path='{}' anchor='{}' type='{}'",
+                updated.getPath(),
+                anchor,
+                block.getClass().getSimpleName());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", updated.getPath());

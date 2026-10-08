@@ -9,6 +9,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,22 +29,37 @@ import org.springframework.stereotype.Component;
 public class GtdQueryTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string", "description", "GTD root folder."));
-                put("bucket", Map.of("type", "string",
-                        "description", "inbox | today | upcoming | anytime | someday | trash "
-                                + "(optional; omitted lists every bucket except trash)."));
-                put("includeTrash", Map.of("type", "boolean",
-                        "description", "Include the trash bucket in an unfiltered listing. "
-                                + "Default false."));
-                put("includeDone", Map.of("type", "boolean",
-                        "description", "Include completed actions. Default false."));
-                put("context", Map.of("type", "string"));
-                put("project", Map.of("type", "string"));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "GTD root folder."));
+                    put(
+                            "bucket",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "inbox | today | upcoming | anytime | someday | trash "
+                                            + "(optional; omitted lists every bucket except trash)."));
+                    put(
+                            "includeTrash",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Include the trash bucket in an unfiltered listing. " + "Default false."));
+                    put(
+                            "includeDone",
+                            Map.of("type", "boolean", "description", "Include completed actions. Default false."));
+                    put("context", Map.of("type", "string"));
+                    put("project", Map.of("type", "string"));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final GtdFolderReader folderReader;
@@ -55,7 +71,10 @@ public class GtdQueryTool implements Tool {
         this.gtdService = gtdService;
     }
 
-    @Override public String name() { return "gtd_query"; }
+    @Override
+    public String name() {
+        return "gtd_query";
+    }
 
     @Override
     public String description() {
@@ -66,9 +85,20 @@ public class GtdQueryTool implements Tool {
                 + "stays in its bucket until app_rebuild sweeps it into the trash.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("eddie", "read", "document", "gtd"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "gtd");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -93,8 +123,7 @@ public class GtdQueryTool implements Tool {
             if (wanted == null && e.getKey() == GtdBucket.TRASH && !includeTrash) continue;
             // Same manual order (§8b) the person sees in the app — a list that
             // disagreed with theirs would make "the top three" mean two things.
-            for (GtdAction a : gtdService.applyBucketOrder(
-                    e.getKey(), scan.config(), e.getValue())) {
+            for (GtdAction a : gtdService.applyBucketOrder(e.getKey(), scan.config(), e.getValue())) {
                 if (context != null && !a.contexts().contains(context)) continue;
                 if (project != null && !project.equals(a.project())) continue;
                 if (a.done() && !includeDone) continue;

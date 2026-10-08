@@ -72,6 +72,12 @@ record DefaultThinkEngineContext(
         @Nullable ToolResultStorage toolResultStorage,
         ToolHealthService toolHealthService,
         Set<String> engineRoles,
+        /**
+         * Labels whose tools join the surface per turn as deferred on top of
+         * {@code baseAllowedTools} — see {@link ThinkEngine#toolPoolLabels()}.
+         * Empty disables the pool.
+         */
+        Set<String> toolPoolLabels,
         de.mhus.vance.brain.ai.attachment.@Nullable ToolImageHarvester imageHarvester,
         de.mhus.vance.brain.ai.attachment.ToolAttachmentSink attachmentSink,
         /**
@@ -126,6 +132,7 @@ record DefaultThinkEngineContext(
                 activated,
                 process.getBoundProfile(),
                 engineRoles,
+                toolPoolLabels,
                 budget,
                 familyHints);
         // Sliding-TTL refresh: when the LLM invokes an activated

@@ -7,6 +7,7 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,31 +29,67 @@ public class ForeignDocListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of("type", "string",
-                            "description", "Name of the project to browse (required). "
-                                    + "Discover via foreign_project_list."),
-                    "folder", Map.of("type", "string",
-                            "description", "Optional folder path inside that project, e.g. "
-                                    + "'documents/notes'. Omit for the project root.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Name of the project to browse (required). "
+                                                    + "Discover via foreign_project_list."),
+                            "folder",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional folder path inside that project, e.g. "
+                                                    + "'documents/notes'. Omit for the project root.")),
             "required", List.of("projectId"));
 
     private final ForeignAccessSupport foreign;
 
-    @Override public String name() { return "foreign_doc_list"; }
+    @Override
+    public String name() {
+        return "foreign_doc_list";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "List documents (and sub-folders) of ANOTHER project in your tenant at one folder "
                 + "level. Read-only; requires read access to that project. Use foreign_project_list "
                 + "first to find the project name, then foreign_doc_read / foreign_doc_copy on a hit.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return false; }
-    @Override public Set<String> labels() { return Set.of("read-only", "cross-project", "document"); }
-    @Override public String searchHint() { return "List documents in another project"; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only", "cross-project", "document");
+    }
+
+    @Override
+    public String searchHint() {
+        return "List documents in another project";
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -60,8 +97,8 @@ public class ForeignDocListTool implements Tool {
         String folder = KindToolSupport.paramString(params, "folder");
         ProjectDocument project = foreign.resolveForeign(projectId, ctx, Action.READ);
 
-        FolderListing listing = foreign.documents().listByFolder(
-                ctx.tenantId(), project.getName(), folder, null, 0, PAGE_SIZE);
+        FolderListing listing =
+                foreign.documents().listByFolder(ctx.tenantId(), project.getName(), folder, null, 0, PAGE_SIZE);
 
         List<String> folders = new ArrayList<>();
         for (String f : listing.folders()) {

@@ -4,6 +4,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,32 +20,47 @@ import org.springframework.stereotype.Component;
 public class UrsaSchedulerDeleteTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("name", Map.of(
-                "type", "string",
-                "description", "Scheduler name to remove."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", props,
-                "required", List.of("name"));
+        props.put(
+                "name",
+                Map.of(
+                        "type", "string",
+                        "description", "Scheduler name to remove."));
+        SCHEMA = Map.of("type", "object", "properties", props, "required", List.of("name"));
     }
 
     private final UrsaSchedulerToolSupport support;
     private final DocumentService documentService;
 
-    @Override public String name() { return "scheduler_delete"; }
+    @Override
+    public String name() {
+        return "scheduler_delete";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Remove a scheduler from the current project. Cancels its cron "
                 + "registration; previously spawned processes continue to run "
                 + "in their system session and terminate normally. The "
                 + "system session itself is left for audit and event-history.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write", "scheduler"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "write", "scheduler");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -55,9 +71,9 @@ public class UrsaSchedulerDeleteTool implements Tool {
 
         support.guardMutation(ctx.tenantId(), ctx.projectId(), name);
 
-        boolean existed = documentService.findByPath(
-                ctx.tenantId(), ctx.projectId(),
-                UrsaSchedulerToolSupport.pathFor(name)).isPresent();
+        boolean existed = documentService
+                .findByPath(ctx.tenantId(), ctx.projectId(), UrsaSchedulerToolSupport.pathFor(name))
+                .isPresent();
         support.deleteByPath(ctx.tenantId(), ctx.projectId(), name, ctx.userId());
         // refreshOne runs via the DocumentChangedEvent →
         // UrsaSchedulerDocumentListener chain that documentService.delete

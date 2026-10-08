@@ -9,6 +9,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,35 +36,47 @@ public class NodeCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "npmPath", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Path to the npm binary. Default: 'npm' "
-                                            + "(resolved via PATH on the brain pod)."),
-                    "repoUrl", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional git clone URL for source persistence. "
-                                            + "Without a remote, the RootDir cannot be suspended."),
-                    "branch", Map.of(
-                            "type", "string",
-                            "description", "Branch to check out when 'repoUrl' is set. Default: main."),
-                    "label", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional dirName hint. Default: '_jsengine'. "
-                                            + "Service appends a numeric suffix on collision."),
-                    "asWorkingDir", Map.of(
-                            "type", "boolean",
-                            "description",
-                                    "If true, register this RootDir as the current process's "
-                                            + "working RootDir."),
-                    "credentialAlias", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Alias resolved by the credential store for authenticated "
-                                            + "clones. Optional.")),
+            "properties",
+                    Map.of(
+                            "npmPath",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Path to the npm binary. Default: 'npm' "
+                                                    + "(resolved via PATH on the brain pod)."),
+                            "repoUrl",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional git clone URL for source persistence. "
+                                                    + "Without a remote, the RootDir cannot be suspended."),
+                            "branch",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Branch to check out when 'repoUrl' is set. Default: main."),
+                            "label",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional dirName hint. Default: '_jsengine'. "
+                                                    + "Service appends a numeric suffix on collision."),
+                            "asWorkingDir",
+                                    Map.of(
+                                            "type",
+                                            "boolean",
+                                            "description",
+                                            "If true, register this RootDir as the current process's "
+                                                    + "working RootDir."),
+                            "credentialAlias",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Alias resolved by the credential store for authenticated "
+                                                    + "clones. Optional.")),
             "required", List.of());
 
     private final WorkspaceService workspaceService;
@@ -93,7 +106,7 @@ public class NodeCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write", "side-effect");
+        return Set.of(ToolLabels.WORKER, "write", "side-effect");
     }
 
     @Override
@@ -162,12 +175,11 @@ public class NodeCreateTool implements Tool {
         return response(handle, npmPath, repoUrl, asWorkingDir, "created");
     }
 
-    private @Nullable RootDirHandle findExistingNodeRootDir(
-            String tenantId, String projectId, String label) {
+    private @Nullable RootDirHandle findExistingNodeRootDir(String tenantId, String projectId, String label) {
         for (RootDirHandle h : workspaceService.listRootDirs(tenantId, projectId)) {
             if (!NodeHandler.TYPE.equals(h.getType())) continue;
-            String existingLabel = h.getDescriptor() == null
-                    ? null : h.getDescriptor().getLabel();
+            String existingLabel =
+                    h.getDescriptor() == null ? null : h.getDescriptor().getLabel();
             if (label.equals(existingLabel)) {
                 return h;
             }
@@ -176,8 +188,7 @@ public class NodeCreateTool implements Tool {
     }
 
     private static Map<String, Object> response(
-            RootDirHandle handle, String npmPath,
-            @Nullable String repoUrl, boolean asWorkingDir, String status) {
+            RootDirHandle handle, String npmPath, @Nullable String repoUrl, boolean asWorkingDir, String status) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("dirName", handle.getDirName());
         out.put("path", handle.getPath().toString());

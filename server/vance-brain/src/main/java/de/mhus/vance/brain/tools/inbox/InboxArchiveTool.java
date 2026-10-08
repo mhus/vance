@@ -6,6 +6,7 @@ import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,19 +40,25 @@ public class InboxArchiveTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "threadIds", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description", "1-25 thread ids from inbox_list.")),
+            "properties",
+                    Map.of(
+                            "threadIds",
+                            Map.of(
+                                    "type", "array",
+                                    "items", Map.of("type", "string"),
+                                    "description", "1-25 thread ids from inbox_list.")),
             "required", List.of("threadIds"));
 
     private final MaximegalonService threads;
     private final InboxToolSupport support;
 
-    @Override public String name() { return "inbox_archive"; }
+    @Override
+    public String name() {
+        return "inbox_archive";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Archive settled inbox threads — they leave the list but stay in the record "
                 + "and can be brought back by a person. Refused per thread for anything "
                 + "still waiting on an answer: archiving that would hide a decision. Check "
@@ -59,21 +66,41 @@ public class InboxArchiveTool implements Tool {
                 + "answering, and it does not touch what you have read.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return false; }
-    @Override public Set<String> labels() { return Set.of("executive"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "executive");
+    }
+
+    @Override
+    public String searchHint() {
         return "Clear finished inbox threads off the user's list";
     }
 
-    @Override public String troubleshootingHint() {
+    @Override
+    public String troubleshootingHint() {
         return "Thread ids come from inbox_list. An open ask cannot be archived — add a "
                 + "contribution with thread_message_add explaining why it is moot instead.";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -99,8 +126,8 @@ public class InboxArchiveTool implements Tool {
         return out;
     }
 
-    private void archiveOne(String tenantId, String owner, String threadId,
-            ToolInvocationContext ctx, List<String> archived) {
+    private void archiveOne(
+            String tenantId, String owner, String threadId, ToolInvocationContext ctx, List<String> archived) {
         MaximegalonDocument doc = support.loadVisible(tenantId, threadId, ctx);
 
         // Already there: the service is idempotent, so this is a statement of
@@ -126,8 +153,7 @@ public class InboxArchiveTool implements Tool {
                     + "Leave it, or add a contribution explaining why it is moot.");
         }
 
-        threads.archive(tenantId, threadId, owner)
-                .orElseThrow(() -> InboxToolSupport.notVisible(threadId));
+        threads.archive(tenantId, threadId, owner).orElseThrow(() -> InboxToolSupport.notVisible(threadId));
         archived.add(threadId);
     }
 
@@ -137,5 +163,4 @@ public class InboxArchiveTool implements Tool {
         row.put("reason", why);
         return row;
     }
-
 }

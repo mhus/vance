@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.RecordsCodec;
 import de.mhus.vance.shared.document.kind.RecordsDocument;
 import de.mhus.vance.shared.document.kind.RecordsItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,19 +33,34 @@ public class RecordsAddColumnTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "records_add_column"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "records_add_column";
+    }
+
+    @Override
+    public String description() {
         return "Append a new column to the schema. Existing rows get an empty string for the new field.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-records", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "records");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "records");
         String field = KindToolSupport.requireString(params, "field");
 
         RecordsDocument rec = RecordsCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
@@ -61,8 +77,6 @@ public class RecordsAddColumnTool implements Tool {
         }
         RecordsDocument updated = new RecordsDocument(rec.kind(), newSchema, items, rec.extra());
         support.writeBody(doc, RecordsCodec.serialize(updated, doc.getMimeType()), ctx);
-        return Map.of("documentId", doc.getId(),
-                "addedField", field,
-                "schema", newSchema);
+        return Map.of("documentId", doc.getId(), "addedField", field, "schema", newSchema);
     }
 }

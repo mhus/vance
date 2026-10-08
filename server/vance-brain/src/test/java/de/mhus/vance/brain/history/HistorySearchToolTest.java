@@ -34,13 +34,12 @@ class HistorySearchToolTest {
     private final ChatMessageService service = mock(ChatMessageService.class);
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
     private final HistorySearchTool tool = new HistorySearchTool(service, thinkProcessService);
-    private final ToolInvocationContext ctx = new ToolInvocationContext(
-            "tenant-1", "proj", "sess", "process-abc", "user");
+    private final ToolInvocationContext ctx =
+            new ToolInvocationContext("tenant-1", "proj", "sess", "process-abc", "user");
 
     @Test
     void invoke_withoutProcessScope_throws() {
-        ToolInvocationContext noProcess =
-                new ToolInvocationContext("t", "p", "s", null, "u");
+        ToolInvocationContext noProcess = new ToolInvocationContext("t", "p", "s", null, "u");
 
         assertThatThrownBy(() -> tool.invoke(Map.of(), noProcess))
                 .isInstanceOf(ToolException.class)
@@ -53,8 +52,7 @@ class HistorySearchToolTest {
 
         tool.invoke(Map.of(), ctx);
 
-        ArgumentCaptor<ChatMessageSearchQuery> cap =
-                ArgumentCaptor.forClass(ChatMessageSearchQuery.class);
+        ArgumentCaptor<ChatMessageSearchQuery> cap = ArgumentCaptor.forClass(ChatMessageSearchQuery.class);
         verify(service).search(cap.capture(), any());
         ChatMessageSearchQuery q = cap.getValue();
         assertThat(q.tenantId()).isEqualTo("tenant-1");
@@ -71,8 +69,7 @@ class HistorySearchToolTest {
 
         tool.invoke(Map.of("limit", 9999), ctx);
 
-        ArgumentCaptor<ChatMessageSearchQuery> cap =
-                ArgumentCaptor.forClass(ChatMessageSearchQuery.class);
+        ArgumentCaptor<ChatMessageSearchQuery> cap = ArgumentCaptor.forClass(ChatMessageSearchQuery.class);
         verify(service).search(cap.capture(), any());
         assertThat(cap.getValue().limit()).isEqualTo(ChatMessageSearchQuery.MAX_LIMIT);
     }
@@ -81,13 +78,14 @@ class HistorySearchToolTest {
     void invoke_passesTagsTextSince() {
         when(service.search(any(), any())).thenReturn(List.of());
 
-        tool.invoke(Map.of(
-                "tags", List.of("FILE_EDIT", "ERROR"),
-                "query", "provider caching",
-                "since", "2026-05-01T00:00:00Z"), ctx);
+        tool.invoke(
+                Map.of(
+                        "tags", List.of("FILE_EDIT", "ERROR"),
+                        "query", "provider caching",
+                        "since", "2026-05-01T00:00:00Z"),
+                ctx);
 
-        ArgumentCaptor<ChatMessageSearchQuery> cap =
-                ArgumentCaptor.forClass(ChatMessageSearchQuery.class);
+        ArgumentCaptor<ChatMessageSearchQuery> cap = ArgumentCaptor.forClass(ChatMessageSearchQuery.class);
         verify(service).search(cap.capture(), any());
         ChatMessageSearchQuery q = cap.getValue();
         assertThat(q.tags()).containsExactlyInAnyOrder("FILE_EDIT", "ERROR");
@@ -137,7 +135,8 @@ class HistorySearchToolTest {
         List<String> entryTags = (List<String>) entry.get("tags");
         assertThat(entryTags).contains("FILE_EDIT");
         // Snippet must be truncated; sentinel char follows.
-        assertThat(((String) entry.get("snippet"))).hasSize(HistorySearchTool.SNIPPET_CHARS + 1)
+        assertThat(((String) entry.get("snippet")))
+                .hasSize(HistorySearchTool.SNIPPET_CHARS + 1)
                 .endsWith("…");
     }
 
@@ -146,7 +145,7 @@ class HistorySearchToolTest {
         assertThat(tool.deferred()).isTrue();
         assertThat(tool.primary()).isFalse();
         assertThat(tool.searchHint()).isNotBlank();
-        assertThat(tool.labels()).containsExactly("read-only");
+        assertThat(tool.labels()).containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "read-only");
     }
 
     @Test
@@ -167,9 +166,18 @@ class HistorySearchToolTest {
                 .thenReturn(Set.of("process-abc", "child-1", "child-2"));
         when(thinkProcessService.findByIds(org.mockito.ArgumentMatchers.anyCollection()))
                 .thenReturn(List.of(
-                        ThinkProcessDocument.builder().id("process-abc").projectId("proj").build(),
-                        ThinkProcessDocument.builder().id("child-1").projectId("proj").build(),
-                        ThinkProcessDocument.builder().id("child-2").projectId("proj").build()));
+                        ThinkProcessDocument.builder()
+                                .id("process-abc")
+                                .projectId("proj")
+                                .build(),
+                        ThinkProcessDocument.builder()
+                                .id("child-1")
+                                .projectId("proj")
+                                .build(),
+                        ThinkProcessDocument.builder()
+                                .id("child-2")
+                                .projectId("proj")
+                                .build()));
         when(service.search(any(), any())).thenReturn(List.of());
 
         tool.invoke(Map.of("scope", "children"), ctx);
@@ -177,8 +185,7 @@ class HistorySearchToolTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Set<String>> scopeCap = ArgumentCaptor.forClass(Set.class);
         verify(service).search(any(), scopeCap.capture());
-        assertThat(scopeCap.getValue())
-                .containsExactlyInAnyOrder("process-abc", "child-1", "child-2");
+        assertThat(scopeCap.getValue()).containsExactlyInAnyOrder("process-abc", "child-1", "child-2");
     }
 
     @Test
@@ -194,22 +201,20 @@ class HistorySearchToolTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Set<String>> scopeCap = ArgumentCaptor.forClass(Set.class);
         verify(service).search(any(), scopeCap.capture());
-        assertThat(scopeCap.getValue())
-                .containsExactlyInAnyOrder("process-abc", "process-other");
+        assertThat(scopeCap.getValue()).containsExactlyInAnyOrder("process-abc", "process-other");
     }
 
     @Test
     void invoke_invalidScope_rejected() {
-        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                tool.invoke(Map.of("scope", "everything"), ctx))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> tool.invoke(Map.of("scope", "everything"), ctx))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("scope");
     }
 
     @Test
     void invoke_resultEcho_includesScopeAndProcessId() {
-        when(service.search(any(), any())).thenReturn(List.of(
-                ChatMessageDocument.builder()
+        when(service.search(any(), any()))
+                .thenReturn(List.of(ChatMessageDocument.builder()
                         .id("m-1")
                         .tenantId("tenant-1")
                         .thinkProcessId("process-abc")

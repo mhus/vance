@@ -6,6 +6,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,45 +30,77 @@ import org.springframework.stereotype.Component;
 public class KanbanAggregateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "Kanban app folder."));
-                put("column", Map.of("type", "string",
-                        "description", "Restrict to a single column."));
-                put("columns", Map.of("type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "Restrict to a list of columns. "
-                                + "Combined with `column` as union."));
-                put("assignee", Map.of("type", "string",
-                        "description", "Match by assignee — exact, "
-                                + "case-insensitive."));
-                put("labels", Map.of("type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "Match cards carrying ALL of these labels."));
-                put("blocked", Map.of("type", "boolean",
-                        "description", "true = only blocked cards, "
-                                + "false = only non-blocked. Omit for both."));
-                put("priority", Map.of("type", "string",
-                        "description", "Match by priority — exact, "
-                                + "case-insensitive (high/med/low/critical/…)."));
-                put("includeBody", Map.of("type", "boolean",
-                        "description", "Include card body in the result. "
-                                + "Default false to keep the response small."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "Kanban app folder."));
+                    put("column", Map.of("type", "string", "description", "Restrict to a single column."));
+                    put(
+                            "columns",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "Restrict to a list of columns. " + "Combined with `column` as union."));
+                    put(
+                            "assignee",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Match by assignee — exact, " + "case-insensitive."));
+                    put(
+                            "labels",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "Match cards carrying ALL of these labels."));
+                    put(
+                            "blocked",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "true = only blocked cards, " + "false = only non-blocked. Omit for both."));
+                    put(
+                            "priority",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Match by priority — exact, " + "case-insensitive (high/med/low/critical/…)."));
+                    put(
+                            "includeBody",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Include card body in the result. " + "Default false to keep the response small."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final KanbanFolderReader folderReader;
 
-    public KanbanAggregateTool(EddieContext eddieContext,
-                               KanbanFolderReader folderReader) {
+    public KanbanAggregateTool(EddieContext eddieContext, KanbanFolderReader folderReader) {
         this.eddieContext = eddieContext;
         this.folderReader = folderReader;
     }
 
-    @Override public String name() { return "kanban_aggregate"; }
+    @Override
+    public String name() {
+        return "kanban_aggregate";
+    }
 
     @Override
     public String description() {
@@ -79,15 +112,20 @@ public class KanbanAggregateTool implements Tool {
                 + "cards', etc.";
     }
 
-    @Override public boolean primary() { return false; }
-
     @Override
-    public Set<String> labels() {
-        return Set.of("eddie", "read", "document", "kanban", "query");
+    public boolean primary() {
+        return false;
     }
 
     @Override
-    public Map<String, Object> paramsSchema() { return SCHEMA; }
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "kanban", "query");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -95,8 +133,7 @@ public class KanbanAggregateTool implements Tool {
         if (folder == null) throw new ToolException("folder is required");
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        KanbanFolderReader.Scan scan = folderReader.scan(
-                ctx.tenantId(), project.getName(), normaliseFolder(folder));
+        KanbanFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), project.getName(), normaliseFolder(folder));
 
         // Filters.
         Set<String> columnFilter = collectColumnFilter(params);
@@ -108,8 +145,7 @@ public class KanbanAggregateTool implements Tool {
 
         List<Map<String, Object>> out = new ArrayList<>();
         for (KanbanFolderReader.CardFile cf : scan.cards()) {
-            if (!matches(cf, columnFilter, assigneeFilter, labelFilter,
-                    blockedFilter, priorityFilter)) continue;
+            if (!matches(cf, columnFilter, assigneeFilter, labelFilter, blockedFilter, priorityFilter)) continue;
             out.add(toMap(cf, includeBody));
         }
 
@@ -130,12 +166,13 @@ public class KanbanAggregateTool implements Tool {
         return result;
     }
 
-    private static boolean matches(KanbanFolderReader.CardFile cf,
-                                   Set<String> columnFilter,
-                                   @Nullable String assigneeFilter,
-                                   List<String> labelFilter,
-                                   @Nullable Boolean blockedFilter,
-                                   @Nullable String priorityFilter) {
+    private static boolean matches(
+            KanbanFolderReader.CardFile cf,
+            Set<String> columnFilter,
+            @Nullable String assigneeFilter,
+            List<String> labelFilter,
+            @Nullable Boolean blockedFilter,
+            @Nullable String priorityFilter) {
         if (!columnFilter.isEmpty() && !columnFilter.contains(cf.column())) return false;
         CardDocument card = cf.card();
         if (assigneeFilter != null) {
@@ -147,15 +184,17 @@ public class KanbanAggregateTool implements Tool {
             if (!card.priority().equalsIgnoreCase(priorityFilter)) return false;
         }
         if (blockedFilter != null) {
-            boolean isBlocked = card.blocked() || card.labels().stream()
-                    .anyMatch(l -> "blocked".equalsIgnoreCase(l));
+            boolean isBlocked = card.blocked() || card.labels().stream().anyMatch(l -> "blocked".equalsIgnoreCase(l));
             if (blockedFilter != isBlocked) return false;
         }
         if (!labelFilter.isEmpty()) {
             for (String wanted : labelFilter) {
                 boolean found = false;
                 for (String have : card.labels()) {
-                    if (have.equalsIgnoreCase(wanted)) { found = true; break; }
+                    if (have.equalsIgnoreCase(wanted)) {
+                        found = true;
+                        break;
+                    }
                 }
                 if (!found) return false;
             }
@@ -163,8 +202,7 @@ public class KanbanAggregateTool implements Tool {
         return true;
     }
 
-    private static Map<String, Object> toMap(KanbanFolderReader.CardFile cf,
-                                             boolean includeBody) {
+    private static Map<String, Object> toMap(KanbanFolderReader.CardFile cf, boolean includeBody) {
         CardDocument card = cf.card();
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("path", cf.doc().getPath());

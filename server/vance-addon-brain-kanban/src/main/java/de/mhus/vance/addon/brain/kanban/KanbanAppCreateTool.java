@@ -1,18 +1,12 @@
 package de.mhus.vance.addon.brain.kanban;
 
 import de.mhus.vance.brain.applications.VanceApplication;
-import de.mhus.vance.brain.applications.VanceApplication.ArtefactResult;
-import de.mhus.vance.brain.applications.VanceApplication.CreateContext;
-import de.mhus.vance.brain.applications.VanceApplication.CreateResult;
-import de.mhus.vance.brain.applications.VanceApplication.RefreshContext;
-import de.mhus.vance.brain.applications.VanceApplication.RefreshResult;
-
-import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,108 +30,181 @@ import org.springframework.stereotype.Component;
 public class KanbanAppCreateTool implements Tool {
 
     private static final Map<String, Object> COLUMN_ITEM_SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("name", Map.of("type", "string",
-                        "description", "Column id — short, filesystem-safe "
-                                + "(lowercase, alphanumeric, dashes). "
-                                + "Becomes the sub-folder name."));
-                put("title", Map.of("type", "string",
-                        "description", "Display label. Defaults to the name."));
-                put("color", Map.of("type", "string",
-                        "description", "Palette name or CSS color."));
-                put("order", Map.of("type", "integer",
-                        "description", "Sort position on the board. "
-                                + "Auto-assigned when missing."));
-                put("wipLimit", Map.of("type", "integer",
-                        "description", "Optional WIP limit. Exceeding it "
-                                + "flags the column in _stats.yaml; "
-                                + "wipEnforce=hard also blocks moves."));
-            }},
-            "required", List.of("name"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "name",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Column id — short, filesystem-safe "
+                                            + "(lowercase, alphanumeric, dashes). "
+                                            + "Becomes the sub-folder name."));
+                    put("title", Map.of("type", "string", "description", "Display label. Defaults to the name."));
+                    put("color", Map.of("type", "string", "description", "Palette name or CSS color."));
+                    put(
+                            "order",
+                            Map.of(
+                                    "type",
+                                    "integer",
+                                    "description",
+                                    "Sort position on the board. " + "Auto-assigned when missing."));
+                    put(
+                            "wipLimit",
+                            Map.of(
+                                    "type",
+                                    "integer",
+                                    "description",
+                                    "Optional WIP limit. Exceeding it "
+                                            + "flags the column in _stats.yaml; "
+                                            + "wipEnforce=hard also blocks moves."));
+                }
+            },
+            "required",
+            List.of("name"));
 
     private static final Map<String, Object> CARD_ITEM_SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("title", Map.of("type", "string",
-                        "description", "Card title. Required."));
-                put("column", Map.of("type", "string",
-                        "description", "Column name this card belongs to. "
-                                + "Auto-creates the column if missing. "
-                                + "Defaults to 'backlog'."));
-                put("priority", Map.of("type", "string",
-                        "description", "Free-form (low/med/high/critical). "
-                                + "high/critical render as standouts."));
-                put("assignee", Map.of("type", "string"));
-                put("labels", Map.of("type", "array",
-                        "items", Map.of("type", "string"),
-                        "description", "Tags. Use 'blocked' to flag a "
-                                + "blocked card (or set blocked:true)."));
-                put("dueDate", Map.of("type", "string",
-                        "description", "ISO date, e.g. 2026-07-15."));
-                put("estimate", Map.of("type", "number",
-                        "description", "Story-point / hour estimate."));
-                put("blocked", Map.of("type", "boolean"));
-                put("body", Map.of("type", "string",
-                        "description", "Markdown body — description, "
-                                + "acceptance criteria (GFM checkboxes), "
-                                + "notes. GFM checkboxes feed the "
-                                + "subtasks progress stat."));
-            }},
-            "required", List.of("title"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("title", Map.of("type", "string", "description", "Card title. Required."));
+                    put(
+                            "column",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Column name this card belongs to. "
+                                            + "Auto-creates the column if missing. "
+                                            + "Defaults to 'backlog'."));
+                    put(
+                            "priority",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Free-form (low/med/high/critical). " + "high/critical render as standouts."));
+                    put("assignee", Map.of("type", "string"));
+                    put(
+                            "labels",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "Tags. Use 'blocked' to flag a " + "blocked card (or set blocked:true)."));
+                    put("dueDate", Map.of("type", "string", "description", "ISO date, e.g. 2026-07-15."));
+                    put("estimate", Map.of("type", "number", "description", "Story-point / hour estimate."));
+                    put("blocked", Map.of("type", "boolean"));
+                    put(
+                            "body",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Markdown body — description, "
+                                            + "acceptance criteria (GFM checkboxes), "
+                                            + "notes. GFM checkboxes feed the "
+                                            + "subtasks progress stat."));
+                }
+            },
+            "required",
+            List.of("title"));
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "Folder for the kanban app. "
-                                + "Manifest lives at <folder>/_app.yaml."));
-                put("title", Map.of("type", "string"));
-                put("description", Map.of("type", "string"));
-                put("columns", Map.of("type", "array",
-                        "items", COLUMN_ITEM_SCHEMA,
-                        "description", "Columns for the board. Each "
-                                + "becomes a sub-folder. Order = render "
-                                + "order. Columns referenced by cards "
-                                + "but not listed are auto-added. "
-                                + "ACCEPTS SHORTHAND: entries may be "
-                                + "strings (column-name only) or objects "
-                                + "({name, title?, color?, order?, wipLimit?})."));
-                put("cards", Map.of("type", "array",
-                        "items", CARD_ITEM_SCHEMA,
-                        "description", "ONE-SHOT FORM. Pass cards here "
-                                + "and the tool writes the manifest, "
-                                + "creates one .md file per card in its "
-                                + "column folder, AND auto-runs "
-                                + "app_rebuild — single call. The "
-                                + "result's `artefacts` array carries "
-                                + "the board + stats paths to embed in "
-                                + "chat."));
-                put("boardStyle", Map.of("type", "string",
-                        "description", "'mermaid' (default — Kanban diagram) "
-                                + "or 'table' (Markdown table)."));
-                put("wipEnforce", Map.of("type", "string",
-                        "description", "'soft' (default — only warns) or "
-                                + "'hard' (kanban_move blocks moves that "
-                                + "would exceed wipLimit)."));
-                put("overwrite", Map.of("type", "boolean",
-                        "description", "Allow replacing an existing "
-                                + "_app.yaml. Default false."));
-                put("projectId", Map.of("type", "string",
-                        "description", "Default: active project."));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Folder for the kanban app. " + "Manifest lives at <folder>/_app.yaml."));
+                    put("title", Map.of("type", "string"));
+                    put("description", Map.of("type", "string"));
+                    put(
+                            "columns",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    COLUMN_ITEM_SCHEMA,
+                                    "description",
+                                    "Columns for the board. Each "
+                                            + "becomes a sub-folder. Order = render "
+                                            + "order. Columns referenced by cards "
+                                            + "but not listed are auto-added. "
+                                            + "ACCEPTS SHORTHAND: entries may be "
+                                            + "strings (column-name only) or objects "
+                                            + "({name, title?, color?, order?, wipLimit?})."));
+                    put(
+                            "cards",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    CARD_ITEM_SCHEMA,
+                                    "description",
+                                    "ONE-SHOT FORM. Pass cards here "
+                                            + "and the tool writes the manifest, "
+                                            + "creates one .md file per card in its "
+                                            + "column folder, AND auto-runs "
+                                            + "app_rebuild — single call. The "
+                                            + "result's `artefacts` array carries "
+                                            + "the board + stats paths to embed in "
+                                            + "chat."));
+                    put(
+                            "boardStyle",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "'mermaid' (default — Kanban diagram) " + "or 'table' (Markdown table)."));
+                    put(
+                            "wipEnforce",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "'soft' (default — only warns) or "
+                                            + "'hard' (kanban_move blocks moves that "
+                                            + "would exceed wipLimit)."));
+                    put(
+                            "overwrite",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Allow replacing an existing " + "_app.yaml. Default false."));
+                    put("projectId", Map.of("type", "string", "description", "Default: active project."));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final KanbanApplication kanbanApplication;
 
-    public KanbanAppCreateTool(EddieContext eddieContext,
-                               KanbanApplication kanbanApplication) {
+    public KanbanAppCreateTool(EddieContext eddieContext, KanbanApplication kanbanApplication) {
         this.eddieContext = eddieContext;
         this.kanbanApplication = kanbanApplication;
     }
 
-    @Override public String name() { return "kanban_app_create"; }
+    @Override
+    public String name() {
+        return "kanban_app_create";
+    }
 
     @Override
     public String description() {
@@ -152,11 +219,14 @@ public class KanbanAppCreateTool implements Tool {
                 + "up-front.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "kanban", "application");
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "kanban", "application");
     }
 
     @Override
@@ -180,16 +250,21 @@ public class KanbanAppCreateTool implements Tool {
         copyIfPresent(params, createParams, "wipEnforce");
 
         VanceApplication.CreateContext cc = new VanceApplication.CreateContext(
-                ctx.tenantId(), project.getName(), normaliseFolder(folder),
-                ctx.userId(), ctx.processId(),
+                ctx.tenantId(),
+                project.getName(),
+                normaliseFolder(folder),
+                ctx.userId(),
+                ctx.processId(),
                 paramBoolean(params, "overwrite"),
                 createParams);
 
         VanceApplication.CreateResult result = kanbanApplication.create(cc);
 
-        log.info("KanbanAppCreateTool tenant='{}' folder='{}' "
-                        + "columns={} manifestPath='{}'",
-                ctx.tenantId(), folder, result.lanes().size(),
+        log.info(
+                "KanbanAppCreateTool tenant='{}' folder='{}' " + "columns={} manifestPath='{}'",
+                ctx.tenantId(),
+                folder,
+                result.lanes().size(),
                 result.manifestPath());
 
         return result.toMap();

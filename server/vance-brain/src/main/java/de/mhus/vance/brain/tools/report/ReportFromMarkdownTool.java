@@ -12,6 +12,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -159,7 +160,7 @@ public class ReportFromMarkdownTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document");
     }
 
     @Override

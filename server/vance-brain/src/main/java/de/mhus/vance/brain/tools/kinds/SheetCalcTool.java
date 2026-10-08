@@ -7,6 +7,7 @@ import de.mhus.vance.shared.document.kind.SheetComputed;
 import de.mhus.vance.shared.document.kind.SheetDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,7 +34,10 @@ public class SheetCalcTool implements Tool {
     private final KindToolSupport support;
     private final SheetEvalService evalService;
 
-    @Override public String name() { return "sheet_calc"; }
+    @Override
+    public String name() {
+        return "sheet_calc";
+    }
 
     @Override
     public String description() {
@@ -43,14 +47,24 @@ public class SheetCalcTool implements Tool {
                 + "unchanged. Returns the computed values.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "write", "document"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-sheet", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "sheet");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "sheet");
         SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         SheetComputed computed = evalService.evaluate(sheet);
         support.writeBody(doc, SheetCodec.serialize(sheet, computed, doc.getMimeType()), ctx);
@@ -64,8 +78,7 @@ public class SheetCalcTool implements Tool {
             if (v.error() != null) m.put("error", v.error());
             values.add(m);
         }
-        return Map.of("documentId", doc.getId(),
-                "computedCount", computed.values().size(),
-                "values", values);
+        return Map.of(
+                "documentId", doc.getId(), "computedCount", computed.values().size(), "values", values);
     }
 }

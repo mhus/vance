@@ -3,6 +3,7 @@ package de.mhus.vance.brain.marvin;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,11 @@ public class MarvinStatusTool extends MarvinBaseTool {
     @Override
     public String name() {
         return "marvin_status";
+    }
+
+    @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of(ToolLabels.INTERNAL, "read-only");
     }
 
     @Override

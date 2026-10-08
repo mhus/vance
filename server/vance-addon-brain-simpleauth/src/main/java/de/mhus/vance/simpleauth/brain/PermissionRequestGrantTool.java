@@ -6,6 +6,7 @@ import de.mhus.vance.simpleauth.GrantSubjectType;
 import de.mhus.vance.simpleauth.PermissionRequestOperation;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +58,7 @@ public class PermissionRequestGrantTool implements Tool {
      */
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.OPERATOR, "executive");
     }
 
     @Override
@@ -68,21 +69,43 @@ public class PermissionRequestGrantTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("scopeType", Map.of("type", "string", "enum", List.of("TENANT", "PROJECT"),
-                "description", "TENANT or PROJECT."));
-        props.put("scopeId", Map.of("type", "string",
-                "description", "Project name for PROJECT scope (defaults to the current "
-                        + "project). Ignored for TENANT."));
-        props.put("subjectType", Map.of("type", "string", "enum", List.of("USER", "TEAM"),
-                "description", "USER or TEAM."));
+        props.put(
+                "scopeType",
+                Map.of("type", "string", "enum", List.of("TENANT", "PROJECT"), "description", "TENANT or PROJECT."));
+        props.put(
+                "scopeId",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Project name for PROJECT scope (defaults to the current " + "project). Ignored for TENANT."));
+        props.put(
+                "subjectType",
+                Map.of("type", "string", "enum", List.of("USER", "TEAM"), "description", "USER or TEAM."));
         props.put("subjectId", Map.of("type", "string", "description", "Username or team name."));
-        props.put("role", Map.of("type", "string", "enum", List.of("READER", "WRITER", "ADMIN"),
-                "description", "The role to request."));
-        props.put("reason", Map.of("type", "string",
-                "description", "Why this access is needed. Shown to the approver as your "
-                        + "stated reason."));
-        return Map.of("type", "object", "properties", props,
-                "required", List.of("scopeType", "subjectType", "subjectId", "role"));
+        props.put(
+                "role",
+                Map.of(
+                        "type",
+                        "string",
+                        "enum",
+                        List.of("READER", "WRITER", "ADMIN"),
+                        "description",
+                        "The role to request."));
+        props.put(
+                "reason",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Why this access is needed. Shown to the approver as your " + "stated reason."));
+        return Map.of(
+                "type",
+                "object",
+                "properties",
+                props,
+                "required",
+                List.of("scopeType", "subjectType", "subjectId", "role"));
     }
 
     @Override
@@ -97,7 +120,7 @@ public class PermissionRequestGrantTool implements Tool {
         // No authorization check: raising a request changes nothing, and
         // requiring ADMIN to ask would defeat the purpose — the caller
         // asks precisely because they cannot act themselves.
-        return support.raise(ctx, PermissionRequestOperation.GRANT,
-                scopeType, scopeId, subjectType, subjectId, role, reason);
+        return support.raise(
+                ctx, PermissionRequestOperation.GRANT, scopeType, scopeId, subjectType, subjectId, role, reason);
     }
 }

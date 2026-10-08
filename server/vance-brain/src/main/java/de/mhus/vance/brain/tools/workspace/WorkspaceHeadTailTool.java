@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.workspace;
 
+import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.workspace.WorkspaceException;
-import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -36,28 +37,44 @@ public class WorkspaceHeadTailTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>();
-        p.put("path", Map.of("type", "string",
-                "description", "Relative path inside the RootDir."));
-        p.put("dirName", Map.of("type", "string",
-                "description", "Optional RootDir name. Defaults to the current process's temp RootDir."));
-        p.put("head", Map.of("type", "integer",
-                "description",
+        p.put("path", Map.of("type", "string", "description", "Relative path inside the RootDir."));
+        p.put(
+                "dirName",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional RootDir name. Defaults to the current process's temp RootDir."));
+        p.put(
+                "head",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
                         "Lines from the top. 0 / omitted = none. Capped at " + MAX_LINES + "."));
-        p.put("tail", Map.of("type", "integer",
-                "description", "Lines from the bottom. Capped at " + MAX_LINES + "."));
+        p.put("tail", Map.of("type", "integer", "description", "Lines from the bottom. Capped at " + MAX_LINES + "."));
         return p;
     }
 
     private final WorkspaceService workspace;
 
-    @Override public String name() { return "work_file_head_tail"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "work_file_head_tail";
+    }
+
+    @Override
+    public String description() {
         return "Return the first N lines (head) and / or last N lines (tail) "
                 + "of a workspace file. At least one of head / tail must be > 0. "
                 + "Lines are 1-based; the response carries lineNumber so the LLM "
                 + "can address them again.";
     }
-    @Override public boolean primary() { return false; }
+
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public boolean deferred() {
@@ -68,8 +85,16 @@ public class WorkspaceHeadTailTool implements Tool {
     public String searchHint() {
         return "Explicit WORK variant of file_head_tail — targets the brain workspace regardless of the work target. Prefer file_head_tail.";
     }
-    @Override public Set<String> labels() { return Set.of("read-only"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

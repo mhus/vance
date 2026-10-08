@@ -10,6 +10,7 @@ import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,32 +62,37 @@ public class KitUpdateTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         Map<String, Object> properties = new LinkedHashMap<>(KitToolSupport.sourceSchemaProps());
-        properties.put("vault_password", Map.of(
-                "type", "string",
-                "description", "Vault passphrase needed when PASSWORD-settings are touched."));
-        properties.put("prune", Map.of(
-                "type", "boolean",
-                "description",
-                "Delete artefacts the kit tracked before but no longer ships. Default false "
-                        + "(they only drop out of the record). Never removes artefacts another "
-                        + "installed kit also owns."));
-        properties.put("kit", Map.of(
-                "type", "string",
-                "description",
-                "Record id or name of a single installed kit to update. "
-                        + "Omit to update every installed kit."));
+        properties.put(
+                "vault_password",
+                Map.of(
+                        "type", "string",
+                        "description", "Vault passphrase needed when PASSWORD-settings are touched."));
+        properties.put(
+                "prune",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "Delete artefacts the kit tracked before but no longer ships. Default false "
+                                + "(they only drop out of the record). Never removes artefacts another "
+                                + "installed kit also owns."));
+        properties.put(
+                "kit",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Record id or name of a single installed kit to update. "
+                                + "Omit to update every installed kit."));
         // Naming the source explicitly addresses a kit by its coordinates,
         // which is a different thing from picking an installed one.
         // url is optional — without it the installed records supply the source.
-        return Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of());
+        return Map.of("type", "object", "properties", properties, "required", List.of());
     }
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("executive");
+        return java.util.Set.of(ToolLabels.OPERATOR, "executive");
     }
 
     @Override
@@ -104,9 +110,12 @@ public class KitUpdateTool implements Tool {
         if (ctx.tenantId() == null) {
             throw new ToolException("kit_update requires a tenant scope");
         }
-        String projectId = KitToolSupport.requireProjectAuthorized(ctx,
+        String projectId = KitToolSupport.requireProjectAuthorized(
+                ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.ADMIN);
+                permissionService,
+                contextFactory,
+                de.mhus.vance.shared.permission.Action.ADMIN);
         String token = KitToolSupport.optionalString(params, "token");
         String vaultPassword = KitToolSupport.optionalString(params, "vault_password");
         boolean prune = KitToolSupport.optionalBoolean(params, "prune");
@@ -132,22 +141,25 @@ public class KitUpdateTool implements Tool {
                     .prune(prune)
                     .build();
             return KitToolSupport.resultToMap(
-                    kitService.importKit(ctx.tenantId(), request, ctx.userId(),
-                            SettingWriteOrigin.AGENT));
+                    kitService.importKit(ctx.tenantId(), request, ctx.userId(), SettingWriteOrigin.AGENT));
         }
 
         if (kit != null) {
             return KitToolSupport.resultToMap(kitService.updateInstalled(
-                    ctx.tenantId(), projectId, resolveKitId(ctx.tenantId(), projectId, kit),
-                    prune, token, vaultPassword, ctx.userId(), SettingWriteOrigin.AGENT));
+                    ctx.tenantId(),
+                    projectId,
+                    resolveKitId(ctx.tenantId(), projectId, kit),
+                    prune,
+                    token,
+                    vaultPassword,
+                    ctx.userId(),
+                    SettingWriteOrigin.AGENT));
         }
 
         List<KitOperationResultDto> results = kitService.updateAllInstalled(
-                ctx.tenantId(), projectId, prune, token, vaultPassword,
-                ctx.userId(), SettingWriteOrigin.AGENT);
+                ctx.tenantId(), projectId, prune, token, vaultPassword, ctx.userId(), SettingWriteOrigin.AGENT);
         if (results.isEmpty()) {
-            throw new ToolException("no kits are installed in project " + projectId
-                    + " — use kit_install first");
+            throw new ToolException("no kits are installed in project " + projectId + " — use kit_install first");
         }
         List<Map<String, Object>> mapped = new java.util.ArrayList<>(results.size());
         for (KitOperationResultDto r : results) mapped.add(KitToolSupport.resultToMap(r));
@@ -176,7 +188,7 @@ public class KitUpdateTool implements Tool {
                     + "' — address one by its id: "
                     + byName.stream().map(KitInstalledRecordDto::getId).toList());
         }
-        throw new ToolException("no installed kit '" + kitRef + "' in project " + projectId
-                + " — call kit_status to list them");
+        throw new ToolException(
+                "no installed kit '" + kitRef + "' in project " + projectId + " — call kit_status to list them");
     }
 }

@@ -31,13 +31,12 @@ class HistoryRecallToolTest {
     private final ChatMessageService service = mock(ChatMessageService.class);
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
     private final HistoryRecallTool tool = new HistoryRecallTool(service, thinkProcessService);
-    private final ToolInvocationContext ctx = new ToolInvocationContext(
-            "tenant-1", "proj", "sess", "process-abc", "user");
+    private final ToolInvocationContext ctx =
+            new ToolInvocationContext("tenant-1", "proj", "sess", "process-abc", "user");
 
     @Test
     void invoke_withoutProcessScope_throws() {
-        ToolInvocationContext noProcess =
-                new ToolInvocationContext("t", "p", "s", null, "u");
+        ToolInvocationContext noProcess = new ToolInvocationContext("t", "p", "s", null, "u");
 
         assertThatThrownBy(() -> tool.invoke(Map.of("turnIds", List.of("m-1")), noProcess))
                 .isInstanceOf(ToolException.class)
@@ -77,8 +76,7 @@ class HistoryRecallToolTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Set<String>> scopeCap = ArgumentCaptor.forClass(Set.class);
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<java.util.Collection<String>> idsCap =
-                ArgumentCaptor.forClass(java.util.Collection.class);
+        ArgumentCaptor<java.util.Collection<String>> idsCap = ArgumentCaptor.forClass(java.util.Collection.class);
         verify(service).findByIds(eq("tenant-1"), scopeCap.capture(), idsCap.capture());
         assertThat(scopeCap.getValue()).containsExactly("process-abc");
         assertThat(idsCap.getValue()).containsExactlyInAnyOrder("m-1", "m-2");
@@ -86,31 +84,31 @@ class HistoryRecallToolTest {
 
     @Test
     void invoke_scopeChildren_widensProcessFilter() {
-        when(thinkProcessService.findDescendantIds("process-abc"))
-                .thenReturn(Set.of("process-abc", "child-1"));
+        when(thinkProcessService.findDescendantIds("process-abc")).thenReturn(Set.of("process-abc", "child-1"));
         when(thinkProcessService.findByIds(org.mockito.ArgumentMatchers.anyCollection()))
                 .thenReturn(List.of(
                         de.mhus.vance.shared.thinkprocess.ThinkProcessDocument.builder()
-                                .id("process-abc").projectId("proj").build(),
+                                .id("process-abc")
+                                .projectId("proj")
+                                .build(),
                         de.mhus.vance.shared.thinkprocess.ThinkProcessDocument.builder()
-                                .id("child-1").projectId("proj").build()));
+                                .id("child-1")
+                                .projectId("proj")
+                                .build()));
         when(service.findByIds(any(), any(Set.class), any())).thenReturn(List.of());
 
-        tool.invoke(Map.of(
-                "turnIds", List.of("m-1"),
-                "scope", "children"), ctx);
+        tool.invoke(Map.of("turnIds", List.of("m-1"), "scope", "children"), ctx);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Set<String>> scopeCap = ArgumentCaptor.forClass(Set.class);
         verify(service).findByIds(eq("tenant-1"), scopeCap.capture(), any());
-        assertThat(scopeCap.getValue())
-                .containsExactlyInAnyOrder("process-abc", "child-1");
+        assertThat(scopeCap.getValue()).containsExactlyInAnyOrder("process-abc", "child-1");
     }
 
     @Test
     void invoke_invalidScope_rejected() {
-        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                tool.invoke(Map.of("turnIds", List.of("m-1"), "scope", "everything"), ctx))
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> tool.invoke(Map.of("turnIds", List.of("m-1"), "scope", "everything"), ctx))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("scope");
     }
@@ -118,16 +116,23 @@ class HistoryRecallToolTest {
     @Test
     void invoke_returnsFullContent_inServiceOrder() {
         ChatMessageDocument m1 = ChatMessageDocument.builder()
-                .id("m-1").role(ChatRole.USER).content("first")
-                .tenantId("tenant-1").thinkProcessId("process-abc").build();
+                .id("m-1")
+                .role(ChatRole.USER)
+                .content("first")
+                .tenantId("tenant-1")
+                .thinkProcessId("process-abc")
+                .build();
         ChatMessageDocument m2 = ChatMessageDocument.builder()
-                .id("m-2").role(ChatRole.ASSISTANT).content("second")
-                .tenantId("tenant-1").thinkProcessId("process-abc").build();
+                .id("m-2")
+                .role(ChatRole.ASSISTANT)
+                .content("second")
+                .tenantId("tenant-1")
+                .thinkProcessId("process-abc")
+                .build();
         when(service.findByIds(any(), any(Set.class), any())).thenReturn(List.of(m1, m2));
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = tool.invoke(Map.of(
-                "turnIds", List.of("m-1", "m-2")), ctx);
+        Map<String, Object> result = tool.invoke(Map.of("turnIds", List.of("m-1", "m-2")), ctx);
 
         assertThat(result.get("count")).isEqualTo(2);
         @SuppressWarnings("unchecked")
@@ -143,6 +148,6 @@ class HistoryRecallToolTest {
         assertThat(tool.deferred()).isTrue();
         assertThat(tool.primary()).isFalse();
         assertThat(tool.searchHint()).isNotBlank();
-        assertThat(tool.labels()).containsExactly("read-only");
+        assertThat(tool.labels()).containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "read-only");
     }
 }

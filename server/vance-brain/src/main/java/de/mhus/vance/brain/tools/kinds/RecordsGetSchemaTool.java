@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.RecordsCodec;
 import de.mhus.vance.shared.document.kind.RecordsDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,19 +24,34 @@ public class RecordsGetSchemaTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "records_get_schema"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "records_get_schema";
+    }
+
+    @Override
+    public String description() {
         return "Return the schema (ordered list of field names) of a `kind: records` document.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "read-only"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-records", "eddie", "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "records");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "records");
         RecordsDocument rec = RecordsCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("documentId", doc.getId());

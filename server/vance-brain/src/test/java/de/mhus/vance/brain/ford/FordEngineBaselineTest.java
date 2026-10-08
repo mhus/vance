@@ -2,6 +2,9 @@ package de.mhus.vance.brain.ford;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.brain.frankie.FrankieEngine;
+import de.mhus.vance.brain.thinkengine.WorkerEngineTools;
+import de.mhus.vance.toolpack.ToolLabels;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -86,5 +89,26 @@ class FordEngineBaselineTest {
                         "exec_kill",
                         "work_target_get",
                         "work_target_set");
+    }
+
+    @Test
+    void toolPool_takesEverythingReleasedForWorkers() {
+        // The core is the manifest; the label pool is the rest of the
+        // worker surface — a new tool reaches Ford by carrying the label.
+        assertThat(engine.allowedTools()).isEqualTo(WorkerEngineTools.CORE);
+        assertThat(engine.toolPoolLabels()).containsExactly(ToolLabels.WORKER);
+    }
+
+    @Test
+    void frankie_isAWorkerLikeFord() {
+        // Frankie carries Ford's whole core plus its own plan tools — the
+        // two worker baselines used to drift (Frankie lacked the document
+        // read side and research) because each was its own list.
+        FrankieEngine frankie = new FrankieEngine(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null);
+        assertThat(frankie.allowedTools()).containsAll(WorkerEngineTools.CORE);
+        assertThat(frankie.allowedTools()).contains("todo_create", "todo_update", "todo_remove");
+        assertThat(frankie.toolPoolLabels()).isEqualTo(engine.toolPoolLabels());
     }
 }

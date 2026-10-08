@@ -5,6 +5,7 @@ import de.mhus.vance.toolpack.SpawnTool;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -52,46 +53,69 @@ import org.springframework.stereotype.Component;
 public class HactarRunTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("scriptRef", Map.of(
-                "type", "string",
-                "description", "Document path to the script — REQUIRED. "
-                        + "Resolved via the standard cascade "
-                        + "(project → _vance → resource)."));
-        properties.put("name", Map.of(
-                "type", "string",
-                "description", "Stable process name. Optional — when "
-                        + "omitted, the tool derives a stable name from "
-                        + "scriptRef + a short random suffix."));
-        properties.put("validateBeforeRun", Map.of(
-                "type", "boolean",
-                "description", "Run an LLM deep-validate pass before "
-                        + "EXECUTING. Default false. Useful when the "
-                        + "script came from an untrusted source or was "
-                        + "hand-edited without prior Slart-validation."));
-        properties.put("scriptAllowedTools", Map.of(
-                "type", "array",
-                "description", "Tools the script may call via "
-                        + "`vance.tools.call(...)`. When unset, the "
-                        + "script gets no tool surface and can only "
-                        + "exercise pure-JS logic.",
-                "items", Map.of("type", "string")));
-        properties.put("scriptParams", Map.of(
-                "type", "object",
-                "description", "Bindings passed to the script as "
-                        + "`vance.params.*`.",
-                "additionalProperties", true));
-        properties.put("timeout", Map.of(
-                "type", "integer",
-                "description", "Wall-clock timeout in seconds. "
-                        + "Default 300 (5 minutes). Header-declared "
-                        + "@timeout still clamps via "
-                        + "vance.script.timeout.max."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("scriptRef"));
+        properties.put(
+                "scriptRef",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Document path to the script — REQUIRED. "
+                                + "Resolved via the standard cascade "
+                                + "(project → _vance → resource)."));
+        properties.put(
+                "name",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Stable process name. Optional — when "
+                                + "omitted, the tool derives a stable name from "
+                                + "scriptRef + a short random suffix."));
+        properties.put(
+                "validateBeforeRun",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "Run an LLM deep-validate pass before "
+                                + "EXECUTING. Default false. Useful when the "
+                                + "script came from an untrusted source or was "
+                                + "hand-edited without prior Slart-validation."));
+        properties.put(
+                "scriptAllowedTools",
+                Map.of(
+                        "type",
+                        "array",
+                        "description",
+                        "Tools the script may call via "
+                                + "`vance.tools.call(...)`. When unset, the "
+                                + "script gets no tool surface and can only "
+                                + "exercise pure-JS logic.",
+                        "items",
+                        Map.of("type", "string")));
+        properties.put(
+                "scriptParams",
+                Map.of(
+                        "type",
+                        "object",
+                        "description",
+                        "Bindings passed to the script as " + "`vance.params.*`.",
+                        "additionalProperties",
+                        true));
+        properties.put(
+                "timeout",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "Wall-clock timeout in seconds. "
+                                + "Default 300 (5 minutes). Header-declared "
+                                + "@timeout still clamps via "
+                                + "vance.script.timeout.max."));
+        SCHEMA = Map.of("type", "object", "properties", properties, "required", List.of("scriptRef"));
     }
 
     /** Lazy lookup — see {@link ProcessSpawnTool}
@@ -101,6 +125,12 @@ public class HactarRunTool implements Tool {
     @Override
     public String name() {
         return "hactar_run";
+    }
+
+    @Override
+    public java.util.Set<String> labels() {
+
+        return java.util.Set.of(ToolLabels.WORKER);
     }
 
     @Override
@@ -125,8 +155,7 @@ public class HactarRunTool implements Tool {
     }
 
     @Override
-    public Map<String, Object> invoke(
-            Map<String, Object> params, ToolInvocationContext ctx) {
+    public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String scriptRef = ScriptRunDocToolStrings.stringParam(params, "scriptRef", true);
         String name = ScriptRunDocToolStrings.stringParam(params, "name", false);
         if (name == null || name.isBlank()) {
@@ -160,8 +189,7 @@ public class HactarRunTool implements Tool {
 
         ProcessSpawnTool inner = processSpawnProvider.getIfAvailable();
         if (inner == null) {
-            throw new ToolException(
-                    "hactar_run: ProcessSpawnTool bean unavailable");
+            throw new ToolException("hactar_run: ProcessSpawnTool bean unavailable");
         }
         return inner.invoke(processCreateParams, ctx);
     }

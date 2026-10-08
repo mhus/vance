@@ -138,41 +138,19 @@ public class FrankieEngine implements ThinkEngine {
     private static final long STREAM_TIMEOUT_MINUTES = 20;
 
     /**
-     * Engine-intrinsic tool baseline — the minimum every Frankie
-     * recipe needs, regardless of domain. Domain-specific tools
-     * ({@code client_file_*}, {@code client_exec_*}, GitHub-API for
-     * fook-upstream, MCP-reconnect for repair, …) come from each
-     * recipe via {@code allowedToolsAdd}.
-     *
-     * <p>Returned by {@link #allowedTools()} so {@link
-     * de.mhus.vance.brain.recipe.RecipeResolver#computeAllowed} treats
-     * it as the engine default: effective set =
-     * {@code (engineDefault ∪ recipe.add) ∖ recipe.remove}. Without
-     * this override Frankie would default to "no engine-level
-     * restriction" and the LLM would see the full tenant tool buffet
-     * (~130 schemas, ~35k input tokens) on every turn.
+     * Frankie's core: the shared worker core
+     * ({@link de.mhus.vance.brain.thinkengine.WorkerEngineTools#CORE} — Frankie
+     * is a worker like Ford) plus the plan tools only Frankie has. This is the
+     * manifest; every other tool released for workers joins per turn through
+     * {@link #toolPoolLabels()} as deferred. Without a core Frankie would put
+     * the full tenant tool buffet (~130 schemas, ~35k input tokens) into
+     * every turn.
      */
     private static final Set<String> ENGINE_DEFAULT_TOOLS;
 
     static {
-        java.util.LinkedHashSet<String> base = new java.util.LinkedHashSet<>();
-        // discovery / introspection
-        base.add("tool_list");
-        base.add("tool_description");
-        base.add("how_do_i");
-        base.add("manual_read");
-        base.add("manual_list");
-        base.add("recipe_describe");
-        base.add("tool_result_read");
-        // sub-worker spawn — Frankie's escape hatch when a task
-        // needs strategic planning or different skill set
-        base.add("process_spawn");
-        base.add("process_status");
-        // user-facing signals
-        base.add("vance_notify");
-        // basics
-        base.add("current_time");
-        base.add("whoami");
+        java.util.LinkedHashSet<String> base =
+                new java.util.LinkedHashSet<>(de.mhus.vance.brain.thinkengine.WorkerEngineTools.CORE);
         // Plan-tracking (reduced Plan-Mode variant — see
         // specification/public/frankie-engine.md §9). CRUD over
         // ThinkProcessDocument.todos: server-assigned IDs on create,
@@ -184,45 +162,6 @@ public class FrankieEngine implements ThinkEngine {
         base.add("todo_create");
         base.add("todo_update");
         base.add("todo_remove");
-        // Free-form notes across turns — what todo_* can't carry (a
-        // rejected approach, a working hypothesis, where something
-        // lives) and what history compaction would otherwise drop.
-        // They have to be named here: computeAllowed is (engineDefault ∪
-        // recipe.add) ∖ recipe.remove, so a tool missing from a
-        // non-empty engine default is excluded outright — not merely
-        // undiscovered, and no tool_list / how_do_i call can reach past
-        // that. Cost is a name + hint line each, not a schema each,
-        // because all four declare deferred()==true (primary() alone
-        // would not do it here — classify() reads deferred()). Slots are
-        // process-scoped for now (planning/scratchpad-review.md §7.2 R2).
-        base.add("scratchpad_set");
-        base.add("scratchpad_get");
-        base.add("scratchpad_list");
-        base.add("scratchpad_delete");
-        // Settings read — the read-side counterpart of the creator's
-        // `@settings` family, for workers instead of setup agents. Named
-        // here for the same reason as the scratchpad: computeAllowed is
-        // (engineDefault ∪ recipe.add) ∖ recipe.remove, so a tool missing
-        // from this non-empty baseline is excluded outright, not merely
-        // undiscovered. setting_get is deferred (name + hint via tool_list,
-        // schema on demand) and permission-gated per call (READ on the
-        // target project's setting resource; ADMIN for an explicit
-        // `_tenant` read), so the manifest cost is one hint line. A worker
-        // needs it to answer runtime-config questions on its own — which
-        // layer holds `ai.alias.default.code`, whether a provider apiKey is
-        // set, or a HIDDEN value for a tool call that needs it — instead of
-        // bouncing the question back to the operator.
-        base.add("setting_get");
-        // Project memory lookup — parity with Ford's baseline: a worker
-        // answering "what did we decide about X" searches the project's
-        // RAG memory instead of asking the operator. One schema entry,
-        // read-only, its own primary flag decides the bucket.
-        base.add("memory_search");
-        // Generic work-target file/exec wrappers + work_target_get/set.
-        // The 12 file_*/exec_* tools dispatch to client_* or work_*
-        // backends per the per-process WorkTarget; see
-        // de.mhus.vance.brain.tools.worktarget.BaseEngineTools.
-        base.addAll(de.mhus.vance.brain.tools.worktarget.BaseEngineTools.WORK_TARGET);
         ENGINE_DEFAULT_TOOLS = java.util.Collections.unmodifiableSet(base);
     }
 
@@ -315,6 +254,12 @@ public class FrankieEngine implements ThinkEngine {
     @Override
     public Set<String> allowedTools() {
         return ENGINE_DEFAULT_TOOLS;
+    }
+
+    /** Tools released for workers by label, deferred on top of the core. */
+    @Override
+    public Set<String> toolPoolLabels() {
+        return de.mhus.vance.brain.thinkengine.WorkerEngineTools.POOL_LABELS;
     }
 
     // ──────────────────── Lifecycle ────────────────────

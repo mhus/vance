@@ -1,13 +1,14 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.MindmapCodec;
 import de.mhus.vance.shared.document.kind.TreeCodec;
 import de.mhus.vance.shared.document.kind.TreeDocument;
 import de.mhus.vance.shared.document.kind.TreeItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,35 +28,57 @@ public class TreeMoveTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("path", Map.of("type", "string",
-                "description", "Comma-separated index path of the item to move."));
-        p.put("newParentPath", Map.of("type", "string",
-                "description", "Comma-separated index path of the new parent (empty string = root)."));
-        p.put("position", Map.of("type", "integer",
-                "description", "Position among the new parent's children; -1 = append. Default: -1."));
+        p.put("path", Map.of("type", "string", "description", "Comma-separated index path of the item to move."));
+        p.put(
+                "newParentPath",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Comma-separated index path of the new parent (empty string = root)."));
+        p.put(
+                "position",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "Position among the new parent's children; -1 = append. Default: -1."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "tree_move"; }
+    @Override
+    public String name() {
+        return "tree_move";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Move the item at `path` (with its entire subtree) to become a child of "
                 + "`newParentPath` at the given `position` (or appended). Cannot move an item "
                 + "into its own subtree.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-tree", "eddie", "write", "document"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-tree", "eddie", "write", "document");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
+        DocumentDocument doc =
+                support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
         int[] path = TreePath.parse(KindToolSupport.requireString(params, "path"));
         int[] newParent = TreePath.parse(KindToolSupport.paramString(params, "newParentPath"));
         Integer pos = KindToolSupport.paramInt(params, "position");
@@ -76,16 +99,19 @@ public class TreeMoveTool implements Tool {
         // Adjust newParent: when an ancestor or earlier sibling of
         // newParent was just removed, the original indices are off.
         int[] adjustedParent = adjustPathAfterRemoval(newParent, path);
-        TreeDocument moved = TreePath.insertChild(removed, adjustedParent,
-                pos == null ? -1 : pos, moving);
+        TreeDocument moved = TreePath.insertChild(removed, adjustedParent, pos == null ? -1 : pos, moving);
 
         String body = "mindmap".equals(doc.getKind())
                 ? MindmapCodec.serialize(moved, doc.getMimeType())
                 : TreeCodec.serialize(moved, doc.getMimeType());
         support.writeBody(doc, body, ctx);
-        return Map.of("documentId", doc.getId(),
-                "movedFrom", TreePath.format(path),
-                "movedToParent", TreePath.format(adjustedParent));
+        return Map.of(
+                "documentId",
+                doc.getId(),
+                "movedFrom",
+                TreePath.format(path),
+                "movedToParent",
+                TreePath.format(adjustedParent));
     }
 
     private static boolean isPrefixOrEqual(int[] prefix, int[] candidate) {

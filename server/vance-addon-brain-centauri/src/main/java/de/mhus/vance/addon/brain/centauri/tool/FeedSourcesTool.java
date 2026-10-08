@@ -5,6 +5,7 @@ import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.feed.FeedCapabilities;
 import de.mhus.vance.toolpack.feed.FeedScope;
 import de.mhus.vance.toolpack.feed.FeedSelector;
@@ -35,9 +36,7 @@ public class FeedSourcesTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of("type", "string",
-                            "description", "Default: active project.")),
+            "properties", Map.of("projectId", Map.of("type", "string", "description", "Default: active project.")),
             "required", List.of());
 
     private final EddieContext eddieContext;
@@ -59,7 +58,10 @@ public class FeedSourcesTool implements Tool {
         this.sourceFactory = sourceFactory;
     }
 
-    @Override public String name() { return "feed_sources"; }
+    @Override
+    public String name() {
+        return "feed_sources";
+    }
 
     @Override
     public String description() {
@@ -69,26 +71,36 @@ public class FeedSourcesTool implements Tool {
                 + "source; that is an operator setting.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     /** Off the default manifest: relevant only when a feed is actually the topic. */
-    @Override public boolean deferred() { return true; }
+    @Override
+    public boolean deferred() {
+        return true;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public String searchHint() {
         return "which feed/news sources exist, their stream selectors";
     }
 
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "read-only", "feeds");
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read-only", "feeds");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        FeedScope scope = new FeedScope(
-                ctx.tenantId(), project.getName(), ctx.processId(), ctx.userId());
+        FeedScope scope = new FeedScope(ctx.tenantId(), project.getName(), ctx.processId(), ctx.userId());
 
         List<Map<String, Object>> sources = new ArrayList<>();
         for (FeedSourceInstance instance : sourceFactory.assemble(scope)) {
@@ -149,9 +161,11 @@ public class FeedSourcesTool implements Tool {
         out.put("project", project.getName());
         out.put("sources", sources);
         if (sources.isEmpty()) {
-            out.put("hint", "No sources configured in this project. Configuring one is an "
-                    + "operator document under _vance/config/feeds/ that no tool can write — "
-                    + "run manual_read('feeds-sources') and tell the user what to set.");
+            out.put(
+                    "hint",
+                    "No sources configured in this project. Configuring one is an "
+                            + "operator document under _vance/config/feeds/ that no tool can write — "
+                            + "run manual_read('feeds-sources') and tell the user what to set.");
         }
         log.debug("FeedSourcesTool project='{}' sources={}", project.getName(), sources.size());
         return out;

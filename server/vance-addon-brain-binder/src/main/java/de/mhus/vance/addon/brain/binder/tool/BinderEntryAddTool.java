@@ -6,6 +6,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,20 +20,27 @@ import org.springframework.stereotype.Component;
 public class BinderEntryAddTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "The binder folder (holding _app.yaml)."));
-                put("ref", Map.of("type", "string",
-                        "description", "Target document, a vance: ref or project path "
-                                + "(e.g. 'vance:/reports/q1.sheet.yaml' or 'reports/q1.sheet.yaml')."));
-                put("section", Map.of("type", "string",
-                        "description", "Optional grouping label in the sidebar."));
-                put("title", Map.of("type", "string",
-                        "description", "Optional display-title override."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder", "ref"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "The binder folder (holding _app.yaml)."));
+                    put(
+                            "ref",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Target document, a vance: ref or project path "
+                                            + "(e.g. 'vance:/reports/q1.sheet.yaml' or 'reports/q1.sheet.yaml')."));
+                    put("section", Map.of("type", "string", "description", "Optional grouping label in the sidebar."));
+                    put("title", Map.of("type", "string", "description", "Optional display-title override."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder", "ref"));
 
     private final EddieContext eddieContext;
     private final BinderManifestOps manifestOps;
@@ -42,7 +50,10 @@ public class BinderEntryAddTool implements Tool {
         this.manifestOps = manifestOps;
     }
 
-    @Override public String name() { return "binder_entry_add"; }
+    @Override
+    public String name() {
+        return "binder_entry_add";
+    }
 
     @Override
     public String description() {
@@ -51,13 +62,20 @@ public class BinderEntryAddTool implements Tool {
                 + "the document; to change its content, edit the target directly.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "binder");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "binder");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -69,8 +87,7 @@ public class BinderEntryAddTool implements Tool {
         String title = BinderToolSupport.paramString(params, "title");
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        manifestOps.addEntry(ctx.tenantId(), project.getName(), folder,
-                ref, section, title, ctx.userId());
+        manifestOps.addEntry(ctx.tenantId(), project.getName(), folder, ref, section, title, ctx.userId());
 
         log.info("BinderEntryAddTool folder='{}' ref='{}'", folder, ref);
         return Map.of("folder", folder, "ref", ref, "added", true);

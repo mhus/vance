@@ -4,6 +4,7 @@ import de.mhus.vance.shared.document.DocumentArchiveDocument;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,7 +32,10 @@ public class DocVersionListTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_version_list"; }
+    @Override
+    public String name() {
+        return "doc_version_list";
+    }
 
     @Override
     public String description() {
@@ -40,14 +44,20 @@ public class DocVersionListTool implements Tool {
                 + "(archivedAtMs) and size. Select the document by path or id.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
-        return Set.of("doc-management", "eddie", "read", "document");
+        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "read", "document");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -59,7 +69,9 @@ public class DocVersionListTool implements Tool {
         for (DocumentArchiveDocument a : archives) {
             Map<String, Object> v = new LinkedHashMap<>();
             v.put("archiveId", a.getId());
-            v.put("archivedAtMs", a.getArchivedAt() == null ? 0L : a.getArchivedAt().toEpochMilli());
+            v.put(
+                    "archivedAtMs",
+                    a.getArchivedAt() == null ? 0L : a.getArchivedAt().toEpochMilli());
             v.put("size", a.getSize());
             v.put("path", a.getPath());
             versions.add(v);

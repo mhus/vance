@@ -5,6 +5,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.core.ContentHashes;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -69,7 +70,7 @@ public class DocAppendTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("text-edit", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "text-edit", "eddie", "write", "document");
     }
 
     @Override

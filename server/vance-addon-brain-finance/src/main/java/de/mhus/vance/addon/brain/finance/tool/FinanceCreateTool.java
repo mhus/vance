@@ -7,6 +7,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,15 +21,25 @@ import org.springframework.stereotype.Component;
 public class FinanceCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string",
-                        "description", "Target path (auto-suffixed `.finance-tree.yaml`)."));
-                put("title", Map.of("type", "string"));
-                put("description", Map.of("type", "string"));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "path",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Target path (auto-suffixed `.finance-tree.yaml`)."));
+                    put("title", Map.of("type", "string"));
+                    put("description", Map.of("type", "string"));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path"));
 
     private final EddieContext eddieContext;
     private final FinanceService financeService;
@@ -38,7 +49,10 @@ public class FinanceCreateTool implements Tool {
         this.financeService = financeService;
     }
 
-    @Override public String name() { return "finance_tree_create"; }
+    @Override
+    public String name() {
+        return "finance_tree_create";
+    }
 
     @Override
     public String description() {
@@ -48,11 +62,20 @@ public class FinanceCreateTool implements Tool {
                 + "Run manual_read('finance-tree') for the data model.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public Set<String> labels() { return Set.of("eddie", "write", "document", "finance"); }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "finance");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -62,8 +85,8 @@ public class FinanceCreateTool implements Tool {
         String description = FinanceToolSupport.paramString(params, "description");
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        DocumentDocument stored = financeService.create(
-                ctx.tenantId(), project.getName(), path, title, description, ctx.userId());
+        DocumentDocument stored =
+                financeService.create(ctx.tenantId(), project.getName(), path, title, description, ctx.userId());
         log.info("FinanceCreateTool path='{}'", stored.getPath());
 
         Map<String, Object> result = new LinkedHashMap<>();

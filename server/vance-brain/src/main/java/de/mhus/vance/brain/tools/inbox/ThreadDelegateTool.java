@@ -9,6 +9,7 @@ import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,18 +40,26 @@ public class ThreadDelegateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "threadId", Map.of(
-                            "type", "string",
-                            "description", "The thread to hand over, from inbox_list."),
-                    "toUserId", Map.of(
-                            "type", "string",
-                            "description", "Login of the person who should decide it. "
-                                    + "Name someone the user named — do not guess."),
-                    "note", Map.of(
-                            "type", "string",
-                            "description", "Optional one line on why it is theirs. "
-                                    + "They see it; write it for them, not for the log.")),
+            "properties",
+                    Map.of(
+                            "threadId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "The thread to hand over, from inbox_list."),
+                            "toUserId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Login of the person who should decide it. "
+                                                    + "Name someone the user named — do not guess."),
+                            "note",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional one line on why it is theirs. "
+                                                    + "They see it; write it for them, not for the log.")),
             "required", List.of("threadId", "toUserId"));
 
     private final MaximegalonService threads;
@@ -58,9 +67,13 @@ public class ThreadDelegateTool implements Tool {
     private final PermissionService permissionService;
     private final SecurityContextFactory contextFactory;
 
-    @Override public String name() { return "thread_delegate"; }
+    @Override
+    public String name() {
+        return "thread_delegate";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Hand an inbox thread to another person, so it waits on them instead of you. "
                 + "Use it when the user says a matter belongs to somebody else. This ROUTES "
                 + "the decision, it does not make it: the thread stays open and the new "
@@ -69,21 +82,41 @@ public class ThreadDelegateTool implements Tool {
                 + "not write to their inbox.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return false; }
-    @Override public Set<String> labels() { return Set.of("executive"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "executive");
+    }
+
+    @Override
+    public String searchHint() {
         return "Hand an inbox thread over to the person who should decide it";
     }
 
-    @Override public String troubleshootingHint() {
+    @Override
+    public String troubleshootingHint() {
         return "Thread ids come from inbox_list. Delegating is not answering — the thread "
                 + "stays open, it just waits on someone else.";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -94,8 +127,8 @@ public class ThreadDelegateTool implements Tool {
         String note = optString(params, "note");
 
         if (toUserId.equals(owner)) {
-            throw new ToolException("'" + toUserId + "' is you — it is already on your desk. "
-                    + "Nothing to hand over.");
+            throw new ToolException(
+                    "'" + toUserId + "' is you — it is already on your desk. " + "Nothing to hand over.");
         }
 
         MaximegalonDocument doc = support.loadVisible(tenantId, threadId, ctx);
@@ -111,8 +144,7 @@ public class ThreadDelegateTool implements Tool {
                 new Resource.InboxItem(tenantId, "", toUserId),
                 Action.WRITE);
 
-        MaximegalonDocument updated = threads
-                .delegate(tenantId, threadId, toUserId, owner, note)
+        MaximegalonDocument updated = threads.delegate(tenantId, threadId, toUserId, owner, note)
                 .orElseThrow(() -> InboxToolSupport.notVisible(threadId));
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -132,8 +164,7 @@ public class ThreadDelegateTool implements Tool {
         return s.trim();
     }
 
-    private static @org.jspecify.annotations.Nullable String optString(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String optString(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         return raw instanceof String s && !s.isBlank() ? s.trim() : null;
     }

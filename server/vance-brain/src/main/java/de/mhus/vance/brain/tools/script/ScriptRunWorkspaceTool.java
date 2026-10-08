@@ -2,14 +2,15 @@ package de.mhus.vance.brain.tools.script;
 
 import de.mhus.vance.api.action.ScriptSource;
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.action.ActionInvocation;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.ScriptActionExecutor;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.toolpack.SpawnTool;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,28 +32,34 @@ import org.springframework.stereotype.Component;
 public class ScriptRunWorkspaceTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("dirName", Map.of(
-                "type", "string",
-                "description", "Existing workspace RootDir name to load "
-                        + "the script from."));
-        properties.put("path", Map.of(
-                "type", "string",
-                "description", "Path of the .js file inside the RootDir."));
-        properties.put("params", Map.of(
-                "type", "object",
-                "description", "Arbitrary key/value map passed to the "
-                        + "script as the top-level 'args' binding.",
-                "additionalProperties", true));
-        properties.put("timeoutSeconds", Map.of(
-                "type", "integer",
-                "description", "Wall-clock timeout for the script run. "
-                        + "Default 30s."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("dirName", "path"));
+        properties.put(
+                "dirName",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Existing workspace RootDir name to load " + "the script from."));
+        properties.put(
+                "path",
+                Map.of(
+                        "type", "string",
+                        "description", "Path of the .js file inside the RootDir."));
+        properties.put(
+                "params",
+                Map.of(
+                        "type",
+                        "object",
+                        "description",
+                        "Arbitrary key/value map passed to the " + "script as the top-level 'args' binding.",
+                        "additionalProperties",
+                        true));
+        properties.put(
+                "timeoutSeconds",
+                Map.of("type", "integer", "description", "Wall-clock timeout for the script run. " + "Default 30s."));
+        SCHEMA = Map.of("type", "object", "properties", properties, "required", List.of("dirName", "path"));
     }
 
     private final ScriptActionExecutor scriptActionExecutor;
@@ -60,6 +67,12 @@ public class ScriptRunWorkspaceTool implements Tool {
     @Override
     public String name() {
         return "script_run_work";
+    }
+
+    @Override
+    public java.util.Set<String> labels() {
+
+        return java.util.Set.of(ToolLabels.WORKER);
     }
 
     @Override
@@ -104,8 +117,8 @@ public class ScriptRunWorkspaceTool implements Tool {
                         /*correlationId*/ null,
                         "tool:" + name(),
                         ctx.processId());
-        ActionResult result = scriptActionExecutor.execute(new ActionInvocation<>(
-                action, triggerCtx, TriggerKind.TOOL));
+        ActionResult result =
+                scriptActionExecutor.execute(new ActionInvocation<>(action, triggerCtx, TriggerKind.TOOL));
         return ScriptRunDocTool.toResultMap(result);
     }
 }

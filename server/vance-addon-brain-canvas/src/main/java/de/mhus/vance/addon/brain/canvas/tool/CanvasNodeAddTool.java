@@ -6,6 +6,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,31 +20,42 @@ import org.springframework.stereotype.Component;
 public class CanvasNodeAddTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string", "description", "Canvas document path."));
-                put("node", Map.of("type", "object",
-                        "description", "Node spec: { type: text|doc|link|group, x, y, w, h, "
-                                + "color?, z?, … }. text→`text`, doc→`ref` (vance:-URI), "
-                                + "link→`href`+`title?`, group→`label?`. `id` is minted "
-                                + "server-side if omitted."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path", "node"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("path", Map.of("type", "string", "description", "Canvas document path."));
+                    put(
+                            "node",
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "description",
+                                    "Node spec: { type: text|doc|link|group, x, y, w, h, "
+                                            + "color?, z?, … }. text→`text`, doc→`ref` (vance:-URI), "
+                                            + "link→`href`+`title?`, group→`label?`. `id` is minted "
+                                            + "server-side if omitted."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path", "node"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
     private final CanvasService canvasService;
 
-    public CanvasNodeAddTool(EddieContext eddieContext,
-                             DocumentService documentService,
-                             CanvasService canvasService) {
+    public CanvasNodeAddTool(EddieContext eddieContext, DocumentService documentService, CanvasService canvasService) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.canvasService = canvasService;
     }
 
-    @Override public String name() { return "canvas_node_add"; }
+    @Override
+    public String name() {
+        return "canvas_node_add";
+    }
 
     @Override
     public String description() {
@@ -51,18 +63,24 @@ public class CanvasNodeAddTool implements Tool {
                 + "x/y position. Returns the minted node id.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "canvas");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "canvas");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        CanvasToolSupport.Resolved r =
-                CanvasToolSupport.resolveByPath(eddieContext, documentService, params, ctx);
+        CanvasToolSupport.Resolved r = CanvasToolSupport.resolveByPath(eddieContext, documentService, params, ctx);
         Map<String, Object> node = CanvasToolSupport.paramMap(params, "node");
         if (node.isEmpty()) throw new ToolException("node is required");
 

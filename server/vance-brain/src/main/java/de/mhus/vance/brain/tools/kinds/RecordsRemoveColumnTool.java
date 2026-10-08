@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.RecordsCodec;
 import de.mhus.vance.shared.document.kind.RecordsDocument;
 import de.mhus.vance.shared.document.kind.RecordsItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,28 +33,50 @@ public class RecordsRemoveColumnTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "records_remove_column"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "records_remove_column";
+    }
+
+    @Override
+    public String description() {
         return "Remove a column from the schema. Each row's value for that field is dropped. "
                 + "The schema must keep at least one column.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write", "document"); }
-    @Override public boolean deferred() { return true; }
-    @Override public String searchHint() { return "Bulk-destructive collection ops"; }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-records", "eddie", "write", "document");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Bulk-destructive collection ops";
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "records");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "records");
         String field = KindToolSupport.requireString(params, "field");
 
         RecordsDocument rec = RecordsCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         if (!rec.schema().contains(field)) {
-            throw new ToolException("Field '" + field + "' is not in the schema "
-                    + rec.schema());
+            throw new ToolException("Field '" + field + "' is not in the schema " + rec.schema());
         }
         if (rec.schema().size() <= 1) {
             throw new ToolException("Cannot remove the last column — schema must be non-empty");
@@ -68,8 +91,6 @@ public class RecordsRemoveColumnTool implements Tool {
         }
         RecordsDocument updated = new RecordsDocument(rec.kind(), newSchema, items, rec.extra());
         support.writeBody(doc, RecordsCodec.serialize(updated, doc.getMimeType()), ctx);
-        return Map.of("documentId", doc.getId(),
-                "removedField", field,
-                "schema", newSchema);
+        return Map.of("documentId", doc.getId(), "removedField", field, "schema", newSchema);
     }
 }

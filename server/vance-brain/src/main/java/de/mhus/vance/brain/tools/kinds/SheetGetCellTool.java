@@ -1,14 +1,15 @@
 package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.brain.sheet.SheetEvalService;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.SheetCell;
 import de.mhus.vance.shared.document.kind.SheetCodec;
 import de.mhus.vance.shared.document.kind.SheetComputed;
 import de.mhus.vance.shared.document.kind.SheetDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,29 +28,43 @@ public class SheetGetCellTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("field", Map.of("type", "string",
-                "description", "A1-style cell address, e.g. 'A1', 'B5', 'AB99'."));
+        p.put("field", Map.of("type", "string", "description", "A1-style cell address, e.g. 'A1', 'B5', 'AB99'."));
         return p;
     }
 
     private final KindToolSupport support;
     private final SheetEvalService evalService;
 
-    @Override public String name() { return "sheet_get_cell"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "sheet_get_cell";
+    }
+
+    @Override
+    public String description() {
         return "Read a single cell from a `kind: sheet` document by its A1 address. "
                 + "Returns the cell's data (value or formula string), formatting, and — for "
                 + "formula cells — the server-evaluated `computedValue`.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "read-only"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-sheet", "eddie", "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "sheet");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "sheet");
         String field = KindToolSupport.requireString(params, "field");
         SheetCodec.Address addr = SheetCodec.parseAddress(field);
         if (addr == null) throw new ToolException("Invalid A1 address: " + field);

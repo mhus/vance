@@ -1,10 +1,10 @@
 package de.mhus.vance.brain.trillian.tools;
 
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.trillian.TrillianUserEngine;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
@@ -14,6 +14,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,41 +55,62 @@ import org.springframework.stereotype.Component;
 public class CrossProcessCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("projectId", Map.of(
-                "type", "string",
-                "description", "Name of the target project the worker should "
-                        + "run in. Must exist in this tenant and not be a "
-                        + "SYSTEM project. Use project_list to see what's "
-                        + "available."));
-        properties.put("name", Map.of(
-                "type", "string",
-                "description", "Stable process name. Must be unique within the "
-                        + "calling session — pick a descriptive name like "
-                        + "'count-docs-instant-hole'."));
-        properties.put("recipe", Map.of(
-                "type", "string",
-                "description", "Recipe name (e.g. 'arthur', 'coding', "
-                        + "'marvin'). Determines the engine + tool set the "
-                        + "worker carries."));
-        properties.put("goal", Map.of(
-                "type", "string",
-                "description", "One-line statement of what the worker should "
-                        + "accomplish. Should be self-contained — the worker "
-                        + "won't see your chat history."));
-        properties.put("title", Map.of(
-                "type", "string",
-                "description", "Optional display title for the worker."));
-        properties.put("steerContent", Map.of(
-                "type", "string",
-                "description", "Optional initial user-style message that the "
-                        + "worker sees in its first turn — use this to expand "
-                        + "the goal with constraints, context, or examples."));
+        properties.put(
+                "projectId",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Name of the target project the worker should "
+                                + "run in. Must exist in this tenant and not be a "
+                                + "SYSTEM project. Use project_list to see what's "
+                                + "available."));
+        properties.put(
+                "name",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Stable process name. Must be unique within the "
+                                + "calling session — pick a descriptive name like "
+                                + "'count-docs-instant-hole'."));
+        properties.put(
+                "recipe",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Recipe name (e.g. 'arthur', 'coding', "
+                                + "'marvin'). Determines the engine + tool set the "
+                                + "worker carries."));
+        properties.put(
+                "goal",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "One-line statement of what the worker should "
+                                + "accomplish. Should be self-contained — the worker "
+                                + "won't see your chat history."));
+        properties.put(
+                "title",
+                Map.of(
+                        "type", "string",
+                        "description", "Optional display title for the worker."));
+        properties.put(
+                "steerContent",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional initial user-style message that the "
+                                + "worker sees in its first turn — use this to expand "
+                                + "the goal with constraints, context, or examples."));
         SCHEMA = Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("projectId", "name", "recipe", "goal"));
+                "type", "object", "properties", properties, "required", List.of("projectId", "name", "recipe", "goal"));
     }
 
     private final ActionExecutorRegistry actionRegistry;
@@ -125,7 +147,7 @@ public class CrossProcessCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive", "cross-project");
+        return Set.of(ToolLabels.INTERNAL, "executive", "cross-project");
     }
 
     @Override
@@ -154,16 +176,15 @@ public class CrossProcessCreateTool implements Tool {
         }
 
         // 1. Validate the target project exists and is mortal.
-        ProjectDocument project = projectService.findByTenantAndName(ctx.tenantId(), projectId)
-                .orElseThrow(() -> new ToolException(
-                        "Project '" + projectId + "' not found in tenant '"
-                                + ctx.tenantId() + "'. Use project_list to see "
-                                + "available projects."));
+        ProjectDocument project = projectService
+                .findByTenantAndName(ctx.tenantId(), projectId)
+                .orElseThrow(() -> new ToolException("Project '" + projectId + "' not found in tenant '"
+                        + ctx.tenantId() + "'. Use project_list to see "
+                        + "available projects."));
         if (project.getKind() == ProjectKind.SYSTEM) {
-            throw new ToolException(
-                    "Project '" + projectId + "' is a SYSTEM project — workers "
-                            + "may not be spawned there. Pick a regular user "
-                            + "project.");
+            throw new ToolException("Project '" + projectId + "' is a SYSTEM project — workers "
+                    + "may not be spawned there. Pick a regular user "
+                    + "project.");
         }
 
         // Cross-project spawn: the caller must be authorized to START work in
@@ -201,10 +222,10 @@ public class CrossProcessCreateTool implements Tool {
 
         switch (result.outcome()) {
             case SCHEDULED -> {
-                ThinkProcessDocument spawned = thinkProcessService.findById(result.spawnedId())
+                ThinkProcessDocument spawned = thinkProcessService
+                        .findById(result.spawnedId())
                         .orElseThrow(() -> new ToolException(
-                                "cross_process_create: spawned process '"
-                                        + result.spawnedId() + "' is gone"));
+                                "cross_process_create: spawned process '" + result.spawnedId() + "' is gone"));
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("processId", spawned.getId());
                 out.put("name", spawned.getName());
@@ -216,14 +237,19 @@ public class CrossProcessCreateTool implements Tool {
                 // caller MUST end the current turn and wait for a
                 // ProcessEvent before reporting back to Control.
                 out.put("status", "spawned, awaiting completion");
-                out.put("next",
+                out.put(
+                        "next",
                         "STOP this turn now. Do NOT call task_complete / task_failed / "
                                 + "task_needs_input in the same turn — the worker has "
                                 + "produced no result yet. You will wake on the worker's "
                                 + "terminal ProcessEvent; report only then.");
-                log.info("cross_process_create: tenant='{}' caller='{}' spawned='{}' targetProject='{}' recipe='{}'",
-                        ctx.tenantId(), ctx.processId(), spawned.getId(),
-                        project.getName(), recipeName);
+                log.info(
+                        "cross_process_create: tenant='{}' caller='{}' spawned='{}' targetProject='{}' recipe='{}'",
+                        ctx.tenantId(),
+                        ctx.processId(),
+                        spawned.getId(),
+                        project.getName(),
+                        recipeName);
                 return out;
             }
             case SUCCESS -> {
@@ -231,8 +257,7 @@ public class CrossProcessCreateTool implements Tool {
                 return out != null ? out : Map.of("status", "already_exists");
             }
             case TECHNICAL_ERROR, BUSINESS_ERROR, TIMEOUT, PERMISSION_ERROR, CANCELLED -> {
-                String msg = result.errorMessage() == null
-                        ? "cross_process_create failed" : result.errorMessage();
+                String msg = result.errorMessage() == null ? "cross_process_create failed" : result.errorMessage();
                 throw new ToolException("cross_process_create: " + msg);
             }
         }

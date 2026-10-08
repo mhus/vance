@@ -1,9 +1,10 @@
 package de.mhus.vance.brain.tools.scratchpad;
 
+import de.mhus.vance.shared.memory.ScratchpadService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.memory.ScratchpadService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,10 +22,12 @@ public class ScratchpadDeleteTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Slot name to delete.")),
+            "properties",
+                    Map.of(
+                            "title",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Slot name to delete.")),
             "required", List.of("title"));
 
     private final ScratchpadService scratchpad;
@@ -59,7 +62,7 @@ public class ScratchpadDeleteTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write");
+        return java.util.Set.of(ToolLabels.WORKER, "write");
     }
 
     @Override

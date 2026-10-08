@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -123,7 +124,7 @@ public class ToolResultReadTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     /**

@@ -8,6 +8,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +47,12 @@ public class UserProjectRequestTool implements Tool {
     @Override
     public String name() {
         return "user_project_request";
+    }
+
+    @Override
+    public Set<String> labels() {
+
+        return Set.of(ToolLabels.INTERNAL);
     }
 
     @Override

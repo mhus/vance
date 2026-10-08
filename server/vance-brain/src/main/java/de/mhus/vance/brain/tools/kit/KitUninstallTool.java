@@ -5,6 +5,7 @@ import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,26 +53,27 @@ public class KitUninstallTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("kit", Map.of(
-                "type", "string",
-                "description",
-                "Record id or name of the installed kit — see kit_status."));
-        properties.put("project", Map.of(
-                "type", "string",
-                "description", "Project to act on. Defaults to the current project."));
-        properties.put("prune", Map.of(
-                "type", "boolean",
-                "description",
-                "Also delete the documents and settings the kit installed. Default false."));
-        return Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("kit"));
+        properties.put(
+                "kit",
+                Map.of("type", "string", "description", "Record id or name of the installed kit — see kit_status."));
+        properties.put(
+                "project",
+                Map.of(
+                        "type", "string",
+                        "description", "Project to act on. Defaults to the current project."));
+        properties.put(
+                "prune",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "Also delete the documents and settings the kit installed. Default false."));
+        return Map.of("type", "object", "properties", properties, "required", List.of("kit"));
     }
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive", "destructive");
+        return Set.of(ToolLabels.OPERATOR, "executive", "destructive");
     }
 
     @Override
@@ -89,14 +91,16 @@ public class KitUninstallTool implements Tool {
         if (ctx.tenantId() == null) {
             throw new ToolException("kit_uninstall requires a tenant scope");
         }
-        String projectId = KitToolSupport.requireProjectAuthorized(ctx,
+        String projectId = KitToolSupport.requireProjectAuthorized(
+                ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.ADMIN);
+                permissionService,
+                contextFactory,
+                de.mhus.vance.shared.permission.Action.ADMIN);
         String kitRef = KitToolSupport.requireString(params, "kit");
         boolean prune = KitToolSupport.optionalBoolean(params, "prune");
         return KitToolSupport.resultToMap(kitService.uninstall(
-                ctx.tenantId(), projectId, resolveKitId(ctx.tenantId(), projectId, kitRef), prune,
-                ctx.userId()));
+                ctx.tenantId(), projectId, resolveKitId(ctx.tenantId(), projectId, kitRef), prune, ctx.userId()));
     }
 
     /** Accept the record id or the display name — {@code kit_status} shows both. */
@@ -114,7 +118,7 @@ public class KitUninstallTool implements Tool {
                     + "' — address one by its id: "
                     + byName.stream().map(KitInstalledRecordDto::getId).toList());
         }
-        throw new ToolException("no installed kit '" + kitRef + "' in project " + projectId
-                + " — call kit_status to list them");
+        throw new ToolException(
+                "no installed kit '" + kitRef + "' in project " + projectId + " — call kit_status to list them");
     }
 }

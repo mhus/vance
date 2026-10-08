@@ -10,6 +10,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,7 +107,7 @@ public class SkillActivateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "skill", "process");
+        return Set.of(ToolLabels.WORKER, "eddie", "skill", "process");
     }
 
     @Override

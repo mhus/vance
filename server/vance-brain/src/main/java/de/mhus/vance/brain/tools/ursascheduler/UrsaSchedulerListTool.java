@@ -5,6 +5,7 @@ import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,26 +18,39 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class UrsaSchedulerListTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<>(),
-            "required", List.of());
+    private static final Map<String, Object> SCHEMA =
+            Map.of("type", "object", "properties", new LinkedHashMap<>(), "required", List.of());
 
     private final UrsaSchedulerLoader loader;
     private final UrsaSchedulerToolSupport support;
 
-    @Override public String name() { return "scheduler_list"; }
+    @Override
+    public String name() {
+        return "scheduler_list";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "List all schedulers visible to the current project — "
                 + "from both the project itself and the tenant-wide "
                 + "_vance/scheduler/ folder. Returns name, description, "
                 + "cron, recipe, enabled flag, last run, next run.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("read-only", "scheduler"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "read-only", "scheduler");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

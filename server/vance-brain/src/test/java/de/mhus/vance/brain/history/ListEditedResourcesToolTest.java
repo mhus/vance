@@ -30,23 +30,21 @@ class ListEditedResourcesToolTest {
 
     private final ChatMessageService service = mock(ChatMessageService.class);
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
-    private final ListEditedResourcesTool tool = new ListEditedResourcesTool(
-            service, thinkProcessService);
-    private final ToolInvocationContext ctx = new ToolInvocationContext(
-            "tenant-1", "proj", "sess", "process-abc", "user");
+    private final ListEditedResourcesTool tool = new ListEditedResourcesTool(service, thinkProcessService);
+    private final ToolInvocationContext ctx =
+            new ToolInvocationContext("tenant-1", "proj", "sess", "process-abc", "user");
 
     @Test
     void deferred_andHasSearchHint() {
         assertThat(tool.deferred()).isTrue();
         assertThat(tool.primary()).isFalse();
         assertThat(tool.searchHint()).isNotBlank();
-        assertThat(tool.labels()).containsExactly("read-only");
+        assertThat(tool.labels()).containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "read-only");
     }
 
     @Test
     void invoke_requiresProcessScope() {
-        ToolInvocationContext noProcess =
-                new ToolInvocationContext("t", "p", "s", null, "u");
+        ToolInvocationContext noProcess = new ToolInvocationContext("t", "p", "s", null, "u");
 
         assertThatThrownBy(() -> tool.invoke(Map.of(), noProcess))
                 .isInstanceOf(ToolException.class)
@@ -56,23 +54,16 @@ class ListEditedResourcesToolTest {
     @Test
     void invoke_defaultScopeAndNoFloor_yieldsAllResources() {
         when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(null)))
-                .thenReturn(List.of(
-                        "CLIENT_FILE:/abs/Foo.java",
-                        "DOCUMENT:65f-doc"));
+                .thenReturn(List.of("CLIENT_FILE:/abs/Foo.java", "DOCUMENT:65f-doc"));
 
         @SuppressWarnings("unchecked")
         Map<String, Object> result = tool.invoke(Map.of(), ctx);
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> resources =
-                (List<Map<String, Object>>) result.get("resources");
+        List<Map<String, Object>> resources = (List<Map<String, Object>>) result.get("resources");
         assertThat(resources).hasSize(2);
-        assertThat(resources.get(0))
-                .containsEntry("type", "CLIENT_FILE")
-                .containsEntry("key", "/abs/Foo.java");
-        assertThat(resources.get(1))
-                .containsEntry("type", "DOCUMENT")
-                .containsEntry("key", "65f-doc");
+        assertThat(resources.get(0)).containsEntry("type", "CLIENT_FILE").containsEntry("key", "/abs/Foo.java");
+        assertThat(resources.get(1)).containsEntry("type", "DOCUMENT").containsEntry("key", "65f-doc");
         assertThat(result.get("scope")).isEqualTo("process");
         assertThat(result).doesNotContainKey("since");
         assertThat(result).doesNotContainKey("resolvedFrom");
@@ -81,8 +72,7 @@ class ListEditedResourcesToolTest {
     @Test
     void invoke_withSince_passesTimestampToService() {
         Instant since = Instant.parse("2026-05-11T14:00:00Z");
-        when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(since)))
-                .thenReturn(List.of());
+        when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(since))).thenReturn(List.of());
 
         @SuppressWarnings("unchecked")
         Map<String, Object> result = tool.invoke(Map.of("since", since.toString()), ctx);
@@ -98,34 +88,28 @@ class ListEditedResourcesToolTest {
     @Test
     void invoke_withSinceTag_resolvesToMarkerTimestamp_andEchoesResolvedFrom() {
         Instant markerTime = Instant.parse("2026-05-11T15:30:00Z");
-        when(service.findLatestCreatedAtForTag(
-                eq("tenant-1"), any(), eq("PLAN_STEP_STARTED:cleanup")))
+        when(service.findLatestCreatedAtForTag(eq("tenant-1"), any(), eq("PLAN_STEP_STARTED:cleanup")))
                 .thenReturn(Optional.of(markerTime));
         when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(markerTime)))
                 .thenReturn(List.of("CLIENT_FILE:/abs/Bar.java"));
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = tool.invoke(Map.of(
-                "sinceTag", "PLAN_STEP_STARTED:cleanup"), ctx);
+        Map<String, Object> result = tool.invoke(Map.of("sinceTag", "PLAN_STEP_STARTED:cleanup"), ctx);
 
         assertThat(result.get("since")).isEqualTo(markerTime.toString());
-        assertThat(result.get("resolvedFrom"))
-                .isEqualTo("sinceTag:PLAN_STEP_STARTED:cleanup");
+        assertThat(result.get("resolvedFrom")).isEqualTo("sinceTag:PLAN_STEP_STARTED:cleanup");
     }
 
     @Test
     void invoke_sinceTagBeatsSince_whenBothPresent() {
         Instant rawSince = Instant.parse("2026-05-11T10:00:00Z");
         Instant markerTime = Instant.parse("2026-05-11T15:30:00Z");
-        when(service.findLatestCreatedAtForTag(
-                eq("tenant-1"), any(), eq("MODE:execute")))
+        when(service.findLatestCreatedAtForTag(eq("tenant-1"), any(), eq("MODE:execute")))
                 .thenReturn(Optional.of(markerTime));
         when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(markerTime)))
                 .thenReturn(List.of());
 
-        tool.invoke(Map.of(
-                "since", rawSince.toString(),
-                "sinceTag", "MODE:execute"), ctx);
+        tool.invoke(Map.of("since", rawSince.toString(), "sinceTag", "MODE:execute"), ctx);
 
         // The marker time, not the raw `since`, must be the floor —
         // sinceTag wins to keep semantic anchoring stable.
@@ -137,16 +121,13 @@ class ListEditedResourcesToolTest {
     @Test
     void invoke_sinceTagNotFound_fallsBackToSince() {
         Instant rawSince = Instant.parse("2026-05-11T10:00:00Z");
-        when(service.findLatestCreatedAtForTag(
-                eq("tenant-1"), any(), eq("PLAN_STEP_STARTED:never")))
+        when(service.findLatestCreatedAtForTag(eq("tenant-1"), any(), eq("PLAN_STEP_STARTED:never")))
                 .thenReturn(Optional.empty());
-        when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(rawSince)))
-                .thenReturn(List.of());
+        when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(rawSince))).thenReturn(List.of());
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = tool.invoke(Map.of(
-                "since", rawSince.toString(),
-                "sinceTag", "PLAN_STEP_STARTED:never"), ctx);
+        Map<String, Object> result =
+                tool.invoke(Map.of("since", rawSince.toString(), "sinceTag", "PLAN_STEP_STARTED:never"), ctx);
 
         assertThat(result.get("since")).isEqualTo(rawSince.toString());
         // resolvedFrom reflects the actual resolution (since), not the
@@ -156,11 +137,9 @@ class ListEditedResourcesToolTest {
 
     @Test
     void invoke_sinceTagAlone_notFound_yieldsNoFloor() {
-        when(service.findLatestCreatedAtForTag(
-                eq("tenant-1"), any(), eq("FILE_EDIT")))
+        when(service.findLatestCreatedAtForTag(eq("tenant-1"), any(), eq("FILE_EDIT")))
                 .thenReturn(Optional.empty());
-        when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(null)))
-                .thenReturn(List.of("DOCUMENT:65f"));
+        when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(null))).thenReturn(List.of("DOCUMENT:65f"));
 
         @SuppressWarnings("unchecked")
         Map<String, Object> result = tool.invoke(Map.of("sinceTag", "FILE_EDIT"), ctx);
@@ -176,35 +155,37 @@ class ListEditedResourcesToolTest {
         when(thinkProcessService.findByIds(org.mockito.ArgumentMatchers.anyCollection()))
                 .thenReturn(List.of(
                         de.mhus.vance.shared.thinkprocess.ThinkProcessDocument.builder()
-                                .id("process-abc").projectId("proj").build(),
+                                .id("process-abc")
+                                .projectId("proj")
+                                .build(),
                         de.mhus.vance.shared.thinkprocess.ThinkProcessDocument.builder()
-                                .id("child-1").projectId("proj").build(),
+                                .id("child-1")
+                                .projectId("proj")
+                                .build(),
                         de.mhus.vance.shared.thinkprocess.ThinkProcessDocument.builder()
-                                .id("child-2").projectId("proj").build()));
-        when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(null)))
-                .thenReturn(List.of());
+                                .id("child-2")
+                                .projectId("proj")
+                                .build()));
+        when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(null))).thenReturn(List.of());
 
         tool.invoke(Map.of("scope", "children"), ctx);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Set<String>> scopeCap = ArgumentCaptor.forClass(Set.class);
         verify(service).distinctResourceKeys(eq("tenant-1"), scopeCap.capture(), any());
-        assertThat(scopeCap.getValue())
-                .containsExactlyInAnyOrder("process-abc", "child-1", "child-2");
+        assertThat(scopeCap.getValue()).containsExactlyInAnyOrder("process-abc", "child-1", "child-2");
     }
 
     @Test
     void invoke_invalidScope_rejected() {
-        assertThatThrownBy(() ->
-                tool.invoke(Map.of("scope", "everything"), ctx))
+        assertThatThrownBy(() -> tool.invoke(Map.of("scope", "everything"), ctx))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("scope");
     }
 
     @Test
     void invoke_malformedSince_rejected() {
-        assertThatThrownBy(() ->
-                tool.invoke(Map.of("since", "yesterday"), ctx))
+        assertThatThrownBy(() -> tool.invoke(Map.of("since", "yesterday"), ctx))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("ISO-8601");
     }
@@ -220,10 +201,7 @@ class ListEditedResourcesToolTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> result = tool.invoke(Map.of(), ctx);
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> resources =
-                (List<Map<String, Object>>) result.get("resources");
-        assertThat(resources.get(0))
-                .containsEntry("type", "WORKSPACE")
-                .containsEntry("key", "proc-abc/notes.md");
+        List<Map<String, Object>> resources = (List<Map<String, Object>>) result.get("resources");
+        assertThat(resources.get(0)).containsEntry("type", "WORKSPACE").containsEntry("key", "proc-abc/notes.md");
     }
 }

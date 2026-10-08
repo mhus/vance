@@ -8,6 +8,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -120,7 +121,7 @@ public class DocGrepPathTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("text-search", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "text-search", "eddie", "read-only");
     }
 
     @Override

@@ -10,6 +10,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.core.ContentHashes;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -179,7 +180,7 @@ public class DocWriteTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("doc-management", "text-edit", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "doc-management", "text-edit", "eddie", "write", "document");
     }
 
     @Override

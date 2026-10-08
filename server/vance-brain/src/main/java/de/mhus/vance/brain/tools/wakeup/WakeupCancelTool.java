@@ -4,6 +4,7 @@ import de.mhus.vance.brain.wakeup.WakeupRegistry;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -23,11 +24,10 @@ public class WakeupCancelTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "correlationId", Map.of(
-                            "type", "string",
-                            "description",
-                            "correlationId returned by wakeup_in.")),
+            "properties",
+                    Map.of(
+                            "correlationId",
+                            Map.of("type", "string", "description", "correlationId returned by wakeup_in.")),
             "required", List.of("correlationId"));
 
     private final WakeupRegistry wakeupRegistry;
@@ -56,7 +56,7 @@ public class WakeupCancelTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.WORKER, "executive");
     }
 
     @Override

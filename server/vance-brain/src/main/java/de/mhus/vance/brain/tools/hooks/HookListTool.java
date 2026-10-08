@@ -5,6 +5,7 @@ import de.mhus.vance.brain.ursahooks.UrsaHookService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,26 +18,39 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class HookListTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<>(),
-            "required", List.of());
+    private static final Map<String, Object> SCHEMA =
+            Map.of("type", "object", "properties", new LinkedHashMap<>(), "required", List.of());
 
     private final UrsaHookService ursaHookService;
     private final HookToolSupport support;
 
-    @Override public String name() { return "hook_list"; }
+    @Override
+    public String name() {
+        return "hook_list";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "List all hooks visible to the current project — from "
                 + "both the project itself and the tenant-wide _vance/hooks/ "
                 + "folder. Returns one entry per (event, name) with type, "
                 + "enabled flag, source, and last-run summary.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("read-only", "hook"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "read-only", "hook");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

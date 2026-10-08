@@ -10,6 +10,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -153,7 +154,7 @@ public class RScriptTool implements Tool {
         // file) and imports produced files as Vance documents. The "read-only"
         // label would derive ToolSafety.SAFE_PROBE (Tool.safety()) and let the
         // Agrajag probe tools (tool_probe_as_system/_user) re-run arbitrary R.
-        return Set.of("compute");
+        return Set.of(ToolLabels.WORKER, "compute");
     }
 
     @Override

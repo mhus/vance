@@ -237,6 +237,7 @@ public class ThinkEngineService {
         de.mhus.vance.brain.history.TurnReasoningBuffer reasoningBuffer =
                 new de.mhus.vance.brain.history.TurnReasoningBuffer();
         Set<String> engineRoles = engine.roles() == null ? Set.of() : Set.copyOf(engine.roles());
+        Set<String> toolPoolLabels = toolPoolLabels(process, engine);
         // Fresh per-turn queue for tool-produced attachments (images out
         // of MCP results). Per turn like the tag sink: a picture is shown
         // once, in the turn that produced it.
@@ -277,9 +278,29 @@ public class ThinkEngineService {
                 toolResultStorage,
                 toolHealthService,
                 engineRoles,
+                toolPoolLabels,
                 imageHarvester,
                 attachmentSink,
                 toolBudgetService);
+    }
+
+    /**
+     * The engine's tool-pool labels, unless the process switched the pool
+     * off ({@link ThinkEngine#PARAM_TOOL_POOL} {@code = false}) — a spawn
+     * path that narrowed the worker on purpose, or a recipe that keeps it
+     * lean. Only an explicit {@code false} disables it; any other value
+     * keeps the engine default.
+     */
+    static Set<String> toolPoolLabels(ThinkProcessDocument process, ThinkEngine engine) {
+        Set<String> labels = engine.toolPoolLabels();
+        if (labels == null || labels.isEmpty()) return Set.of();
+        Object flag = process.getEngineParams() == null
+                ? null
+                : process.getEngineParams().get(ThinkEngine.PARAM_TOOL_POOL);
+        if (Boolean.FALSE.equals(flag) || "false".equalsIgnoreCase(String.valueOf(flag))) {
+            return Set.of();
+        }
+        return Set.copyOf(labels);
     }
 
     /**

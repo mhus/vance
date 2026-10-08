@@ -7,6 +7,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,17 +27,28 @@ import org.springframework.stereotype.Component;
 public class WikiPageCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "The wiki root folder (contains _app.yaml)."));
-                put("title", Map.of("type", "string"));
-                put("space", Map.of("type", "string",
-                        "description", "Optional sub-folder / space (e.g. 'guides' or "
-                                + "'guides/setup'). Defaults to the wiki root."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder", "title"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of("type", "string", "description", "The wiki root folder (contains _app.yaml)."));
+                    put("title", Map.of("type", "string"));
+                    put(
+                            "space",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional sub-folder / space (e.g. 'guides' or "
+                                            + "'guides/setup'). Defaults to the wiki root."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder", "title"));
 
     private final EddieContext eddieContext;
     private final WikiService wikiService;
@@ -46,7 +58,10 @@ public class WikiPageCreateTool implements Tool {
         this.wikiService = wikiService;
     }
 
-    @Override public String name() { return "wikipage_create"; }
+    @Override
+    public String name() {
+        return "wikipage_create";
+    }
 
     @Override
     public String description() {
@@ -57,13 +72,20 @@ public class WikiPageCreateTool implements Tool {
                 + "app_rebuild('folder') afterwards to refresh the indexes + backlinks.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "wiki", "workpage");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "wiki", "workpage");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -74,19 +96,20 @@ public class WikiPageCreateTool implements Tool {
         String space = paramString(params, "space");
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        DocumentDocument stored = wikiService.createPage(
-                ctx.tenantId(), project.getName(), folder, space, title, ctx.userId());
+        DocumentDocument stored =
+                wikiService.createPage(ctx.tenantId(), project.getName(), folder, space, title, ctx.userId());
 
-        log.info("WikiPageCreateTool folder='{}' space='{}' path='{}'",
-                folder, space, stored.getPath());
+        log.info("WikiPageCreateTool folder='{}' space='{}' path='{}'", folder, space, stored.getPath());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", stored.getPath());
         result.put("id", stored.getId());
         result.put("title", title);
         if (space != null) result.put("space", space);
-        result.put("nextStep", "Add content with `workpage_block_append` / edit blocks, "
-                + "then `app_rebuild('" + folder + "')` to refresh indexes + backlinks.");
+        result.put(
+                "nextStep",
+                "Add content with `workpage_block_append` / edit blocks, " + "then `app_rebuild('" + folder
+                        + "')` to refresh indexes + backlinks.");
         return result;
     }
 

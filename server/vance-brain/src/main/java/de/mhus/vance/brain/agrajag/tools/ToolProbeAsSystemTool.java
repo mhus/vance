@@ -5,6 +5,7 @@ import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,26 +27,59 @@ public class ToolProbeAsSystemTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "toolName", Map.of("type", "string", "description", "Name of the SAFE_PROBE tool to invoke as a health probe."),
-                    "sampleInput", Map.of(
-                            "type", "object",
-                            "description",
-                            "Minimal valid input for the target tool.")),
+            "properties",
+                    Map.of(
+                            "toolName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Name of the SAFE_PROBE tool to invoke as a health probe."),
+                            "sampleInput",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Minimal valid input for the target tool.")),
             "required", List.of("toolName", "sampleInput"));
 
     private final ToolDispatcher dispatcher;
 
-    @Override public String name() { return "tool_probe_as_system"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "tool_probe_as_system";
+    }
+
+    @Override
+    public Set<String> labels() {
+
+        return Set.of(ToolLabels.INTERNAL);
+    }
+
+    @Override
+    public String description() {
         return "Re-invoke a SAFE_PROBE tool without user credentials. "
                 + "Used to tell technical outages apart from user-specific "
                 + "issues (token expired, permission denied).";
     }
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public ToolSafety safety() { return ToolSafety.SAFE_PROBE; }
-    @Override public Set<String> requiresEngineRoles() {
+
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public ToolSafety safety() {
+        return ToolSafety.SAFE_PROBE;
+    }
+
+    @Override
+    public Set<String> requiresEngineRoles() {
         return Set.of("tool-prober");
     }
 
@@ -53,25 +87,26 @@ public class ToolProbeAsSystemTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String toolName = ToolHealthReadTool.stringParam(params, "toolName");
         @SuppressWarnings("unchecked")
-        Map<String, Object> sample = (Map<String, Object>)
-                params.getOrDefault("sampleInput", Map.of());
+        Map<String, Object> sample = (Map<String, Object>) params.getOrDefault("sampleInput", Map.of());
 
-        ToolDispatcher.Resolved resolved = dispatcher.resolve(toolName, ctx)
-                .orElseThrow(() -> new ToolException(
-                        "tool_probe_as_system: target tool not registered: " + toolName));
+        ToolDispatcher.Resolved resolved = dispatcher
+                .resolve(toolName, ctx)
+                .orElseThrow(() -> new ToolException("tool_probe_as_system: target tool not registered: " + toolName));
         if (resolved.tool().safety() != ToolSafety.SAFE_PROBE) {
             throw new ToolException(
-                    "tool_probe_as_system: target tool '" + toolName
-                            + "' is not SAFE_PROBE — refusing to probe");
+                    "tool_probe_as_system: target tool '" + toolName + "' is not SAFE_PROBE — refusing to probe");
         }
 
         ToolInvocationContext probeCtx = ToolProbeAsUserTool.withUser(ctx, null);
         // Clear userId for the system path — withUser keeps current when blank,
         // but we want explicit-null here.
         probeCtx = new ToolInvocationContext(
-                probeCtx.tenantId(), probeCtx.projectId(),
-                probeCtx.sessionId(), probeCtx.processId(),
-                null, probeCtx.workingProjectId());
+                probeCtx.tenantId(),
+                probeCtx.projectId(),
+                probeCtx.sessionId(),
+                probeCtx.processId(),
+                null,
+                probeCtx.workingProjectId());
 
         long start = System.currentTimeMillis();
         Map<String, Object> out = new LinkedHashMap<>();
@@ -89,8 +124,7 @@ public class ToolProbeAsSystemTool implements Tool {
             out.put("durationMs", System.currentTimeMillis() - start);
             out.put("errorClass", e.getClass().getName());
             out.put("errorMessage", e.getMessage());
-            log.debug("tool_probe_as_system failure tool='{}': {}",
-                    toolName, e.toString());
+            log.debug("tool_probe_as_system failure tool='{}': {}", toolName, e.toString());
             return out;
         }
     }

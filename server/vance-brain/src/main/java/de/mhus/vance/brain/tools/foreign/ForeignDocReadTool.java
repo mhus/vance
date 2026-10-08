@@ -8,6 +8,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,31 +30,63 @@ public class ForeignDocReadTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of("type", "string",
-                            "description", "Name of the source project (required)."),
-                    "path", Map.of("type", "string",
-                            "description", "Document path inside that project, e.g. 'notes/plan.md'."),
-                    "id", Map.of("type", "string",
-                            "description", "Alternative: Mongo id of the document (must belong to "
-                                    + "the named project). Use one of path/id.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of("type", "string", "description", "Name of the source project (required)."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document path inside that project, e.g. 'notes/plan.md'."),
+                            "id",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Alternative: Mongo id of the document (must belong to "
+                                                    + "the named project). Use one of path/id.")),
             "required", List.of("projectId"));
 
     private final ForeignAccessSupport foreign;
 
-    @Override public String name() { return "foreign_doc_read"; }
+    @Override
+    public String name() {
+        return "foreign_doc_read";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Read a document's text content from ANOTHER project in your tenant. Identify it by "
                 + "path (preferred) or id. Read-only; requires read access to that project. Returns "
                 + "title, tags, mimeType, content (truncated past " + MAX_BODY_CHARS + " chars).";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public Set<String> labels() { return Set.of("read-only", "cross-project", "document"); }
-    @Override public String searchHint() { return "Read a document from another project"; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only", "cross-project", "document");
+    }
+
+    @Override
+    public String searchHint() {
+        return "Read a document from another project";
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -67,25 +100,25 @@ public class ForeignDocReadTool implements Tool {
 
         DocumentDocument doc;
         if (id != null) {
-            doc = foreign.documents().findById(id)
+            doc = foreign.documents()
+                    .findById(id)
                     .orElseThrow(() -> new ToolException("Document with id '" + id + "' not found"));
-            if (!ctx.tenantId().equals(doc.getTenantId())
-                    || !project.getName().equals(doc.getProjectId())) {
-                throw new ToolException("Document with id '" + id
-                        + "' is not in project '" + project.getName() + "'");
+            if (!ctx.tenantId().equals(doc.getTenantId()) || !project.getName().equals(doc.getProjectId())) {
+                throw new ToolException("Document with id '" + id + "' is not in project '" + project.getName() + "'");
             }
         } else {
             if (ForeignAccessSupport.reserved(path)) {
-                throw new ToolException("Path '" + path + "' is in a reserved namespace; "
-                        + "foreign_doc_read cannot reach it");
+                throw new ToolException(
+                        "Path '" + path + "' is in a reserved namespace; " + "foreign_doc_read cannot reach it");
             }
-            doc = foreign.documents().findByPath(ctx.tenantId(), project.getName(), path)
-                    .orElseThrow(() -> new ToolException("Document '" + path
-                            + "' not found in project '" + project.getName() + "'"));
+            doc = foreign.documents()
+                    .findByPath(ctx.tenantId(), project.getName(), path)
+                    .orElseThrow(() -> new ToolException(
+                            "Document '" + path + "' not found in project '" + project.getName() + "'"));
         }
         if (ForeignAccessSupport.reserved(doc.getPath())) {
-            throw new ToolException("Document '" + doc.getPath()
-                    + "' is in a reserved namespace; foreign_doc_read cannot reach it");
+            throw new ToolException(
+                    "Document '" + doc.getPath() + "' is in a reserved namespace; foreign_doc_read cannot reach it");
         }
         AgeDocumentGuard.requireReadable(doc);
 

@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.rag;
 
 import de.mhus.vance.brain.rag.RagService;
+import de.mhus.vance.shared.rag.RagDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.rag.RagDocument;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,8 +33,7 @@ public class RagListTool implements Tool {
 
     @Override
     public String description() {
-        return "List the RAGs available in the current project — name, "
-                + "description, chunk count, embedding model.";
+        return "List the RAGs available in the current project — name, " + "description, chunk count, embedding model.";
     }
 
     @Override
@@ -48,7 +48,7 @@ public class RagListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override

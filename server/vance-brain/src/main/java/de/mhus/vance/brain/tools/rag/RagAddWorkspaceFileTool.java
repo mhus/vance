@@ -1,13 +1,14 @@
 package de.mhus.vance.brain.tools.rag;
 
 import de.mhus.vance.brain.rag.RagService;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver;
 import de.mhus.vance.shared.rag.RagDocument;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,18 +32,23 @@ public class RagAddWorkspaceFileTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "RAG name within the current project."),
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Relative path to a scratch file."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional RootDir name. Defaults to the "
-                                            + "current process's temp RootDir.")),
+            "properties",
+                    Map.of(
+                            "name",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "RAG name within the current project."),
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Relative path to a scratch file."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional RootDir name. Defaults to the "
+                                                    + "current process's temp RootDir.")),
             "required", List.of("name", "path"));
 
     private final RagService ragService;
@@ -72,7 +78,7 @@ public class RagAddWorkspaceFileTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write");
+        return java.util.Set.of(ToolLabels.WORKER, "write");
     }
 
     @Override
@@ -95,9 +101,9 @@ public class RagAddWorkspaceFileTool implements Tool {
         String path = stringOrThrow(params, "path");
         String dirName = WorkspaceDirResolver.resolve(workspaceService, ctx, stringOrNull(params, "dirName"));
 
-        RagDocument rag = ragService.findByName(ctx.tenantId(), projectId, name)
-                .orElseThrow(() -> new ToolException("Unknown RAG '" + name
-                        + "' in project '" + projectId + "'"));
+        RagDocument rag = ragService
+                .findByName(ctx.tenantId(), projectId, name)
+                .orElseThrow(() -> new ToolException("Unknown RAG '" + name + "' in project '" + projectId + "'"));
 
         WorkspaceService.ReadResult read;
         try {
@@ -107,8 +113,7 @@ public class RagAddWorkspaceFileTool implements Tool {
         }
         try {
             long replaced = ragService.removeBySource(rag.getId(), path);
-            RagService.IngestResult result = ragService.addText(
-                    rag.getId(), path, read.text(), null);
+            RagService.IngestResult result = ragService.addText(rag.getId(), path, read.text(), null);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("rag", rag.getName());
             out.put("path", path);

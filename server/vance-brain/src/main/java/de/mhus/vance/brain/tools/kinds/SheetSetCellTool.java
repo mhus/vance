@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.SheetCell;
 import de.mhus.vance.shared.document.kind.SheetCodec;
 import de.mhus.vance.shared.document.kind.SheetDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,42 +28,87 @@ public class SheetSetCellTool implements Tool {
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
         p.put("field", Map.of("type", "string", "description", "A1-style cell address."));
-        p.put("data", Map.of("type", "string",
-                "description", "Cell content. Lead with '=' for a formula (stored verbatim; "
-                        + "evaluate server-side with sheet_calc to persist computed values)."));
-        p.put("color", Map.of("type", "string",
-                "description", "Optional HTML hex color for the cell text. Empty string clears."));
-        p.put("background", Map.of("type", "string",
-                "description", "Optional HTML hex color for the cell background. Empty string clears."));
+        p.put(
+                "data",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Cell content. Lead with '=' for a formula (stored verbatim; "
+                                + "evaluate server-side with sheet_calc to persist computed values)."));
+        p.put(
+                "color",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional HTML hex color for the cell text. Empty string clears."));
+        p.put(
+                "background",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional HTML hex color for the cell background. Empty string clears."));
         p.put("bold", Map.of("type", "boolean", "description", "Bold text."));
         p.put("italic", Map.of("type", "boolean", "description", "Italic text."));
-        p.put("align", Map.of("type", "string",
-                "description", "Horizontal alignment: left | center | right. Empty string clears."));
-        p.put("numberFormat", Map.of("type", "string",
-                "description", "Excel-style number format code, e.g. '#,##0.00', '0%', '@' (text). "
-                        + "Empty string clears."));
-        p.put("borders", Map.of("type", "string",
-                "description", "Cell border edges as a subset of 'trbl' (top/right/bottom/left), "
-                        + "e.g. 'tb' or 'trbl'. Empty string clears."));
+        p.put(
+                "align",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Horizontal alignment: left | center | right. Empty string clears."));
+        p.put(
+                "numberFormat",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Excel-style number format code, e.g. '#,##0.00', '0%', '@' (text). "
+                                + "Empty string clears."));
+        p.put(
+                "borders",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Cell border edges as a subset of 'trbl' (top/right/bottom/left), "
+                                + "e.g. 'tb' or 'trbl'. Empty string clears."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "sheet_set_cell"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "sheet_set_cell";
+    }
+
+    @Override
+    public String description() {
         return "Set a cell's content (and optional color / background) in a `kind: sheet` document. "
                 + "Replaces the cell if it already exists; creates it otherwise.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-sheet", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "sheet");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "sheet");
         String field = KindToolSupport.requireString(params, "field");
         SheetCodec.Address addr = SheetCodec.parseAddress(field);
         if (addr == null) throw new ToolException("Invalid A1 address: " + field);
@@ -75,18 +121,24 @@ public class SheetSetCellTool implements Tool {
         String borders = KindToolSupport.paramRawString(params, "borders");
         Boolean bold = Boolean.TRUE.equals(params.get("bold")) ? Boolean.TRUE : null;
         Boolean italic = Boolean.TRUE.equals(params.get("italic")) ? Boolean.TRUE : null;
-        String alignVal = (align != null && !align.isEmpty()
-                && ("left".equals(align) || "center".equals(align) || "right".equals(align)))
-                ? align : null;
+        String alignVal = (align != null
+                        && !align.isEmpty()
+                        && ("left".equals(align) || "center".equals(align) || "right".equals(align)))
+                ? align
+                : null;
         String bordersVal = normalizeBorders(borders);
 
         SheetDocument sheet = SheetCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         List<SheetCell> cells = new ArrayList<>(sheet.cells().size() + 1);
         boolean replaced = false;
-        SheetCell newCell = new SheetCell(key, data,
+        SheetCell newCell = new SheetCell(
+                key,
+                data,
                 (color != null && !color.isEmpty()) ? color : null,
                 (bg != null && !bg.isEmpty()) ? bg : null,
-                bold, italic, alignVal,
+                bold,
+                italic,
+                alignVal,
                 (numberFormat != null && !numberFormat.isEmpty()) ? numberFormat : null,
                 bordersVal,
                 new LinkedHashMap<>());
@@ -99,13 +151,17 @@ public class SheetSetCellTool implements Tool {
             }
         }
         if (!replaced) cells.add(newCell);
-        SheetDocument updated = new SheetDocument(sheet.kind(), sheet.schema(),
-                sheet.rows(), cells, sheet.columns(), sheet.rowHeights(), sheet.rowBorders(), sheet.extra());
+        SheetDocument updated = new SheetDocument(
+                sheet.kind(),
+                sheet.schema(),
+                sheet.rows(),
+                cells,
+                sheet.columns(),
+                sheet.rowHeights(),
+                sheet.rowBorders(),
+                sheet.extra());
         support.writeBody(doc, SheetCodec.serialize(updated, doc.getMimeType()), ctx);
-        return Map.of("documentId", doc.getId(),
-                "field", key,
-                "replaced", replaced,
-                "cellCount", cells.size());
+        return Map.of("documentId", doc.getId(), "field", key, "replaced", replaced, "cellCount", cells.size());
     }
 
     /** Canonical subset of 'trbl' (top/right/bottom/left), or null if empty. */
@@ -113,7 +169,7 @@ public class SheetSetCellTool implements Tool {
         if (s == null) return null;
         String in = s.toLowerCase();
         StringBuilder out = new StringBuilder(4);
-        for (char c : new char[]{'t', 'r', 'b', 'l'}) {
+        for (char c : new char[] {'t', 'r', 'b', 'l'}) {
             if (in.indexOf(c) >= 0) out.append(c);
         }
         return out.length() == 0 ? null : out.toString();

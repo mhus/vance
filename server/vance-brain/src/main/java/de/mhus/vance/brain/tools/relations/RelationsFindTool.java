@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.relations;
 
+import de.mhus.vance.shared.document.DocumentRelation;
+import de.mhus.vance.shared.document.DocumentRelationsService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentRelation;
-import de.mhus.vance.shared.document.DocumentRelationsService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,24 +35,34 @@ public class RelationsFindTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "source", Map.of(
-                            "type", "string",
-                            "description", "Match relations whose source-document path equals this value."),
-                    "target", Map.of(
-                            "type", "string",
-                            "description", "Match relations whose target-document path equals this value."),
-                    "type", Map.of(
-                            "type", "string",
-                            "description", "Match relations of this type (relates_to, cites, extracted_from, …)."),
-                    "related", Map.of(
-                            "type", "string",
-                            "description",
-                            "Convenience: match relations where the path is either source or target. "
-                                    + "Use instead of source/target when the direction is irrelevant."),
-                    "limit", Map.of(
-                            "type", "integer",
-                            "description", "Maximum rows to return. Default 50, max 500.")),
+            "properties",
+                    Map.of(
+                            "source",
+                                    Map.of(
+                                            "type", "string",
+                                            "description",
+                                                    "Match relations whose source-document path equals this value."),
+                            "target",
+                                    Map.of(
+                                            "type", "string",
+                                            "description",
+                                                    "Match relations whose target-document path equals this value."),
+                            "type",
+                                    Map.of(
+                                            "type", "string",
+                                            "description",
+                                                    "Match relations of this type (relates_to, cites, extracted_from, …)."),
+                            "related",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Convenience: match relations where the path is either source or target. "
+                                                    + "Use instead of source/target when the direction is irrelevant."),
+                            "limit",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Maximum rows to return. Default 50, max 500.")),
             "required", List.of());
 
     private final DocumentRelationsService relationsService;
@@ -81,7 +92,7 @@ public class RelationsFindTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -105,9 +116,7 @@ public class RelationsFindTool implements Tool {
             if (!source.isEmpty() && !source.equals(r.getSource())) continue;
             if (!target.isEmpty() && !target.equals(r.getTarget())) continue;
             if (!type.isEmpty() && !type.equals(r.getType())) continue;
-            if (!related.isEmpty()
-                    && !related.equals(r.getSource())
-                    && !related.equals(r.getTarget())) continue;
+            if (!related.isEmpty() && !related.equals(r.getSource()) && !related.equals(r.getTarget())) continue;
             totalMatched++;
             if (rows.size() < limit) {
                 rows.add(toRow(r));

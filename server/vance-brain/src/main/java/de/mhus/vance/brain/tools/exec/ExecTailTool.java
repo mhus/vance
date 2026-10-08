@@ -4,6 +4,7 @@ import de.mhus.vance.brain.execution.ExecutionRouter;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,17 +25,21 @@ public class ExecTailTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "Job id returned by work_exec_run."),
-                    "n", Map.of(
-                            "type", "integer",
-                            "description", "Number of lines to return (default 10, max 500)."),
-                    "stream", Map.of(
-                            "type", "string",
-                            "enum", List.of("stdout", "stderr"),
-                            "description", "Which stream to tail; default stdout.")),
+            "properties",
+                    Map.of(
+                            "id",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Job id returned by work_exec_run."),
+                            "n",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Number of lines to return (default 10, max 500)."),
+                            "stream",
+                                    Map.of(
+                                            "type", "string",
+                                            "enum", List.of("stdout", "stderr"),
+                                            "description", "Which stream to tail; default stdout.")),
             "required", List.of("id"));
 
     private final ExecutionRouter router;
@@ -72,7 +77,7 @@ public class ExecTailTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override

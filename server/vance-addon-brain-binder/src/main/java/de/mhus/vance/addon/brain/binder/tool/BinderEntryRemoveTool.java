@@ -6,6 +6,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,15 +20,24 @@ import org.springframework.stereotype.Component;
 public class BinderEntryRemoveTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "The binder folder (holding _app.yaml)."));
-                put("ref", Map.of("type", "string",
-                        "description", "The entry to remove, a vance: ref or project path."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder", "ref"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "The binder folder (holding _app.yaml)."));
+                    put(
+                            "ref",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "The entry to remove, a vance: ref or project path."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder", "ref"));
 
     private final EddieContext eddieContext;
     private final BinderManifestOps manifestOps;
@@ -37,7 +47,10 @@ public class BinderEntryRemoveTool implements Tool {
         this.manifestOps = manifestOps;
     }
 
-    @Override public String name() { return "binder_entry_remove"; }
+    @Override
+    public String name() {
+        return "binder_entry_remove";
+    }
 
     @Override
     public String description() {
@@ -45,13 +58,20 @@ public class BinderEntryRemoveTool implements Tool {
                 + "target document itself is not deleted.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "binder");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "binder");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

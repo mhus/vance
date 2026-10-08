@@ -9,6 +9,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,7 +86,7 @@ public class ProcessStopTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("executive");
+        return java.util.Set.of(ToolLabels.WORKER, "executive");
     }
 
     @Override

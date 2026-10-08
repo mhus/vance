@@ -6,6 +6,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.core.ContentHashes;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -110,7 +111,7 @@ public class WorkspaceEditTool implements Tool {
     public java.util.Set<String> labels() {
         // "workspace" tag matches WorkspaceWriteTool — same history-tagging
         // hook encodes the returned path as a WORKSPACE: resource key.
-        return java.util.Set.of("write", "side-effect", "workspace");
+        return java.util.Set.of(ToolLabels.WORKER, "write", "side-effect", "workspace");
     }
 
     @Override

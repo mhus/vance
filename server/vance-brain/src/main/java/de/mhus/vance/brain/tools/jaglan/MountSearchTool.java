@@ -1,11 +1,5 @@
 package de.mhus.vance.brain.tools.jaglan;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import de.mhus.vance.api.mount.MountedSource;
 import de.mhus.vance.brain.tools.kinds.KindToolSupport;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -13,6 +7,12 @@ import de.mhus.vance.shared.document.jaglan.JaglanShellService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
@@ -40,18 +40,35 @@ public class MountSearchTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "query", Map.of("type", "string",
-                            "description", "What to look for. Passed to the external source as-is; "
-                                    + "its own search syntax applies."),
-                    "projectId", Map.of("type", "string",
-                            "description", "Optional project name. Defaults to the active project."),
-                    "mount", Map.of("type", "string",
-                            "description", "Restrict to one mount by name. Omit to ask every "
-                                    + "mount that supports search."),
-                    "limit", Map.of("type", "integer",
-                            "description", "Maximum results, default " + DEFAULT_LIMIT
-                                    + ", capped at " + MAX_LIMIT + ".")),
+            "properties",
+                    Map.of(
+                            "query",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "What to look for. Passed to the external source as-is; "
+                                                    + "its own search syntax applies."),
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults to the active project."),
+                            "mount",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Restrict to one mount by name. Omit to ask every "
+                                                    + "mount that supports search."),
+                            "limit",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Maximum results, default " + DEFAULT_LIMIT + ", capped at " + MAX_LIMIT
+                                                    + ".")),
             "required", List.of("query"));
 
     private final KindToolSupport support;
@@ -70,9 +87,13 @@ public class MountSearchTool implements Tool {
      */
     private final ObjectProvider<JaglanShellService> shellServiceProvider;
 
-    @Override public String name() { return "mount_search"; }
+    @Override
+    public String name() {
+        return "mount_search";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Search inside mounted external sources (document libraries, archives) by asking "
                 + "them to search their own catalogue. Use for content under '_ext/…', which "
                 + "doc_find, doc_grep and memory_search do NOT cover — mounted files are not "
@@ -81,16 +102,35 @@ public class MountSearchTool implements Tool {
                 + "mount_list instead of concluding the file does not exist.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return false; }
-    @Override public Set<String> labels() { return Set.of("read-only", "mount", "search"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only", "mount", "search");
+    }
+
+    @Override
+    public String searchHint() {
         return "Search a mounted external library or archive for a file";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -107,8 +147,7 @@ public class MountSearchTool implements Tool {
             return out;
         }
 
-        List<MountedSource> mounts = support.documentService()
-                .listMounts(ctx.tenantId(), project.getName());
+        List<MountedSource> mounts = support.documentService().listMounts(ctx.tenantId(), project.getName());
         JaglanShellService shellService = shellServiceProvider.getIfAvailable();
         if (mounts.isEmpty() || shellService == null) {
             out.put("count", 0);
@@ -141,17 +180,17 @@ public class MountSearchTool implements Tool {
                 continue;
             }
             JaglanShellService.MountSearch result = shellService.searchInMount(
-                    ctx.tenantId(), project.getName(), source.name(), query,
-                    limit - rows.size());
+                    ctx.tenantId(), project.getName(), source.name(), query, limit - rows.size());
             switch (result.outcome()) {
                 case DELEGATED -> {
                     for (DocumentDocument doc : result.hits()) rows.add(row(doc));
                 }
-                case UNSUPPORTED -> notSearched.add(source.name()
-                        + " (does not support search — browse it with mount_list)");
-                case UNAVAILABLE -> notSearched.add(source.name() + " ("
-                        + (source.statusText() == null ? "did not answer" : source.statusText())
-                        + ")");
+                case UNSUPPORTED ->
+                    notSearched.add(source.name() + " (does not support search — browse it with mount_list)");
+                case UNAVAILABLE ->
+                    notSearched.add(source.name() + " ("
+                            + (source.statusText() == null ? "did not answer" : source.statusText())
+                            + ")");
             }
         }
 

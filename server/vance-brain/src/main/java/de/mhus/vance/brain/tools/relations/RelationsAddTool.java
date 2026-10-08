@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.relations;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentRelation;
 import de.mhus.vance.shared.document.DocumentRelationsService;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -44,26 +45,34 @@ public class RelationsAddTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "source", Map.of(
-                            "type", "string",
-                            "description", "Source-document path (e.g. notes/thesis.md)."),
-                    "target", Map.of(
-                            "type", "string",
-                            "description", "Target-document path (e.g. papers/vaswani2017.pdf)."),
-                    "type", Map.of(
-                            "type", "string",
-                            "description",
-                            "Relation type (relates_to, cites, extracted_from, derived_from, "
-                                    + "produced_by, input_for, version_of). Default: relates_to."),
-                    "note", Map.of(
-                            "type", "string",
-                            "description", "Optional free-text comment about why the relation exists."),
-                    "file", Map.of(
-                            "type", "string",
-                            "description",
-                            "Project-relative path to the YAML file. "
-                                    + "Default: relations/default.yaml. Created if missing.")),
+            "properties",
+                    Map.of(
+                            "source",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Source-document path (e.g. notes/thesis.md)."),
+                            "target",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Target-document path (e.g. papers/vaswani2017.pdf)."),
+                            "type",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Relation type (relates_to, cites, extracted_from, derived_from, "
+                                                    + "produced_by, input_for, version_of). Default: relates_to."),
+                            "note",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional free-text comment about why the relation exists."),
+                            "file",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Project-relative path to the YAML file. "
+                                                    + "Default: relations/default.yaml. Created if missing.")),
             "required", List.of("source", "target"));
 
     private final DocumentRelationsService relationsService;
@@ -94,7 +103,7 @@ public class RelationsAddTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write");
+        return java.util.Set.of(ToolLabels.WORKER, "write");
     }
 
     @Override
@@ -111,8 +120,7 @@ public class RelationsAddTool implements Tool {
         String file = optionalString(params, "file");
         if (file.isEmpty()) file = DEFAULT_FILE;
 
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                ctx.tenantId(), projectId, file);
+        Optional<DocumentDocument> existing = documentService.findByPath(ctx.tenantId(), projectId, file);
 
         DocumentDocument saved;
         if (existing.isEmpty()) {
@@ -137,8 +145,13 @@ public class RelationsAddTool implements Tool {
     }
 
     private DocumentDocument createNew(
-            ToolInvocationContext ctx, String projectId, String file,
-            String source, String type, String target, String note) {
+            ToolInvocationContext ctx,
+            String projectId,
+            String file,
+            String source,
+            String type,
+            String target,
+            String note) {
         StringBuilder body = new StringBuilder();
         body.append("kind: ").append(DocumentRelationsService.KIND).append('\n');
         body.append("title: ").append(yamlScalar(DEFAULT_TITLE)).append('\n');
@@ -159,31 +172,27 @@ public class RelationsAddTool implements Tool {
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             // Race with a concurrent create — fall back to append on the
             // newly-created file.
-            return documentService.findByPath(ctx.tenantId(), projectId, file)
+            return documentService
+                    .findByPath(ctx.tenantId(), projectId, file)
                     .map(d -> appendTo(ctx, d, source, type, target, note))
-                    .orElseThrow(() -> new ToolException(
-                            "Failed to create relations file '" + file + "': " + e.getMessage(), e));
+                    .orElseThrow(() ->
+                            new ToolException("Failed to create relations file '" + file + "': " + e.getMessage(), e));
         } catch (RuntimeException e) {
-            throw new ToolException(
-                    "Failed to create relations file '" + file + "': " + e.getMessage(), e);
+            throw new ToolException("Failed to create relations file '" + file + "': " + e.getMessage(), e);
         }
     }
 
     private DocumentDocument appendTo(
-            ToolInvocationContext ctx,
-            DocumentDocument doc,
-            String source, String type, String target, String note) {
+            ToolInvocationContext ctx, DocumentDocument doc, String source, String type, String target, String note) {
         String inline = documentService.readContent(doc);
         if (inline == null) {
-            throw new ToolException(
-                    "Relations file '" + doc.getPath() + "' is storage-backed; "
-                            + "the agent only edits inline files.");
+            throw new ToolException("Relations file '" + doc.getPath() + "' is storage-backed; "
+                    + "the agent only edits inline files.");
         }
         if (!DocumentRelationsService.KIND.equals(doc.getKind())) {
-            throw new ToolException(
-                    "File '" + doc.getPath() + "' has kind='" + doc.getKind()
-                            + "', expected '" + DocumentRelationsService.KIND
-                            + "'. Pick a different `file` parameter or fix the file's header.");
+            throw new ToolException("File '" + doc.getPath() + "' has kind='" + doc.getKind()
+                    + "', expected '" + DocumentRelationsService.KIND
+                    + "'. Pick a different `file` parameter or fix the file's header.");
         }
         StringBuilder body = new StringBuilder(inline);
         if (body.length() > 0 && body.charAt(body.length() - 1) != '\n') {
@@ -200,13 +209,11 @@ public class RelationsAddTool implements Tool {
                     null,
                     contextFactory.writeActor(ctx.tenantId(), ctx.userId(), doc.getPath()));
         } catch (RuntimeException e) {
-            throw new ToolException(
-                    "Failed to append relation to '" + doc.getPath() + "': " + e.getMessage(), e);
+            throw new ToolException("Failed to append relation to '" + doc.getPath() + "': " + e.getMessage(), e);
         }
     }
 
-    private static void appendEntry(
-            StringBuilder body, String source, String type, String target, String note) {
+    private static void appendEntry(StringBuilder body, String source, String type, String target, String note) {
         body.append("- source: ").append(yamlScalar(source)).append('\n');
         body.append("  type: ").append(yamlScalar(type)).append('\n');
         body.append("  target: ").append(yamlScalar(target)).append('\n');

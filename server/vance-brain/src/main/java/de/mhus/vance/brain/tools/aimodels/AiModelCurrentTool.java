@@ -11,6 +11,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -79,7 +80,7 @@ public class AiModelCurrentTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("aimodels");
+        return Set.of(ToolLabels.WORKER, "aimodels");
     }
 
     @Override

@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.RecordsCodec;
 import de.mhus.vance.shared.document.kind.RecordsDocument;
 import de.mhus.vance.shared.document.kind.RecordsItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,19 +35,34 @@ public class RecordsUpdateFieldTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "records_update_field"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "records_update_field";
+    }
+
+    @Override
+    public String description() {
         return "Update one cell in a `kind: records` document — set `field` of `rowIndex` to `value`.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-records", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "records");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "records");
         int rowIndex = KindToolSupport.requireInt(params, "rowIndex");
         String field = KindToolSupport.requireString(params, "field");
         String value = KindToolSupport.requireRawString(params, "value");
@@ -56,8 +72,7 @@ public class RecordsUpdateFieldTool implements Tool {
             throw new ToolException("rowIndex " + rowIndex + " out of range");
         }
         if (!rec.schema().contains(field)) {
-            throw new ToolException("Field '" + field + "' is not in the schema "
-                    + rec.schema());
+            throw new ToolException("Field '" + field + "' is not in the schema " + rec.schema());
         }
         List<RecordsItem> items = new ArrayList<>(rec.items());
         RecordsItem original = items.get(rowIndex);
@@ -67,10 +82,16 @@ public class RecordsUpdateFieldTool implements Tool {
         items.set(rowIndex, new RecordsItem(newValues, original.extra(), original.overflow()));
         RecordsDocument updated = new RecordsDocument(rec.kind(), rec.schema(), items, rec.extra());
         support.writeBody(doc, RecordsCodec.serialize(updated, doc.getMimeType()), ctx);
-        return Map.of("documentId", doc.getId(),
-                "rowIndex", rowIndex,
-                "field", field,
-                "previousValue", previous,
-                "newValue", value);
+        return Map.of(
+                "documentId",
+                doc.getId(),
+                "rowIndex",
+                rowIndex,
+                "field",
+                field,
+                "previousValue",
+                previous,
+                "newValue",
+                value);
     }
 }

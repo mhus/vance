@@ -6,6 +6,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,7 +78,7 @@ public class WorkbookValidateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only", "workbook", "document");
+        return Set.of(ToolLabels.WORKER, "read-only", "workbook", "document");
     }
 
     @Override

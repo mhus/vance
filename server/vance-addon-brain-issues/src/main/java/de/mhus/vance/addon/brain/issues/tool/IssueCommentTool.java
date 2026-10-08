@@ -7,6 +7,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,13 +22,18 @@ import org.springframework.stereotype.Component;
 public class IssueCommentTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string", "description", "Full document path of the issue."));
-                put("text", Map.of("type", "string"));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path", "text"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("path", Map.of("type", "string", "description", "Full document path of the issue."));
+                    put("text", Map.of("type", "string"));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path", "text"));
 
     private final EddieContext eddieContext;
     private final IssuesService issuesService;
@@ -37,7 +43,10 @@ public class IssueCommentTool implements Tool {
         this.issuesService = issuesService;
     }
 
-    @Override public String name() { return "issue_comment"; }
+    @Override
+    public String name() {
+        return "issue_comment";
+    }
 
     @Override
     public String description() {
@@ -45,9 +54,20 @@ public class IssueCommentTool implements Tool {
                 + "document notes on the issue (atomic, no full rewrite).";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("eddie", "write", "document", "issues"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "issues");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

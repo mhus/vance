@@ -5,6 +5,7 @@ import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,32 +37,67 @@ public class ToolProbeAsUserTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "toolName", Map.of("type", "string", "description", "Name of the SAFE_PROBE tool to invoke as a health probe."),
-                    "userId", Map.of(
-                            "type", "string",
-                            "description",
-                            "User identity to invoke the target tool as. Pass empty/omit "
-                                    + "to use the diagnostic process's bound user."),
-                    "sampleInput", Map.of(
-                            "type", "object",
-                            "description",
-                            "Minimal valid input for the target tool. The tool must "
-                                    + "tolerate it without side-effects.")),
+            "properties",
+                    Map.of(
+                            "toolName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Name of the SAFE_PROBE tool to invoke as a health probe."),
+                            "userId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "User identity to invoke the target tool as. Pass empty/omit "
+                                                    + "to use the diagnostic process's bound user."),
+                            "sampleInput",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Minimal valid input for the target tool. The tool must "
+                                                    + "tolerate it without side-effects.")),
             "required", List.of("toolName", "sampleInput"));
 
     private final ToolDispatcher dispatcher;
 
-    @Override public String name() { return "tool_probe_as_user"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "tool_probe_as_user";
+    }
+
+    @Override
+    public Set<String> labels() {
+
+        return Set.of(ToolLabels.INTERNAL);
+    }
+
+    @Override
+    public String description() {
         return "Re-invoke a SAFE_PROBE tool with a substituted user "
                 + "identity to distinguish user-specific failures from "
                 + "generic technical issues.";
     }
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public ToolSafety safety() { return ToolSafety.SAFE_PROBE; }
-    @Override public Set<String> requiresEngineRoles() {
+
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public ToolSafety safety() {
+        return ToolSafety.SAFE_PROBE;
+    }
+
+    @Override
+    public Set<String> requiresEngineRoles() {
         return Set.of("tool-prober");
     }
 
@@ -70,17 +106,15 @@ public class ToolProbeAsUserTool implements Tool {
         String toolName = ToolHealthReadTool.stringParam(params, "toolName");
         String userId = ToolHealthReadTool.stringParamOrNull(params, "userId");
         @SuppressWarnings("unchecked")
-        Map<String, Object> sample = (Map<String, Object>)
-                params.getOrDefault("sampleInput", Map.of());
+        Map<String, Object> sample = (Map<String, Object>) params.getOrDefault("sampleInput", Map.of());
 
         // Resolve + verify safety pre-flight.
-        ToolDispatcher.Resolved resolved = dispatcher.resolve(toolName, ctx)
-                .orElseThrow(() -> new ToolException(
-                        "tool_probe_as_user: target tool not registered: " + toolName));
+        ToolDispatcher.Resolved resolved = dispatcher
+                .resolve(toolName, ctx)
+                .orElseThrow(() -> new ToolException("tool_probe_as_user: target tool not registered: " + toolName));
         if (resolved.tool().safety() != ToolSafety.SAFE_PROBE) {
             throw new ToolException(
-                    "tool_probe_as_user: target tool '" + toolName
-                            + "' is not SAFE_PROBE — refusing to probe");
+                    "tool_probe_as_user: target tool '" + toolName + "' is not SAFE_PROBE — refusing to probe");
         }
 
         ToolInvocationContext probeCtx = withUser(ctx, userId);
@@ -100,16 +134,16 @@ public class ToolProbeAsUserTool implements Tool {
             out.put("durationMs", System.currentTimeMillis() - start);
             out.put("errorClass", e.getClass().getName());
             out.put("errorMessage", e.getMessage());
-            log.debug("tool_probe_as_user failure tool='{}' user='{}': {}",
-                    toolName, probeCtx.userId(), e.toString());
+            log.debug("tool_probe_as_user failure tool='{}' user='{}': {}", toolName, probeCtx.userId(), e.toString());
             return out;
         }
     }
 
-    static ToolInvocationContext withUser(
-            ToolInvocationContext ctx, @Nullable String userId) {
+    static ToolInvocationContext withUser(ToolInvocationContext ctx, @Nullable String userId) {
         return new ToolInvocationContext(
-                ctx.tenantId(), ctx.projectId(), ctx.sessionId(),
+                ctx.tenantId(),
+                ctx.projectId(),
+                ctx.sessionId(),
                 ctx.processId(),
                 userId == null || userId.isBlank() ? ctx.userId() : userId,
                 ctx.workingProjectId());

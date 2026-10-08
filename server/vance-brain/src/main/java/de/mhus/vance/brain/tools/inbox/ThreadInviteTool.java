@@ -5,6 +5,7 @@ import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,48 +38,80 @@ public class ThreadInviteTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "threadId", Map.of(
-                            "type", "string",
-                            "description", "From inbox_list or a self-check finding."),
-                    "userId", Map.of(
-                            "type", "string",
-                            "description", "The login name of one Vancetope account. One "
-                                    + "person per call — invite again for a second."),
-                    "reason", Map.of(
-                            "type", "string",
-                            "description", "Optional: posted as a contribution before the "
-                                    + "invitation, so the person arrives knowing why. Without "
-                                    + "it they get a thread and no explanation.")),
+            "properties",
+                    Map.of(
+                            "threadId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "From inbox_list or a self-check finding."),
+                            "userId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "The login name of one Vancetope account. One "
+                                                    + "person per call — invite again for a second."),
+                            "reason",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional: posted as a contribution before the "
+                                                    + "invitation, so the person arrives knowing why. Without "
+                                                    + "it they get a thread and no explanation.")),
             "required", List.of("threadId", "userId"));
 
     private final MaximegalonService threads;
     private final InboxToolSupport support;
 
-    @Override public String name() { return "thread_invite"; }
+    @Override
+    public String name() {
+        return "thread_invite";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Add one person to an inbox thread so they see it and can contribute. THIS "
                 + "PUTS A BADGE ON THEIR SCREEN — invite someone because the matter needs "
                 + "them, not to keep them informed. It does not hand the decision over: "
                 + "use thread_delegate for that.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return true; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return true;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "write");
+    }
+
+    @Override
+    public String searchHint() {
         return "Bring another person into an inbox thread";
     }
 
-    @Override public String troubleshootingHint() {
+    @Override
+    public String troubleshootingHint() {
         return "userId is a login name, not a display name. If it is refused, you do not "
                 + "have permission to deliver into that person's inbox.";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -90,8 +123,8 @@ public class ThreadInviteTool implements Tool {
 
         MaximegalonDocument doc = support.loadVisible(tenantId, threadId, ctx);
         if (userId.equals(owner)) {
-            throw new ToolException("you are already on this thread — thread_invite is for "
-                    + "bringing somebody else in.");
+            throw new ToolException(
+                    "you are already on this thread — thread_invite is for " + "bringing somebody else in.");
         }
         // Before the invitation, not after: an invitation makes the thread
         // unread for them, and a person who opens it should already find the
@@ -107,10 +140,11 @@ public class ThreadInviteTool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("threadId", threadId);
         out.put("invited", userId);
-        out.put("participants", updated.getParticipants() == null
-                ? List.of() : List.copyOf(updated.getParticipants()));
-        out.put("note", "It is unread for them now. They can see and contribute; the "
-                + "decision, if there is one, is still where it was.");
+        out.put("participants", updated.getParticipants() == null ? List.of() : List.copyOf(updated.getParticipants()));
+        out.put(
+                "note",
+                "It is unread for them now. They can see and contribute; the "
+                        + "decision, if there is one, is still where it was.");
         return out;
     }
 
@@ -120,8 +154,7 @@ public class ThreadInviteTool implements Tool {
         throw new ToolException("'" + key + "' is required");
     }
 
-    private static @org.jspecify.annotations.Nullable String optString(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String optString(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         return raw instanceof String s && !s.isBlank() ? s.trim() : null;
     }

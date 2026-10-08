@@ -9,6 +9,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,19 +25,31 @@ import org.springframework.stereotype.Component;
 public class GtdActionCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string", "description", "GTD root folder."));
-                put("title", Map.of("type", "string"));
-                put("when", Map.of("type", "string",
-                        "description", "'' (Anytime) | today | someday | ISO date (Upcoming/Today)."));
-                put("deadline", Map.of("type", "string", "description", "Optional hard due date (ISO)."));
-                put("contexts", Map.of("type", "array", "items", Map.of("type", "string")));
-                put("project", Map.of("type", "string", "description", "Optional project (folder under projects/)."));
-                put("body", Map.of("type", "string"));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder", "title"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "GTD root folder."));
+                    put("title", Map.of("type", "string"));
+                    put(
+                            "when",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "'' (Anytime) | today | someday | ISO date (Upcoming/Today)."));
+                    put("deadline", Map.of("type", "string", "description", "Optional hard due date (ISO)."));
+                    put("contexts", Map.of("type", "array", "items", Map.of("type", "string")));
+                    put(
+                            "project",
+                            Map.of("type", "string", "description", "Optional project (folder under projects/)."));
+                    put("body", Map.of("type", "string"));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder", "title"));
 
     private final EddieContext eddieContext;
     private final GtdFolderReader folderReader;
@@ -48,7 +61,10 @@ public class GtdActionCreateTool implements Tool {
         this.gtdService = gtdService;
     }
 
-    @Override public String name() { return "gtd_action_create"; }
+    @Override
+    public String name() {
+        return "gtd_action_create";
+    }
 
     @Override
     public String description() {
@@ -58,9 +74,20 @@ public class GtdActionCreateTool implements Tool {
                 + "put it into a bucket folder — buckets are derived from `when`.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("eddie", "write", "document", "gtd"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "gtd");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -69,11 +96,20 @@ public class GtdActionCreateTool implements Tool {
         String title = paramString(params, "title");
         if (title == null) throw new ToolException("title is required");
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        GtdConfig config = folderReader.scan(ctx.tenantId(), project.getName(), folder).config();
-        DocumentDocument doc = gtdService.createAction(ctx.tenantId(), project.getName(), folder,
-                config, title, paramString(params, "when"), paramString(params, "deadline"),
-                paramStringList(params, "contexts"), paramString(params, "project"),
-                paramString(params, "body"), ctx.userId());
+        GtdConfig config =
+                folderReader.scan(ctx.tenantId(), project.getName(), folder).config();
+        DocumentDocument doc = gtdService.createAction(
+                ctx.tenantId(),
+                project.getName(),
+                folder,
+                config,
+                title,
+                paramString(params, "when"),
+                paramString(params, "deadline"),
+                paramStringList(params, "contexts"),
+                paramString(params, "project"),
+                paramString(params, "body"),
+                ctx.userId());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", doc.getPath());
         result.put("id", doc.getId());
@@ -84,11 +120,13 @@ public class GtdActionCreateTool implements Tool {
         Object v = params == null ? null : params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
+
     private static @Nullable List<String> paramStringList(Map<String, Object> params, String key) {
         Object v = params == null ? null : params.get(key);
         if (v instanceof List<?> list) {
             List<String> out = new ArrayList<>();
-            for (Object o : list) if (o != null && !o.toString().isBlank()) out.add(o.toString().trim());
+            for (Object o : list)
+                if (o != null && !o.toString().isBlank()) out.add(o.toString().trim());
             return out;
         }
         if (v instanceof String s && !s.isBlank()) {

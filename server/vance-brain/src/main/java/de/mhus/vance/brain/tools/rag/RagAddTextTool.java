@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.rag;
 
 import de.mhus.vance.brain.rag.RagService;
+import de.mhus.vance.shared.rag.RagDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.rag.RagDocument;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,17 +24,23 @@ public class RagAddTextTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "RAG name within the current project."),
-                    "text", Map.of(
-                            "type", "string",
-                            "description", "Text to chunk + embed + store."),
-                    "sourceRef", Map.of(
-                            "type", "string",
-                            "description", "Optional logical source id (file, URL, tag). "
-                                    + "If set, prior chunks with the same sourceRef are replaced.")),
+            "properties",
+                    Map.of(
+                            "name",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "RAG name within the current project."),
+                            "text",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Text to chunk + embed + store."),
+                            "sourceRef",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional logical source id (file, URL, tag). "
+                                                    + "If set, prior chunks with the same sourceRef are replaced.")),
             "required", List.of("name", "text"));
 
     private final RagService ragService;
@@ -61,7 +68,7 @@ public class RagAddTextTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write");
+        return java.util.Set.of(ToolLabels.WORKER, "write");
     }
 
     @Override
@@ -82,19 +89,17 @@ public class RagAddTextTool implements Tool {
         }
         String name = stringOrThrow(params, "name");
         String text = stringOrThrow(params, "text");
-        String sourceRef = params != null && params.get("sourceRef") instanceof String s
-                && !s.isBlank() ? s : null;
+        String sourceRef = params != null && params.get("sourceRef") instanceof String s && !s.isBlank() ? s : null;
 
-        RagDocument rag = ragService.findByName(ctx.tenantId(), projectId, name)
-                .orElseThrow(() -> new ToolException("Unknown RAG '" + name
-                        + "' in project '" + projectId + "'"));
+        RagDocument rag = ragService
+                .findByName(ctx.tenantId(), projectId, name)
+                .orElseThrow(() -> new ToolException("Unknown RAG '" + name + "' in project '" + projectId + "'"));
         try {
             long replaced = 0;
             if (sourceRef != null) {
                 replaced = ragService.removeBySource(rag.getId(), sourceRef);
             }
-            RagService.IngestResult result = ragService.addText(
-                    rag.getId(), sourceRef, text, null);
+            RagService.IngestResult result = ragService.addText(rag.getId(), sourceRef, text, null);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("rag", rag.getName());
             out.put("sourceRef", sourceRef);

@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.ListCodec;
 import de.mhus.vance.shared.document.kind.ListDocument;
 import de.mhus.vance.shared.document.kind.ListItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,23 +35,35 @@ public class ListReplaceTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "list_replace"; }
+    @Override
+    public String name() {
+        return "list_replace";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Replace the text of the item at `index` in a `kind: list` document. "
                 + "Per-item `extra` fields are preserved.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-list", "eddie", "write", "document"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-list", "eddie", "write", "document");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "list");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "list");
         int index = KindToolSupport.requireInt(params, "index");
         String newText = KindToolSupport.requireRawString(params, "text");
         ListDocument list = ListCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
@@ -62,9 +75,6 @@ public class ListReplaceTool implements Tool {
         items.set(index, new ListItem(newText, original.extra()));
         ListDocument updated = new ListDocument(list.kind(), items, list.extra());
         support.writeBody(doc, ListCodec.serialize(updated, doc.getMimeType()), ctx);
-        return Map.of("documentId", doc.getId(),
-                "index", index,
-                "previousText", original.text(),
-                "newText", newText);
+        return Map.of("documentId", doc.getId(), "index", index, "previousText", original.text(), "newText", newText);
     }
 }

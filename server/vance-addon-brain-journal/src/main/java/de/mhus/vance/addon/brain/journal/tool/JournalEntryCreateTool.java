@@ -9,6 +9,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -29,35 +30,46 @@ import org.springframework.stereotype.Component;
 public class JournalEntryCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "The journal root folder (contains _app.yaml)."));
-                put("date", Map.of("type", "string",
-                        "description", "ISO date yyyy-MM-dd. Defaults to today."));
-                put("body", Map.of("type", "string",
-                        "description", "Markdown prose for the day."));
-                put("title", Map.of("type", "string"));
-                put("mood", Map.of("type", "string",
-                        "description", "great | good | neutral | low | bad (free-form allowed)."));
-                put("tags", Map.of("type", "array", "items", Map.of("type", "string")));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of("type", "string", "description", "The journal root folder (contains _app.yaml)."));
+                    put("date", Map.of("type", "string", "description", "ISO date yyyy-MM-dd. Defaults to today."));
+                    put("body", Map.of("type", "string", "description", "Markdown prose for the day."));
+                    put("title", Map.of("type", "string"));
+                    put(
+                            "mood",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "great | good | neutral | low | bad (free-form allowed)."));
+                    put("tags", Map.of("type", "array", "items", Map.of("type", "string")));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final JournalFolderReader folderReader;
     private final JournalService journalService;
 
-    public JournalEntryCreateTool(EddieContext eddieContext,
-                                  JournalFolderReader folderReader,
-                                  JournalService journalService) {
+    public JournalEntryCreateTool(
+            EddieContext eddieContext, JournalFolderReader folderReader, JournalService journalService) {
         this.eddieContext = eddieContext;
         this.folderReader = folderReader;
         this.journalService = journalService;
     }
 
-    @Override public String name() { return "journal_entry_create"; }
+    @Override
+    public String name() {
+        return "journal_entry_create";
+    }
 
     @Override
     public String description() {
@@ -67,13 +79,20 @@ public class JournalEntryCreateTool implements Tool {
                 + "Run app_rebuild('folder') afterwards to refresh the index + stats.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "journal");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "journal");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -83,19 +102,22 @@ public class JournalEntryCreateTool implements Tool {
         if (date == null) date = LocalDate.now().toString();
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        JournalConfig config = folderReader.scan(
-                ctx.tenantId(), project.getName(), folder).config();
+        JournalConfig config =
+                folderReader.scan(ctx.tenantId(), project.getName(), folder).config();
 
         DocumentDocument stored = journalService.upsertEntry(
-                ctx.tenantId(), project.getName(), folder, config, date,
+                ctx.tenantId(),
+                project.getName(),
+                folder,
+                config,
+                date,
                 paramString(params, "body"),
                 paramString(params, "title"),
                 paramString(params, "mood"),
                 paramStringList(params, "tags"),
                 ctx.userId());
 
-        log.info("JournalEntryCreateTool folder='{}' date='{}' path='{}'",
-                folder, date, stored.getPath());
+        log.info("JournalEntryCreateTool folder='{}' date='{}' path='{}'", folder, date, stored.getPath());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", stored.getPath());

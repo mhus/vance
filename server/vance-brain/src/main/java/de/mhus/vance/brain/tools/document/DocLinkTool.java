@@ -8,6 +8,7 @@ import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,56 +35,80 @@ public class DocLinkTool implements Tool {
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
 
-    @Override public String name() { return "doc_link"; }
+    @Override
+    public String name() {
+        return "doc_link";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Build a Markdown link to a Document in the workspace. "
                 + "Resolves path, kind, project; returns the ready-to-insert "
                 + "`markdownLink` string with the correct vance: URI, kind hint, "
                 + "and link syntax. Never hand-construct vance: URIs — use this tool.";
     }
 
-    @Override public boolean primary() { return true; }
-
-    @Override public Set<String> labels() {
-        return Set.of("document", "link", "read", "eddie", "arthur");
+    @Override
+    public boolean primary() {
+        return true;
     }
 
-    @Override public Map<String, Object> paramsSchema() {
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "document", "link", "read", "eddie", "arthur");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
         Map<String, Object> p = new LinkedHashMap<>();
-        p.put("path", Map.of(
-                "type", "string",
-                "description",
-                "Document path inside a project (the document's name, e.g. "
-                        + "'documents/q1/summary.pdf'). Required unless 'id' is given."));
-        p.put("id", Map.of(
-                "type", "string",
-                "description", "Alternative: Mongo id of the document. Use one of path/id."));
-        p.put("projectId", Map.of(
-                "type", "string",
-                "description",
-                "Optional project name for cross-project links (same tenant). "
-                        + "Default = current project."));
-        p.put("text", Map.of(
-                "type", "string",
-                "description",
-                "Link / alt text. Default: document.title, fallback to the path's "
-                        + "leaf segment."));
-        p.put("mode", Map.of(
-                "type", "string",
-                "enum", List.of("preview", "reference"),
-                "description",
-                "Render-mode hint. Default derived from kind: image → preview, "
-                        + "all others → reference. Use 'preview' for inline-render, "
-                        + "'reference' for compact card/badge."));
-        p.put("imageStyle", Map.of(
-                "type", "boolean",
-                "description",
-                "Force image-style '![alt](...)' syntax. Default: true for kind=image/svg, "
-                        + "false otherwise."));
-        return Map.of(
-                "type", "object",
-                "properties", p);
+        p.put(
+                "path",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Document path inside a project (the document's name, e.g. "
+                                + "'documents/q1/summary.pdf'). Required unless 'id' is given."));
+        p.put(
+                "id",
+                Map.of(
+                        "type", "string",
+                        "description", "Alternative: Mongo id of the document. Use one of path/id."));
+        p.put(
+                "projectId",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional project name for cross-project links (same tenant). "
+                                + "Default = current project."));
+        p.put(
+                "text",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Link / alt text. Default: document.title, fallback to the path's " + "leaf segment."));
+        p.put(
+                "mode",
+                Map.of(
+                        "type",
+                        "string",
+                        "enum",
+                        List.of("preview", "reference"),
+                        "description",
+                        "Render-mode hint. Default derived from kind: image → preview, "
+                                + "all others → reference. Use 'preview' for inline-render, "
+                                + "'reference' for compact card/badge."));
+        p.put(
+                "imageStyle",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "Force image-style '![alt](...)' syntax. Default: true for kind=image/svg, "
+                                + "false otherwise."));
+        return Map.of("type", "object", "properties", p);
     }
 
     @Override
@@ -109,8 +134,8 @@ public class DocLinkTool implements Tool {
 
         DocumentDocument doc = resolveDocument(id, path, requestedProject, ctx);
 
-        DocumentLinkBuilder.Result r = linkBuilder.build(
-                doc, ctx.projectId(), textOverride, modeOverride, imageStyleOverride);
+        DocumentLinkBuilder.Result r =
+                linkBuilder.build(doc, ctx.projectId(), textOverride, modeOverride, imageStyleOverride);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("markdownLink", r.markdownLink());
@@ -124,12 +149,10 @@ public class DocLinkTool implements Tool {
     }
 
     private DocumentDocument resolveDocument(
-            @Nullable String id,
-            @Nullable String path,
-            @Nullable String requestedProject,
-            ToolInvocationContext ctx) {
+            @Nullable String id, @Nullable String path, @Nullable String requestedProject, ToolInvocationContext ctx) {
         if (id != null) {
-            DocumentDocument doc = documentService.findById(id)
+            DocumentDocument doc = documentService
+                    .findById(id)
                     .orElseThrow(() -> new ToolException("DOCUMENT_NOT_FOUND: id='" + id + "'"));
             if (!ctx.tenantId().equals(doc.getTenantId())) {
                 throw new ToolException("CROSS_TENANT_DENIED: document is not in your tenant.");
@@ -137,27 +160,25 @@ public class DocLinkTool implements Tool {
             return doc;
         }
         String projectName = resolveTargetProjectName(requestedProject, ctx);
-        return documentService.findByPath(ctx.tenantId(), projectName, path)
-                .orElseThrow(() -> new ToolException(
-                        "DOCUMENT_NOT_FOUND: path='" + path + "' in project '" + projectName + "'"));
+        return documentService
+                .findByPath(ctx.tenantId(), projectName, path)
+                .orElseThrow(() ->
+                        new ToolException("DOCUMENT_NOT_FOUND: path='" + path + "' in project '" + projectName + "'"));
     }
 
-    private String resolveTargetProjectName(
-            @Nullable String requestedProject, ToolInvocationContext ctx) {
+    private String resolveTargetProjectName(@Nullable String requestedProject, ToolInvocationContext ctx) {
         if (requestedProject == null) {
             String current = ctx.projectId();
             if (current == null || current.isBlank()) {
                 throw new ToolException(
-                        "No project specified and no current project in context. "
-                                + "Pass `project` explicitly.");
+                        "No project specified and no current project in context. " + "Pass `project` explicitly.");
             }
             return current;
         }
         Optional<ProjectDocument> p = projectService.findByTenantAndName(ctx.tenantId(), requestedProject);
         if (p.isEmpty()) {
             throw new ToolException(
-                    "CROSS_PROJECT_NOT_IN_TENANT: project '" + requestedProject
-                            + "' does not exist in this tenant.");
+                    "CROSS_PROJECT_NOT_IN_TENANT: project '" + requestedProject + "' does not exist in this tenant.");
         }
         return p.get().getName();
     }

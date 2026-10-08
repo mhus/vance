@@ -7,6 +7,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,14 +38,19 @@ public class PeerReadChatMemoryTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "processName", Map.of(
-                            "type", "string",
-                            "description", "Name of the target process in the current session."),
-                    "limit", Map.of(
-                            "type", "integer",
-                            "description", "Max number of most-recent messages to return. "
-                                    + "Default 30, capped at " + MAX_LIMIT + ".")),
+            "properties",
+                    Map.of(
+                            "processName",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Name of the target process in the current session."),
+                            "limit",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Max number of most-recent messages to return. " + "Default 30, capped at "
+                                                    + MAX_LIMIT + ".")),
             "required", List.of("processName"));
 
     private final TrillianInternalApi api;
@@ -74,7 +80,7 @@ public class PeerReadChatMemoryTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.INTERNAL, "read-only");
     }
 
     @Override
@@ -92,21 +98,22 @@ public class PeerReadChatMemoryTool implements Tool {
             limit = Math.max(1, Math.min(MAX_LIMIT, n.intValue()));
         }
 
-        Optional<ThinkProcessDocument> target = thinkProcessService.findByName(
-                ctx.tenantId(), ctx.sessionId(), processName);
+        Optional<ThinkProcessDocument> target =
+                thinkProcessService.findByName(ctx.tenantId(), ctx.sessionId(), processName);
         if (target.isEmpty()) {
-            throw new ToolException(
-                    "Process '" + processName + "' not found in current session");
+            throw new ToolException("Process '" + processName + "' not found in current session");
         }
-        List<ChatMessageDocument> messages = api.readChatMemoryOf(
-                ctx.processId(), target.get().getId(), limit);
+        List<ChatMessageDocument> messages =
+                api.readChatMemoryOf(ctx.processId(), target.get().getId(), limit);
 
         List<Map<String, Object>> shaped = new ArrayList<>(messages.size());
         for (ChatMessageDocument m : messages) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("role", m.getRole() == null ? null : m.getRole().name());
             row.put("content", m.getContent());
-            row.put("createdAt", m.getCreatedAt() == null ? null : m.getCreatedAt().toString());
+            row.put(
+                    "createdAt",
+                    m.getCreatedAt() == null ? null : m.getCreatedAt().toString());
             shaped.add(row);
         }
 

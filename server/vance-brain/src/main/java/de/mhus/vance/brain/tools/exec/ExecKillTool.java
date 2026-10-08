@@ -4,6 +4,7 @@ import de.mhus.vance.brain.execution.ExecutionRouter;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +21,12 @@ public class ExecKillTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "Job id to kill.")),
+            "properties",
+                    Map.of(
+                            "id",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Job id to kill.")),
             "required", List.of("id"));
 
     private final ExecutionRouter router;
@@ -51,7 +54,7 @@ public class ExecKillTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("executive", "side-effect");
+        return java.util.Set.of(ToolLabels.WORKER, "executive", "side-effect");
     }
 
     @Override

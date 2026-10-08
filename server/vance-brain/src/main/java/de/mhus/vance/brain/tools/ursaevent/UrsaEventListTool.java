@@ -5,6 +5,7 @@ import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -29,16 +30,31 @@ public class UrsaEventListTool implements Tool {
     private final UrsaEventLoader loader;
     private final UrsaEventToolSupport support;
 
-    @Override public String name() { return "event_list"; }
+    @Override
+    public String name() {
+        return "event_list";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "List all events visible to the current project (project-local "
                 + "plus cascade-resolved from _tenant), sorted by name.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("read-only", "events"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "read-only", "events");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

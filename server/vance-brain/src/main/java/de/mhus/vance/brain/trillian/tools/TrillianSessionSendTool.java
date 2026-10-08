@@ -11,6 +11,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,13 +38,16 @@ public class TrillianSessionSendTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "sessionId", Map.of(
-                            "type", "string",
-                            "description", "The target Trillian-Control session id."),
-                    "message", Map.of(
-                            "type", "string",
-                            "description", "The chat message to deliver.")),
+            "properties",
+                    Map.of(
+                            "sessionId",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "The target Trillian-Control session id."),
+                            "message",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "The chat message to deliver.")),
             "required", List.of("sessionId", "message"));
 
     private final SessionService sessionService;
@@ -78,7 +82,7 @@ public class TrillianSessionSendTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.INTERNAL, "executive");
     }
 
     @Override
@@ -108,41 +112,31 @@ public class TrillianSessionSendTool implements Tool {
         // project). ToolDispatcher only checked the calling scope.
         permissionService.enforce(
                 contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new de.mhus.vance.shared.permission.Resource.Session(
-                        ctx.tenantId(), session.getProjectId(), sessionId),
+                new de.mhus.vance.shared.permission.Resource.Session(ctx.tenantId(), session.getProjectId(), sessionId),
                 de.mhus.vance.shared.permission.Action.EXECUTE);
         if (session.getChatProcessId() == null) {
-            throw new ToolException(
-                    "Session '" + sessionId + "' has no chat-process yet");
+            throw new ToolException("Session '" + sessionId + "' has no chat-process yet");
         }
-        Optional<ThinkProcessDocument> chatOpt =
-                thinkProcessService.findById(session.getChatProcessId());
+        Optional<ThinkProcessDocument> chatOpt = thinkProcessService.findById(session.getChatProcessId());
         if (chatOpt.isEmpty()) {
             throw new ToolException(
-                    "Session '" + sessionId + "' chat-process id='"
-                            + session.getChatProcessId() + "' is missing");
+                    "Session '" + sessionId + "' chat-process id='" + session.getChatProcessId() + "' is missing");
         }
         ThinkProcessDocument chat = chatOpt.get();
         // Engine-based check is Nature-agnostic (all trillian-* recipes
         // resolve to the trillian-control engine).
         if (!TrillianSessionBootstrapper.CONTROL_ENGINE_NAME.equals(chat.getThinkEngine())) {
-            throw new ToolException(
-                    "Session '" + sessionId + "' is not a Trillian-Control session "
-                            + "(chat engine='" + chat.getThinkEngine() + "')");
+            throw new ToolException("Session '" + sessionId + "' is not a Trillian-Control session " + "(chat engine='"
+                    + chat.getThinkEngine() + "')");
         }
 
-        SteerMessage.UserChatInput input = new SteerMessage.UserChatInput(
-                Instant.now(),
-                /*messageId*/ null,
-                ctx.userId(),
-                message);
+        SteerMessage.UserChatInput input =
+                new SteerMessage.UserChatInput(Instant.now(), /*messageId*/ null, ctx.userId(), message);
         try {
-            laneScheduler.submit(chat.getId(),
-                    () -> thinkEngineService.steer(chat, input));
+            laneScheduler.submit(chat.getId(), () -> thinkEngineService.steer(chat, input));
         } catch (RuntimeException e) {
             throw new ToolException(
-                    "Lane-submit failed for chat process id='" + chat.getId()
-                            + "': " + e.getMessage(), e);
+                    "Lane-submit failed for chat process id='" + chat.getId() + "': " + e.getMessage(), e);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();

@@ -4,6 +4,7 @@ import de.mhus.vance.brain.execution.ExecutionRouter;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,10 +25,12 @@ public class ExecStatTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "Job id returned by work_exec_run.")),
+            "properties",
+                    Map.of(
+                            "id",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Job id returned by work_exec_run.")),
             "required", List.of("id"));
 
     private final ExecutionRouter router;
@@ -59,7 +62,7 @@ public class ExecStatTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override

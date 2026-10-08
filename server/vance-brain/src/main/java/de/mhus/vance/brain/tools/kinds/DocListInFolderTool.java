@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,39 +24,70 @@ public class DocListInFolderTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of("type", "string",
-                            "description", "Optional project name. Defaults to the active project."),
-                    "pathPrefix", Map.of("type", "string",
-                            "description", "Folder path inside the project (e.g. "
-                                    + "'documents/notes/2024'). Omitted/blank → defaults to "
-                                    + "'documents/' (excludes trash and system folders). "
-                                    + "Pass '*' for the project root (lists every folder)."),
-                    "recursive", Map.of("type", "boolean",
-                            "description", "Include documents in subfolders too. Default: false.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults to the active project."),
+                            "pathPrefix",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Folder path inside the project (e.g. "
+                                                    + "'documents/notes/2024'). Omitted/blank → defaults to "
+                                                    + "'documents/' (excludes trash and system folders). "
+                                                    + "Pass '*' for the project root (lists every folder)."),
+                            "recursive",
+                                    Map.of(
+                                            "type",
+                                            "boolean",
+                                            "description",
+                                            "Include documents in subfolders too. Default: false.")),
             "required", List.of());
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_list_in_folder"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_list_in_folder";
+    }
+
+    @Override
+    public String description() {
         return "List documents directly inside `folder` (non-recursive by default). Set "
                 + "`recursive=true` to include subfolders. Trashed documents are filtered out.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public boolean contributesPrak() {
+
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean contributesPrak() {
         // Listing — file names only, no synthesised insight.
         return false;
     }
-    @Override public Set<String> labels() { return Set.of("folders", "eddie", "read-only"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "folders", "eddie", "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
-        String folder = DocumentService.resolveScope(
-                KindToolSupport.paramStringAliased(params, "pathPrefix", "folder"));
+        String folder =
+                DocumentService.resolveScope(KindToolSupport.paramStringAliased(params, "pathPrefix", "folder"));
         boolean recursive = Boolean.TRUE.equals(KindToolSupport.paramBoolean(params, "recursive"));
 
         // resolveScope returns "documents/" with the trailing slash, ""
@@ -64,8 +96,7 @@ public class DocListInFolderTool implements Tool {
         // slash) still work as before.
         String prefix = folder.isEmpty() ? "" : (folder.endsWith("/") ? folder : folder + "/");
 
-        List<DocumentDocument> all = support.documentService()
-                .listByProject(ctx.tenantId(), project.getName());
+        List<DocumentDocument> all = support.documentService().listByProject(ctx.tenantId(), project.getName());
         List<Map<String, Object>> rows = new ArrayList<>();
         for (DocumentDocument d : all) {
             if (DocumentService.isTrash(d.getPath())) continue;

@@ -13,6 +13,7 @@ import de.mhus.vance.brain.image.RotateRequest;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -86,7 +87,7 @@ public class ImageRotateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write");
+        return Set.of(ToolLabels.WORKER, "write");
     }
 
     @Override

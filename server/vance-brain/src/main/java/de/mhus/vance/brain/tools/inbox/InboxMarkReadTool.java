@@ -5,6 +5,7 @@ import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,41 +37,70 @@ public class InboxMarkReadTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "threadIds", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description", "1-25 thread ids from inbox_list. "
-                                    + "There is no filter and no 'all' — name them.")),
+            "properties",
+                    Map.of(
+                            "threadIds",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "items",
+                                    Map.of("type", "string"),
+                                    "description",
+                                    "1-25 thread ids from inbox_list. "
+                                            + "There is no filter and no 'all' — name them.")),
             "required", List.of("threadIds"));
 
     private final MaximegalonService threads;
     private final InboxToolSupport support;
 
-    @Override public String name() { return "inbox_mark_read"; }
+    @Override
+    public String name() {
+        return "inbox_mark_read";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Mark the named inbox threads as read for you, clearing their unread count. "
                 + "Only call this when the user asked you to mark or clear something. "
                 + "Never call it to tidy up after your own reading — the unread count is "
                 + "their alarm, not your bookkeeping. Marking read never answers an ask.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return false; }
-    @Override public Set<String> labels() { return Set.of("write"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "write");
+    }
+
+    @Override
+    public String searchHint() {
         return "Mark inbox threads the user asked you to clear as read";
     }
 
-    @Override public String troubleshootingHint() {
+    @Override
+    public String troubleshootingHint() {
         return "Thread ids come from inbox_list. Marking read is not answering — an ask "
                 + "stays open until a person decides it.";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

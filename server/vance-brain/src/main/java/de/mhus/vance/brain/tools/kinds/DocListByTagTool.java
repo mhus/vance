@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,37 +25,60 @@ public class DocListByTagTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of("type", "string",
-                            "description", "Optional project name. Defaults to the active project."),
-                    "tag", Map.of("type", "string", "description", "Tag to filter by."),
-                    "pathPrefix", Map.of("type", "string",
-                            "description", "Path-prefix scope on top of the tag. Omitted → "
-                                    + "defaults to 'documents/' (excludes trash, kit config, "
-                                    + "chat attachments, engine scratch). Pass '*' to include "
-                                    + "every tagged document regardless of folder.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults to the active project."),
+                            "tag", Map.of("type", "string", "description", "Tag to filter by."),
+                            "pathPrefix",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Path-prefix scope on top of the tag. Omitted → "
+                                                    + "defaults to 'documents/' (excludes trash, kit config, "
+                                                    + "chat attachments, engine scratch). Pass '*' to include "
+                                                    + "every tagged document regardless of folder.")),
             "required", List.of("tag"));
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_list_by_tag"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_list_by_tag";
+    }
+
+    @Override
+    public String description() {
         return "List documents in the project that carry the given tag. Optional `pathPrefix` "
                 + "narrows the result. Trashed documents are excluded.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("tags", "eddie", "read-only"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "tags", "eddie", "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
         String tag = KindToolSupport.requireString(params, "tag");
-        String pathPrefix = DocumentService.resolveScope(
-                KindToolSupport.paramString(params, "pathPrefix"));
-        List<DocumentDocument> hits = support.documentService()
-                .listByTag(ctx.tenantId(), project.getName(), tag);
+        String pathPrefix = DocumentService.resolveScope(KindToolSupport.paramString(params, "pathPrefix"));
+        List<DocumentDocument> hits = support.documentService().listByTag(ctx.tenantId(), project.getName(), tag);
         List<Map<String, Object>> entries = new ArrayList<>();
         for (DocumentDocument d : hits) {
             // The scope filter already excludes _vance/trash/ when on the
@@ -63,8 +87,7 @@ public class DocListByTagTool implements Tool {
             // tag search across the whole project shouldn't return
             // trashed hits unless they ask for a _vance/trash/ prefix.
             if (pathPrefix.isEmpty() && DocumentService.isTrash(d.getPath())) continue;
-            if (!pathPrefix.isEmpty()
-                    && (d.getPath() == null || !d.getPath().startsWith(pathPrefix))) continue;
+            if (!pathPrefix.isEmpty() && (d.getPath() == null || !d.getPath().startsWith(pathPrefix))) continue;
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("id", d.getId());
             entry.put("path", d.getPath());

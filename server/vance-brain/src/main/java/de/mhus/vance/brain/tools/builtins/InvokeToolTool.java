@@ -4,6 +4,7 @@ import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -34,20 +35,29 @@ public class InvokeToolTool implements Tool {
     @SuppressWarnings("unchecked")
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Name of the tool to invoke."),
-                    "params", Map.of(
-                            "type", "object",
-                            "description",
-                                    "Parameter object for the tool, matching "
-                                            + "its paramsSchema.")),
+            "properties",
+                    Map.of(
+                            "name",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Name of the tool to invoke."),
+                            "params",
+                                    Map.of(
+                                            "type",
+                                            "object",
+                                            "description",
+                                            "Parameter object for the tool, matching " + "its paramsSchema.")),
             "required", List.of("name"));
 
     @Override
     public String name() {
         return "invoke_tool";
+    }
+
+    @Override
+    public java.util.Set<String> labels() {
+
+        return java.util.Set.of(ToolLabels.WORKER);
     }
 
     @Override
@@ -76,15 +86,12 @@ public class InvokeToolTool implements Tool {
      */
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        throw new ToolException(
-                "invoke_tool requires an engine tool surface and cannot be "
-                        + "called without one");
+        throw new ToolException("invoke_tool requires an engine tool surface and cannot be " + "called without one");
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public Map<String, Object> invoke(
-            Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
+    public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
         String name = params == null ? null : (String) params.get("name");
         if (name == null || name.isBlank()) {
             throw new ToolException("'name' is required");

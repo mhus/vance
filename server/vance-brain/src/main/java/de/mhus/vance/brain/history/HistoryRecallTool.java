@@ -6,6 +6,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -38,26 +39,35 @@ public class HistoryRecallTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "turnIds", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description",
-                                    "Turn IDs returned by an earlier history_search call. "
-                                            + "Max " + MAX_RECALL + " ids per call."),
-                    "scope", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Process scope (must match the scope used for the "
-                                            + "search that produced these ids). 'process' "
-                                            + "(default), 'children' or 'session' — see "
-                                            + "history_search.")),
+            "properties",
+                    Map.of(
+                            "turnIds",
+                                    Map.of(
+                                            "type",
+                                            "array",
+                                            "items",
+                                            Map.of("type", "string"),
+                                            "description",
+                                            "Turn IDs returned by an earlier history_search call. " + "Max "
+                                                    + MAX_RECALL + " ids per call."),
+                            "scope",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Process scope (must match the scope used for the "
+                                                    + "search that produced these ids). 'process' "
+                                                    + "(default), 'children' or 'session' — see "
+                                                    + "history_search.")),
             "required", List.of("turnIds"));
 
     private final ChatMessageService chatMessageService;
     private final ThinkProcessService thinkProcessService;
 
-    @Override public String name() { return "history_recall"; }
+    @Override
+    public String name() {
+        return "history_recall";
+    }
 
     @Override
     public String description() {
@@ -66,16 +76,30 @@ public class HistoryRecallTool implements Tool {
                 + "tokens. Returns turns in chronological order.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
 
     @Override
     public String searchHint() {
         return "read full content of earlier turns previously found via history_search";
     }
 
-    @Override public Set<String> labels() { return Set.of("read-only"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -84,21 +108,21 @@ public class HistoryRecallTool implements Tool {
         }
         Set<String> ids = parseIds(params);
         if (ids.size() > MAX_RECALL) {
-            throw new ToolException("history_recall accepts at most " + MAX_RECALL
-                    + " turnIds per call (got " + ids.size() + ")");
+            throw new ToolException(
+                    "history_recall accepts at most " + MAX_RECALL + " turnIds per call (got " + ids.size() + ")");
         }
         String scope = parseScope(params);
-        Set<String> allowedProcessIds = HistoryScopeResolver.resolve(
-                scope, ctx, thinkProcessService);
+        Set<String> allowedProcessIds = HistoryScopeResolver.resolve(scope, ctx, thinkProcessService);
 
-        List<ChatMessageDocument> turns =
-                chatMessageService.findByIds(ctx.tenantId(), allowedProcessIds, ids);
+        List<ChatMessageDocument> turns = chatMessageService.findByIds(ctx.tenantId(), allowedProcessIds, ids);
 
         List<Map<String, Object>> out = new ArrayList<>(turns.size());
         for (ChatMessageDocument m : turns) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("turnId", m.getId());
-            entry.put("createdAt", m.getCreatedAt() == null ? null : m.getCreatedAt().toString());
+            entry.put(
+                    "createdAt",
+                    m.getCreatedAt() == null ? null : m.getCreatedAt().toString());
             entry.put("role", m.getRole() == null ? null : m.getRole().name());
             entry.put("processId", m.getThinkProcessId());
             entry.put("content", m.getContent());
@@ -123,8 +147,7 @@ public class HistoryRecallTool implements Tool {
         if (!trimmed.equals(HistorySearchTool.SCOPE_PROCESS)
                 && !trimmed.equals(HistorySearchTool.SCOPE_CHILDREN)
                 && !trimmed.equals(HistorySearchTool.SCOPE_SESSION)) {
-            throw new ToolException("'scope' must be one of: process, children, session "
-                    + "(got '" + s + "')");
+            throw new ToolException("'scope' must be one of: process, children, session " + "(got '" + s + "')");
         }
         return trimmed;
     }

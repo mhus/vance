@@ -5,6 +5,7 @@ import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,30 +23,45 @@ import org.springframework.stereotype.Component;
 public class UrsaEventGetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("name", Map.of(
-                "type", "string",
-                "description", "Event name (without .yaml suffix)."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", props,
-                "required", List.of("name"));
+        props.put(
+                "name",
+                Map.of(
+                        "type", "string",
+                        "description", "Event name (without .yaml suffix)."));
+        SCHEMA = Map.of("type", "object", "properties", props, "required", List.of("name"));
     }
 
     private final UrsaEventLoader loader;
     private final UrsaEventToolSupport support;
 
-    @Override public String name() { return "event_get"; }
+    @Override
+    public String name() {
+        return "event_get";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Return the full YAML body and resolved metadata of one event. "
                 + "Resolves through the project → _tenant cascade.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("read-only", "events"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "read-only", "events");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

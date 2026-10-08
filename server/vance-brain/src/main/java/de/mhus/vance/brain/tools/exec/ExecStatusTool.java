@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.exec;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -19,10 +20,12 @@ public class ExecStatusTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "Job id returned by work_exec_run.")),
+            "properties",
+                    Map.of(
+                            "id",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Job id returned by work_exec_run.")),
             "required", List.of("id"));
 
     private final ExecManager execManager;
@@ -63,7 +66,7 @@ public class ExecStatusTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -72,9 +75,9 @@ public class ExecStatusTool implements Tool {
         if (!(raw instanceof String id) || id.isBlank()) {
             throw new ToolException("'id' is required");
         }
-        ExecJob job = execManager.get(ctx.tenantId(), ctx.projectId(), id)
-                .orElseThrow(() -> new ToolException(
-                        "Unknown exec job: '" + id + "' (not in this project)"));
+        ExecJob job = execManager
+                .get(ctx.tenantId(), ctx.projectId(), id)
+                .orElseThrow(() -> new ToolException("Unknown exec job: '" + id + "' (not in this project)"));
         return ExecJobRenderer.render(job, properties.getInlineOutputCharCap());
     }
 }

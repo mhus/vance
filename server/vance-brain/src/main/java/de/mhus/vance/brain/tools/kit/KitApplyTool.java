@@ -7,6 +7,7 @@ import de.mhus.vance.shared.settings.SettingWriteOrigin;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,23 +48,25 @@ public class KitApplyTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         Map<String, Object> properties = new LinkedHashMap<>(KitToolSupport.sourceSchemaProps());
-        properties.put("vault_password", Map.of(
-                "type", "string",
-                "description", "Vault passphrase needed when the kit ships PASSWORD-settings."));
-        properties.put("keep_passwords", Map.of(
-                "type", "boolean",
-                "description",
-                "Skip PASSWORD-settings in the kit so existing project credentials "
-                        + "are preserved. Default false (overwrite)."));
-        return Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("url"));
+        properties.put(
+                "vault_password",
+                Map.of(
+                        "type", "string",
+                        "description", "Vault passphrase needed when the kit ships PASSWORD-settings."));
+        properties.put(
+                "keep_passwords",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "Skip PASSWORD-settings in the kit so existing project credentials "
+                                + "are preserved. Default false (overwrite)."));
+        return Map.of("type", "object", "properties", properties, "required", List.of("url"));
     }
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("executive");
+        return java.util.Set.of(ToolLabels.OPERATOR, "executive");
     }
 
     @Override
@@ -81,9 +84,12 @@ public class KitApplyTool implements Tool {
         if (ctx.tenantId() == null) {
             throw new ToolException("kit_apply requires a tenant scope");
         }
-        String projectId = KitToolSupport.requireProjectAuthorized(ctx,
+        String projectId = KitToolSupport.requireProjectAuthorized(
+                ctx,
                 KitToolSupport.optionalString(params, "project"),
-                permissionService, contextFactory, de.mhus.vance.shared.permission.Action.ADMIN);
+                permissionService,
+                contextFactory,
+                de.mhus.vance.shared.permission.Action.ADMIN);
         KitImportRequestDto request = KitImportRequestDto.builder()
                 .projectId(projectId)
                 .source(KitToolSupport.sourceFrom(params))
@@ -93,7 +99,6 @@ public class KitApplyTool implements Tool {
                 .keepPasswords(KitToolSupport.optionalBoolean(params, "keep_passwords"))
                 .build();
         return KitToolSupport.resultToMap(
-                kitService.importKit(ctx.tenantId(), request, ctx.userId(),
-                        SettingWriteOrigin.AGENT));
+                kitService.importKit(ctx.tenantId(), request, ctx.userId(), SettingWriteOrigin.AGENT));
     }
 }

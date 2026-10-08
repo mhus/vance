@@ -7,6 +7,7 @@ import de.mhus.vance.brain.ursahooks.UrsaHookService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,7 +84,7 @@ public class HookSetTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write", "hook");
+        return Set.of(ToolLabels.OPERATOR, "write", "hook");
     }
 
     @Override

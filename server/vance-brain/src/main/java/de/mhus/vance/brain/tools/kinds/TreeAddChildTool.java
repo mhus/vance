@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.MindmapCodec;
 import de.mhus.vance.shared.document.kind.TreeCodec;
 import de.mhus.vance.shared.document.kind.TreeDocument;
 import de.mhus.vance.shared.document.kind.TreeItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,34 +27,53 @@ public class TreeAddChildTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("parentPath", Map.of("type", "string",
-                "description", "Comma-separated index path of the parent item, or empty string "
-                        + "to append to the tree root. Example: '0,2' = third child of first item."));
-        p.put("position", Map.of("type", "integer",
-                "description", "Insert position among siblings; -1 appends. Default: -1."));
+        p.put(
+                "parentPath",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Comma-separated index path of the parent item, or empty string "
+                                + "to append to the tree root. Example: '0,2' = third child of first item."));
+        p.put(
+                "position",
+                Map.of("type", "integer", "description", "Insert position among siblings; -1 appends. Default: -1."));
         p.put("text", Map.of("type", "string", "description", "Text of the new node."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "tree_add_child"; }
+    @Override
+    public String name() {
+        return "tree_add_child";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Add a child node under the item at `parentPath` (empty string for root level). "
                 + "Returns the new node's path.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-tree", "eddie", "write", "document"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-tree", "eddie", "write", "document");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
+        DocumentDocument doc =
+                support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
         int[] parentPath = TreePath.parse(KindToolSupport.paramString(params, "parentPath"));
         Integer pos = KindToolSupport.paramInt(params, "position");
         String text = KindToolSupport.requireRawString(params, "text");
@@ -70,9 +90,7 @@ public class TreeAddChildTool implements Tool {
         List<TreeItem> finalParent = parentPath.length == 0
                 ? updated.items()
                 : TreePath.at(updated, parentPath).children();
-        int landedIdx = (pos == null || pos < 0 || pos >= finalParent.size())
-                ? finalParent.size() - 1
-                : pos;
+        int landedIdx = (pos == null || pos < 0 || pos >= finalParent.size()) ? finalParent.size() - 1 : pos;
         int[] newPath = new int[parentPath.length + 1];
         System.arraycopy(parentPath, 0, newPath, 0, parentPath.length);
         newPath[parentPath.length] = landedIdx;
@@ -82,8 +100,12 @@ public class TreeAddChildTool implements Tool {
                 : TreeCodec.serialize(updated, doc.getMimeType());
         support.writeBody(doc, body, ctx);
 
-        return Map.of("documentId", doc.getId(),
-                "newPath", TreePath.format(newPath),
-                "parentPath", TreePath.format(parentPath));
+        return Map.of(
+                "documentId",
+                doc.getId(),
+                "newPath",
+                TreePath.format(newPath),
+                "parentPath",
+                TreePath.format(parentPath));
     }
 }

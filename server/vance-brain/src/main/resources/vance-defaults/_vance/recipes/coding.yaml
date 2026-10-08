@@ -31,12 +31,13 @@ engine: frankie
 # rewrite a MongoDB-stored document (project notes, specs, recipes, the
 # user's docs in /documents/...). Without them the worker falls back to
 # file_*/work_file_* which look at the workspace filesystem and can't
-# find documents. The READ side is not on Frankie's engine baseline
-# (that comment was true for Ford, not here): doc_read/doc_read_lines
-# carry the contentHash the write tools demand — the hash protocol below
-# breaks without them, and the mutation tools above would edit blind.
-# Same read set as Ford's baseline so both engines share one
-# definition of "document read side".
+# find documents. The READ side is on the shared worker core
+# (WorkerEngineTools.CORE) since 2026-10; it stays listed here because
+# naming a core tool in allowedToolsAdd promotes it to primary —
+# doc_read/doc_read_lines carry the contentHash the write tools demand,
+# so the hash protocol below must never depend on a discovery round-trip.
+# Everything else released for workers (scripting, kinds, apps, media)
+# arrives deferred through the worker pool — see server-tools.md §15.
 allowedToolsAdd:
   - research_investigate
   - research_search

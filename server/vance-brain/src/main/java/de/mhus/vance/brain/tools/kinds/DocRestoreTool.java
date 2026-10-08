@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,24 +29,45 @@ public class DocRestoreTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("newPath", Map.of("type", "string",
-                "description", "Optional target path. Default: the original path remembered "
-                        + "when the document was trashed (header `_trash-original-path`)."));
+        p.put(
+                "newPath",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional target path. Default: the original path remembered "
+                                + "when the document was trashed (header `_trash-original-path`)."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_restore"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_restore";
+    }
+
+    @Override
+    public String description() {
         return "Restore a trashed document from `_vance/trash/`. By default it goes back to its "
                 + "original path; pass `newPath` to land it somewhere else. Errors when the "
                 + "target is already occupied.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

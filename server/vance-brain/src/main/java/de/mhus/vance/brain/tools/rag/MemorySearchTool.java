@@ -7,6 +7,7 @@ import de.mhus.vance.shared.rag.RagDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,45 +45,71 @@ public class MemorySearchTool implements Tool {
     private static final int FILTER_HEADROOM = 5;
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("query", Map.of(
-                "type", "string",
-                "description", "Natural-language query for the project memory."));
-        props.put("topK", Map.of(
-                "type", "integer",
-                "description", "Max number of hits to return (1–" + MAX_TOP_K
-                        + ", default " + DEFAULT_TOP_K + ")."));
-        props.put("minScore", Map.of(
-                "type", "number",
-                "description", "Minimum cosine similarity score in [0, 1]. "
-                        + "Default 0 (no threshold). Use 0.6+ for strict matches."));
-        props.put("pathPrefix", Map.of(
-                "type", "string",
-                "description", "Optional document-path prefix to filter results "
-                        + "(e.g. 'documents/meeting-notes/'). Matched against the "
-                        + "chunk's source document path."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", props,
-                "required", List.of("query"));
+        props.put(
+                "query",
+                Map.of(
+                        "type", "string",
+                        "description", "Natural-language query for the project memory."));
+        props.put(
+                "topK",
+                Map.of(
+                        "type",
+                        "integer",
+                        "description",
+                        "Max number of hits to return (1–" + MAX_TOP_K + ", default " + DEFAULT_TOP_K + ")."));
+        props.put(
+                "minScore",
+                Map.of(
+                        "type",
+                        "number",
+                        "description",
+                        "Minimum cosine similarity score in [0, 1]. "
+                                + "Default 0 (no threshold). Use 0.6+ for strict matches."));
+        props.put(
+                "pathPrefix",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional document-path prefix to filter results "
+                                + "(e.g. 'documents/meeting-notes/'). Matched against the "
+                                + "chunk's source document path."));
+        SCHEMA = Map.of("type", "object", "properties", props, "required", List.of("query"));
     }
 
     private final RagService ragService;
     private final ProjectRagService projectRagService;
 
-    @Override public String name() { return "memory_search"; }
+    @Override
+    public String name() {
+        return "memory_search";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Search the current project's default memory (auto-indexed "
                 + "documents) with a natural-language query. Returns chunks "
                 + "ranked by similarity, with content, score, path and "
                 + "position. Optional minScore + pathPrefix filters.";
     }
 
-    @Override public boolean primary() { return true; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("read-only", "memory"); }
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only", "memory");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -90,14 +117,11 @@ public class MemorySearchTool implements Tool {
             throw new ToolException("memory_search requires a project scope");
         }
         String query = stringOrThrow(params, "query");
-        int topK = clampInt(params == null ? null : params.get("topK"),
-                DEFAULT_TOP_K, 1, MAX_TOP_K);
-        double minScore = clampDouble(params == null ? null : params.get("minScore"),
-                0.0, 0.0, 1.0);
+        int topK = clampInt(params == null ? null : params.get("topK"), DEFAULT_TOP_K, 1, MAX_TOP_K);
+        double minScore = clampDouble(params == null ? null : params.get("minScore"), 0.0, 0.0, 1.0);
         String pathPrefix = optionalString(params, "pathPrefix");
 
-        Optional<RagDocument> ragOpt = projectRagService.findDefaultRag(
-                ctx.tenantId(), ctx.projectId());
+        Optional<RagDocument> ragOpt = projectRagService.findDefaultRag(ctx.tenantId(), ctx.projectId());
         if (ragOpt.isEmpty()) {
             // The default RAG is auto-provisioned on first project
             // bring, but for projects created before that became the
@@ -109,8 +133,10 @@ public class MemorySearchTool implements Tool {
             out.put("query", query);
             out.put("hits", List.of());
             out.put("count", 0);
-            out.put("note", "Project has no default memory (rag.project.enabled may be false, "
-                    + "or the project was created before the project-RAG default landed).");
+            out.put(
+                    "note",
+                    "Project has no default memory (rag.project.enabled may be false, "
+                            + "or the project was created before the project-RAG default landed).");
             return out;
         }
 
@@ -195,7 +221,10 @@ public class MemorySearchTool implements Tool {
         if (raw instanceof Number num) {
             n = num.intValue();
         } else if (raw instanceof String s && !s.isBlank()) {
-            try { n = Integer.parseInt(s.trim()); } catch (NumberFormatException ignored) {}
+            try {
+                n = Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+            }
         }
         if (n < min) return min;
         if (n > max) return max;
@@ -207,7 +236,10 @@ public class MemorySearchTool implements Tool {
         if (raw instanceof Number num) {
             n = num.doubleValue();
         } else if (raw instanceof String s && !s.isBlank()) {
-            try { n = Double.parseDouble(s.trim()); } catch (NumberFormatException ignored) {}
+            try {
+                n = Double.parseDouble(s.trim());
+            } catch (NumberFormatException ignored) {
+            }
         }
         if (n < min) return min;
         if (n > max) return max;

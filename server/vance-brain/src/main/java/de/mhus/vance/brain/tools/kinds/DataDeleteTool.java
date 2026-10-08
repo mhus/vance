@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.DataCodec;
 import de.mhus.vance.shared.document.kind.DataDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,27 +24,41 @@ public class DataDeleteTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("path", Map.of("type", "string",
-                "description", "JSON Pointer (RFC-6901) of the value to delete."));
+        p.put("path", Map.of("type", "string", "description", "JSON Pointer (RFC-6901) of the value to delete."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "data_delete"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "data_delete";
+    }
+
+    @Override
+    public String description() {
         return "Delete a value at a JSON Pointer in a `kind: data` document. "
                 + "Removing an array element shifts subsequent indices.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-data", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-data", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "data");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "data");
         String pathStr = KindToolSupport.requireString(params, "path");
         String[] path = JsonPointer.parse(pathStr);
 

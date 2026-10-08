@@ -11,6 +11,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -121,7 +122,7 @@ public class ExecutePythonTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive", "side-effect");
+        return Set.of(ToolLabels.WORKER, "executive", "side-effect");
     }
 
     @Override

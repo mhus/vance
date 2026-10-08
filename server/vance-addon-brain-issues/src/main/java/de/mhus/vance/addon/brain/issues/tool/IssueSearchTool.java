@@ -8,6 +8,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,15 +24,20 @@ import org.springframework.stereotype.Component;
 public class IssueSearchTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string", "description", "Issues root folder."));
-                put("query", Map.of("type", "string"));
-                put("label", Map.of("type", "string"));
-                put("limit", Map.of("type", "integer", "description", "Max hits (default 20)."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "Issues root folder."));
+                    put("query", Map.of("type", "string"));
+                    put("label", Map.of("type", "string"));
+                    put("limit", Map.of("type", "integer", "description", "Max hits (default 20)."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final IssuesFolderReader folderReader;
@@ -43,7 +49,10 @@ public class IssueSearchTool implements Tool {
         this.issuesService = issuesService;
     }
 
-    @Override public String name() { return "issue_search"; }
+    @Override
+    public String name() {
+        return "issue_search";
+    }
 
     @Override
     public String description() {
@@ -52,9 +61,20 @@ public class IssueSearchTool implements Tool {
                 + "Returns number-bearing title + snippet per hit.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("eddie", "read", "document", "issues", "search"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "issues", "search");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -64,8 +84,12 @@ public class IssueSearchTool implements Tool {
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         folderReader.scan(ctx.tenantId(), project.getName(), folder); // validates it's an issues app
         DocumentService.DocumentMetaListing listing = issuesService.search(
-                ctx.tenantId(), project.getName(), folder,
-                paramString(params, "query"), paramString(params, "label"), limit);
+                ctx.tenantId(),
+                project.getName(),
+                folder,
+                paramString(params, "query"),
+                paramString(params, "label"),
+                limit);
         List<Map<String, Object>> hits = new ArrayList<>();
         for (DocumentService.DocumentMetaMatch m : listing.items()) {
             Map<String, Object> h = new LinkedHashMap<>();
@@ -84,10 +108,17 @@ public class IssueSearchTool implements Tool {
         Object v = params == null ? null : params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
+
     private static int paramInt(Map<String, Object> params, String key, int fallback) {
         Object v = params == null ? null : params.get(key);
         if (v instanceof Number n) return n.intValue();
-        if (v instanceof String s) { try { return Integer.parseInt(s.trim()); } catch (NumberFormatException e) { /* keep */ } }
+        if (v instanceof String s) {
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                /* keep */
+            }
+        }
         return fallback;
     }
 }

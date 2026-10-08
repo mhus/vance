@@ -2,11 +2,12 @@ package de.mhus.vance.brain.tools.process;
 
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,10 +29,12 @@ public class ProcessResumeTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Target process name in the current session.")),
+            "properties",
+                    Map.of(
+                            "name",
+                            Map.of(
+                                    "type", "string",
+                                    "description", "Target process name in the current session.")),
             "required", List.of("name"));
 
     private final ThinkProcessService thinkProcessService;
@@ -65,7 +68,7 @@ public class ProcessResumeTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("executive");
+        return java.util.Set.of(ToolLabels.WORKER, "executive");
     }
 
     @Override
@@ -80,17 +83,18 @@ public class ProcessResumeTool implements Tool {
         }
         ThinkProcessDocument target = thinkProcessService
                 .findByName(ctx.tenantId(), sessionId, name)
-                .or(() -> thinkProcessService.findById(name)
-                        .filter(p -> ctx.tenantId().equals(p.getTenantId())
-                                && sessionId.equals(p.getSessionId())))
-                .orElseThrow(() -> new ToolException(
-                        "Process '" + name + "' not found in current session"));
+                .or(() -> thinkProcessService
+                        .findById(name)
+                        .filter(p -> ctx.tenantId().equals(p.getTenantId()) && sessionId.equals(p.getSessionId())))
+                .orElseThrow(() -> new ToolException("Process '" + name + "' not found in current session"));
         sessionLifecycle.resumeProcess(target, processEventEmitter);
-        ThinkProcessDocument refreshed = thinkProcessService.findById(target.getId())
-                .orElse(target);
+        ThinkProcessDocument refreshed =
+                thinkProcessService.findById(target.getId()).orElse(target);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", refreshed.getName());
-        out.put("status", refreshed.getStatus() == null ? null : refreshed.getStatus().name());
+        out.put(
+                "status",
+                refreshed.getStatus() == null ? null : refreshed.getStatus().name());
         return out;
     }
 }

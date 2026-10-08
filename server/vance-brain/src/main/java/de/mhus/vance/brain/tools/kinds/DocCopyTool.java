@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -34,24 +35,46 @@ public class DocCopyTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("newPath", Map.of("type", "string",
-                "description", "New path inside the source's project. Must not exist yet."));
-        p.put("title", Map.of("type", "string",
-                "description", "Optional new title for the copy. Defaults to the source's title."));
+        p.put(
+                "newPath",
+                Map.of("type", "string", "description", "New path inside the source's project. Must not exist yet."));
+        p.put(
+                "title",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional new title for the copy. Defaults to the source's title."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_copy"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_copy";
+    }
+
+    @Override
+    public String description() {
         return "Copy a document to a new path within the same project. The source remains; the "
                 + "copy gets its own id. Pending in-flight changes on the source are flushed first.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -64,20 +87,21 @@ public class DocCopyTool implements Tool {
         String title = KindToolSupport.paramString(params, "title");
         // Source was READ-gated by loadDocument; the copy is a CREATE at the
         // target path — gate that too.
-        support.enforceDocWrite(ctx, fresh.getProjectId(), newPath,
-                de.mhus.vance.shared.permission.Action.CREATE);
+        support.enforceDocWrite(ctx, fresh.getProjectId(), newPath, de.mhus.vance.shared.permission.Action.CREATE);
         DocumentDocument copy;
         try {
-            copy = support.documentService().create(
-                    fresh.getTenantId(),
-                    fresh.getProjectId(),
-                    newPath,
-                    title != null ? title : fresh.getTitle(),
-                    fresh.getTags() != null ? List.copyOf(fresh.getTags()) : null,
-                    fresh.getMimeType(),
-                    new ByteArrayInputStream(support.readBody(fresh, ctx).getBytes(StandardCharsets.UTF_8)),
-                    ctx.userId(),
-                    support.writeActor(ctx, newPath));
+            copy = support.documentService()
+                    .create(
+                            fresh.getTenantId(),
+                            fresh.getProjectId(),
+                            newPath,
+                            title != null ? title : fresh.getTitle(),
+                            fresh.getTags() != null ? List.copyOf(fresh.getTags()) : null,
+                            fresh.getMimeType(),
+                            new ByteArrayInputStream(
+                                    support.readBody(fresh, ctx).getBytes(StandardCharsets.UTF_8)),
+                            ctx.userId(),
+                            support.writeActor(ctx, newPath));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }

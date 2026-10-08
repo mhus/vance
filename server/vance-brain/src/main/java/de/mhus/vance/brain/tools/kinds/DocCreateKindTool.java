@@ -2,23 +2,24 @@ package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.brain.tools.document.AgeDocumentGuard;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.KindRegistry;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.document.DocumentDocument;
-import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import org.jspecify.annotations.Nullable;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -41,16 +42,26 @@ public class DocCreateKindTool implements Tool {
         // No enumeration here — see paramsSchema(). A hardcoded "One of: …"
         // asserted a closed set that was already wrong for `diagram` and
         // `application`, and silently wrong for every kind an addon adds.
-        p.put("kind", Map.of("type", "string",
-                "description", "Document kind, by content shape rather than file extension."));
-        p.put("mimeType", Map.of("type", "string",
-                "description", "Mime type for the new body. Defaults to a kind-appropriate value: "
-                        + "text/markdown for list/checklist/tree/mindmap/records/slides, application/json for sheet/graph/chart/data."));
+        p.put(
+                "kind",
+                Map.of("type", "string", "description", "Document kind, by content shape rather than file extension."));
+        p.put(
+                "mimeType",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Mime type for the new body. Defaults to a kind-appropriate value: "
+                                + "text/markdown for list/checklist/tree/mindmap/records/slides, application/json for sheet/graph/chart/data."));
         p.put("title", Map.of("type", "string", "description", "Optional display title."));
-        p.put("tags", Map.of("type", "array", "items", Map.of("type", "string"),
-                "description", "Optional tag list."));
-        p.put("body", Map.of("type", "string",
-                "description", "Optional initial body. When omitted, a kind-appropriate stub is used."));
+        p.put("tags", Map.of("type", "array", "items", Map.of("type", "string"), "description", "Optional tag list."));
+        p.put(
+                "body",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional initial body. When omitted, a kind-appropriate stub is used."));
         return p;
     }
 
@@ -60,8 +71,13 @@ public class DocCreateKindTool implements Tool {
 
     private volatile @Nullable Map<String, Object> schemaWithKinds;
 
-    @Override public String name() { return "doc_create_kind"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_create_kind";
+    }
+
+    @Override
+    public String description() {
         return "DEPRECATED — use `doc_write(kind=…, path=…, "
                 + "content=…)` instead, which unifies kind-typed and "
                 + "text creation and supports upsert. Kept as a "
@@ -71,8 +87,16 @@ public class DocCreateKindTool implements Tool {
                 + "the new document id. Pass `body` to override the "
                 + "default stub.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "write", "document"); }
+
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "write", "document");
+    }
 
     /**
      * The schema, with the **registered** kinds named.
@@ -83,7 +107,8 @@ public class DocCreateKindTool implements Tool {
      * Computed once; the registry is fixed after construction, so the prompt
      * prefix stays stable.
      */
-    @Override public Map<String, Object> paramsSchema() {
+    @Override
+    public Map<String, Object> paramsSchema() {
         Map<String, Object> cached = schemaWithKinds;
         if (cached == null) {
             cached = buildSchemaWithKinds();
@@ -104,11 +129,9 @@ public class DocCreateKindTool implements Tool {
         Collections.sort(names);
         if (names.isEmpty()) return SCHEMA;
 
-        Map<String, Object> properties =
-                new LinkedHashMap<>((Map<String, Object>) SCHEMA.get("properties"));
+        Map<String, Object> properties = new LinkedHashMap<>((Map<String, Object>) SCHEMA.get("properties"));
         Map<String, Object> kind = new LinkedHashMap<>((Map<String, Object>) properties.get("kind"));
-        kind.put("description", kind.get("description")
-                + " One of: " + String.join(", ", names) + ".");
+        kind.put("description", kind.get("description") + " One of: " + String.join(", ", names) + ".");
         properties.put("kind", kind);
 
         Map<String, Object> out = new LinkedHashMap<>(SCHEMA);
@@ -125,7 +148,10 @@ public class DocCreateKindTool implements Tool {
         String title = KindToolSupport.paramString(params, "title");
         @SuppressWarnings("unchecked")
         List<String> tags = params.get("tags") instanceof List<?> l
-                ? l.stream().filter(String.class::isInstance).map(String.class::cast).toList()
+                ? l.stream()
+                        .filter(String.class::isInstance)
+                        .map(String.class::cast)
+                        .toList()
                 : null;
         String body = KindToolSupport.paramRawString(params, "body");
         if (body == null) body = stubFor(kind, mimeType);
@@ -134,20 +160,20 @@ public class DocCreateKindTool implements Tool {
         AgeDocumentGuard.requireCreatable(kind, body);
 
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
-        support.enforceDocWrite(ctx, project.getName(), path,
-                de.mhus.vance.shared.permission.Action.CREATE);
+        support.enforceDocWrite(ctx, project.getName(), path, de.mhus.vance.shared.permission.Action.CREATE);
         DocumentDocument created;
         try {
-            created = support.documentService().create(
-                    ctx.tenantId(),
-                    project.getName(),
-                    path,
-                    title,
-                    tags,
-                    mimeType,
-                    new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
-                    ctx.userId(),
-                    support.writeActor(ctx, path));
+            created = support.documentService()
+                    .create(
+                            ctx.tenantId(),
+                            project.getName(),
+                            path,
+                            title,
+                            tags,
+                            mimeType,
+                            new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
+                            ctx.userId(),
+                            support.writeActor(ctx, path));
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }
@@ -191,45 +217,63 @@ public class DocCreateKindTool implements Tool {
         boolean json = "application/json".equals(mimeType);
         boolean yaml = mimeType != null && (mimeType.contains("yaml"));
         return switch (kind) {
-            case "list" -> md ? "---\nkind: list\n---\n- item 1\n- item 2\n"
-                    : json ? "{\n  \"$meta\": { \"kind\": \"list\" },\n  \"items\": []\n}\n"
-                    : yaml ? "$meta:\n  kind: list\nitems: []\n"
-                    : "";
-            case "checklist" -> md ? "---\nkind: checklist\n---\n- [ ] first task\n- [ ] second task\n"
-                    : json ? "{\n  \"$meta\": { \"kind\": \"checklist\" },\n  \"items\": [\n    { \"text\": \"first task\" },\n    { \"text\": \"second task\" }\n  ]\n}\n"
-                    : yaml ? "$meta:\n  kind: checklist\nitems:\n  - text: first task\n  - text: second task\n"
-                    : "";
-            case "tree" -> md ? "---\nkind: tree\n---\n- parent\n  - child\n"
-                    : json ? "{\n  \"$meta\": { \"kind\": \"tree\" },\n  \"items\": []\n}\n"
-                    : yaml ? "$meta:\n  kind: tree\nitems: []\n"
-                    : "";
-            case "mindmap" -> md ? "---\nkind: mindmap\n---\n- root\n  - branch\n"
-                    : json ? "{\n  \"$meta\": { \"kind\": \"mindmap\" },\n  \"items\": []\n}\n"
-                    : yaml ? "$meta:\n  kind: mindmap\nitems: []\n"
-                    : "";
-            case "records" -> md ? "---\nkind: records\nschema: name, value\n---\n"
-                    : json ? "{\n  \"$meta\": { \"kind\": \"records\" },\n  \"schema\": [\"name\", \"value\"],\n  \"items\": []\n}\n"
-                    : yaml ? "$meta:\n  kind: records\nschema: [name, value]\nitems: []\n"
-                    : "";
-            case "sheet" -> json
-                    ? "{\n  \"$meta\": { \"kind\": \"sheet\" },\n  \"schema\": [\"A\", \"B\", \"C\"],\n  \"rows\": 5,\n  \"cells\": []\n}\n"
-                    : "$meta:\n  kind: sheet\nschema: [A, B, C]\nrows: 5\ncells: []\n";
-            case "graph" -> json
-                    ? "{\n  \"$meta\": { \"kind\": \"graph\" },\n  \"graph\": { \"directed\": true },\n  \"nodes\": [],\n  \"edges\": []\n}\n"
-                    : "$meta:\n  kind: graph\ngraph:\n  directed: true\nnodes: []\nedges: []\n";
-            case "chart" -> json
-                    ? "{\n  \"$meta\": { \"kind\": \"chart\" },\n  \"chart\": { \"chartType\": \"line\", \"title\": \"New Chart\" },\n  \"xAxis\": { \"type\": \"category\" },\n  \"yAxis\": { \"type\": \"value\" },\n  \"series\": [\n    { \"name\": \"Series 1\", \"data\": [\n      { \"x\": \"A\", \"y\": 10 },\n      { \"x\": \"B\", \"y\": 20 },\n      { \"x\": \"C\", \"y\": 15 }\n    ] }\n  ]\n}\n"
-                    : "$meta:\n  kind: chart\nchart:\n  chartType: line\n  title: New Chart\nxAxis:\n  type: category\nyAxis:\n  type: value\nseries:\n  - name: Series 1\n    data:\n      - { x: A, y: 10 }\n      - { x: B, y: 20 }\n      - { x: C, y: 15 }\n";
-            case "slides" -> md
-                    ? "---\nkind: slides\nslides:\n  theme: default\n  aspect: \"16:9\"\n  paginate: true\n---\n\n# First slide\n\nWelcome to your deck.\n\n---\n\n## Second slide\n\n- bullet one\n- bullet two\n"
-                    : json ? "{\n  \"$meta\": { \"kind\": \"slides\" },\n  \"slides\": { \"theme\": \"default\", \"aspect\": \"16:9\", \"paginate\": true },\n  \"items\": [\n    \"# First slide\\n\\nWelcome to your deck.\",\n    \"## Second slide\\n\\n- bullet one\\n- bullet two\"\n  ]\n}\n"
-                    : "$meta:\n  kind: slides\nslides:\n  theme: default\n  aspect: \"16:9\"\n  paginate: true\nitems:\n  - |\n    # First slide\n\n    Welcome to your deck.\n  - |\n    ## Second slide\n\n    - bullet one\n    - bullet two\n";
-            case "data" -> json
-                    ? "{\n  \"$meta\": { \"kind\": \"data\" }\n}\n"
-                    : "$meta:\n  kind: data\n";
-            default -> md ? "---\nkind: " + kind + "\n---\n"
-                    : json ? "{\n  \"$meta\": { \"kind\": \"" + kind + "\" }\n}\n"
-                    : "$meta:\n  kind: " + kind + "\n";
+            case "list" ->
+                md
+                        ? "---\nkind: list\n---\n- item 1\n- item 2\n"
+                        : json
+                                ? "{\n  \"$meta\": { \"kind\": \"list\" },\n  \"items\": []\n}\n"
+                                : yaml ? "$meta:\n  kind: list\nitems: []\n" : "";
+            case "checklist" ->
+                md
+                        ? "---\nkind: checklist\n---\n- [ ] first task\n- [ ] second task\n"
+                        : json
+                                ? "{\n  \"$meta\": { \"kind\": \"checklist\" },\n  \"items\": [\n    { \"text\": \"first task\" },\n    { \"text\": \"second task\" }\n  ]\n}\n"
+                                : yaml
+                                        ? "$meta:\n  kind: checklist\nitems:\n  - text: first task\n  - text: second task\n"
+                                        : "";
+            case "tree" ->
+                md
+                        ? "---\nkind: tree\n---\n- parent\n  - child\n"
+                        : json
+                                ? "{\n  \"$meta\": { \"kind\": \"tree\" },\n  \"items\": []\n}\n"
+                                : yaml ? "$meta:\n  kind: tree\nitems: []\n" : "";
+            case "mindmap" ->
+                md
+                        ? "---\nkind: mindmap\n---\n- root\n  - branch\n"
+                        : json
+                                ? "{\n  \"$meta\": { \"kind\": \"mindmap\" },\n  \"items\": []\n}\n"
+                                : yaml ? "$meta:\n  kind: mindmap\nitems: []\n" : "";
+            case "records" ->
+                md
+                        ? "---\nkind: records\nschema: name, value\n---\n"
+                        : json
+                                ? "{\n  \"$meta\": { \"kind\": \"records\" },\n  \"schema\": [\"name\", \"value\"],\n  \"items\": []\n}\n"
+                                : yaml ? "$meta:\n  kind: records\nschema: [name, value]\nitems: []\n" : "";
+            case "sheet" ->
+                json
+                        ? "{\n  \"$meta\": { \"kind\": \"sheet\" },\n  \"schema\": [\"A\", \"B\", \"C\"],\n  \"rows\": 5,\n  \"cells\": []\n}\n"
+                        : "$meta:\n  kind: sheet\nschema: [A, B, C]\nrows: 5\ncells: []\n";
+            case "graph" ->
+                json
+                        ? "{\n  \"$meta\": { \"kind\": \"graph\" },\n  \"graph\": { \"directed\": true },\n  \"nodes\": [],\n  \"edges\": []\n}\n"
+                        : "$meta:\n  kind: graph\ngraph:\n  directed: true\nnodes: []\nedges: []\n";
+            case "chart" ->
+                json
+                        ? "{\n  \"$meta\": { \"kind\": \"chart\" },\n  \"chart\": { \"chartType\": \"line\", \"title\": \"New Chart\" },\n  \"xAxis\": { \"type\": \"category\" },\n  \"yAxis\": { \"type\": \"value\" },\n  \"series\": [\n    { \"name\": \"Series 1\", \"data\": [\n      { \"x\": \"A\", \"y\": 10 },\n      { \"x\": \"B\", \"y\": 20 },\n      { \"x\": \"C\", \"y\": 15 }\n    ] }\n  ]\n}\n"
+                        : "$meta:\n  kind: chart\nchart:\n  chartType: line\n  title: New Chart\nxAxis:\n  type: category\nyAxis:\n  type: value\nseries:\n  - name: Series 1\n    data:\n      - { x: A, y: 10 }\n      - { x: B, y: 20 }\n      - { x: C, y: 15 }\n";
+            case "slides" ->
+                md
+                        ? "---\nkind: slides\nslides:\n  theme: default\n  aspect: \"16:9\"\n  paginate: true\n---\n\n# First slide\n\nWelcome to your deck.\n\n---\n\n## Second slide\n\n- bullet one\n- bullet two\n"
+                        : json
+                                ? "{\n  \"$meta\": { \"kind\": \"slides\" },\n  \"slides\": { \"theme\": \"default\", \"aspect\": \"16:9\", \"paginate\": true },\n  \"items\": [\n    \"# First slide\\n\\nWelcome to your deck.\",\n    \"## Second slide\\n\\n- bullet one\\n- bullet two\"\n  ]\n}\n"
+                                : "$meta:\n  kind: slides\nslides:\n  theme: default\n  aspect: \"16:9\"\n  paginate: true\nitems:\n  - |\n    # First slide\n\n    Welcome to your deck.\n  - |\n    ## Second slide\n\n    - bullet one\n    - bullet two\n";
+            case "data" -> json ? "{\n  \"$meta\": { \"kind\": \"data\" }\n}\n" : "$meta:\n  kind: data\n";
+            default ->
+                md
+                        ? "---\nkind: " + kind + "\n---\n"
+                        : json
+                                ? "{\n  \"$meta\": { \"kind\": \"" + kind + "\" }\n}\n"
+                                : "$meta:\n  kind: " + kind + "\n";
         };
     }
 }

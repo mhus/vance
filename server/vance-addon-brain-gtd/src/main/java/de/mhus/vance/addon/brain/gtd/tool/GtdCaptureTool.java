@@ -9,6 +9,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,14 +24,19 @@ import org.springframework.stereotype.Component;
 public class GtdCaptureTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string", "description", "GTD root folder."));
-                put("title", Map.of("type", "string"));
-                put("note", Map.of("type", "string"));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder", "title"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "GTD root folder."));
+                    put("title", Map.of("type", "string"));
+                    put("note", Map.of("type", "string"));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder", "title"));
 
     private final EddieContext eddieContext;
     private final GtdFolderReader folderReader;
@@ -42,7 +48,10 @@ public class GtdCaptureTool implements Tool {
         this.gtdService = gtdService;
     }
 
-    @Override public String name() { return "gtd_capture"; }
+    @Override
+    public String name() {
+        return "gtd_capture";
+    }
 
     @Override
     public String description() {
@@ -51,9 +60,20 @@ public class GtdCaptureTool implements Tool {
                 + "gtd_action_update. Run app_rebuild afterwards to refresh the views.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("eddie", "write", "document", "gtd"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "gtd");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -62,9 +82,10 @@ public class GtdCaptureTool implements Tool {
         String title = paramString(params, "title");
         if (title == null) throw new ToolException("title is required");
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        GtdConfig config = folderReader.scan(ctx.tenantId(), project.getName(), folder).config();
-        DocumentDocument doc = gtdService.capture(ctx.tenantId(), project.getName(), folder,
-                config, title, paramString(params, "note"), ctx.userId());
+        GtdConfig config =
+                folderReader.scan(ctx.tenantId(), project.getName(), folder).config();
+        DocumentDocument doc = gtdService.capture(
+                ctx.tenantId(), project.getName(), folder, config, title, paramString(params, "note"), ctx.userId());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", doc.getPath());
         result.put("id", doc.getId());

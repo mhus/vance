@@ -4,6 +4,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -42,7 +43,7 @@ public class WowbaggerStatusTool extends WowbaggerBaseTool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("read");
+        return java.util.Set.of(ToolLabels.INTERNAL, "read");
     }
 
     @Override

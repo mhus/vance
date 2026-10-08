@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.RecordsCodec;
 import de.mhus.vance.shared.document.kind.RecordsDocument;
 import de.mhus.vance.shared.document.kind.RecordsItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,22 +33,45 @@ public class RecordsRemoveRowTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "records_remove_row"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "records_remove_row";
+    }
+
+    @Override
+    public String description() {
         return "Remove the row at `rowIndex` from a `kind: records` document. "
                 + "Subsequent row indices shift down by one.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write", "document"); }
-    @Override public boolean deferred() { return true; }
-    @Override public String searchHint() { return "Bulk-destructive collection ops"; }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-records", "eddie", "write", "document");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Bulk-destructive collection ops";
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "records");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "records");
         int rowIndex = KindToolSupport.requireInt(params, "rowIndex");
         RecordsDocument rec = RecordsCodec.parse(support.readBody(doc, ctx), doc.getMimeType());
         if (rowIndex < 0 || rowIndex >= rec.items().size()) {
@@ -57,9 +81,14 @@ public class RecordsRemoveRowTool implements Tool {
         RecordsItem removed = items.remove(rowIndex);
         RecordsDocument updated = new RecordsDocument(rec.kind(), rec.schema(), items, rec.extra());
         support.writeBody(doc, RecordsCodec.serialize(updated, doc.getMimeType()), ctx);
-        return Map.of("documentId", doc.getId(),
-                "removedRowIndex", rowIndex,
-                "removedValues", removed.values(),
-                "rowCount", items.size());
+        return Map.of(
+                "documentId",
+                doc.getId(),
+                "removedRowIndex",
+                rowIndex,
+                "removedValues",
+                removed.values(),
+                "rowCount",
+                items.size());
     }
 }

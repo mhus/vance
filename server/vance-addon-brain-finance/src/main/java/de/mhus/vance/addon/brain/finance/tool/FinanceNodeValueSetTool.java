@@ -8,6 +8,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,32 +21,45 @@ import org.springframework.stereotype.Component;
 public class FinanceNodeValueSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string"));
-                put("name", Map.of("type", "string", "description", "Node to set values on."));
-                put("values", Map.of("type", "array",
-                        "description", "Value records. Each: {value (required), "
-                                + "mode: recurring|one_time, period: {count, unit: "
-                                + "day|week|month|year}, validFrom, validTo (ISO), sign, "
-                                + "interest: {rate, period, basis, compound}}. "
-                                + "recurring needs period; one_time needs validFrom."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path", "name", "values"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("path", Map.of("type", "string"));
+                    put("name", Map.of("type", "string", "description", "Node to set values on."));
+                    put(
+                            "values",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "description",
+                                    "Value records. Each: {value (required), "
+                                            + "mode: recurring|one_time, period: {count, unit: "
+                                            + "day|week|month|year}, validFrom, validTo (ISO), sign, "
+                                            + "interest: {rate, period, basis, compound}}. "
+                                            + "recurring needs period; one_time needs validFrom."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path", "name", "values"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
     private final FinanceService financeService;
 
-    public FinanceNodeValueSetTool(EddieContext eddieContext, DocumentService documentService,
-                                   FinanceService financeService) {
+    public FinanceNodeValueSetTool(
+            EddieContext eddieContext, DocumentService documentService, FinanceService financeService) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.financeService = financeService;
     }
 
-    @Override public String name() { return "finance_node_value_set"; }
+    @Override
+    public String name() {
+        return "finance_node_value_set";
+    }
 
     @Override
     public String description() {
@@ -55,16 +69,24 @@ public class FinanceNodeValueSetTool implements Tool {
                 + "replaces ALL of the node's values.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public Set<String> labels() { return Set.of("eddie", "write", "document", "finance"); }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "finance");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        FinanceToolSupport.Resolved r =
-                FinanceToolSupport.resolveByPath(eddieContext, documentService, params, ctx);
+        FinanceToolSupport.Resolved r = FinanceToolSupport.resolveByPath(eddieContext, documentService, params, ctx);
         String nodeName = FinanceToolSupport.paramString(params, "name");
         if (nodeName == null) throw new ToolException("`name` is required");
 

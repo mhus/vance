@@ -8,6 +8,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,20 +23,36 @@ import org.springframework.stereotype.Component;
 public class WorkPageCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string",
-                        "description", "Target document path (without leading slash). "
-                                + "Extension is auto-appended to `.workpage.md` if missing."));
-                put("title", Map.of("type", "string"));
-                put("description", Map.of("type", "string"));
-                put("blocks", Map.of("type", "array",
-                        "description", "Optional initial block list. Each entry "
-                                + "is `{ type, …fields }` — see workpage-blocks manual.",
-                        "items", Map.of("type", "object")));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "path",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Target document path (without leading slash). "
+                                            + "Extension is auto-appended to `.workpage.md` if missing."));
+                    put("title", Map.of("type", "string"));
+                    put("description", Map.of("type", "string"));
+                    put(
+                            "blocks",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "description",
+                                    "Optional initial block list. Each entry "
+                                            + "is `{ type, …fields }` — see workpage-blocks manual.",
+                                    "items",
+                                    Map.of("type", "object")));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path"));
 
     private final EddieContext eddieContext;
     private final WorkPageService workPageService;
@@ -45,7 +62,10 @@ public class WorkPageCreateTool implements Tool {
         this.workPageService = workPageService;
     }
 
-    @Override public String name() { return "workpage_create"; }
+    @Override
+    public String name() {
+        return "workpage_create";
+    }
 
     @Override
     public String description() {
@@ -55,13 +75,20 @@ public class WorkPageCreateTool implements Tool {
                 + "Optional `blocks` array seeds the document content.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "workpage");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "workpage");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -77,19 +104,19 @@ public class WorkPageCreateTool implements Tool {
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         DocumentDocument stored = workPageService.create(
-                ctx.tenantId(), project.getName(), path,
-                title, description, initial, ctx.userId());
+                ctx.tenantId(), project.getName(), path, title, description, initial, ctx.userId());
 
-        log.info("WorkPageCreateTool path='{}' blocks={} title='{}'",
-                stored.getPath(), initial.size(), title);
+        log.info("WorkPageCreateTool path='{}' blocks={} title='{}'", stored.getPath(), initial.size(), title);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("path", stored.getPath());
         result.put("id", stored.getId());
         result.put("blockCount", initial.size());
         if (title != null) result.put("title", title);
-        result.put("nextStep", "Add more blocks via `workpage_block_append` or "
-                + "edit individual blocks via `workpage_block_update`.");
+        result.put(
+                "nextStep",
+                "Add more blocks via `workpage_block_append` or "
+                        + "edit individual blocks via `workpage_block_update`.");
         return result;
     }
 }

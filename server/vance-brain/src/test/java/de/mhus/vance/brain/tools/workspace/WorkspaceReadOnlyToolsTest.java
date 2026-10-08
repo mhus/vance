@@ -7,9 +7,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -38,8 +38,7 @@ class WorkspaceReadOnlyToolsTest {
     private static final String TENANT = "acme";
     private static final String PROJECT = "instant-hole";
     private static final String DIR = "scratch";
-    private static final ToolInvocationContext CTX =
-            new ToolInvocationContext(TENANT, PROJECT, "sess", "proc", "user");
+    private static final ToolInvocationContext CTX = new ToolInvocationContext(TENANT, PROJECT, "sess", "proc", "user");
 
     private Path root;
     private WorkspaceService workspace;
@@ -58,8 +57,12 @@ class WorkspaceReadOnlyToolsTest {
     void tearDown() throws IOException {
         if (root != null && Files.exists(root)) {
             try (Stream<Path> walk = Files.walk(root)) {
-                walk.sorted(Comparator.reverseOrder())
-                        .forEach(p -> { try { Files.delete(p); } catch (IOException ignored) {} });
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        Files.delete(p);
+                    } catch (IOException ignored) {
+                    }
+                });
             }
         }
     }
@@ -84,20 +87,18 @@ class WorkspaceReadOnlyToolsTest {
 
         WorkspaceGrepTool tool = new WorkspaceGrepTool(workspace);
         Map<String, Object> result = tool.invoke(
-                Map.of("pattern", "gamma",
-                        "dirName", DIR,
-                        "caseInsensitive", true,
-                        "contextBefore", 1),
-                CTX);
+                Map.of("pattern", "gamma", "dirName", DIR, "caseInsensitive", true, "contextBefore", 1), CTX);
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> matches = (List<Map<String, Object>>) result.get("matches");
         assertThat(matches).hasSize(2);
-        assertThat(matches.get(0)).containsEntry("path", "a.txt")
+        assertThat(matches.get(0))
+                .containsEntry("path", "a.txt")
                 .containsEntry("lineNumber", 3)
                 .containsEntry("line", "GAMMA");
         assertThat(matches.get(0).get("context")).isInstanceOf(List.class);
-        assertThat(result).containsEntry("filesScanned", 2)
+        assertThat(result)
+                .containsEntry("filesScanned", 2)
                 .containsEntry("matchCount", 2)
                 .containsEntry("truncated", false);
     }
@@ -109,11 +110,7 @@ class WorkspaceReadOnlyToolsTest {
         mockList("docs/keep.md", "docs/skip.txt");
 
         WorkspaceGrepTool tool = new WorkspaceGrepTool(workspace);
-        Map<String, Object> result = tool.invoke(
-                Map.of("pattern", "todo",
-                        "dirName", DIR,
-                        "pathGlob", "**/*.md"),
-                CTX);
+        Map<String, Object> result = tool.invoke(Map.of("pattern", "todo", "dirName", DIR, "pathGlob", "**/*.md"), CTX);
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> matches = (List<Map<String, Object>>) result.get("matches");
@@ -126,9 +123,7 @@ class WorkspaceReadOnlyToolsTest {
     void grep_invalidRegex_throws() {
         mockList();
         WorkspaceGrepTool tool = new WorkspaceGrepTool(workspace);
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("pattern", "[unclosed",
-                        "dirName", DIR), CTX))
+        assertThatThrownBy(() -> tool.invoke(Map.of("pattern", "[unclosed", "dirName", DIR), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("Invalid regex");
     }
@@ -136,7 +131,7 @@ class WorkspaceReadOnlyToolsTest {
     @Test
     void grep_carriesReadOnlyLabel_only() {
         WorkspaceGrepTool tool = new WorkspaceGrepTool(workspace);
-        assertThat(tool.labels()).containsExactly("read-only");
+        assertThat(tool.labels()).containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "read-only");
     }
 
     // ──────────────── scratch_find ────────────────
@@ -147,18 +142,16 @@ class WorkspaceReadOnlyToolsTest {
         writeFile("docs/b.md", "new\n");
         writeFile("docs/ignore.txt", "x\n");
         // Make b.md newer than a.md and ignore.txt by setting mtimes.
-        Files.setLastModifiedTime(root.resolve("docs/a.md"),
+        Files.setLastModifiedTime(
+                root.resolve("docs/a.md"),
                 java.nio.file.attribute.FileTime.from(Instant.parse("2026-01-01T00:00:00Z")));
-        Files.setLastModifiedTime(root.resolve("docs/b.md"),
+        Files.setLastModifiedTime(
+                root.resolve("docs/b.md"),
                 java.nio.file.attribute.FileTime.from(Instant.parse("2026-05-01T00:00:00Z")));
         mockList("docs/a.md", "docs/b.md", "docs/ignore.txt");
 
         WorkspaceFindTool tool = new WorkspaceFindTool(workspace);
-        Map<String, Object> result = tool.invoke(
-                Map.of("dirName", DIR,
-                        "pathGlob", "**/*.md",
-                        "sortBy", "mtime"),
-                CTX);
+        Map<String, Object> result = tool.invoke(Map.of("dirName", DIR, "pathGlob", "**/*.md", "sortBy", "mtime"), CTX);
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> entries = (List<Map<String, Object>>) result.get("entries");
@@ -172,31 +165,25 @@ class WorkspaceReadOnlyToolsTest {
     void find_modifiedAfter_excludesOlderFiles() throws Exception {
         writeFile("old.txt", "1\n");
         writeFile("new.txt", "2\n");
-        Files.setLastModifiedTime(root.resolve("old.txt"),
-                java.nio.file.attribute.FileTime.from(Instant.parse("2025-01-01T00:00:00Z")));
-        Files.setLastModifiedTime(root.resolve("new.txt"),
-                java.nio.file.attribute.FileTime.from(Instant.parse("2026-04-01T00:00:00Z")));
+        Files.setLastModifiedTime(
+                root.resolve("old.txt"), java.nio.file.attribute.FileTime.from(Instant.parse("2025-01-01T00:00:00Z")));
+        Files.setLastModifiedTime(
+                root.resolve("new.txt"), java.nio.file.attribute.FileTime.from(Instant.parse("2026-04-01T00:00:00Z")));
         mockList("old.txt", "new.txt");
 
         WorkspaceFindTool tool = new WorkspaceFindTool(workspace);
-        Map<String, Object> result = tool.invoke(
-                Map.of("dirName", DIR,
-                        "modifiedAfter", "2026-01-01T00:00:00Z"),
-                CTX);
+        Map<String, Object> result = tool.invoke(Map.of("dirName", DIR, "modifiedAfter", "2026-01-01T00:00:00Z"), CTX);
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> entries = (List<Map<String, Object>>) result.get("entries");
-        assertThat(entries).hasSize(1).first()
-                .extracting(e -> e.get("path")).isEqualTo("new.txt");
+        assertThat(entries).hasSize(1).first().extracting(e -> e.get("path")).isEqualTo("new.txt");
     }
 
     @Test
     void find_invalidInstant_throws() {
         mockList();
         WorkspaceFindTool tool = new WorkspaceFindTool(workspace);
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("dirName", DIR,
-                        "modifiedAfter", "yesterday"), CTX))
+        assertThatThrownBy(() -> tool.invoke(Map.of("dirName", DIR, "modifiedAfter", "yesterday"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("ISO-8601");
     }
@@ -208,12 +195,7 @@ class WorkspaceReadOnlyToolsTest {
         writeFile("file.txt", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n");
         WorkspaceHeadTailTool tool = new WorkspaceHeadTailTool(workspace);
 
-        Map<String, Object> result = tool.invoke(
-                Map.of("path", "file.txt",
-                        "dirName", DIR,
-                        "head", 2,
-                        "tail", 2),
-                CTX);
+        Map<String, Object> result = tool.invoke(Map.of("path", "file.txt", "dirName", DIR, "head", 2, "tail", 2), CTX);
 
         assertThat(result).containsEntry("totalLines", 10);
         @SuppressWarnings("unchecked")
@@ -229,8 +211,7 @@ class WorkspaceReadOnlyToolsTest {
     @Test
     void headTail_neitherZero_rejected() {
         WorkspaceHeadTailTool tool = new WorkspaceHeadTailTool(workspace);
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("path", "x", "dirName", DIR), CTX))
+        assertThatThrownBy(() -> tool.invoke(Map.of("path", "x", "dirName", DIR), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("head");
     }
@@ -238,10 +219,7 @@ class WorkspaceReadOnlyToolsTest {
     @Test
     void headTail_missingFile_throws() {
         WorkspaceHeadTailTool tool = new WorkspaceHeadTailTool(workspace);
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("path", "nope.txt",
-                        "dirName", DIR,
-                        "head", 5), CTX))
+        assertThatThrownBy(() -> tool.invoke(Map.of("path", "nope.txt", "dirName", DIR, "head", 5), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("Not found");
     }
@@ -253,8 +231,7 @@ class WorkspaceReadOnlyToolsTest {
         writeFile("a.txt", "hello\nworld\n");
         WorkspaceCountTool tool = new WorkspaceCountTool(workspace);
 
-        Map<String, Object> result = tool.invoke(
-                Map.of("path", "a.txt", "dirName", DIR), CTX);
+        Map<String, Object> result = tool.invoke(Map.of("path", "a.txt", "dirName", DIR), CTX);
 
         assertThat(result).containsEntry("filesCounted", 1);
         // wc -l semantics: 2 newline-terminated lines.
@@ -270,11 +247,8 @@ class WorkspaceReadOnlyToolsTest {
         mockList("a.md", "b.md");
 
         WorkspaceCountTool tool = new WorkspaceCountTool(workspace);
-        Map<String, Object> result = tool.invoke(
-                Map.of("dirName", DIR,
-                        "pattern", "TODO",
-                        "caseInsensitive", true),
-                CTX);
+        Map<String, Object> result =
+                tool.invoke(Map.of("dirName", DIR, "pattern", "TODO", "caseInsensitive", true), CTX);
 
         // 3 lines match TODO across both files (a.md: 2, b.md: 1).
         assertThat(((Number) result.get("lines")).longValue()).isEqualTo(3L);
@@ -286,7 +260,6 @@ class WorkspaceReadOnlyToolsTest {
     @Test
     void count_carriesReadOnlyLabel_only() {
         WorkspaceCountTool tool = new WorkspaceCountTool(workspace);
-        assertThat(tool.labels()).containsExactly("read-only");
+        assertThat(tool.labels()).containsExactlyInAnyOrder(de.mhus.vance.toolpack.ToolLabels.WORKER, "read-only");
     }
-
 }

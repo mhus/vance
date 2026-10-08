@@ -9,6 +9,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,32 +30,45 @@ import org.springframework.stereotype.Component;
 public class JournalSearchTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "The journal root folder (contains _app.yaml)."));
-                put("query", Map.of("type", "string",
-                        "description", "Free text matched against title / summary / tags."));
-                put("mood", Map.of("type", "string"));
-                put("tag", Map.of("type", "string"));
-                put("limit", Map.of("type", "integer", "description", "Max hits (default 20)."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of("type", "string", "description", "The journal root folder (contains _app.yaml)."));
+                    put(
+                            "query",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Free text matched against title / summary / tags."));
+                    put("mood", Map.of("type", "string"));
+                    put("tag", Map.of("type", "string"));
+                    put("limit", Map.of("type", "integer", "description", "Max hits (default 20)."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final JournalFolderReader folderReader;
     private final JournalService journalService;
 
-    public JournalSearchTool(EddieContext eddieContext,
-                             JournalFolderReader folderReader,
-                             JournalService journalService) {
+    public JournalSearchTool(
+            EddieContext eddieContext, JournalFolderReader folderReader, JournalService journalService) {
         this.eddieContext = eddieContext;
         this.folderReader = folderReader;
         this.journalService = journalService;
     }
 
-    @Override public String name() { return "journal_search"; }
+    @Override
+    public String name() {
+        return "journal_search";
+    }
 
     @Override
     public String description() {
@@ -64,13 +78,20 @@ public class JournalSearchTool implements Tool {
                 + "snippet per hit.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "read", "document", "journal", "search");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "journal", "search");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -79,13 +100,18 @@ public class JournalSearchTool implements Tool {
         int limit = paramInt(params, "limit", 20);
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-        JournalConfig config = folderReader.scan(
-                ctx.tenantId(), project.getName(), folder).config();
+        JournalConfig config =
+                folderReader.scan(ctx.tenantId(), project.getName(), folder).config();
 
         DocumentService.DocumentMetaListing listing = journalService.search(
-                ctx.tenantId(), project.getName(), folder, config,
-                paramString(params, "query"), paramString(params, "mood"),
-                paramString(params, "tag"), limit);
+                ctx.tenantId(),
+                project.getName(),
+                folder,
+                config,
+                paramString(params, "query"),
+                paramString(params, "mood"),
+                paramString(params, "tag"),
+                limit);
 
         List<Map<String, Object>> hits = new ArrayList<>();
         for (DocumentService.DocumentMetaMatch m : listing.items()) {
@@ -114,7 +140,11 @@ public class JournalSearchTool implements Tool {
         Object v = params.get(key);
         if (v instanceof Number n) return n.intValue();
         if (v instanceof String s) {
-            try { return Integer.parseInt(s.trim()); } catch (NumberFormatException ignored) { /* keep */ }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+                /* keep */
+            }
         }
         return fallback;
     }

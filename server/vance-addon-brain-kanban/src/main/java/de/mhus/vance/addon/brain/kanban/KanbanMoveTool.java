@@ -1,18 +1,12 @@
 package de.mhus.vance.addon.brain.kanban;
 
 import de.mhus.vance.brain.applications.VanceApplication;
-import de.mhus.vance.brain.applications.VanceApplication.ArtefactResult;
-import de.mhus.vance.brain.applications.VanceApplication.CreateContext;
-import de.mhus.vance.brain.applications.VanceApplication.CreateResult;
-import de.mhus.vance.brain.applications.VanceApplication.RefreshContext;
-import de.mhus.vance.brain.applications.VanceApplication.RefreshResult;
-
-import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,36 +36,57 @@ import org.springframework.stereotype.Component;
 public class KanbanMoveTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "Kanban app folder."));
-                put("card", Map.of("type", "string",
-                        "description", "Card to move. Either the full "
-                                + "document path or just the filename "
-                                + "(slug) — the tool resolves the rest."));
-                put("toColumn", Map.of("type", "string",
-                        "description", "Target column. Must exist as a "
-                                + "declared column in _app.yaml OR be "
-                                + "the leaf of an existing sub-folder."));
-                put("rebuild", Map.of("type", "boolean",
-                        "description", "Run app_rebuild after the move. "
-                                + "Default false — caller batches moves "
-                                + "and rebuilds once."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder", "card", "toColumn"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "Kanban app folder."));
+                    put(
+                            "card",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Card to move. Either the full "
+                                            + "document path or just the filename "
+                                            + "(slug) — the tool resolves the rest."));
+                    put(
+                            "toColumn",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Target column. Must exist as a "
+                                            + "declared column in _app.yaml OR be "
+                                            + "the leaf of an existing sub-folder."));
+                    put(
+                            "rebuild",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Run app_rebuild after the move. "
+                                            + "Default false — caller batches moves "
+                                            + "and rebuilds once."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder", "card", "toColumn"));
 
     private final EddieContext eddieContext;
     private final KanbanApplication kanbanApplication;
 
-    public KanbanMoveTool(EddieContext eddieContext,
-                          KanbanApplication kanbanApplication) {
+    public KanbanMoveTool(EddieContext eddieContext, KanbanApplication kanbanApplication) {
         this.eddieContext = eddieContext;
         this.kanbanApplication = kanbanApplication;
     }
 
-    @Override public String name() { return "kanban_move"; }
+    @Override
+    public String name() {
+        return "kanban_move";
+    }
 
     @Override
     public String description() {
@@ -82,15 +97,20 @@ public class KanbanMoveTool implements Tool {
                 + "by hand via doc_edit / doc_move.";
     }
 
-    @Override public boolean primary() { return false; }
-
     @Override
-    public Set<String> labels() {
-        return Set.of("eddie", "write", "document", "kanban", "move");
+    public boolean primary() {
+        return false;
     }
 
     @Override
-    public Map<String, Object> paramsSchema() { return SCHEMA; }
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "kanban", "move");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -108,15 +128,17 @@ public class KanbanMoveTool implements Tool {
         String normalisedFolder = normaliseFolder(folder);
 
         VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
-                tenantId, projectName, normalisedFolder,
-                ctx.userId(), ctx.processId());
+                tenantId, projectName, normalisedFolder, ctx.userId(), ctx.processId());
 
-        KanbanApplication.MoveResult mv =
-                kanbanApplication.moveCard(rc, normalisedFolder, cardRef, toColumnRaw);
+        KanbanApplication.MoveResult mv = kanbanApplication.moveCard(rc, normalisedFolder, cardRef, toColumnRaw);
 
-        log.info("KanbanMoveTool tenant='{}' folder='{}' card='{}' {}→{}",
-                tenantId, normalisedFolder, mv.cardPath(),
-                mv.fromColumn(), mv.toColumn());
+        log.info(
+                "KanbanMoveTool tenant='{}' folder='{}' card='{}' {}→{}",
+                tenantId,
+                normalisedFolder,
+                mv.cardPath(),
+                mv.fromColumn(),
+                mv.toColumn());
 
         Map<String, Object> result = new LinkedHashMap<>(mv.toMap());
         if (rebuild) {
@@ -125,7 +147,8 @@ public class KanbanMoveTool implements Tool {
             for (VanceApplication.ArtefactResult a : refresh.artefacts()) arts.add(a.toMap());
             result.put("artefacts", arts);
         } else {
-            result.put("nextStep",
+            result.put(
+                    "nextStep",
                     "Call `app_rebuild('" + normalisedFolder + "')` "
                             + "when done moving cards to refresh "
                             + "_board.md + _stats.yaml.");

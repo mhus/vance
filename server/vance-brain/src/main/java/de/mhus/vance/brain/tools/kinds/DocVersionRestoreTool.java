@@ -4,6 +4,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,21 +44,35 @@ public class DocVersionRestoreTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("archiveId", Map.of("type", "string",
-                "description", "Version to restore — an archiveId from doc_version_list."));
-        p.put("newFile", Map.of("type", "boolean",
-                "description", "When true, restore into a NEW file beside the current one "
-                        + "instead of overwriting it. Implied when newPath is set. "
-                        + "Default false (overwrite the live document)."));
-        p.put("newPath", Map.of("type", "string",
-                "description", "Optional path for the new file (implies newFile). "
-                        + "Omit to auto-generate foo-version-<N>-<date>.<ext>."));
+        p.put(
+                "archiveId",
+                Map.of("type", "string", "description", "Version to restore — an archiveId from doc_version_list."));
+        p.put(
+                "newFile",
+                Map.of(
+                        "type",
+                        "boolean",
+                        "description",
+                        "When true, restore into a NEW file beside the current one "
+                                + "instead of overwriting it. Implied when newPath is set. "
+                                + "Default false (overwrite the live document)."));
+        p.put(
+                "newPath",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Optional path for the new file (implies newFile). "
+                                + "Omit to auto-generate foo-version-<N>-<date>.<ext>."));
         return p;
     }
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_version_restore"; }
+    @Override
+    public String name() {
+        return "doc_version_restore";
+    }
 
     @Override
     public String description() {
@@ -69,19 +84,24 @@ public class DocVersionRestoreTool implements Tool {
                 + "Select the document by path or id.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
     @Override
     public Set<String> labels() {
-        return Set.of("doc-management", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "write", "document");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.loadDocumentForWrite(
-                params, ctx, de.mhus.vance.shared.permission.Action.WRITE);
+        DocumentDocument doc = support.loadDocumentForWrite(params, ctx, de.mhus.vance.shared.permission.Action.WRITE);
         String archiveId = KindToolSupport.paramString(params, "archiveId");
         if (archiveId == null) throw new ToolException("archiveId is required");
 
@@ -94,10 +114,10 @@ public class DocVersionRestoreTool implements Tool {
         DocumentDocument result;
         try {
             result = asCopy
-                    ? support.documentService().restoreArchiveToNewDocument(
-                            doc.getId(), archiveId, targetPath, support.writeActor(ctx, doc))
-                    : support.documentService().restoreArchive(
-                            doc.getId(), archiveId, support.writeActor(ctx, doc));
+                    ? support.documentService()
+                            .restoreArchiveToNewDocument(
+                                    doc.getId(), archiveId, targetPath, support.writeActor(ctx, doc))
+                    : support.documentService().restoreArchive(doc.getId(), archiveId, support.writeActor(ctx, doc));
         } catch (IllegalArgumentException e) {
             throw new ToolException(e.getMessage(), e);
         } catch (de.mhus.vance.shared.document.DocumentService.DocumentAlreadyExistsException e) {

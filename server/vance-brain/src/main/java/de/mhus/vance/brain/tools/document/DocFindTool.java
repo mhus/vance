@@ -8,6 +8,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.time.Instant;
@@ -157,7 +158,7 @@ public class DocFindTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only", "document");
+        return Set.of(ToolLabels.WORKER, "read-only", "document");
     }
 
     @Override

@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.document;
 
 import de.mhus.vance.brain.tools.eddie.EddieContext;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -45,27 +46,38 @@ public class DocInfoTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name. Defaults "
-                                    + "to the active project. Ignored when "
-                                    + "'id' is provided."),
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Document path inside the project, "
-                                    + "e.g. 'notes/thesis/ch1.md'."),
-                    "id", Map.of(
-                            "type", "string",
-                            "description", "Alternative: Mongo id of the "
-                                    + "document. Use one of path/id."),
-                    "stats", Map.of(
-                            "type", "boolean",
-                            "description", "Default false. When true, "
-                                    + "additionally returns charCount, "
-                                    + "wordCount, lineCount — gratis for "
-                                    + "inline text, requires a full content "
-                                    + "load for storage-backed documents.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults "
+                                                    + "to the active project. Ignored when "
+                                                    + "'id' is provided."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document path inside the project, " + "e.g. 'notes/thesis/ch1.md'."),
+                            "id",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Alternative: Mongo id of the " + "document. Use one of path/id."),
+                            "stats",
+                                    Map.of(
+                                            "type",
+                                            "boolean",
+                                            "description",
+                                            "Default false. When true, "
+                                                    + "additionally returns charCount, "
+                                                    + "wordCount, lineCount — gratis for "
+                                                    + "inline text, requires a full content "
+                                                    + "load for storage-backed documents.")),
             "required", List.of());
 
     private final EddieContext eddieContext;
@@ -108,7 +120,7 @@ public class DocInfoTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only", "document");
+        return Set.of(ToolLabels.WORKER, "read-only", "document");
     }
 
     @Override
@@ -122,19 +134,18 @@ public class DocInfoTool implements Tool {
 
         DocumentDocument doc;
         if (id != null) {
-            doc = documentService.findById(id)
-                    .orElseThrow(() -> new ToolException(
-                            "Document with id '" + id + "' not found"));
+            doc = documentService
+                    .findById(id)
+                    .orElseThrow(() -> new ToolException("Document with id '" + id + "' not found"));
             if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException("Document with id '" + id
-                        + "' is not in your tenant");
+                throw new ToolException("Document with id '" + id + "' is not in your tenant");
             }
         } else {
             ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-            doc = documentService.findByPath(ctx.tenantId(), project.getName(), path)
+            doc = documentService
+                    .findByPath(ctx.tenantId(), project.getName(), path)
                     .orElseThrow(() -> new ToolException(
-                            "Document '" + path + "' not found in project '"
-                                    + project.getName() + "'"));
+                            "Document '" + path + "' not found in project '" + project.getName() + "'"));
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -183,8 +194,7 @@ public class DocInfoTool implements Tool {
         if (withStats) {
             // Counting words over ciphertext would report confident-looking
             // numbers about content nobody can read — say so instead.
-            if (de.mhus.vance.api.documents.AgeDocumentKind.isAgeEncrypted(
-                    doc.getKind(), doc.getMimeType())) {
+            if (de.mhus.vance.api.documents.AgeDocumentKind.isAgeEncrypted(doc.getKind(), doc.getMimeType())) {
                 out.put("statsUnavailable", "age-encrypted — the body is ciphertext");
             } else {
                 String content = loadAsText(doc);
@@ -205,8 +215,7 @@ public class DocInfoTool implements Tool {
             byte[] bytes = in.readAllBytes();
             return new String(bytes, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ToolException(
-                    "Failed to read document content for stats: " + e.getMessage(), e);
+            throw new ToolException("Failed to read document content for stats: " + e.getMessage(), e);
         }
     }
 
@@ -242,8 +251,7 @@ public class DocInfoTool implements Tool {
         return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
 
-    private static boolean paramBool(
-            @Nullable Map<String, Object> params, String key, boolean fallback) {
+    private static boolean paramBool(@Nullable Map<String, Object> params, String key, boolean fallback) {
         if (params == null) return fallback;
         Object v = params.get(key);
         if (v instanceof Boolean b) return b;

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.defaults;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -88,7 +89,7 @@ public class DefaultsListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("defaults");
+        return Set.of(ToolLabels.WORKER, "defaults");
     }
 
     @Override

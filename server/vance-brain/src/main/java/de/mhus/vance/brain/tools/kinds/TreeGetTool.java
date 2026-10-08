@@ -1,12 +1,13 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.MindmapCodec;
 import de.mhus.vance.shared.document.kind.TreeCodec;
 import de.mhus.vance.shared.document.kind.TreeDocument;
 import de.mhus.vance.shared.document.kind.TreeItem;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,23 +28,36 @@ public class TreeGetTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "tree_get"; }
+    @Override
+    public String name() {
+        return "tree_get";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Read the whole tree of a `kind: tree` (or `kind: mindmap`) document. Returns nested items "
                 + "with their text and children as a tree-shaped JSON object.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-tree", "eddie", "read-only"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-tree", "eddie", "read-only");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
+        DocumentDocument doc =
+                support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "tree", "mindmap");
         TreeDocument tree = "mindmap".equals(doc.getKind())
                 ? MindmapCodec.parse(support.readBody(doc, ctx), doc.getMimeType())
                 : TreeCodec.parse(support.readBody(doc, ctx), doc.getMimeType());

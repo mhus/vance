@@ -1,13 +1,14 @@
 package de.mhus.vance.brain.tools.document;
 
 import de.mhus.vance.brain.documents.summary.DocumentSummaryDriver;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,13 +45,17 @@ public class DocSummaryTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "Document path inside the active "
-                                    + "project (e.g. '_vogon-drafts/<process>"
-                                    + "/research-sources.md' or "
-                                    + "'essay/outline.md').")),
+            "properties",
+                    Map.of(
+                            "path",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Document path inside the active "
+                                            + "project (e.g. '_vogon-drafts/<process>"
+                                            + "/research-sources.md' or "
+                                            + "'essay/outline.md').")),
             "required", List.of("path"));
 
     private final DocumentService documentService;
@@ -90,7 +95,7 @@ public class DocSummaryTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only", "document");
+        return Set.of(ToolLabels.WORKER, "read-only", "document");
     }
 
     @Override
@@ -103,11 +108,10 @@ public class DocSummaryTool implements Tool {
         }
         String path = stringOrThrow(params, "path");
 
-        DocumentDocument doc = documentService.findByPath(
-                        ctx.tenantId(), ctx.projectId(), path)
-                .orElseThrow(() -> new ToolException(
-                        "Document '" + path + "' not found in project '"
-                                + ctx.projectId() + "'"));
+        DocumentDocument doc = documentService
+                .findByPath(ctx.tenantId(), ctx.projectId(), path)
+                .orElseThrow(() ->
+                        new ToolException("Document '" + path + "' not found in project '" + ctx.projectId() + "'"));
 
         // Cached path — return immediately.
         if (doc.getSummary() != null && !doc.getSummary().isBlank()) {
@@ -117,22 +121,23 @@ public class DocSummaryTool implements Tool {
         // Lazy-generate. The driver loads its own system session,
         // spawns a Jeltz process, drives synchronously, and writes
         // doc.summary + doc.tags before returning.
-        ProjectDocument project = projectService.findByTenantAndName(
-                        ctx.tenantId(), ctx.projectId())
+        ProjectDocument project = projectService
+                .findByTenantAndName(ctx.tenantId(), ctx.projectId())
                 .orElseThrow(() -> new ToolException(
-                        "Project '" + ctx.projectId() + "' not found in tenant '"
-                                + ctx.tenantId() + "'"));
+                        "Project '" + ctx.projectId() + "' not found in tenant '" + ctx.tenantId() + "'"));
         try {
             summaryDriverProvider.getObject().run(project, doc);
         } catch (RuntimeException e) {
-            log.warn("doc_summary lazy-generation failed for tenant='{}' project='{}' path='{}': {}",
-                    ctx.tenantId(), ctx.projectId(), path, e.toString());
-            throw new ToolException(
-                    "Failed to generate summary for '" + path + "': " + e.getMessage(), e);
+            log.warn(
+                    "doc_summary lazy-generation failed for tenant='{}' project='{}' path='{}': {}",
+                    ctx.tenantId(),
+                    ctx.projectId(),
+                    path,
+                    e.toString());
+            throw new ToolException("Failed to generate summary for '" + path + "': " + e.getMessage(), e);
         }
 
-        DocumentDocument refreshed = documentService.findById(doc.getId())
-                .orElse(doc);
+        DocumentDocument refreshed = documentService.findById(doc.getId()).orElse(doc);
         return buildResult(refreshed, /*source*/ "generated");
     }
 

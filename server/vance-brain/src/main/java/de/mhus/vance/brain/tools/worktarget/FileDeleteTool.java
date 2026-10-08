@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.worktarget;
 
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -21,19 +22,30 @@ public class FileDeleteTool extends AbstractWorkTargetTool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description", "File path. Relative interpretation depends on active work target."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description", "WORK only: override the active RootDir for this call.")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description",
+                                                    "File path. Relative interpretation depends on active work target."),
+                            "dirName",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "WORK only: override the active RootDir for this call.")),
             "required", List.of("path"));
 
-    public FileDeleteTool(WorkTargetDispatcher dispatcher) { super(dispatcher); }
+    public FileDeleteTool(WorkTargetDispatcher dispatcher) {
+        super(dispatcher);
+    }
 
-    @Override public String name() { return "file_delete"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "file_delete";
+    }
+
+    @Override
+    public String description() {
         return "Delete a file at the active work target. Safe to call on a "
                 + "path that doesn't exist — returns deleted=false. "
                 + "Dispatches to client_file_delete (CLIENT) or "
@@ -41,8 +53,16 @@ public class FileDeleteTool extends AbstractWorkTargetTool {
                 + "removes a file from the user's own machine and needs "
                 + "their sandbox approval.";
     }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public java.util.Set<String> labels() { return java.util.Set.of("write", "side-effect"); }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of(ToolLabels.WORKER, "write", "side-effect");
+    }
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
@@ -55,6 +75,13 @@ public class FileDeleteTool extends AbstractWorkTargetTool {
         return java.util.Set.of("filesystem");
     }
 
-    @Override protected String clientBackend() { return "client_file_delete"; }
-    @Override protected String workBackend()   { return "work_file_delete"; }
+    @Override
+    protected String clientBackend() {
+        return "client_file_delete";
+    }
+
+    @Override
+    protected String workBackend() {
+        return "work_file_delete";
+    }
 }

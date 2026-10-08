@@ -1,13 +1,14 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -42,42 +43,58 @@ public class WorkFileToDocTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>();
-        p.put("projectId", Map.of("type", "string",
-                "description", "Optional project name. Defaults to the active project."));
-        p.put("workspacePath", Map.of("type", "string",
-                "description", "Relative path inside the RootDir to read."));
-        p.put("dirName", Map.of("type", "string",
-                "description", "Optional workspace RootDir name."));
-        p.put("documentPath", Map.of("type", "string",
-                "description", "Target path inside the project (e.g. 'imported/notes.md')."));
+        p.put(
+                "projectId",
+                Map.of("type", "string", "description", "Optional project name. Defaults to the active project."));
+        p.put("workspacePath", Map.of("type", "string", "description", "Relative path inside the RootDir to read."));
+        p.put("dirName", Map.of("type", "string", "description", "Optional workspace RootDir name."));
+        p.put(
+                "documentPath",
+                Map.of("type", "string", "description", "Target path inside the project (e.g. 'imported/notes.md')."));
         p.put("title", Map.of("type", "string", "description", "Optional title for new docs."));
-        p.put("mimeType", Map.of("type", "string",
-                "description", "Optional mime type override. Defaults to 'text/markdown'."));
+        p.put(
+                "mimeType",
+                Map.of("type", "string", "description", "Optional mime type override. Defaults to 'text/markdown'."));
         return p;
     }
 
     private final KindToolSupport support;
     private final WorkspaceService workspace;
 
-    @Override public String name() { return "work_file_to_doc"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "work_file_to_doc";
+    }
+
+    @Override
+    public String description() {
         return "Import a brain-workspace file into the project's document pool. Creates the document "
                 + "when `documentPath` is unused, updates the existing one when it's already there. "
                 + "Capped at " + MAX_IMPORT_CHARS + " characters; bigger files should stay in the "
                 + "workspace.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("workspace-bridge", "eddie", "write", "document"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "workspace-bridge", "eddie", "write", "document");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
         String workspacePath = KindToolSupport.requireString(params, "workspacePath");
         String documentPath = KindToolSupport.requireString(params, "documentPath");
-        String dirName = WorkspaceDirResolver.resolve(workspace, ctx,
-                KindToolSupport.paramString(params, "dirName"));
+        String dirName = WorkspaceDirResolver.resolve(workspace, ctx, KindToolSupport.paramString(params, "dirName"));
         String title = KindToolSupport.paramString(params, "title");
         String mime = KindToolSupport.paramString(params, "mimeType");
         if (mime == null) mime = "text/markdown";
@@ -103,16 +120,17 @@ public class WorkFileToDocTool implements Tool {
         boolean created;
         if (existing == null) {
             try {
-                result = support.documentService().create(
-                        ctx.tenantId(),
-                        project.getName(),
-                        documentPath,
-                        title,
-                        null,
-                        mime,
-                        new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)),
-                        ctx.userId(),
-                        support.writeActor(ctx, documentPath));
+                result = support.documentService()
+                        .create(
+                                ctx.tenantId(),
+                                project.getName(),
+                                documentPath,
+                                title,
+                                null,
+                                mime,
+                                new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)),
+                                ctx.userId(),
+                                support.writeActor(ctx, documentPath));
                 created = true;
             } catch (DocumentService.DocumentAlreadyExistsException e) {
                 throw new ToolException(e.getMessage(), e);
@@ -122,8 +140,8 @@ public class WorkFileToDocTool implements Tool {
             // our update doesn't immediately get clobbered by a
             // pending older write.
             support.buffer().flush(ctx.processId(), existing.getId());
-            result = support.documentService().update(
-                    existing.getId(), title, null, content, null, support.writeActor(ctx, existing));
+            result = support.documentService()
+                    .update(existing.getId(), title, null, content, null, support.writeActor(ctx, existing));
             created = false;
         }
 

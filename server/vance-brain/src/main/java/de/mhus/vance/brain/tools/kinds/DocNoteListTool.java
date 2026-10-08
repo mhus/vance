@@ -1,9 +1,10 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentNote;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -30,20 +31,38 @@ public class DocNoteListTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_note_list"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "doc_note_list";
+    }
+
+    @Override
+    public String description() {
         return "List all sticky-notes attached to a document, ordered by display order "
                 + "(then by creation time). Each entry carries the noteId you need for "
                 + "doc_note_update / doc_note_delete.";
     }
-    @Override public boolean primary() { return true; }
-    @Override public boolean contributesPrak() {
+
+    @Override
+    public boolean primary() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
         // Listing — note titles only, no synthesised insight.
         return false;
     }
-    @Override public Set<String> labels() { return Set.of("text-edit", "read", "document", "note"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "text-edit", "read", "document", "note");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -51,14 +70,12 @@ public class DocNoteListTool implements Tool {
         Map<String, DocumentNote> notes = doc.getNotes();
         List<DocumentNote> sorted = notes == null ? List.of() : new ArrayList<>(notes.values());
         sorted = new ArrayList<>(sorted);
-        sorted.sort(Comparator
-                .comparing((DocumentNote n) -> n.getOrder() == null
-                        ? (n.getCreatedAt() == null ? 0d
+        sorted.sort(Comparator.comparing((DocumentNote n) -> n.getOrder() == null
+                        ? (n.getCreatedAt() == null
+                                ? 0d
                                 : (double) n.getCreatedAt().toEpochMilli())
                         : n.getOrder())
-                .thenComparing(n -> n.getCreatedAt() == null
-                        ? java.time.Instant.EPOCH
-                        : n.getCreatedAt()));
+                .thenComparing(n -> n.getCreatedAt() == null ? java.time.Instant.EPOCH : n.getCreatedAt()));
 
         List<Map<String, Object>> out = new ArrayList<>(sorted.size());
         for (DocumentNote n : sorted) {

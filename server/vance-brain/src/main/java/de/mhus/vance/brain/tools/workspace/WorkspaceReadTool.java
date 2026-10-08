@@ -6,6 +6,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import de.mhus.vance.toolpack.core.ContentHashes;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -104,7 +105,7 @@ public class WorkspaceReadTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("read-only", "side-effect");
+        return java.util.Set.of(ToolLabels.WORKER, "read-only", "side-effect");
     }
 
     @Override

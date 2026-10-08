@@ -21,6 +21,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -214,7 +215,7 @@ public class ProcessSpawnTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.WORKER, "executive");
     }
 
     @Override

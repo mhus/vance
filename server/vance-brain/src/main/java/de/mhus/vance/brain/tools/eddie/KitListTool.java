@@ -5,6 +5,7 @@ import de.mhus.vance.api.kit.ProjectKitsCatalogDto;
 import de.mhus.vance.shared.kit.catalog.ProjectKitsCatalogService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,7 +60,7 @@ public class KitListTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("eddie", "read-only");
+        return java.util.Set.of(ToolLabels.WORKER, "eddie", "read-only");
     }
 
     @Override

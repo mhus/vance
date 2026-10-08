@@ -9,6 +9,7 @@ import de.mhus.vance.shared.kit.catalog.ToolTemplateCatalogService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,16 +42,19 @@ public class ToolTemplateDescribeTool implements Tool {
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "required", List.of("name"),
-            "properties", Map.of(
-                    "name", Map.of("type", "string",
-                            "description", "Template name from tool_template_list.")));
+            "properties",
+                    Map.of("name", Map.of("type", "string", "description", "Template name from tool_template_list.")));
 
     private final ToolTemplateCatalogService catalogService;
     private final TemplateDescribeService describeService;
 
-    @Override public String name() { return "tool_template_describe"; }
+    @Override
+    public String name() {
+        return "tool_template_describe";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Resolve one tool-template by name and return its input schema "
                 + "(name, type, label, help, required, default, choices, target) "
                 + "plus the post-install hook (e.g. 'oauth-connect → atlassian'). "
@@ -58,9 +62,20 @@ public class ToolTemplateDescribeTool implements Tool {
                 + "calling tool_template_apply.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("tool-template", "read-only"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "tool-template", "read-only");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -68,13 +83,12 @@ public class ToolTemplateDescribeTool implements Tool {
         String name = stringOrThrow(params.get("name"));
         ToolTemplateCatalogEntry entry = catalogService.findByName(ctx.tenantId(), name);
         if (entry == null) {
-            throw new ToolException("Template '" + name
-                    + "' is not in the tenant catalog. Use tool_template_list to discover.");
+            throw new ToolException(
+                    "Template '" + name + "' is not in the tenant catalog. Use tool_template_list to discover.");
         }
         ToolTemplateDescriptorDto dto;
         try {
-            dto = describeService.describe(
-                    ctx.tenantId(), ctx.projectId(), ctx.userId(), entry.getSource(), null);
+            dto = describeService.describe(ctx.tenantId(), ctx.projectId(), ctx.userId(), entry.getSource(), null);
         } catch (KitException e) {
             log.warn("describe template '{}' failed: {}", name, e.getMessage());
             throw new ToolException("describe failed: " + e.getMessage(), e);

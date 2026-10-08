@@ -7,6 +7,7 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,31 +30,71 @@ public class ForeignDocSearchTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of("type", "string",
-                            "description", "Name of the project to search (required)."),
-                    "query", Map.of("type", "string",
-                            "description", "Free-text needle matched against title, summary and tags."),
-                    "limit", Map.of("type", "integer",
-                            "description", "Max hits (default " + DEFAULT_LIMIT + ", capped at 200).")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Name of the project to search (required)."),
+                            "query",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Free-text needle matched against title, summary and tags."),
+                            "limit",
+                                    Map.of(
+                                            "type",
+                                            "integer",
+                                            "description",
+                                            "Max hits (default " + DEFAULT_LIMIT + ", capped at 200).")),
             "required", List.of("projectId", "query"));
 
     private final ForeignAccessSupport foreign;
 
-    @Override public String name() { return "foreign_doc_search"; }
+    @Override
+    public String name() {
+        return "foreign_doc_search";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Search ANOTHER project's documents by title/summary/tags and get ranked hits with "
                 + "snippets. Read-only; requires read access to that project. Metadata search, not "
                 + "semantic RAG. Follow up with foreign_doc_read or foreign_doc_copy on a hit.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return false; }
-    @Override public Set<String> labels() { return Set.of("read-only", "cross-project", "document"); }
-    @Override public String searchHint() { return "Search documents in another project by topic"; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only", "cross-project", "document");
+    }
+
+    @Override
+    public String searchHint() {
+        return "Search documents in another project by topic";
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -63,8 +104,8 @@ public class ForeignDocSearchTool implements Tool {
         int limit = limitParam != null ? limitParam : DEFAULT_LIMIT;
         ProjectDocument project = foreign.resolveForeign(projectId, ctx, Action.READ);
 
-        DocumentMetaListing listing = foreign.documents().searchProjectDocumentsMeta(
-                ctx.tenantId(), project.getName(), null, query, null, null, limit);
+        DocumentMetaListing listing = foreign.documents()
+                .searchProjectDocumentsMeta(ctx.tenantId(), project.getName(), null, query, null, null, limit);
 
         List<Map<String, Object>> hits = new ArrayList<>();
         for (DocumentMetaMatch m : listing.items()) {

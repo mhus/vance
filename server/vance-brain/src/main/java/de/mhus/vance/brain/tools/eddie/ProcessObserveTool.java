@@ -15,6 +15,7 @@ import de.mhus.vance.shared.thinkprocess.WorkerLinkSnapshot;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -126,7 +127,7 @@ public class ProcessObserveTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "executive");
+        return Set.of(ToolLabels.INTERNAL, "eddie", "executive");
     }
 
     @Override

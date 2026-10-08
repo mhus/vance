@@ -6,6 +6,7 @@ import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,32 +32,40 @@ import org.springframework.stereotype.Component;
 public class UrsaSchedulerSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
+
     static {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("name", Map.of(
-                "type", "string",
-                "description", "Scheduler name — lowercase, alphanumeric + '_-', max 64 chars."));
-        props.put("yaml", Map.of(
-                "type", "string",
-                "description", "Full YAML body. Must include 'description', a trigger "
-                        + "('cron' recurring or 'at' one-shot), and 'recipe'. "
-                        + "Optional fields: timezone, enabled, params, initialMessage, "
-                        + "runAs, overlap, tags. If 'timezone' is omitted it defaults to "
-                        + "the user's configured display timezone (times you write are "
-                        + "interpreted in the user's local time, not UTC)."));
-        SCHEMA = Map.of(
-                "type", "object",
-                "properties", props,
-                "required", List.of("name", "yaml"));
+        props.put(
+                "name",
+                Map.of(
+                        "type", "string",
+                        "description", "Scheduler name — lowercase, alphanumeric + '_-', max 64 chars."));
+        props.put(
+                "yaml",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Full YAML body. Must include 'description', a trigger "
+                                + "('cron' recurring or 'at' one-shot), and 'recipe'. "
+                                + "Optional fields: timezone, enabled, params, initialMessage, "
+                                + "runAs, overlap, tags. If 'timezone' is omitted it defaults to "
+                                + "the user's configured display timezone (times you write are "
+                                + "interpreted in the user's local time, not UTC)."));
+        SCHEMA = Map.of("type", "object", "properties", props, "required", List.of("name", "yaml"));
     }
 
     private final UrsaSchedulerToolSupport support;
     private final DocumentService documentService;
     private final UrsaSchedulerService schedulerService;
 
-    @Override public String name() { return "scheduler_set"; }
+    @Override
+    public String name() {
+        return "scheduler_set";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "Create or replace a scheduler in the current project. "
                 + "Idempotent: if a scheduler with this name already exists "
                 + "its YAML is overwritten (the previous version is auto-"
@@ -64,9 +73,20 @@ public class UrsaSchedulerSetTool implements Tool {
                 + "caller can tell which path ran.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
-    @Override public Set<String> labels() { return Set.of("write", "scheduler"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.OPERATOR, "write", "scheduler");
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -88,8 +108,9 @@ public class UrsaSchedulerSetTool implements Tool {
         // protected tenant entry.
         support.guardMutation(ctx.tenantId(), ctx.projectId(), name);
 
-        boolean existed = documentService.findByPath(ctx.tenantId(), ctx.projectId(),
-                UrsaSchedulerToolSupport.pathFor(name)).isPresent();
+        boolean existed = documentService
+                .findByPath(ctx.tenantId(), ctx.projectId(), UrsaSchedulerToolSupport.pathFor(name))
+                .isPresent();
 
         ResolvedUrsaScheduler validated = support.parseOrThrow(name, yaml);
         support.upsert(ctx.tenantId(), ctx.projectId(), name, yaml, ctx.userId());
@@ -97,10 +118,8 @@ public class UrsaSchedulerSetTool implements Tool {
         // already routed through UrsaSchedulerDocumentListener → refreshOne;
         // a cheap registry probe gives us the boolean for the response
         // without a second refresh.
-        boolean registered = schedulerService.isRegistered(
-                ctx.tenantId(), ctx.projectId(), name);
-        List<String> warnings = support.crossReferenceWarnings(
-                ctx.tenantId(), ctx.projectId(), validated);
+        boolean registered = schedulerService.isRegistered(ctx.tenantId(), ctx.projectId(), name);
+        List<String> warnings = support.crossReferenceWarnings(ctx.tenantId(), ctx.projectId(), validated);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", name);

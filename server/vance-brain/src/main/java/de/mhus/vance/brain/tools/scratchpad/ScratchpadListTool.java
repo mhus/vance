@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.scratchpad;
 
+import de.mhus.vance.shared.memory.MemoryDocument;
+import de.mhus.vance.shared.memory.ScratchpadService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.memory.MemoryDocument;
-import de.mhus.vance.shared.memory.ScratchpadService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,8 +39,7 @@ public class ScratchpadListTool implements Tool {
 
     @Override
     public String description() {
-        return "List active scratchpad slots for the current think-process "
-                + "with content previews.";
+        return "List active scratchpad slots for the current think-process " + "with content previews.";
     }
 
     @Override
@@ -60,7 +60,7 @@ public class ScratchpadListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -77,9 +77,7 @@ public class ScratchpadListTool implements Tool {
             row.put("memoryId", doc.getId());
             String content = doc.getContent() == null ? "" : doc.getContent();
             row.put("chars", content.length());
-            row.put("preview", content.length() <= PREVIEW_CHARS
-                    ? content
-                    : content.substring(0, PREVIEW_CHARS) + "…");
+            row.put("preview", content.length() <= PREVIEW_CHARS ? content : content.substring(0, PREVIEW_CHARS) + "…");
             rows.add(row);
         }
         Map<String, Object> out = new LinkedHashMap<>();

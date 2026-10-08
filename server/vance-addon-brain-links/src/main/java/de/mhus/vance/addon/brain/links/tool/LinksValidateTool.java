@@ -6,6 +6,7 @@ import de.mhus.vance.shared.document.kind.validate.KindValidationResult;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,28 +28,45 @@ import org.springframework.stereotype.Component;
 public class LinksValidateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string",
-                        "description", "The link-list folder to check (POST-write "
-                                + "self-check). Give exactly one of folder / content."));
-                put("content", Map.of("type", "string",
-                        "description", "Manifest text you are about to write (PRE-write "
-                                + "self-check). Give exactly one of folder / content."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of());
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "folder",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "The link-list folder to check (POST-write "
+                                            + "self-check). Give exactly one of folder / content."));
+                    put(
+                            "content",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Manifest text you are about to write (PRE-write "
+                                            + "self-check). Give exactly one of folder / content."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of());
 
     private final EddieContext eddieContext;
     private final LinksValidationService validationService;
 
-    public LinksValidateTool(EddieContext eddieContext,
-                            LinksValidationService validationService) {
+    public LinksValidateTool(EddieContext eddieContext, LinksValidationService validationService) {
         this.eddieContext = eddieContext;
         this.validationService = validationService;
     }
 
-    @Override public String name() { return "links_validate"; }
+    @Override
+    public String name() {
+        return "links_validate";
+    }
 
     @Override
     public String description() {
@@ -60,15 +78,25 @@ public class LinksValidateTool implements Tool {
                 + "produce these faults.";
     }
 
-    @Override public boolean primary() { return false; }
-
-    @Override public boolean contributesPrak() { return false; }
-
-    @Override public Set<String> labels() {
-        return Set.of("eddie", "read-only", "document", "links");
+    @Override
+    public boolean primary() {
+        return false;
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read-only", "document", "links");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -81,11 +109,13 @@ public class LinksValidateTool implements Tool {
             result = validationService.validateContent(content);
         } else {
             ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
-            result = validationService.validateFolder(
-                    ctx.tenantId(), project.getName(), folder);
+            result = validationService.validateFolder(ctx.tenantId(), project.getName(), folder);
         }
-        log.info("LinksValidateTool target='{}' ok={} findings={}",
-                result.target(), result.ok(), result.findings().size());
+        log.info(
+                "LinksValidateTool target='{}' ok={} findings={}",
+                result.target(),
+                result.ok(),
+                result.findings().size());
         return result.toMap();
     }
 }

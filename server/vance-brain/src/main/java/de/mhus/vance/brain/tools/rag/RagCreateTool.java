@@ -1,10 +1,11 @@
 package de.mhus.vance.brain.tools.rag;
 
 import de.mhus.vance.brain.rag.RagService;
+import de.mhus.vance.shared.rag.RagDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.rag.RagDocument;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,19 +24,24 @@ public class RagCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Stable RAG name, unique per project."),
-                    "description", Map.of(
-                            "type", "string",
-                            "description", "Optional human-readable description."),
-                    "chunkSize", Map.of(
-                            "type", "integer",
-                            "description", "Char-based chunk size. Default 1000."),
-                    "chunkOverlap", Map.of(
-                            "type", "integer",
-                            "description", "Char overlap between chunks. Default 200.")),
+            "properties",
+                    Map.of(
+                            "name",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Stable RAG name, unique per project."),
+                            "description",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Optional human-readable description."),
+                            "chunkSize",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Char-based chunk size. Default 1000."),
+                            "chunkOverlap",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Char overlap between chunks. Default 200.")),
             "required", List.of("name"));
 
     private final RagService ragService;
@@ -64,7 +70,7 @@ public class RagCreateTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write");
+        return java.util.Set.of(ToolLabels.WORKER, "write");
     }
 
     @Override
@@ -91,14 +97,12 @@ public class RagCreateTool implements Tool {
             throw new ToolException("RAG name '" + name + "' is reserved for system RAGs "
                     + "(names with '_' prefix). Pick a different name.");
         }
-        String description = params == null ? null
-                : (params.get("description") instanceof String s ? s : null);
+        String description = params == null ? null : (params.get("description") instanceof String s ? s : null);
         int chunkSize = intOr(params, "chunkSize", 1000);
         int chunkOverlap = intOr(params, "chunkOverlap", 200);
         try {
             RagDocument rag = ragService.createRag(
-                    ctx.tenantId(), projectId, name, /*title=*/ null,
-                    description, chunkSize, chunkOverlap);
+                    ctx.tenantId(), projectId, name, /*title=*/ null, description, chunkSize, chunkOverlap);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("ragId", rag.getId());
             out.put("name", rag.getName());

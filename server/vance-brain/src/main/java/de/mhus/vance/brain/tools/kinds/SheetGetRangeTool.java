@@ -1,14 +1,15 @@
 package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.brain.sheet.SheetEvalService;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.SheetCell;
 import de.mhus.vance.shared.document.kind.SheetCodec;
 import de.mhus.vance.shared.document.kind.SheetComputed;
 import de.mhus.vance.shared.document.kind.SheetDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -29,29 +30,49 @@ public class SheetGetRangeTool implements Tool {
 
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
-        p.put("range", Map.of("type", "string",
-                "description", "Excel-style range like 'A1:C3'. Returns every cell in the rectangle "
-                        + "(empty entries omitted)."));
+        p.put(
+                "range",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Excel-style range like 'A1:C3'. Returns every cell in the rectangle "
+                                + "(empty entries omitted)."));
         return p;
     }
 
     private final KindToolSupport support;
     private final SheetEvalService evalService;
 
-    @Override public String name() { return "sheet_get_range"; }
-    @Override public String description() {
+    @Override
+    public String name() {
+        return "sheet_get_range";
+    }
+
+    @Override
+    public String description() {
         return "Read every populated cell in an Excel-style A1:C3 range from a `kind: sheet` "
                 + "document. Formula cells also carry the server-evaluated `computedValue`.";
     }
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "read-only"); }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "kind-sheet", "eddie", "read-only");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        DocumentDocument doc = support.requireKind(
-                support.requireInline(support.loadDocument(params, ctx)), "sheet");
+        DocumentDocument doc = support.requireKind(support.requireInline(support.loadDocument(params, ctx)), "sheet");
         String range = KindToolSupport.requireString(params, "range");
         int colon = range.indexOf(':');
         if (colon <= 0 || colon == range.length() - 1) {
@@ -64,7 +85,11 @@ public class SheetGetRangeTool implements Tool {
         }
         int colMin = SheetCodec.columnIndexFromLetter(topLeft.column());
         int colMax = SheetCodec.columnIndexFromLetter(bottomRight.column());
-        if (colMin > colMax) { int t = colMin; colMin = colMax; colMax = t; }
+        if (colMin > colMax) {
+            int t = colMin;
+            colMin = colMax;
+            colMax = t;
+        }
         int rowMin = Math.min(topLeft.row(), bottomRight.row());
         int rowMax = Math.max(topLeft.row(), bottomRight.row());
 
@@ -100,9 +125,6 @@ public class SheetGetRangeTool implements Tool {
                 hits.add(m);
             }
         }
-        return Map.of("documentId", doc.getId(),
-                "range", range,
-                "cellCount", hits.size(),
-                "cells", hits);
+        return Map.of("documentId", doc.getId(), "range", range, "cellCount", hits.size(), "cells", hits);
     }
 }

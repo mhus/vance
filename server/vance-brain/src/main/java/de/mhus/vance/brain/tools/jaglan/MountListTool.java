@@ -1,11 +1,5 @@
 package de.mhus.vance.brain.tools.jaglan;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import de.mhus.vance.api.mount.MountedSource;
 import de.mhus.vance.brain.tools.kinds.KindToolSupport;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -14,6 +8,12 @@ import de.mhus.vance.shared.document.jaglan.JaglanShellService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
@@ -38,16 +38,29 @@ public class MountListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of("type", "string",
-                            "description", "Optional project name. Defaults to the active project."),
-                    "path", Map.of("type", "string",
-                            "description", "Folder to list, e.g. '_ext/library' or "
-                                    + "'_ext/library/books'. Omit to list the configured mounts "
-                                    + "instead of a folder's contents."),
-                    "refresh", Map.of("type", "boolean",
-                            "description", "Re-read this folder from the source even if the "
-                                    + "cached listing is still valid. Default: false.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults to the active project."),
+                            "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Folder to list, e.g. '_ext/library' or "
+                                                    + "'_ext/library/books'. Omit to list the configured mounts "
+                                                    + "instead of a folder's contents."),
+                            "refresh",
+                                    Map.of(
+                                            "type",
+                                            "boolean",
+                                            "description",
+                                            "Re-read this folder from the source even if the "
+                                                    + "cached listing is still valid. Default: false.")),
             "required", List.of());
 
     private final KindToolSupport support;
@@ -63,9 +76,13 @@ public class MountListTool implements Tool {
      */
     private final ObjectProvider<JaglanShellService> shellServiceProvider;
 
-    @Override public String name() { return "mount_list"; }
+    @Override
+    public String name() {
+        return "mount_list";
+    }
 
-    @Override public String description() {
+    @Override
+    public String description() {
         return "List mounted external sources, or browse inside one. Mounted documents live under "
                 + "'_ext/<mount>/…' and are NOT found by doc_find, doc_grep, memory_search or "
                 + "doc_list_in_folder, which only scan 'documents/' — use this to discover them. "
@@ -73,16 +90,35 @@ public class MountListTool implements Tool {
                 + "the files themselves with the ordinary doc_read once you know their path.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public boolean deferred() { return true; }
-    @Override public boolean contributesPrak() { return false; }
-    @Override public Set<String> labels() { return Set.of("read-only", "mount", "documents"); }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public String searchHint() {
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public boolean contributesPrak() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "read-only", "mount", "documents");
+    }
+
+    @Override
+    public String searchHint() {
         return "Find files in an external source mounted into this project";
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -94,8 +130,7 @@ public class MountListTool implements Tool {
         out.put("projectId", project.getName());
 
         if (path == null || path.isBlank()) {
-            List<MountedSource> mounts = support.documentService()
-                    .listMounts(ctx.tenantId(), project.getName());
+            List<MountedSource> mounts = support.documentService().listMounts(ctx.tenantId(), project.getName());
             List<Map<String, Object>> rows = new ArrayList<>(mounts.size());
             for (MountedSource mount : mounts) {
                 Map<String, Object> r = new LinkedHashMap<>();
@@ -126,13 +161,15 @@ public class MountListTool implements Tool {
             mountName = JaglanPaths.mountNameOf(path);
             folderInMount = JaglanPaths.pathInMount(path);
         } catch (IllegalArgumentException e) {
-            out.put("error", "path must name a mount, e.g. '"
-                    + JaglanPaths.PREFIX + "<mount>/…' — omit `path` to list the mounts");
+            out.put(
+                    "error",
+                    "path must name a mount, e.g. '" + JaglanPaths.PREFIX
+                            + "<mount>/…' — omit `path` to list the mounts");
             return out;
         }
 
-        List<DocumentDocument> entries = support.documentService()
-                .listMountedFolder(ctx.tenantId(), project.getName(), path, refresh);
+        List<DocumentDocument> entries =
+                support.documentService().listMountedFolder(ctx.tenantId(), project.getName(), path, refresh);
         List<Map<String, Object>> rows = new ArrayList<>(entries.size());
         for (DocumentDocument doc : entries) {
             Map<String, Object> r = new LinkedHashMap<>();
@@ -145,7 +182,8 @@ public class MountListTool implements Tool {
                 r.put("size", doc.getSize());
                 if (doc.getMimeType() != null) r.put("mimeType", doc.getMimeType());
             }
-            if (doc.getMountAccess() != null) r.put("access", doc.getMountAccess().name());
+            if (doc.getMountAccess() != null)
+                r.put("access", doc.getMountAccess().name());
             rows.add(r);
         }
         out.put("path", path);
@@ -156,12 +194,11 @@ public class MountListTool implements Tool {
         // whose refresh failed is indistinguishable from a fresh one, and an
         // agent reads a stale — possibly empty — listing as the truth.
         JaglanShellService shellService = shellServiceProvider.getIfAvailable();
-        JaglanShellService.FolderFailure failure = shellService == null ? null
-                : shellService.folderFailure(
-                        ctx.tenantId(), project.getName(), mountName, folderInMount);
+        JaglanShellService.FolderFailure failure = shellService == null
+                ? null
+                : shellService.folderFailure(ctx.tenantId(), project.getName(), mountName, folderInMount);
         if (failure != null) {
-            out.put("status", "last refresh failed: " + failure.message()
-                    + " — these entries may be out of date");
+            out.put("status", "last refresh failed: " + failure.message() + " — these entries may be out of date");
             out.put("staleSince", failure.at().toString());
         }
         return out;

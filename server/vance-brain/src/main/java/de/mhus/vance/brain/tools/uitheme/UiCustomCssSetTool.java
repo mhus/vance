@@ -7,6 +7,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -71,7 +72,7 @@ public class UiCustomCssSetTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("uitheme", "write");
+        return Set.of(ToolLabels.OPERATOR, "uitheme", "write");
     }
 
     @Override

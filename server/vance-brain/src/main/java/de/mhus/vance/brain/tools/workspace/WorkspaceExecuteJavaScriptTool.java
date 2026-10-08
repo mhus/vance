@@ -4,11 +4,12 @@ import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptResult;
 import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.workspace.WorkspaceException;
-import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -33,20 +34,24 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Relative path to a .js file inside the RootDir."),
-                    "dirName", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Optional RootDir name. Defaults to the "
-                                            + "current process's temp RootDir."),
-                    "timeoutMs", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Wall-clock timeout in milliseconds (default 10000, max 60000).")),
+            "properties",
+                    Map.of(
+                            "path",
+                                    Map.of(
+                                            "type", "string",
+                                            "description", "Relative path to a .js file inside the RootDir."),
+                            "dirName",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional RootDir name. Defaults to the "
+                                                    + "current process's temp RootDir."),
+                            "timeoutMs",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description",
+                                                    "Wall-clock timeout in milliseconds (default 10000, max 60000).")),
             "required", List.of("path"));
 
     private final WorkspaceService workspace;
@@ -77,7 +82,7 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("executive", "side-effect");
+        return java.util.Set.of(ToolLabels.WORKER, "executive", "side-effect");
     }
 
     @Override
@@ -92,9 +97,8 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        throw new ToolException(
-                "execute_work_javascript requires the bound tools surface — "
-                        + "call via the engine's ContextToolsApi");
+        throw new ToolException("execute_work_javascript requires the bound tools surface — "
+                + "call via the engine's ContextToolsApi");
     }
 
     @Override

@@ -8,6 +8,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,31 +20,45 @@ import org.springframework.stereotype.Component;
 public class FinanceNodeAddTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("path", Map.of("type", "string"));
-                put("parentName", Map.of("type", "string",
-                        "description", "Name of the parent node; omit to set the root."));
-                put("node", Map.of("type", "object",
-                        "description", "Node: {name (required), title, icon, color, "
-                                + "sign (+1/-1), description, notesRef}. Add values later "
-                                + "with finance_node_value_set."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("path", "node"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("path", Map.of("type", "string"));
+                    put(
+                            "parentName",
+                            Map.of("type", "string", "description", "Name of the parent node; omit to set the root."));
+                    put(
+                            "node",
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "description",
+                                    "Node: {name (required), title, icon, color, "
+                                            + "sign (+1/-1), description, notesRef}. Add values later "
+                                            + "with finance_node_value_set."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("path", "node"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
     private final FinanceService financeService;
 
-    public FinanceNodeAddTool(EddieContext eddieContext, DocumentService documentService,
-                              FinanceService financeService) {
+    public FinanceNodeAddTool(
+            EddieContext eddieContext, DocumentService documentService, FinanceService financeService) {
         this.eddieContext = eddieContext;
         this.documentService = documentService;
         this.financeService = financeService;
     }
 
-    @Override public String name() { return "finance_node_add"; }
+    @Override
+    public String name() {
+        return "finance_node_add";
+    }
 
     @Override
     public String description() {
@@ -53,16 +68,24 @@ public class FinanceNodeAddTool implements Tool {
                 + "be unique in the tree.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public Set<String> labels() { return Set.of("eddie", "write", "document", "finance"); }
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "finance");
+    }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        FinanceToolSupport.Resolved r =
-                FinanceToolSupport.resolveByPath(eddieContext, documentService, params, ctx);
+        FinanceToolSupport.Resolved r = FinanceToolSupport.resolveByPath(eddieContext, documentService, params, ctx);
         Map<String, Object> nodeMap = FinanceToolSupport.paramMap(params, "node");
         if (nodeMap.isEmpty()) throw new ToolException("`node` is required");
         FinanceNode node = FinanceTreeCodec.nodeFromMap(nodeMap);

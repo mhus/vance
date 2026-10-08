@@ -1,12 +1,13 @@
 package de.mhus.vance.simpleauth.brain;
 
+import de.mhus.vance.brain.permission.SecurityContextFactory;
+import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.simpleauth.GrantScopeType;
 import de.mhus.vance.simpleauth.PermissionGrantDocument;
 import de.mhus.vance.simpleauth.PermissionGrantService;
-import de.mhus.vance.brain.permission.SecurityContextFactory;
-import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,7 +49,7 @@ public class PermissionGrantListTool implements Tool {
      */
     @Override
     public Set<String> labels() {
-        return Set.of("executive");
+        return Set.of(ToolLabels.OPERATOR, "executive");
     }
 
     @Override
@@ -59,10 +60,16 @@ public class PermissionGrantListTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         Map<String, Object> props = new LinkedHashMap<>();
-        props.put("scopeType", Map.of("type", "string", "enum", List.of("TENANT", "PROJECT"),
-                "description", "TENANT or PROJECT."));
-        props.put("scopeId", Map.of("type", "string",
-                "description", "Project name for PROJECT scope (defaults to the current project)."));
+        props.put(
+                "scopeType",
+                Map.of("type", "string", "enum", List.of("TENANT", "PROJECT"), "description", "TENANT or PROJECT."));
+        props.put(
+                "scopeId",
+                Map.of(
+                        "type",
+                        "string",
+                        "description",
+                        "Project name for PROJECT scope (defaults to the current project)."));
         return Map.of("type", "object", "properties", props, "required", List.of("scopeType"));
     }
 

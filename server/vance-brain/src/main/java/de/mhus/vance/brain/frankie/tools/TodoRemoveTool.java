@@ -5,6 +5,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,11 +31,13 @@ public class TodoRemoveTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "ids", Map.of(
-                            "type", "array",
-                            "description", "IDs of items to remove.",
-                            "items", Map.of("type", "string"))),
+            "properties",
+                    Map.of(
+                            "ids",
+                            Map.of(
+                                    "type", "array",
+                                    "description", "IDs of items to remove.",
+                                    "items", Map.of("type", "string"))),
             "required", List.of("ids"));
 
     private final ThinkProcessService thinkProcessService;
@@ -47,8 +50,7 @@ public class TodoRemoveTool implements Tool {
 
     @Override
     public String description() {
-        return "Drop one or more TodoItems from the current process's "
-                + "plan by id. Unknown ids are ignored.";
+        return "Drop one or more TodoItems from the current process's " + "plan by id. Unknown ids are ignored.";
     }
 
     @Override
@@ -68,7 +70,7 @@ public class TodoRemoveTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("write");
+        return Set.of(ToolLabels.INTERNAL, "write");
     }
 
     @Override
@@ -89,11 +91,11 @@ public class TodoRemoveTool implements Tool {
         }
         int removed = thinkProcessService.removeTodos(processId, ids);
         if (removed > 0) {
-            thinkProcessService.findById(processId).ifPresent(refreshed ->
-                    planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos()));
+            thinkProcessService
+                    .findById(processId)
+                    .ifPresent(refreshed -> planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos()));
         }
-        log.info("todo_remove process='{}' requested={} removed={}",
-                processId, ids.size(), removed);
+        log.info("todo_remove process='{}' requested={} removed={}", processId, ids.size(), removed);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);

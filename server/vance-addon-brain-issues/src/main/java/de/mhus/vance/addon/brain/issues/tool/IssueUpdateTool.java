@@ -9,6 +9,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,21 +29,31 @@ import org.springframework.stereotype.Component;
 public class IssueUpdateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string", "description", "Issues root folder."));
-                put("path", Map.of("type", "string", "description", "Full document path of the issue."));
-                put("state", Map.of("type", "string", "description", "open | closed"));
-                put("labels", Map.of("type", "array", "items", Map.of("type", "string")));
-                put("assignee", Map.of("type", "string"));
-                put("priority", Map.of("type", "string"));
-                put("title", Map.of("type", "string"));
-                put("body", Map.of("type", "string"));
-                put("archived", Map.of("type", "boolean",
-                        "description", "true = move to archive/, false = restore to items/"));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder", "path"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "Issues root folder."));
+                    put("path", Map.of("type", "string", "description", "Full document path of the issue."));
+                    put("state", Map.of("type", "string", "description", "open | closed"));
+                    put("labels", Map.of("type", "array", "items", Map.of("type", "string")));
+                    put("assignee", Map.of("type", "string"));
+                    put("priority", Map.of("type", "string"));
+                    put("title", Map.of("type", "string"));
+                    put("body", Map.of("type", "string"));
+                    put(
+                            "archived",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "true = move to archive/, false = restore to items/"));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder", "path"));
 
     private final EddieContext eddieContext;
     private final IssuesFolderReader folderReader;
@@ -54,7 +65,10 @@ public class IssueUpdateTool implements Tool {
         this.issuesService = issuesService;
     }
 
-    @Override public String name() { return "issue_update"; }
+    @Override
+    public String name() {
+        return "issue_update";
+    }
 
     @Override
     public String description() {
@@ -63,9 +77,20 @@ public class IssueUpdateTool implements Tool {
                 + "tracker into archive/ (archived=false restores it). Run app_rebuild afterwards.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("eddie", "write", "document", "issues"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "issues");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -75,20 +100,30 @@ public class IssueUpdateTool implements Tool {
         if (path == null) throw new ToolException("path is required");
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
 
-        boolean touchedFields = params.containsKey("state") || params.containsKey("labels")
-                || params.containsKey("assignee") || params.containsKey("priority")
-                || params.containsKey("title") || params.containsKey("body");
+        boolean touchedFields = params.containsKey("state")
+                || params.containsKey("labels")
+                || params.containsKey("assignee")
+                || params.containsKey("priority")
+                || params.containsKey("title")
+                || params.containsKey("body");
         DocumentDocument doc = null;
         if (touchedFields) {
-            doc = issuesService.updateIssue(ctx.tenantId(), project.getName(), path,
-                    paramString(params, "state"), paramStringList(params, "labels"),
-                    paramString(params, "assignee"), paramString(params, "priority"),
-                    paramString(params, "title"), paramString(params, "body"));
+            doc = issuesService.updateIssue(
+                    ctx.tenantId(),
+                    project.getName(),
+                    path,
+                    paramString(params, "state"),
+                    paramStringList(params, "labels"),
+                    paramString(params, "assignee"),
+                    paramString(params, "priority"),
+                    paramString(params, "title"),
+                    paramString(params, "body"));
             path = doc.getPath();
         }
         Boolean archived = paramBoolean(params, "archived");
         if (archived != null) {
-            IssuesConfig config = folderReader.scan(ctx.tenantId(), project.getName(), folder).config();
+            IssuesConfig config =
+                    folderReader.scan(ctx.tenantId(), project.getName(), folder).config();
             doc = archived
                     ? issuesService.archive(ctx.tenantId(), project.getName(), folder, config, path)
                     : issuesService.unarchive(ctx.tenantId(), project.getName(), folder, config, path);
@@ -104,17 +139,20 @@ public class IssueUpdateTool implements Tool {
         Object v = params == null ? null : params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
+
     private static @Nullable Boolean paramBoolean(Map<String, Object> params, String key) {
         Object v = params == null ? null : params.get(key);
         if (v instanceof Boolean b) return b;
         if (v instanceof String s && !s.isBlank()) return Boolean.parseBoolean(s);
         return null;
     }
+
     private static @Nullable List<String> paramStringList(Map<String, Object> params, String key) {
         Object v = params == null ? null : params.get(key);
         if (v instanceof List<?> list) {
             List<String> out = new ArrayList<>();
-            for (Object o : list) if (o != null && !o.toString().isBlank()) out.add(o.toString().trim());
+            for (Object o : list)
+                if (o != null && !o.toString().isBlank()) out.add(o.toString().trim());
             return out;
         }
         if (v instanceof String s && !s.isBlank()) {

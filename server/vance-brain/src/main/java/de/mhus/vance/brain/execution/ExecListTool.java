@@ -2,6 +2,7 @@ package de.mhus.vance.brain.execution;
 
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,19 +23,26 @@ import org.springframework.stereotype.Component;
 public class ExecListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of(
-                    "onlyRunning", Map.of(
-                            "type", "boolean",
-                            "description", "If true, only RUNNING jobs are returned."),
-                    "sessionId", Map.of(
-                            "type", "string",
-                            "description",
+            "type",
+            "object",
+            "properties",
+            Map.of(
+                    "onlyRunning",
+                            Map.of(
+                                    "type", "boolean",
+                                    "description", "If true, only RUNNING jobs are returned."),
+                    "sessionId",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
                                     "Restrict to one session in the current project. "
                                             + "Defaults to all sessions of this project."),
-                    "ownerLabel", Map.of(
-                            "type", "string",
-                            "description",
+                    "ownerLabel",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
                                     "Restrict to a single owner: 'brain', or "
                                             + "'foot:<editorId>' for a specific "
                                             + "foot client.")));
@@ -67,7 +75,7 @@ public class ExecListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only");
+        return Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override
@@ -78,13 +86,8 @@ public class ExecListTool implements Tool {
         String sessionId = stringOrNull(params, "sessionId");
         String ownerLabel = stringOrNull(params, "ownerLabel");
 
-        ExecutionScopeFilter filter = new ExecutionScopeFilter(
-                ctx.tenantId(),
-                ctx.projectId(),
-                sessionId,
-                null,
-                ownerLabel,
-                onlyRunning);
+        ExecutionScopeFilter filter =
+                new ExecutionScopeFilter(ctx.tenantId(), ctx.projectId(), sessionId, null, ownerLabel, onlyRunning);
         List<ExecutionRegistryEntry> entries = registry.list(filter);
         List<Map<String, Object>> rendered = new ArrayList<>(entries.size());
         for (ExecutionRegistryEntry e : entries) rendered.add(renderEntry(e));

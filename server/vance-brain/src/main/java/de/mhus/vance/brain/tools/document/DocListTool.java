@@ -1,11 +1,12 @@
 package de.mhus.vance.brain.tools.document;
 
 import de.mhus.vance.brain.tools.eddie.EddieContext;
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,22 +27,31 @@ public class DocListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "projectId", Map.of(
-                            "type", "string",
-                            "description", "Optional project name. Defaults "
-                                    + "to the active project (project_switch)."),
-                    "tag", Map.of(
-                            "type", "string",
-                            "description", "Optional: filter to documents "
-                                    + "carrying this tag."),
-                    "pathPrefix", Map.of(
-                            "type", "string",
-                            "description", "Path-prefix scope. Omitted → defaults to "
-                                    + "'documents/' (excludes trash, kit config, chat "
-                                    + "attachments, engine scratch, and other system "
-                                    + "folders). Pass '*' to list every document in "
-                                    + "the project.")),
+            "properties",
+                    Map.of(
+                            "projectId",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional project name. Defaults "
+                                                    + "to the active project (project_switch)."),
+                            "tag",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Optional: filter to documents " + "carrying this tag."),
+                            "pathPrefix",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Path-prefix scope. Omitted → defaults to "
+                                                    + "'documents/' (excludes trash, kit config, chat "
+                                                    + "attachments, engine scratch, and other system "
+                                                    + "folders). Pass '*' to list every document in "
+                                                    + "the project.")),
             "required", List.of());
 
     private final EddieContext eddieContext;
@@ -77,7 +87,7 @@ public class DocListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("read-only", "document");
+        return Set.of(ToolLabels.WORKER, "read-only", "document");
     }
 
     @Override
@@ -86,8 +96,7 @@ public class DocListTool implements Tool {
         Object rawTag = params == null ? null : params.get("tag");
         String tag = rawTag instanceof String s && !s.isBlank() ? s.trim() : null;
         Object rawPrefix = params == null ? null : params.get("pathPrefix");
-        String pathPrefix = DocumentService.resolveScope(
-                rawPrefix instanceof String s2 && !s2.isBlank() ? s2 : null);
+        String pathPrefix = DocumentService.resolveScope(rawPrefix instanceof String s2 && !s2.isBlank() ? s2 : null);
 
         List<DocumentDocument> docs = tag == null
                 ? documentService.listByProject(ctx.tenantId(), project.getName())
@@ -95,8 +104,7 @@ public class DocListTool implements Tool {
 
         List<Map<String, Object>> rows = new ArrayList<>(docs.size());
         for (DocumentDocument d : docs) {
-            if (!pathPrefix.isEmpty()
-                    && (d.getPath() == null || !d.getPath().startsWith(pathPrefix))) continue;
+            if (!pathPrefix.isEmpty() && (d.getPath() == null || !d.getPath().startsWith(pathPrefix))) continue;
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", d.getId());
             row.put("path", d.getPath());
@@ -121,8 +129,7 @@ public class DocListTool implements Tool {
     }
 
     @SuppressWarnings("unused")
-    private static @org.jspecify.annotations.Nullable String paramString(
-            Map<String, Object> params, String key) {
+    private static @org.jspecify.annotations.Nullable String paramString(Map<String, Object> params, String key) {
         if (params == null) return null;
         Object v = params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;

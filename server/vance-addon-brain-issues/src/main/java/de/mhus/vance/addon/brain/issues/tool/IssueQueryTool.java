@@ -8,6 +8,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,16 +24,21 @@ import org.springframework.stereotype.Component;
 public class IssueQueryTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("folder", Map.of("type", "string", "description", "Issues root folder."));
-                put("state", Map.of("type", "string", "description", "open | closed (optional)."));
-                put("label", Map.of("type", "string"));
-                put("assignee", Map.of("type", "string"));
-                put("archived", Map.of("type", "boolean", "description", "List archived issues instead."));
-                put("projectId", Map.of("type", "string"));
-            }},
-            "required", List.of("folder"));
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put("folder", Map.of("type", "string", "description", "Issues root folder."));
+                    put("state", Map.of("type", "string", "description", "open | closed (optional)."));
+                    put("label", Map.of("type", "string"));
+                    put("assignee", Map.of("type", "string"));
+                    put("archived", Map.of("type", "boolean", "description", "List archived issues instead."));
+                    put("projectId", Map.of("type", "string"));
+                }
+            },
+            "required",
+            List.of("folder"));
 
     private final EddieContext eddieContext;
     private final IssuesFolderReader folderReader;
@@ -42,7 +48,10 @@ public class IssueQueryTool implements Tool {
         this.folderReader = folderReader;
     }
 
-    @Override public String name() { return "issue_query"; }
+    @Override
+    public String name() {
+        return "issue_query";
+    }
 
     @Override
     public String description() {
@@ -50,9 +59,20 @@ public class IssueQueryTool implements Tool {
                 + "to list archived issues. Returns number + title + state + labels per issue.";
     }
 
-    @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("eddie", "read", "document", "issues"); }
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "issues");
+    }
+
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -65,9 +85,8 @@ public class IssueQueryTool implements Tool {
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         IssuesFolderReader.Scan scan = folderReader.scan(ctx.tenantId(), project.getName(), folder);
         IssuesConfig config = scan.config();
-        List<Issue> source = archived
-                ? folderReader.scanArchived(ctx.tenantId(), project.getName(), folder, config)
-                : scan.issues();
+        List<Issue> source =
+                archived ? folderReader.scanArchived(ctx.tenantId(), project.getName(), folder, config) : scan.issues();
 
         List<Map<String, Object>> out = new ArrayList<>();
         for (Issue i : source) {
@@ -93,6 +112,7 @@ public class IssueQueryTool implements Tool {
         Object v = params == null ? null : params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
+
     private static boolean paramBoolean(Map<String, Object> params, String key) {
         Object v = params == null ? null : params.get(key);
         if (v instanceof Boolean b) return b;

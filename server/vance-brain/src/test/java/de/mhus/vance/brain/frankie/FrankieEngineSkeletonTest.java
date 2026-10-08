@@ -200,7 +200,9 @@ class FrankieEngineSkeletonTest {
         lenient().when(ctx.tools()).thenReturn(tools);
         attachmentSink = new de.mhus.vance.brain.ai.attachment.ToolAttachmentSink();
         lenient().when(ctx.attachmentSink()).thenReturn(attachmentSink);
-        lenient().when(ctx.drainPending()).thenReturn(List.of());
+        // A turn only runs for inbox material — an empty wake-up is skipped.
+        // Default: one turn-local kick that is not persisted to the chat log.
+        lenient().when(ctx.drainPending()).thenReturn(List.of(kick()));
         lenient().when(ctx.historyTagSink()).thenReturn(tagSink);
         lenient().when(ctx.events()).thenReturn(events);
         lenient().when(chatMessageService.activeHistory(any(), any(), any())).thenReturn(List.of());
@@ -229,6 +231,36 @@ class FrankieEngineSkeletonTest {
         verify(chatMessageService).append(any());
         // Reply emitted to parent / progress channel.
         verify(ctx).emitReply(eq("Done. Renamed two methods."), any(), any());
+    }
+
+    // ─── Empty wake-up: one lane-turn per inbox append, one drain ───────
+
+    @Test
+    void emptyInbox_skipsTurnWithoutLlmCallOrStatusChange() {
+        // Every append schedules its own lane-turn, but the first turn
+        // drains the whole queue. The turns queued behind it must not run
+        // the LLM — the replayed transcript ends on our own reply and the
+        // model answers itself once per stale wake-up.
+        when(ctx.drainPending()).thenReturn(List.of());
+
+        engine.runTurn(process, ctx);
+
+        assertThat(chatModel.callCount()).isZero();
+        verify(thinkProcessService, never()).updateStatus(any(), any());
+        verify(chatMessageService, never()).append(any());
+        verify(ctx, never()).emitReply(any(), any(), any());
+    }
+
+    @Test
+    void secondWakeUpAfterFullDrain_doesNotReplyAgain() {
+        when(ctx.drainPending()).thenReturn(List.of(userInput("hello")), List.of());
+        chatModel.script(AiMessage.from("Hi."));
+
+        engine.runTurn(process, ctx);
+        engine.runTurn(process, ctx);
+
+        assertThat(chatModel.callCount()).isEqualTo(1);
+        verify(ctx).emitReply(eq("Hi."), any(), any());
     }
 
     // ─── Stop path 1b: empty LLM response (model collapse) ──────────────
@@ -431,6 +463,11 @@ class FrankieEngineSkeletonTest {
                 de.mhus.vance.brain.ai.OutputTokenParam.MAX_TOKENS,
                 java.util.Set.of(),
                 null);
+    }
+
+    private static de.mhus.vance.brain.thinkengine.SteerMessage.ExternalCommand kick() {
+        return new de.mhus.vance.brain.thinkengine.SteerMessage.ExternalCommand(
+                Instant.now(), null, "test.kick", java.util.Map.of());
     }
 
     private static de.mhus.vance.brain.thinkengine.SteerMessage.UserChatInput userInput(String text) {

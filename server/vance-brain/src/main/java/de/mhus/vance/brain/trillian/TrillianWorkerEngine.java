@@ -135,10 +135,15 @@ public class TrillianWorkerEngine extends FrankieEngine {
      * keep the budget it has already spent, and
      * {@code TrillianAskTool} resets them itself when the question
      * changes.
+     *
+     * <p>Only a wake-up that carries inbox material starts a turn —
+     * Frankie skips an empty one — so the marker is kept when nothing is
+     * pending; otherwise a stale lane wake would drop the open question
+     * without the worker ever seeing an answer.
      */
     @Override
     public void runTurn(ThinkProcessDocument process, de.mhus.vance.brain.thinkengine.ThinkEngineContext ctx) {
-        if (askPending(process.getId())) {
+        if (ctx.hasPending() && askPending(process.getId())) {
             try {
                 processes.setEngineParamOverride(process.getId(), PARAM_ASK_PENDING, null);
             } catch (RuntimeException e) {

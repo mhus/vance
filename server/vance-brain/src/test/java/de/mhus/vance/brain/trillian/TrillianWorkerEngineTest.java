@@ -59,16 +59,35 @@ class TrillianWorkerEngineTest {
         // The worker running again IS the answer arriving — otherwise a
         // later real termination would park instead of close.
         givenAskPending(true);
+        de.mhus.vance.brain.thinkengine.ThinkEngineContext ctx =
+                mock(de.mhus.vance.brain.thinkengine.ThinkEngineContext.class);
+        when(ctx.hasPending()).thenReturn(true);
 
         try {
             // Only the pre-loop side effect is under test; Frankie's turn
             // itself runs against unconfigured collaborators.
-            engine().runTurn(process(), mock(de.mhus.vance.brain.thinkengine.ThinkEngineContext.class));
+            engine().runTurn(process(), ctx);
         } catch (RuntimeException expected) {
             // ignored on purpose
         }
 
         verify(processes).setEngineParamOverride(PROC, TrillianWorkerEngine.PARAM_ASK_PENDING, null);
+    }
+
+    @Test
+    void anEmptyWakeUp_keepsTheMarker() {
+        // Frankie skips a wake-up with nothing in the inbox, so no answer
+        // arrived — clearing the marker would lose the open question.
+        givenAskPending(true);
+        de.mhus.vance.brain.thinkengine.ThinkEngineContext ctx =
+                mock(de.mhus.vance.brain.thinkengine.ThinkEngineContext.class);
+        when(ctx.hasPending()).thenReturn(false);
+        when(ctx.drainPending()).thenReturn(java.util.List.of());
+
+        engine().runTurn(process(), ctx);
+
+        verify(processes, never()).setEngineParamOverride(PROC, TrillianWorkerEngine.PARAM_ASK_PENDING, null);
+        verify(processes, never()).updateStatus(any(), any());
     }
 
     @Test

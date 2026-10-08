@@ -390,6 +390,17 @@ public class FrankieEngine implements ThinkEngine {
         boolean isWorker = process.getParentProcessId() != null
                 && !process.getParentProcessId().isBlank();
 
+        // Every inbox append schedules its own lane-turn, but one turn drains
+        // the whole queue — the turns queued behind it find nothing. Running
+        // the LLM anyway replays the transcript ending on our own reply, and
+        // the model answers itself ("standing by…") once per stale wake-up.
+        // Nothing new → no turn, status untouched (same contract as Ford).
+        List<SteerMessage> drained = ctx.drainPending();
+        if (drained.isEmpty()) {
+            log.debug("Frankie id='{}' woken with empty inbox — no turn", process.getId());
+            return;
+        }
+
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         // Exit status to write in finally — null means "leave alone"
         // (status already set externally, or the engine has closed
@@ -398,7 +409,6 @@ public class FrankieEngine implements ThinkEngine {
         try {
             // 1) Persist user input from inbox, collect non-UCI items as turn-local extras.
             ChatMessageService chatLog = ctx.chatMessageService();
-            List<SteerMessage> drained = ctx.drainPending();
             // START-point guards fire per genuine user turn, before prompt
             // assembly — a start guard that activates a skill puts it into
             // this very turn. The combined anchor resets the guard

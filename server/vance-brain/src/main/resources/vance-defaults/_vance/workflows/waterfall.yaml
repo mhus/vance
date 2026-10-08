@@ -48,13 +48,33 @@ states:
         Create a plan for: ${params.goal}
 
         Where relevant, break it down into steps and dependencies.
+
+        Answer to your earlier question (empty on the first run):
+        ${state.planning_answer.text}
     storeAs: plan
     on:
       success: approve_plan
-      needs_input: approve_plan
+      # The agent asked back (or got stuck) instead of planning — its text
+      # is a question, not a plan: put it to the person, then plan again
+      # with the answer. Approving it as a plan would hand the person a
+      # question to sign off.
+      needs_input: ask_planning
     catch:
       agent_error: failed
       technical_error: failed
+
+  ask_planning:
+    type: gate_task
+    inbox:
+      kind: FEEDBACK
+      title: "The planning agent needs input: ${params.goal}"
+      body: "${state.plan}"
+      criticality: NORMAL
+    storeAs: planning_answer
+    on:
+      success: planning
+    catch:
+      timeout: failed
 
   approve_plan:
     type: gate_task
@@ -80,13 +100,31 @@ states:
 
         Plan:
         ${state.plan}
+
+        Answer to your earlier question (empty on the first run):
+        ${state.implementation_answer.text}
     storeAs: implementation
     on:
       success: review
-      needs_input: approve_plan
+      # Same as planning: a question goes to the person, the answer comes
+      # back into the next implementation run.
+      needs_input: ask_implementation
     catch:
       agent_error: failed
       technical_error: failed
+
+  ask_implementation:
+    type: gate_task
+    inbox:
+      kind: FEEDBACK
+      title: "The implementation agent needs input: ${params.goal}"
+      body: "${state.implementation}"
+      criticality: NORMAL
+    storeAs: implementation_answer
+    on:
+      success: implementation
+    catch:
+      timeout: failed
 
   # The review does not just report — it judges, and the plan branches on
   # the judgement. That is the difference between a plan for thinking work
@@ -115,6 +153,9 @@ states:
     on:
       good: accept
       weak: decide_rework
+      # A reviewer that asks back or gets stuck is treated like a failed
+      # review: the review is advisory, the run does not hinge on it.
+      needs_input: accept
     catch:
       agent_error: accept
       technical_error: accept

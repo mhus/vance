@@ -82,6 +82,12 @@ class NutrimatDrainLoopTest {
                 }
 
                 @Override
+                protected TurnOutcome runLoop(
+                        ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in, LoopStats stats) {
+                    return TurnOutcome.terminal("unused — the gate discards before any loop", false);
+                }
+
+                @Override
                 protected boolean exhaustedStopsUntilUserInput() {
                     return true;
                 }

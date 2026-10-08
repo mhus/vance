@@ -1,36 +1,34 @@
 package de.mhus.vance.addon.brain.nutrimat.salitos;
 
+import static de.mhus.vance.addon.brain.nutrimat.NutrimatLoopHarness.text;
+import static de.mhus.vance.addon.brain.nutrimat.NutrimatLoopHarness.toolCall;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
-import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.LoopState;
-import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.StopDecision;
-import de.mhus.vance.addon.brain.nutrimat.NutrimatJudge;
-import de.mhus.vance.api.notification.NotificationSeverity;
-import de.mhus.vance.brain.notification.NotificationService;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.LoopInputs;
+import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.LoopStats;
+import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.TurnOutcome;
+import de.mhus.vance.addon.brain.nutrimat.NutrimatLoopHarness;
 import dev.langchain4j.data.message.AiMessage;
-import java.util.Map;
+import dev.langchain4j.data.message.SystemMessage;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The single axis this nature owns: the stop is a decision — a judge says
- * done or continue at every natural-stop candidate, bounded by the decision
- * budget — and every verdict goes out through the report channel.
+ * salitos' own loop: the stop is a decision the model makes itself — a JSON
+ * {done, reason, answer} at every stop. Endless by design: no round or
+ * decision cap. Every decision is published through the report channel.
  */
 class NutrimatSalitosTest {
 
-    private final NutrimatJudge judge = mock(NutrimatJudge.class);
-    private final NotificationService notifications = mock(NotificationService.class);
+    private final NutrimatLoopHarness h = new NutrimatLoopHarness();
 
-    // Positional nulls on purpose — a constructor change must break compile.
+    // Positional args on purpose — a constructor change must break compile.
     private final NutrimatSalitos engine = new NutrimatSalitos(
+            h.thinkProcessService,
+            h.objectMapper,
+            h.streamingProperties,
+            null,
+            h.llmCallTracker,
             null,
             null,
             null,
@@ -46,68 +44,101 @@ class NutrimatSalitosTest {
             null,
             null,
             null,
+            h.turnContextHandlers,
             null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            notifications,
-            judge);
+            h.notifications);
 
-    private static LoopState state(ThinkProcessDocument process, int stopCandidates) {
-        return new LoopState(process, null, "list the modules", 4, 40, "draft", 0, 0, stopCandidates, 0, false);
+    private static AiMessage decision(boolean done, String reason, String answer) {
+        return text("{\"done\": " + done + ", \"reason\": \"" + reason + "\", \"answer\": \"" + answer + "\"}");
     }
 
-    private static ThinkProcessDocument processWithDecisionBudget(int maxDecisions) {
-        ThinkProcessDocument process = new ThinkProcessDocument();
-        process.setEngineParams(Map.of("maxDecisions", maxDecisions));
-        return process;
+    private TurnOutcome run() {
+        return engine.runLoop(h.process, h.ctx, h.inputs(), new LoopStats());
     }
 
     @Test
-    void onNaturalStopCandidate_judgeDone_acceptsTheDraftAndPublishesTheVerdict() {
-        when(judge.judgeContinue(any(), anyString(), anyString(), anyInt()))
-                .thenReturn(new NutrimatJudge.ContinueJudgment(true, "", "answers the request"));
+    void protocol_isATurnLocalSystemInstruction() {
+        h.script(decision(true, "complete", "the answer"));
+        LoopInputs in = h.inputs();
 
-        ThinkProcessDocument process = processWithDecisionBudget(3);
-        StopDecision d =
-                engine.onNaturalStopCandidate(state(process, 1), AiMessage.from("the modules are api, shared, brain"));
+        engine.runLoop(h.process, h.ctx, in, new LoopStats());
 
-        assertThat(d.kind()).isEqualTo(StopDecision.Kind.ACCEPT);
-        // The verdict is published, not just applied — through the report
-        // channel: recorded in the loop state, pinged to the session.
-        verify(notifications).publish(process, "stop verdict: done — answers the request", NotificationSeverity.INFO);
-        assertThat(process.getEngineParams().get("nutrimatState"))
+        assertThat(in.messages())
+                .anyMatch(m -> m instanceof SystemMessage s && s.text().equals(NutrimatSalitos.PROTOCOL));
+    }
+
+    @Test
+    void done_endsTheTurn_theAnswerIsTheReply() {
+        h.script(toolCall("{\"n\":1}", ""), decision(true, "all modules listed", "api, shared, brain"));
+
+        TurnOutcome out = run();
+
+        assertThat(out.finalText()).isEqualTo("api, shared, brain");
+        assertThat(out.awaitingUserInput()).isFalse();
+        assertThat(h.process.getEngineParams().get("nutrimatState"))
                 .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
-                .containsEntry("roundReports", java.util.List.of("stop verdict: done — answers the request"));
+                .containsEntry("roundReports", List.of("decision: done — all modules listed"));
     }
 
     @Test
-    void onNaturalStopCandidate_judgeContinue_pushesTheLoopOnAndPublishesTheVerdict() {
-        when(judge.judgeContinue(any(), anyString(), anyString(), anyInt()))
-                .thenReturn(new NutrimatJudge.ContinueJudgment(
-                        false, "you promised the versions — read the poms", "promised work missing"));
+    void notDone_keepsTheLoopGoing_withTheModelsOwnReason() {
+        h.script(
+                decision(false, "the brain module is missing", ""),
+                toolCall("{\"n\":1}", ""),
+                decision(true, "complete now", "api, shared, brain"));
+        LoopInputs in = h.inputs();
 
-        ThinkProcessDocument process = processWithDecisionBudget(3);
-        StopDecision d = engine.onNaturalStopCandidate(state(process, 1), AiMessage.from("let me look that up"));
+        TurnOutcome out = engine.runLoop(h.process, h.ctx, in, new LoopStats());
 
-        assertThat(d.kind()).isEqualTo(StopDecision.Kind.CONTINUE);
-        assertThat(d.message()).contains("read the poms");
-        // The continue verdict is published too — the decision stays pure.
-        verify(notifications)
-                .publish(process, "stop verdict: continue — promised work missing", NotificationSeverity.INFO);
+        assertThat(out.finalText()).isEqualTo("api, shared, brain");
+        assertThat(in.messages())
+                .anyMatch(m -> m instanceof dev.langchain4j.data.message.UserMessage u
+                        && u.singleText().contains("the brain module is missing"));
     }
 
     @Test
-    void onNaturalStopCandidate_decisionBudgetSpent_acceptsWithoutAsking() {
-        // maxDecisions=1 and the second candidate: the loop must end on an
-        // answer, never on a judge question loop.
-        StopDecision d = engine.onNaturalStopCandidate(state(processWithDecisionBudget(1), 2), AiMessage.from("draft"));
+    void endlessByDesign_noDecisionCap() {
+        AiMessage[] script = new AiMessage[21];
+        for (int i = 0; i < 20; i++) script[i] = decision(false, "not yet " + i, "");
+        script[20] = decision(true, "finally", "the answer");
+        h.script(script);
 
-        assertThat(d.kind()).isEqualTo(StopDecision.Kind.ACCEPT);
-        // No judge was asked, so there is nothing to publish.
-        verifyNoInteractions(judge, notifications);
+        assertThat(run().finalText()).isEqualTo("the answer");
+        assertThat(h.calls()).isEqualTo(21);
+    }
+
+    @Test
+    void notTheProtocol_getsAFormatCorrection_thenTheRawTextIsAccepted() {
+        h.script(text("just prose"), text("still prose"), text("prose again"));
+
+        TurnOutcome out = run();
+
+        assertThat(h.calls()).isEqualTo(NutrimatSalitos.MAX_FORMAT_CORRECTIONS + 1);
+        assertThat(out.finalText()).isEqualTo("prose again");
+    }
+
+    @Test
+    void doneWithoutAnAnswer_isAFormatError() {
+        h.script(decision(true, "done", ""), decision(true, "done", "here it is"));
+
+        assertThat(run().finalText()).isEqualTo("here it is");
+        assertThat(h.calls()).isEqualTo(2);
+    }
+
+    @Test
+    void fencedJson_isAccepted() {
+        h.script(text("```json\n{\"done\": true, \"reason\": \"ok\", \"answer\": \"42\"}\n```"));
+
+        assertThat(run().finalText()).isEqualTo("42");
+    }
+
+    @Test
+    void emptyReply_isAFailure() {
+        h.script(text(""));
+
+        TurnOutcome out = run();
+
+        assertThat(out.recovered()).isTrue();
+        assertThat(out.finalText()).contains("empty response");
     }
 }

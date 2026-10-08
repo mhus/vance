@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.command.EngineCommandResult;
+import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.Map;
@@ -56,6 +57,12 @@ class NutrimatCommandHandlerTest {
         @Override
         protected String loopType() {
             return "natural-stop tool loop (the Ford baseline)";
+        }
+
+        @Override
+        protected TurnOutcome runLoop(
+                ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in, LoopStats stats) {
+            return TurnOutcome.terminal("unused — these tests never run a loop", false);
         }
 
         @Override
@@ -163,9 +170,9 @@ class NutrimatCommandHandlerTest {
 
         EngineCommandResult result = handler.handle(process, command("status"));
 
-        // No budget nature: the loop runs until the natural stop, the
-        // wallclock net is the only bound — and maxturns makes no sense.
-        assertThat(result.message()).contains("no iteration cap");
+        // No budget nature: its own loop decides what bounds it — and
+        // maxturns makes no sense.
+        assertThat(result.message()).contains("no round budget");
     }
 
     @Test

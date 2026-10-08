@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.nutrimat.clubmate;
 
 import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat;
+import de.mhus.vance.addon.brain.nutrimat.NutrimatInterruptedException;
 import de.mhus.vance.addon.brain.nutrimat.NutrimatJudge;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.ai.ModelCatalog;
@@ -19,29 +20,35 @@ import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.brain.skill.SkillTriggerMatcher;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
+import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry;
 import de.mhus.vance.shared.memory.MemoryService;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.UserMessage;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Nature {@code clubmate} — the exhausted loop with a judge: when the iteration
- * budget runs out, a single schema-bound LightLlm call decides whether the
- * loop earned a fresh budget ({@code extend}) or whether the answer gets
- * synthesized from what has been gathered ({@code synthesize}).
+ * Nature {@code clubmate} — the budget with a judge. Its own loop: the model
+ * calls tools as long as it wants, the first message without a tool call is
+ * the reply; a budget segment spans {@code params.maxIterations} rounds
+ * (default 12). When a segment runs out, a judge (one LightLlm call) looks at
+ * the work so far — the longest text the model wrote <em>and</em> the tool
+ * calls it made — and decides: a fresh budget with a nudge (extend, no fixed
+ * ceiling), or the answer (synthesize, a normal end of the turn).
  *
- * <p>Exactly one axis differs from {@code redbull}: at exhaustion a judge
- * decides instead of the run failing. The loop mechanics, the budget shape
- * and the prompts are identical — a {@code redbull}-vs-{@code clubmate}
- * comparison measures the judge and nothing else. Extensions carry no fixed
- * ceiling (the judge may keep granting while the loop stays healthy); the
- * per-turn wallclock net bounds a runaway judge.
- *
- * <p>Club-Mate keeps the night going — the loop that asks before it drops.
+ * <p>The judge can keep extending, so the loop carries its own wallclock net
+ * (30 minutes per turn): past it, extensions are refused and the best
+ * partial work ends the turn as a failure. A failed model call and an empty
+ * reply end the turn as a failure too. The interrupt comes from
+ * {@code round()}. An answer leaves the process IDLE in both modes.
  */
 @Component
 public class NutrimatClubmate extends AbstractNutrimat {
@@ -104,6 +111,12 @@ public class NutrimatClubmate extends AbstractNutrimat {
         this.judge = judge;
     }
 
+    /** clubmate's own runaway bound for a judge that keeps extending. */
+    private static final long TURN_WALLCLOCK_MINUTES = 30;
+
+    /** How many tool calls the judge sees, newest last — enough to judge, bounded for the call. */
+    private static final int JUDGE_TOOL_LOG_LIMIT = 30;
+
     @Override
     protected String natureId() {
         return "clubmate";
@@ -114,34 +127,112 @@ public class NutrimatClubmate extends AbstractNutrimat {
         return "exhausted budget with a judge at exhaustion (extend vs. synthesize)";
     }
 
-    /** clubmate's own budget: the judge only speaks at exhaustion, so the
-     * cap is deliberately smaller than redbull's — the recipe's
-     * {@code params.maxIterations} (override &gt; recipe &gt; this default). */
+    /**
+     * clubmate's budget: the judge only speaks at exhaustion, so the cap is
+     * deliberately smaller than redbull's — the recipe's
+     * {@code params.maxIterations} (override &gt; recipe &gt; this default).
+     */
     @Override
     protected int iterationBudget(ThinkProcessDocument process) {
         return paramInt(process, "maxIterations", DEFAULT_JUDGE_BUDGET);
     }
 
-    /**
-     * Budget rounds plus the judge's extensions — the extension marker is
-     * the live signal that the judge granted a fresh budget.
-     */
     @Override
-    protected String roundNarration(LoopState state, String lastRoundText) {
-        return "round " + (state.iterationsConsumed() + 1) + "/" + state.iterationBudget()
-                + (state.extensions() > 0 ? " (extended " + state.extensions() + "×)" : "");
+    protected TurnOutcome runLoop(
+            ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in, LoopStats stats) {
+        int budget = iterationBudget(process);
+        long deadlineMs = System.currentTimeMillis() + TURN_WALLCLOCK_MINUTES * 60_000L;
+        String bestFreeText = "";
+        List<String> toolLog = new ArrayList<>();
+        int consumed = 0;
+        int inSegment = 0;
+        while (true) {
+            narrateRound(
+                    ctx,
+                    process,
+                    "round " + (consumed + 1) + "/" + budget
+                            + (stats.extensions > 0 ? " (extended " + stats.extensions + "×)" : ""));
+            if (inSegment >= budget) {
+                narrate(ctx, process, "budget exhausted after " + consumed + " rounds — asking the judge");
+                NutrimatJudge.ExhaustedJudgment verdict =
+                        judge.judgeExhausted(process, in.userGoal(), gatheredWork(bestFreeText, toolLog), consumed);
+                if (verdict.extend() && System.currentTimeMillis() < deadlineMs) {
+                    narrate(ctx, process, "judge: extend — " + verdict.reason());
+                    in.messages()
+                            .add(UserMessage.from(
+                                    verdict.text() == null || verdict.text().isBlank()
+                                            ? "Continue working toward the goal — you have a fresh budget."
+                                            : verdict.text()));
+                    stats.extensions++;
+                    inSegment = 0;
+                    continue;
+                }
+                if (verdict.extend()) {
+                    narrate(ctx, process, "wallclock net reached — refusing further extensions");
+                    return TurnOutcome.recovered(
+                            bestFreeText.isBlank()
+                                    ? "The run exceeded its " + TURN_WALLCLOCK_MINUTES + "-minute wallclock budget."
+                                    : bestFreeText);
+                }
+                // The judge vouched for the answer — a normal end of the turn.
+                narrate(ctx, process, "judge: synthesize — " + verdict.reason());
+                String answer = verdict.text() == null || verdict.text().isBlank() ? bestFreeText : verdict.text();
+                return TurnOutcome.terminal(answer, false);
+            }
+            AiMessage reply;
+            try {
+                reply = round(process, ctx, in);
+            } catch (NutrimatInterruptedException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                return bestFreeText.isBlank()
+                        ? TurnOutcome.failed("The LLM call failed and no partial work is available: " + e.getMessage())
+                        : TurnOutcome.recovered(bestFreeText);
+            }
+            consumed++;
+            inSegment++;
+            stats.iterationsConsumed = consumed;
+            String text = reply.text() == null ? "" : reply.text();
+            if (text.length() > bestFreeText.length()) {
+                bestFreeText = text;
+            }
+            if (!reply.hasToolExecutionRequests()) {
+                stats.stopCandidates++;
+                if (text.isBlank()) {
+                    return TurnOutcome.failed(
+                            "The model returned an empty response (no text, no tool call) — no answer.");
+                }
+                narrate(ctx, process, "stop: the model's text is the reply");
+                return TurnOutcome.terminal(text, false);
+            }
+            for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
+                toolLog.add(call.name() + " " + abbreviate(call.arguments()));
+            }
+            appendInterimRoundText(ctx, process, text);
+            dispatchTools(process, in, reply);
+        }
     }
 
-    /** The judge decides: fresh budget and keep going, or stop with an answer. */
-    @Override
-    protected ExhaustionDecision onExhausted(LoopState state) {
-        NutrimatJudge.ExhaustedJudgment verdict = judge.judgeExhausted(
-                state.process(), state.userGoal(), state.bestFreeText(), state.iterationsConsumed());
-        if (verdict.extend()) {
-            return ExhaustionDecision.extend(verdict.text(), verdict.reason());
+    /**
+     * What the judge reads as the work so far: the longest text the model
+     * wrote plus the tool calls it made — without the calls the judge would
+     * decide "is more work worthwhile" without knowing what was done.
+     */
+    private static String gatheredWork(String bestFreeText, List<String> toolLog) {
+        StringBuilder sb = new StringBuilder(bestFreeText.isBlank() ? "(no text yet)" : bestFreeText);
+        if (!toolLog.isEmpty()) {
+            sb.append("\n\nTool calls so far (").append(toolLog.size()).append("):");
+            int from = Math.max(0, toolLog.size() - JUDGE_TOOL_LOG_LIMIT);
+            if (from > 0) sb.append("\n- … ").append(from).append(" earlier call(s)");
+            for (String entry : toolLog.subList(from, toolLog.size())) {
+                sb.append("\n- ").append(entry);
+            }
         }
-        // The judge vouched for the answer — a normal terminal reply, not a
-        // hard-failure outcome: the work is considered finished here.
-        return ExhaustionDecision.synthesize(verdict.text(), false);
+        return sb.toString();
+    }
+
+    private static String abbreviate(String arguments) {
+        if (arguments == null || arguments.isBlank()) return "";
+        return arguments.length() > 120 ? arguments.substring(0, 120) + "…" : arguments;
     }
 }

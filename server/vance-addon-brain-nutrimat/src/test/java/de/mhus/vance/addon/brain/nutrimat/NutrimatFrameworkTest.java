@@ -3,6 +3,7 @@ package de.mhus.vance.addon.brain.nutrimat;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import org.junit.jupiter.api.Test;
 
@@ -35,6 +36,12 @@ class NutrimatFrameworkTest {
         protected String loopType() {
             return "test loop";
         }
+
+        @Override
+        protected TurnOutcome runLoop(
+                ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in, LoopStats stats) {
+            return TurnOutcome.terminal("unused — these tests never run a loop", false);
+        }
     }
 
     /** A nature whose id cannot be split out of {@code nutrimat-<nature>}. */
@@ -53,6 +60,12 @@ class NutrimatFrameworkTest {
         @Override
         protected String loopType() {
             return "test loop";
+        }
+
+        @Override
+        protected TurnOutcome runLoop(
+                ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in, LoopStats stats) {
+            return TurnOutcome.terminal("unused — these tests never run a loop", false);
         }
     }
 

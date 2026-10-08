@@ -24,8 +24,7 @@ import org.springframework.stereotype.Component;
  *                                  runtime overrides, last-turn loop statistics
  * //nutrimat set maxturns 30     → runtime override of the iteration budget
  * //nutrimat set maxturns        → clear the override (back to the recipe default)
- * //nutrimat set maxdecisions 5  → salitos: judge "continue" rounds per turn
- * //nutrimat set validation on   → toggle the data-relay validation correction
+ * //nutrimat set validation on   → janx: toggle the data-relay validation correction
  * </pre>
  *
  * <p><b>One handler for all natures</b> — the commands are properties of the
@@ -54,11 +53,7 @@ public class NutrimatCommandHandler implements EngineCommandHandler {
     private static final Map<String, String> KNOBS = Map.of(
             "maxturns", "maxIterations",
             "maxiterations", "maxIterations",
-            "maxdecisions", "maxDecisions",
             "validation", "validation");
-
-    /** salitos' judge-round default when neither recipe nor override sets it. */
-    private static final int DEFAULT_MAX_DECISIONS = 3;
 
     private final ThinkProcessService thinkProcessService;
     /**
@@ -110,16 +105,14 @@ public class NutrimatCommandHandler implements EngineCommandHandler {
                 .findFirst()
                 .orElse("(unknown nature)");
 
-        // The iteration budget is nature property (redbull/clubmate); 0 means
-        // the loop is uncapped — the wallclock net bounds it.
+        // The round budget is nature property (redbull/clubmate); 0 means the
+        // nature has none — its own loop decides what bounds it.
         int maxIterations = natures.stream()
                 .filter(n -> n.name().equals(engine))
                 .map(n -> n.iterationBudget(process))
                 .findFirst()
                 .orElse(0);
         String maxIterationsSource = maxIterations == 0 ? "(none)" : sourceOf(process, "maxIterations");
-        int maxDecisions = effectiveInt(process, "maxDecisions", DEFAULT_MAX_DECISIONS);
-        String maxDecisionsSource = sourceOf(process, "maxDecisions");
         boolean validation = effectiveBool(process, "validation", false);
 
         StringBuilder sb = new StringBuilder();
@@ -139,13 +132,8 @@ public class NutrimatCommandHandler implements EngineCommandHandler {
                 .append(
                         maxIterations > 0
                                 ? "maxIterations=" + maxIterations + " (" + maxIterationsSource + ")"
-                                : "— (no iteration cap, wallclock-bounded)")
+                                : "— (no round budget)")
                 .append('\n')
-                .append("  decisions: maxDecisions=")
-                .append(maxDecisions)
-                .append(" (")
-                .append(maxDecisionsSource)
-                .append(", salitos only)\n")
                 .append("  validation: ")
                 .append(validation ? "on" : "off");
 
@@ -160,7 +148,6 @@ public class NutrimatCommandHandler implements EngineCommandHandler {
         value.put("loopType", loopType);
         value.put("maxIterations", maxIterations);
         value.put("maxIterationsSource", maxIterationsSource);
-        value.put("maxDecisions", maxDecisions);
         value.put("validation", validation);
 
         Object state = process.getEngineParams() == null
@@ -255,19 +242,6 @@ public class NutrimatCommandHandler implements EngineCommandHandler {
             return "recipe";
         }
         return "default";
-    }
-
-    private static int effectiveInt(ThinkProcessDocument process, String key, int fallback) {
-        Object v = effective(process, key);
-        if (v instanceof Number n) return n.intValue();
-        if (v instanceof String s) {
-            try {
-                return Integer.parseInt(s.trim());
-            } catch (NumberFormatException e) {
-                return fallback;
-            }
-        }
-        return fallback;
     }
 
     private static boolean effectiveBool(ThinkProcessDocument process, String key, boolean fallback) {

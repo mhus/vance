@@ -1,20 +1,18 @@
-# Nutrimat loop-lab experiment: nature `salitos` — the stop is a decision.
-# At every natural-stop candidate a LightLlm judge decides done vs.
-# continue. Exactly one axis away from `janx`. See
+# Nutrimat loop-lab experiment: nature `salitos` — the stop is a decision
+# the loop makes itself: at every stop the model answers a JSON
+# {done, reason, answer}. Endless by design. See
 # specification/public/nutrimat-engine.md.
-title: "Nutrimat salitos — stop decided by a judge"
+title: "Nutrimat salitos — the loop decides when it is done"
 listed: true
 category: experimental
 description: |
-  Experimental loop-lab worker. Nature `salitos` runs the natural-stop
-  tool loop, but the stop is not a given: whenever the model stops
-  calling tools, a judge (a single cheap LLM call, recipe
-  `nutrimat-judge-salitos`) looks at the draft answer and decides
-  whether the work is actually finished — or whether to push the model
-  to continue working. The comparison `janx` vs. `salitos` measures
-  exactly that decision point (the Arthur-shaped "done or keep going?"
-  question). `maxDecisions` caps how often the judge may say "continue"
-  per turn.
+  Experimental loop-lab worker. Nature `salitos` lets the model call tools
+  as long as it wants, but a stop is not a given: whenever the model stops
+  calling tools it must answer with a JSON decision — done true/false, a
+  reason, and the answer when done. "Not done" sends it back to work with
+  its own reason; "done" ends the turn with the answer. No round or
+  decision cap — endless by design, every decision is published to the
+  loop state and the client.
 engine: nutrimat-salitos
 # Chat look for sessions on this recipe: warm red transcript with the
 # exclamation-mark frieze (_vance/chat-themes/nutrimat.css) — the shared
@@ -34,8 +32,6 @@ params:
   # chain entries exhausted' killed every turn after exhausted).
   fallbackModels:
     - default:fast
-  # Judge rounds per turn; after this the draft is accepted.
-  maxDecisions: 3
 tags:
   - nutrimat
   - experimental

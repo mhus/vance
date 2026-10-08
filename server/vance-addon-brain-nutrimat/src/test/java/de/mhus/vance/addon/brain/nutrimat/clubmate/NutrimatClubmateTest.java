@@ -1,70 +1,131 @@
 package de.mhus.vance.addon.brain.nutrimat.clubmate;
 
+import static de.mhus.vance.addon.brain.nutrimat.NutrimatLoopHarness.text;
+import static de.mhus.vance.addon.brain.nutrimat.NutrimatLoopHarness.toolCall;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.ExhaustionDecision;
-import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.LoopState;
+import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.LoopStats;
+import de.mhus.vance.addon.brain.nutrimat.AbstractNutrimat.TurnOutcome;
 import de.mhus.vance.addon.brain.nutrimat.NutrimatJudge;
+import de.mhus.vance.addon.brain.nutrimat.NutrimatLoopHarness;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The single axis this nature owns: at exhaustion a judge decides between
- * "fresh budget, keep going" and "synthesize the answer".
+ * clubmate's own loop: a budget segment, and at exhaustion the judge —
+ * extend with a fresh budget, or synthesize the answer. The judge sees the
+ * work, not just the text.
  */
 class NutrimatClubmateTest {
 
+    private final NutrimatLoopHarness h = new NutrimatLoopHarness();
     private final NutrimatJudge judge = mock(NutrimatJudge.class);
 
-    // Positional nulls on purpose — a constructor change must break compile.
+    // Positional args on purpose — a constructor change must break compile.
     private final NutrimatClubmate engine = new NutrimatClubmate(
-            null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, null, judge);
+            h.thinkProcessService,
+            h.objectMapper,
+            h.streamingProperties,
+            null,
+            h.llmCallTracker,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            h.turnContextHandlers,
+            null,
+            h.notifications,
+            judge);
 
-    private static LoopState state() {
-        return new LoopState(null, null, "explain the project layout", 10, 10, "partial progress", 0, 0, 1, 0, false);
+    private TurnOutcome run(LoopStats stats) {
+        return engine.runLoop(h.process, h.ctx, h.inputs(), stats);
     }
 
     @Test
-    void onExhausted_judgeExtend_grantsAFreshBudget() {
+    void answerWithinTheBudget_isAnOrdinaryReply_noJudge() {
+        h.script(toolCall("{\"n\":1}", ""), text("the answer"));
+
+        TurnOutcome out = run(new LoopStats());
+
+        assertThat(out.finalText()).isEqualTo("the answer");
+        assertThat(out.awaitingUserInput()).isFalse();
+    }
+
+    @Test
+    void exhausted_judgeExtend_grantsAFreshBudget() {
+        h.process.getEngineParams().put("maxIterations", 2);
+        h.script(toolCall("{\"n\":1}", ""), toolCall("{\"n\":2}", ""), toolCall("{\"n\":3}", ""), text("finally"));
         when(judge.judgeExhausted(any(), anyString(), anyString(), anyInt()))
-                .thenReturn(new NutrimatJudge.ExhaustedJudgment(true, "now read the pom.xml", "was about to act"));
+                .thenReturn(new NutrimatJudge.ExhaustedJudgment(true, "keep going", "progress visible"));
+        LoopStats stats = new LoopStats();
 
-        ExhaustionDecision d = engine.onExhausted(state());
+        TurnOutcome out = run(stats);
 
-        assertThat(d.kind()).isEqualTo(ExhaustionDecision.Kind.EXTEND);
-        assertThat(d.nudge()).isEqualTo("now read the pom.xml");
-        assertThat(d.reason()).isEqualTo("was about to act");
+        assertThat(out.finalText()).isEqualTo("finally");
+        assertThat(stats.extensions).isEqualTo(1);
+        assertThat(h.contents()).anyMatch(c -> c.contains("(extended 1×)"));
     }
 
     @Test
-    void onExhausted_judgeSynthesize_endsTheTurnAsAnAnswer() {
+    void exhausted_judgeSynthesize_endsTheTurnAsAnAnswer() {
+        h.process.getEngineParams().put("maxIterations", 1);
+        h.script(toolCall("{\"n\":1}", "partial"));
         when(judge.judgeExhausted(any(), anyString(), anyString(), anyInt()))
-                .thenReturn(new NutrimatJudge.ExhaustedJudgment(false, "the project is a Maven reactor…", "enough"));
+                .thenReturn(new NutrimatJudge.ExhaustedJudgment(false, "the synthesized answer", "enough"));
 
-        ExhaustionDecision d = engine.onExhausted(state());
+        TurnOutcome out = run(new LoopStats());
 
-        assertThat(d.kind()).isEqualTo(ExhaustionDecision.Kind.SYNTHESIZE);
-        assertThat(d.text()).isEqualTo("the project is a Maven reactor…");
-        // NOT a hard failure: the judge vouched for the answer, so the turn
-        // ends normally (worker → IDLE) instead of closing INCOMPLETE.
-        assertThat(d.hardFailure()).isFalse();
+        assertThat(out.finalText()).isEqualTo("the synthesized answer");
+        assertThat(out.recovered())
+                .as("the judge vouched — a normal end, not a failure")
+                .isFalse();
     }
 
     @Test
-    void roundNarration_showsBudgetAndExtensions() {
-        LoopState plain = new LoopState(null, null, "goal", 2, 40, "", 0, 0, 0, 0, false);
-        LoopState extended = new LoopState(null, null, "goal", 2, 40, "", 0, 0, 0, 2, false);
+    void judge_seesTheToolWork_notJustTheText() {
+        h.process.getEngineParams().put("maxIterations", 1);
+        h.script(toolCall("{\"path\":\"pom.xml\"}", "reading"));
+        when(judge.judgeExhausted(any(), anyString(), anyString(), anyInt()))
+                .thenReturn(new NutrimatJudge.ExhaustedJudgment(false, "answer", "enough"));
 
-        assertThat(engine.roundNarration(plain, "")).isEqualTo("round 3/40");
-        // The extension marker is the live signal that the judge granted a fresh budget.
-        assertThat(engine.roundNarration(extended, "")).isEqualTo("round 3/40 (extended 2×)");
+        run(new LoopStats());
+
+        verify(judge)
+                .judgeExhausted(
+                        any(),
+                        eq("do the thing"),
+                        argThat(g -> g.contains("reading") && g.contains("doc_read {\"path\":\"pom.xml\"}")),
+                        eq(1));
+    }
+
+    @Test
+    void emptyReply_isAFailure_neverASilentEnd() {
+        h.script(text(""));
+
+        TurnOutcome out = run(new LoopStats());
+
+        assertThat(out.recovered()).isTrue();
+        assertThat(out.finalText()).contains("empty response");
     }
 
     @Test
@@ -72,8 +133,6 @@ class NutrimatClubmateTest {
         ThinkProcessDocument withRecipe = new ThinkProcessDocument();
         withRecipe.setEngineParams(Map.of("maxIterations", 30));
 
-        // The budget is clubmate's own property — deliberately tighter than
-        // redbull's: the judge only speaks at exhaustion.
         assertThat(engine.iterationBudget(withRecipe)).isEqualTo(30);
         assertThat(engine.iterationBudget(new ThinkProcessDocument())).isEqualTo(12);
     }
